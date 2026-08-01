@@ -125,6 +125,9 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
     for required in [
         "class MermanTextMeasurer(",
         "class MermanOperationRequest:",
+        "class MermanResourceErrorDetails:",
+        "class MermanResourceOverrideId(",
+        "id:MermanResourceOverrideId",
         "self.operation_id = operation_id",
         "self.options_json = options_json",
         "UNKNOWN_OPERATION",
@@ -146,6 +149,8 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         "UNKNOWN_OUTPUT",
         "def set_text_measurer(",
         "def clear_text_measurer(",
+        "class MermanResourceLimitId(",
+        "id:MermanResourceLimitId",
     ] {
         if bindings.contains(removed) {
             return Err(io::Error::new(
@@ -219,6 +224,7 @@ const PYTHON_PACKAGE_INIT_BASE_IMPORTS: &str = concat!(
     ")\n\n",
     "from ._resource_options import (\n",
     "    ResourceLimitId,\n",
+    "    ResourceOverrideId,\n",
     "    ResourceOptions,\n",
     "    ResourceOptionsBuilder,\n",
     "    ResourceProfile,\n",
@@ -234,6 +240,7 @@ const PYTHON_PACKAGE_INIT_BASE_IMPORTS: &str = concat!(
     "        MermanLintRuleCatalogEntry,\n",
     "        MermanOperationRequest,\n",
     "        MermanOperationResult,\n",
+    "        MermanResourceErrorDetails,\n",
     "        MermanReusableEngine,\n",
 );
 
@@ -271,8 +278,10 @@ const PYTHON_PACKAGE_INIT_IMPORT_SUFFIX: &str = concat!(
     "    \"MermanLintRuleCatalogEntry\",\n",
     "    \"MermanOperationRequest\",\n",
     "    \"MermanOperationResult\",\n",
+    "    \"MermanResourceErrorDetails\",\n",
     "    \"MermanReusableEngine\",\n",
     "    \"ResourceLimitId\",\n",
+    "    \"ResourceOverrideId\",\n",
     "    \"ResourceOptions\",\n",
     "    \"ResourceOptionsBuilder\",\n",
     "    \"ResourceProfile\",\n",
@@ -427,7 +436,11 @@ mod tests {
     }
 
     fn assert_error_contract_exports(init: &str) {
-        for name in ["MermanError", "MermanErrorKind"] {
+        for name in [
+            "MermanError",
+            "MermanErrorKind",
+            "MermanResourceErrorDetails",
+        ] {
             assert!(
                 init.contains(&format!("        {name},\n")),
                 "generated package shim must import {name}"

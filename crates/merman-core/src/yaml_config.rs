@@ -2,10 +2,13 @@ use crate::{ParseControl, ParseControlResult};
 use granit_parser::{Event, Parser, ScalarStyle, Tag};
 use serde_json::{Map, Number, Value};
 use std::collections::{HashMap, HashSet};
+use std::mem::size_of;
 
 const YAML_MATERIALIZATION_MIN_BYTES: usize = 64 * 1024;
 const YAML_MATERIALIZATION_INPUT_MULTIPLIER: usize = 16;
+const YAML_PARSER_MAX_INPUT_BYTES: usize = 4 * 1024 * 1024;
 
+#[cfg(test)]
 pub(crate) fn parse_yaml_value(input: &str, max_nesting_depth: usize) -> Result<Value, String> {
     let control = ParseControl::new();
     parse_yaml_value_controlled(input, max_nesting_depth, &control)
@@ -17,11 +20,32 @@ pub(crate) fn parse_yaml_value_controlled(
     max_nesting_depth: usize,
     control: &ParseControl,
 ) -> ParseControlResult<Result<Value, String>> {
-    control.checkpoint()?;
     let materialization_budget = input
         .len()
         .saturating_mul(YAML_MATERIALIZATION_INPUT_MULTIPLIER)
         .max(YAML_MATERIALIZATION_MIN_BYTES);
+    parse_yaml_value_with_limits_controlled(
+        input,
+        YAML_PARSER_MAX_INPUT_BYTES,
+        max_nesting_depth,
+        materialization_budget,
+        control,
+    )
+}
+
+pub(crate) fn parse_yaml_value_with_limits_controlled(
+    input: &str,
+    max_input_bytes: usize,
+    max_nesting_depth: usize,
+    materialization_budget: usize,
+    control: &ParseControl,
+) -> ParseControlResult<Result<Value, String>> {
+    control.checkpoint()?;
+    if input.len() > max_input_bytes {
+        return Ok(Err(format!(
+            "YAML input exceeds the safe parser budget of {max_input_bytes} bytes"
+        )));
+    }
     let mut builder = YamlValueBuilder::new(max_nesting_depth, materialization_budget);
 
     for (index, event) in Parser::new_from_str(input).enumerate() {
@@ -429,14 +453,24 @@ fn materialize_yaml_controlled(
 
 fn yaml_node_materialized_cost(node: &YamlNode) -> usize {
     match node {
-        YamlNode::Scalar(Value::String(value)) => value.len().saturating_add(1),
-        YamlNode::Scalar(Value::Number(value)) => value.to_string().len().saturating_add(1),
-        YamlNode::Scalar(Value::Bool(_) | Value::Null) => 1,
-        YamlNode::Scalar(Value::Array(_) | Value::Object(_)) => 1,
-        YamlNode::Sequence(_) => 1,
-        YamlNode::Mapping(entries) => entries.iter().fold(1usize, |total, (key, _)| {
-            total.saturating_add(key.len()).saturating_add(1)
-        }),
+        YamlNode::Scalar(Value::String(value)) => size_of::<Value>().saturating_add(value.len()),
+        YamlNode::Scalar(Value::Null | Value::Bool(_) | Value::Number(_))
+        | YamlNode::Scalar(Value::Array(_) | Value::Object(_)) => size_of::<Value>(),
+        YamlNode::Sequence(items) => size_of::<Value>()
+            .saturating_add(size_of::<Vec<Value>>())
+            .saturating_add(items.len().saturating_mul(size_of::<Value>())),
+        YamlNode::Mapping(entries) => entries.iter().fold(
+            size_of::<Value>()
+                .saturating_add(size_of::<Map<String, Value>>())
+                .saturating_add(
+                    entries.len().saturating_mul(
+                        size_of::<String>()
+                            .saturating_add(size_of::<Value>())
+                            .saturating_add(size_of::<usize>().saturating_mul(4)),
+                    ),
+                ),
+            |total, (key, _)| total.saturating_add(key.len()),
+        ),
     }
 }
 
@@ -734,6 +768,41 @@ second: *base
             error.contains("safe materialization budget"),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn caller_can_apply_a_stricter_yaml_materialization_budget() {
+        let control = ParseControl::new();
+        let result = parse_yaml_value_with_limits_controlled(
+            "values: [one, two, three, four]\n",
+            1024,
+            16,
+            8,
+            &control,
+        )
+        .expect("active control");
+
+        let error = result.expect_err("the caller budget must reject materialization");
+        assert!(
+            error.contains("safe materialization budget"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn caller_can_bound_the_third_party_yaml_parser_input() {
+        let control = ParseControl::new();
+        let result = parse_yaml_value_with_limits_controlled(
+            "value: a-very-long-single-token\n",
+            8,
+            16,
+            64 * 1024,
+            &control,
+        )
+        .expect("active control");
+
+        let error = result.expect_err("the parser-input budget must reject the token");
+        assert!(error.contains("safe parser budget"));
     }
 
     #[test]

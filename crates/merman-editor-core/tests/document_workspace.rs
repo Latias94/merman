@@ -1,9 +1,11 @@
 use merman_analysis::{
-    AnalysisOptions, AnalysisRuleConfig, Analyzer, DiagnosticSeverity, DiagramParseDisposition,
-    FenceMarker, FenceTextIndexSource, SourceKind,
+    AnalysisCaptureOutcome, AnalysisOptions, AnalysisRuleConfig, Analyzer, DiagnosticSeverity,
+    DiagramParseDisposition, FenceMarker, FenceTextIndexSource, SourceKind,
+    analyze_document_generation_shared, source_descriptor_for_kind,
 };
 use merman_editor_core::{
-    DiagramDetectionValidity, DocumentKind, DocumentUri, DocumentWorkspace, Position,
+    DiagramDetectionValidity, DocumentKind, DocumentSnapshot, DocumentSnapshotError, DocumentUri,
+    DocumentWorkspace, Position,
 };
 use std::sync::Arc;
 
@@ -387,6 +389,93 @@ fn build_analysis_context_does_not_cache_document() {
 }
 
 #[test]
+fn snapshot_constructs_from_the_canonical_analysis_generation() {
+    let source: Arc<str> = Arc::from("flowchart TD\nA-->B\n");
+    let uri = DocumentUri::new("file:///tmp/canonical.mmd");
+    let analyzer = Analyzer::new();
+    let generation = match analyze_document_generation_shared(
+        Arc::clone(&source),
+        &analyzer,
+        source_descriptor_for_kind(Some(uri.as_str()), SourceKind::Diagram),
+    ) {
+        AnalysisCaptureOutcome::Ready(generation) => Arc::new(generation),
+        AnalysisCaptureOutcome::Rejected(rejection) => {
+            panic!("source should be within the analysis limit: {rejection:?}")
+        }
+    };
+    let snapshot = DocumentSnapshot::try_from_analysis_generation(7, Arc::clone(&generation))
+        .expect("generation identifies its source document");
+
+    assert_eq!(snapshot.uri(), &uri);
+    assert_eq!(snapshot.kind(), DocumentKind::Diagram);
+    assert!(Arc::ptr_eq(snapshot.shared_text(), &source));
+    assert!(Arc::ptr_eq(
+        &snapshot.shared_analysis_generation(),
+        &generation
+    ));
+    assert_eq!(snapshot.analysis_generation().diagrams().len(), 1);
+    let payload = snapshot
+        .analysis_generation()
+        .project(Analyzer::new().options().diagnostic_policy());
+    assert!(payload.valid);
+}
+
+#[test]
+fn snapshot_kind_comes_from_the_generation_source_descriptor() {
+    let analyzer = Analyzer::new();
+
+    for (source_kind, expected_kind) in [
+        (SourceKind::Diagram, DocumentKind::Diagram),
+        (SourceKind::Markdown, DocumentKind::Markdown),
+        (SourceKind::Mdx, DocumentKind::Mdx),
+    ] {
+        let generation = match analyze_document_generation_shared(
+            Arc::from(""),
+            &analyzer,
+            source_descriptor_for_kind(Some("file:///tmp/source.mmd"), source_kind),
+        ) {
+            AnalysisCaptureOutcome::Ready(generation) => Arc::new(generation),
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                panic!("empty source should be within the analysis limit: {rejection:?}")
+            }
+        };
+        let snapshot = DocumentSnapshot::try_from_analysis_generation(1, generation)
+            .expect("generation identifies its source document");
+
+        assert_eq!(snapshot.kind(), expected_kind);
+        assert_eq!(snapshot.uri().as_str(), "file:///tmp/source.mmd");
+    }
+}
+
+#[test]
+fn snapshot_construction_rejects_a_generation_without_a_document_path() {
+    let generation = match analyze_document_generation_shared(
+        Arc::from("flowchart TD\nA-->B\n"),
+        &Analyzer::new(),
+        source_descriptor_for_kind(None, SourceKind::Diagram),
+    ) {
+        AnalysisCaptureOutcome::Ready(generation) => Arc::new(generation),
+        AnalysisCaptureOutcome::Rejected(rejection) => {
+            panic!("source should be within the analysis limit: {rejection:?}")
+        }
+    };
+
+    let error = DocumentSnapshot::try_from_analysis_generation(1, generation)
+        .expect_err("editor snapshots require a document path");
+
+    assert_eq!(
+        error,
+        DocumentSnapshotError::MissingSourcePath {
+            kind: SourceKind::Diagram,
+        }
+    );
+    assert_eq!(
+        error.to_string(),
+        "analysis generation for diagram source has no document path"
+    );
+}
+
+#[test]
 fn replacing_document_version_drops_stale_fence_state() {
     let mut workspace = DocumentWorkspace::new();
     let uri = DocumentUri::new("file:///tmp/example.mmd");
@@ -431,8 +520,8 @@ fn resource_rejection_cannot_construct_or_cache_a_snapshot() {
         .upsert(uri.clone(), 1, source.to_string(), DocumentKind::Diagram)
         .expect_err("over-limit text must not become an editable snapshot");
 
-    assert_eq!(rejection.source_len(), source.len());
-    assert_eq!(rejection.max_source_bytes(), source.len() - 1);
+    assert_eq!(rejection.resource_limit().observed(), source.len());
+    assert_eq!(rejection.resource_limit().maximum(), source.len() - 1);
     assert_eq!(
         rejection.payload().diagnostics[0].id,
         "merman.resource.source_bytes_exceeded"

@@ -124,6 +124,31 @@ void main(List<String> args) {
       'SVG artifact must report a text measurement provider',
     );
 
+    final supportedDiagrams = merman.supportedDiagrams();
+    final asciiCapabilities = merman.asciiCapabilities();
+    final diagramFamilies = merman.diagramFamilyCapabilities();
+    final lintRules = merman.lintRuleCatalog();
+    final supportedThemes = merman.supportedThemes();
+    final hostThemePresets = merman.supportedHostThemePresets();
+    _expect(
+      supportedDiagrams.isNotEmpty &&
+          asciiCapabilities.isNotEmpty &&
+          diagramFamilies.isNotEmpty &&
+          lintRules.isNotEmpty &&
+          supportedThemes.isNotEmpty &&
+          hostThemePresets.isNotEmpty,
+      'typed native metadata catalogs must be available',
+    );
+    _expect(
+      identical(supportedDiagrams, merman.supportedDiagrams()) &&
+          identical(asciiCapabilities, merman.asciiCapabilities()) &&
+          identical(diagramFamilies, merman.diagramFamilyCapabilities()) &&
+          identical(lintRules, merman.lintRuleCatalog()) &&
+          identical(supportedThemes, merman.supportedThemes()) &&
+          identical(hostThemePresets, merman.supportedHostThemePresets()),
+      'typed native metadata catalogs must be cached',
+    );
+
     final svg = merman.renderSvg(source);
     _expect(svg.contains('<svg'), 'SVG smoke failed');
     _expect(svg.contains('Hello'), 'SVG text smoke failed');
@@ -182,7 +207,7 @@ void main(List<String> args) {
     final configured = merman.reusableEngine(
       optionsJson: '''
         {
-          "version": 1,
+          "version": 2,
           "resources": {"profile": "constrained"},
           "svg": {"diagram_id": "engine-base", "pipeline": "readable"}
         }

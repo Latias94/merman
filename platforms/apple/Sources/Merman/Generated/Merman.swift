@@ -2025,13 +2025,79 @@ public func FfiConverterTypeMermanOperationResult_lower(_ value: MermanOperation
 }
 
 
+public struct MermanResourceErrorDetails: Equatable, Hashable {
+    public var limitId: String
+    public var phase: String
+    public var actual: UInt64
+    public var max: UInt64
+    public var profile: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(limitId: String, phase: String, actual: UInt64, max: UInt64, profile: String) {
+        self.limitId = limitId
+        self.phase = phase
+        self.actual = actual
+        self.max = max
+        self.profile = profile
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension MermanResourceErrorDetails: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMermanResourceErrorDetails: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanResourceErrorDetails {
+        return
+            try MermanResourceErrorDetails(
+                limitId: FfiConverterString.read(from: &buf),
+                phase: FfiConverterString.read(from: &buf),
+                actual: FfiConverterUInt64.read(from: &buf),
+                max: FfiConverterUInt64.read(from: &buf),
+                profile: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MermanResourceErrorDetails, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.limitId, into: &buf)
+        FfiConverterString.write(value.phase, into: &buf)
+        FfiConverterUInt64.write(value.actual, into: &buf)
+        FfiConverterUInt64.write(value.max, into: &buf)
+        FfiConverterString.write(value.profile, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanResourceErrorDetails_lift(_ buf: RustBuffer) throws -> MermanResourceErrorDetails {
+    return try FfiConverterTypeMermanResourceErrorDetails.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanResourceErrorDetails_lower(_ value: MermanResourceErrorDetails) -> RustBuffer {
+    return FfiConverterTypeMermanResourceErrorDetails.lower(value)
+}
+
+
 public struct MermanResourceLimitOverride: Equatable, Hashable {
-    public var id: MermanResourceLimitId
+    public var id: MermanResourceOverrideId
     public var value: UInt64
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: MermanResourceLimitId, value: UInt64) {
+    public init(id: MermanResourceOverrideId, value: UInt64) {
         self.id = id
         self.value = value
     }
@@ -2052,13 +2118,13 @@ public struct FfiConverterTypeMermanResourceLimitOverride: FfiConverterRustBuffe
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanResourceLimitOverride {
         return
             try MermanResourceLimitOverride(
-                id: FfiConverterTypeMermanResourceLimitId.read(from: &buf),
+                id: FfiConverterTypeMermanResourceOverrideId.read(from: &buf),
                 value: FfiConverterUInt64.read(from: &buf)
         )
     }
 
     public static func write(_ value: MermanResourceLimitOverride, into buf: inout [UInt8]) {
-        FfiConverterTypeMermanResourceLimitId.write(value.id, into: &buf)
+        FfiConverterTypeMermanResourceOverrideId.write(value.id, into: &buf)
         FfiConverterUInt64.write(value.value, into: &buf)
     }
 }
@@ -2326,7 +2392,7 @@ enum MermanError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
 
 
-    case Binding(code: Int32, codeName: String, kind: MermanErrorKind, capabilityId: String?, message: String
+    case Binding(code: Int32, codeName: String, kind: MermanErrorKind, capabilityId: String?, resource: MermanResourceErrorDetails?, message: String
     )
 
 
@@ -2362,6 +2428,7 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
             codeName: try FfiConverterString.read(from: &buf),
             kind: try FfiConverterTypeMermanErrorKind.read(from: &buf),
             capabilityId: try FfiConverterOptionString.read(from: &buf),
+            resource: try FfiConverterOptionTypeMermanResourceErrorDetails.read(from: &buf),
             message: try FfiConverterString.read(from: &buf)
             )
 
@@ -2376,12 +2443,13 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
 
 
 
-        case let .Binding(code,codeName,kind,capabilityId,message):
+        case let .Binding(code,codeName,kind,capabilityId,resource,message):
             writeInt(&buf, Int32(1))
             FfiConverterInt32.write(code, into: &buf)
             FfiConverterString.write(codeName, into: &buf)
             FfiConverterTypeMermanErrorKind.write(kind, into: &buf)
             FfiConverterOptionString.write(capabilityId, into: &buf)
+            FfiConverterOptionTypeMermanResourceErrorDetails.write(resource, into: &buf)
             FfiConverterString.write(message, into: &buf)
 
         }
@@ -2492,7 +2560,7 @@ public func FfiConverterTypeMermanErrorKind_lower(_ value: MermanErrorKind) -> R
 
 
 
-public enum MermanResourceLimitId: Equatable, Hashable {
+public enum MermanResourceOverrideId: Equatable, Hashable {
 
     case maxSourceBytes
     case maxModelItems
@@ -2501,6 +2569,16 @@ public enum MermanResourceLimitId: Equatable, Hashable {
     case maxLayoutWorkUnits
     case maxSvgBytes
     case maxSvgElements
+    case maxDocumentDiagrams
+    case maxAsciiGridCells
+    case maxRasterWidth
+    case maxRasterHeight
+    case maxRasterPixels
+    case maxEmbeddedImageBytes
+    case maxTotalEmbeddedImageBytes
+    case maxEmbeddedImagePixels
+    case maxTotalEmbeddedImagePixels
+    case maxPdfFilterImagePixels
 
 
 
@@ -2509,16 +2587,16 @@ public enum MermanResourceLimitId: Equatable, Hashable {
 }
 
 #if compiler(>=6)
-extension MermanResourceLimitId: Sendable {}
+extension MermanResourceOverrideId: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeMermanResourceLimitId: FfiConverterRustBuffer {
-    typealias SwiftType = MermanResourceLimitId
+public struct FfiConverterTypeMermanResourceOverrideId: FfiConverterRustBuffer {
+    typealias SwiftType = MermanResourceOverrideId
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanResourceLimitId {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanResourceOverrideId {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
@@ -2536,11 +2614,31 @@ public struct FfiConverterTypeMermanResourceLimitId: FfiConverterRustBuffer {
 
         case 7: return .maxSvgElements
 
+        case 8: return .maxDocumentDiagrams
+
+        case 9: return .maxAsciiGridCells
+
+        case 10: return .maxRasterWidth
+
+        case 11: return .maxRasterHeight
+
+        case 12: return .maxRasterPixels
+
+        case 13: return .maxEmbeddedImageBytes
+
+        case 14: return .maxTotalEmbeddedImageBytes
+
+        case 15: return .maxEmbeddedImagePixels
+
+        case 16: return .maxTotalEmbeddedImagePixels
+
+        case 17: return .maxPdfFilterImagePixels
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
-    public static func write(_ value: MermanResourceLimitId, into buf: inout [UInt8]) {
+    public static func write(_ value: MermanResourceOverrideId, into buf: inout [UInt8]) {
         switch value {
 
 
@@ -2571,6 +2669,46 @@ public struct FfiConverterTypeMermanResourceLimitId: FfiConverterRustBuffer {
         case .maxSvgElements:
             writeInt(&buf, Int32(7))
 
+
+        case .maxDocumentDiagrams:
+            writeInt(&buf, Int32(8))
+
+
+        case .maxAsciiGridCells:
+            writeInt(&buf, Int32(9))
+
+
+        case .maxRasterWidth:
+            writeInt(&buf, Int32(10))
+
+
+        case .maxRasterHeight:
+            writeInt(&buf, Int32(11))
+
+
+        case .maxRasterPixels:
+            writeInt(&buf, Int32(12))
+
+
+        case .maxEmbeddedImageBytes:
+            writeInt(&buf, Int32(13))
+
+
+        case .maxTotalEmbeddedImageBytes:
+            writeInt(&buf, Int32(14))
+
+
+        case .maxEmbeddedImagePixels:
+            writeInt(&buf, Int32(15))
+
+
+        case .maxTotalEmbeddedImagePixels:
+            writeInt(&buf, Int32(16))
+
+
+        case .maxPdfFilterImagePixels:
+            writeInt(&buf, Int32(17))
+
         }
     }
 }
@@ -2579,15 +2717,15 @@ public struct FfiConverterTypeMermanResourceLimitId: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMermanResourceLimitId_lift(_ buf: RustBuffer) throws -> MermanResourceLimitId {
-    return try FfiConverterTypeMermanResourceLimitId.lift(buf)
+public func FfiConverterTypeMermanResourceOverrideId_lift(_ buf: RustBuffer) throws -> MermanResourceOverrideId {
+    return try FfiConverterTypeMermanResourceOverrideId.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMermanResourceLimitId_lower(_ value: MermanResourceLimitId) -> RustBuffer {
-    return FfiConverterTypeMermanResourceLimitId.lower(value)
+public func FfiConverterTypeMermanResourceOverrideId_lower(_ value: MermanResourceOverrideId) -> RustBuffer {
+    return FfiConverterTypeMermanResourceOverrideId.lower(value)
 }
 
 
@@ -3272,6 +3410,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeMermanResourceErrorDetails: FfiConverterRustBuffer {
+    typealias SwiftType = MermanResourceErrorDetails?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMermanResourceErrorDetails.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMermanResourceErrorDetails.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeMermanTextMeasureResult: FfiConverterRustBuffer {
     typealias SwiftType = MermanTextMeasureResult?
 
@@ -3288,6 +3450,30 @@ fileprivate struct FfiConverterOptionTypeMermanTextMeasureResult: FfiConverterRu
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeMermanTextMeasureResult.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMermanResourceProfile: FfiConverterRustBuffer {
+    typealias SwiftType = MermanResourceProfile?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMermanResourceProfile.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMermanResourceProfile.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -3442,11 +3628,11 @@ fileprivate struct FfiConverterSequenceTypeMermanResourceLimitOverride: FfiConve
         return seq
     }
 }
-public func resourceOptionsJson(profile: MermanResourceProfile, overrides: [MermanResourceLimitOverride])throws  -> String  {
+public func resourceOptionsJson(profile: MermanResourceProfile?, overrides: [MermanResourceLimitOverride])throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_func_resource_options_json(
-        FfiConverterTypeMermanResourceProfile_lower(profile),
+        FfiConverterOptionTypeMermanResourceProfile.lower(profile),
         FfiConverterSequenceTypeMermanResourceLimitOverride.lower(overrides),uniffiCallStatus
     )
 })
@@ -3467,7 +3653,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_merman_uniffi_checksum_func_resource_options_json() != 36468) {
+    if (uniffi_merman_uniffi_checksum_func_resource_options_json() != 22678) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_analyze_document_facts_json() != 21106) {

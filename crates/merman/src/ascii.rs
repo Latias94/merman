@@ -1,11 +1,12 @@
 pub use merman_ascii::{
-    AsciiCapability, AsciiCapabilityEvidence, AsciiCharset, AsciiColorMode, AsciiColorTheme,
-    AsciiDirection, AsciiError, AsciiEvidenceKind, AsciiRenderOptions, AsciiRenderer, AsciiRgb,
-    AsciiSupportLevel, AsciiTerminalPalette, ascii_capabilities, ascii_supported_diagram_types,
-    render_class, render_er, render_flowchart, render_gantt, render_gantt_with_local_time_zone,
-    render_git_graph, render_journey, render_kanban, render_mindmap, render_model,
-    render_model_with_local_time_zone, render_packet, render_sequence, render_timeline,
-    render_tree_view, render_xychart,
+    ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCapability, AsciiCapabilityEvidence, AsciiCharset,
+    AsciiColorMode, AsciiColorTheme, AsciiDirection, AsciiError, AsciiEvidenceKind,
+    AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitDescriptor, AsciiRgb, AsciiSupportLevel,
+    AsciiTerminalPalette, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, ascii_capabilities,
+    ascii_resource_profile_value, ascii_supported_diagram_types, render_class, render_er,
+    render_flowchart, render_gantt, render_gantt_with_local_time_zone, render_git_graph,
+    render_journey, render_kanban, render_mindmap, render_model, render_model_with_local_time_zone,
+    render_packet, render_sequence, render_timeline, render_tree_view, render_xychart,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -168,6 +169,9 @@ impl HeadlessAsciiRenderer {
         profile: merman_core::resources::ResourceProfile,
     ) -> Self {
         self.resources = merman_core::resources::InputResourcePolicy::for_profile(profile);
+        self.ascii.max_grid_cells =
+            ascii_resource_profile_value(profile, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID)
+                .unwrap_or(usize::MAX);
         self
     }
 
@@ -307,5 +311,21 @@ Task: task1, 2026-01-01, 1d
             .render_ascii_sync("flowchart TD\nA --> B")
             .unwrap_err();
         assert!(matches!(error, HeadlessAsciiError::Resource(_)));
+    }
+
+    #[test]
+    fn headless_ascii_renderer_resource_profile_applies_ascii_grid_budget() {
+        let constrained = HeadlessAsciiRenderer::new()
+            .with_resource_profile(merman_core::resources::ResourceProfile::Constrained);
+        assert_eq!(constrained.ascii.max_grid_cells, 125_000);
+
+        let trusted = HeadlessAsciiRenderer::new()
+            .with_resource_profile(merman_core::resources::ResourceProfile::TrustedNative);
+        assert_eq!(trusted.ascii.max_grid_cells, 1_000_000);
+
+        let unbounded = HeadlessAsciiRenderer::new().with_resource_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        );
+        assert_eq!(unbounded.ascii.max_grid_cells, usize::MAX);
     }
 }

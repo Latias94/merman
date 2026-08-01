@@ -254,7 +254,8 @@ async fn lsp_service_filters_tokens_outside_the_negotiated_type_subset() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_serves_semantic_tokens_delta() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -395,7 +396,8 @@ async fn lsp_service_smoke_serves_semantic_tokens_delta() {
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_semantic_tokens_delta_falls_back_to_full_after_snapshot_configuration_change()
 {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")

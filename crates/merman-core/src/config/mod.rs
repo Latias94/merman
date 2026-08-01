@@ -1,5 +1,7 @@
+use crate::{ParseControl, ParseControlResult};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
+use std::mem::size_of;
 use std::sync::Arc;
 
 pub(crate) const HARDENED_SECURE_KEYS: &[&str] = &[
@@ -47,6 +49,24 @@ impl MermaidConfig {
 
     pub fn as_value(&self) -> &Value {
         self.0.as_ref()
+    }
+
+    /// Clones this config without recursion while enforcing a retained-size and nesting budget.
+    ///
+    /// `Ok(None)` means the owned value would exceed either budget. Cancellation remains distinct
+    /// from budget rejection so callers can abandon an enclosing operation immediately.
+    pub fn clone_value_bounded_controlled(
+        &self,
+        max_retained_bytes: usize,
+        max_nesting_depth: usize,
+        control: &ParseControl,
+    ) -> ParseControlResult<Option<Value>> {
+        clone_value_nonrecursive_controlled(
+            self.as_value(),
+            max_retained_bytes,
+            max_nesting_depth,
+            control,
+        )
     }
 
     pub(crate) fn is_empty_object(&self) -> bool {
@@ -271,26 +291,69 @@ pub(crate) fn replace_value_nonrecursive(slot: &mut Value, value: Value) {
 }
 
 pub(crate) fn clone_value_nonrecursive(value: &Value) -> Value {
-    let mut cloned: HashMap<*const Value, Value> = HashMap::new();
-    let mut stack = vec![(value, false)];
+    let control = ParseControl::new();
+    clone_value_nonrecursive_controlled(value, usize::MAX, usize::MAX, &control)
+        .expect("a private parse control cannot be cancelled")
+        .expect("unbounded config cloning cannot exceed its budget")
+}
 
-    while let Some((current, visited)) = stack.pop() {
+fn clone_value_nonrecursive_controlled(
+    value: &Value,
+    max_retained_bytes: usize,
+    max_nesting_depth: usize,
+    control: &ParseControl,
+) -> ParseControlResult<Option<Value>> {
+    let mut cloned: HashMap<*const Value, Value> = HashMap::new();
+    let mut stack = vec![(value, false, 0usize)];
+    let mut retained_bytes = 0usize;
+    let mut visited_nodes = 0usize;
+
+    while let Some((current, visited, depth)) = stack.pop() {
+        if visited_nodes.is_multiple_of(64)
+            && let Err(cancelled) = control.checkpoint()
+        {
+            drop_cloned_values(cloned);
+            return Err(cancelled);
+        }
+        visited_nodes = visited_nodes.saturating_add(1);
         let current_ptr = std::ptr::from_ref(current);
         if visited {
+            retained_bytes = retained_bytes.saturating_add(value_clone_weight(current));
+            if retained_bytes > max_retained_bytes {
+                drop_cloned_values(cloned);
+                return Ok(None);
+            }
             let value = match current {
                 Value::Null => Value::Null,
                 Value::Bool(v) => Value::Bool(*v),
                 Value::Number(v) => Value::Number(v.clone()),
                 Value::String(v) => Value::String(v.clone()),
-                Value::Array(items) => Value::Array(
-                    items
-                        .iter()
-                        .filter_map(|item| cloned.remove(&std::ptr::from_ref(item)))
-                        .collect(),
-                ),
+                Value::Array(items) => {
+                    let mut out = Vec::with_capacity(items.len());
+                    for (index, item) in items.iter().enumerate() {
+                        if index.is_multiple_of(64)
+                            && let Err(cancelled) = control.checkpoint()
+                        {
+                            drop_value_nonrecursive(Value::Array(out));
+                            drop_cloned_values(cloned);
+                            return Err(cancelled);
+                        }
+                        if let Some(value) = cloned.remove(&std::ptr::from_ref(item)) {
+                            out.push(value);
+                        }
+                    }
+                    Value::Array(out)
+                }
                 Value::Object(entries) => {
                     let mut out = Map::new();
-                    for (key, child) in entries {
+                    for (index, (key, child)) in entries.iter().enumerate() {
+                        if index.is_multiple_of(64)
+                            && let Err(cancelled) = control.checkpoint()
+                        {
+                            drop_value_nonrecursive(Value::Object(out));
+                            drop_cloned_values(cloned);
+                            return Err(cancelled);
+                        }
                         if let Some(value) = cloned.remove(&std::ptr::from_ref(child)) {
                             out.insert(key.clone(), value);
                         }
@@ -300,16 +363,28 @@ pub(crate) fn clone_value_nonrecursive(value: &Value) -> Value {
             };
             cloned.insert(current_ptr, value);
         } else {
-            stack.push((current, true));
+            let has_children = matches!(current, Value::Array(items) if !items.is_empty())
+                || matches!(current, Value::Object(entries) if !entries.is_empty());
+            if has_children && depth >= max_nesting_depth {
+                drop_cloned_values(cloned);
+                return Ok(None);
+            }
+            let structural_weight = value_structural_weight(current);
+            retained_bytes = retained_bytes.saturating_add(structural_weight);
+            if retained_bytes > max_retained_bytes {
+                drop_cloned_values(cloned);
+                return Ok(None);
+            }
+            stack.push((current, true, depth));
             match current {
                 Value::Array(items) => {
                     for item in items.iter().rev() {
-                        stack.push((item, false));
+                        stack.push((item, false, depth.saturating_add(1)));
                     }
                 }
                 Value::Object(entries) => {
                     for child in entries.values().rev() {
-                        stack.push((child, false));
+                        stack.push((child, false, depth.saturating_add(1)));
                     }
                 }
                 Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
@@ -317,9 +392,43 @@ pub(crate) fn clone_value_nonrecursive(value: &Value) -> Value {
         }
     }
 
-    cloned
-        .remove(&std::ptr::from_ref(value))
-        .unwrap_or(Value::Null)
+    if let Err(cancelled) = control.checkpoint() {
+        drop_cloned_values(cloned);
+        return Err(cancelled);
+    }
+    Ok(Some(
+        cloned
+            .remove(&std::ptr::from_ref(value))
+            .unwrap_or(Value::Null),
+    ))
+}
+
+fn value_structural_weight(value: &Value) -> usize {
+    match value {
+        Value::Array(items) => items.len().saturating_mul(size_of::<Value>()),
+        Value::Object(entries) => entries.iter().fold(
+            entries.len().saturating_mul(
+                size_of::<String>()
+                    .saturating_add(size_of::<Value>())
+                    .saturating_add(size_of::<usize>().saturating_mul(4)),
+            ),
+            |weight, (key, _)| weight.saturating_add(key.len()),
+        ),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => 0,
+    }
+}
+
+fn value_clone_weight(value: &Value) -> usize {
+    size_of::<Value>().saturating_add(match value {
+        Value::String(value) => value.len(),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_) => 0,
+    })
+}
+
+fn drop_cloned_values(cloned: HashMap<*const Value, Value>) {
+    for value in cloned.into_values() {
+        drop_value_nonrecursive(value);
+    }
 }
 
 pub(crate) fn drop_value_nonrecursive(value: Value) {
@@ -394,6 +503,53 @@ mod tests {
         handle
             .join()
             .expect("deep config clone-on-write should finish without stack overflow");
+    }
+
+    #[test]
+    fn bounded_controlled_config_clone_preserves_values_within_budget() {
+        let config = MermaidConfig::from_value(json!({
+            "theme": "dark",
+            "flowchart": { "htmlLabels": false },
+        }));
+        let control = ParseControl::new();
+
+        let cloned = config
+            .clone_value_bounded_controlled(64 * 1024, 16, &control)
+            .expect("active control")
+            .expect("small config fits the materialization budget");
+
+        assert_eq!(&cloned, config.as_value());
+    }
+
+    #[test]
+    fn bounded_controlled_config_clone_rejects_weight_and_depth_before_cloning() {
+        let oversized = MermaidConfig::from_value(json!({ "payload": "x".repeat(4 * 1024) }));
+        let deep = MermaidConfig::from_value(deep_config_value(8));
+        let control = ParseControl::new();
+
+        assert!(
+            oversized
+                .clone_value_bounded_controlled(1_024, 16, &control)
+                .expect("active control")
+                .is_none()
+        );
+        assert!(
+            deep.clone_value_bounded_controlled(64 * 1024, 4, &control)
+                .expect("active control")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn bounded_controlled_config_clone_observes_cancellation() {
+        let config = MermaidConfig::from_value(json!({ "theme": "dark" }));
+        let control = ParseControl::new();
+        control.cancel();
+
+        assert!(matches!(
+            config.clone_value_bounded_controlled(64 * 1024, 16, &control),
+            Err(crate::ParseCancelled)
+        ));
     }
 
     #[test]

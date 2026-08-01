@@ -155,6 +155,9 @@ jobs:
       - name: Verify legal material projections
         run: python3 scripts/sync-release-legal-materials.py --check
 
+      - name: Run Android JVM contract tests
+        run: platforms/android/gradlew -p platforms/android testDebugUnitTest --stacktrace
+
       - name: Build Android AAR
         run: platforms/android/gradlew -p platforms/android assembleRelease --stacktrace
 

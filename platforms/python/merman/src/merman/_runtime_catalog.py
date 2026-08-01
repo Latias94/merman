@@ -4,6 +4,8 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Protocol, TypedDict, cast
 
+from ._resource_options import BINDING_OPTIONS_SCHEMA_VERSION
+
 try:
     from ._text_measurement_protocol import TEXT_MEASUREMENT_PROTOCOL_VERSION
 except ModuleNotFoundError as exc:
@@ -68,17 +70,43 @@ class MermanRuntimeRegistry(TypedDict):
     diagram_family_count: int
 
 
+class MermanRuntimeResourceLimit(TypedDict):
+    id: str
+    phase: str
+    description: str
+    overridable: bool
+    hard_cap: bool
+    minimum_value: int
+    operation_ids: List[str]
+
+
+class MermanRuntimePayloadSchema(TypedDict):
+    id: str
+    version: int
+
+
+class MermanRuntimeResourceProfile(TypedDict):
+    id: str
+    purpose: str
+    trust_assumption: str
+    recommended_binding_default: bool
+    limits: Dict[str, Optional[int]]
+
+
 class MermanRuntimeResources(TypedDict):
     general_binding_default_profile: str
     cli_default_profile: str
-    limits: List[Dict[str, Any]]
-    profiles: List[Dict[str, Any]]
+    limits: List[MermanRuntimeResourceLimit]
+    profiles: List[MermanRuntimeResourceProfile]
 
 
 class MermanRuntimeCatalog(TypedDict):
     schema_version: int
     transport_api_version: int
     package_version: str
+    options_schema_versions: List[int]
+    payload_schemas: List[MermanRuntimePayloadSchema]
+    metadata_ids: List[str]
     capabilities: MermanRuntimeCapabilities
     output_contracts: List[MermanOutputContract]
     registry: MermanRuntimeRegistry
@@ -113,6 +141,9 @@ def get_runtime_catalog(engine: _RuntimeCatalogEngine) -> MermanRuntimeCatalog:
             "schema_version",
             "transport_api_version",
             "package_version",
+            "options_schema_versions",
+            "payload_schemas",
+            "metadata_ids",
             "capabilities",
             "output_contracts",
             "registry",
@@ -141,14 +172,26 @@ def get_runtime_catalog(engine: _RuntimeCatalogEngine) -> MermanRuntimeCatalog:
             "runtime catalog package_version does not match the loaded library"
         )
 
-    output_ids = _validate_capabilities(catalog["capabilities"])
+    output_ids, operation_ids = _validate_capabilities(catalog["capabilities"])
+    options_schema_versions = _validate_options_schema_versions(
+        catalog["options_schema_versions"]
+    )
+    if BINDING_OPTIONS_SCHEMA_VERSION not in options_schema_versions:
+        raise MermanRuntimeCatalogError(
+            "runtime catalog does not advertise the current Options JSON schema"
+        )
+    _validate_payload_schemas(catalog["payload_schemas"])
+    _validate_identifier_list(
+        catalog["metadata_ids"],
+        "runtime metadata IDs",
+    )
     _validate_output_contracts(catalog["output_contracts"], output_ids)
     _validate_registry(catalog["registry"])
-    _validate_resources(catalog["resources"])
+    _validate_resources(catalog["resources"], operation_ids)
     return cast(MermanRuntimeCatalog, catalog)
 
 
-def _validate_capabilities(value: Any) -> List[str]:
+def _validate_capabilities(value: Any) -> tuple[List[str], List[str]]:
     capabilities = _expect_object(value, "runtime catalog capabilities")
     _require_required_keys(
         capabilities,
@@ -188,7 +231,7 @@ def _validate_capabilities(value: Any) -> List[str]:
             raise MermanRuntimeCatalogError(
                 "runtime SVG capability requires text measurement metadata"
             )
-        return output_ids
+        return output_ids, operation_ids
     if "svg" not in capability_ids:
         raise MermanRuntimeCatalogError(
             "runtime text measurement metadata requires the SVG capability"
@@ -216,7 +259,7 @@ def _validate_capabilities(value: Any) -> List[str]:
         raise MermanRuntimeCatalogError(
             "runtime text measurement providers must include vendored"
         )
-    return output_ids
+    return output_ids, operation_ids
 
 
 def _validate_output_contracts(value: Any, output_ids: List[str]) -> None:
@@ -319,7 +362,7 @@ def _validate_registry(value: Any) -> None:
         )
 
 
-def _validate_resources(value: Any) -> None:
+def _validate_resources(value: Any, operation_ids: List[str]) -> None:
     resources = _expect_object(value, "runtime resources")
     _require_required_keys(
         resources,
@@ -338,11 +381,21 @@ def _validate_resources(value: Any) -> None:
             )
     if not isinstance(resources["limits"], list):
         raise MermanRuntimeCatalogError("runtime resources limits must be an array")
+    minimums: Dict[str, int] = {}
+    hard_cap_ids = set()
     for limit in resources["limits"]:
         item = _expect_object(limit, "runtime resource limit")
         _require_required_keys(
             item,
-            {"id", "phase", "description", "overridable", "hard_cap"},
+            {
+                "id",
+                "phase",
+                "description",
+                "overridable",
+                "hard_cap",
+                "minimum_value",
+                "operation_ids",
+            },
             "runtime resource limit",
         )
         _expect_non_empty_string(item["id"], "runtime resource limit ID")
@@ -356,8 +409,32 @@ def _validate_resources(value: Any) -> None:
                 raise MermanRuntimeCatalogError(
                     f"runtime resource limit {field} must be a boolean"
                 )
+        if not _is_integer(item["minimum_value"]) or item["minimum_value"] < 0:
+            raise MermanRuntimeCatalogError(
+                "runtime resource limit minimum_value must be a non-negative integer"
+            )
+        if item["id"] in minimums:
+            raise MermanRuntimeCatalogError(
+                "runtime resource limit IDs must be unique"
+            )
+        if item["hard_cap"] and item["overridable"]:
+            raise MermanRuntimeCatalogError(
+                "runtime hard resource limits cannot be overridable"
+            )
+        minimums[item["id"]] = item["minimum_value"]
+        if item["hard_cap"]:
+            hard_cap_ids.add(item["id"])
+        limit_operation_ids = _validate_identifier_list(
+            item["operation_ids"], "runtime resource limit operation IDs"
+        )
+        if not set(limit_operation_ids).issubset(operation_ids):
+            raise MermanRuntimeCatalogError(
+                "runtime resource limit operation IDs must be declared runtime operations"
+            )
     if not isinstance(resources["profiles"], list):
         raise MermanRuntimeCatalogError("runtime resources profiles must be an array")
+    profile_ids = set()
+    recommended_profile_ids = set()
     for profile in resources["profiles"]:
         item = _expect_object(profile, "runtime resource profile")
         _require_required_keys(
@@ -381,14 +458,39 @@ def _validate_resources(value: Any) -> None:
             raise MermanRuntimeCatalogError(
                 "runtime resource profile recommended_binding_default must be a boolean"
             )
-        limits = _expect_object(item["limits"], "runtime resource profile limits")
-        if any(
-            value is not None and (not _is_integer(value) or value < 0)
-            for value in limits.values()
-        ):
+        if item["id"] in profile_ids:
             raise MermanRuntimeCatalogError(
-                "runtime resource profile limits must be non-negative integers or null"
+                "runtime resource profile IDs must be unique"
             )
+        profile_ids.add(item["id"])
+        if item["recommended_binding_default"]:
+            recommended_profile_ids.add(item["id"])
+        limits = _expect_object(item["limits"], "runtime resource profile limits")
+        if set(limits) != set(minimums):
+            raise MermanRuntimeCatalogError(
+                "runtime resource profile limits must cover the declared limits"
+            )
+        for limit_id, value in limits.items():
+            if value is None:
+                if limit_id in hard_cap_ids:
+                    raise MermanRuntimeCatalogError(
+                        "runtime resource profile removed a finite hard cap"
+                    )
+                continue
+            if not _is_integer(value) or value < minimums[limit_id]:
+                raise MermanRuntimeCatalogError(
+                    "runtime resource profile limits must meet the declared minimum or be null"
+                )
+    general_default = resources["general_binding_default_profile"]
+    cli_default = resources["cli_default_profile"]
+    if general_default not in profile_ids or cli_default not in profile_ids:
+        raise MermanRuntimeCatalogError(
+            "runtime resource defaults must name declared profiles"
+        )
+    if recommended_profile_ids != {general_default}:
+        raise MermanRuntimeCatalogError(
+            "runtime resources must recommend exactly the general binding default"
+        )
 
 
 def _validate_identifier_list(value: Any, label: str) -> List[str]:
@@ -398,6 +500,44 @@ def _validate_identifier_list(value: Any, label: str) -> List[str]:
     if identifiers != sorted(set(identifiers)):
         raise MermanRuntimeCatalogError(f"{label} must be sorted and unique")
     return identifiers
+
+
+def _validate_options_schema_versions(value: Any) -> List[int]:
+    if not isinstance(value, list):
+        raise MermanRuntimeCatalogError(
+            "runtime options schema versions must be an array"
+        )
+    if any(not _is_integer(version) or version <= 0 for version in value):
+        raise MermanRuntimeCatalogError(
+            "runtime options schema versions must contain positive integers"
+        )
+    if value != sorted(set(value)):
+        raise MermanRuntimeCatalogError(
+            "runtime options schema versions must be sorted and unique"
+        )
+    return value
+
+
+def _validate_payload_schemas(value: Any) -> List[MermanRuntimePayloadSchema]:
+    if not isinstance(value, list):
+        raise MermanRuntimeCatalogError("runtime payload schemas must be an array")
+    schemas: List[MermanRuntimePayloadSchema] = []
+    previous = None
+    for item in value:
+        schema = _expect_object(item, "runtime payload schema")
+        _require_required_keys(schema, {"id", "version"}, "runtime payload schema")
+        identifier = _expect_identifier(schema["id"], "runtime payload schema ID")
+        if previous is not None and previous >= identifier:
+            raise MermanRuntimeCatalogError(
+                "runtime payload schema IDs must be sorted and unique"
+            )
+        if not _is_integer(schema["version"]) or schema["version"] <= 0:
+            raise MermanRuntimeCatalogError(
+                "runtime payload schema version must be a positive integer"
+            )
+        previous = identifier
+        schemas.append(cast(MermanRuntimePayloadSchema, schema))
+    return schemas
 
 
 def _expect_identifier(value: Any, label: str) -> str:

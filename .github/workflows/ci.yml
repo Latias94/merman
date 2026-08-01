@@ -725,6 +725,9 @@ jobs:
           sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-35"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
+      - name: Run Android JVM contract tests
+        run: platforms/android/gradlew -p platforms/android testDebugUnitTest --stacktrace
+
       - name: Enable KVM access
         shell: bash
         run: |

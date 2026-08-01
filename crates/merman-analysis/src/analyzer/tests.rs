@@ -1,4 +1,4 @@
-use super::{AnalysisDiagnosticPolicy, AnalysisOptions, Analyzer, DiagramProjectionInput};
+use super::{AnalysisDiagnosticPolicy, AnalysisOptions, Analyzer, DiagramCaptureInput};
 use crate::rules::{AnalysisRuleConfig, AnalysisRuleProfile};
 use crate::{
     AnalysisCancellationToken, AnalysisStatus, DiagnosticCategory, DiagnosticSeverity,
@@ -15,9 +15,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 static REPROJECTION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static DERIVED_ANALYZER_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static CAPTURED_CONFIG_PANIC_CALLS: AtomicUsize = AtomicUsize::new(0);
+static MARKDOWN_CUSTOM_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
+static MARKDOWN_PARTIAL_CAPTURE_CALLS: AtomicUsize = AtomicUsize::new(0);
+static REJECTED_SOURCE_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
 fn detect_captured_config_fixture(source: &str, _config: &mut merman_core::MermaidConfig) -> bool {
     source.trim_start().starts_with("captured-config-fixture")
+}
+
+fn detect_markdown_custom_fixture(source: &str, _config: &mut merman_core::MermaidConfig) -> bool {
+    source.trim_start().starts_with("markdown-custom-fixture")
 }
 
 fn captured_config_panicking_parser(
@@ -69,6 +76,39 @@ fn derived_analyzer_counting_flowchart_parser(
 ) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     DERIVED_ANALYZER_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
+    Ok(Ok(json!({ "warningFacts": [] })))
+}
+
+fn markdown_counting_custom_parser(
+    _source: &str,
+    _metadata: &ParseMetadata,
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
+    MARKDOWN_CUSTOM_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
+    Ok(Ok(json!({ "warningFacts": [] })))
+}
+
+fn markdown_first_success_then_cancel_parser(
+    _source: &str,
+    _metadata: &ParseMetadata,
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
+    if MARKDOWN_PARTIAL_CAPTURE_CALLS.fetch_add(1, Ordering::SeqCst) == 0 {
+        Ok(Ok(json!({ "warningFacts": [] })))
+    } else {
+        Err(merman_core::ParseCancelled)
+    }
+}
+
+fn rejected_source_counting_parser(
+    _source: &str,
+    _metadata: &ParseMetadata,
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
+    REJECTED_SOURCE_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(json!({ "warningFacts": [] })))
 }
 
@@ -157,7 +197,7 @@ fn analyzer_derivations_preserve_custom_registries_and_exact_identity_scope() {
 
     let mut snapshot_policy = base.options().snapshot_policy().clone();
     snapshot_policy.source = SourceDescriptor::diagram().with_path("file:///derived.mmd");
-    snapshot_policy.max_source_bytes = Some(4_096);
+    snapshot_policy.resources.max_source_bytes = Some(4_096);
     snapshot_policy.runtime_policy =
         merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42_000);
     let snapshot = base.with_snapshot_policy(snapshot_policy.clone());
@@ -174,8 +214,12 @@ fn analyzer_derivations_preserve_custom_registries_and_exact_identity_scope() {
     );
     assert_eq!(generation.source(), &snapshot_policy.source);
     assert_eq!(
-        snapshot.options().snapshot_policy().max_source_bytes,
-        snapshot_policy.max_source_bytes
+        snapshot
+            .options()
+            .snapshot_policy()
+            .resources
+            .max_source_bytes,
+        snapshot_policy.resources.max_source_bytes
     );
     assert_eq!(
         snapshot
@@ -228,7 +272,76 @@ fn cancellable_generation_capture_preserves_parser_cancellation_as_an_outcome() 
     let cancellation = AnalysisCancellationToken::new();
 
     assert!(matches!(
-        analyzer.analyze_generation_cancellable("flowchart TD\nA-->B\n", &cancellation,),
+        analyzer.analyze_generation_shared_cancellable(
+            Arc::<str>::from("flowchart TD\nA-->B\n"),
+            &cancellation,
+        ),
+        Err(crate::AnalysisCancelled)
+    ));
+}
+
+#[test]
+fn cancellable_generation_source_limit_preflight_observes_cancellation() {
+    let source = format!("flowchart TD\nA-->B\n{}", "🤓".repeat(4_096));
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    let cancellation = AnalysisCancellationToken::new();
+    cancellation.cancel_after_checkpoints(2);
+
+    assert!(matches!(
+        analyzer.analyze_generation_shared_cancellable(Arc::from(source), &cancellation),
+        Err(crate::AnalysisCancelled)
+    ));
+}
+
+#[test]
+fn shared_cancellable_generation_reuses_the_caller_source_allocation() {
+    let analyzer = Analyzer::new();
+    let source = Arc::<str>::from("flowchart TD\nA-->B\n");
+    let caller_source = Arc::clone(&source);
+    let generation = analyzer
+        .analyze_generation_shared_cancellable(source, &AnalysisCancellationToken::new())
+        .expect("shared capture should not be cancelled")
+        .into_ready()
+        .expect("fixture should produce a generation");
+    let retained_source = generation.source_map().shared_source().source_arc();
+
+    assert!(Arc::ptr_eq(&caller_source, &retained_source));
+}
+
+#[test]
+fn markdown_fence_source_map_reuses_the_host_source_allocation() {
+    let source = Arc::<str>::from(concat!(
+        "before\n",
+        "```mermaid\n",
+        "flowchart TD\n",
+        "A-->B\n",
+        "```\n",
+    ));
+    let descriptor = crate::source_descriptor_for_markdown_path(Some("fixture.md"));
+    let document = crate::DocumentSource::new(Arc::clone(&source), descriptor);
+    let diagram = &document.diagrams()[0];
+    let local_map = super::source_map_for_diagram_cancellable(
+        diagram,
+        document.source_map(),
+        &AnalysisCancellationToken::new(),
+    )
+    .expect("source-map construction should not be cancelled");
+
+    assert_eq!(local_map.source(), diagram.text.as_str());
+    assert!(local_map.shares_source_allocation_with(&diagram.text));
+    assert!(Arc::ptr_eq(&source, &diagram.text.source_arc()));
+    assert_eq!(local_map.line_col(0).unwrap().line, 1);
+}
+
+#[test]
+fn blank_source_detection_observes_cancellation_inside_the_scan() {
+    let source = "\u{2003}".repeat(16 * 1024);
+    let cancellation = AnalysisCancellationToken::new();
+    cancellation.cancel_after_checkpoints(1);
+
+    assert!(matches!(
+        super::source_is_blank_cancellable(&source, &cancellation),
         Err(crate::AnalysisCancelled)
     ));
 }
@@ -418,36 +531,49 @@ fn assert_single_remapped_flowchart_parse_error(source: &str, line: usize, colum
 }
 
 #[test]
-fn diagnostics_mode_does_not_project_valid_syntax_facts() {
+fn diagnostics_only_capture_does_not_materialize_syntax_indexes() {
     let analyzer = Analyzer::new();
-    let local = analyzer.analyze_local("flowchart TD\nA-->B\n", super::AnalysisMode::Diagnostics);
+    let captured =
+        analyzer.capture_local("flowchart TD\nA-->B\n", super::CaptureMode::DiagnosticsOnly);
 
-    assert!(local.diagnostics.is_empty());
-    assert_eq!(local.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
-    assert_eq!(local.syntax.source(), FenceTextIndexSource::Unavailable);
-    assert!(local.syntax.flowchart.is_none());
-    assert!(local.syntax.text_index.node_ids().next().is_none());
-    assert!(local.syntax.text_index.semantic_items().is_empty());
+    assert!(
+        captured
+            .project_diagnostics(analyzer.options().diagnostic_policy())
+            .is_empty()
+    );
+    assert_eq!(
+        captured.syntax.diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert_eq!(captured.syntax.source(), FenceTextIndexSource::Unavailable);
+    assert!(captured.syntax.flowchart.is_none());
+    assert!(captured.syntax.text_index.node_ids().next().is_none());
+    assert!(captured.syntax.text_index.semantic_items().is_empty());
 }
 
 #[test]
-fn rich_facts_mode_projects_valid_syntax_facts() {
+fn rich_capture_materializes_parser_syntax_indexes() {
     let analyzer = Analyzer::new();
-    let local = analyzer.analyze_local("flowchart TD\nA-->B\n", super::AnalysisMode::RichFacts);
+    let captured = analyzer.capture_local("flowchart TD\nA-->B\n", super::CaptureMode::RichFacts);
 
-    assert!(local.diagnostics.is_empty());
-    assert_eq!(local.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
-    assert_eq!(local.syntax.source(), FenceTextIndexSource::ParserComplete);
-    assert!(local.syntax.flowchart.is_some());
+    assert_eq!(
+        captured.syntax.diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert_eq!(
+        captured.syntax.source(),
+        FenceTextIndexSource::ParserComplete
+    );
+    assert!(captured.syntax.flowchart.is_some());
     assert!(
-        local
+        captured
             .syntax
             .text_index
             .node_ids()
             .any(|node_id| node_id == "A")
     );
     assert!(
-        local
+        captured
             .syntax
             .text_index
             .semantic_items()
@@ -546,13 +672,13 @@ fn parse_disposition_is_independent_from_diagnostic_severity() {
 }
 
 #[test]
-fn rich_facts_mode_reports_flowchart_facts_projection_failure() {
+fn rich_capture_retains_flowchart_facts_projection_failure_candidate() {
     let analyzer = Analyzer::new();
     let source = "flowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
     let parsed = malformed_flowchart_parsed_diagram();
-    let local = analyzer.analyze_parsed_diagram(
-        DiagramProjectionInput {
+    let captured = analyzer.analyze_parsed_diagram(
+        DiagramCaptureInput {
             source,
             source_map: &source_map,
             metadata: &parsed.meta,
@@ -560,12 +686,12 @@ fn rich_facts_mode_reports_flowchart_facts_projection_failure() {
         },
         &parsed.model,
         Vec::new(),
-        super::AnalysisMode::RichFacts,
+        super::CaptureMode::RichFacts,
     );
 
-    assert!(local.syntax.flowchart.is_none());
-    let diagnostic = local
-        .diagnostics
+    assert!(captured.syntax.flowchart.is_none());
+    let diagnostics = captured.project_diagnostics(analyzer.options().diagnostic_policy());
+    let diagnostic = diagnostics
         .iter()
         .find(|diagnostic| diagnostic.id == crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID)
         .expect("flowchart projection diagnostic");
@@ -610,8 +736,8 @@ fn diagnostic_reprojection_reuses_the_canonical_flowchart_projection_failure() {
     let source_map = SourceMap::new(Arc::clone(&text));
     let document = crate::document::whole_document_diagram(Arc::clone(&text), &source_descriptor);
     let parsed = malformed_flowchart_parsed_diagram();
-    let local = analyzer.analyze_parsed_diagram(
-        DiagramProjectionInput {
+    let captured = analyzer.analyze_parsed_diagram(
+        DiagramCaptureInput {
             source,
             source_map: &source_map,
             metadata: &parsed.meta,
@@ -619,12 +745,12 @@ fn diagnostic_reprojection_reuses_the_canonical_flowchart_projection_failure() {
         },
         &parsed.model,
         Vec::new(),
-        super::AnalysisMode::RichFacts,
+        super::CaptureMode::RichFacts,
     );
     let diagram = crate::AnalyzedDiagram::from_document_diagram(
         &document,
-        local.syntax,
-        local.candidates,
+        captured.syntax,
+        captured.candidates,
         crate::DiagramParseDisposition::Parsed,
     );
     let result = crate::AnalysisGeneration::new(source_map, vec![diagram], &analyzer);
@@ -644,7 +770,7 @@ fn diagnostic_reprojection_reuses_the_canonical_flowchart_projection_failure() {
 }
 
 #[test]
-fn rich_facts_mode_reports_editor_facts_preprocess_failure() {
+fn rich_capture_reports_editor_facts_preprocess_failure() {
     let analyzer = Analyzer::new();
     let source = "---\nconfig: [\n---\nflowchart TD\nA-->B\n";
     let result = analyzer
@@ -664,13 +790,13 @@ fn rich_facts_mode_reports_editor_facts_preprocess_failure() {
 }
 
 #[test]
-fn diagnostics_mode_reports_the_canonical_flowchart_projection_failure() {
+fn diagnostics_only_capture_reports_the_canonical_flowchart_projection_failure() {
     let analyzer = Analyzer::new();
     let source = "flowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
     let parsed = malformed_flowchart_parsed_diagram();
-    let local = analyzer.analyze_parsed_diagram(
-        DiagramProjectionInput {
+    let captured = analyzer.analyze_parsed_diagram(
+        DiagramCaptureInput {
             source,
             source_map: &source_map,
             metadata: &parsed.meta,
@@ -678,17 +804,21 @@ fn diagnostics_mode_reports_the_canonical_flowchart_projection_failure() {
         },
         &parsed.model,
         Vec::new(),
-        super::AnalysisMode::Diagnostics,
+        super::CaptureMode::DiagnosticsOnly,
     );
+    let diagnostics = captured.project_diagnostics(analyzer.options().diagnostic_policy());
 
-    assert_eq!(local.diagnostics.len(), 1);
+    assert_eq!(diagnostics.len(), 1);
     assert_eq!(
-        local.diagnostics[0].id,
+        diagnostics[0].id,
         crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID
     );
-    assert_eq!(local.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
-    assert_eq!(local.syntax.source(), FenceTextIndexSource::Unavailable);
-    assert!(local.syntax.flowchart.is_none());
+    assert_eq!(
+        captured.syntax.diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert_eq!(captured.syntax.source(), FenceTextIndexSource::Unavailable);
+    assert!(captured.syntax.flowchart.is_none());
 }
 
 #[test]
@@ -732,10 +862,55 @@ fn non_cancellable_analysis_reports_custom_parser_cancellation_without_panicking
     assert_eq!(diagnostics.diagnostics.len(), 1);
     assert_eq!(
         diagnostics.diagnostics[0].id,
-        crate::rules::DIAGRAM_PARSE_RULE_ID
+        crate::rules::PARSER_CONTRACT_VIOLATION_RULE_ID
+    );
+    assert_eq!(
+        diagnostics.diagnostics[0].category,
+        DiagnosticCategory::Internal
+    );
+    assert_eq!(
+        diagnostics.diagnostics[0].code,
+        Some(AnalysisStatus::InternalError.code())
     );
     assert_eq!(
         result.project(analyzer.options().diagnostic_policy()),
+        diagnostics
+    );
+    assert_eq!(facts.diagnostics, diagnostics.diagnostics);
+}
+
+#[test]
+fn non_cancellable_document_analysis_reports_custom_parser_cancellation_without_panicking() {
+    let mut engine = merman_core::Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", cancelling_flowchart_parser);
+    let analyzer = Analyzer::with_engine(engine, AnalysisOptions::default());
+    let source = crate::source_descriptor_for_markdown_path(Some("file:///tmp/cancelled.md"));
+    let text = "```mermaid\nflowchart TD\nA-->B\n```\n";
+
+    let diagnostics = crate::analyze_document(text, &analyzer, source.clone());
+    let generation = crate::analyze_document_generation(text, &analyzer, source.clone())
+        .into_ready()
+        .expect("parser cancellation is an analysis failure, not a source rejection");
+    let facts = crate::analyze_document_facts(text, &analyzer, source);
+
+    assert!(!diagnostics.valid);
+    assert_eq!(diagnostics.diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics.diagnostics[0].id,
+        crate::rules::PARSER_CONTRACT_VIOLATION_RULE_ID
+    );
+    assert_eq!(
+        diagnostics.diagnostics[0].category,
+        DiagnosticCategory::Internal
+    );
+    assert_eq!(
+        diagnostics.diagnostics[0].code,
+        Some(AnalysisStatus::InternalError.code())
+    );
+    assert_eq!(
+        generation.project(analyzer.options().diagnostic_policy()),
         diagnostics
     );
     assert_eq!(facts.diagnostics, diagnostics.diagnostics);
@@ -753,17 +928,229 @@ fn protected_resource_limit_rule_still_returns_hard_resource_diagnostic() {
             .with_max_source_bytes(Some(8))
             .with_rule_config(AnalysisRuleConfig::default()),
     );
-    let local = analyzer.analyze_local("flowchart TD\nA-->B\n", super::AnalysisMode::RichFacts);
+    let rejection = match analyzer.analyze_generation("flowchart TD\nA-->B\n") {
+        crate::AnalysisCaptureOutcome::Rejected(rejection) => rejection,
+        crate::AnalysisCaptureOutcome::Ready(_) => {
+            panic!("source over the configured limit should be rejected")
+        }
+    };
+    let diagnostics = &rejection.payload().diagnostics;
 
-    assert_eq!(local.diagnostics.len(), 1);
-    assert_eq!(
-        local.diagnostics[0].id,
-        crate::rules::RESOURCE_LIMIT_RULE_ID
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].id, crate::rules::RESOURCE_LIMIT_RULE_ID);
+}
+
+#[test]
+fn analyzer_rich_entry_points_honor_the_configured_markdown_source_kind() {
+    let source = "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n";
+    let descriptor = crate::source_descriptor_for_markdown_path(Some("fixture.md"));
+    let limited = Analyzer::with_options(
+        AnalysisOptions::default()
+            .with_source(descriptor.clone())
+            .with_max_document_diagrams(Some(0)),
     );
-    assert_eq!(local.syntax.diagram_type, None);
-    assert_eq!(local.syntax.source(), FenceTextIndexSource::Unavailable);
-    assert!(local.syntax.text_index.node_ids().next().is_none());
-    assert!(local.syntax.text_index.semantic_items().is_empty());
+
+    let limited_outcome = limited.analyze_generation(source);
+    let rejection = limited_outcome
+        .rejection()
+        .expect("the configured Markdown diagram budget must apply to Analyzer entry points");
+    assert_eq!(
+        rejection.resource_limit(),
+        crate::AnalysisResourceLimit::DocumentDiagrams {
+            observed_document_diagrams: 1,
+            max_document_diagrams: 0,
+        }
+    );
+    assert_eq!(&limited.analyze(source), rejection.payload());
+
+    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_source(descriptor));
+    let generation = analyzer
+        .analyze_generation(source)
+        .into_ready()
+        .expect("the Markdown source is within the default document budget");
+
+    assert_eq!(
+        generation.environment_identity(),
+        analyzer.environment_identity()
+    );
+    assert_eq!(generation.source(), analyzer.options().source());
+    assert_eq!(generation.diagrams().len(), 1);
+    assert_eq!(
+        generation.diagrams()[0].kind(),
+        crate::DocumentDiagramKind::MermaidFence
+    );
+    assert_eq!(
+        generation.diagrams()[0].text().as_str(),
+        "flowchart TD\nA-->B\n"
+    );
+    assert_eq!(
+        analyzer.analyze(source),
+        generation.project(analyzer.options().diagnostic_policy())
+    );
+}
+
+#[test]
+fn markdown_capture_preserves_custom_registries_across_source_derivation() {
+    MARKDOWN_CUSTOM_PARSE_CALLS.store(0, Ordering::SeqCst);
+    let mut engine = merman_core::Engine::new();
+    engine
+        .registry_mut()
+        .add_fn("markdown-custom-fixture", detect_markdown_custom_fixture);
+    engine
+        .diagram_registry_mut()
+        .insert("markdown-custom-fixture", markdown_counting_custom_parser);
+    let configured_source =
+        crate::source_descriptor_for_markdown_path(Some("file:///configured.md"));
+    let analyzer = Analyzer::with_engine(
+        engine,
+        AnalysisOptions::default().with_source(configured_source.clone()),
+    );
+    let text = "```mermaid\nmarkdown-custom-fixture\npayload\n```\n";
+
+    let configured = analyzer
+        .analyze_generation(text)
+        .into_ready()
+        .expect("configured Markdown capture should use the custom registry");
+    assert_eq!(MARKDOWN_CUSTOM_PARSE_CALLS.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        configured.environment_identity(),
+        analyzer.environment_identity()
+    );
+    assert_eq!(configured.source(), &configured_source);
+
+    let per_request_source =
+        crate::source_descriptor_for_markdown_path(Some("file:///per-request.md"));
+    let per_request =
+        crate::analyze_document_generation(text, &analyzer, per_request_source.clone())
+            .into_ready()
+            .expect("per-request Markdown capture should preserve the custom registry");
+    assert_eq!(MARKDOWN_CUSTOM_PARSE_CALLS.load(Ordering::SeqCst), 2);
+    assert_ne!(
+        per_request.environment_identity(),
+        analyzer.environment_identity()
+    );
+    assert_eq!(per_request.source(), &per_request_source);
+}
+
+#[test]
+fn cancellable_markdown_custom_parser_cancellation_has_no_partial_generation() {
+    MARKDOWN_PARTIAL_CAPTURE_CALLS.store(0, Ordering::SeqCst);
+    let mut engine = merman_core::Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", markdown_first_success_then_cancel_parser);
+    let analyzer = Analyzer::with_engine(
+        engine,
+        AnalysisOptions::default().with_source(crate::source_descriptor_for_markdown_path(Some(
+            "file:///cancelled.md",
+        ))),
+    );
+    let cancellation = AnalysisCancellationToken::new();
+
+    assert!(matches!(
+        analyzer.analyze_generation_shared_cancellable(
+            Arc::<str>::from(concat!(
+                "```mermaid\nflowchart TD\nA-->B\n```\n",
+                "```mermaid\nflowchart TD\nB-->C\n```\n",
+            )),
+            &cancellation,
+        ),
+        Err(crate::AnalysisCancelled)
+    ));
+    assert_eq!(MARKDOWN_PARTIAL_CAPTURE_CALLS.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn source_and_document_preflight_reject_before_custom_parsers_run() {
+    REJECTED_SOURCE_PARSE_CALLS.store(0, Ordering::SeqCst);
+    let mut engine = merman_core::Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", rejected_source_counting_parser);
+    let source = Arc::<str>::from("flowchart TD\nA-->B\n");
+    let cancellation = AnalysisCancellationToken::new();
+
+    let diagram_analyzer = Analyzer::with_engine(
+        engine.clone(),
+        AnalysisOptions::default().with_max_source_bytes(Some(8)),
+    );
+    assert!(matches!(
+        diagram_analyzer
+            .analyze_generation_shared_cancellable(Arc::clone(&source), &cancellation)
+            .expect("source preflight should not be cancelled"),
+        crate::AnalysisCaptureOutcome::Rejected(_)
+    ));
+
+    let markdown_analyzer = Analyzer::with_engine(
+        engine.clone(),
+        AnalysisOptions::default()
+            .with_max_source_bytes(Some(8))
+            .with_source(crate::source_descriptor_for_markdown_path(Some(
+                "file:///rejected.md",
+            ))),
+    );
+    let markdown_source = Arc::<str>::from("```mermaid\nflowchart TD\nA-->B\n```\n");
+    assert!(matches!(
+        markdown_analyzer
+            .analyze_generation_shared_cancellable(markdown_source, &cancellation)
+            .expect("document preflight should not be cancelled"),
+        crate::AnalysisCaptureOutcome::Rejected(_)
+    ));
+
+    let diagram_limit_analyzer = Analyzer::with_engine(
+        engine,
+        AnalysisOptions::default()
+            .with_max_document_diagrams(Some(1))
+            .with_source(crate::source_descriptor_for_markdown_path(Some(
+                "file:///too-many-diagrams.md",
+            ))),
+    );
+    let two_fences = Arc::<str>::from(concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nflowchart TD\nB-->C\n```\n",
+    ));
+    assert!(matches!(
+        diagram_limit_analyzer
+            .analyze_generation_shared_cancellable(two_fences, &cancellation)
+            .expect("diagram-count preflight should not be cancelled"),
+        crate::AnalysisCaptureOutcome::Rejected(_)
+    ));
+    assert_eq!(REJECTED_SOURCE_PARSE_CALLS.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn frontmatter_alias_materialization_budget_suppresses_only_the_migration_fix() {
+    let scalar = "x".repeat(4 * 1024);
+    let aliases = std::iter::repeat_n("*blob", 280)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let padding = "p".repeat(80 * 1024);
+    let source = format!(
+        concat!(
+            "---\n",
+            "blob: &blob \"{}\"\n",
+            "copies: [{}]\n",
+            "config:\n  theme: default\n",
+            "# {}\n",
+            "---\n",
+            "%%{{ init: {{ theme: 'dark' }} }}%%\n",
+            "flowchart TD\nA-->B\n",
+        ),
+        scalar, aliases, padding,
+    );
+    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+        AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+    ));
+
+    let payload = analyzer.analyze(&source);
+    let migration = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+        .expect("the authoring diagnostic must survive an advisory fix budget rejection");
+
+    assert!(payload.valid);
+    assert!(migration.fixes.is_empty());
 }
 
 fn malformed_flowchart_parsed_diagram() -> ParsedDiagram {
@@ -787,7 +1174,7 @@ fn malformed_flowchart_parsed_diagram() -> ParsedDiagram {
 fn fallback_recovery_merge_uses_structured_location_metadata() {
     let source_map = SourceMap::new("flowchart TD\nA[unterminated");
     let span = source_map.whole_source_span().unwrap();
-    let primary = crate::diagnostic_projection::rule_diagnostic_without_default_span(
+    let mut primary = crate::diagnostic_projection::rule_diagnostic_without_default_span(
         crate::rules::DIAGRAM_PARSE_RULE_ID,
         AnalysisStatus::ParseError,
         "primary parser message",
@@ -805,20 +1192,18 @@ fn fallback_recovery_merge_uses_structured_location_metadata() {
     .unwrap()
     .with_diagram_type("flowchart-v2")
     .with_span(span);
-    let mut diagnostics = vec![primary];
-
-    crate::recovery::merge_recovery_diagnostics(
-        &mut diagnostics,
-        vec![crate::recovery::AnalysisRecoveryDiagnostic::parser_backed(
+    assert!(crate::recovery::merge_duplicate_parse_recovery_diagnostic(
+        &mut primary,
+        0,
+        &crate::recovery::AnalysisRecoveryDiagnostic::parser_backed(
             recovery,
             merman_core::EditorSemanticDiagnosticKind::ParserRecovery,
-        )],
+        ),
         Some(crate::diagnostic_projection::ParseDiagnosticLocation::Fallback),
-    );
+    ));
 
-    assert_eq!(diagnostics.len(), 1);
-    assert_eq!(diagnostics[0].message, "primary parser message");
-    assert!(diagnostics[0].related.iter().any(|related| {
+    assert_eq!(primary.message, "primary parser message");
+    assert!(primary.related.iter().any(|related| {
         related
             .message
             .contains("Parser recovery produced the same syntax problem")
@@ -1170,6 +1555,11 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         .diagram_registry_mut()
         .insert("flowchart-v2", panicking_flowchart_parser);
 
+    let mut cancelling_engine = merman_core::Engine::new();
+    cancelling_engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", cancelling_flowchart_parser);
+
     let mut registry_gap_engine = merman_core::Engine::new();
     registry_gap_engine
         .diagram_registry_mut()
@@ -1249,6 +1639,11 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         CorpusCase {
             name: "parser panic",
             analyzer: Analyzer::with_engine(panic_engine, AnalysisOptions::default()),
+            source: "flowchart TD\nA-->B\n",
+        },
+        CorpusCase {
+            name: "parser contract violation",
+            analyzer: Analyzer::with_engine(cancelling_engine, AnalysisOptions::default()),
             source: "flowchart TD\nA-->B\n",
         },
         CorpusCase {
@@ -1335,6 +1730,27 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
     );
     observed_rule_ids.extend(
         rejection
+            .payload()
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.id.as_str()),
+    );
+
+    let document_resource_analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(1)));
+    let document_resource_source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+    let document_rejected = crate::document::analyze_document_generation(
+        document_resource_source,
+        &document_resource_analyzer,
+        crate::source_descriptor_for_markdown_path(Some("catalog.md")),
+    );
+    observed_rule_ids.extend(
+        document_rejected
+            .rejection()
+            .expect("document resources should reject before generation construction")
             .payload()
             .diagnostics
             .iter()
@@ -1557,7 +1973,7 @@ fn markdown_fallback_recovery_is_scoped_per_fence_and_decorated_last() {
             crate::diagnostic_projection::DiagnosticCandidate::new(recovery)
                 .with_recovery_kind(merman_core::EditorSemanticDiagnosticKind::ParserRecovery),
         ];
-        let candidates = crate::document::remap_diagnostic_candidates(
+        let candidates = crate::document::normalize_document_diagnostic_candidates(
             document.source_map(),
             diagram,
             candidates,
@@ -1603,6 +2019,61 @@ fn markdown_fallback_recovery_is_scoped_per_fence_and_decorated_last() {
             diagnostic.related[3].message,
             format!("Mermaid fence {}", index + 1)
         );
+    }
+
+    for (parse, recovery, expected_id, expected_recovery_contexts) in [
+        (false, false, None, 0),
+        (
+            false,
+            true,
+            Some(crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID),
+            0,
+        ),
+        (true, false, Some(crate::rules::DIAGRAM_PARSE_RULE_ID), 0),
+        (true, true, Some(crate::rules::DIAGRAM_PARSE_RULE_ID), 1),
+    ] {
+        let mut rules = AnalysisRuleConfig::default();
+        if !parse {
+            rules
+                .disable_rule(crate::rules::DIAGRAM_PARSE_RULE_ID)
+                .unwrap();
+        }
+        if !recovery {
+            rules
+                .disable_rule(crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID)
+                .unwrap();
+        }
+
+        let projected = generation.project(&AnalysisDiagnosticPolicy { rule_config: rules });
+        assert_eq!(
+            projected.diagnostics.len(),
+            usize::from(expected_id.is_some()) * 2,
+            "parse={parse} recovery={recovery}"
+        );
+        for (index, diagnostic) in projected.diagnostics.iter().enumerate() {
+            let expected_fence_message = format!("Mermaid fence {}", index + 1);
+            assert_eq!(diagnostic.id, expected_id.unwrap());
+            assert_eq!(
+                diagnostic
+                    .related
+                    .iter()
+                    .filter(|related| related.message.contains("Parser recovery produced"))
+                    .count(),
+                expected_recovery_contexts
+            );
+            assert_eq!(
+                diagnostic
+                    .related
+                    .iter()
+                    .filter(|related| related.message == expected_fence_message)
+                    .count(),
+                1
+            );
+            assert_eq!(
+                diagnostic.related.last().unwrap().message,
+                expected_fence_message
+            );
+        }
     }
 }
 

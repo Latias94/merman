@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::ops::Range;
+use std::sync::Arc;
 
-use crate::retained_weight::RetainedWeight;
+use crate::retained_weight::{ARC_ALLOCATION_OVERHEAD, RetainedWeight};
 
 pub const ANALYSIS_PAYLOAD_VERSION: u32 = 1;
 // Diagnostics and facts are independent contracts whose first public shapes both start at 1.
@@ -223,7 +225,11 @@ impl DiagnosticFixEdit {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnosticFix {
     pub title: String,
-    pub edits: Vec<DiagnosticFixEdit>,
+    #[serde(
+        serialize_with = "serialize_diagnostic_fix_edits",
+        deserialize_with = "deserialize_diagnostic_fix_edits"
+    )]
+    pub edits: Arc<[DiagnosticFixEdit]>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub is_preferred: bool,
 }
@@ -232,7 +238,7 @@ impl DiagnosticFix {
     pub fn new(title: impl Into<String>, edits: Vec<DiagnosticFixEdit>) -> Self {
         Self {
             title: title.into(),
-            edits,
+            edits: Arc::from(edits),
             is_preferred: false,
         }
     }
@@ -241,6 +247,25 @@ impl DiagnosticFix {
         self.is_preferred = true;
         self
     }
+}
+
+fn serialize_diagnostic_fix_edits<S>(
+    edits: &Arc<[DiagnosticFixEdit]>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    edits.as_ref().serialize(serializer)
+}
+
+fn deserialize_diagnostic_fix_edits<'de, D>(
+    deserializer: D,
+) -> Result<Arc<[DiagnosticFixEdit]>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Vec::<DiagnosticFixEdit>::deserialize(deserializer).map(Arc::from)
 }
 
 const fn is_false(value: &bool) -> bool {
@@ -324,27 +349,46 @@ impl AnalysisDiagnostic {
         self.fixes.extend(fixes);
         self
     }
+}
 
-    pub(crate) fn estimated_owned_heap_bytes(&self) -> usize {
-        let mut weight = RetainedWeight::default();
-        weight.add_string(&self.id);
-        weight.add_string(&self.message);
-        weight.add_optional_string(&self.code_name);
-        weight.add_optional_string(&self.diagram_type);
-        weight.add_optional_string(&self.help);
-        weight.add_array::<DiagnosticRelated>(self.related.capacity());
-        for related in &self.related {
+#[derive(Debug, Default)]
+pub(crate) struct DiagnosticRetainedWeight {
+    weight: RetainedWeight,
+    fix_edit_allocations: BTreeSet<usize>,
+}
+
+impl DiagnosticRetainedWeight {
+    pub(crate) fn add_diagnostic(&mut self, diagnostic: &AnalysisDiagnostic) {
+        let weight = &mut self.weight;
+        weight.add_string(&diagnostic.id);
+        weight.add_string(&diagnostic.message);
+        weight.add_optional_string(&diagnostic.code_name);
+        weight.add_optional_string(&diagnostic.diagram_type);
+        weight.add_optional_string(&diagnostic.help);
+        weight.add_array::<DiagnosticRelated>(diagnostic.related.capacity());
+        for related in &diagnostic.related {
             weight.add_string(&related.message);
         }
-        weight.add_array::<DiagnosticFix>(self.fixes.capacity());
-        for fix in &self.fixes {
+        weight.add_array::<DiagnosticFix>(diagnostic.fixes.capacity());
+        for fix in &diagnostic.fixes {
             weight.add_string(&fix.title);
-            weight.add_array::<DiagnosticFixEdit>(fix.edits.capacity());
-            for edit in &fix.edits {
+            if fix.edits.is_empty() {
+                continue;
+            }
+            let allocation = Arc::as_ptr(&fix.edits) as *const DiagnosticFixEdit as usize;
+            if !self.fix_edit_allocations.insert(allocation) {
+                continue;
+            }
+            weight.add(ARC_ALLOCATION_OVERHEAD);
+            weight.add_array::<DiagnosticFixEdit>(fix.edits.len());
+            for edit in fix.edits.iter() {
                 weight.add_string(&edit.replacement);
             }
         }
-        weight.finish()
+    }
+
+    pub(crate) fn finish(self) -> usize {
+        self.weight.finish()
     }
 }
 
@@ -358,17 +402,35 @@ pub struct Summary {
 
 impl Summary {
     pub fn from_diagnostics(diagnostics: &[AnalysisDiagnostic]) -> Self {
-        diagnostics
-            .iter()
-            .fold(Self::default(), |mut summary, diagnostic| {
-                match diagnostic.severity {
-                    DiagnosticSeverity::Error => summary.errors += 1,
-                    DiagnosticSeverity::Warning => summary.warnings += 1,
-                    DiagnosticSeverity::Info => summary.infos += 1,
-                    DiagnosticSeverity::Hint => summary.hints += 1,
-                }
-                summary
-            })
+        let mut summary = Self::default();
+        for diagnostic in diagnostics {
+            summary.record(diagnostic);
+        }
+        summary
+    }
+
+    pub(crate) fn from_diagnostics_cancellable(
+        diagnostics: &[AnalysisDiagnostic],
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Self, crate::AnalysisCancelled> {
+        let mut summary = Self::default();
+        for (index, diagnostic) in diagnostics.iter().enumerate() {
+            if index.is_multiple_of(128) {
+                cancellation.checkpoint()?;
+            }
+            summary.record(diagnostic);
+        }
+        cancellation.checkpoint()?;
+        Ok(summary)
+    }
+
+    fn record(&mut self, diagnostic: &AnalysisDiagnostic) {
+        match diagnostic.severity {
+            DiagnosticSeverity::Error => self.errors += 1,
+            DiagnosticSeverity::Warning => self.warnings += 1,
+            DiagnosticSeverity::Info => self.infos += 1,
+            DiagnosticSeverity::Hint => self.hints += 1,
+        }
     }
 }
 
@@ -394,6 +456,23 @@ impl AnalysisPayload {
         }
     }
 
+    pub(crate) fn new_cancellable(
+        source: SourceDescriptor,
+        diagnostics: Vec<AnalysisDiagnostic>,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Self, crate::AnalysisCancelled> {
+        cancellation.checkpoint()?;
+        let summary = Summary::from_diagnostics_cancellable(&diagnostics, cancellation)?;
+        cancellation.checkpoint()?;
+        Ok(Self {
+            version: ANALYSIS_PAYLOAD_VERSION,
+            valid: summary.errors == 0,
+            summary,
+            source,
+            diagnostics,
+        })
+    }
+
     pub fn valid(source: SourceDescriptor) -> Self {
         Self::new(source, Vec::new())
     }
@@ -411,18 +490,53 @@ impl AnalysisPayload {
     /// This is a stable, saturating cache weight rather than allocator-specific RSS accounting.
     pub fn estimated_owned_heap_bytes(&self) -> usize {
         let mut weight = RetainedWeight::default();
+        let mut diagnostic_weight = DiagnosticRetainedWeight::default();
         weight.add(self.source.estimated_owned_heap_bytes());
         weight.add_array::<AnalysisDiagnostic>(self.diagnostics.capacity());
         for diagnostic in &self.diagnostics {
-            weight.add(diagnostic.estimated_owned_heap_bytes());
+            diagnostic_weight.add_diagnostic(diagnostic);
         }
+        weight.add(diagnostic_weight.finish());
         weight.finish()
     }
 }
 
 #[cfg(test)]
-mod retained_weight_tests {
+mod tests {
     use super::*;
+
+    fn empty_span() -> DiagnosticSpan {
+        DiagnosticSpan::new(
+            0..0,
+            SourcePosition::new(1, 1),
+            SourcePosition::new(1, 1),
+            LspRange::new(
+                Utf16Position {
+                    line: 0,
+                    character: 0,
+                },
+                Utf16Position {
+                    line: 0,
+                    character: 0,
+                },
+            ),
+        )
+    }
+
+    #[test]
+    fn diagnostic_fix_clones_share_edits_without_changing_json() {
+        let fix = DiagnosticFix::new(
+            "shared fix",
+            vec![DiagnosticFixEdit::new(empty_span(), "replacement")],
+        )
+        .preferred();
+        let cloned = fix.clone();
+
+        assert!(Arc::ptr_eq(&fix.edits, &cloned.edits));
+        let json = serde_json::to_value(&fix).unwrap();
+        assert!(json["edits"].is_array());
+        assert_eq!(serde_json::from_value::<DiagnosticFix>(json).unwrap(), fix);
+    }
 
     #[test]
     fn payload_weight_covers_related_messages_and_nested_fix_edits() {
@@ -443,26 +557,36 @@ mod retained_weight_tests {
         fixed.diagnostics[0].fixes.push(DiagnosticFix::new(
             "fix allocation".repeat(8),
             vec![DiagnosticFixEdit::new(
-                DiagnosticSpan::new(
-                    0..0,
-                    SourcePosition::new(1, 1),
-                    SourcePosition::new(1, 1),
-                    LspRange::new(
-                        Utf16Position {
-                            line: 0,
-                            character: 0,
-                        },
-                        Utf16Position {
-                            line: 0,
-                            character: 0,
-                        },
-                    ),
-                ),
+                empty_span(),
                 "replacement allocation".repeat(8),
             )],
         ));
 
         assert!(related.estimated_owned_heap_bytes() > base.estimated_owned_heap_bytes());
         assert!(fixed.estimated_owned_heap_bytes() > related.estimated_owned_heap_bytes());
+    }
+
+    #[test]
+    fn cancellable_payload_construction_checks_the_summary_tail() {
+        let diagnostics = (0..512)
+            .map(|index| {
+                AnalysisDiagnostic::error(
+                    format!("test-{index}"),
+                    DiagnosticCategory::Semantic,
+                    "message",
+                )
+            })
+            .collect();
+        let cancellation = crate::AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(1);
+
+        assert!(matches!(
+            AnalysisPayload::new_cancellable(
+                SourceDescriptor::diagram(),
+                diagnostics,
+                &cancellation,
+            ),
+            Err(crate::AnalysisCancelled)
+        ));
     }
 }

@@ -87,11 +87,37 @@ function failure({ kind, capabilityId = null }) {
   });
 }
 
+test("operation errors preserve structured resource details", () => {
+  const resource = {
+    limit_id: "max_embedded_image_bytes",
+    phase: "embedded_image_decode",
+    actual: 5,
+    max: 4,
+    profile: "constrained",
+  };
+  const error = new MermanOperationError({
+    code: 10,
+    code_name: "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+    kind: "generic",
+    capability_id: null,
+    details: { resource },
+    message: "embedded image is too large",
+  });
+
+  assert.deepEqual(error.resourceDetails, resource);
+});
+
 function runtimeCatalog(overrides = {}) {
   return {
     schema_version: 1,
     transport_api_version: 1,
     package_version: PACKAGE_VERSION,
+    options_schema_versions: [2],
+    payload_schemas: [
+      { id: "binding-result", version: 1 },
+      { id: "operation-metadata", version: 1 },
+    ],
+    metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
     capabilities: {
       capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
       output_ids: ["svg"],
@@ -118,6 +144,8 @@ function runtimeCatalog(overrides = {}) {
         description: "Maximum source bytes.",
         overridable: true,
         hard_cap: false,
+        minimum_value: 1,
+        operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
       }],
       profiles: [
         {
@@ -346,7 +374,7 @@ test("default construction is explicit deterministic interactive policy", async 
 
   assert.deepEqual(factory.createdWith, [
     {
-      version: 1,
+      version: 2,
       runtime_policy: "deterministic",
       resources: { profile: "interactive" },
     },
@@ -560,6 +588,18 @@ test("runtime catalog validates text measurement and resource local relations", 
   malformedLimit.resources.limits = [{ id: "max-source-bytes" }];
   invalidCatalogs.push(malformedLimit);
 
+  const staleOptionsSchema = runtimeCatalog();
+  staleOptionsSchema.options_schema_versions = [1];
+  invalidCatalogs.push(staleOptionsSchema);
+
+  const malformedPayloadSchema = runtimeCatalog();
+  malformedPayloadSchema.payload_schemas[0].version = 0;
+  invalidCatalogs.push(malformedPayloadSchema);
+
+  const unavailableLimitOperation = runtimeCatalog();
+  unavailableLimitOperation.resources.limits[0].operation_ids = ["future-operation"];
+  invalidCatalogs.push(unavailableLimitOperation);
+
   const malformedProfile = runtimeCatalog();
   malformedProfile.resources.profiles = [{
     id: "interactive",
@@ -581,6 +621,27 @@ test("runtime catalog validates text measurement and resource local relations", 
   const duplicateLimit = runtimeCatalog();
   duplicateLimit.resources.limits.push({ ...duplicateLimit.resources.limits[0] });
   invalidCatalogs.push(duplicateLimit);
+
+  const duplicateProfile = runtimeCatalog();
+  duplicateProfile.resources.profiles.push({ ...duplicateProfile.resources.profiles[0] });
+  invalidCatalogs.push(duplicateProfile);
+
+  const nonrecommendedDefault = runtimeCatalog();
+  nonrecommendedDefault.resources.general_binding_default_profile = "trusted-native";
+  invalidCatalogs.push(nonrecommendedDefault);
+
+  const multipleRecommendedProfiles = runtimeCatalog();
+  multipleRecommendedProfiles.resources.profiles[1].recommended_binding_default = true;
+  invalidCatalogs.push(multipleRecommendedProfiles);
+
+  const hardCapOverridable = runtimeCatalog();
+  hardCapOverridable.resources.limits[0].hard_cap = true;
+  invalidCatalogs.push(hardCapOverridable);
+
+  const hardCapUnbounded = runtimeCatalog();
+  hardCapUnbounded.resources.limits[0].hard_cap = true;
+  hardCapUnbounded.resources.limits[0].overridable = false;
+  invalidCatalogs.push(hardCapUnbounded);
 
   for (const catalog of invalidCatalogs) {
     const factory = transportFactory({
@@ -610,6 +671,8 @@ test("public TypeScript declarations cover the generic operation API", () => {
   assert.match(declarations, /\breadonly runtimeCatalog:/);
   assert.match(declarations, /\boptionsJson\?: string;/);
   assert.match(declarations, /provider_ids:\s*\["vendored"\]/);
+  assert.match(declarations, /options_schema_versions:\s*number\[\]/);
+  assert.match(declarations, /operation_ids:\s*string\[\]/);
   assert.match(declarations, /output_contracts:\s*MermanRuntimeOutputContract\[\]/);
   assert.match(declarations, /system_fonts:\s*MermanRuntimeSystemFontContract\s*\|\s*null/);
   assert.match(
@@ -629,13 +692,17 @@ test("binding options preserve the shared profile vocabulary and reject host mea
       fixed_today: "2026-07-23",
     }),
     {
-      version: 1,
+      version: 2,
       runtime_policy: "deterministic",
       resources: { profile: "trusted-native" },
       fixed_today: "2026-07-23",
     },
   );
 
+  assert.throws(
+    () => normalizeBindingOptions({ version: 1 }),
+    /unsupported binding options schema version `1`; expected 2/i,
+  );
   assert.throws(
     () => normalizeBindingOptions({ textMeasurer: () => ({ width: 1 }) }),
     /text measurement callbacks are not supported/i,

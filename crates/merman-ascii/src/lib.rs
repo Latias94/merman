@@ -35,7 +35,11 @@ pub use capability::{
 };
 pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
 pub use error::{AsciiError, Result};
-pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions};
+pub use options::{
+    ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCharset, AsciiDirection, AsciiRenderOptions,
+    AsciiResourceLimitDescriptor, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
+    ascii_resource_profile_value,
+};
 
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;

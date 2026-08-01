@@ -1,8 +1,8 @@
 use crate::rules::{
     DIAGRAM_PARSE_RULE_ID, FLOWCHART_FACTS_PROJECTION_RULE_ID, INVALID_DIRECTIVE_JSON_RULE_ID,
     INVALID_FRONT_MATTER_YAML_RULE_ID, INVALID_THEME_COLOR_RULE_ID, MALFORMED_FRONT_MATTER_RULE_ID,
-    NO_DIAGRAM_RULE_ID, PANIC_RULE_ID, RuleDescriptor, UNSUPPORTED_DIAGRAM_RULE_ID,
-    internal_rule_registry_gap_diagnostic, rule_descriptor,
+    NO_DIAGRAM_RULE_ID, PANIC_RULE_ID, PARSER_CONTRACT_VIOLATION_RULE_ID, RuleDescriptor,
+    UNSUPPORTED_DIAGRAM_RULE_ID, internal_rule_registry_gap_diagnostic, rule_descriptor,
 };
 use crate::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnostic, AnalysisDiagnosticPolicy,
@@ -11,7 +11,6 @@ use crate::{
 use merman_core::{
     EditorSemanticDiagnosticKind, Error as CoreError, ParseDiagnostic, ParseDiagnosticSpanKind,
 };
-
 const NO_DIAGRAM_MESSAGE: &str = "no Mermaid diagram detected";
 
 /// A complete diagnostic before rule filtering and severity resolution.
@@ -22,6 +21,7 @@ pub(crate) struct DiagnosticCandidate {
     suppressor_ids: &'static [&'static str],
     parse_location: Option<ParseDiagnosticLocation>,
     recovery_kind: Option<EditorSemanticDiagnosticKind>,
+    trailing_source_context_count: usize,
 }
 
 impl DiagnosticCandidate {
@@ -34,6 +34,7 @@ impl DiagnosticCandidate {
             suppressor_ids: &[],
             parse_location: None,
             recovery_kind: None,
+            trailing_source_context_count: 0,
         }
     }
 
@@ -58,16 +59,28 @@ impl DiagnosticCandidate {
         self
     }
 
-    pub(crate) fn map_diagnostic(
+    pub(crate) fn try_map_diagnostic<E>(
         mut self,
-        map: impl FnOnce(AnalysisDiagnostic) -> AnalysisDiagnostic,
+        map: impl FnOnce(AnalysisDiagnostic) -> Result<AnalysisDiagnostic, E>,
+    ) -> Result<Self, E> {
+        self.diagnostic = map(self.diagnostic)?;
+        Ok(self)
+    }
+
+    pub(crate) fn with_trailing_source_context(
+        mut self,
+        context: crate::DiagnosticRelated,
     ) -> Self {
-        self.diagnostic = map(self.diagnostic);
+        self.diagnostic.related.push(context);
+        self.trailing_source_context_count = self.trailing_source_context_count.saturating_add(1);
         self
     }
 
-    pub(crate) fn estimated_owned_heap_bytes(&self) -> usize {
-        self.diagnostic.estimated_owned_heap_bytes()
+    pub(crate) fn add_estimated_owned_heap_bytes(
+        &self,
+        weight: &mut crate::payload::DiagnosticRetainedWeight,
+    ) {
+        weight.add_diagnostic(&self.diagnostic);
     }
 
     fn materialize(&self, severity: crate::DiagnosticSeverity) -> AnalysisDiagnostic {
@@ -87,14 +100,19 @@ pub(crate) fn project_diagnostic_candidates(
     policy: &AnalysisDiagnosticPolicy,
     cancellation: &AnalysisCancellationToken,
 ) -> Result<Vec<AnalysisDiagnostic>, AnalysisCancelled> {
+    let mut diagnostics: Vec<AnalysisDiagnostic> = Vec::with_capacity(candidates.len());
+    append_projected_diagnostic_candidates(&mut diagnostics, candidates, policy, cancellation)?;
+    Ok(diagnostics)
+}
+
+pub(crate) fn append_projected_diagnostic_candidates(
+    diagnostics: &mut Vec<AnalysisDiagnostic>,
+    candidates: &[DiagnosticCandidate],
+    policy: &AnalysisDiagnosticPolicy,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<(), AnalysisCancelled> {
     let rule_config = &policy.rule_config;
-    let primary_parse_location = candidates.iter().find_map(|candidate| {
-        (candidate.descriptor.id == DIAGRAM_PARSE_RULE_ID
-            && candidate_enabled(candidate, rule_config))
-        .then_some(candidate.parse_location)
-        .flatten()
-    });
-    let mut diagnostics = Vec::with_capacity(candidates.len());
+    let mut primary_parse: Option<ProjectedPrimaryParse> = None;
 
     for (index, candidate) in candidates.iter().enumerate() {
         if index.is_multiple_of(128) {
@@ -104,38 +122,92 @@ pub(crate) fn project_diagnostic_candidates(
             continue;
         }
 
-        let diagnostic = candidate.materialize(candidate.descriptor.default_severity);
+        let diagnostic = candidate.materialize(rule_config.severity_for(candidate.descriptor));
         if let Some(kind) = candidate.recovery_kind {
-            crate::recovery::merge_recovery_diagnostics(
-                &mut diagnostics,
-                vec![crate::recovery::AnalysisRecoveryDiagnostic::parser_backed(
-                    diagnostic, kind,
-                )],
-                primary_parse_location,
+            let recovery =
+                crate::recovery::AnalysisRecoveryDiagnostic::parser_backed(diagnostic, kind);
+            let merged = primary_parse.is_some_and(|primary: ProjectedPrimaryParse| {
+                crate::recovery::merge_duplicate_parse_recovery_diagnostic(
+                    &mut diagnostics[primary.diagnostic_index],
+                    primary.trailing_source_context_count,
+                    &recovery,
+                    primary.parse_location,
+                )
+            });
+            if merged {
+                continue;
+            }
+            diagnostics.push(recovery.diagnostic);
+            continue;
+        }
+
+        if candidate.descriptor.id == DIAGRAM_PARSE_RULE_ID {
+            debug_assert!(
+                primary_parse.is_none(),
+                "one captured diagram must emit at most one primary parse diagnostic"
             );
-        } else {
-            diagnostics.push(diagnostic);
+            if primary_parse.is_none() {
+                // Recovery candidates belong to this same captured diagram, so retaining the
+                // primary slot turns every later recovery merge into constant-time lookup.
+                primary_parse = Some(ProjectedPrimaryParse {
+                    diagnostic_index: diagnostics.len(),
+                    parse_location: candidate.parse_location,
+                    trailing_source_context_count: candidate.trailing_source_context_count,
+                });
+            }
         }
-    }
-    for (index, diagnostic) in diagnostics.iter_mut().enumerate() {
-        if index.is_multiple_of(128) {
-            cancellation.checkpoint()?;
-        }
-        let descriptor = rule_descriptor(&diagnostic.id)
-            .expect("projected diagnostics must reference a registered rule");
-        diagnostic.severity = rule_config.severity_for(descriptor);
+        diagnostics.push(diagnostic);
     }
     cancellation.checkpoint()?;
-    Ok(diagnostics)
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ProjectedPrimaryParse {
+    diagnostic_index: usize,
+    parse_location: Option<ParseDiagnosticLocation>,
+    trailing_source_context_count: usize,
+}
+
+pub(crate) fn materialize_diagnostic_candidates(
+    candidates: &[DiagnosticCandidate],
+    policy: &AnalysisDiagnosticPolicy,
+) -> Vec<AnalysisDiagnostic> {
+    let cancellation = AnalysisCancellationToken::new();
+    project_diagnostic_candidates(candidates, policy, &cancellation)
+        .expect("a private analysis cancellation token cannot be cancelled")
+}
+
+pub(crate) fn candidates_from_diagnostics_cancellable(
+    diagnostics: impl IntoIterator<Item = AnalysisDiagnostic>,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<Vec<DiagnosticCandidate>, AnalysisCancelled> {
+    let mut candidates = Vec::new();
+    extend_candidates_from_diagnostics_cancellable(&mut candidates, diagnostics, cancellation)?;
+    Ok(candidates)
 }
 
 pub(crate) fn candidates_from_diagnostics(
     diagnostics: impl IntoIterator<Item = AnalysisDiagnostic>,
 ) -> Vec<DiagnosticCandidate> {
-    diagnostics
-        .into_iter()
-        .map(DiagnosticCandidate::new)
-        .collect()
+    let cancellation = AnalysisCancellationToken::new();
+    candidates_from_diagnostics_cancellable(diagnostics, &cancellation)
+        .expect("a private analysis cancellation token cannot be cancelled")
+}
+
+pub(crate) fn extend_candidates_from_diagnostics_cancellable(
+    candidates: &mut Vec<DiagnosticCandidate>,
+    diagnostics: impl IntoIterator<Item = AnalysisDiagnostic>,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<(), AnalysisCancelled> {
+    for (index, diagnostic) in diagnostics.into_iter().enumerate() {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        candidates.push(DiagnosticCandidate::new(diagnostic));
+    }
+    cancellation.checkpoint()?;
+    Ok(())
 }
 
 fn candidate_enabled(
@@ -175,9 +247,11 @@ pub(crate) fn core_error_diagnostic(
     match error {
         CoreError::ParseCancelled(error) => CoreErrorDiagnostic {
             diagnostic: rule_diagnostic(
-                DIAGRAM_PARSE_RULE_ID,
-                AnalysisStatus::ParseError,
-                error.to_string(),
+                PARSER_CONTRACT_VIOLATION_RULE_ID,
+                AnalysisStatus::InternalError,
+                format!(
+                    "custom parser returned cancellation to a non-cancellable analysis facade: {error}"
+                ),
                 source_map,
                 rule_config,
             ),
@@ -429,7 +503,10 @@ mod tests {
     use super::*;
     use crate::{
         DiagnosticCategory, DiagnosticSeverity,
-        rules::{AnalysisRuleConfig, INVALID_THEME_COLOR_RULE_ID},
+        rules::{
+            AnalysisRuleConfig, DIAGRAM_PARSE_RULE_ID, INVALID_THEME_COLOR_RULE_ID,
+            RECOVERED_EDITOR_FACTS_RULE_ID,
+        },
     };
     use merman_core::theme_color::ColorError;
 
@@ -452,5 +529,92 @@ mod tests {
         assert_eq!(diagnostic.span, None);
         assert_eq!(projection.diagram_type, None);
         assert_eq!(projection.parse_location, None);
+    }
+
+    #[test]
+    fn recovery_projection_indexes_the_primary_parse_diagnostic_once() {
+        const FILLER_COUNT: usize = 1_024;
+        const RECOVERY_COUNT: usize = 1_024;
+
+        let source_map = SourceMap::new("flowchart TD\nA[unterminated\n");
+        let span = source_map.whole_source_span().unwrap();
+        let mut candidates = Vec::with_capacity(FILLER_COUNT + RECOVERY_COUNT + 2);
+        candidates.extend((0..FILLER_COUNT).map(|index| {
+            DiagnosticCandidate::new(AnalysisDiagnostic::new(
+                INVALID_THEME_COLOR_RULE_ID,
+                DiagnosticSeverity::Error,
+                DiagnosticCategory::Config,
+                format!("filler {index}"),
+            ))
+        }));
+        candidates.push(
+            DiagnosticCandidate::new(
+                AnalysisDiagnostic::error(
+                    DIAGRAM_PARSE_RULE_ID,
+                    DiagnosticCategory::Parse,
+                    "primary parse failure",
+                )
+                .with_diagram_type("flowchart-v2")
+                .with_span(span),
+            )
+            .with_parse_location(Some(ParseDiagnosticLocation::Fallback)),
+        );
+        candidates.extend((0..RECOVERY_COUNT).map(|index| {
+            DiagnosticCandidate::new(
+                AnalysisDiagnostic::error(
+                    RECOVERED_EDITOR_FACTS_RULE_ID,
+                    DiagnosticCategory::Parse,
+                    format!("recovery {index}"),
+                )
+                .with_diagram_type("flowchart-v2")
+                .with_span(span),
+            )
+            .with_recovery_kind(EditorSemanticDiagnosticKind::ParserRecovery)
+        }));
+        candidates.push(DiagnosticCandidate::new(AnalysisDiagnostic::new(
+            INVALID_THEME_COLOR_RULE_ID,
+            DiagnosticSeverity::Error,
+            DiagnosticCategory::Config,
+            "tail",
+        )));
+
+        let analyzer = crate::Analyzer::new();
+        let diagnostics = project_diagnostic_candidates(
+            &candidates,
+            analyzer.options().diagnostic_policy(),
+            &AnalysisCancellationToken::new(),
+        )
+        .unwrap();
+
+        assert_eq!(diagnostics.len(), FILLER_COUNT + 2);
+        assert_eq!(diagnostics[FILLER_COUNT].id, DIAGRAM_PARSE_RULE_ID);
+        assert_eq!(
+            diagnostics[FILLER_COUNT]
+                .related
+                .iter()
+                .filter(|related| related.message.contains("Parser recovery produced"))
+                .count(),
+            RECOVERY_COUNT
+        );
+        assert_eq!(diagnostics.last().unwrap().message, "tail");
+    }
+
+    #[test]
+    fn diagnostic_candidate_conversion_observes_cancellation() {
+        let diagnostics = (0..1_024).map(|index| {
+            AnalysisDiagnostic::new(
+                INVALID_THEME_COLOR_RULE_ID,
+                DiagnosticSeverity::Error,
+                DiagnosticCategory::Config,
+                format!("diagnostic {index}"),
+            )
+        });
+        let cancellation = AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            candidates_from_diagnostics_cancellable(diagnostics, &cancellation),
+            Err(AnalysisCancelled)
+        ));
     }
 }

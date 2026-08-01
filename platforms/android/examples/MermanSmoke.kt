@@ -712,7 +712,7 @@ private fun checkBinaryOutputContract(contract: JSONObject, mediaType: String) {
             images.getJSONArray("source_ids").stringSet() == setOf("data-url") &&
             !images.getBoolean("filesystem_access") &&
             !images.getBoolean("network_access") &&
-            !images.getBoolean("caller_configurable") &&
+            images.getBoolean("caller_configurable") &&
             limits.getLong("max_bytes_per_image") == 16L * 1024 * 1024 &&
             limits.getLong("max_total_bytes") == 32L * 1024 * 1024 &&
             limits.getLong("max_pixels_per_image") == 16L * 1024 * 1024 &&

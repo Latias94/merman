@@ -248,7 +248,7 @@ export function probeCandidateRuntime(stage, recipe) {
     throw new Error(`${recipe.candidate} candidate does not export its engine constructor.`);
   }
   const engine = new Engine(JSON.stringify({
-    version: 1,
+    version: 2,
     runtime_policy: "deterministic",
     resources: { profile: "interactive" },
   }));
@@ -294,7 +294,7 @@ export function probeCandidateRuntime(stage, recipe) {
       operation_id: "semantic-json",
       source,
       uri: null,
-      options_json: JSON.stringify({ version: 1 }),
+      options_json: JSON.stringify({ version: 2 }),
     })));
     if (
       semantic.ok !== true ||
@@ -309,7 +309,7 @@ export function probeCandidateRuntime(stage, recipe) {
       operation_id: "svg-plan-json",
       source,
       uri: null,
-      options_json: JSON.stringify({ version: 1 }),
+      options_json: JSON.stringify({ version: 2 }),
     })));
     if (
       svgPlan.ok !== true ||

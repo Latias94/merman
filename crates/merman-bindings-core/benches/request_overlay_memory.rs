@@ -22,11 +22,11 @@ const MEDIA_TYPE: &str = "application/json";
 const SEMANTIC_KIND: &str = "binding-operation-result-v1";
 const SOURCE: &[u8] = include_bytes!("fixtures/info_fixed_cost.mmd");
 const BASE_OPTIONS: &[u8] = br#"{
-  "version": 1,
+  "version": 2,
   "runtime_policy": "deterministic",
   "resources": {"profile": "trusted-native"}
 }"#;
-const VERSION_ONLY_OPTIONS: &[u8] = br#"{"version":1}"#;
+const VERSION_ONLY_OPTIONS: &[u8] = br#"{"version":2}"#;
 const EXPECTED_DATA: &[u8] = br#"{"type":"info","showInfo":true}"#;
 const EXPECTED_METADATA: &[u8] = br#"{"version":1,"operation_id":"semantic-json","media_type":"application/json","runtime_policy":"deterministic","byte_length":31}"#;
 

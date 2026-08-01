@@ -3,14 +3,14 @@
   "roots": ["../../../fixtures"],
   "extensions": [".mmd"],
   "binding_options": {
-    "version": 1,
+    "version": 2,
     "runtime_policy": "deterministic",
     "resources": {
       "profile": "trusted-native"
     }
   },
   "operation_options": {
-    "version": 1
+    "version": 2
   },
   "workloads": {
     "cold_svg": {

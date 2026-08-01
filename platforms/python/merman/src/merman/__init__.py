@@ -17,6 +17,7 @@ from ._runtime_catalog import (
 
 from ._resource_options import (
     ResourceLimitId,
+    ResourceOverrideId,
     ResourceOptions,
     ResourceOptionsBuilder,
     ResourceProfile,
@@ -33,6 +34,7 @@ try:
         MermanLintRuleCatalogEntry,
         MermanOperationRequest,
         MermanOperationResult,
+        MermanResourceErrorDetails,
         MermanReusableEngine,
         MermanTextDirection,
         MermanTextMeasureRequest,
@@ -65,8 +67,10 @@ __all__ = [
     "MermanLintRuleCatalogEntry",
     "MermanOperationRequest",
     "MermanOperationResult",
+    "MermanResourceErrorDetails",
     "MermanReusableEngine",
     "ResourceLimitId",
+    "ResourceOverrideId",
     "ResourceOptions",
     "ResourceOptionsBuilder",
     "ResourceProfile",

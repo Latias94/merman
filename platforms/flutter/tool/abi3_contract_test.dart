@@ -11,8 +11,11 @@ import 'package:merman/src/merman_ffi.dart' as ffi_transport;
 
 void main() {
   projectsFrozenAbi3MinimumPrefix();
+  decodesTypedMetadataCatalogs();
+  acceptsAdditiveTypedMetadataFields();
   matchesThePubPackageVersionProjection();
   acceptsAFlatAbi3Catalog();
+  rejectsCatalogsMissingCurrentBindingSchemas();
   projectsSvgPlanOperationFromGeneratedAbi();
   preservesTypedRuntimeOutputContracts();
   preservesCompleteRuntimeResourceContract();
@@ -50,6 +53,29 @@ void projectsFrozenAbi3MinimumPrefix() {
         native.MERMAN_NATIVE_FUNCTION_RESULT_FREE == 4,
     'ABI 3 consumers must preserve the frozen five-slot function prefix',
   );
+  _expect(
+    native.MERMAN_NATIVE_FUNCTION_METADATA_COLLECT == 5,
+    'metadata_collect must occupy the first appended function slot',
+  );
+  _expect(
+    ffi.sizeOf<native.MermanNativeApi>() >
+        native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+    'metadata_collect must remain an appended slot outside the frozen prefix',
+  );
+  _expect(
+    !ffi_transport.nativeApiHasMetadataCollectForTesting(
+          native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+        ) &&
+        ffi_transport.nativeApiHasMetadataCollectForTesting(
+          native.MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
+        ),
+    'consumers must not inspect metadata_collect in a five-slot producer',
+  );
+  _expect(
+    native.MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE <=
+        ffi.sizeOf<native.MermanNativeApi>(),
+    'metadata_collect availability must depend on its own field boundary',
+  );
 
   final request = calloc<native.MermanNativeApiRequest>();
   final api = calloc<native.MermanNativeApi>();
@@ -61,6 +87,10 @@ void projectsFrozenAbi3MinimumPrefix() {
       api.ref.engine_try_close.address == 0,
       'zeroed ABI table should expose the engine_try_close slot',
     );
+    _expect(
+      api.ref.metadata_collect.address == 0,
+      'zeroed ABI table should expose the appended metadata_collect slot',
+    );
     result.ref.allocation_token = 1;
     _expect(
       result.ref.allocation_token == 1,
@@ -71,6 +101,103 @@ void projectsFrozenAbi3MinimumPrefix() {
     calloc.free(api);
     calloc.free(result);
   }
+}
+
+void decodesTypedMetadataCatalogs() {
+  final evidence = MermanAsciiCapabilityEvidence.fromJson({
+    'kind': 'local_advantage',
+    'source': 'fixture',
+    'note': 'typed evidence',
+  });
+  final ascii = MermanAsciiCapability.fromJson({
+    'diagram_type': 'flowchart-v2',
+    'display_name': 'Flowchart',
+    'support_level': 'full',
+    'summary_fallback': false,
+    'supported_semantics': ['nodes', 'edges'],
+    'limits': ['html-labels'],
+    'evidence': [
+      {
+        'kind': evidence.kind,
+        'source': evidence.source,
+        'note': evidence.note,
+      },
+    ],
+  });
+  final family = MermanDiagramFamilyCapability.fromJson({
+    'diagram_type': 'flowchart-v2',
+    'logical_family_kind': 'flowchart',
+    'metadata_id': 'flowchart',
+    'render_model_kind': 'flowchart',
+    'has_detector': true,
+    'has_semantic_parser': true,
+    'has_editor_parser': true,
+    'has_combined_parser': true,
+    'has_render_parser': true,
+    'has_header': true,
+    'config_namespace': 'flowchart',
+  });
+  final rule = MermanLintRuleCatalogEntry.fromJson({
+    'id': 'parse-error',
+    'description': 'Reports parser failures.',
+    'evidence': ['ADR-0070'],
+    'default_severity': 'error',
+    'category': 'parse',
+    'default_enabled': true,
+    'default_profile': 'recommended',
+    'origin': 'merman',
+    'configurable': false,
+    'fixable': false,
+  });
+
+  _expect(
+    ascii.evidence.single.note == 'typed evidence' &&
+        ascii.supportedSemantics.length == 2 &&
+        family.metadataId == 'flowchart' &&
+        family.logicalFamilyKind == 'flowchart' &&
+        family.renderModelKind == 'flowchart' &&
+        family.hasDetector &&
+        family.hasSemanticParser &&
+        family.hasEditorParser &&
+        family.hasCombinedParser &&
+        family.hasHeader &&
+        family.configNamespace == 'flowchart' &&
+        rule.id == 'parse-error' &&
+        rule.evidence.single == 'ADR-0070',
+    'typed metadata records must preserve their public contract',
+  );
+}
+
+void acceptsAdditiveTypedMetadataFields() {
+  final ascii = MermanAsciiCapability.fromJson({
+    'diagram_type': 'flowchart-v2',
+    'display_name': 'Flowchart',
+    'support_level': 'full',
+    'summary_fallback': false,
+    'supported_semantics': <String>[],
+    'limits': <String>[],
+    'evidence': <Object?>[],
+    'future_field': {'nested': true},
+  });
+  final family = MermanDiagramFamilyCapability.fromJson({
+    'diagram_type': 'flowchart-v2',
+    'logical_family_kind': 'flowchart',
+    'metadata_id': null,
+    'render_model_kind': null,
+    'has_detector': true,
+    'has_semantic_parser': true,
+    'has_editor_parser': true,
+    'has_combined_parser': true,
+    'has_render_parser': false,
+    'has_header': true,
+    'config_namespace': null,
+    'future_field': 1,
+  });
+
+  _expect(
+    ascii.diagramType == 'flowchart-v2' && family.metadataId == null,
+    'typed metadata decoders must ignore additive JSON fields',
+  );
 }
 
 void matchesThePubPackageVersionProjection() {
@@ -118,6 +245,34 @@ void acceptsAFlatAbi3Catalog() {
         catalog.cliDefaultProfile == 'trusted-native',
     'flat registry/resource facts should be preserved',
   );
+  _expect(
+    catalog.optionsSchemaVersions.single == 2 &&
+        catalog.payloadSchemas.any(
+          (schema) => schema.id == 'binding-result' && schema.version == 1,
+        ) &&
+        catalog.metadataIds.contains('diagram-family-capabilities') &&
+        catalog.resourceLimitsById['max_source_bytes']!.operationIds
+            .contains('semantic-json'),
+    'runtime discovery additions should retain their typed values',
+  );
+}
+
+void rejectsCatalogsMissingCurrentBindingSchemas() {
+  final legacyOptions = _catalog();
+  legacyOptions['options_schema_versions'] = [1];
+  _expectContractFailure(
+    () => MermanRuntimeCatalog.fromJson(legacyOptions)
+        .requireCurrentBindingSchemas(),
+  );
+
+  final missingResult = _catalog();
+  missingResult['payload_schemas'] = const [
+    {'id': 'operation-metadata', 'version': 1},
+  ];
+  _expectContractFailure(
+    () => MermanRuntimeCatalog.fromJson(missingResult)
+        .requireCurrentBindingSchemas(),
+  );
 }
 
 void preservesCompleteRuntimeResourceContract() {
@@ -149,8 +304,10 @@ void preservesCompleteRuntimeResourceContract() {
   );
   _expect(
     unbounded != null &&
-        unbounded.limits.values.every((value) => value == null),
-    'runtime nullable limit facts must survive',
+        catalog.resourceLimits.every((limit) => limit.hardCap
+            ? unbounded.limits[limit.id] != null
+            : unbounded.limits[limit.id] == null),
+    'runtime nullable policy limits and finite hard caps must survive',
   );
   _expect(
     catalog.generalBindingDefaultResourceProfile.id == 'interactive' &&
@@ -237,6 +394,7 @@ void acceptsAdditiveRuntimeResourceIds() {
         futureLimit.phase == 'future_phase' &&
         futureLimit.hardCap &&
         !futureLimit.overridable &&
+        futureLimit.minimumValue == 1 &&
         validated.resourceProfiles.every(
           (profile) =>
               profile.limits.containsKey('future_limit') &&
@@ -247,14 +405,11 @@ void acceptsAdditiveRuntimeResourceIds() {
 }
 
 void acceptsInvariantOnlyCatalog() {
-  final catalog = _catalog();
-  final capabilities = _runtimeCapabilities(catalog);
-  capabilities['capability_ids'] = <String>[];
-  capabilities['output_ids'] = <String>[];
-  catalog['output_contracts'] = <Object?>[];
-  capabilities['operation_ids'] = ['semantic-json'];
-  capabilities['system_adapter_ids'] = <String>[];
-  capabilities['text_measurement'] = null;
+  final catalog = _catalog(
+    capabilityIds: const [],
+    outputIds: const [],
+    operationIds: const ['semantic-json'],
+  );
 
   final validated = MermanRuntimeCatalog.fromJson(catalog);
   _expect(
@@ -502,6 +657,40 @@ void decodesMachineReadableNativeErrors() {
     busyWithoutResult is MermanBusyException,
     'result-free engine close status must preserve busy classification',
   );
+
+  final resource = MermanException.fromNative(
+    native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+    Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'version': 1,
+          'ok': false,
+          'status': native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+          'status_name': 'resource-limit-exceeded',
+          'kind': 'generic',
+          'capability_id': null,
+          'details': {
+            'resource': {
+              'limit_id': 'max_embedded_image_bytes',
+              'phase': 'embedded_image_decode',
+              'actual': 5,
+              'max': 4,
+              'profile': 'constrained',
+            },
+          },
+          'message': 'embedded image is too large',
+        }),
+      ),
+    ),
+  );
+  _expect(
+    resource.resourceDetails?.limitId == 'max_embedded_image_bytes' &&
+        resource.resourceDetails?.phase == 'embedded_image_decode' &&
+        resource.resourceDetails?.actual == 5 &&
+        resource.resourceDetails?.max == 4 &&
+        resource.resourceDetails?.profile == 'constrained',
+    'resource metadata should survive the Dart boundary',
+  );
 }
 
 void rejectsMismatchedNativeErrorSchema() {
@@ -606,6 +795,18 @@ Map<String, Object?> _catalog({
     'schema_version': 1,
     'transport_api_version': 3,
     'package_version': 'test',
+    'options_schema_versions': const [2],
+    'payload_schemas': const [
+      {'id': 'binding-result', 'version': 1},
+    ],
+    'metadata_ids': const [
+      'ascii-capabilities',
+      'diagram-family-capabilities',
+      'lint-rule-catalog',
+      'supported-diagrams',
+      'supported-host-theme-presets',
+      'supported-themes',
+    ],
     'capabilities': {
       'capability_ids': capabilityIds,
       'output_ids': outputIds,
@@ -622,7 +823,7 @@ Map<String, Object?> _catalog({
       for (final outputId in outputIds) _outputContract(outputId),
     ],
     'registry': {'diagram_family_count': 35},
-    'resources': _resourceContract(),
+    'resources': _resourceContract(operationIds),
   };
 }
 
@@ -649,7 +850,7 @@ Map<String, Object?> _outputContract(String outputId) {
         'source_ids': <String>['data-url'],
         'filesystem_access': false,
         'network_access': false,
-        'caller_configurable': false,
+        'caller_configurable': true,
         'limits': <String, Object?>{
           'max_bytes_per_image': 1024,
           'max_total_bytes': null,
@@ -667,7 +868,8 @@ Map<String, Object?> _outputContract(String outputId) {
   };
 }
 
-Map<String, Object?> _resourceContract() => <String, Object?>{
+Map<String, Object?> _resourceContract(List<String> operationIds) =>
+    <String, Object?>{
       'general_binding_default_profile': MermanResourceProfile.interactive.id,
       'cli_default_profile': MermanResourceProfile.trustedNative.id,
       'limits': <Object?>[
@@ -677,7 +879,9 @@ Map<String, Object?> _resourceContract() => <String, Object?>{
             'phase': _resourceLimitPhase(limit),
             'description': 'Test descriptor for ${limit.id}',
             'overridable': limit.overridable,
-            'hard_cap': false,
+            'hard_cap': !limit.overridable,
+            'minimum_value': limit.minimumValue,
+            'operation_ids': operationIds,
           },
       ],
       'profiles': <Object?>[
@@ -691,7 +895,8 @@ Map<String, Object?> _resourceContract() => <String, Object?>{
             'limits': <String, Object?>{
               for (final limit in MermanResourceLimitId.values)
                 limit.id:
-                    profile == MermanResourceProfile.unboundedForTrustedInput
+                    profile == MermanResourceProfile.unboundedForTrustedInput &&
+                            limit.overridable
                         ? null
                         : 1,
             },
@@ -709,6 +914,26 @@ String _resourceLimitPhase(MermanResourceLimitId limit) => switch (limit) {
       MermanResourceLimitId.maxSvgBytes ||
       MermanResourceLimitId.maxSvgElements =>
         'svg',
+      MermanResourceLimitId.maxDocumentDiagrams => 'document_scan',
+      MermanResourceLimitId.maxAsciiGridCells => 'ascii_layout',
+      MermanResourceLimitId.maxRasterWidth ||
+      MermanResourceLimitId.maxRasterHeight ||
+      MermanResourceLimitId.maxRasterPixels =>
+        'raster_allocation',
+      MermanResourceLimitId.maxEmbeddedImageBytes ||
+      MermanResourceLimitId.maxTotalEmbeddedImageBytes ||
+      MermanResourceLimitId.maxEmbeddedImagePixels ||
+      MermanResourceLimitId.maxTotalEmbeddedImagePixels =>
+        'embedded_image_decode',
+      MermanResourceLimitId.maxPdfFilterImagePixels =>
+        'pdf_filter_rasterization',
+      MermanResourceLimitId.maxSvgConversionIsolationDepth ||
+      MermanResourceLimitId.maxSvgConversionFilterPrimitivesPerFilter ||
+      MermanResourceLimitId.maxTotalSvgConversionFilterPrimitives ||
+      MermanResourceLimitId.maxSvgConversionSubroots ||
+      MermanResourceLimitId.maxNestedSvgImages ||
+      MermanResourceLimitId.svgBackendTreeNodes =>
+        'svg_conversion',
     };
 
 Map<String, Object?> _clonedCatalog() =>

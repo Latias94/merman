@@ -4,7 +4,8 @@ use super::prelude::*;
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_configuration_updates() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -212,7 +213,8 @@ async fn lsp_service_finishes_diagnostic_only_configuration_change() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_noop_configuration_change_finishes_after_initial_publish() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -330,7 +332,8 @@ async fn lsp_service_diagnostic_pull_without_refresh_support_finishes_configurat
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_refreshes_diagnostics_after_configuration_change_when_supported() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, mut responses) = socket.split();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -388,7 +391,7 @@ async fn lsp_service_refreshes_diagnostics_after_configuration_change_when_suppo
         .expect("refresh channel closed");
     assert_eq!(refresh.method(), "workspace/diagnostic/refresh");
 
-    socket
+    responses
         .send(tower_lsp_server::jsonrpc::Response::from_ok(
             refresh.id().cloned().expect("refresh request id"),
             serde_json::Value::Null,
@@ -399,7 +402,8 @@ async fn lsp_service_refreshes_diagnostics_after_configuration_change_when_suppo
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_diagnostic_pull_refresh_updates_open_document_report() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, mut responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -476,7 +480,7 @@ async fn lsp_service_diagnostic_pull_refresh_updates_open_document_report() {
         .expect("refresh channel closed");
     assert_eq!(refresh.method(), "workspace/diagnostic/refresh");
 
-    socket
+    responses
         .send(tower_lsp_server::jsonrpc::Response::from_ok(
             refresh.id().cloned().expect("refresh request id"),
             serde_json::Value::Null,
@@ -524,7 +528,8 @@ async fn lsp_service_diagnostic_pull_refresh_updates_open_document_report() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -591,7 +596,8 @@ async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() 
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_honors_core_rule_disablement() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -748,7 +754,8 @@ async fn lsp_service_rejects_resource_rule_severity_on_initialize() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_rejects_resource_rule_severity_on_configuration_change() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -873,7 +880,8 @@ async fn lsp_service_rejects_resource_rule_severity_on_configuration_change() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration_change() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")

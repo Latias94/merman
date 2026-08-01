@@ -44,7 +44,14 @@ struct ErrorPayload<'a> {
     code_name: &'a str,
     kind: &'a str,
     capability_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    details: Option<ErrorDetails>,
     message: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct ErrorDetails {
+    resource: merman_bindings_core::BindingResourceErrorDetails,
 }
 
 pub(crate) fn create_engine(options_json: &str) -> Result<BindingEngine, BindingError> {
@@ -123,7 +130,11 @@ pub(crate) fn execute_wire(engine: &BindingEngine, request_json: &str) -> String
 }
 
 pub(crate) fn error_envelope(error: &BindingError) -> String {
-    serialize_envelope(&ErrorEnvelope {
+    serialize_envelope(&error_value(error))
+}
+
+pub(crate) fn error_value(error: &BindingError) -> serde_json::Value {
+    serde_json::to_value(ErrorEnvelope {
         version: NODE_WIRE_VERSION,
         ok: false,
         error: ErrorPayload {
@@ -131,8 +142,24 @@ pub(crate) fn error_envelope(error: &BindingError) -> String {
             code_name: error.status().code_name(),
             kind: error.kind().id(),
             capability_id: error.capability_id(),
+            details: error
+                .resource_details()
+                .map(|resource| ErrorDetails { resource }),
             message: error.message(),
         },
+    })
+    .unwrap_or_else(|serialization_error| {
+        serde_json::json!({
+            "version": NODE_WIRE_VERSION,
+            "ok": false,
+            "error": {
+                "code": 9,
+                "code_name": "MERMAN_INTERNAL_ERROR",
+                "kind": "generic",
+                "capability_id": null,
+                "message": format!("failed to serialize Node response: {serialization_error}"),
+            },
+        })
     })
 }
 
@@ -148,7 +175,7 @@ fn serialize_envelope(value: &impl Serialize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::runtime_catalog_wire;
+    use super::{error_envelope, runtime_catalog_wire};
 
     #[test]
     fn runtime_catalog_reports_only_callable_text_measurement_providers() {
@@ -171,6 +198,29 @@ mod tests {
                 .expect("runtime system adapter IDs")
                 .iter()
                 .any(|id| id == "system-timing")
+        );
+    }
+
+    #[test]
+    fn error_wire_preserves_structured_resource_details() {
+        let error = merman_bindings_core::BindingError::resource_limit(
+            "embedded_image_decode",
+            "max_embedded_image_bytes",
+            5,
+            4,
+            "constrained",
+            "embedded image is too large",
+        );
+        let payload: serde_json::Value =
+            serde_json::from_str(&error_envelope(&error)).expect("Node error envelope");
+
+        assert_eq!(
+            payload["error"]["details"]["resource"]["limit_id"],
+            "max_embedded_image_bytes"
+        );
+        assert_eq!(
+            payload["error"]["details"]["resource"]["profile"],
+            "constrained"
         );
     }
 }

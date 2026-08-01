@@ -1,12 +1,47 @@
 use crate::types::{DocumentKind, DocumentUri, Position};
 use merman_analysis::{
-    AnalysisGeneration, AnalyzedDiagram, FenceDelimiter, FenceDelimiterSpans, FenceTextIndex,
-    SharedTextSlice, SourceDescriptor, SourceMap,
+    AnalysisGeneration, AnalyzedDiagram, DiagramParseDisposition, FenceDelimiter,
+    FenceDelimiterSpans, FenceTextIndex, SharedTextSlice, SourceDescriptor, SourceKind, SourceMap,
 };
 use std::fmt;
 use std::mem::size_of;
 use std::ops::Range;
 use std::sync::Arc;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagramDetectionValidity {
+    Valid,
+    RecoverableInvalid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditorDiagramDetection {
+    pub validity: DiagramDetectionValidity,
+    pub diagram_type: String,
+    pub syntax_id: String,
+    pub effective_layout_id: String,
+}
+
+/// Why an analysis generation cannot identify an editor document snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentSnapshotError {
+    /// The generation describes a source kind but does not identify its document URI.
+    MissingSourcePath { kind: SourceKind },
+}
+
+impl fmt::Display for DocumentSnapshotError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingSourcePath { kind } => write!(
+                formatter,
+                "analysis generation for {} source has no document path",
+                kind.as_str()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for DocumentSnapshotError {}
 
 #[derive(Clone)]
 pub struct DocumentSnapshot {
@@ -20,6 +55,7 @@ struct DocumentSnapshotData {
     text: Arc<str>,
     generation: Arc<AnalysisGeneration>,
     fences: Box<[FenceSnapshot]>,
+    detection: Option<EditorDiagramDetection>,
 }
 
 #[derive(Clone)]
@@ -29,18 +65,27 @@ pub struct FenceSnapshot {
 }
 
 impl DocumentSnapshot {
-    pub(crate) fn new(
-        uri: DocumentUri,
+    /// Builds an editor snapshot whose URI and kind come from the generation's source descriptor.
+    ///
+    /// A document path is required because editor snapshots participate in URI-keyed workspaces.
+    pub fn try_from_analysis_generation(
         version: i32,
-        kind: DocumentKind,
         generation: Arc<AnalysisGeneration>,
-    ) -> Self {
-        let text = generation.source_map().source_arc();
+    ) -> Result<Self, DocumentSnapshotError> {
+        let source = generation.source();
+        let uri = source
+            .path
+            .as_deref()
+            .map(DocumentUri::new)
+            .ok_or(DocumentSnapshotError::MissingSourcePath { kind: source.kind })?;
+        let kind = document_kind_for_source_kind(source.kind);
+        let text = generation.source_map().shared_source().source_arc();
+        let detection = detection_for_generation(&generation);
         let fences = (0..generation.diagrams().len())
             .map(|ordinal| FenceSnapshot::new(Arc::clone(&generation), ordinal))
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        Self {
+        Ok(Self {
             inner: Arc::new(DocumentSnapshotData {
                 uri,
                 version,
@@ -48,8 +93,9 @@ impl DocumentSnapshot {
                 text,
                 generation,
                 fences,
+                detection,
             }),
-        }
+        })
     }
 
     pub fn uri(&self) -> &DocumentUri {
@@ -88,6 +134,13 @@ impl DocumentSnapshot {
                     .len()
                     .saturating_mul(size_of::<FenceSnapshot>()),
             )
+            .saturating_add(self.inner.detection.as_ref().map_or(0, |detection| {
+                detection
+                    .diagram_type
+                    .capacity()
+                    .saturating_add(detection.syntax_id.capacity())
+                    .saturating_add(detection.effective_layout_id.capacity())
+            }))
     }
 
     pub fn source_map(&self) -> &SourceMap {
@@ -98,11 +151,15 @@ impl DocumentSnapshot {
         &self.inner.fences
     }
 
-    pub(crate) fn shared_analysis_generation(&self) -> Arc<AnalysisGeneration> {
+    pub fn detection(&self) -> Option<&EditorDiagramDetection> {
+        self.inner.detection.as_ref()
+    }
+
+    pub fn shared_analysis_generation(&self) -> Arc<AnalysisGeneration> {
         Arc::clone(&self.inner.generation)
     }
 
-    pub(crate) fn analysis_generation(&self) -> &AnalysisGeneration {
+    pub fn analysis_generation(&self) -> &AnalysisGeneration {
         self.inner.generation.as_ref()
     }
 
@@ -121,6 +178,38 @@ impl DocumentSnapshot {
             .iter()
             .find(|fence| fence.includes_document_offset(offset))
     }
+}
+
+const fn document_kind_for_source_kind(kind: SourceKind) -> DocumentKind {
+    match kind {
+        SourceKind::Diagram => DocumentKind::Diagram,
+        SourceKind::Markdown => DocumentKind::Markdown,
+        SourceKind::Mdx => DocumentKind::Mdx,
+    }
+}
+
+fn detection_for_generation(generation: &AnalysisGeneration) -> Option<EditorDiagramDetection> {
+    let [diagram] = generation.diagrams() else {
+        return None;
+    };
+    let syntax_id = diagram.syntax().diagram_type.as_ref()?.trim();
+    let effective_layout_id = diagram.syntax().effective_layout.as_ref()?.trim();
+    if syntax_id.is_empty() || effective_layout_id.is_empty() {
+        return None;
+    }
+    let diagram_type = merman_core::diagram_type_metadata_id(syntax_id)?;
+    let validity = match diagram.parse_disposition() {
+        DiagramParseDisposition::Parsed => DiagramDetectionValidity::Valid,
+        DiagramParseDisposition::Recovered => DiagramDetectionValidity::RecoverableInvalid,
+        DiagramParseDisposition::Unavailable => return None,
+    };
+
+    Some(EditorDiagramDetection {
+        validity,
+        diagram_type: diagram_type.to_string(),
+        syntax_id: syntax_id.to_string(),
+        effective_layout_id: effective_layout_id.to_string(),
+    })
 }
 
 impl fmt::Debug for DocumentSnapshot {

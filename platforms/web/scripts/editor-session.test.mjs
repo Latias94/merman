@@ -294,6 +294,12 @@ function runtimeCatalogFixture({
     schema_version: 1,
     transport_api_version: 3,
     package_version: "0.8.0-alpha.4",
+    options_schema_versions: [2],
+    payload_schemas: [
+      { id: "binding-result", version: 1 },
+      { id: "operation-metadata", version: 1 },
+    ],
+    metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
     capabilities,
     output_contracts: outputContracts,
     registry: { diagram_family_count: 0 },
@@ -301,7 +307,22 @@ function runtimeCatalogFixture({
       general_binding_default_profile: "interactive",
       cli_default_profile: "trusted-native",
       limits: [],
-      profiles: [],
+      profiles: [
+        {
+          id: "interactive",
+          purpose: "Interactive use.",
+          trust_assumption: "Untrusted input.",
+          recommended_binding_default: true,
+          limits: {},
+        },
+        {
+          id: "trusted-native",
+          purpose: "Trusted native use.",
+          trust_assumption: "Trusted input.",
+          recommended_binding_default: false,
+          limits: {},
+        },
+      ],
     },
   };
 }
@@ -331,6 +352,14 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
         return catalog;
       },
       /runtime catalog is missing required fields: output_contracts/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.options_schema_versions = [1];
+        return catalog;
+      },
+      /does not advertise options schema v2/,
     ],
     [
       () =>
@@ -396,6 +425,74 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
       }),
       /runtime output contracts do not match runtime output IDs/,
     ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.resources.cli_default_profile = "missing";
+        return catalog;
+      },
+      /runtime resource defaults name unknown profiles/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.resources.general_binding_default_profile = "trusted-native";
+        return catalog;
+      },
+      /runtime resources must recommend exactly the binding default profile/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.resources.profiles.push({ ...catalog.resources.profiles[0] });
+        return catalog;
+      },
+      /runtime resource profile IDs must be unique/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.resources.profiles[1].recommended_binding_default = true;
+        return catalog;
+      },
+      /runtime resources must recommend exactly the binding default profile/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.resources.limits = [{
+          id: "max_source_bytes",
+          phase: "source",
+          description: "Maximum source bytes.",
+          overridable: true,
+          hard_cap: true,
+          minimum_value: 1,
+          operation_ids: ["analysis-json"],
+        }];
+        catalog.resources.profiles[0].limits = { max_source_bytes: 1024 };
+        catalog.resources.profiles[1].limits = { max_source_bytes: 4096 };
+        return catalog;
+      },
+      /runtime hard resource limits cannot be overridable/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.resources.limits = [{
+          id: "max_source_bytes",
+          phase: "source",
+          description: "Maximum source bytes.",
+          overridable: false,
+          hard_cap: true,
+          minimum_value: 1,
+          operation_ids: ["analysis-json"],
+        }];
+        catalog.resources.profiles[0].limits = { max_source_bytes: 1024 };
+        catalog.resources.profiles[1].limits = { max_source_bytes: null };
+        return catalog;
+      },
+      /runtime resource profile removed a finite hard cap/,
+    ],
   ];
 
   for (const [catalog, expected] of cases) {
@@ -439,6 +536,8 @@ test("runtime catalog accepts unknown future IDs", async () => {
       description: "future limit",
       overridable: false,
       hard_cap: true,
+      minimum_value: 1,
+      operation_ids: ["future-operation"],
       future_limit_metadata: true,
     },
   ];
@@ -447,11 +546,13 @@ test("runtime catalog accepts unknown future IDs", async () => {
       id: "future-profile",
       purpose: "future",
       trust_assumption: "future",
-      recommended_binding_default: false,
-      limits: {},
+      recommended_binding_default: true,
+      limits: { "future-limit": 4096 },
       future_profile_metadata: true,
     },
   ];
+  futureCatalog.resources.general_binding_default_profile = "future-profile";
+  futureCatalog.resources.cli_default_profile = "future-profile";
   const runtime = bindSurfaceRuntime(
     async () => ({
       default: async () => {},
@@ -464,7 +565,17 @@ test("runtime catalog accepts unknown future IDs", async () => {
   await runtime.initMerman();
 
   const catalog = runtime.runtimeCatalog();
+  assert.deepEqual(catalog.options_schema_versions, [2]);
+  assert.deepEqual(catalog.payload_schemas, [
+    { id: "binding-result", version: 1 },
+    { id: "operation-metadata", version: 1 },
+  ]);
+  assert.deepEqual(catalog.metadata_ids, [
+    "diagram-family-capabilities",
+    "supported-diagrams",
+  ]);
   assert.equal(catalog.capabilities.capability_ids.at(-1), "future-capability");
+  assert.deepEqual(catalog.resources.limits[0].operation_ids, ["future-operation"]);
   assert.equal(catalog.resources.limits[0].id, "future-limit");
   assert.equal(catalog.resources.profiles[0].id, "future-profile");
 });
@@ -479,6 +590,26 @@ test("runtime catalog preserves wasm-bindgen optional and map projections", asyn
       text_measurement: undefined,
     },
   });
+  catalog.resources.limits = [
+    {
+      id: "max_source_bytes",
+      phase: "source",
+      description: "test source limit",
+      overridable: true,
+      hard_cap: false,
+      minimum_value: 1,
+      operation_ids: ["analysis-json", "semantic-json"],
+    },
+    {
+      id: "max_svg_bytes",
+      phase: "svg",
+      description: "test SVG limit",
+      overridable: true,
+      hard_cap: false,
+      minimum_value: 1,
+      operation_ids: [],
+    },
+  ];
   catalog.resources.profiles = [
     {
       id: "interactive",
@@ -487,6 +618,16 @@ test("runtime catalog preserves wasm-bindgen optional and map projections", asyn
       recommended_binding_default: true,
       limits: new Map([
         ["max_source_bytes", 1024],
+        ["max_svg_bytes", undefined],
+      ]),
+    },
+    {
+      id: "trusted-native",
+      purpose: "test",
+      trust_assumption: "test",
+      recommended_binding_default: false,
+      limits: new Map([
+        ["max_source_bytes", undefined],
         ["max_svg_bytes", undefined],
       ]),
     },

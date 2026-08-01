@@ -1,9 +1,16 @@
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisGeneration, AnalysisPayload, Analyzer,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnosticPolicy, AnalysisGeneration,
+    AnalysisPayload,
+};
+#[cfg(test)]
+use merman_analysis::{
+    AnalysisCaptureOutcome, Analyzer, analyze_document_generation_shared,
+    source_descriptor_for_kind,
 };
 #[cfg(test)]
 use merman_editor_core::EditorDiagramDetection;
 use std::mem::size_of;
+use std::str::FromStr;
 use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 
@@ -11,9 +18,26 @@ use tower_lsp_server::ls_types::Uri;
 pub(crate) struct DocumentSnapshot {
     uri: Uri,
     editor: merman_editor_core::DocumentSnapshot,
-    #[cfg(test)]
-    detection: Option<EditorDiagramDetection>,
+    generation_weight: usize,
+    snapshot_weight: usize,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct InvalidDocumentUri {
+    uri: String,
+}
+
+impl std::fmt::Display for InvalidDocumentUri {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "editor snapshot source path is not a valid absolute URI: {}",
+            self.uri
+        )
+    }
+}
+
+impl std::error::Error for InvalidDocumentUri {}
 
 /// The LSP-owned form of one editor-core analysis generation.
 ///
@@ -22,8 +46,9 @@ pub(crate) struct DocumentSnapshot {
 #[derive(Debug)]
 pub(crate) struct DocumentAnalysisContext {
     pub(crate) snapshot: Arc<DocumentSnapshot>,
-    generation: Arc<AnalysisGeneration>,
     pub(crate) payload: Arc<AnalysisPayload>,
+    diagnostic_generation: DiagnosticGeneration,
+    owned_weight: AnalysisOwnedWeight,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,88 +117,121 @@ impl SnapshotContext {
     }
 }
 
-impl DocumentAnalysisContext {
-    pub(crate) fn from_editor(
-        context: merman_editor_core::DocumentAnalysisContext,
-        uri: Uri,
-    ) -> Self {
-        debug_assert_eq!(context.snapshot().uri().as_str(), uri.as_str());
-        #[cfg(test)]
-        let detection = context.detection().cloned();
-        let editor = context.snapshot().clone();
-        let generation = context.shared_analysis_generation();
-        let payload = context.shared_payload();
-        Self {
-            snapshot: Arc::new(DocumentSnapshot {
-                uri,
-                editor,
-                #[cfg(test)]
-                detection,
-            }),
-            generation,
-            payload,
-        }
-    }
-
-    pub(crate) fn reproject_cancellable(
-        &self,
-        analyzer: &Analyzer,
-        cancellation: &AnalysisCancellationToken,
-    ) -> Result<Self, AnalysisCancelled> {
-        let payload = Arc::new(
-            self.generation
-                .project_cancellable(analyzer.options().diagnostic_policy(), cancellation)?,
-        );
-        cancellation.checkpoint()?;
+impl DocumentSnapshot {
+    pub(crate) fn try_from_editor(
+        editor: merman_editor_core::DocumentSnapshot,
+    ) -> Result<Self, InvalidDocumentUri> {
+        let source_uri = editor.uri().as_str();
+        let uri = Uri::from_str(source_uri).map_err(|_| InvalidDocumentUri {
+            uri: source_uri.to_string(),
+        })?;
+        let arc_overhead = 2usize.saturating_mul(size_of::<usize>());
+        let generation_weight = arc_overhead
+            .saturating_add(size_of::<AnalysisGeneration>())
+            .saturating_add(
+                editor
+                    .analysis_generation()
+                    .estimated_owned_heap_bytes_excluding_source(),
+            );
+        let snapshot_weight = arc_overhead
+            .saturating_add(size_of::<DocumentSnapshot>())
+            .saturating_add(uri.as_str().len())
+            .saturating_add(editor.estimated_owned_heap_bytes_excluding_shared_analysis());
         Ok(Self {
-            snapshot: Arc::clone(&self.snapshot),
-            generation: Arc::clone(&self.generation),
-            payload,
+            uri,
+            editor,
+            generation_weight,
+            snapshot_weight,
         })
     }
 
-    pub(crate) fn estimated_owned_weight(&self) -> AnalysisOwnedWeight {
-        let arc_overhead = 2usize.saturating_mul(size_of::<usize>());
-        let generation = arc_overhead
-            .saturating_add(size_of::<AnalysisGeneration>())
-            .saturating_add(
-                self.generation
-                    .estimated_owned_heap_bytes_excluding_source(),
-            );
-        let payload = arc_overhead
-            .saturating_add(size_of::<AnalysisPayload>())
-            .saturating_add(self.payload.estimated_owned_heap_bytes());
-        let snapshots = arc_overhead
-            .saturating_add(size_of::<DocumentAnalysisContext>())
-            .saturating_add(arc_overhead)
-            .saturating_add(size_of::<DocumentSnapshot>())
-            .saturating_add(self.snapshot.uri.as_str().len())
-            .saturating_add(
-                self.snapshot
-                    .editor
-                    .estimated_owned_heap_bytes_excluding_shared_analysis(),
-            );
-        #[cfg(test)]
-        let snapshots = self
-            .snapshot
-            .detection
-            .as_ref()
-            .map_or(snapshots, |detection| {
-                snapshots
-                    .saturating_add(detection.diagram_type.capacity())
-                    .saturating_add(detection.syntax_id.capacity())
-                    .saturating_add(detection.effective_layout_id.capacity())
-            });
-        AnalysisOwnedWeight {
-            generation,
-            payload,
-            snapshots,
-        }
+    pub(crate) fn analysis_generation(&self) -> &AnalysisGeneration {
+        self.editor.analysis_generation()
+    }
+
+    pub(crate) fn generation_identity(&self) -> usize {
+        self.analysis_generation() as *const AnalysisGeneration as usize
     }
 
     #[cfg(test)]
-    pub(crate) fn generation(&self) -> &Arc<AnalysisGeneration> {
-        &self.generation
+    pub(crate) fn shared_analysis_generation(&self) -> Arc<AnalysisGeneration> {
+        self.editor.shared_analysis_generation()
+    }
+}
+
+impl DocumentAnalysisContext {
+    #[cfg(test)]
+    pub(crate) fn from_editor(
+        context: merman_editor_core::DocumentAnalysisContext,
+        diagnostic_generation: DiagnosticGeneration,
+    ) -> Result<Self, InvalidDocumentUri> {
+        let editor = context.snapshot().clone();
+        let payload = context.shared_payload();
+        let snapshot = Arc::new(DocumentSnapshot::try_from_editor(editor)?);
+        Ok(Self::from_projected_parts(
+            snapshot,
+            payload,
+            diagnostic_generation,
+        ))
+    }
+
+    pub(crate) fn project_cancellable(
+        snapshot: Arc<DocumentSnapshot>,
+        policy: &AnalysisDiagnosticPolicy,
+        diagnostic_generation: DiagnosticGeneration,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        let payload = Arc::new(
+            snapshot
+                .analysis_generation()
+                .project_cancellable(policy, cancellation)?,
+        );
+        cancellation.checkpoint()?;
+        Ok(Self::from_projected_parts(
+            snapshot,
+            payload,
+            diagnostic_generation,
+        ))
+    }
+
+    fn from_projected_parts(
+        snapshot: Arc<DocumentSnapshot>,
+        payload: Arc<AnalysisPayload>,
+        diagnostic_generation: DiagnosticGeneration,
+    ) -> Self {
+        let arc_overhead = 2usize.saturating_mul(size_of::<usize>());
+        let owned_weight = AnalysisOwnedWeight {
+            generation: snapshot.generation_weight,
+            payload: arc_overhead
+                .saturating_add(size_of::<AnalysisPayload>())
+                .saturating_add(payload.estimated_owned_heap_bytes()),
+            snapshots: arc_overhead
+                .saturating_add(size_of::<DocumentAnalysisContext>())
+                .saturating_add(snapshot.snapshot_weight),
+        };
+        Self {
+            snapshot,
+            payload,
+            diagnostic_generation,
+            owned_weight,
+        }
+    }
+
+    pub(crate) fn diagnostic_generation(&self) -> DiagnosticGeneration {
+        self.diagnostic_generation
+    }
+
+    pub(crate) fn generation_identity(&self) -> usize {
+        self.snapshot.generation_identity()
+    }
+
+    pub(crate) fn estimated_owned_weight(&self) -> AnalysisOwnedWeight {
+        self.owned_weight
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shared_analysis_generation(&self) -> Arc<AnalysisGeneration> {
+        self.snapshot.shared_analysis_generation()
     }
 }
 
@@ -184,16 +242,22 @@ pub(crate) fn snapshot_for_test(
     source: impl Into<Arc<str>>,
 ) -> Arc<DocumentSnapshot> {
     let kind = merman_editor_core::DocumentKind::from_path(uri.path().as_str());
-    let context = merman_editor_core::DocumentWorkspace::build_analysis_context_with_shared_text(
-        &Analyzer::new(),
-        uri.as_str(),
-        version,
-        source.into(),
-        kind,
+    let source = source.into();
+    let analyzer = Analyzer::new();
+    let descriptor = source_descriptor_for_kind(Some(uri.as_str()), kind.source_kind());
+    let generation = match analyze_document_generation_shared(source, &analyzer, descriptor) {
+        AnalysisCaptureOutcome::Ready(generation) => Arc::new(generation),
+        AnalysisCaptureOutcome::Rejected(rejection) => {
+            panic!("test source must be within the default analysis limit: {rejection:?}")
+        }
+    };
+    let editor =
+        merman_editor_core::DocumentSnapshot::try_from_analysis_generation(version, generation)
+            .expect("test analysis generation must preserve its document URI");
+    Arc::new(
+        DocumentSnapshot::try_from_editor(editor)
+            .expect("test analysis source must contain a valid LSP URI"),
     )
-    .into_ready()
-    .expect("test source must be within the default analysis limit");
-    DocumentAnalysisContext::from_editor(context, uri).snapshot
 }
 
 impl DocumentSnapshot {
@@ -221,7 +285,7 @@ impl DocumentSnapshot {
 
     #[cfg(test)]
     pub(crate) fn detection(&self) -> Option<&EditorDiagramDetection> {
-        self.detection.as_ref()
+        self.editor.detection()
     }
 
     #[cfg(test)]
@@ -243,10 +307,13 @@ fn position_to_editor(
 #[cfg(test)]
 mod tests {
     use merman_analysis::{
-        AnalysisCancellationToken, AnalysisOptions, AnalysisRuleConfig, Analyzer,
-        DiagnosticSeverity as AnalysisDiagnosticSeverity,
+        AnalysisCancellationToken, AnalysisCaptureOutcome, AnalysisOptions, AnalysisRuleConfig,
+        Analyzer, DiagnosticSeverity as AnalysisDiagnosticSeverity, SourceKind,
+        analyze_document_generation_shared, source_descriptor_for_kind,
     };
-    use merman_editor_core::{DocumentKind, DocumentWorkspace};
+    use merman_editor_core::{
+        DocumentKind, DocumentSnapshot as EditorDocumentSnapshot, DocumentWorkspace,
+    };
     use std::str::FromStr;
     use std::sync::Arc;
     use tower_lsp_server::ls_types::{
@@ -255,7 +322,7 @@ mod tests {
 
     #[test]
     fn lsp_context_reuses_the_editor_generation_payload_and_text_index() {
-        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let uri = Uri::from_str("file:///tmp/canonical%20source.mmd").unwrap();
         let editor = DocumentWorkspace::build_analysis_context_with_shared_text(
             &Analyzer::new(),
             uri.as_str(),
@@ -269,13 +336,44 @@ mod tests {
         let generation = editor.shared_analysis_generation();
         let text_index = editor.snapshot().fences()[0].text_index() as *const _;
 
-        let lsp = super::DocumentAnalysisContext::from_editor(editor, uri);
+        let lsp =
+            super::DocumentAnalysisContext::from_editor(editor, super::DiagnosticGeneration(1))
+                .expect("editor source must contain a valid LSP URI");
 
         assert!(Arc::ptr_eq(&lsp.payload, &payload));
-        assert!(Arc::ptr_eq(lsp.generation(), &generation));
+        assert!(Arc::ptr_eq(&lsp.shared_analysis_generation(), &generation));
+        assert_eq!(lsp.snapshot.uri().as_str(), uri.as_str());
+        assert_eq!(
+            lsp.snapshot.analysis_generation().source().path.as_deref(),
+            Some(uri.as_str())
+        );
         assert_eq!(
             lsp.snapshot.fences()[0].text_index() as *const _,
             text_index
+        );
+    }
+
+    #[test]
+    fn lsp_snapshot_rejects_an_editor_source_without_an_absolute_uri() {
+        let generation = match analyze_document_generation_shared(
+            Arc::from("flowchart TD\nA-->B\n"),
+            &Analyzer::new(),
+            source_descriptor_for_kind(Some("relative/path.mmd"), SourceKind::Diagram),
+        ) {
+            AnalysisCaptureOutcome::Ready(generation) => Arc::new(generation),
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                panic!("source should be within the analysis limit: {rejection:?}")
+            }
+        };
+        let editor = EditorDocumentSnapshot::try_from_analysis_generation(1, generation)
+            .expect("editor snapshots accept protocol-neutral document paths");
+
+        let error = super::DocumentSnapshot::try_from_editor(editor)
+            .expect_err("LSP snapshots require an absolute URI");
+
+        assert_eq!(
+            error.to_string(),
+            "editor snapshot source path is not a valid absolute URI: relative/path.mmd"
         );
     }
 
@@ -302,7 +400,9 @@ mod tests {
         )
         .into_ready()
         .expect("source is within the analysis limit");
-        let lsp = super::DocumentAnalysisContext::from_editor(editor, uri.clone());
+        let lsp =
+            super::DocumentAnalysisContext::from_editor(editor, super::DiagnosticGeneration(1))
+                .expect("editor source must contain a valid LSP URI");
         let fence_identity = lsp
             .snapshot
             .fences()
@@ -347,9 +447,13 @@ mod tests {
                     .unwrap(),
             ),
         );
-        let projected = lsp
-            .reproject_cancellable(&analyzer, &AnalysisCancellationToken::new())
-            .expect("diagnostic reprojection should complete");
+        let projected = super::DocumentAnalysisContext::project_cancellable(
+            Arc::clone(&lsp.snapshot),
+            analyzer.options().diagnostic_policy(),
+            super::DiagnosticGeneration(2),
+            &AnalysisCancellationToken::new(),
+        )
+        .expect("diagnostic reprojection should complete");
         let projected_protocol =
             crate::diagnostics::analysis_payload_to_diagnostics(&projected.payload, &uri);
         let projected_parse = projected_protocol
@@ -363,7 +467,10 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(Arc::ptr_eq(&projected.snapshot, &lsp.snapshot));
-        assert!(Arc::ptr_eq(projected.generation(), lsp.generation()));
+        assert!(Arc::ptr_eq(
+            &projected.shared_analysis_generation(),
+            &lsp.shared_analysis_generation()
+        ));
         assert_eq!(
             projected
                 .snapshot

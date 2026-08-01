@@ -168,18 +168,7 @@ where
         self.record_retained_weight();
     }
 
-    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&K, &V) -> bool) {
-        let removed = self
-            .entries
-            .iter()
-            .filter(|(key, entry)| !keep(key, &entry.value))
-            .map(|(key, _)| key.clone())
-            .collect::<Vec<_>>();
-        for key in removed {
-            self.remove(&key);
-        }
-    }
-
+    #[cfg(test)]
     pub(crate) fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.entries.iter().map(|(key, entry)| (key, &entry.value))
     }

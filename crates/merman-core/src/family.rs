@@ -215,6 +215,7 @@ pub struct DiagramHeaderFact {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct DiagramFamilyCapability {
     /// Mermaid diagram type id used by the pinned detector and parser registries.
     pub diagram_type: &'static str,

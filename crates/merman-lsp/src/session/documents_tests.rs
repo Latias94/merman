@@ -3,19 +3,24 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::{
-    AnalyzerConfigurationChange, AnalyzerOptionsPreparation,
-    DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES, DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiagnosticState,
-    DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError, PreparedDocumentText,
-    SemanticTokensState, SessionState, SnapshotConfigurationPlan, StoredDocument,
-    TextChangePreparation, TextDocumentUpdate, default_lsp_analysis_options,
+    AnalyzerConfigurationChange, AnalyzerOptionsPreparation, CachedAnalysisGeneration,
+    ConfigurationUpdateOutcome, DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
+    DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES,
+    DiagnosticProjectionPreparation, DocumentDiagnosticState, DocumentDiscardedSource,
+    DocumentResourceLimit, DocumentSyncError, PreparedDocumentText, SemanticTokensState,
+    SessionState, SnapshotConfigurationPlan, StoredDocument, TextChangePreparation,
+    TextDocumentUpdate, cached_analysis_weight, default_lsp_analysis_options,
 };
-use crate::session::analysis::executor::DiagnosticReprojectionRequest;
-use crate::session::analysis::request::AnalysisBuildError;
-use crate::snapshot::{DocumentSnapshot, SnapshotContext};
+use crate::session::analysis::executor::{
+    DiagnosticProjectionOrigin, DiagnosticReprojectionRequest,
+};
+use crate::session::analysis::request::{AnalysisBuildError, AnalysisBuildRequest};
+use crate::session::cache::WeightedReplacement;
+use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot, SnapshotContext};
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, AnalysisRuleConfig,
-    AnalysisRuleProfile, Analyzer, DiagnosticSeverity, FenceSemanticRole, FenceTextIndexSource,
-    source_limit_diagnostic_span,
+    AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, AnalysisResourceLimit,
+    AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticSeverity, FenceSemanticRole,
+    FenceTextIndexSource, source_limit_diagnostic_span,
 };
 use merman_editor_core::DocumentKind;
 use tower_lsp_server::ls_types::{
@@ -26,11 +31,10 @@ static CUSTOM_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static CUSTOM_ASYNC_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static REPEATED_DIAGNOSTIC_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
-fn one_reprojection(
-    mut requests: Vec<DiagnosticReprojectionRequest>,
-) -> DiagnosticReprojectionRequest {
-    assert_eq!(requests.len(), 1, "expected one diagnostic reprojection");
-    requests.pop().unwrap()
+fn reprojection_for(store: &SessionState, uri: &Uri) -> DiagnosticReprojectionRequest {
+    store
+        .diagnostic_reprojection_request(uri)
+        .expect("expected a lazy diagnostic reprojection")
 }
 
 fn custom_session_flowchart_parser(
@@ -69,10 +73,9 @@ trait PreparedDocumentTextTestExt {
 
 impl PreparedDocumentTextTestExt for PreparedDocumentText {
     fn new(text: String) -> Self {
-        let oversized_span = Some(source_limit_diagnostic_span(&text));
         Self {
             text,
-            oversized_span,
+            rejection: None,
         }
     }
 }
@@ -84,13 +87,7 @@ trait SessionStateTestExt: Sized {
 
     fn with_analysis_cache_budget(analysis_cache_budget: usize) -> Self;
 
-    fn begin_analyzer_options(
-        &mut self,
-        options: AnalysisOptions,
-    ) -> (
-        AnalyzerConfigurationChange,
-        Vec<DiagnosticReprojectionRequest>,
-    );
+    fn begin_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange;
 
     fn prepare_snapshot_configuration(
         &self,
@@ -106,8 +103,6 @@ trait SessionStateTestExt: Sized {
         text: String,
         kind: DocumentKind,
     ) -> StoredDocument;
-
-    fn resource_limit_for_source(&self, source: &str) -> Option<DocumentResourceLimit>;
 
     fn open_text(
         &mut self,
@@ -151,19 +146,13 @@ impl SessionStateTestExt for SessionState {
         )
     }
 
-    fn begin_analyzer_options(
-        &mut self,
-        options: AnalysisOptions,
-    ) -> (
-        AnalyzerConfigurationChange,
-        Vec<DiagnosticReprojectionRequest>,
-    ) {
+    fn begin_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
         let request = self.begin_analyzer_configuration_request();
         match self
             .prepare_analyzer_options(request, options)
             .expect("a synchronous analyzer update cannot be superseded")
         {
-            AnalyzerOptionsPreparation::Applied(change, requests) => (change, requests),
+            AnalyzerOptionsPreparation::Applied(change) => change,
             AnalyzerOptionsPreparation::RequiresSnapshotPreparation(plan) => {
                 let batch = plan
                     .prepare()
@@ -182,12 +171,7 @@ impl SessionStateTestExt for SessionState {
     }
 
     fn apply_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
-        let (change, requests) = self.begin_analyzer_options(options);
-        assert!(
-            requests.is_empty(),
-            "synchronous analyzer updates cannot execute diagnostic reprojection"
-        );
-        change
+        self.begin_analyzer_options(options)
     }
 
     fn upsert_text(
@@ -197,22 +181,23 @@ impl SessionStateTestExt for SessionState {
         text: String,
         kind: DocumentKind,
     ) -> StoredDocument {
-        if let Some(resource_limit) = self.resource_limit_for_source(&text) {
-            return self.upsert_resource_limited(uri, version, kind, resource_limit);
-        }
-
-        let document =
-            StoredDocument::available(uri.clone(), version, kind, Arc::<str>::from(text));
+        let text = Arc::<str>::from(text);
+        let source = super::document_source_descriptor(&uri, kind);
+        let document = match self
+            .analyzer
+            .options()
+            .resource_limits()
+            .preflight_document(text.as_ref(), &source)
+        {
+            Some(rejection) => StoredDocument {
+                uri: uri.clone(),
+                version,
+                kind,
+                source: super::document_source_from_rejection(Arc::clone(&text), rejection),
+            },
+            None => StoredDocument::available(uri.clone(), version, kind, text),
+        };
         self.upsert_document(uri, document)
-    }
-
-    fn resource_limit_for_source(&self, source: &str) -> Option<DocumentResourceLimit> {
-        let max_source_bytes = self.analyzer.options().max_source_bytes()?;
-        (source.len() > max_source_bytes).then(|| DocumentResourceLimit {
-            source_len: source.len(),
-            max_source_bytes,
-            span: source_limit_diagnostic_span(source),
-        })
     }
 
     fn open_text(
@@ -262,19 +247,19 @@ impl SessionStateTestExt for SessionState {
             Ok(analysis) => analysis,
             Err(AnalysisBuildError::Rejected(rejection)) => {
                 let document = self.documents.get(uri)?.document.clone();
-                self.upsert_resource_limited(
-                    document.uri,
-                    document.version,
-                    document.kind,
-                    DocumentResourceLimit {
-                        source_len: rejection.source_len(),
-                        max_source_bytes: rejection.max_source_bytes(),
-                        span: rejection
-                            .payload()
-                            .diagnostics
-                            .first()
-                            .and_then(|diagnostic| diagnostic.span)
-                            .expect("source-limit rejection must retain its source span"),
+                let text = Arc::clone(
+                    document
+                        .retained_text()
+                        .expect("a rejected build must still have its captured source"),
+                );
+                let source = super::document_source_from_rejection(text, rejection);
+                self.upsert_document(
+                    document.uri.clone(),
+                    StoredDocument {
+                        uri: document.uri,
+                        version: document.version,
+                        kind: document.kind,
+                        source,
                     },
                 );
                 return None;
@@ -283,7 +268,80 @@ impl SessionStateTestExt for SessionState {
                 unreachable!("a fresh test snapshot cancellation cannot be cancelled")
             }
         };
-        self.insert_built_analysis(&request, analysis)
+        commit_built_snapshot_for_test(self, &request, analysis).map(|(context, _)| context)
+    }
+}
+
+fn project_snapshot_for_test(
+    store: &SessionState,
+    snapshot: Arc<DocumentSnapshot>,
+) -> Arc<DocumentAnalysisContext> {
+    Arc::new(
+        DocumentAnalysisContext::project_cancellable(
+            snapshot,
+            store.analyzer.options().diagnostic_policy(),
+            store.diagnostic_generation,
+            &AnalysisCancellationToken::new(),
+        )
+        .expect("test diagnostic projection should complete"),
+    )
+}
+
+fn commit_built_snapshot_for_test(
+    store: &mut SessionState,
+    request: &AnalysisBuildRequest,
+    snapshot: Arc<DocumentSnapshot>,
+) -> Option<(SnapshotContext, Arc<DocumentAnalysisContext>)> {
+    let snapshot = store.commit_built_snapshot(request, snapshot)?;
+    match store.prepare_diagnostic_projection_for_snapshot(
+        &snapshot,
+        DiagnosticProjectionOrigin::FreshBuild,
+    )? {
+        DiagnosticProjectionPreparation::Ready(context) => {
+            let cached = Arc::clone(store.cached_analysis_generation(request.uri())?);
+            Some((context, cached))
+        }
+        DiagnosticProjectionPreparation::Project(projection) => {
+            let projected = project_snapshot_for_test(store, Arc::clone(projection.snapshot()));
+            let context = SnapshotContext::with_analysis(
+                Arc::clone(&projected.snapshot),
+                Arc::clone(&projected.payload),
+                projection.snapshot_generation(),
+                store.diagnostic_generation,
+                projection.document_epoch(),
+            );
+            let replacement = WeightedReplacement {
+                key: projection.uri().clone(),
+                value: CachedAnalysisGeneration {
+                    context: Arc::clone(&projected),
+                    document_epoch: projection.document_epoch(),
+                    snapshot_generation: projection.snapshot_generation(),
+                },
+                weight: cached_analysis_weight(projection.uri(), &projected),
+            };
+            let cached_matches_generation = store
+                .analysis_generations
+                .peek(projection.uri())
+                .is_some_and(|cached| {
+                    cached.document_epoch == projection.document_epoch()
+                        && cached.snapshot_generation == projection.snapshot_generation()
+                        && cached.context.generation_identity() == projected.generation_identity()
+                });
+            if cached_matches_generation {
+                store
+                    .analysis_generations
+                    .replace_batch_preserving_recency(vec![replacement]);
+            } else if store.analysis_generations.peek(projection.uri()).is_some() {
+                return None;
+            } else if matches!(projection.origin(), DiagnosticProjectionOrigin::FreshBuild) {
+                store.analysis_generations.insert(
+                    replacement.key,
+                    replacement.value,
+                    replacement.weight,
+                );
+            }
+            Some((context, projected))
+        }
     }
 }
 
@@ -319,6 +377,125 @@ fn new_store_uses_lsp_default_source_limit() {
         store.analyzer_options().max_source_bytes(),
         Some(DEFAULT_LSP_MAX_SOURCE_BYTES)
     );
+    assert_eq!(
+        store.analyzer_options().max_document_diagrams(),
+        Some(DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS)
+    );
+}
+
+#[test]
+fn markdown_diagram_limit_retains_text_without_admitting_a_snapshot() {
+    let mut store = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/limited.md").unwrap();
+    let source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+    store
+        .apply_analyzer_options(default_lsp_analysis_options().with_max_document_diagrams(Some(1)));
+
+    let document = store.open_text(uri.clone(), 1, source.to_string(), DocumentKind::Markdown);
+
+    assert_eq!(document.retained_text().unwrap().as_ref(), source);
+    assert!(document.is_analysis_unavailable());
+    assert_eq!(
+        document.analysis_rejection().unwrap().resource_limit(),
+        AnalysisResourceLimit::DocumentDiagrams {
+            observed_document_diagrams: 2,
+            max_document_diagrams: 1,
+        }
+    );
+    assert_eq!(document.resource_limit(), None);
+    assert!(store.snapshot_build_request(&uri).is_none());
+    assert!(store.snapshot(&uri).is_none());
+}
+
+#[test]
+fn ranged_changes_cross_markdown_diagram_limit_in_both_directions() {
+    let mut store = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/ranged-limit.md").unwrap();
+    let source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+    store
+        .apply_analyzer_options(default_lsp_analysis_options().with_max_document_diagrams(Some(1)));
+    store.open_text(uri.clone(), 1, source.to_string(), DocumentKind::Markdown);
+
+    let recovered = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(4, 3), Position::new(4, 10))),
+            range_length: None,
+            text: "text".to_string(),
+        }],
+    );
+    assert_eq!(recovered, TextDocumentUpdate::Applied);
+    let document = store.get(&uri).unwrap();
+    assert!(!document.is_analysis_unavailable());
+    assert!(document.analysis_rejection().is_none());
+    assert!(store.snapshot(&uri).is_some());
+
+    let rejected = store.apply_text_changes(
+        uri.clone(),
+        3,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(4, 3), Position::new(4, 7))),
+            range_length: None,
+            text: "mermaid".to_string(),
+        }],
+    );
+    assert_eq!(rejected, TextDocumentUpdate::Applied);
+    let document = store.get(&uri).unwrap();
+    assert!(document.is_analysis_unavailable());
+    assert!(document.analysis_rejection().is_some());
+    assert!(!store.has_snapshot(&uri));
+}
+
+#[test]
+fn configuration_reclassifies_retained_markdown_without_reopening() {
+    let mut store = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/config-limit.md").unwrap();
+    let source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+    store
+        .apply_analyzer_options(default_lsp_analysis_options().with_max_document_diagrams(Some(2)));
+    store.open_text(uri.clone(), 1, source.to_string(), DocumentKind::Markdown);
+    let original = Arc::clone(store.get(&uri).unwrap().retained_text().unwrap());
+
+    store
+        .apply_analyzer_options(default_lsp_analysis_options().with_max_document_diagrams(Some(1)));
+    let rejected = store.get(&uri).unwrap();
+    assert!(rejected.analysis_rejection().is_some());
+    assert!(Arc::ptr_eq(&original, rejected.retained_text().unwrap()));
+
+    store
+        .apply_analyzer_options(default_lsp_analysis_options().with_max_document_diagrams(Some(2)));
+    let recovered = store.get(&uri).unwrap();
+    assert!(!recovered.is_analysis_unavailable());
+    assert!(recovered.analysis_rejection().is_none());
+    assert!(Arc::ptr_eq(&original, recovered.retained_text().unwrap()));
+}
+
+#[test]
+fn source_byte_limit_precedes_document_diagram_limit_and_discards_text() {
+    let mut store = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/dual-limit.md").unwrap();
+    let source = "```mermaid\nflowchart TD\nA-->B\n```\n";
+    store.apply_analyzer_options(
+        AnalysisOptions::default()
+            .with_max_source_bytes(Some(1))
+            .with_max_document_diagrams(Some(0)),
+    );
+
+    let document = store.open_text(uri, 1, source.to_string(), DocumentKind::Markdown);
+
+    assert!(document.retained_text().is_none());
+    assert!(document.analysis_rejection().is_none());
+    assert!(document.resource_limit().is_some());
 }
 
 #[test]
@@ -488,7 +665,14 @@ fn prepared_text_limits_oversized_documents_without_scanning_under_the_store_loc
     let source = "flowchart TD\nA-->B\n".to_string();
 
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
-    let prepared = PreparedDocumentText::new(source.clone());
+    let cancellation = AnalysisCancellationToken::new();
+    let prepared = PreparedDocumentText::new_cancellable(
+        source.clone(),
+        store.analyzer_options().resource_limits(),
+        &super::document_source_descriptor(&uri, DocumentKind::Diagram),
+        &cancellation,
+    )
+    .unwrap();
     let document = store.open_prepared_text(uri, 1, prepared, DocumentKind::Diagram);
 
     assert!(document.text().is_none());
@@ -507,24 +691,45 @@ fn prepared_text_only_projects_a_span_when_the_source_is_oversized() {
     let source = "flowchart TD\nA-->B\n".to_string();
     let cancellation = AnalysisCancellationToken::new();
 
-    let admitted =
-        PreparedDocumentText::new_cancellable(source.clone(), Some(source.len()), &cancellation)
-            .expect("the admitted source should be prepared");
-    assert_eq!(admitted.oversized_span, None);
+    let descriptor = super::document_source_descriptor(
+        &Uri::from_str("file:///tmp/prepared.mmd").unwrap(),
+        DocumentKind::Diagram,
+    );
+    let admitted = PreparedDocumentText::new_cancellable(
+        source.clone(),
+        AnalysisOptions::default()
+            .with_max_source_bytes(Some(source.len()))
+            .resource_limits(),
+        &descriptor,
+        &cancellation,
+    )
+    .expect("the admitted source should be prepared");
+    assert_eq!(admitted.rejection, None);
 
-    let unlimited = PreparedDocumentText::new_cancellable(source.clone(), None, &cancellation)
-        .expect("the unlimited source should be prepared");
-    assert_eq!(unlimited.oversized_span, None);
+    let unlimited = PreparedDocumentText::new_cancellable(
+        source.clone(),
+        AnalysisOptions::default().resource_limits(),
+        &descriptor,
+        &cancellation,
+    )
+    .expect("the unlimited source should be prepared");
+    assert_eq!(unlimited.rejection, None);
 
     let oversized = PreparedDocumentText::new_cancellable(
         source.clone(),
-        Some(source.len() - 1),
+        AnalysisOptions::default()
+            .with_max_source_bytes(Some(source.len() - 1))
+            .resource_limits(),
+        &descriptor,
         &cancellation,
     )
     .expect("the oversized source should be prepared");
     assert_eq!(
-        oversized.oversized_span,
-        Some(source_limit_diagnostic_span(&source))
+        oversized
+            .rejection
+            .as_ref()
+            .and_then(|rejection| rejection.payload().diagnostics[0].span),
+        Some(source_limit_diagnostic_span(&source)),
     );
 }
 
@@ -597,7 +802,7 @@ fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
         .expect("the first request is current")
     {
         AnalyzerOptionsPreparation::RequiresSnapshotPreparation(plan) => plan,
-        AnalyzerOptionsPreparation::Applied(_, _) => {
+        AnalyzerOptionsPreparation::Applied(_) => {
             panic!("the lower source limit must require source projection")
         }
     };
@@ -611,10 +816,7 @@ fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
         .expect("the latest request is current");
     assert!(matches!(
         latest,
-        AnalyzerOptionsPreparation::Applied(
-            AnalyzerConfigurationChange::Unchanged,
-            requests
-        ) if requests.is_empty()
+        AnalyzerOptionsPreparation::Applied(AnalyzerConfigurationChange::Unchanged)
     ));
 
     assert!(!store.is_analyzer_configuration_request_current(older_request));
@@ -1431,11 +1633,7 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
         DocumentKind::Diagram,
     );
 
-    assert!(
-        store
-            .insert_built_analysis(&stale_request, stale_snapshot)
-            .is_none()
-    );
+    assert!(commit_built_snapshot_for_test(&mut store, &stale_request, stale_snapshot).is_none());
     assert!(!store.has_snapshot(&uri));
 
     let current = store
@@ -1460,7 +1658,10 @@ fn initial_lsp_payload_matches_the_sealed_generation_source() {
     let context = store
         .cached_analysis_generation(&uri)
         .expect("expected cached analysis generation");
-    assert_eq!(context.payload.source, *context.generation().source());
+    assert_eq!(
+        context.payload.source,
+        *context.snapshot.analysis_generation().source()
+    );
 }
 
 #[test]
@@ -1635,10 +1836,7 @@ fn no_op_configuration_does_not_supersede_prepared_text_changes() {
         .expect("current no-op configuration should be classified");
     assert!(matches!(
         preparation,
-        AnalyzerOptionsPreparation::Applied(
-            AnalyzerConfigurationChange::Unchanged,
-            requests
-        ) if requests.is_empty()
+        AnalyzerOptionsPreparation::Applied(AnalyzerConfigurationChange::Unchanged)
     ));
 
     assert_eq!(
@@ -1701,7 +1899,7 @@ fn snapshot_update_without_a_source_limit_change_skips_source_projection() {
         panic!("snapshot-affecting options must be prepared outside the session lock");
     };
     let batch = plan.prepare().expect("snapshot preparation should succeed");
-    assert!(batch.oversized_spans.is_none());
+    assert!(batch.resource_rejections.is_none());
     assert!(store.commit_snapshot_configuration(batch).is_some());
 }
 
@@ -1827,6 +2025,48 @@ async fn language_session_configuration_preserves_a_custom_parser_registry() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn termination_fences_a_configuration_update_waiting_for_session_state() {
+    let options = default_lsp_analysis_options();
+    let session = super::LanguageSession::with_cancellation(AnalysisCancellationToken::new());
+    let state = session.inner.state.lock().await;
+    let before_snapshot_generation = state.snapshot_generation;
+    let before_diagnostic_generation = state.diagnostic_generation;
+    let before_configuration_revision = state.configuration_revision;
+    let before_configuration_request = state.latest_configuration_request;
+    let before_documents_revision = state.documents_revision;
+    let before_cache_len = state.analysis_cache_len();
+    let before_cache_weight = state.analysis_cache_total_weight();
+    let before_environment = state.analyzer_environment_identity().clone();
+
+    let update = session.update_configuration(
+        options.with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                .unwrap(),
+        ),
+    );
+    tokio::pin!(update);
+    assert!(futures::poll!(&mut update).is_pending());
+
+    assert!(session.terminate());
+    drop(state);
+
+    assert_eq!(update.await, ConfigurationUpdateOutcome::Cancelled);
+    let state = session.inner.state.lock().await;
+    assert_eq!(state.snapshot_generation, before_snapshot_generation);
+    assert_eq!(state.diagnostic_generation, before_diagnostic_generation);
+    assert_eq!(state.configuration_revision, before_configuration_revision);
+    assert_eq!(
+        state.latest_configuration_request,
+        before_configuration_request
+    );
+    assert_eq!(state.documents_revision, before_documents_revision);
+    assert_eq!(state.analysis_cache_len(), before_cache_len);
+    assert_eq!(state.analysis_cache_total_weight(), before_cache_weight);
+    assert_eq!(state.analyzer_environment_identity(), &before_environment);
+}
+
 #[tokio::test]
 async fn repeated_diagnostic_updates_preserve_environment_and_parse_once() {
     REPEATED_DIAGNOSTIC_PARSE_CALLS.store(0, Ordering::SeqCst);
@@ -1848,16 +2088,14 @@ async fn repeated_diagnostic_updates_preserve_environment_and_parse_once() {
     store
         .snapshot_context(&uri)
         .expect("initial analysis should succeed");
-    let generation = Arc::clone(
-        store
-            .cached_analysis_generation(&uri)
-            .expect("initial generation should be cached")
-            .generation(),
-    );
+    let generation = store
+        .cached_analysis_generation(&uri)
+        .expect("initial generation should be cached")
+        .shared_analysis_generation();
     assert_eq!(REPEATED_DIAGNOSTIC_PARSE_CALLS.load(Ordering::SeqCst), 1);
 
     for severity in [DiagnosticSeverity::Hint, DiagnosticSeverity::Warning] {
-        let (change, requests) = store.begin_analyzer_options(
+        let change = store.begin_analyzer_options(
             options.clone().with_rule_config(
                 AnalysisRuleConfig::default()
                     .with_rule_severity("merman.parse.no_diagram", severity)
@@ -1867,7 +2105,7 @@ async fn repeated_diagnostic_updates_preserve_environment_and_parse_once() {
         assert_eq!(change, AnalyzerConfigurationChange::DiagnosticsOnly);
         assert_eq!(store.analyzer_environment_identity(), &identity);
 
-        let request = one_reprojection(requests);
+        let request = reprojection_for(&store, &uri);
         let projection = store
             .analysis_executor()
             .execute_diagnostic_reprojection(&request)
@@ -1879,10 +2117,10 @@ async fn repeated_diagnostic_updates_preserve_environment_and_parse_once() {
 
         assert!(Arc::ptr_eq(
             &generation,
-            store
+            &store
                 .cached_analysis_generation(&uri)
                 .expect("reprojected generation should remain cached")
-                .generation()
+                .shared_analysis_generation()
         ));
         assert_eq!(REPEATED_DIAGNOSTIC_PARSE_CALLS.load(Ordering::SeqCst), 1);
     }
@@ -1928,12 +2166,10 @@ async fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         .expect("expected initial snapshot context");
     let initial_payload = snapshot_context.analysis_payload() as *const AnalysisPayload;
     let initial_text_index = snapshot_context.snapshot.fences()[0].text_index() as *const _;
-    let canonical = Arc::clone(
-        store
-            .cached_analysis_generation(&uri)
-            .expect("expected cached analysis generation")
-            .generation(),
-    );
+    let canonical = store
+        .cached_analysis_generation(&uri)
+        .expect("expected cached analysis generation")
+        .shared_analysis_generation();
     let analyzer_environment_identity = store.analyzer_environment_identity().clone();
     let diagnostic_context = store
         .diagnostic_context(&uri)
@@ -1943,7 +2179,7 @@ async fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
     ));
 
-    let (change, requests) = store.begin_analyzer_options(
+    let change = store.begin_analyzer_options(
         default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
@@ -1966,7 +2202,7 @@ async fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         "a stale diagnostic projection must not trigger another parse"
     );
 
-    let request = one_reprojection(requests);
+    let request = reprojection_for(&store, &uri);
     let projection = store
         .analysis_executor()
         .execute_diagnostic_reprojection(&request)
@@ -1996,10 +2232,10 @@ async fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
     );
     assert!(Arc::ptr_eq(
         &canonical,
-        store
+        &store
             .cached_analysis_generation(&uri)
             .expect("expected reprojected analysis generation")
-            .generation()
+            .shared_analysis_generation()
     ));
     assert_eq!(
         store
@@ -2022,14 +2258,14 @@ async fn equivalent_reprojection_waiters_share_work_and_commit_idempotently() {
     store
         .snapshot_context(&uri)
         .expect("initial analysis should be cached");
-    let (_, requests) = store.begin_analyzer_options(
+    let _ = store.begin_analyzer_options(
         default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
                 .unwrap(),
         ),
     );
-    let request = one_reprojection(requests);
+    let request = reprojection_for(&store, &uri);
     let executor = store.analysis_executor();
 
     let first = executor
@@ -2073,14 +2309,14 @@ async fn diagnostic_reprojection_does_not_overwrite_a_newer_document_epoch() {
     store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
-    let (_, requests) = store.begin_analyzer_options(
+    let _ = store.begin_analyzer_options(
         default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
                 .unwrap(),
         ),
     );
-    let request = one_reprojection(requests);
+    let request = reprojection_for(&store, &uri);
     let projection = store
         .analysis_executor()
         .execute_diagnostic_reprojection(&request)
@@ -2128,27 +2364,26 @@ async fn diagnostic_reprojection_does_not_commit_a_superseded_policy_epoch() {
     store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
-    let (_, first_requests) = store.begin_analyzer_options(
+    let _ = store.begin_analyzer_options(
         default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
                 .unwrap(),
         ),
     );
-    let (_, second_requests) = store.begin_analyzer_options(
+    let first_request = reprojection_for(&store, &uri);
+    let _ = store.begin_analyzer_options(
         default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Warning)
                 .unwrap(),
         ),
     );
-
-    let first_request = one_reprojection(first_requests);
+    let second_request = reprojection_for(&store, &uri);
     let first_projection = store
         .analysis_executor()
         .execute_diagnostic_reprojection(&first_request)
         .await;
-    let second_request = one_reprojection(second_requests);
     let second_projection = store
         .analysis_executor()
         .execute_diagnostic_reprojection(&second_request)
@@ -3423,7 +3658,8 @@ fn estimated_entry_weight(uri: &Uri, text: &str, kind: DocumentKind) -> usize {
     let analysis = request
         .build_cancellable(&AnalysisCancellationToken::new())
         .expect("sizing analysis should be accepted");
-    SessionState::estimated_analysis_cache_entry_weight(uri, &analysis)
+    let context = project_snapshot_for_test(&sizing, analysis);
+    SessionState::estimated_analysis_cache_entry_weight(uri, &context)
 }
 
 fn assert_default_cache_admits(uri: Uri, text: String, kind: DocumentKind) {
@@ -3433,9 +3669,10 @@ fn assert_default_cache_admits(uri: Uri, text: String, kind: DocumentKind) {
     let analysis = request
         .build_cancellable(&AnalysisCancellationToken::new())
         .unwrap();
-    let weight = SessionState::estimated_analysis_cache_entry_weight(&uri, &analysis);
+    let context = project_snapshot_for_test(&store, Arc::clone(&analysis));
+    let weight = SessionState::estimated_analysis_cache_entry_weight(&uri, &context);
     assert!(weight <= DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES);
-    assert!(store.insert_built_analysis(&request, analysis).is_some());
+    assert!(commit_built_snapshot_for_test(&mut store, &request, analysis).is_some());
     assert_eq!(store.analysis_cache_len(), 1);
     assert_eq!(store.analysis_cache_total_weight(), weight);
     let statistics = store.analysis_cache_statistics();
@@ -3494,9 +3731,10 @@ fn oversized_analysis_is_returned_current_without_disturbing_cache_invariants() 
         .expect("analysis should succeed");
     let weak = Arc::downgrade(&analysis);
 
-    let context = store
-        .insert_built_analysis(&request, Arc::clone(&analysis))
-        .expect("oversized current analysis remains request-local");
+    let (context, projected) =
+        commit_built_snapshot_for_test(&mut store, &request, Arc::clone(&analysis))
+            .expect("oversized current analysis remains request-local");
+    drop(projected);
     drop(analysis);
 
     assert!(store.is_analysis_context_current(&context));
@@ -3507,6 +3745,8 @@ fn oversized_analysis_is_returned_current_without_disturbing_cache_invariants() 
     assert_eq!(statistics.current_weight, 0);
     assert_eq!(statistics.high_water_weight, 0);
     assert!(store.get(&uri).is_some());
+    assert!(weak.upgrade().is_some());
+    drop(context);
     assert!(weak.upgrade().is_none());
 }
 
@@ -3547,11 +3787,7 @@ fn cancelled_and_stale_builds_do_not_change_cache_weight_or_eviction_order() {
         "flowchart TD\nA-->C\n".to_string(),
         DocumentKind::Diagram,
     );
-    assert!(
-        store
-            .insert_built_analysis(&request, stale_analysis)
-            .is_none()
-    );
+    assert!(commit_built_snapshot_for_test(&mut store, &request, stale_analysis).is_none());
     assert_eq!(
         (
             store.analysis_cache_total_weight(),
@@ -3574,22 +3810,25 @@ fn eviction_releases_cache_ownership_but_preserves_request_local_generation() {
     let analysis = request
         .build_cancellable(&AnalysisCancellationToken::new())
         .unwrap();
-    let weak_context = Arc::downgrade(&analysis);
-    let weak_generation = Arc::downgrade(analysis.generation());
-    let weak_payload = Arc::downgrade(&analysis.payload);
-    let request_local = store
-        .insert_built_analysis(&request, Arc::clone(&analysis))
-        .unwrap();
+    let weak_snapshot = Arc::downgrade(&analysis);
+    let generation = analysis.shared_analysis_generation();
+    let weak_generation = Arc::downgrade(&generation);
+    let (request_local, projected) =
+        commit_built_snapshot_for_test(&mut store, &request, Arc::clone(&analysis)).unwrap();
+    let weak_payload = Arc::downgrade(&projected.payload);
+    drop(projected);
+    drop(generation);
     drop(analysis);
 
     store.upsert_text(b.clone(), 1, text.to_string(), DocumentKind::Diagram);
     store.snapshot(&b).unwrap();
 
-    assert!(weak_context.upgrade().is_none());
+    assert!(weak_snapshot.upgrade().is_some());
     assert!(weak_generation.upgrade().is_some());
     assert!(weak_payload.upgrade().is_some());
     assert!(store.is_analysis_context_current(&request_local));
     drop(request_local);
+    assert!(weak_snapshot.upgrade().is_none());
     assert!(weak_generation.upgrade().is_none());
     assert!(weak_payload.upgrade().is_none());
 }
@@ -3645,11 +3884,10 @@ async fn larger_diagnostic_reprojection_can_be_current_without_being_cached() {
     let mut store = SessionState::with_analysis_cache_budget(entry_weight);
     store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
     store.snapshot_context(&uri).unwrap();
-    let (_, requests) =
-        store.begin_analyzer_options(default_lsp_analysis_options().with_rule_config(
-            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
-        ));
-    let request = one_reprojection(requests);
+    let _ = store.begin_analyzer_options(default_lsp_analysis_options().with_rule_config(
+        AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+    ));
+    let request = reprojection_for(&store, &uri);
     let executor = store.analysis_executor();
     let first = executor
         .execute_diagnostic_reprojection(&request)

@@ -5,7 +5,7 @@ export type MermanResourceProfile =
   | "unbounded-for-trusted-input";
 
 export interface MermanBindingOptions {
-  version?: 1;
+  version?: 2;
   runtime_policy?: "deterministic" | "native";
   resources?: {
     profile?: MermanResourceProfile;
@@ -57,6 +57,8 @@ export interface MermanRuntimeResourceLimit {
   description: string;
   overridable: boolean;
   hard_cap: boolean;
+  minimum_value: number;
+  operation_ids: string[];
   [key: string]: unknown;
 }
 
@@ -104,10 +106,19 @@ export interface MermanRuntimeOutputContract {
   [key: string]: unknown;
 }
 
+export interface MermanRuntimePayloadSchema {
+  id: string;
+  version: number;
+  [key: string]: unknown;
+}
+
 export interface MermanRuntimeCatalog {
   schema_version: 1;
   transport_api_version: 1;
   package_version: string;
+  options_schema_versions: number[];
+  payload_schemas: MermanRuntimePayloadSchema[];
+  metadata_ids: string[];
   capabilities: {
     capability_ids: string[];
     output_ids: string[];
@@ -161,11 +172,20 @@ export declare class MermanError extends Error {
   readonly code: string;
 }
 
+export interface MermanResourceErrorDetails {
+  readonly limit_id: string;
+  readonly phase: string;
+  readonly actual: number;
+  readonly max: number;
+  readonly profile: string;
+}
+
 export declare class MermanOperationError extends MermanError {
   readonly status: number | null;
   readonly codeName: string | null;
   readonly kind: "generic" | "unknown-operation" | "missing-capability" | string;
   readonly capabilityId: string | null;
+  readonly resourceDetails: MermanResourceErrorDetails | null;
 }
 
 export declare class MermanQueueSaturatedError extends MermanError {

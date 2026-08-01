@@ -9,6 +9,19 @@ def valid_catalog():
         "schema_version": 1,
         "transport_api_version": 3,
         "package_version": "test",
+        "options_schema_versions": [2],
+        "payload_schemas": [
+            {"id": "binding-result", "version": 1},
+            {"id": "operation-metadata", "version": 1},
+        ],
+        "metadata_ids": [
+            "ascii-capabilities",
+            "diagram-family-capabilities",
+            "lint-rule-catalog",
+            "supported-diagrams",
+            "supported-host-theme-presets",
+            "supported-themes",
+        ],
         "capabilities": {
             "capability_ids": ["analysis", "ascii", "svg", "system-clock"],
             "output_ids": ["ascii", "svg"],
@@ -39,11 +52,18 @@ def valid_catalog():
             "cli_default_profile": "trusted-native",
             "limits": [
                 {
-                    "id": "max-source-bytes",
+                    "id": "max_source_bytes",
                     "phase": "source",
                     "description": "Maximum source size.",
                     "overridable": True,
                     "hard_cap": False,
+                    "minimum_value": 1,
+                    "operation_ids": [
+                        "analysis-json",
+                        "ascii",
+                        "semantic-json",
+                        "svg",
+                    ],
                 }
             ],
             "profiles": [
@@ -53,7 +73,14 @@ def valid_catalog():
                     "trust_assumption": "Untrusted input.",
                     "recommended_binding_default": True,
                     "limits": {"max_source_bytes": 1048576},
-                }
+                },
+                {
+                    "id": "trusted-native",
+                    "purpose": "Trusted native rendering.",
+                    "trust_assumption": "Trusted input.",
+                    "recommended_binding_default": False,
+                    "limits": {"max_source_bytes": None},
+                },
             ],
         },
     }
@@ -85,6 +112,37 @@ class RuntimeCatalogTest(unittest.TestCase):
         self.assertFalse(hasattr(merman, "get_runtime_contract"))
         self.assertFalse(hasattr(merman, "get_runtime_capability_vocabulary"))
         self.assertFalse(hasattr(merman, "MermanRuntimeContractError"))
+        self.assertEqual(catalog["options_schema_versions"], [2])
+        self.assertEqual(
+            catalog["resources"]["limits"][0]["operation_ids"],
+            ["analysis-json", "ascii", "semantic-json", "svg"],
+        )
+
+    def test_accepts_catalog_without_svg_or_text_measurement(self):
+        catalog = valid_catalog()
+        catalog["capabilities"]["capability_ids"].remove("svg")
+        catalog["capabilities"]["output_ids"].remove("svg")
+        catalog["capabilities"]["operation_ids"].remove("svg")
+        catalog["capabilities"]["text_measurement"] = None
+        catalog["output_contracts"] = [
+            contract for contract in catalog["output_contracts"] if contract["id"] != "svg"
+        ]
+        catalog["resources"]["limits"][0]["operation_ids"].remove("svg")
+
+        parsed = merman.get_runtime_catalog(FakeEngine(catalog))
+
+        self.assertNotIn("svg", parsed["capabilities"]["capability_ids"])
+        self.assertIsNone(parsed["capabilities"]["text_measurement"])
+
+    def test_rejects_catalog_without_current_options_schema(self):
+        catalog = valid_catalog()
+        catalog["options_schema_versions"] = [1]
+
+        with self.assertRaisesRegex(
+            merman.MermanRuntimeCatalogError,
+            "current Options JSON schema",
+        ):
+            merman.get_runtime_catalog(FakeEngine(catalog))
 
     def test_accepts_unknown_future_ids_and_additive_fields(self):
         catalog = valid_catalog()
@@ -143,10 +201,11 @@ class RuntimeCatalogTest(unittest.TestCase):
 
         self.assertIs(exported["ResourceProfile"], merman.ResourceProfile)
         self.assertIs(exported["ResourceLimitId"], merman.ResourceLimitId)
+        self.assertIs(exported["ResourceOverrideId"], merman.ResourceOverrideId)
         options = (
             exported["ResourceOptionsBuilder"]()
             .profile(exported["ResourceProfile"].CONSTRAINED)
-            .limit(exported["ResourceLimitId"].MAX_SOURCE_BYTES, 4096)
+            .limit(exported["ResourceOverrideId"].MAX_SOURCE_BYTES, 4096)
             .build()
         )
         self.assertEqual(
@@ -156,7 +215,7 @@ class RuntimeCatalogTest(unittest.TestCase):
                     "limits": {"max_source_bytes": 4096},
                     "profile": "constrained",
                 },
-                "version": 1,
+                "version": 2,
             },
         )
 
@@ -169,6 +228,18 @@ class RuntimeCatalogTest(unittest.TestCase):
         missing_output_contracts = valid_catalog()
         del missing_output_contracts["output_contracts"]
         cases.append(missing_output_contracts)
+
+        missing_options_schemas = valid_catalog()
+        del missing_options_schemas["options_schema_versions"]
+        cases.append(missing_options_schemas)
+
+        missing_payload_schemas = valid_catalog()
+        del missing_payload_schemas["payload_schemas"]
+        cases.append(missing_payload_schemas)
+
+        missing_metadata_ids = valid_catalog()
+        del missing_metadata_ids["metadata_ids"]
+        cases.append(missing_metadata_ids)
 
         wrong_schema = valid_catalog()
         wrong_schema["schema_version"] = 2
@@ -284,7 +355,49 @@ class RuntimeCatalogTest(unittest.TestCase):
             "max_source_bytes"
         ] = -1
 
-        for catalog in [negative_registry, invalid_resource_limit, invalid_profile_limit]:
+        missing_limit_operations = valid_catalog()
+        del missing_limit_operations["resources"]["limits"][0]["operation_ids"]
+
+        hard_cap_is_overridable = valid_catalog()
+        hard_cap_is_overridable["resources"]["limits"][0]["hard_cap"] = True
+
+        hard_cap_is_unbounded = valid_catalog()
+        hard_cap_is_unbounded["resources"]["limits"][0]["hard_cap"] = True
+        hard_cap_is_unbounded["resources"]["limits"][0]["overridable"] = False
+        hard_cap_is_unbounded["resources"]["profiles"][1]["limits"][
+            "max_source_bytes"
+        ] = None
+
+        unknown_default_profile = valid_catalog()
+        unknown_default_profile["resources"]["cli_default_profile"] = "missing"
+
+        nonrecommended_binding_default = valid_catalog()
+        nonrecommended_binding_default["resources"][
+            "general_binding_default_profile"
+        ] = "trusted-native"
+
+        multiple_recommended_profiles = valid_catalog()
+        multiple_recommended_profiles["resources"]["profiles"][1][
+            "recommended_binding_default"
+        ] = True
+
+        duplicate_profile = valid_catalog()
+        duplicate_profile["resources"]["profiles"].append(
+            duplicate_profile["resources"]["profiles"][0].copy()
+        )
+
+        for catalog in [
+            negative_registry,
+            invalid_resource_limit,
+            invalid_profile_limit,
+            missing_limit_operations,
+            hard_cap_is_overridable,
+            hard_cap_is_unbounded,
+            unknown_default_profile,
+            nonrecommended_binding_default,
+            multiple_recommended_profiles,
+            duplicate_profile,
+        ]:
             with self.subTest(catalog=catalog):
                 with self.assertRaises(merman.MermanRuntimeCatalogError):
                     merman.get_runtime_catalog(FakeEngine(catalog))

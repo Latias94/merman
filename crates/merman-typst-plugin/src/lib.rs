@@ -102,39 +102,45 @@ pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
 }
 
 fn typst_success_payload(operation: &str, data: Value) -> Vec<u8> {
-    typst_result_payload(
+    serde_json::to_vec(&typst_result_payload(
         operation,
         merman_bindings_core::BindingStatus::Ok,
         None,
         None,
         None,
         Some(data),
-    )
+    ))
+    .expect("Typst result envelope is serializable")
 }
 
 fn typst_binding_error_payload(
     operation: &str,
     error: &merman_bindings_core::BindingError,
 ) -> Vec<u8> {
-    typst_result_payload(
+    let mut payload = typst_result_payload(
         operation,
         error.status(),
         Some(error.kind().id()),
         error.capability_id(),
         Some(error.message()),
         None,
-    )
+    );
+    if let Some(resource) = error.resource_details() {
+        payload["details"] = json!({ "resource": resource });
+    }
+    serde_json::to_vec(&payload).expect("Typst result envelope is serializable")
 }
 
 fn typst_internal_error_payload(operation: &str, message: String) -> Vec<u8> {
-    typst_result_payload(
+    serde_json::to_vec(&typst_result_payload(
         operation,
         merman_bindings_core::BindingStatus::InternalError,
         Some("generic"),
         None,
         Some(&message),
         None,
-    )
+    ))
+    .expect("Typst result envelope is serializable")
 }
 
 fn typst_result_payload(
@@ -144,9 +150,9 @@ fn typst_result_payload(
     capability_id: Option<&str>,
     message: Option<&str>,
     data: Option<Value>,
-) -> Vec<u8> {
+) -> Value {
     let ok = status == merman_bindings_core::BindingStatus::Ok;
-    serde_json::to_vec(&json!({
+    json!({
         "version": TYPST_RESULT_PAYLOAD_SCHEMA_VERSION,
         "operation": operation,
         "ok": ok,
@@ -156,8 +162,7 @@ fn typst_result_payload(
         "capability_id": if ok { None } else { capability_id },
         "message": message,
         "data": data,
-    }))
-    .expect("Typst result envelope is serializable")
+    })
 }
 
 fn typst_options_json(options_json: &[u8]) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
@@ -421,6 +426,11 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("max_source_bytes"));
+        assert_eq!(
+            payload["details"]["resource"]["limit_id"],
+            "max_source_bytes"
+        );
+        assert_eq!(payload["details"]["resource"]["profile"], "constrained");
     }
 
     #[cfg(feature = "svg")]

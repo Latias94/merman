@@ -37,7 +37,10 @@ pub use generated::{
     SemanticTokenPackedDescriptor, TokenOverlayKind, semantic_token_descriptor,
 };
 pub use merman_analysis::FenceTextIndexSource;
-pub use snapshot::{DocumentSnapshot, FenceSnapshot};
+pub use snapshot::{
+    DiagramDetectionValidity, DocumentSnapshot, DocumentSnapshotError, EditorDiagramDetection,
+    FenceSnapshot,
+};
 pub use structure::{
     EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover, EditorLocation,
     EditorMarkupContent, EditorPrepareRename, EditorSelectionRange, EditorSymbolInformation,
@@ -51,7 +54,4 @@ pub use token_planner::{
 };
 
 pub use types::{DocumentKind, DocumentUri, Position, Range};
-pub use workspace::{
-    DiagramDetectionValidity, DocumentAnalysisContext, DocumentAnalysisOutcome, DocumentWorkspace,
-    EditorDiagramDetection,
-};
+pub use workspace::{DocumentAnalysisContext, DocumentAnalysisOutcome, DocumentWorkspace};

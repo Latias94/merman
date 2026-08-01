@@ -41,6 +41,14 @@ impl DocumentKind {
         matches!(self, Self::Markdown | Self::Mdx)
     }
 
+    pub const fn source_kind(self) -> merman_analysis::SourceKind {
+        match self {
+            Self::Diagram => merman_analysis::SourceKind::Diagram,
+            Self::Markdown => merman_analysis::SourceKind::Markdown,
+            Self::Mdx => merman_analysis::SourceKind::Mdx,
+        }
+    }
+
     pub fn from_path(path: &str) -> Self {
         match path.rsplit_once('.') {
             Some((_, ext)) if merman_analysis::markdown::is_mdx_extension(ext) => Self::Mdx,

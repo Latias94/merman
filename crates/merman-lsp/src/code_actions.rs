@@ -1,8 +1,9 @@
 use crate::client_profile::ClientProtocolProfile;
 use crate::protocol::{DiagnosticIdentityData, WorkspaceEditEncoding, range_to_lsp};
 use crate::snapshot::DocumentSnapshot;
+use merman_analysis::DiagnosticFix;
 use merman_editor_core::{
-    EditorCodeActionEdit, EditorDiagnostic, Position as EditorPosition, code_actions_from_fixes,
+    EditorCodeActionEdit, EditorDiagnostic, Position as EditorPosition, code_action_from_fix,
 };
 #[cfg(test)]
 use std::cell::Cell;
@@ -42,29 +43,49 @@ fn code_actions_for_snapshot_with_encoding_and_preferred_support(
     }
 
     let diagnostic_index = SnapshotDiagnosticIndex::new(diagnostics);
-    let actions = params
-        .context
-        .diagnostics
-        .iter()
-        .filter_map(|diagnostic| {
-            Some((
-                diagnostic,
-                matching_snapshot_diagnostic(snapshot, &diagnostic_index, diagnostic)?,
-            ))
-        })
-        .flat_map(|(lsp_diagnostic, editor_diagnostic)| {
-            code_actions_for_editor_diagnostic(
-                editor_diagnostic,
+    let mut actions = Vec::new();
+    let mut materialized_fixes = HashMap::<SharedFixIdentity, usize>::new();
+    for lsp_diagnostic in &params.context.diagnostics {
+        let Some(editor_diagnostic) =
+            matching_snapshot_diagnostic(snapshot, &diagnostic_index, lsp_diagnostic)
+        else {
+            continue;
+        };
+        let Some(data) = editor_diagnostic.data.as_ref() else {
+            continue;
+        };
+        for fix in &data.fixes {
+            let identity = SharedFixIdentity::new(fix);
+            if let Some(index) = materialized_fixes.get(&identity).copied() {
+                append_action_diagnostic(&mut actions[index], lsp_diagnostic);
+                continue;
+            }
+            let action = code_action_for_fix(
+                fix,
                 lsp_diagnostic,
                 &params.text_document.uri,
                 snapshot.version(),
                 workspace_edit_encoding,
                 is_preferred_support,
-            )
-        })
-        .collect::<Vec<_>>();
+            );
+            if let Some(action) = action {
+                materialized_fixes.insert(identity, actions.len());
+                actions.push(action);
+            }
+        }
+    }
 
     (!actions.is_empty()).then_some(actions)
+}
+
+fn append_action_diagnostic(action: &mut CodeActionOrCommand, diagnostic: &Diagnostic) {
+    let CodeActionOrCommand::CodeAction(action) = action else {
+        return;
+    };
+    action
+        .diagnostics
+        .get_or_insert_default()
+        .push(diagnostic.clone());
 }
 
 #[cfg(test)]
@@ -192,39 +213,52 @@ fn matching_snapshot_diagnostic<'a>(
     diagnostics.get(&DiagnosticLookupKey::from_lsp(diagnostic, identity)?)
 }
 
-fn code_actions_for_editor_diagnostic(
-    editor_diagnostic: &EditorDiagnostic,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SharedFixIdentity {
+    edits_ptr: usize,
+    edits_len: usize,
+    title: String,
+    is_preferred: bool,
+}
+
+impl SharedFixIdentity {
+    fn new(fix: &DiagnosticFix) -> Self {
+        Self {
+            edits_ptr: fix.edits.as_ptr() as usize,
+            edits_len: fix.edits.len(),
+            title: fix.title.clone(),
+            is_preferred: fix.is_preferred,
+        }
+    }
+}
+
+fn code_action_for_fix(
+    fix: &DiagnosticFix,
     lsp_diagnostic: &Diagnostic,
     uri: &Uri,
     current_document_version: i32,
     workspace_edit_encoding: WorkspaceEditEncoding,
     is_preferred_support: bool,
-) -> Vec<CodeActionOrCommand> {
-    let Some(data) = editor_diagnostic.data.as_ref() else {
-        return Vec::new();
-    };
-    code_actions_from_fixes(&data.fixes)
-        .into_iter()
-        .filter_map(|action| {
-            let edit = workspace_edit_for_edits(
-                &action.edits,
-                uri,
-                current_document_version,
-                workspace_edit_encoding,
-            )?;
-            Some(tower_lsp_server::ls_types::CodeAction {
-                title: action.title,
-                kind: Some(CodeActionKind::QUICKFIX),
-                diagnostics: Some(vec![lsp_diagnostic.clone()]),
-                edit: Some(edit),
-                command: None,
-                is_preferred: (is_preferred_support && action.is_preferred).then_some(true),
-                disabled: None,
-                data: None,
-            })
-        })
-        .map(tower_lsp_server::ls_types::CodeActionOrCommand::CodeAction)
-        .collect()
+) -> Option<CodeActionOrCommand> {
+    let action = code_action_from_fix(fix)?;
+    let edit = workspace_edit_for_edits(
+        &action.edits,
+        uri,
+        current_document_version,
+        workspace_edit_encoding,
+    )?;
+    Some(CodeActionOrCommand::CodeAction(
+        tower_lsp_server::ls_types::CodeAction {
+            title: action.title,
+            kind: Some(CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![lsp_diagnostic.clone()]),
+            edit: Some(edit),
+            command: None,
+            is_preferred: (is_preferred_support && action.is_preferred).then_some(true),
+            disabled: None,
+            data: None,
+        },
+    ))
 }
 
 fn allows_quickfix(context: &CodeActionContext) -> bool {
@@ -404,7 +438,118 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_code_action_entry_indexes_many_full_identity_keys_once() {
+    fn later_init_directive_retains_the_document_migration_quickfix() {
+        let uri = Uri::from_str("file:///tmp/multiple-init.mmd").unwrap();
+        let source = concat!(
+            "%%{ init: {\"theme\":\"dark\"} }%%\n",
+            "%%{ init: {\"flowchart\":{\"curve\":\"linear\"}} }%%\n",
+            "flowchart TD\nA-->B\n",
+        )
+        .to_string();
+        let options = AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        );
+        let snapshot = snapshot_for_test(uri.clone(), DOCUMENT_VERSION, source.clone());
+        let diagnostics =
+            analysis_payload_to_diagnostics(&Analyzer::with_options(options).analyze(&source));
+        let requested =
+            editor_diagnostics_to_versioned_diagnostics(&diagnostics, &uri, DOCUMENT_VERSION)
+                .into_iter()
+                .find(|diagnostic| {
+                    diagnostic.range.start.line == 1
+                        && diagnostic.code.as_ref().is_some_and(|code| {
+                            code == &tower_lsp_server::ls_types::NumberOrString::String(
+                                "merman.authoring.config.prefer_frontmatter_config".to_string(),
+                            )
+                        })
+                })
+                .expect(
+                    "the second init directive must retain its server-owned diagnostic identity",
+                );
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: requested.range,
+            context: CodeActionContext {
+                diagnostics: vec![requested],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let actions = code_actions_for_snapshot_with_encoding(
+            &snapshot,
+            &diagnostics,
+            &params,
+            WorkspaceEditEncoding::DocumentChanges,
+        )
+        .expect("the second init directive must expose the document migration quick fix");
+        let action = only_code_action(&actions);
+
+        assert_eq!(action.title, "Move init directive config into frontmatter");
+        assert!(versioned_edits(action, &uri).len() >= 2);
+    }
+
+    #[test]
+    fn requested_init_diagnostics_materialize_one_shared_migration_action() {
+        let uri = Uri::from_str("file:///tmp/shared-init-fix.mmd").unwrap();
+        let source = concat!(
+            "%%{ init: {\"theme\":\"dark\"} }%%\n",
+            "%%{ init: {\"flowchart\":{\"curve\":\"linear\"}} }%%\n",
+            "flowchart TD\nA-->B\n",
+        )
+        .to_string();
+        let options = AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        );
+        let snapshot = snapshot_for_test(uri.clone(), DOCUMENT_VERSION, source.clone());
+        let diagnostics =
+            analysis_payload_to_diagnostics(&Analyzer::with_options(options).analyze(&source));
+        let requested =
+            editor_diagnostics_to_versioned_diagnostics(&diagnostics, &uri, DOCUMENT_VERSION)
+                .into_iter()
+                .filter(|diagnostic| {
+                    diagnostic.code.as_ref().is_some_and(|code| {
+                        code == &tower_lsp_server::ls_types::NumberOrString::String(
+                            "merman.authoring.config.prefer_frontmatter_config".to_string(),
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+        assert_eq!(requested.len(), 2);
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: Range::new(Position::new(0, 0), Position::new(1, 0)),
+            context: CodeActionContext {
+                diagnostics: requested,
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let actions = code_actions_for_snapshot_with_encoding(
+            &snapshot,
+            &diagnostics,
+            &params,
+            WorkspaceEditEncoding::DocumentChanges,
+        )
+        .expect("shared migration quick fix");
+        let action = only_code_action(&actions);
+
+        assert_eq!(action.title, "Move init directive config into frontmatter");
+        assert_eq!(versioned_edits(action, &uri).len(), 2);
+        assert_eq!(
+            action.diagnostics.as_deref(),
+            Some(params.context.diagnostics.as_slice()),
+            "the shared action must retain every requested diagnostic owner in request order"
+        );
+    }
+
+    #[test]
+    fn snapshot_code_action_entry_indexes_many_identities_and_materializes_shared_fix_once() {
         let (snapshot, diagnostics, mut params, _) = snapshot_with_direction_fix();
         let prototype = diagnostics
             .into_iter()
@@ -434,7 +579,7 @@ mod tests {
         )
         .expect("snapshot-owned quick fixes");
 
-        assert_eq!(actions.len(), diagnostics.len());
+        assert_eq!(actions.len(), 1);
         assert_eq!(
             snapshot_diagnostic_index_probe(),
             (1, diagnostics.len()),

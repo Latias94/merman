@@ -4,9 +4,83 @@ use crate::retained_weight::{
 };
 use std::collections::BTreeMap;
 use std::mem::size_of;
+use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
 pub type LineCol = SourcePosition;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedTextSlice {
+    source: Arc<str>,
+    start: usize,
+    end: usize,
+}
+
+impl SharedTextSlice {
+    pub fn whole(source: Arc<str>) -> Self {
+        let end = source.len();
+        Self {
+            source,
+            start: 0,
+            end,
+        }
+    }
+
+    pub fn from_range(source: Arc<str>, start: usize, end: usize) -> Option<Self> {
+        if start > end
+            || end > source.len()
+            || !source.is_char_boundary(start)
+            || !source.is_char_boundary(end)
+        {
+            return None;
+        }
+        Some(Self { source, start, end })
+    }
+
+    pub(crate) fn new(source: Arc<str>, start: usize, end: usize) -> Self {
+        Self::from_range(source, start, end)
+            .expect("document extraction should produce valid UTF-8 slice bounds")
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.source[self.start..self.end]
+    }
+
+    pub fn source_arc(&self) -> Arc<str> {
+        Arc::clone(&self.source)
+    }
+
+    pub fn to_owned_text(&self) -> String {
+        self.as_str().to_owned()
+    }
+
+    pub const fn start(&self) -> usize {
+        self.start
+    }
+
+    pub const fn end(&self) -> usize {
+        self.end
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_source_allocation_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.source, &other.source)
+    }
+}
+
+impl AsRef<str> for SharedTextSlice {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl std::ops::Deref for SharedTextSlice {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SourceMapError {
@@ -20,7 +94,7 @@ pub enum SourceMapError {
 
 #[derive(Debug, Clone)]
 pub struct SourceMap {
-    source: Arc<str>,
+    source: SharedTextSlice,
     line_starts: Arc<[usize]>,
     line_metrics: Arc<Mutex<LineMetricCache>>,
 }
@@ -30,8 +104,11 @@ pub(crate) const SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES: usize = 256 * 1024;
 
 impl SourceMap {
     pub fn new(source: impl Into<Arc<str>>) -> Self {
-        let source = source.into();
-        let line_starts = line_starts(source.as_ref());
+        Self::from_shared_text(SharedTextSlice::whole(source.into()))
+    }
+
+    pub(crate) fn from_shared_text(source: SharedTextSlice) -> Self {
+        let line_starts = line_starts(source.as_str());
         Self::from_source_and_line_starts(source, line_starts)
     }
 
@@ -39,13 +116,19 @@ impl SourceMap {
         source: impl Into<Arc<str>>,
         cancellation: &crate::AnalysisCancellationToken,
     ) -> Result<Self, crate::AnalysisCancelled> {
-        let source = source.into();
-        let line_starts = line_starts_cancellable(source.as_ref(), cancellation)?;
+        Self::from_shared_text_cancellable(SharedTextSlice::whole(source.into()), cancellation)
+    }
+
+    pub(crate) fn from_shared_text_cancellable(
+        source: SharedTextSlice,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Self, crate::AnalysisCancelled> {
+        let line_starts = line_starts_cancellable(source.as_str(), cancellation)?;
         cancellation.checkpoint()?;
         Ok(Self::from_source_and_line_starts(source, line_starts))
     }
 
-    fn from_source_and_line_starts(source: Arc<str>, line_starts: Vec<usize>) -> Self {
+    fn from_source_and_line_starts(source: SharedTextSlice, line_starts: Vec<usize>) -> Self {
         Self {
             source,
             line_starts: Arc::from(line_starts.into_boxed_slice()),
@@ -56,15 +139,15 @@ impl SourceMap {
     }
 
     pub fn source(&self) -> &str {
-        self.source.as_ref()
+        self.source.as_str()
     }
 
-    pub fn source_arc(&self) -> Arc<str> {
-        Arc::clone(&self.source)
+    pub fn shared_source(&self) -> &SharedTextSlice {
+        &self.source
     }
 
     pub fn source_len(&self) -> usize {
-        self.source.len()
+        self.source.as_str().len()
     }
 
     pub fn line_starts(&self) -> &[usize] {
@@ -135,14 +218,14 @@ impl SourceMap {
     }
 
     pub fn whole_source_span(&self) -> Result<DiagnosticSpan, SourceMapError> {
-        self.span(0, self.source.len())
+        self.span(0, self.source_len())
     }
 
     pub(crate) fn whole_source_span_cancellable(
         &self,
         cancellation: &crate::AnalysisCancellationToken,
     ) -> Result<Result<DiagnosticSpan, SourceMapError>, crate::AnalysisCancelled> {
-        self.span_cancellable(0, self.source.len(), cancellation)
+        self.span_cancellable(0, self.source_len(), cancellation)
     }
 
     pub fn line_bounds(&self, line_index: usize) -> Option<(usize, usize)> {
@@ -151,26 +234,26 @@ impl SourceMap {
             .line_starts
             .get(line_index + 1)
             .copied()
-            .unwrap_or(self.source.len());
+            .unwrap_or(self.source_len());
         Some((
             start,
-            line_content_end(self.source.as_bytes(), start, next_start),
+            line_content_end(self.source().as_bytes(), start, next_start),
         ))
     }
 
     pub fn byte_offset_for_utf16_position(&self, position: Utf16Position) -> Option<usize> {
         let line = self.line_metric(position.line)?;
-        line.byte_offset_for_utf16_column(self.source.as_ref(), position.character)
+        line.byte_offset_for_utf16_column(self.source(), position.character)
     }
 
     fn validate_offset(&self, offset: usize) -> Result<(), SourceMapError> {
-        if offset > self.source.len() {
+        if offset > self.source_len() {
             return Err(SourceMapError::OffsetOutOfBounds {
                 offset,
-                source_len: self.source.len(),
+                source_len: self.source_len(),
             });
         }
-        if !self.source.is_char_boundary(offset) {
+        if !self.source().is_char_boundary(offset) {
             return Err(SourceMapError::OffsetNotCharBoundary { offset });
         }
         Ok(())
@@ -226,7 +309,7 @@ impl SourceMap {
         let clamped = offset.clamp(line.start, line.content_end);
         let relative = clamped - line.start;
         let (char_column, utf16_column) = line
-            .columns_for_relative_offset(self.source.as_ref(), relative)
+            .columns_for_relative_offset(self.source(), relative)
             .expect("validated source offset should map to a cached line boundary");
         OffsetMetrics {
             line_index,
@@ -295,9 +378,9 @@ impl SourceMap {
             .line_starts
             .get(line_index + 1)
             .copied()
-            .unwrap_or(self.source.len());
+            .unwrap_or(self.source_len());
         let computed = Arc::new(line_metric_with_checkpoint(
-            self.source.as_ref(),
+            self.source(),
             start,
             next_start,
             &mut checkpoint,
@@ -334,6 +417,11 @@ impl SourceMap {
     #[cfg(test)]
     fn estimated_line_metric_cache_allocation_bytes(&self) -> usize {
         self.line_metric_cache().estimated_allocation_bytes()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_source_allocation_with(&self, source: &SharedTextSlice) -> bool {
+        self.source.shares_source_allocation_with(source)
     }
 }
 
@@ -705,7 +793,7 @@ fn span_from_offset_metrics(
 }
 
 pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan {
-    whole_text_span_without_source_copy_with_checkpoint(text, || {
+    byte_range_span_without_source_copy_with_checkpoint(text, 0..text.len(), || {
         Ok::<_, std::convert::Infallible>(())
     })
     .expect("infallible whole-source span scan")
@@ -715,43 +803,83 @@ pub(crate) fn whole_text_span_without_source_copy_cancellable(
     text: &str,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<DiagnosticSpan, crate::AnalysisCancelled> {
-    whole_text_span_without_source_copy_with_checkpoint(text, || cancellation.checkpoint())
+    byte_range_span_without_source_copy_cancellable(text, 0..text.len(), cancellation)
 }
 
-fn whole_text_span_without_source_copy_with_checkpoint<E>(
+pub(crate) fn byte_range_span_without_source_copy_cancellable(
     text: &str,
+    range: Range<usize>,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<DiagnosticSpan, crate::AnalysisCancelled> {
+    byte_range_span_without_source_copy_with_checkpoint(text, range, || cancellation.checkpoint())
+}
+
+fn byte_range_span_without_source_copy_with_checkpoint<E>(
+    text: &str,
+    range: Range<usize>,
     mut checkpoint: impl FnMut() -> Result<(), E>,
 ) -> Result<DiagnosticSpan, E> {
-    let mut end_line = 1usize;
-    let mut end_column = 1usize;
-    let mut end_lsp_line = 0usize;
-    let mut end_lsp_character = 0usize;
+    assert!(range.start <= range.end, "diagnostic range must be ordered");
+    assert!(
+        text.get(range.clone()).is_some(),
+        "diagnostic range must be in bounds and on UTF-8 boundaries"
+    );
+
+    let mut metrics = OffsetMetrics {
+        line_index: 0,
+        char_column: 0,
+        utf16_column: 0,
+    };
+    let mut start_metrics = None;
+    let mut end_metrics = None;
+    let mut cursor = 0usize;
     let mut bytes_since_checkpoint = 0usize;
-    let mut chars = text.chars().peekable();
 
     checkpoint()?;
-    while let Some(ch) = chars.next() {
+    while cursor <= range.end {
+        if cursor == range.start {
+            start_metrics = Some(metrics);
+        }
+        if cursor == range.end {
+            end_metrics = Some(metrics);
+            break;
+        }
+
+        let ch = text[cursor..]
+            .chars()
+            .next()
+            .expect("validated range end must be reachable from the source start");
         bytes_since_checkpoint += ch.len_utf8();
         match ch {
             '\r' => {
-                if chars.peek() == Some(&'\n') {
-                    chars.next();
+                let after_carriage_return = cursor + 1;
+                if text.as_bytes().get(after_carriage_return) == Some(&b'\n') {
+                    if after_carriage_return == range.start {
+                        start_metrics = Some(metrics);
+                    }
+                    if after_carriage_return == range.end {
+                        end_metrics = Some(metrics);
+                        break;
+                    }
+                    cursor += 2;
                     bytes_since_checkpoint += 1;
+                } else {
+                    cursor += 1;
                 }
-                end_line += 1;
-                end_column = 1;
-                end_lsp_line += 1;
-                end_lsp_character = 0;
+                metrics.line_index += 1;
+                metrics.char_column = 0;
+                metrics.utf16_column = 0;
             }
             '\n' => {
-                end_line += 1;
-                end_column = 1;
-                end_lsp_line += 1;
-                end_lsp_character = 0;
+                cursor += 1;
+                metrics.line_index += 1;
+                metrics.char_column = 0;
+                metrics.utf16_column = 0;
             }
             _ => {
-                end_column += 1;
-                end_lsp_character += ch.len_utf16();
+                cursor += ch.len_utf8();
+                metrics.char_column += 1;
+                metrics.utf16_column += ch.len_utf16();
             }
         }
         if bytes_since_checkpoint >= 4096 {
@@ -761,20 +889,11 @@ fn whole_text_span_without_source_copy_with_checkpoint<E>(
     }
     checkpoint()?;
 
-    Ok(DiagnosticSpan::new(
-        0..text.len(),
-        SourcePosition::new(1, 1),
-        SourcePosition::new(end_line, end_column),
-        LspRange::new(
-            Utf16Position {
-                line: 0,
-                character: 0,
-            },
-            Utf16Position {
-                line: end_lsp_line,
-                character: end_lsp_character,
-            },
-        ),
+    Ok(span_from_offset_metrics(
+        range.start,
+        range.end,
+        start_metrics.expect("validated range start must be reached"),
+        end_metrics.expect("validated range end must be reached"),
     ))
 }
 
@@ -1605,5 +1724,19 @@ mod tests {
             Err(crate::AnalysisCancelled)
         ));
         assert!(cancellation.is_cancelled());
+    }
+
+    #[test]
+    fn byte_range_span_without_source_copy_matches_source_map_span() {
+        let source = "intro 🤓\r\n  ```mermaid\nflowchart TD\nA-->B\n```\n";
+        let start = source.find("```").unwrap();
+        let end = start + 3;
+        let cancellation = crate::AnalysisCancellationToken::new();
+
+        assert_eq!(
+            byte_range_span_without_source_copy_cancellable(source, start..end, &cancellation,)
+                .unwrap(),
+            SourceMap::new(source).span(start, end).unwrap()
+        );
     }
 }

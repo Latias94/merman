@@ -78,6 +78,7 @@ impl std::str::FromStr for ResourceProfile {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ResourceProfileDescriptor {
     pub profile: ResourceProfile,
     pub id: &'static str,
@@ -179,12 +180,14 @@ impl InputResourceLimitId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct InputResourceLimitDescriptor {
     pub id: InputResourceLimitId,
     pub stable_id: &'static str,
     pub phase: InputResourceLimitPhase,
     pub description: &'static str,
     pub overridable: bool,
+    pub minimum_value: usize,
 }
 
 macro_rules! input_limit_descriptors {
@@ -197,6 +200,7 @@ macro_rules! input_limit_descriptors {
                     phase: InputResourceLimitPhase::$phase,
                     description: $description,
                     overridable: true,
+                    minimum_value: 1,
                 }),+
             ];
     };
@@ -419,6 +423,7 @@ pub enum InputResourceLimitOverrideError {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("resource limit exceeded during {phase}: {limit} actual={actual} max={max}")]
+#[non_exhaustive]
 pub struct InputResourceLimitExceeded {
     pub phase: InputResourceLimitPhase,
     pub limit: &'static str,

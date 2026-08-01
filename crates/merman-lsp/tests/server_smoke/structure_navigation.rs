@@ -4,7 +4,8 @@ use super::prelude::*;
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_handles_document_symbols_and_rejects_workspace_symbols() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -133,7 +134,8 @@ async fn lsp_service_handles_document_symbols_and_rejects_workspace_symbols() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_projects_hover_as_negotiated_plain_text() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/plain-hover.mmd").unwrap();
 
     let initialize = Request::build("initialize")

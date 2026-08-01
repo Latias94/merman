@@ -63,9 +63,28 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("unknown operation did not return a binding error")
         } catch let error as MermanError {
             switch error {
-            case let .Binding(_, _, kind, capabilityId, _):
+            case let .Binding(_, _, kind, capabilityId, _, _):
                 guard kind == .unknownOperation, capabilityId == nil else {
                     throw SmokeError.failed("unknown operation lost its machine-readable error fields")
+                }
+            }
+        }
+
+        do {
+            _ = try engine.renderSvg(
+                source: source,
+                optionsJson: #"{"version":2,"resources":{"profile":"constrained","limits":{"max_source_bytes":8}}}"#
+            )
+            throw SmokeError.failed("resource failure did not return a binding error")
+        } catch let error as MermanError {
+            switch error {
+            case let .Binding(_, codeName, _, _, resource, _):
+                guard codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+                      resource?.limitId == "max_source_bytes",
+                      resource?.phase == "source",
+                      (resource?.actual ?? 0) > (resource?.max ?? UInt64.max),
+                      resource?.profile == "constrained" else {
+                    throw SmokeError.failed("resource failure lost its structured details")
                 }
             }
         }
@@ -206,13 +225,28 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngi
         throw SmokeError.failed("runtime catalog resource descriptors were malformed")
     }
     let requiredResourceIDs: Set<String> = [
+        "max_ascii_grid_cells",
+        "max_document_diagrams",
+        "max_embedded_image_bytes",
+        "max_embedded_image_pixels",
         "max_layout_work_units",
         "max_model_items",
         "max_model_nesting_depth",
         "max_model_text_bytes",
+        "max_nested_svg_images",
+        "max_raster_height",
+        "max_raster_pixels",
+        "max_raster_width",
         "max_source_bytes",
         "max_svg_bytes",
+        "max_svg_conversion_filter_primitives_per_filter",
+        "max_svg_conversion_isolation_depth",
+        "max_svg_conversion_subroots",
         "max_svg_elements",
+        "max_total_embedded_image_bytes",
+        "max_total_embedded_image_pixels",
+        "max_total_svg_conversion_filter_primitives",
+        "svg_backend_tree_nodes",
     ]
     let resourceIDs = Set(limits.compactMap { $0["id"] as? String })
     guard requiredResourceIDs.isSubset(of: resourceIDs) else {
@@ -329,7 +363,7 @@ private func validateNativeOutputEnvironmentFacts(
           images["source_ids"] as? [String] == ["data-url"],
           boolean(images["filesystem_access"]) == false,
           boolean(images["network_access"]) == false,
-          boolean(images["caller_configurable"]) == false,
+          boolean(images["caller_configurable"]) == true,
           let limits = images["limits"] as? [String: Any],
           positiveInteger(limits["max_bytes_per_image"]) == 16 * 1024 * 1024,
           positiveInteger(limits["max_total_bytes"]) == 32 * 1024 * 1024,

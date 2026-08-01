@@ -8,6 +8,7 @@ library;
 export 'src/generated/resource_options.dart'
     show
         MermanResourceLimitId,
+        MermanResourceOverrideId,
         MermanResourceOptions,
         MermanResourceOptionsBuilder,
         MermanResourceProfile;
@@ -23,13 +24,18 @@ export 'src/generated/text_measurement_protocol.dart'
 export 'src/merman_ffi.dart'
     show
         Merman,
+        MermanAsciiCapability,
+        MermanAsciiCapabilityEvidence,
         MermanBusyException,
+        MermanDiagramFamilyCapability,
         MermanErrorKind,
         MermanException,
+        MermanLintRuleCatalogEntry,
         MermanMissingCapabilityException,
         MermanOperation,
         MermanOperationResult,
         MermanReentrantCallException,
+        MermanResourceErrorDetails,
         MermanResourceLimitDescriptor,
         MermanResourceProfileDescriptor,
         MermanReusableEngine,

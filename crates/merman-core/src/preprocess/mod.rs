@@ -46,6 +46,15 @@ pub struct FrontmatterByteSpan {
     pub end: usize,
 }
 
+/// Source-backed frontmatter bounds found without materializing a dedented body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrontmatterBlockLocation<'a> {
+    pub full: FrontmatterByteSpan,
+    pub body: FrontmatterByteSpan,
+    pub indent: &'a str,
+    pub stripped: &'a str,
+}
+
 #[derive(Debug, Clone)]
 pub struct FrontmatterBlock<'a> {
     pub full: FrontmatterByteSpan,
@@ -56,6 +65,8 @@ pub struct FrontmatterBlock<'a> {
 }
 
 const MAX_CONFIG_NESTING_DEPTH: usize = crate::MAX_DIAGRAM_NESTING_DEPTH;
+const CONTROLLED_SCAN_CHECKPOINT_BYTES: usize = 4 * 1024;
+const MAX_DIRECTIVE_CONFIG_PARSE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DirectiveRecoveryMode {
@@ -105,14 +116,17 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_controll
     control: &ParseControl,
 ) -> ParseControlResult<Result<PreprocessResult>> {
     let preprocessed = preprocess_single_pass_controlled(
-        PreprocessedSource::new(input),
+        PreprocessedSource::new_controlled(input, control)?,
         registry,
         diagram_type,
         directive_recovery,
         control,
     )?;
     control.checkpoint()?;
-    let prepared = preprocessed.map(prepare_parser_code);
+    let prepared = match preprocessed {
+        Ok(preprocessed) => Ok(prepare_parser_code_controlled(preprocessed, control)?),
+        Err(error) => Err(error),
+    };
     control.checkpoint()?;
     Ok(prepared)
 }
@@ -161,7 +175,7 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_c
 
     control.checkpoint()?;
     let outer = match preprocess_single_pass_controlled(
-        PreprocessedSource::new(input),
+        PreprocessedSource::new_controlled(input, control)?,
         registry,
         diagram_type,
         directive_recovery,
@@ -185,7 +199,7 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_c
     };
     control.checkpoint()?;
     let result = PreprocessResult {
-        source: prepare_parser_text(inner.source),
+        source: prepare_parser_text_controlled(inner.source, control)?,
         title: outer.title,
         config: outer.config,
     };
@@ -201,8 +215,7 @@ fn preprocess_single_pass_controlled(
     control: &ParseControl,
 ) -> ParseControlResult<Result<PreprocessResult>> {
     control.checkpoint()?;
-    cleanup_text(&mut source);
-    control.checkpoint()?;
+    cleanup_text_controlled(&mut source, control)?;
     let frontmatter = process_frontmatter_controlled(source.text(), control)?;
     let (frontmatter_len, title, mut frontmatter_config) = match frontmatter {
         Ok((without_frontmatter, title, config)) => (
@@ -217,7 +230,7 @@ fn preprocess_single_pass_controlled(
             EditorLexemeKind::Frontmatter,
             SourceSpan::new(0, frontmatter_len),
         );
-        source.apply_edits(vec![SourceEdit::delete(0..frontmatter_len)]);
+        source.apply_edits(vec![SourceEdit::delete(0..frontmatter_len)], control)?;
     }
 
     control.checkpoint()?;
@@ -249,13 +262,13 @@ fn preprocess_single_pass_controlled(
             .into_iter()
             .map(SourceEdit::delete)
             .collect(),
-    );
+        control,
+    )?;
 
     frontmatter_config.deep_merge(processed_directives.config.as_value());
 
     control.checkpoint()?;
-    remove_mermaid_comments(&mut source);
-    control.checkpoint()?;
+    remove_mermaid_comments_controlled(&mut source, control)?;
     Ok(Ok(PreprocessResult {
         source,
         title,
@@ -263,72 +276,101 @@ fn preprocess_single_pass_controlled(
     }))
 }
 
-fn prepare_parser_code(mut preprocessed: PreprocessResult) -> PreprocessResult {
-    preprocessed.source = prepare_parser_text(preprocessed.source);
-    preprocessed
+fn prepare_parser_code_controlled(
+    mut preprocessed: PreprocessResult,
+    control: &ParseControl,
+) -> ParseControlResult<PreprocessResult> {
+    preprocessed.source = prepare_parser_text_controlled(preprocessed.source, control)?;
+    Ok(preprocessed)
 }
 
-fn prepare_parser_text(mut source: PreprocessedSource) -> PreprocessedSource {
-    if source.text().contains('#') {
-        encode_mermaid_entities_like_upstream(&mut source);
-    }
-    source
+fn prepare_parser_text_controlled(
+    mut source: PreprocessedSource,
+    control: &ParseControl,
+) -> ParseControlResult<PreprocessedSource> {
+    encode_mermaid_entities_like_upstream_controlled(&mut source, control)?;
+    Ok(source)
 }
 
-fn cleanup_text(source: &mut PreprocessedSource) {
-    strip_leading_utf8_bom(source);
-    normalize_crlf(source);
+fn cleanup_text_controlled(
+    source: &mut PreprocessedSource,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    control.checkpoint()?;
+    strip_leading_utf8_bom(source, control)?;
+    normalize_crlf_controlled(source, control)?;
 
     // Mermaid performs this HTML attribute rewrite as part of preprocessing.
-    if source.text().contains('<') && source.text().contains("=\"") {
-        normalize_html_tag_attributes_like_upstream(source);
-    }
+    normalize_html_tag_attributes_like_upstream_controlled(source, control)?;
+    control.checkpoint()
 }
 
-fn strip_leading_utf8_bom(source: &mut PreprocessedSource) {
+fn strip_leading_utf8_bom(
+    source: &mut PreprocessedSource,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
     if source.text().starts_with('\u{feff}') {
-        source.apply_edits(vec![SourceEdit::delete(0..'\u{feff}'.len_utf8())]);
+        source.apply_edits(vec![SourceEdit::delete(0..'\u{feff}'.len_utf8())], control)?;
     }
+    Ok(())
 }
 
-fn remove_mermaid_comments(source: &mut PreprocessedSource) {
-    if source.text().contains("%%") {
-        let mut edits = Vec::new();
-        let mut comments = Vec::new();
-        let mut line_start = 0usize;
-        for line in source.text().split_inclusive('\n') {
-            let trimmed = line.trim_start();
-            if let Some(after_marker) = trimmed.strip_prefix("%%") {
-                let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
-                if !after_marker.starts_with('{') && has_comment_body {
-                    let range = line_start..line_start + line.len();
-                    comments.push(SourceSpan::new(range.start, range.end));
-                    edits.push(SourceEdit::delete(range));
-                }
+fn remove_mermaid_comments_controlled(
+    source: &mut PreprocessedSource,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    let text = source.text();
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    let mut edits = Vec::new();
+    let mut comments = Vec::new();
+    let mut line_start = 0usize;
+    while line_start < text.len() {
+        let newline = find_newline_controlled(text, line_start, &mut checkpoints)?;
+        let line_end = newline.map_or(text.len(), |newline| newline + 1);
+        let line = &text[line_start..line_end];
+        let trimmed_start = trim_start_whitespace_controlled(line, &mut checkpoints)?;
+        let trimmed = &line[trimmed_start..];
+        if let Some(after_marker) = trimmed.strip_prefix("%%") {
+            let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
+            if !after_marker.starts_with('{') && has_comment_body {
+                let range = line_start..line_end;
+                comments.push(SourceSpan::new(range.start, range.end));
+                edits.push(SourceEdit::delete(range));
             }
-            line_start += line.len();
         }
-        for span in comments {
-            source.record_global_lexeme(EditorLexemeKind::Comment, span);
-        }
-        source.apply_edits(edits);
+        let Some(newline) = newline else {
+            break;
+        };
+        line_start = newline + 1;
     }
+    checkpoints.finish()?;
+    for (index, span) in comments.into_iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        source.record_global_lexeme(EditorLexemeKind::Comment, span);
+    }
+    source.apply_edits(edits, control)?;
 
-    let trimmed_len = source.text().trim_start().len();
-    let leading_whitespace = source.text().len() - trimmed_len;
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    let leading_whitespace = trim_start_whitespace_controlled(source.text(), &mut checkpoints)?;
+    checkpoints.finish()?;
     if leading_whitespace > 0 {
-        source.apply_edits(vec![SourceEdit::delete(0..leading_whitespace)]);
+        source.apply_edits(vec![SourceEdit::delete(0..leading_whitespace)], control)?;
     }
+    control.checkpoint()
 }
 
-fn normalize_crlf(source: &mut PreprocessedSource) {
-    if !source.text().contains('\r') {
-        return;
-    }
+fn normalize_crlf_controlled(
+    source: &mut PreprocessedSource,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
     let bytes = source.text().as_bytes();
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut edits = Vec::new();
     let mut cursor = 0usize;
     while cursor < bytes.len() {
+        checkpoints.scanned(1)?;
         if bytes[cursor] == b'\r' {
             let end = cursor + usize::from(bytes.get(cursor + 1) == Some(&b'\n')) + 1;
             edits.push(SourceEdit::replace(
@@ -345,17 +387,28 @@ fn normalize_crlf(source: &mut PreprocessedSource) {
             cursor += 1;
         }
     }
-    source.apply_edits(edits);
+    checkpoints.finish()?;
+    source.apply_edits(edits, control)?;
+    control.checkpoint()
 }
 
-fn normalize_html_tag_attributes_like_upstream(source: &mut PreprocessedSource) {
+#[cfg(test)]
+fn normalize_crlf(source: &mut PreprocessedSource) {
+    normalize_crlf_controlled(source, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled");
+}
+
+fn normalize_html_tag_attributes_like_upstream_controlled(
+    source: &mut PreprocessedSource,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
     let text = source.text();
     let bytes = text.as_bytes();
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut probe = 0usize;
     let mut edits = Vec::new();
 
-    while let Some(rel_start) = text[probe..].find('<') {
-        let start = probe + rel_start;
+    while let Some(start) = find_ascii_pattern_controlled(text, probe, b"<", &mut checkpoints)? {
         let tag_start = start + 1;
         if tag_start >= bytes.len() || !is_mermaid_js_word_byte(bytes[tag_start]) {
             probe = tag_start;
@@ -364,43 +417,58 @@ fn normalize_html_tag_attributes_like_upstream(source: &mut PreprocessedSource) 
 
         let mut tag_end = tag_start + 1;
         while tag_end < bytes.len() && is_mermaid_js_word_byte(bytes[tag_end]) {
+            checkpoints.scanned(1)?;
             tag_end += 1;
         }
 
-        let Some(rel_end) = text[tag_end..].find('>') else {
+        let Some(end) = find_ascii_pattern_controlled(text, tag_end, b">", &mut checkpoints)?
+        else {
             // No later `<` can form a closed tag when the remaining suffix has no `>`.
             // Advancing by one here made malformed input rescan the same suffix O(n^2).
             break;
         };
-        let end = tag_end + rel_end;
 
-        html_attribute_quote_edits(text, tag_end, end, &mut edits);
+        html_attribute_quote_edits_controlled(text, tag_end, end, &mut edits, &mut checkpoints)?;
 
         probe = end + 1;
     }
-    source.apply_edits(edits);
+    checkpoints.finish()?;
+    source.apply_edits(edits, control)?;
+    control.checkpoint()
 }
 
-fn html_attribute_quote_edits(
+#[cfg(test)]
+fn normalize_html_tag_attributes_like_upstream(source: &mut PreprocessedSource) {
+    normalize_html_tag_attributes_like_upstream_controlled(source, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled");
+}
+
+fn html_attribute_quote_edits_controlled(
     text: &str,
     attributes_start: usize,
     attributes_end: usize,
     edits: &mut Vec<SourceEdit>,
-) {
-    let attributes = &text[attributes_start..attributes_end];
-    let mut probe = 0usize;
-
-    while let Some(rel_start) = attributes[probe..].find("=\"") {
-        let start = probe + rel_start;
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<()> {
+    let mut probe = attributes_start;
+    while let Some(start) =
+        find_ascii_pattern_in_range_controlled(text, probe, attributes_end, b"=\"", checkpoints)?
+    {
         let value_start = start + 2;
-        let Some(rel_end) = attributes[value_start..].find('"') else {
+        let Some(end) = find_ascii_pattern_in_range_controlled(
+            text,
+            value_start,
+            attributes_end,
+            b"\"",
+            checkpoints,
+        )?
+        else {
             probe = value_start;
             continue;
         };
-        let end = value_start + rel_end;
 
-        let opening_quote = attributes_start + start + 1;
-        let closing_quote = attributes_start + end;
+        let opening_quote = start + 1;
+        let closing_quote = end;
         edits.push(SourceEdit::replace(
             opening_quote..opening_quote + 1,
             "'",
@@ -414,51 +482,58 @@ fn html_attribute_quote_edits(
 
         probe = end + 1;
     }
+    Ok(())
 }
 
-fn encode_mermaid_entities_like_upstream(source: &mut PreprocessedSource) {
-    if !source.text().contains('#') {
-        return;
-    }
-
+fn encode_mermaid_entities_like_upstream_controlled(
+    source: &mut PreprocessedSource,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
     // Mirrors Mermaid `encodeEntities` (Mermaid@11.12.2):
     //
     // 1) Protect `style...:#...;` and `classDef...:#...;` so color hex fragments are not mistaken
     //    as entities by the `/#\\w+;/g` pass.
     // 2) Encode `#<name>;` and `#<number>;` sequences into placeholders that do not contain `#`/`;`.
-    if source.text().contains("style") && source.text().contains(';') {
-        strip_hex_style_semicolons_like_upstream(source, "style");
-    }
-
-    if source.text().contains("classDef") && source.text().contains(';') {
-        strip_hex_style_semicolons_like_upstream(source, "classDef");
-    }
-
-    if source.text().contains(';') {
-        encode_entity_placeholders_like_upstream(source);
-    }
+    strip_hex_style_semicolons_like_upstream_controlled(source, "style", control)?;
+    strip_hex_style_semicolons_like_upstream_controlled(source, "classDef", control)?;
+    encode_entity_placeholders_like_upstream_controlled(source, control)?;
+    control.checkpoint()
 }
 
-fn encode_entity_placeholders_like_upstream(source: &mut PreprocessedSource) {
+#[cfg(test)]
+fn encode_mermaid_entities_like_upstream(source: &mut PreprocessedSource) {
+    encode_mermaid_entities_like_upstream_controlled(source, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled");
+}
+
+fn encode_entity_placeholders_like_upstream_controlled(
+    source: &mut PreprocessedSource,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
     let text = source.text();
     let bytes = text.as_bytes();
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut cursor = 0usize;
     let mut edits = Vec::new();
 
-    while let Some(rel_hash) = text[cursor..].find('#') {
-        let start = cursor + rel_hash;
+    while let Some(start) = find_ascii_pattern_controlled(text, cursor, b"#", &mut checkpoints)? {
         let mut end = start + 1;
         while end < bytes.len() && is_mermaid_js_word_byte(bytes[end]) {
+            checkpoints.scanned(1)?;
             end += 1;
         }
 
         if end > start + 1 && bytes.get(end) == Some(&b';') {
             let inner = &text[start + 1..end];
-            let prefix = if inner.bytes().all(|b| b.is_ascii_digit()) {
-                "ﬂ°°"
-            } else {
-                "ﬂ°"
-            };
+            let mut all_digits = true;
+            for byte in inner.bytes() {
+                checkpoints.scanned(1)?;
+                if !byte.is_ascii_digit() {
+                    all_digits = false;
+                    break;
+                }
+            }
+            let prefix = if all_digits { "ﬂ°°" } else { "ﬂ°" };
             edits.push(SourceEdit::replace(
                 start..start + 1,
                 prefix,
@@ -474,61 +549,100 @@ fn encode_entity_placeholders_like_upstream(source: &mut PreprocessedSource) {
             cursor = start + 1;
         }
     }
-    source.apply_edits(edits);
+    checkpoints.finish()?;
+    source.apply_edits(edits, control)?;
+    control.checkpoint()
 }
 
 fn is_mermaid_js_word_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
-fn strip_hex_style_semicolons_like_upstream(source: &mut PreprocessedSource, keyword: &str) {
+fn strip_hex_style_semicolons_like_upstream_controlled(
+    source: &mut PreprocessedSource,
+    keyword: &str,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
     let text = source.text();
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut edits = Vec::new();
     let mut line_start = 0usize;
 
-    for (idx, ch) in text.char_indices() {
-        if ch == '\n' {
-            collect_hex_style_semicolon_edits(
-                &text[line_start..idx],
-                line_start,
-                keyword,
-                &mut edits,
-            );
-            line_start = idx + ch.len_utf8();
-        }
+    loop {
+        let newline = find_newline_controlled(text, line_start, &mut checkpoints)?;
+        let line_end = newline.unwrap_or(text.len());
+        collect_hex_style_semicolon_edits_controlled(
+            text,
+            line_start,
+            line_end,
+            keyword,
+            &mut edits,
+            &mut checkpoints,
+        )?;
+        let Some(newline) = newline else {
+            break;
+        };
+        line_start = newline + 1;
     }
 
-    collect_hex_style_semicolon_edits(&text[line_start..], line_start, keyword, &mut edits);
-    source.apply_edits(edits);
+    checkpoints.finish()?;
+    source.apply_edits(edits, control)?;
+    control.checkpoint()
 }
 
-fn collect_hex_style_semicolon_edits(
-    line: &str,
+fn collect_hex_style_semicolon_edits_controlled(
+    text: &str,
     line_start: usize,
+    line_end: usize,
     keyword: &str,
     edits: &mut Vec<SourceEdit>,
-) {
-    let mut cursor = 0usize;
-    while let Some(semicolon) = find_hex_style_match(line, keyword, cursor) {
-        edits.push(SourceEdit::delete(
-            line_start + semicolon..line_start + semicolon + 1,
-        ));
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<()> {
+    let mut cursor = line_start;
+    while let Some(semicolon) =
+        find_hex_style_match_controlled(text, line_start, line_end, keyword, cursor, checkpoints)?
+    {
+        edits.push(SourceEdit::delete(semicolon..semicolon + 1));
         cursor = semicolon + 1;
     }
+    Ok(())
 }
 
-fn find_hex_style_match(line: &str, keyword: &str, search_start: usize) -> Option<usize> {
-    let start = search_start + line[search_start..].find(keyword)?;
-    find_hex_style_match_end(line, start + keyword.len())
+fn find_hex_style_match_controlled(
+    text: &str,
+    line_start: usize,
+    line_end: usize,
+    keyword: &str,
+    search_start: usize,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<Option<usize>> {
+    let Some(start) = find_ascii_pattern_in_range_controlled(
+        text,
+        search_start.max(line_start),
+        line_end,
+        keyword.as_bytes(),
+        checkpoints,
+    )?
+    else {
+        return Ok(None);
+    };
+    find_hex_style_match_end_controlled(text, start + keyword.len(), line_end, checkpoints)
 }
 
-fn find_hex_style_match_end(line: &str, search_start: usize) -> Option<usize> {
+fn find_hex_style_match_end_controlled(
+    text: &str,
+    search_start: usize,
+    line_end: usize,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<Option<usize>> {
     let mut probe = search_start;
-    while let Some(rel_colon) = line[probe..].find(':') {
-        let colon = probe + rel_colon;
+    while let Some(colon) =
+        find_ascii_pattern_in_range_controlled(text, probe, line_end, b":", checkpoints)?
+    {
         let mut hash = None;
         let mut token_end = colon + 1;
-        for (rel, ch) in line[colon + 1..].char_indices() {
+        for (rel, ch) in text[colon + 1..line_end].char_indices() {
+            checkpoints.scanned(ch.len_utf8())?;
             if ch.is_whitespace() {
                 token_end = colon + 1 + rel;
                 break;
@@ -541,14 +655,36 @@ fn find_hex_style_match_end(line: &str, search_start: usize) -> Option<usize> {
         }
 
         if let Some(hash) = hash {
-            return line[hash + 1..].rfind(';').map(|rel| hash + 1 + rel);
+            return rfind_ascii_byte_in_range_controlled(
+                text,
+                hash + 1,
+                line_end,
+                b';',
+                checkpoints,
+            );
         }
 
         // Skip the complete value token. Re-probing at every byte after a colon makes a
         // long colon-heavy line quadratic when no hexadecimal color is present.
         probe = token_end.max(colon + 1);
     }
-    None
+    Ok(None)
+}
+
+fn rfind_ascii_byte_in_range_controlled(
+    text: &str,
+    start: usize,
+    end: usize,
+    needle: u8,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<Option<usize>> {
+    for offset in (start..end.min(text.len())).rev() {
+        checkpoints.scanned(1)?;
+        if text.as_bytes()[offset] == needle {
+            return Ok(Some(offset));
+        }
+    }
+    Ok(None)
 }
 
 fn process_frontmatter_controlled<'a>(
@@ -556,36 +692,27 @@ fn process_frontmatter_controlled<'a>(
     control: &ParseControl,
 ) -> ParseControlResult<Result<(&'a str, Option<String>, MermaidConfig)>> {
     control.checkpoint()?;
-    let Some((yaml_body, stripped)) = split_frontmatter(input) else {
+    let Some(frontmatter) = split_frontmatter_block_controlled(input, control)? else {
         return Ok(Ok((input, None, MermaidConfig::empty_object())));
     };
+    let yaml_body = frontmatter.dedented_body;
+    let stripped = frontmatter.stripped;
 
-    if config_nesting_exceeds_limit(yaml_body.as_ref()) {
+    if config_nesting_exceeds_limit_controlled(yaml_body.as_ref(), control)? {
         return Ok(Err(Error::InvalidFrontMatterYaml {
             message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
         }));
     }
 
     control.checkpoint()?;
-    let parsed = match crate::yaml_config::parse_yaml_value_controlled(
-        yaml_body.as_ref(),
-        MAX_CONFIG_NESTING_DEPTH,
-        control,
-    )? {
+    let parsed_obj = match parse_frontmatter_yaml_fields_controlled(yaml_body.as_ref(), control)? {
         Ok(parsed) => parsed,
         Err(message) => return Ok(Err(Error::InvalidFrontMatterYaml { message })),
     };
     if let Err(cancelled) = control.checkpoint() {
-        crate::config::drop_value_nonrecursive(parsed);
+        crate::config::drop_value_nonrecursive(Value::Object(parsed_obj));
         return Err(cancelled);
     }
-    let parsed_obj = match parsed {
-        Value::Object(obj) => obj,
-        other => {
-            crate::config::drop_value_nonrecursive(other);
-            Default::default()
-        }
-    };
 
     let mut title = None;
     let mut display_mode = None;
@@ -621,53 +748,143 @@ fn process_frontmatter_controlled<'a>(
     Ok(Ok((stripped, title, config)))
 }
 
-fn split_frontmatter(input: &str) -> Option<(Cow<'_, str>, &str)> {
-    split_frontmatter_block(input).map(|block| (block.dedented_body, block.stripped))
+/// Splits an optional frontmatter block using a private, non-cancellable parse control.
+pub fn split_frontmatter_block(input: &str) -> Option<FrontmatterBlock<'_>> {
+    let control = ParseControl::new();
+    split_frontmatter_block_controlled(input, &control)
+        .expect("a private parse control cannot be cancelled")
 }
 
-pub fn split_frontmatter_block(input: &str) -> Option<FrontmatterBlock<'_>> {
-    let open_line_end = input.find('\n')?;
-    let open_line = input[..open_line_end].trim_end_matches('\r');
-    let indent_end = frontmatter_indent_end(open_line);
+/// Locates an optional frontmatter block without allocating a dedented body.
+pub fn locate_frontmatter_block_controlled<'a>(
+    input: &'a str,
+    control: &ParseControl,
+) -> ParseControlResult<Option<FrontmatterBlockLocation<'a>>> {
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    let Some(open_line_newline) = find_newline_controlled(input, 0, &mut checkpoints)? else {
+        checkpoints.finish()?;
+        return Ok(None);
+    };
+    let open_line_end =
+        trim_frontmatter_line_end_controlled(input, 0, open_line_newline, b"\r", &mut checkpoints)?;
+    let open_line = &input[..open_line_end];
+    let indent_end = frontmatter_indent_end_controlled(open_line, &mut checkpoints)?;
     let indent = &open_line[..indent_end];
     let after_indent = &open_line[indent_end..];
-    if !after_indent.starts_with("---") || !after_indent[3..].trim().is_empty() {
-        return None;
+    if !after_indent.starts_with("---")
+        || !frontmatter_is_whitespace_controlled(&after_indent[3..], &mut checkpoints)?
+    {
+        checkpoints.finish()?;
+        return Ok(None);
     }
 
-    let body_start = open_line_end + 1;
-    let rest = &input[body_start..];
-    let mut offset = 0usize;
-
-    for line in rest.split_inclusive('\n') {
-        let without_newline = line.trim_end_matches(['\r', '\n']);
-        if is_frontmatter_closing_line(without_newline, indent) {
-            let body = rest[..offset].strip_suffix('\n').unwrap_or(&rest[..offset]);
-            let stripped = &rest[offset + line.len()..];
-            return Some(FrontmatterBlock {
+    let body_start = open_line_newline + 1;
+    let mut line_start = body_start;
+    while line_start < input.len() {
+        let line_end_with_newline = find_newline_controlled(input, line_start, &mut checkpoints)?
+            .map_or(input.len(), |newline| newline + 1);
+        let line_end = trim_frontmatter_line_end_controlled(
+            input,
+            line_start,
+            line_end_with_newline,
+            b"\r\n",
+            &mut checkpoints,
+        )?;
+        let line = &input[line_start..line_end];
+        if is_frontmatter_closing_line_controlled(line, indent, &mut checkpoints)? {
+            let body_end = if line_start > body_start
+                && input.as_bytes().get(line_start - 1) == Some(&b'\n')
+            {
+                line_start - 1
+            } else {
+                line_start
+            };
+            let stripped = &input[line_end_with_newline..];
+            let location = FrontmatterBlockLocation {
                 full: FrontmatterByteSpan {
                     start: 0,
-                    end: body_start + offset + line.len(),
+                    end: line_end_with_newline,
                 },
                 body: FrontmatterByteSpan {
                     start: body_start,
-                    end: body_start + body.len(),
+                    end: body_end,
                 },
                 indent,
-                dedented_body: dedent_frontmatter_body(body, indent),
                 stripped,
-            });
+            };
+            checkpoints.finish()?;
+            return Ok(Some(location));
         }
-        offset += line.len();
+        if line_end_with_newline == input.len() {
+            break;
+        }
+        line_start = line_end_with_newline;
     }
 
-    None
+    checkpoints.finish()?;
+    Ok(None)
+}
+
+/// Splits an optional frontmatter block while observing cooperative cancellation.
+pub fn split_frontmatter_block_controlled<'a>(
+    input: &'a str,
+    control: &ParseControl,
+) -> ParseControlResult<Option<FrontmatterBlock<'a>>> {
+    let Some(location) = locate_frontmatter_block_controlled(input, control)? else {
+        return Ok(None);
+    };
+    let body = &input[location.body.start..location.body.end];
+    let dedented_body = dedent_frontmatter_body_controlled(body, location.indent, control)?;
+    control.checkpoint()?;
+    Ok(Some(FrontmatterBlock {
+        full: location.full,
+        body: location.body,
+        indent: location.indent,
+        dedented_body,
+        stripped: location.stripped,
+    }))
 }
 
 pub fn parse_frontmatter_yaml_fields(
     input: &str,
 ) -> std::result::Result<Map<String, Value>, String> {
-    let parsed = crate::yaml_config::parse_yaml_value(input, MAX_CONFIG_NESTING_DEPTH)?;
+    let control = ParseControl::new();
+    parse_frontmatter_yaml_fields_controlled(input, &control)
+        .expect("a private parse control cannot be cancelled")
+}
+
+/// Parses frontmatter YAML fields while observing cooperative cancellation.
+pub fn parse_frontmatter_yaml_fields_controlled(
+    input: &str,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<Map<String, Value>, String>> {
+    let parsed =
+        crate::yaml_config::parse_yaml_value_controlled(input, MAX_CONFIG_NESTING_DEPTH, control)?;
+    Ok(frontmatter_fields_from_yaml_value(parsed))
+}
+
+/// Parses frontmatter fields with caller-owned nesting and materialization budgets.
+pub fn parse_frontmatter_yaml_fields_bounded_controlled(
+    input: &str,
+    max_input_bytes: usize,
+    max_nesting_depth: usize,
+    max_materialized_bytes: usize,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<Map<String, Value>, String>> {
+    let parsed = crate::yaml_config::parse_yaml_value_with_limits_controlled(
+        input,
+        max_input_bytes,
+        max_nesting_depth,
+        max_materialized_bytes,
+        control,
+    )?;
+    Ok(frontmatter_fields_from_yaml_value(parsed))
+}
+
+fn frontmatter_fields_from_yaml_value(
+    parsed: std::result::Result<Value, String>,
+) -> std::result::Result<Map<String, Value>, String> {
+    let parsed = parsed?;
     match parsed {
         Value::Object(map) => Ok(map),
         other => {
@@ -681,37 +898,176 @@ pub fn diagram_config_key_for_type(diagram_type: &str) -> &str {
     crate::family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type)
 }
 
-fn frontmatter_indent_end(line: &str) -> usize {
+struct ControlledScanCheckpoints<'a> {
+    control: &'a ParseControl,
+    bytes_since_checkpoint: usize,
+}
+
+impl<'a> ControlledScanCheckpoints<'a> {
+    fn new(control: &'a ParseControl) -> ParseControlResult<Self> {
+        control.checkpoint()?;
+        Ok(Self {
+            control,
+            bytes_since_checkpoint: 0,
+        })
+    }
+
+    fn scanned(&mut self, bytes: usize) -> ParseControlResult<()> {
+        self.bytes_since_checkpoint = self.bytes_since_checkpoint.saturating_add(bytes);
+        while self.bytes_since_checkpoint >= CONTROLLED_SCAN_CHECKPOINT_BYTES {
+            self.control.checkpoint()?;
+            self.bytes_since_checkpoint -= CONTROLLED_SCAN_CHECKPOINT_BYTES;
+        }
+        Ok(())
+    }
+
+    fn finish(&self) -> ParseControlResult<()> {
+        self.control.checkpoint()
+    }
+}
+
+fn find_newline_controlled(
+    input: &str,
+    start: usize,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<Option<usize>> {
+    for (offset, byte) in input.as_bytes()[start..].iter().enumerate() {
+        checkpoints.scanned(1)?;
+        if *byte == b'\n' {
+            return Ok(Some(start + offset));
+        }
+    }
+    Ok(None)
+}
+
+fn trim_frontmatter_line_end_controlled(
+    input: &str,
+    start: usize,
+    mut end: usize,
+    trim: &[u8],
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<usize> {
+    while end > start && trim.contains(&input.as_bytes()[end - 1]) {
+        checkpoints.scanned(1)?;
+        end -= 1;
+    }
+    Ok(end)
+}
+
+fn frontmatter_indent_end_controlled(
+    line: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<usize> {
     let mut end = 0usize;
     for (idx, ch) in line.char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
         if ch == '\n' || ch == '\r' || !ch.is_whitespace() {
             break;
         }
         end = idx + ch.len_utf8();
     }
-    end
+    Ok(end)
 }
 
-fn is_frontmatter_closing_line(line: &str, indent: &str) -> bool {
-    let Some(after_indent) = line.strip_prefix(indent) else {
-        return false;
-    };
-    after_indent.starts_with("---") && after_indent[3..].trim().is_empty()
-}
-
-fn dedent_frontmatter_body<'a>(body: &'a str, indent: &str) -> Cow<'a, str> {
-    if indent.is_empty() {
-        return Cow::Borrowed(body);
+fn is_frontmatter_closing_line_controlled(
+    line: &str,
+    indent: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<bool> {
+    if !frontmatter_has_prefix_controlled(line, indent, checkpoints)? {
+        return Ok(false);
     }
+    let after_indent = &line[indent.len()..];
+    Ok(after_indent.starts_with("---")
+        && frontmatter_is_whitespace_controlled(&after_indent[3..], checkpoints)?)
+}
 
-    let mut out = String::with_capacity(body.len());
-    for (idx, line) in body.split('\n').enumerate() {
-        if idx > 0 {
-            out.push('\n');
+fn frontmatter_has_prefix_controlled(
+    text: &str,
+    prefix: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<bool> {
+    if text.len() < prefix.len() {
+        return Ok(false);
+    }
+    for (actual, expected) in text.as_bytes()[..prefix.len()]
+        .iter()
+        .zip(prefix.as_bytes())
+    {
+        checkpoints.scanned(1)?;
+        if actual != expected {
+            return Ok(false);
         }
-        out.push_str(line.strip_prefix(indent).unwrap_or(line));
     }
-    Cow::Owned(out)
+    Ok(true)
+}
+
+fn frontmatter_is_whitespace_controlled(
+    text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<bool> {
+    for ch in text.chars() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !ch.is_whitespace() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn dedent_frontmatter_body_controlled<'a>(
+    body: &'a str,
+    indent: &str,
+    control: &ParseControl,
+) -> ParseControlResult<Cow<'a, str>> {
+    if indent.is_empty() {
+        control.checkpoint()?;
+        return Ok(Cow::Borrowed(body));
+    }
+
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    let mut out = String::with_capacity(body.len());
+    let mut line_start = 0usize;
+    loop {
+        let line_end =
+            find_newline_controlled(body, line_start, &mut checkpoints)?.unwrap_or(body.len());
+        let line = &body[line_start..line_end];
+        let content = if frontmatter_has_prefix_controlled(line, indent, &mut checkpoints)? {
+            &line[indent.len()..]
+        } else {
+            line
+        };
+        push_frontmatter_str_controlled(&mut out, content, &mut checkpoints)?;
+        if line_end == body.len() {
+            break;
+        }
+        out.push('\n');
+        line_start = line_end + 1;
+    }
+    checkpoints.finish()?;
+    Ok(Cow::Owned(out))
+}
+
+fn push_frontmatter_str_controlled(
+    out: &mut String,
+    text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<()> {
+    let mut chunk_start = 0usize;
+    let mut chunk_len = 0usize;
+    for (idx, ch) in text.char_indices() {
+        let ch_len = ch.len_utf8();
+        checkpoints.scanned(ch_len)?;
+        chunk_len += ch_len;
+        if chunk_len >= CONTROLLED_SCAN_CHECKPOINT_BYTES {
+            let chunk_end = idx + ch_len;
+            out.push_str(&text[chunk_start..chunk_end]);
+            chunk_start = chunk_end;
+            chunk_len = 0;
+        }
+    }
+    out.push_str(&text[chunk_start..]);
+    Ok(())
 }
 
 fn frontmatter_truthy(value: &Value) -> bool {
@@ -790,14 +1146,14 @@ fn process_directives_controlled(
         let Some(raw) = block.raw else {
             continue;
         };
-        match parse_directive_like_upstream(raw) {
+        match parse_directive_like_upstream_controlled(raw, control)? {
             Ok(Some(directive)) => directives.push(directive),
             Ok(None) => {}
             Err(error) => return Ok(Err(error)),
         }
     }
     control.checkpoint()?;
-    let input_without_directives = remove_directive_blocks(input, &blocks);
+    let input_without_directives = remove_directive_blocks_controlled(input, &blocks, control)?;
     let init = match detect_init_controlled(
         &directives,
         input_without_directives.as_ref(),
@@ -925,22 +1281,37 @@ struct DirectiveBlock<'a> {
     range: std::ops::Range<usize>,
 }
 
-fn remove_directive_blocks<'a>(input: &'a str, blocks: &[DirectiveBlock<'_>]) -> Cow<'a, str> {
+fn remove_directive_blocks_controlled<'a>(
+    input: &'a str,
+    blocks: &[DirectiveBlock<'_>],
+    control: &ParseControl,
+) -> ParseControlResult<Cow<'a, str>> {
     if blocks.is_empty() {
-        return Cow::Borrowed(input);
+        control.checkpoint()?;
+        return Ok(Cow::Borrowed(input));
     }
 
-    let retained_bytes = blocks.iter().fold(input.len(), |remaining, block| {
-        remaining.saturating_sub(block.range.len())
-    });
+    let mut retained_bytes = input.len();
+    for (index, block) in blocks.iter().enumerate() {
+        if index.is_multiple_of(32) {
+            control.checkpoint()?;
+        }
+        retained_bytes = retained_bytes.saturating_sub(block.range.len());
+    }
     let mut output = String::with_capacity(retained_bytes);
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut cursor = 0usize;
     for block in blocks {
-        output.push_str(&input[cursor..block.range.start]);
+        push_frontmatter_str_controlled(
+            &mut output,
+            &input[cursor..block.range.start],
+            &mut checkpoints,
+        )?;
         cursor = block.range.end;
     }
-    output.push_str(&input[cursor..]);
-    Cow::Owned(output)
+    push_frontmatter_str_controlled(&mut output, &input[cursor..], &mut checkpoints)?;
+    checkpoints.finish()?;
+    Ok(Cow::Owned(output))
 }
 
 #[cfg(test)]
@@ -958,19 +1329,17 @@ fn directive_blocks_controlled<'a>(
     directive_recovery: DirectiveRecoveryMode,
     control: &ParseControl,
 ) -> ParseControlResult<Vec<DirectiveBlock<'a>>> {
-    control.checkpoint()?;
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut blocks = Vec::new();
     let mut pos = 0;
-    while let Some(rel) = input[pos..].find("%%{") {
-        control.checkpoint()?;
-        let start = pos + rel;
+    while let Some(start) = find_ascii_pattern_controlled(input, pos, b"%%{", &mut checkpoints)? {
         let content_start = start + 3;
-        let close = input[content_start..]
-            .find("}%%")
-            .map(|relative| content_start + relative);
-        let next_open = input[content_start..]
-            .find("%%{")
-            .map(|relative| content_start + relative);
+        let close = find_ascii_pattern_controlled(input, content_start, b"}%%", &mut checkpoints)?;
+        let next_open = if directive_recovery == DirectiveRecoveryMode::RecoverLine {
+            find_ascii_pattern_controlled(input, content_start, b"%%{", &mut checkpoints)?
+        } else {
+            None
+        };
 
         let content_end = match directive_recovery {
             DirectiveRecoveryMode::Strict => close,
@@ -980,8 +1349,11 @@ fn directive_blocks_controlled<'a>(
         };
         if let Some(content_end) = content_end {
             let end = content_end + 3;
+            let raw = &input[content_start..content_end];
+            let (trimmed_start, trimmed_end) =
+                trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
             blocks.push(DirectiveBlock {
-                raw: Some(input[content_start..content_end].trim()),
+                raw: Some(&raw[trimmed_start..trimmed_end]),
                 range: start..end,
             });
             pos = end;
@@ -992,9 +1364,8 @@ fn directive_blocks_controlled<'a>(
             // Mermaid's optional closing marker makes an unterminated directive consume to EOF.
             DirectiveRecoveryMode::Strict => input.len(),
             DirectiveRecoveryMode::RecoverLine => {
-                let line_end = input[content_start..]
-                    .find(['\r', '\n'])
-                    .map_or(input.len(), |relative| content_start + relative);
+                let line_end = find_line_break_controlled(input, content_start, &mut checkpoints)?
+                    .unwrap_or(input.len());
                 next_open.map_or(line_end, |open| line_end.min(open))
             }
         };
@@ -1005,17 +1376,103 @@ fn directive_blocks_controlled<'a>(
         pos = end;
     }
 
-    control.checkpoint()?;
+    checkpoints.finish()?;
     Ok(blocks)
 }
 
+fn find_ascii_pattern_controlled(
+    input: &str,
+    start: usize,
+    pattern: &[u8],
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<Option<usize>> {
+    find_ascii_pattern_in_range_controlled(input, start, input.len(), pattern, checkpoints)
+}
+
+fn find_ascii_pattern_in_range_controlled(
+    input: &str,
+    start: usize,
+    end: usize,
+    pattern: &[u8],
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<Option<usize>> {
+    let end = end.min(input.len());
+    if pattern.is_empty() || start > end || pattern.len() > end.saturating_sub(start) {
+        return Ok(None);
+    }
+    let bytes = input.as_bytes();
+    let last_start = end - pattern.len();
+    for cursor in start..=last_start {
+        checkpoints.scanned(1)?;
+        if &bytes[cursor..cursor + pattern.len()] == pattern {
+            return Ok(Some(cursor));
+        }
+    }
+    Ok(None)
+}
+
+fn find_line_break_controlled(
+    input: &str,
+    start: usize,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<Option<usize>> {
+    for (offset, byte) in input.as_bytes()[start..].iter().copied().enumerate() {
+        checkpoints.scanned(1)?;
+        if matches!(byte, b'\r' | b'\n') {
+            return Ok(Some(start + offset));
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(test)]
 fn parse_directive_like_upstream(raw: &str) -> Result<Option<Directive>> {
-    let normalized: Cow<'_, str> = if raw.contains('\'') {
-        Cow::Owned(raw.replace('\'', "\""))
-    } else {
-        Cow::Borrowed(raw)
+    let control = ParseControl::new();
+    parse_directive_like_upstream_controlled(raw, &control)
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn parse_directive_like_upstream_controlled(
+    raw: &str,
+    control: &ParseControl,
+) -> ParseControlResult<Result<Option<Directive>>> {
+    let normalized = normalize_directive_quotes_controlled(raw, control)?;
+    parse_directive_controlled(normalized.as_ref(), control)
+}
+
+fn normalize_directive_quotes_controlled<'a>(
+    raw: &'a str,
+    control: &ParseControl,
+) -> ParseControlResult<Cow<'a, str>> {
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    let mut first_quote = None;
+    for (index, byte) in raw.as_bytes().iter().copied().enumerate() {
+        checkpoints.scanned(1)?;
+        if byte == b'\'' {
+            first_quote = Some(index);
+            break;
+        }
+    }
+    let Some(first_quote) = first_quote else {
+        checkpoints.finish()?;
+        return Ok(Cow::Borrowed(raw));
     };
-    parse_directive(normalized.as_ref())
+
+    let mut normalized = String::with_capacity(raw.len());
+    let mut cursor = 0usize;
+    for (relative, byte) in raw.as_bytes()[first_quote..].iter().copied().enumerate() {
+        checkpoints.scanned(1)?;
+        if byte != b'\'' {
+            continue;
+        }
+        let quote = first_quote + relative;
+        push_frontmatter_str_controlled(&mut normalized, &raw[cursor..quote], &mut checkpoints)?;
+        normalized.push('"');
+        cursor = quote + 1;
+    }
+    push_frontmatter_str_controlled(&mut normalized, &raw[cursor..], &mut checkpoints)?;
+    checkpoints.finish()?;
+    Ok(Cow::Owned(normalized))
 }
 
 #[cfg(test)]
@@ -1329,72 +1786,124 @@ pub(crate) fn directive_removal_ranges_controlled(
     )
 }
 
-fn parse_directive(raw: &str) -> Result<Option<Directive>> {
-    let raw = raw.trim();
+fn parse_directive_controlled(
+    raw: &str,
+    control: &ParseControl,
+) -> ParseControlResult<Result<Option<Directive>>> {
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    let (raw_start, raw_end) = trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
+    let raw = &raw[raw_start..raw_end];
     if raw.is_empty() {
-        return Ok(None);
+        checkpoints.finish()?;
+        return Ok(Ok(None));
     }
 
-    let mut chars = raw.chars().peekable();
-    let mut ty = String::new();
-    while let Some(&c) = chars.peek() {
-        if c.is_ascii_alphanumeric() || c == '_' {
-            ty.push(c);
-            chars.next();
-            continue;
+    let mut type_end = 0usize;
+    for (index, ch) in raw.char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !ch.is_ascii_alphanumeric() && ch != '_' {
+            break;
         }
-        break;
+        type_end = index + ch.len_utf8();
     }
-    if ty.is_empty() {
-        return Ok(None);
+    if type_end == 0 {
+        checkpoints.finish()?;
+        return Ok(Ok(None));
     }
+    let mut ty = String::with_capacity(type_end);
+    push_frontmatter_str_controlled(&mut ty, &raw[..type_end], &mut checkpoints)?;
 
-    while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
-        chars.next();
-    }
+    let whitespace = trim_start_whitespace_controlled(&raw[type_end..], &mut checkpoints)?;
+    let mut position = type_end + whitespace;
 
-    let args = if matches!(chars.peek(), Some(':')) {
-        chars.next();
-        while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
-            chars.next();
-        }
-        let rest: String = chars.collect();
-        let rest = rest.trim();
+    let args = if raw.as_bytes().get(position) == Some(&b':') {
+        checkpoints.scanned(1)?;
+        position += 1;
+        let whitespace = trim_start_whitespace_controlled(&raw[position..], &mut checkpoints)?;
+        position += whitespace;
+        let rest = &raw[position..];
+        let (rest_start, rest_end) = trim_whitespace_bounds_controlled(rest, &mut checkpoints)?;
+        let rest = &rest[rest_start..rest_end];
         if rest.is_empty() {
             None
         } else if rest.starts_with('{') || rest.starts_with('[') {
-            if config_nesting_exceeds_limit(rest) {
-                return Err(Error::InvalidDirectiveJson {
-                    message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
-                });
+            if rest.len() > MAX_DIRECTIVE_CONFIG_PARSE_BYTES {
+                return Ok(Err(Error::InvalidDirectiveJson {
+                    message: format!(
+                        "directive config exceeds the safe parser budget of {MAX_DIRECTIVE_CONFIG_PARSE_BYTES} bytes"
+                    ),
+                }));
             }
-            parse_directive_config_value(rest)
+            if config_nesting_exceeds_limit_controlled(rest, control)? {
+                return Ok(Err(Error::InvalidDirectiveJson {
+                    message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
+                }));
+            }
+            checkpoints.finish()?;
+            parse_directive_config_value_controlled(rest, control)?
         } else {
-            Some(Value::String(rest.to_string()))
+            let mut value = String::with_capacity(rest.len());
+            push_frontmatter_str_controlled(&mut value, rest, &mut checkpoints)?;
+            Some(Value::String(value))
         }
     } else {
         None
     };
 
-    Ok(Some(Directive { ty, args }))
+    checkpoints.finish()?;
+    Ok(Ok(Some(Directive { ty, args })))
 }
 
-fn parse_directive_config_value(input: &str) -> Option<Value> {
-    json5::from_str::<Value>(input).ok()
+fn parse_directive_config_value_controlled(
+    input: &str,
+    control: &ParseControl,
+) -> ParseControlResult<Option<Value>> {
+    control.checkpoint()?;
+    // `json5` has no cancellation hook. The caller enforces a hard input and nesting bound, so
+    // this is a bounded atomic parser region rather than an unbounded cancellation gap.
+    let parsed = json5::from_str::<Value>(input).ok();
+    if let Err(cancelled) = control.checkpoint() {
+        if let Some(value) = parsed {
+            crate::config::drop_value_nonrecursive(value);
+        }
+        return Err(cancelled);
+    }
+    Ok(parsed)
 }
 
+#[cfg(test)]
 fn config_nesting_exceeds_limit(text: &str) -> bool {
-    max_flow_collection_depth(text) > MAX_CONFIG_NESTING_DEPTH
-        || max_yaml_indent_depth(text) > MAX_CONFIG_NESTING_DEPTH
+    let control = ParseControl::new();
+    config_nesting_exceeds_limit_controlled(text, &control)
+        .expect("a private parse control cannot be cancelled")
 }
 
-fn max_flow_collection_depth(text: &str) -> usize {
+fn config_nesting_exceeds_limit_controlled(
+    text: &str,
+    control: &ParseControl,
+) -> ParseControlResult<bool> {
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    if max_flow_collection_depth_controlled(text, &mut checkpoints)? > MAX_CONFIG_NESTING_DEPTH {
+        checkpoints.finish()?;
+        return Ok(true);
+    }
+    let exceeds =
+        max_yaml_indent_depth_controlled(text, &mut checkpoints)? > MAX_CONFIG_NESTING_DEPTH;
+    checkpoints.finish()?;
+    Ok(exceeds)
+}
+
+fn max_flow_collection_depth_controlled(
+    text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<usize> {
     let mut max_depth = 0usize;
     let mut depth = 0usize;
     let mut quote = None;
     let mut escaped = false;
 
     for ch in text.chars() {
+        checkpoints.scanned(ch.len_utf8())?;
         if let Some(q) = quote {
             if escaped {
                 escaped = false;
@@ -1423,46 +1932,128 @@ fn max_flow_collection_depth(text: &str) -> usize {
         }
     }
 
-    max_depth
+    Ok(max_depth)
 }
 
-fn max_yaml_indent_depth(text: &str) -> usize {
+fn max_yaml_indent_depth_controlled(
+    text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<usize> {
     let mut indents = Vec::<usize>::new();
     let mut max_depth = 0usize;
+    let mut line_start = 0usize;
 
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
+    while line_start < text.len() {
+        let newline = find_newline_controlled(text, line_start, checkpoints)?;
+        let line_end = newline.unwrap_or(text.len());
+        let line_end =
+            if newline.is_some() && line_end > line_start && text.as_bytes()[line_end - 1] == b'\r'
+            {
+                checkpoints.scanned(1)?;
+                line_end - 1
+            } else {
+                line_end
+            };
+        let line = &text[line_start..line_end];
+        let (trimmed_start, trimmed_end) = trim_whitespace_bounds_controlled(line, checkpoints)?;
+        let trimmed = &line[trimmed_start..trimmed_end];
+        if !trimmed.is_empty() && !trimmed.starts_with('#') {
+            let indent = leading_ascii_space_count_controlled(line, checkpoints)?;
+            while indents.last().is_some_and(|prev| indent <= *prev) {
+                checkpoints.scanned(1)?;
+                indents.pop();
+            }
+            indents.push(indent);
+            let inline_sequence_depth =
+                yaml_inline_sequence_indicator_count_controlled(trimmed, checkpoints)?;
+            max_depth = max_depth.max(indents.len() + inline_sequence_depth.saturating_sub(1));
         }
 
-        let indent = line.len() - line.trim_start_matches(' ').len();
-        while indents.last().is_some_and(|prev| indent <= *prev) {
-            indents.pop();
-        }
-        indents.push(indent);
-        let inline_sequence_depth = yaml_inline_sequence_indicator_count(trimmed);
-        max_depth = max_depth.max(indents.len() + inline_sequence_depth.saturating_sub(1));
+        let Some(newline) = newline else {
+            break;
+        };
+        line_start = newline + 1;
     }
 
-    max_depth
+    Ok(max_depth)
 }
 
-fn yaml_inline_sequence_indicator_count(mut text: &str) -> usize {
+fn trim_whitespace_bounds_controlled(
+    text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<(usize, usize)> {
+    let mut start = text.len();
+    for (idx, ch) in text.char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !ch.is_whitespace() {
+            start = idx;
+            break;
+        }
+    }
+    if start == text.len() {
+        return Ok((text.len(), text.len()));
+    }
+
+    let mut end = start;
+    for (idx, ch) in text.char_indices().rev() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !ch.is_whitespace() {
+            end = idx + ch.len_utf8();
+            break;
+        }
+    }
+    Ok((start, end))
+}
+
+fn leading_ascii_space_count_controlled(
+    text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<usize> {
+    let mut count = 0usize;
+    for byte in text.bytes() {
+        checkpoints.scanned(1)?;
+        if byte != b' ' {
+            break;
+        }
+        count += 1;
+    }
+    Ok(count)
+}
+
+fn trim_start_whitespace_controlled(
+    text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<usize> {
+    let mut start = text.len();
+    for (idx, ch) in text.char_indices() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !ch.is_whitespace() {
+            start = idx;
+            break;
+        }
+    }
+    Ok(start)
+}
+
+fn yaml_inline_sequence_indicator_count_controlled(
+    mut text: &str,
+    checkpoints: &mut ControlledScanCheckpoints<'_>,
+) -> ParseControlResult<usize> {
     let mut count = 0usize;
     loop {
         let Some(after_dash) = text.strip_prefix('-') else {
-            return count;
+            return Ok(count);
         };
-        if after_dash
-            .chars()
-            .next()
-            .is_some_and(|ch| !ch.is_whitespace())
-        {
-            return count;
+        checkpoints.scanned(1)?;
+        if let Some(ch) = after_dash.chars().next() {
+            checkpoints.scanned(ch.len_utf8())?;
+            if !ch.is_whitespace() {
+                return Ok(count);
+            }
         }
         count += 1;
-        text = after_dash.trim_start();
+        let trimmed_start = trim_start_whitespace_controlled(after_dash, checkpoints)?;
+        text = &after_dash[trimmed_start..];
     }
 }
 
@@ -1483,6 +2074,164 @@ mod tests {
         let mut source = PreprocessedSource::new(input);
         transform(&mut source);
         source.into_text()
+    }
+
+    #[test]
+    fn controlled_frontmatter_apis_preserve_existing_block_semantics() {
+        for (source, expected_block) in [
+            ("---\ntitle: Demo\n---\nflowchart TD\n", true),
+            (" \t--- \r\n \ttitle: Demo\r\n \t---\r\nflowchart TD", true),
+            (
+                "\u{2003}---\n\u{2003}title: Demo\n\u{2003}---\nflowchart TD",
+                true,
+            ),
+            ("---\r\r\ntitle: Demo\r\n---\r\r\nflowchart TD", true),
+            ("---\ntitle: Demo\n--- \u{2003}\nflowchart TD", true),
+            ("---\ntitle: Demo\n---", true),
+            ("--- trailing\ntitle: Demo\n---\nflowchart TD", false),
+            ("---\ntitle: Demo\n \t---\nflowchart TD", false),
+            ("---", false),
+        ] {
+            let control = ParseControl::new();
+            let controlled = split_frontmatter_block_controlled(source, &control)
+                .expect("an active parse control must not cancel");
+            let wrapped = split_frontmatter_block(source);
+
+            assert_eq!(controlled.is_some(), expected_block, "source: {source:?}");
+            assert_eq!(
+                controlled.is_some(),
+                wrapped.is_some(),
+                "source: {source:?}"
+            );
+            if let (Some(controlled), Some(wrapped)) = (controlled, wrapped) {
+                assert_eq!(controlled.full, wrapped.full, "source: {source:?}");
+                assert_eq!(controlled.body, wrapped.body, "source: {source:?}");
+                assert_eq!(controlled.indent, wrapped.indent, "source: {source:?}");
+                assert_eq!(
+                    controlled.dedented_body, wrapped.dedented_body,
+                    "source: {source:?}"
+                );
+                assert_eq!(controlled.stripped, wrapped.stripped, "source: {source:?}");
+
+                let location = locate_frontmatter_block_controlled(source, &ParseControl::new())
+                    .expect("an active parse control must not cancel")
+                    .expect("a split block must have a location");
+                assert_eq!(location.full, controlled.full, "source: {source:?}");
+                assert_eq!(location.body, controlled.body, "source: {source:?}");
+                assert_eq!(location.indent, controlled.indent, "source: {source:?}");
+                assert_eq!(location.stripped, controlled.stripped, "source: {source:?}");
+                assert_eq!(&source[location.full.end..], controlled.stripped);
+            }
+        }
+    }
+
+    #[test]
+    fn controlled_frontmatter_split_preserves_indented_body_bytes() {
+        let source =
+            "  ---\r\n  title: Demo\r\n  config:\r\n    theme: dark\r\n  ---\r\nflowchart TD";
+        let block = split_frontmatter_block_controlled(source, &ParseControl::new())
+            .expect("an active parse control must not cancel")
+            .expect("frontmatter block");
+
+        assert_eq!(block.indent, "  ");
+        assert_eq!(
+            &source[block.body.start..block.body.end],
+            "  title: Demo\r\n  config:\r\n    theme: dark\r"
+        );
+        assert_eq!(
+            block.dedented_body,
+            "title: Demo\r\nconfig:\r\n  theme: dark\r"
+        );
+        assert_eq!(block.stripped, "flowchart TD");
+    }
+
+    #[test]
+    fn controlled_frontmatter_split_preserves_long_opening_body_and_indent_semantics() {
+        let indent = " ".repeat(8 * 1024);
+        let value = "x".repeat(8 * 1024);
+        let indented_body = format!("{indent}title: {value}");
+        let source = format!("{indent}---\n{indented_body}\n{indent}---\nflowchart TD");
+        let block = split_frontmatter_block_controlled(&source, &ParseControl::new())
+            .expect("an active parse control must not cancel")
+            .expect("frontmatter block");
+
+        let dedented_body = format!("title: {value}");
+        assert_eq!(block.indent, indent.as_str());
+        assert_eq!(
+            &source[block.body.start..block.body.end],
+            indented_body.as_str()
+        );
+        assert_eq!(block.dedented_body.as_ref(), dedented_body.as_str());
+        assert_eq!(block.stripped, "flowchart TD");
+    }
+
+    #[test]
+    fn frontmatter_location_cancels_deterministically_on_a_long_opening_line() {
+        let indent = " ".repeat(16 * 1024);
+        let source = format!("{indent}---\n{indent}---\nflowchart TD");
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(locate_frontmatter_block_controlled(&source, &control).is_err());
+    }
+
+    #[test]
+    fn frontmatter_location_cancels_deterministically_on_a_long_body() {
+        let source = format!("---\n{}\n---\nflowchart TD", "x".repeat(16 * 1024));
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(locate_frontmatter_block_controlled(&source, &control).is_err());
+    }
+
+    #[test]
+    fn frontmatter_location_cancels_deterministically_on_a_long_closing_line() {
+        let source = format!(
+            "---\ntitle: Demo\n---{}\nflowchart TD",
+            " ".repeat(16 * 1024)
+        );
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(locate_frontmatter_block_controlled(&source, &control).is_err());
+    }
+
+    #[test]
+    fn frontmatter_dedent_cancels_deterministically_on_a_long_indented_body() {
+        let body = format!("  {}", "x".repeat(16 * 1024));
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(dedent_frontmatter_body_controlled(&body, "  ", &control).is_err());
+    }
+
+    #[test]
+    fn controlled_frontmatter_yaml_fields_match_the_legacy_wrapper() {
+        let yaml = "title: Demo\nconfig:\n  theme: dark\n";
+        let controlled = parse_frontmatter_yaml_fields_controlled(yaml, &ParseControl::new())
+            .expect("an active parse control must not cancel")
+            .expect("valid frontmatter YAML");
+
+        assert_eq!(controlled, parse_frontmatter_yaml_fields(yaml).unwrap());
+
+        let cancelled = ParseControl::new();
+        cancelled.cancel();
+        assert!(parse_frontmatter_yaml_fields_controlled(yaml, &cancelled).is_err());
+    }
+
+    #[test]
+    fn bounded_frontmatter_yaml_fields_honor_caller_materialization_limits() {
+        let result = parse_frontmatter_yaml_fields_bounded_controlled(
+            "values: [one, two, three, four]\n",
+            1024,
+            16,
+            8,
+            &ParseControl::new(),
+        )
+        .expect("an active parse control must not cancel");
+
+        let error = result.expect_err("the caller budget must reject materialization");
+        assert!(error.contains("safe materialization budget"));
     }
 
     #[test]
@@ -1859,6 +2608,52 @@ A["<span title="😀">Label</span>"]
             "- ".repeat(MAX_CONFIG_NESTING_DEPTH + 1)
         );
         assert!(config_nesting_exceeds_limit(&yaml));
+    }
+
+    #[test]
+    fn controlled_config_nesting_preserves_existing_depth_semantics() {
+        let deep_flow = "[".repeat(MAX_CONFIG_NESTING_DEPTH + 1);
+        for (yaml, expected) in [
+            ("title: '[not, nesting]'\n", false),
+            ("config:\r\n  theme: dark\r\n", false),
+            ("# [ignored]\nconfig: { theme: dark }\n", false),
+            (deep_flow.as_str(), true),
+        ] {
+            let controlled = config_nesting_exceeds_limit_controlled(yaml, &ParseControl::new())
+                .expect("an active parse control must not cancel");
+
+            assert_eq!(controlled, expected, "yaml: {yaml:?}");
+            assert_eq!(controlled, config_nesting_exceeds_limit(yaml));
+        }
+    }
+
+    #[test]
+    fn config_nesting_flow_scan_cancels_deterministically_on_a_long_line() {
+        let yaml = format!("title: \"{}\"", "x".repeat(16 * 1024));
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(config_nesting_exceeds_limit_controlled(&yaml, &control).is_err());
+    }
+
+    #[test]
+    fn config_nesting_indent_scan_cancels_deterministically_on_a_long_line() {
+        let yaml = format!("{}key: value", " ".repeat(16 * 1024));
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+        let mut checkpoints = ControlledScanCheckpoints::new(&control).unwrap();
+
+        assert!(max_yaml_indent_depth_controlled(&yaml, &mut checkpoints).is_err());
+    }
+
+    #[test]
+    fn config_nesting_trim_cancels_deterministically_on_long_whitespace() {
+        let line = format!("{}value{}", " ".repeat(16 * 1024), " ".repeat(16 * 1024));
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+        let mut checkpoints = ControlledScanCheckpoints::new(&control).unwrap();
+
+        assert!(trim_whitespace_bounds_controlled(&line, &mut checkpoints).is_err());
     }
 
     fn deep_directive_value(depth: usize, leaf: Value) -> Value {

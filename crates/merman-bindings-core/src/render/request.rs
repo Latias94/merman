@@ -5,6 +5,8 @@ use crate::common::{
     binding_site_config, css_declaration_value, finite_positive, internal_json_error,
     no_diagram_error, normalize_option, runtime_policy_error,
 };
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use merman::svg::{
     HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset, HostThemePreset,
     HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions, MeasurementProfileId,
@@ -16,6 +18,12 @@ use std::sync::Arc;
 pub(super) struct RenderRequestPlan {
     renderer: HeadlessRenderer,
     pipeline: merman::svg::SvgPipeline,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    export_resource_profile: merman::resources::ResourceProfile,
+    #[cfg(any(feature = "png", feature = "jpeg"))]
+    raster_options: merman::svg::export::RasterOptions,
+    #[cfg(feature = "pdf")]
+    pdf_options: merman::svg::export::PdfOptions,
 }
 
 pub(super) struct RenderOperationConfig {
@@ -24,8 +32,14 @@ pub(super) struct RenderOperationConfig {
     host_theme_site_config: Option<merman::MermaidConfig>,
     site_config: Option<merman::MermaidConfig>,
     layout: LayoutOptions,
-    diagram_id: Option<String>,
+    svg: merman::svg::SvgRenderOptions,
     output: merman::svg::SvgOutputPolicy,
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    export_resource_profile: merman::resources::ResourceProfile,
+    #[cfg(any(feature = "png", feature = "jpeg"))]
+    raster_options: merman::svg::export::RasterOptions,
+    #[cfg(feature = "pdf")]
+    pdf_options: merman::svg::export::PdfOptions,
 }
 
 impl RenderRequestPlan {
@@ -55,6 +69,12 @@ impl RenderRequestPlan {
         Self {
             renderer: self.renderer.clone().with_text_measurement_policy(policy),
             pipeline: self.pipeline.clone(),
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            export_resource_profile: self.export_resource_profile,
+            #[cfg(any(feature = "png", feature = "jpeg"))]
+            raster_options: self.raster_options.clone(),
+            #[cfg(feature = "pdf")]
+            pdf_options: self.pdf_options.clone(),
         }
     }
 
@@ -81,25 +101,64 @@ impl RenderRequestPlan {
     #[cfg(feature = "png")]
     pub(super) fn render_png(&self, source: &str) -> Result<Vec<u8>, BindingError> {
         self.renderer
-            .render_png_sync(source, &merman::svg::export::RasterOptions::default())
-            .map_err(classify_output_error)?
+            .render_png_sync(source, &self.raster_options)
+            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
             .ok_or_else(no_diagram_error)
+    }
+
+    #[cfg(feature = "png")]
+    pub(super) fn render_png_output(
+        &self,
+        source: &str,
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let (data, plan) = self
+            .renderer
+            .render_png_with_plan_sync(source, &self.raster_options)
+            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
+            .ok_or_else(no_diagram_error)?;
+        Ok(crate::operation::BindingOperationOutput::raster(data, plan))
     }
 
     #[cfg(feature = "jpeg")]
     pub(super) fn render_jpeg(&self, source: &str) -> Result<Vec<u8>, BindingError> {
         self.renderer
-            .render_jpeg_sync(source, &merman::svg::export::RasterOptions::default())
-            .map_err(classify_output_error)?
+            .render_jpeg_sync(source, &self.raster_options)
+            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
             .ok_or_else(no_diagram_error)
+    }
+
+    #[cfg(feature = "jpeg")]
+    pub(super) fn render_jpeg_output(
+        &self,
+        source: &str,
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let (data, plan) = self
+            .renderer
+            .render_jpeg_with_plan_sync(source, &self.raster_options)
+            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
+            .ok_or_else(no_diagram_error)?;
+        Ok(crate::operation::BindingOperationOutput::raster(data, plan))
     }
 
     #[cfg(feature = "pdf")]
     pub(super) fn render_pdf(&self, source: &str) -> Result<Vec<u8>, BindingError> {
         self.renderer
-            .render_pdf_sync(source)
-            .map_err(classify_output_error)?
+            .render_pdf_with_options_sync(source, &self.pdf_options)
+            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
             .ok_or_else(no_diagram_error)
+    }
+
+    #[cfg(feature = "pdf")]
+    pub(super) fn render_pdf_output(
+        &self,
+        source: &str,
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let (data, plan) = self
+            .renderer
+            .render_pdf_with_plan_sync(source, &self.pdf_options)
+            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
+            .ok_or_else(no_diagram_error)?;
+        Ok(crate::operation::BindingOperationOutput::pdf(data, plan))
     }
 }
 
@@ -187,9 +246,13 @@ impl RenderOperationConfig {
             }
         }
 
-        let mut diagram_id = None;
+        let mut svg_options = merman::svg::SvgRenderOptions::default();
         if let Some(svg) = options.svg.as_ref() {
-            diagram_id.clone_from(&svg.diagram_id);
+            svg_options.diagram_id.clone_from(&svg.diagram_id);
+            if let Some(viewbox_padding) = svg.viewbox_padding {
+                svg_options.viewbox_padding =
+                    finite_nonnegative(viewbox_padding, "svg.viewbox_padding")?;
+            }
             if let Some(raw_pipeline) = svg.pipeline.as_deref() {
                 output.preset = match normalize_option(raw_pipeline).as_str() {
                     "parity" => merman::svg::SvgPipelinePreset::Parity,
@@ -231,14 +294,28 @@ impl RenderOperationConfig {
             }
         }
 
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        let export_resources =
+            binding_export_resource_options(options.analysis.resources.as_ref())?;
+        #[cfg(any(feature = "png", feature = "jpeg"))]
+        let raster_options = binding_raster_options(options, &export_resources)?;
+        #[cfg(feature = "pdf")]
+        let pdf_options = binding_pdf_options(options, &export_resources)?;
+
         Ok(Self {
             environment,
             lenient_parsing,
             host_theme_site_config,
             site_config,
             layout,
-            diagram_id,
+            svg: svg_options,
             output,
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            export_resource_profile: export_resources.profile,
+            #[cfg(any(feature = "png", feature = "jpeg"))]
+            raster_options,
+            #[cfg(feature = "pdf")]
+            pdf_options,
         })
     }
 
@@ -256,13 +333,148 @@ impl RenderOperationConfig {
             renderer = renderer.with_site_config(site_config);
         }
         renderer = renderer.with_layout_options(self.layout);
-        if let Some(diagram_id) = self.diagram_id {
-            renderer = renderer.with_diagram_id(&diagram_id);
-        }
+        renderer = renderer.with_svg_options(self.svg);
         RenderRequestPlan {
             renderer,
             pipeline: self.output.pipeline(),
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            export_resource_profile: self.export_resource_profile,
+            #[cfg(any(feature = "png", feature = "jpeg"))]
+            raster_options: self.raster_options,
+            #[cfg(feature = "pdf")]
+            pdf_options: self.pdf_options,
         }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg"))]
+fn binding_raster_options(
+    options: &BindingOptions,
+    resources: &BindingExportResourceOptions,
+) -> Result<merman::svg::export::RasterOptions, BindingError> {
+    let mut compiled = merman::svg::export::RasterOptions {
+        size_limit: resources.raster_size_limit,
+        embedded_image_limit: resources.embedded_image_limit,
+        conversion_limits: resources.conversion_limits,
+        ..Default::default()
+    };
+    if let Some(raster) = options.raster.as_ref() {
+        if let Some(scale) = raster.scale {
+            compiled.scale = finite_positive_f32(scale, "raster.scale")?;
+        }
+        if let Some(background) = raster.background.as_deref() {
+            let background = css_declaration_value(background, "raster.background")?;
+            if !merman::svg::export::is_valid_export_background_color(&background) {
+                return Err(BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    "raster.background is not supported by the native exporter",
+                ));
+            }
+            compiled.background = Some(background);
+        }
+        if let Some(fit) = raster.fit_to.as_ref() {
+            if fit.width.is_none() && fit.height.is_none() {
+                return Err(BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    "raster.fit_to must include width or height",
+                ));
+            }
+            if fit.width == Some(0) || fit.height == Some(0) {
+                return Err(BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    "raster.fit_to width and height must be positive",
+                ));
+            }
+            compiled.fit_to = Some(merman::svg::export::RasterFitBox::new(
+                fit.width, fit.height,
+            ));
+        }
+    }
+    #[cfg(feature = "jpeg")]
+    if let Some(quality) = options.jpeg.as_ref().and_then(|jpeg| jpeg.quality) {
+        if !(1..=100).contains(&quality) {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                "jpeg.quality must be between 1 and 100",
+            ));
+        }
+        compiled.jpeg_quality = quality;
+    }
+    Ok(compiled)
+}
+
+#[cfg(feature = "pdf")]
+fn binding_pdf_options(
+    options: &BindingOptions,
+    resources: &BindingExportResourceOptions,
+) -> Result<merman::svg::export::PdfOptions, BindingError> {
+    let mut compiled = merman::svg::export::PdfOptions {
+        embedded_image_limit: resources.embedded_image_limit,
+        filter_image_limit: resources.pdf_filter_image_limit,
+        conversion_limits: resources.conversion_limits,
+        ..Default::default()
+    };
+    let Some(pdf) = options.pdf.as_ref() else {
+        return Ok(compiled);
+    };
+    if let Some(page) = pdf.page_policy.as_ref() {
+        compiled.page_policy = match page {
+            crate::common::PdfPageOptionsJson::FitSvg => merman::svg::export::PdfPagePolicy::FitSvg,
+            crate::common::PdfPageOptionsJson::Fixed {
+                width_pt,
+                height_pt,
+            } => merman::svg::export::PdfPagePolicy::Fixed {
+                width_pt: finite_positive_f32(*width_pt, "pdf.page_policy.width_pt")?,
+                height_pt: finite_positive_f32(*height_pt, "pdf.page_policy.height_pt")?,
+            },
+            crate::common::PdfPageOptionsJson::FitCssWidth { max_width_px } => {
+                merman::svg::export::PdfPagePolicy::FitCssWidth {
+                    max_width_px: finite_positive_f32(
+                        *max_width_px,
+                        "pdf.page_policy.max_width_px",
+                    )?,
+                }
+            }
+        };
+    }
+    if let Some(filter_scale) = pdf.filter_scale {
+        compiled.filter_scale = finite_positive_f32(filter_scale, "pdf.filter_scale")?;
+    }
+    if let Some(background) = pdf.background.as_deref() {
+        let background = css_declaration_value(background, "pdf.background")?;
+        if !merman::svg::export::is_valid_export_background_color(&background) {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                "pdf.background is not supported by the native exporter",
+            ));
+        }
+        compiled.background = Some(background);
+    }
+    Ok(compiled)
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn finite_positive_f32(value: f64, name: &'static str) -> Result<f32, BindingError> {
+    let value = finite_positive(value, name)?;
+    let narrowed = value as f32;
+    if narrowed.is_finite() {
+        Ok(narrowed)
+    } else {
+        Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("{name} exceeds the f32 export boundary"),
+        ))
+    }
+}
+
+fn finite_nonnegative(value: f64, name: &'static str) -> Result<f64, BindingError> {
+    if value.is_finite() && value >= 0.0 {
+        Ok(value)
+    } else {
+        Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("{name} must be finite and non-negative"),
+        ))
     }
 }
 
@@ -540,7 +752,14 @@ fn classify_render_error(err: merman::svg::HeadlessError) -> BindingError {
         }
         merman::svg::HeadlessError::Render(merman::svg::RenderError::ResourceLimitExceeded(
             err,
-        )) => BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string()),
+        )) => BindingError::resource_limit(
+            err.phase.as_str(),
+            err.limit,
+            err.actual as u64,
+            err.max as u64,
+            err.profile.id(),
+            err.to_string(),
+        ),
         merman::svg::HeadlessError::Render(
             err @ merman::svg::RenderError::MissingCapability { .. },
         ) => BindingError::missing_capability(
@@ -557,22 +776,207 @@ fn classify_render_error(err: merman::svg::HeadlessError) -> BindingError {
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn classify_output_error(err: merman::svg::OutputError) -> BindingError {
+fn classify_output_error(
+    err: merman::svg::OutputError,
+    profile: merman::resources::ResourceProfile,
+) -> BindingError {
     match err {
         merman::svg::OutputError::Headless(err) => classify_render_error(err),
-        merman::svg::OutputError::Export(
-            merman::svg::export::ExportError::EmbeddedImageLimit { .. }
-            | merman::svg::export::ExportError::SvgConversionLimit { .. },
-        ) => BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string()),
-        merman::svg::OutputError::Export(err) => {
-            BindingError::new(BindingStatus::RenderError, err.to_string())
-        }
+        merman::svg::OutputError::Export(err) => match err.resource_limit_details() {
+            Some(details) => BindingError::resource_limit(
+                details.phase,
+                details.limit_id,
+                details.actual,
+                details.max,
+                profile.id(),
+                err.to_string(),
+            ),
+            None => BindingError::new(BindingStatus::RenderError, err.to_string()),
+        },
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn export_options_compile_through_the_public_json_shape() {
+        let options = crate::common::parse_options(
+            br##"{
+                "raster": {
+                    "scale": 1.5,
+                    "background": "#ffffff",
+                    "fit_to": {"width": 640}
+                },
+                "jpeg": {"quality": 82},
+                "pdf": {
+                    "background": "transparent",
+                    "filter_scale": 2.5,
+                    "page_policy": {"kind": "fixed", "width_pt": 612, "height_pt": 792}
+                },
+                "resources": {
+                    "limits": {"max_pdf_filter_image_pixels": 1234}
+                }
+            }"##,
+        )
+        .expect("valid export options");
+        let config = RenderOperationConfig::compile(
+            &options,
+            merman::runtime::RuntimePolicy::deterministic(),
+        )
+        .expect("export options compile");
+        assert_eq!(config.raster_options.scale, 1.5);
+        assert_eq!(config.raster_options.jpeg_quality, 82);
+        let fit = config.raster_options.fit_to.expect("fit box");
+        assert_eq!(fit.width, Some(640));
+        assert_eq!(fit.height, None);
+        assert_eq!(
+            config.pdf_options.page_policy,
+            merman::svg::export::PdfPagePolicy::Fixed {
+                width_pt: 612.0,
+                height_pt: 792.0
+            }
+        );
+        assert_eq!(
+            config.pdf_options.filter_image_limit.max_total_pixels,
+            Some(1234)
+        );
+        assert_eq!(config.pdf_options.filter_scale, 2.5);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_viewbox_padding_compiles_through_the_public_json_shape() {
+        let options = crate::common::parse_options(
+            br#"{"svg":{"diagram_id":"docs-flow","viewBoxPadding":12.5}}"#,
+        )
+        .expect("valid SVG options");
+        let config = RenderOperationConfig::compile(
+            &options,
+            merman::runtime::RuntimePolicy::deterministic(),
+        )
+        .expect("SVG options compile");
+
+        assert_eq!(config.svg.diagram_id.as_deref(), Some("docs-flow"));
+        assert_eq!(config.svg.viewbox_padding, 12.5);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_viewbox_padding_rejects_negative_or_unrepresentable_values() {
+        let error = crate::common::parse_options(br#"{"svg":{"viewbox_padding":-1}}"#)
+            .and_then(|options| {
+                RenderOperationConfig::compile(
+                    &options,
+                    merman::runtime::RuntimePolicy::deterministic(),
+                )
+            })
+            .err()
+            .expect("negative SVG padding");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("svg.viewbox_padding"), "{error:?}");
+
+        let error = crate::common::parse_options(br#"{"svg":{"viewbox_padding":1e400}}"#)
+            .expect_err("unrepresentable JSON number");
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+    }
+
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn export_options_reject_backend_colors_that_would_be_ignored() {
+        let options = crate::common::parse_options(br#"{"raster":{"background":"not-a-color"}}"#)
+            .expect("JSON shape is valid");
+        let error = RenderOperationConfig::compile(
+            &options,
+            merman::runtime::RuntimePolicy::deterministic(),
+        )
+        .err()
+        .expect("unsupported backend color");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("raster.background"));
+    }
+
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn export_options_reject_invalid_numeric_and_shape_boundaries() {
+        let cases: &[(&[u8], &str)] = &[
+            (br#"{"raster":{"scale":0}}"#, "raster.scale"),
+            (br#"{"raster":{"fit_to":{}}}"#, "raster.fit_to"),
+            (br#"{"raster":{"fit_to":{"width":0}}}"#, "raster.fit_to"),
+            (br#"{"jpeg":{"quality":0}}"#, "jpeg.quality"),
+            (br#"{"jpeg":{"quality":101}}"#, "jpeg.quality"),
+            (
+                br#"{"pdf":{"page_policy":{"kind":"fixed","width_pt":0,"height_pt":10}}}"#,
+                "pdf.page_policy.width_pt",
+            ),
+            (
+                br#"{"pdf":{"page_policy":{"kind":"fixed","width_pt":10,"height_pt":0}}}"#,
+                "pdf.page_policy.height_pt",
+            ),
+            (
+                br#"{"pdf":{"page_policy":{"kind":"fit-css-width","max_width_px":0}}}"#,
+                "pdf.page_policy.max_width_px",
+            ),
+            (br#"{"pdf":{"background":"not-a-color"}}"#, "pdf.background"),
+        ];
+
+        for &(options_json, expected_field) in cases {
+            let options = crate::common::parse_options(options_json).expect("valid JSON shape");
+            let error = RenderOperationConfig::compile(
+                &options,
+                merman::runtime::RuntimePolicy::deterministic(),
+            )
+            .err()
+            .expect("invalid export option must fail before backend work");
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(
+                error.message().contains(expected_field),
+                "{expected_field}: {error:?}"
+            );
+        }
+    }
+
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn export_resource_failures_keep_stable_structured_metadata() {
+        let error = classify_output_error(
+            merman::svg::OutputError::Export(
+                merman::svg::export::ExportError::EmbeddedImageLimit {
+                    limit_name: "max_bytes_per_image",
+                    actual: 5,
+                    max: 4,
+                },
+            ),
+            merman::resources::ResourceProfile::Constrained,
+        );
+        let details = error.resource_details().expect("resource details");
+        assert_eq!(
+            details.limit_id,
+            merman::svg::export::MAX_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID
+        );
+        assert_eq!(details.phase, "embedded_image_decode");
+        assert_eq!(details.actual, 5);
+        assert_eq!(details.max, 4);
+        assert_eq!(details.profile, "constrained");
+
+        let error = classify_output_error(
+            merman::svg::OutputError::Export(
+                merman::svg::export::ExportError::PdfFilterImageLimit { actual: 5, max: 4 },
+            ),
+            merman::resources::ResourceProfile::Constrained,
+        );
+        let details = error.resource_details().expect("PDF resource details");
+        assert_eq!(
+            details.limit_id,
+            merman::svg::export::MAX_PDF_FILTER_IMAGE_PIXELS_RESOURCE_LIMIT_ID
+        );
+        assert_eq!(details.phase, "pdf_filter_rasterization");
+        assert_eq!(details.actual, 5);
+        assert_eq!(details.max, 4);
+        assert_eq!(details.profile, "constrained");
+    }
 
     #[test]
     fn fixed_local_midnight_uses_fixed_local_offset() {

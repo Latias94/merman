@@ -833,13 +833,7 @@ fn editor_rejection_to_binding_error(rejection: AnalysisRejection) -> BindingErr
         .diagnostics
         .first()
         .map(|diagnostic| diagnostic.message.clone())
-        .unwrap_or_else(|| {
-            format!(
-                "source is {} bytes, exceeding max_source_bytes {}",
-                rejection.source_len(),
-                rejection.max_source_bytes()
-            )
-        });
+        .unwrap_or_else(|| rejection.resource_limit().to_string());
     BindingError::new(BindingStatus::ResourceLimitExceeded, message)
 }
 

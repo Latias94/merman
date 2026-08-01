@@ -76,11 +76,11 @@ const CORPUS_CASES = [
   { path: "b.mmd", source: "invalid" },
 ];
 const BINDING_OPTIONS = {
-  version: 1,
+  version: 2,
   runtime_policy: "deterministic",
   resources: { profile: "trusted-native" },
 };
-const OPERATION_OPTIONS = { version: 1 };
+const OPERATION_OPTIONS = { version: 2 };
 const CORPUS_DIGEST = computeCorpusDigest(CORPUS_CASES);
 const COMPARISON_INPUT_DIGEST = computeInputDigest({
   corpusDigest: CORPUS_DIGEST,
@@ -148,6 +148,12 @@ const RUNTIME_CATALOG = {
   schema_version: 1,
   transport_api_version: 1,
   package_version: PACKAGE_VERSION,
+  options_schema_versions: [2],
+  payload_schemas: [
+    { id: "binding-result", version: 1 },
+    { id: "operation-metadata", version: 1 },
+  ],
+  metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
   capabilities: {
     capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
     output_ids: ["svg"],
@@ -174,6 +180,8 @@ const RUNTIME_CATALOG = {
       description: "Maximum source bytes.",
       overridable: true,
       hard_cap: false,
+      minimum_value: 1,
+      operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
     }],
     profiles: [
       {
@@ -388,11 +396,11 @@ test("process shutdown probe uses a stable valid smoke diagram", (context) => {
       candidate: "node-wasm",
       productModule: pathToFileURL(productModule).href,
       bindingOptions: {
-        version: 1,
+        version: 2,
         runtime_policy: "deterministic",
         resources: { profile: "trusted-native" },
       },
-      operationOptions: { version: 1 },
+      operationOptions: { version: 2 },
     }),
   );
   const result = spawnSync(
@@ -441,11 +449,11 @@ test("cold latency uses the declared successful workload, not the leading corpus
       candidate: "node-wasm",
       productModule: pathToFileURL(productModule).href,
       bindingOptions: {
-        version: 1,
+        version: 2,
         runtime_policy: "deterministic",
         resources: { profile: "trusted-native" },
       },
-      operationOptions: { version: 1 },
+      operationOptions: { version: 2 },
       workload: WORKLOADS.cold_svg,
     }),
   );
@@ -1252,11 +1260,11 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
       corpus: "fixtures/**/*.mmd",
       cases: 2,
       binding_options: {
-        version: 1,
+        version: 2,
         runtime_policy: "deterministic",
         resources: { profile: "trusted-native" },
       },
-      operation_options: { version: 1 },
+      operation_options: { version: 2 },
       workloads: WORKLOADS,
     },
     sampling: SAMPLING,
@@ -1758,11 +1766,11 @@ test("the report cannot announce a winner without complete target evidence", () 
       corpus: "fixtures/**/*.mmd",
       cases: 2,
       binding_options: {
-        version: 1,
+        version: 2,
         runtime_policy: "deterministic",
         resources: { profile: "trusted-native" },
       },
-      operation_options: { version: 1 },
+      operation_options: { version: 2 },
       workloads: WORKLOADS,
     },
     sampling: SAMPLING,
@@ -1896,11 +1904,11 @@ test("a rejected report records no selected transport", () => {
       corpus: "fixtures/**/*.mmd",
       cases: 2,
       binding_options: {
-        version: 1,
+        version: 2,
         runtime_policy: "deterministic",
         resources: { profile: "trusted-native" },
       },
-      operation_options: { version: 1 },
+      operation_options: { version: 2 },
       workloads: WORKLOADS,
     },
     sampling: SAMPLING,

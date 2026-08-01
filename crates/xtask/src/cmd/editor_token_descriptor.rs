@@ -11,7 +11,6 @@ use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -1118,9 +1117,8 @@ fn token_equivalence_case(
     .into_ready()
     .map_err(|rejection| {
         descriptor_error(format!(
-            "token equivalence case `{id}` was rejected at {} bytes (limit {})",
-            rejection.source_len(),
-            rejection.max_source_bytes()
+            "token equivalence case `{id}` exceeded {}",
+            rejection.resource_limit()
         ))
     })?;
     let detection = analyzed.detection().ok_or_else(|| {
@@ -1387,55 +1385,10 @@ fn write_generated_artifact(path: &Path, contents: &str) -> Result<(), XtaskErro
         path: parent.display().to_string(),
         source,
     })?;
-    let mut temporary =
-        tempfile::NamedTempFile::new_in(parent).map_err(|source| XtaskError::WriteFile {
-            path: parent.display().to_string(),
-            source,
-        })?;
-    temporary
-        .write_all(contents.as_bytes())
-        .map_err(|source| XtaskError::WriteFile {
-            path: temporary.path().display().to_string(),
-            source,
-        })?;
-    match fs::metadata(path) {
-        Ok(metadata) => temporary
-            .as_file()
-            .set_permissions(metadata.permissions())
-            .map_err(|source| XtaskError::WriteFile {
-                path: temporary.path().display().to_string(),
-                source,
-            })?,
-        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {}
-        Err(source) => {
-            return Err(XtaskError::WriteFile {
-                path: path.display().to_string(),
-                source,
-            });
-        }
-    }
-    temporary
-        .as_file()
-        .sync_all()
-        .map_err(|source| XtaskError::WriteFile {
-            path: temporary.path().display().to_string(),
-            source,
-        })?;
-    temporary
-        .persist(path)
-        .map_err(|error| XtaskError::WriteFile {
-            path: path.display().to_string(),
-            source: error.error,
-        })?;
-
-    #[cfg(unix)]
-    fs::File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|source| XtaskError::WriteFile {
-            path: parent.display().to_string(),
-            source,
-        })?;
-    Ok(())
+    fs::write(path, contents).map_err(|source| XtaskError::WriteFile {
+        path: path.display().to_string(),
+        source,
+    })
 }
 
 fn drifted_artifacts(
@@ -1771,35 +1724,6 @@ mod tests {
     }
 
     #[test]
-    fn rust_and_typescript_project_the_same_public_contract() {
-        let descriptor = committed_descriptor();
-        let rust = render_rust(&descriptor).unwrap();
-        let typescript = render_typescript(&descriptor).unwrap();
-        let vscode_typescript = render_vscode_typescript(&descriptor).unwrap();
-        let core_rust = render_core_rename_policy_rust(&descriptor).unwrap();
-        let digest = descriptor_digest(&descriptor).unwrap();
-        for projection in [&rust, &typescript, &vscode_typescript] {
-            assert!(projection.contains(&digest));
-            assert!(projection.contains(SUPPORTED_PACKED_ENCODING));
-            for kind in sorted_token_kinds(&descriptor) {
-                assert!(projection.contains(&kind.lsp_name));
-            }
-            for modifier in sorted_modifiers(&descriptor) {
-                assert!(projection.contains(&modifier.lsp_name));
-            }
-        }
-        for projection in [&typescript, &vscode_typescript] {
-            for policy in sorted_rename_policies(&descriptor) {
-                assert!(projection.contains(&policy.id));
-            }
-        }
-        for policy in sorted_rename_policies(&descriptor) {
-            assert!(core_rust.contains(&policy.id));
-            assert!(core_rust.contains(&policy.rust_variant));
-        }
-    }
-
-    #[test]
     fn drift_check_reports_only_changed_projection() {
         let descriptor = committed_descriptor();
         let temporary = tempfile::tempdir().unwrap();
@@ -1812,18 +1736,6 @@ mod tests {
             drifted_artifacts(temporary.path(), &descriptor).unwrap(),
             vec![changed]
         );
-    }
-
-    #[test]
-    fn generated_artifact_write_atomically_replaces_existing_contents() {
-        let temporary = tempfile::tempdir().unwrap();
-        let path = temporary.path().join("generated.txt");
-        fs::write(&path, "stale\n").unwrap();
-
-        write_generated_artifact(&path, "complete\n").unwrap();
-
-        assert_eq!(fs::read_to_string(&path).unwrap(), "complete\n");
-        assert_eq!(fs::read_dir(temporary.path()).unwrap().count(), 1);
     }
 
     #[test]

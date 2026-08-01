@@ -31,9 +31,13 @@ struct ResponseLoopback {
     responses: mpsc::UnboundedSender<Response>,
 }
 
-struct PendingResponseLoopback;
+struct PendingResponseLoopback {
+    response_polled: oneshot::Sender<()>,
+}
 
-struct PendingResponseSink;
+struct PendingResponseSink {
+    response_polled: Option<oneshot::Sender<()>>,
+}
 
 impl Loopback for ResponseLoopback {
     type RequestStream = stream::Empty<Request>;
@@ -49,7 +53,12 @@ impl Loopback for PendingResponseLoopback {
     type ResponseSink = PendingResponseSink;
 
     fn split(self) -> (Self::RequestStream, Self::ResponseSink) {
-        (stream::empty(), PendingResponseSink)
+        (
+            stream::empty(),
+            PendingResponseSink {
+                response_polled: Some(self.response_polled),
+            },
+        )
     }
 }
 
@@ -57,6 +66,9 @@ impl Sink<Response> for PendingResponseSink {
     type Error = Infallible;
 
     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if let Some(response_polled) = self.get_mut().response_polled.take() {
+            let _ = response_polled.send(());
+        }
         Poll::Pending
     }
 
@@ -93,7 +105,7 @@ impl Service<Request> for ExitReleasesBudgetedService {
     type Response = Option<Response>;
     type Error = Infallible;
     type Future =
-        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+        Pin<Box<dyn Future<Output = Result<Option<Response>, Self::Error>> + Send + 'static>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -145,6 +157,14 @@ struct PendingService {
 
 struct NeverReadyService {
     calls: Arc<AtomicUsize>,
+    readiness_polls: Arc<AtomicUsize>,
+}
+
+struct AdmissionProbeService {
+    admission_stage: Arc<AtomicUsize>,
+    ordinary_polled: Option<oneshot::Sender<()>>,
+    cancel_admitted: Option<oneshot::Sender<()>>,
+    exit_admitted: Option<oneshot::Sender<()>>,
 }
 
 struct ReservedControlService {
@@ -159,6 +179,52 @@ struct SharedDeadlineWrite {
     flush_started: mpsc::UnboundedSender<usize>,
     active_flush: Option<usize>,
     completed_flushes: usize,
+}
+
+struct SharedDeadlineResponseSink {
+    first_ready_release: oneshot::Receiver<()>,
+    first_ready_released: bool,
+    ready_started: mpsc::UnboundedSender<usize>,
+    active_ready: Option<usize>,
+    completed_sends: Arc<AtomicUsize>,
+}
+
+impl Sink<Response> for SharedDeadlineResponseSink {
+    type Error = Infallible;
+
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let send = self.completed_sends.load(Ordering::SeqCst) + 1;
+        if self.active_ready != Some(send) {
+            self.active_ready = Some(send);
+            let _ = self.ready_started.unbounded_send(send);
+        }
+
+        if send == 1 && !self.first_ready_released {
+            match Pin::new(&mut self.first_ready_release).poll(cx) {
+                Poll::Ready(_) => self.first_ready_released = true,
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+        if send > 1 {
+            return Poll::Pending;
+        }
+
+        Poll::Ready(Ok(()))
+    }
+
+    fn start_send(mut self: Pin<&mut Self>, _item: Response) -> Result<(), Self::Error> {
+        self.completed_sends.fetch_add(1, Ordering::SeqCst);
+        self.active_ready = None;
+        Ok(())
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
 }
 
 impl AsyncWrite for SharedDeadlineWrite {
@@ -220,12 +286,58 @@ impl Service<Request> for NeverReadyService {
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.readiness_polls.fetch_add(1, Ordering::SeqCst);
         Poll::Pending
     }
 
     fn call(&mut self, _request: Request) -> Self::Future {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Box::pin(async { Ok(None) })
+    }
+}
+
+impl StdioService for AdmissionProbeService {
+    type Error = Infallible;
+    type Future =
+        Pin<Box<dyn Future<Output = Result<Option<Response>, Self::Error>> + Send + 'static>>;
+
+    fn admit(&mut self, request: Request) -> Self::Future {
+        match request.method() {
+            "test/pending" => {
+                assert_eq!(self.admission_stage.fetch_add(1, Ordering::SeqCst), 0);
+                let ordinary_polled = self
+                    .ordinary_polled
+                    .take()
+                    .expect("single ordinary request");
+                Box::pin(async move {
+                    let _ = ordinary_polled.send(());
+                    std::future::pending().await
+                })
+            }
+            "$/cancelRequest" => {
+                assert_eq!(self.admission_stage.fetch_add(1, Ordering::SeqCst), 1);
+                let _ = self
+                    .cancel_admitted
+                    .take()
+                    .expect("single cancellation notification")
+                    .send(());
+                Box::pin(std::future::pending())
+            }
+            "exit" => {
+                assert_eq!(self.admission_stage.fetch_add(1, Ordering::SeqCst), 2);
+                let _ = self
+                    .exit_admitted
+                    .take()
+                    .expect("single exit notification")
+                    .send(());
+                Box::pin(std::future::poll_fn(
+                    |_| -> Poll<Result<Option<Response>, Infallible>> {
+                        panic!("a valid exit future must be dropped without polling")
+                    },
+                ))
+            }
+            method => panic!("unexpected admission probe method: {method}"),
+        }
     }
 }
 
@@ -243,22 +355,17 @@ impl Service<Request> for ReservedControlService {
         self.calls.fetch_add(1, Ordering::SeqCst);
         match request.method() {
             "$/cancelRequest" => {
-                let _ = self
-                    .cancel_seen
-                    .take()
-                    .expect("single cancel notification")
-                    .send(());
+                let cancel_seen = self.cancel_seen.take().expect("single cancel notification");
+                let _ = cancel_seen.send(());
+                Box::pin(std::future::pending())
             }
             "exit" => {
-                let _ = self
-                    .exit_seen
-                    .take()
-                    .expect("single exit notification")
-                    .send(());
+                let exit_seen = self.exit_seen.take().expect("single exit notification");
+                let _ = exit_seen.send(());
+                Box::pin(async { Ok(None) })
             }
-            _ => {}
+            _ => Box::pin(std::future::pending()),
         }
-        Box::pin(std::future::pending())
     }
 }
 
@@ -302,6 +409,29 @@ impl Service<Request> for BudgetedService {
         }
     }
 }
+
+macro_rules! impl_stdio_service {
+    ($($service:ty),+ $(,)?) => {
+        $(
+            impl StdioService for $service {
+                type Error = <$service as Service<Request>>::Error;
+                type Future = <$service as Service<Request>>::Future;
+
+                fn admit(&mut self, request: Request) -> Self::Future {
+                    Service::call(self, request)
+                }
+            }
+        )+
+    };
+}
+
+impl_stdio_service!(
+    BudgetedService,
+    ExitReleasesBudgetedService,
+    PendingService,
+    NeverReadyService,
+    ReservedControlService,
+);
 
 #[tokio::test(flavor = "current_thread")]
 async fn frame_reader_preserves_pipelined_messages() {
@@ -413,41 +543,120 @@ async fn frame_reader_distinguishes_clean_and_partial_eof() {
     assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
 }
 
-#[tokio::test(flavor = "current_thread", start_paused = true)]
-async fn pending_client_response_routing_is_bounded() {
+#[tokio::test(flavor = "current_thread")]
+async fn pending_client_response_routing_does_not_block_cancel_or_exit() {
     let response = br#"{"jsonrpc":"2.0","id":99,"result":null}"#;
+    let cancel = br#"{"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1}}"#;
     let exit = br#"{"jsonrpc":"2.0","method":"exit","params":null}"#;
-    let mut input = frame(response);
-    input.extend(frame(exit));
+    let (mut client_input, server_input) = tokio::io::duplex(4096);
     let calls = Arc::new(AtomicUsize::new(0));
+    let (response_polled_tx, response_polled_rx) = oneshot::channel();
 
-    let stop = timeout(
-        INPUT_DISPATCH_TIMEOUT + Duration::from_secs(1),
-        stdio_server(
-            Cursor::new(input),
-            Vec::<u8>::new(),
-            PendingResponseLoopback,
-        )
-        .serve_inner(PendingService {
-            calls: Arc::clone(&calls),
-        }),
+    let server = tokio::spawn({
+        let calls = Arc::clone(&calls);
+        async move {
+            serve_stdio(
+                server_input,
+                Vec::<u8>::new(),
+                PendingResponseLoopback {
+                    response_polled: response_polled_tx,
+                },
+                PendingService { calls },
+            )
+            .await
+        }
+    });
+
+    client_input
+        .write_all(&frame(response))
+        .await
+        .expect("write client response frame");
+    client_input
+        .flush()
+        .await
+        .expect("flush client response frame");
+    timeout(Duration::from_secs(1), response_polled_rx)
+        .await
+        .expect("response sink should be polled")
+        .expect("response sink poll signal");
+
+    let mut control = frame(cancel);
+    control.extend(frame(exit));
+    client_input
+        .write_all(&control)
+        .await
+        .expect("write pipelined cancellation and exit frames");
+    client_input
+        .flush()
+        .await
+        .expect("flush pipelined control frames");
+
+    let termination = timeout(Duration::from_secs(1), server)
+        .await
+        .expect("pending response routing must not hold the reader")
+        .expect("server task should not panic");
+
+    assert_eq!(termination, StdioTermination::ExitWithoutShutdown);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn pending_client_response_routing_remains_time_bounded() {
+    let response = br#"{"jsonrpc":"2.0","id":99,"result":null}"#;
+    let (mut client_input, server_input) = tokio::io::duplex(4096);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let (response_polled_tx, response_polled_rx) = oneshot::channel();
+    let server = tokio::spawn({
+        let calls = Arc::clone(&calls);
+        async move {
+            serve_stdio(
+                server_input,
+                Vec::<u8>::new(),
+                PendingResponseLoopback {
+                    response_polled: response_polled_tx,
+                },
+                PendingService { calls },
+            )
+            .await
+        }
+    });
+
+    client_input
+        .write_all(&frame(response))
+        .await
+        .expect("write client response frame");
+    client_input
+        .flush()
+        .await
+        .expect("flush client response frame");
+    timeout(Duration::from_secs(1), response_polled_rx)
+        .await
+        .expect("response sink should be polled")
+        .expect("response sink should remain pending after its first poll");
+
+    let termination = timeout(
+        CLIENT_RESPONSE_DISPATCH_TIMEOUT + Duration::from_secs(1),
+        server,
     )
     .await
-    .expect("pending response routing must hit the input dispatch bound");
-
-    assert_eq!(stop, TransportStop::InputClosed);
+    .expect("pending response routing should hit its deadline")
+    .expect("server task should not panic");
+    assert_eq!(termination, StdioTermination::InputClosed);
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-async fn pending_service_readiness_is_bounded_before_call() {
+async fn pending_tower_readiness_is_not_polled_before_stdio_admission() {
     let calls = Arc::new(AtomicUsize::new(0));
+    let readiness_polls = Arc::new(AtomicUsize::new(0));
     let (responses_tx, _responses_rx) = mpsc::unbounded();
 
     let stop = timeout(
-        INPUT_DISPATCH_TIMEOUT + Duration::from_secs(1),
+        Duration::from_secs(1),
         stdio_server(
-            Cursor::new(frame(br#"{"jsonrpc":"2.0","method":"exit","params":null}"#)),
+            Cursor::new(frame(
+                br#"{"jsonrpc":"2.0","id":1,"method":"test/pending","params":null}"#,
+            )),
             Vec::<u8>::new(),
             ResponseLoopback {
                 responses: responses_tx,
@@ -455,13 +664,15 @@ async fn pending_service_readiness_is_bounded_before_call() {
         )
         .serve_inner(NeverReadyService {
             calls: Arc::clone(&calls),
+            readiness_polls: Arc::clone(&readiness_polls),
         }),
     )
     .await
-    .expect("pending service readiness must hit the input dispatch bound");
+    .expect("stdio admission must not wait for Tower readiness");
 
     assert_eq!(stop, TransportStop::InputClosed);
-    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(readiness_polls.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -573,7 +784,7 @@ async fn bounded_cancel_and_exit_bypass_a_saturated_main_request_budget() {
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn control_messages_use_reserved_handler_capacity() {
     let mut input = Vec::new();
-    for id in 0..MAIN_HANDLER_LIMIT {
+    for id in 0..ORDINARY_HANDLER_CAPACITY {
         input.extend(frame(
             format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"test/block"}}"#).as_bytes(),
         ));
@@ -616,7 +827,7 @@ async fn control_messages_use_reserved_handler_capacity() {
         .expect("exit service call should signal synchronously");
     assert_eq!(
         calls.load(Ordering::SeqCst),
-        MAIN_HANDLER_LIMIT + 2,
+        ORDINARY_HANDLER_CAPACITY + 2,
         "ordinary work must leave the reserved control capacity intact"
     );
 
@@ -626,10 +837,84 @@ async fn control_messages_use_reserved_handler_capacity() {
         .expect("stdio task should not panic");
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn pending_ordinary_future_does_not_block_synchronous_cancel_and_exit_admission() {
+    let (mut client_input, server_input) = tokio::io::duplex(4096);
+    let admission_stage = Arc::new(AtomicUsize::new(0));
+    let (ordinary_polled_tx, ordinary_polled_rx) = oneshot::channel();
+    let (cancel_admitted_tx, cancel_admitted_rx) = oneshot::channel();
+    let (exit_admitted_tx, exit_admitted_rx) = oneshot::channel();
+    let (responses_tx, _responses_rx) = mpsc::unbounded();
+    let server = tokio::spawn({
+        let admission_stage = Arc::clone(&admission_stage);
+        async move {
+            serve_stdio(
+                server_input,
+                Vec::<u8>::new(),
+                ResponseLoopback {
+                    responses: responses_tx,
+                },
+                AdmissionProbeService {
+                    admission_stage,
+                    ordinary_polled: Some(ordinary_polled_tx),
+                    cancel_admitted: Some(cancel_admitted_tx),
+                    exit_admitted: Some(exit_admitted_tx),
+                },
+            )
+            .await
+        }
+    });
+
+    client_input
+        .write_all(&frame(
+            br#"{"jsonrpc":"2.0","id":1,"method":"test/pending","params":null}"#,
+        ))
+        .await
+        .expect("write ordinary request frame");
+    client_input
+        .flush()
+        .await
+        .expect("flush ordinary request frame");
+
+    timeout(Duration::from_secs(1), ordinary_polled_rx)
+        .await
+        .expect("ordinary handler should be polled")
+        .expect("ordinary handler poll signal");
+
+    let mut control = frame(br#"{"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1}}"#);
+    control.extend(frame(br#"{"jsonrpc":"2.0","method":"exit","params":null}"#));
+    client_input
+        .write_all(&control)
+        .await
+        .expect("write pipelined cancellation and exit frames");
+    client_input
+        .flush()
+        .await
+        .expect("flush pipelined control frames");
+
+    timeout(Duration::from_secs(1), cancel_admitted_rx)
+        .await
+        .expect("cancellation should be admitted while ordinary work is pending")
+        .expect("cancellation admission signal");
+    timeout(Duration::from_secs(1), exit_admitted_rx)
+        .await
+        .expect("exit should be admitted while ordinary work is pending")
+        .expect("exit admission signal");
+    assert_eq!(admission_stage.load(Ordering::SeqCst), 3);
+
+    assert_eq!(
+        timeout(Duration::from_secs(1), server)
+            .await
+            .expect("server should stop after the admitted exit")
+            .expect("server task should not panic"),
+        StdioTermination::ExitWithoutShutdown
+    );
+}
+
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handler_saturation_fails_before_service_admission() {
     let mut input = Vec::new();
-    for id in 0..=MAIN_HANDLER_LIMIT {
+    for id in 0..=ORDINARY_HANDLER_CAPACITY {
         input.extend(frame(
             format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"test/block"}}"#).as_bytes(),
         ));
@@ -656,13 +941,13 @@ async fn handler_saturation_fails_before_service_admission() {
     assert_eq!(termination, StdioTermination::InputClosed);
     assert_eq!(
         calls.load(Ordering::SeqCst),
-        MAIN_HANDLER_LIMIT,
-        "the rejected message must not reach Service::call or ordered admission"
+        ORDINARY_HANDLER_CAPACITY,
+        "the rejected message must not reach synchronous stdio admission"
     );
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-async fn exit_polls_once_without_waiting_for_a_pending_handler() {
+async fn exit_terminates_without_waiting_for_a_pending_handler() {
     let calls = Arc::new(AtomicUsize::new(0));
     let (responses_tx, _responses_rx) = mpsc::unbounded();
 
@@ -804,4 +1089,63 @@ async fn queued_messages_share_one_absolute_output_drain_deadline() {
         .expect("output task should not panic");
     assert!(matches!(first_result, Ok(Ok(()))));
     assert!(second_result.is_err());
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn queued_client_responses_share_one_absolute_drain_deadline() {
+    let (_drain_tx, drain_rx) = watch::channel(Some(Instant::now() + OUTPUT_WRITE_TIMEOUT));
+    let (release_first_ready, first_ready_release) = oneshot::channel();
+    let (ready_started_tx, mut ready_started_rx) = mpsc::unbounded();
+    let completed_sends = Arc::new(AtomicUsize::new(0));
+    let sink = SharedDeadlineResponseSink {
+        first_ready_release,
+        first_ready_released: false,
+        ready_started: ready_started_tx,
+        active_ready: None,
+        completed_sends: Arc::clone(&completed_sends),
+    };
+    let (mut responses_tx, responses_rx) = mpsc::channel(2);
+    responses_tx
+        .try_send(Response::from_ok(Id::Number(1), serde_json::Value::Null))
+        .expect("queue first client response");
+    responses_tx
+        .try_send(Response::from_ok(Id::Number(2), serde_json::Value::Null))
+        .expect("queue second client response");
+    responses_tx.disconnect();
+    let (routing_failed_tx, routing_failed_rx) = oneshot::channel();
+
+    let routing = tokio::spawn(route_client_responses(
+        responses_rx,
+        sink,
+        routing_failed_tx,
+        drain_rx,
+    ));
+
+    assert_eq!(
+        ready_started_rx
+            .next()
+            .await
+            .expect("the first response should begin routing"),
+        1
+    );
+    tokio::time::advance(Duration::from_secs(20)).await;
+    release_first_ready
+        .send(())
+        .expect("the first response should still be routing");
+    assert_eq!(
+        ready_started_rx
+            .next()
+            .await
+            .expect("the second response should begin routing"),
+        2
+    );
+
+    timeout(Duration::from_secs(11), routing)
+        .await
+        .expect("the second response must use the remaining shared deadline")
+        .expect("response routing task should not panic");
+    routing_failed_rx
+        .await
+        .expect("the shared response routing deadline should report failure");
+    assert_eq!(completed_sends.load(Ordering::SeqCst), 1);
 }

@@ -4,12 +4,9 @@ use crate::refresh_coordinator::RefreshCoordinator;
 use crate::refresh_transport::RefreshClient;
 use crate::server::MermanLanguageServer;
 use crate::sync::lock_recovering_poison;
-use futures::FutureExt;
-use futures::future::{AbortHandle, AbortRegistration, Abortable, BoxFuture};
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use futures::future::BoxFuture;
+use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
-use std::panic::AssertUnwindSafe;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll};
@@ -18,19 +15,27 @@ use tokio::sync::Notify;
 use tower::Service;
 use tower_lsp_server::jsonrpc::{Error, Id, Request, Response};
 use tower_lsp_server::ls_types::CancelParams;
+#[cfg(test)]
+use tower_lsp_server::ls_types::Uri;
 use tower_lsp_server::{ExitedError, LspService};
 
 mod analysis;
 #[cfg(test)]
 mod analysis_tests;
 mod cache;
+mod client_effects;
 mod documents;
 mod lifecycle;
 
+use client_effects::ClientEffectDispatcher;
+pub(crate) use client_effects::ClientEffectKey;
+#[cfg(test)]
+pub(crate) use client_effects::LSP_CLIENT_EFFECT_QUEUE_LIMIT;
+
 pub(crate) use documents::{
-    DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticContext, DocumentDiagnosticState, DocumentSyncError,
-    SemanticTokensState, StoredDocument, analysis_options_with_lsp_resource_defaults,
-    default_lsp_analysis_options,
+    DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticContext,
+    DocumentDiagnosticState, DocumentSyncError, SemanticTokensState, StoredDocument,
+    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
 };
 #[cfg(test)]
 pub(crate) use documents::{DocumentDiscardedSource, DocumentResourceLimit};
@@ -51,7 +56,6 @@ struct LanguageSessionInner {
     lifecycle: SessionLifecycle,
     input_order: Arc<InputOrder>,
     admission_cancellations: Arc<AdmissionCancellationRegistry>,
-    protocol_service: Mutex<Option<Weak<Mutex<LspService<MermanLanguageServer>>>>>,
 }
 
 impl LanguageSessionInner {
@@ -60,25 +64,12 @@ impl LanguageSessionInner {
             return false;
         }
 
-        self.exit_protocol_service();
         self.cancellation.cancel();
         self.analysis_executor.invalidate_all();
         self.admission_cancellations.cancel_all();
         self.client_effects.cancel();
         self.refresh_coordinator.cancel();
         true
-    }
-
-    fn exit_protocol_service(&self) {
-        let Some(service) = lock_recovering_poison(&self.protocol_service)
-            .as_ref()
-            .and_then(Weak::upgrade)
-        else {
-            return;
-        };
-
-        // tower-lsp-server clears its private pending-request registry synchronously on exit.
-        std::mem::drop(lock_recovering_poison(&service).call(Request::build("exit").finish()));
     }
 }
 
@@ -145,7 +136,6 @@ impl LanguageSession {
                 lifecycle: SessionLifecycle::default(),
                 input_order: Arc::new(InputOrder::default()),
                 admission_cancellations: Arc::new(AdmissionCancellationRegistry::default()),
-                protocol_service: Mutex::new(None),
             }),
         }
     }
@@ -180,13 +170,28 @@ impl LanguageSession {
     }
 
     fn attach_protocol_service(&self, service: &Arc<Mutex<LspService<MermanLanguageServer>>>) {
-        let mut protocol_service = lock_recovering_poison(&self.inner.protocol_service);
-        debug_assert!(protocol_service.is_none());
-        *protocol_service = Some(Arc::downgrade(service));
+        let service = Arc::downgrade(service);
+        self.inner.lifecycle.register_termination_hook(move || {
+            let Some(service) = service.upgrade() else {
+                return;
+            };
+
+            // The exit layer updates its state and clears the pending-request registry inside
+            // `Service::call`, so the returned ready future does not need a transport poll.
+            std::mem::drop(lock_recovering_poison(&service).call(Request::build("exit").finish()));
+        });
     }
 
     pub(crate) fn terminate(&self) -> bool {
         self.inner.terminate()
+    }
+
+    fn commit_state_if_active<T>(
+        &self,
+        state: &mut SessionState,
+        mutation: impl FnOnce(&mut SessionState) -> T,
+    ) -> Option<T> {
+        self.inner.lifecycle.commit_if_active(|| mutation(state))
     }
 
     fn is_terminated(&self) -> bool {
@@ -237,6 +242,11 @@ impl LanguageSession {
     }
 
     #[cfg(test)]
+    pub(crate) fn analysis_waiter_count(&self, uri: &Uri) -> usize {
+        self.inner.analysis_executor.waiter_count_for_uri(uri)
+    }
+
+    #[cfg(test)]
     pub(crate) fn probe(&self) -> SessionProbe {
         SessionProbe {
             state: Arc::clone(&self.inner.state),
@@ -260,6 +270,7 @@ impl LanguageSession {
 
     #[cfg(test)]
     pub(crate) async fn wait_stopped(&self) {
+        self.inner.analysis_executor.wait_idle().await;
         self.inner.client_effects.wait_idle().await;
         self.inner.refresh_coordinator.wait_stopped().await;
     }
@@ -297,28 +308,55 @@ tokio::task_local! {
     static ACTIVE_MUTATION: MutationCompletion;
 }
 
-/// Maximum number of handler futures an embedded or stdio transport should poll concurrently.
-pub const LSP_HANDLER_CONCURRENCY: usize = 4;
+/// Default maximum number of ordinary data-plane handler futures polled concurrently.
+pub const LSP_ORDINARY_HANDLER_CONCURRENCY: usize = 4;
+
+/// Default maximum number of reserved control-plane handler futures polled concurrently by stdio.
+pub const LSP_CONTROL_HANDLER_CONCURRENCY: usize = 4;
+
+/// Default total handler concurrency across the ordinary and reserved control lanes.
+pub const LSP_TOTAL_HANDLER_CONCURRENCY: usize =
+    LSP_ORDINARY_HANDLER_CONCURRENCY + LSP_CONTROL_HANDLER_CONCURRENCY;
 
 /// Maximum encoded size of one LSP message accepted by the bundled transport.
 pub const LSP_MAX_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
 
-/// Maximum aggregate encoded bytes retained by queued and running requests.
-pub const LSP_REQUEST_BYTE_BUDGET: usize = LSP_MAX_MESSAGE_BYTES * LSP_HANDLER_CONCURRENCY;
+/// Maximum aggregate encoded bytes retained by queued and running ordinary requests.
+pub const LSP_REQUEST_BYTE_BUDGET: usize = LSP_MAX_MESSAGE_BYTES * LSP_ORDINARY_HANDLER_CONCURRENCY;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProtocolMessageShape {
+    Ordinary,
+    ShutdownRequest,
+    ShutdownNotification,
+    ExitRequest(Id),
+    ExitNotification,
+}
+
+impl ProtocolMessageShape {
+    pub(crate) fn classify(request: &Request) -> Self {
+        match (request.method(), request.id().cloned()) {
+            ("shutdown", Some(_)) => Self::ShutdownRequest,
+            ("shutdown", None) => Self::ShutdownNotification,
+            ("exit", Some(id)) => Self::ExitRequest(id),
+            ("exit", None) => Self::ExitNotification,
+            _ => Self::Ordinary,
+        }
+    }
+}
 
 /// The ordered JSON-RPC session exposed to embedded and stdio hosts.
 ///
 /// Admission happens synchronously in [`Service::call`], before transport futures may be polled
 /// concurrently. Reads therefore observe every earlier state mutation after it commits or aborts.
-/// The transport owns its request queue and must apply [`LSP_HANDLER_CONCURRENCY`],
-/// [`LSP_MAX_MESSAGE_BYTES`], and [`LSP_REQUEST_BYTE_BUDGET`] before retaining request futures.
+/// The transport owns its request queues and must apply [`LSP_ORDINARY_HANDLER_CONCURRENCY`],
+/// [`LSP_CONTROL_HANDLER_CONCURRENCY`], [`LSP_MAX_MESSAGE_BYTES`], and
+/// [`LSP_REQUEST_BYTE_BUDGET`] before retaining request futures.
 #[derive(Debug)]
 pub struct MermanLspService {
     _endpoint: SessionEndpointGuard,
     inner: Arc<Mutex<LspService<MermanLanguageServer>>>,
     session: LanguageSession,
-    #[cfg(test)]
-    backend: Option<MermanLanguageServer>,
 }
 
 impl MermanLspService {
@@ -329,27 +367,7 @@ impl MermanLspService {
             _endpoint: session.endpoint_guard(),
             inner,
             session,
-            #[cfg(test)]
-            backend: None,
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn with_backend_for_tests(
-        inner: LspService<MermanLanguageServer>,
-        session: LanguageSession,
-        backend: MermanLanguageServer,
-    ) -> Self {
-        let mut service = Self::new(inner, session);
-        service.backend = Some(backend);
-        service
-    }
-
-    #[cfg(test)]
-    pub(crate) fn inner(&self) -> &MermanLanguageServer {
-        self.backend
-            .as_ref()
-            .expect("test services retain their backend probe")
     }
 
     fn route(
@@ -512,10 +530,25 @@ impl Service<Request> for MermanLspService {
     }
 
     fn call(&mut self, request: Request) -> Self::Future {
-        if request.method() == "exit" && request.id().is_none() {
-            let future = lock_recovering_poison(&self.inner).call(request);
-            self.session.terminate();
-            return future;
+        match ProtocolMessageShape::classify(&request) {
+            ProtocolMessageShape::ShutdownNotification => {
+                tracing::warn!("ignoring shutdown notification; shutdown must be a request");
+                return Box::pin(async { Ok(None) });
+            }
+            ProtocolMessageShape::ExitRequest(id) => {
+                tracing::warn!("rejecting exit request; exit must be a notification");
+                return Box::pin(async move {
+                    Ok(Some(Response::from_error(id, Error::invalid_request())))
+                });
+            }
+            ProtocolMessageShape::ExitNotification => {
+                // The first session terminator owns the one raw `exit` handoff. It synchronously
+                // clears tower-lsp-server's pending registry before the remaining workers are
+                // cancelled, so this wrapper must not route the same message a second time.
+                self.session.terminate();
+                return Box::pin(async { Ok(None) });
+            }
+            ProtocolMessageShape::Ordinary | ProtocolMessageShape::ShutdownRequest => {}
         }
         if self.session.is_terminated() {
             return Box::pin(async { Ok(None) });
@@ -595,10 +628,15 @@ impl AdmissionCancellationState {
     }
 
     async fn cancelled(&self) {
-        if self.cancelled.load(Ordering::Acquire) {
-            return;
+        loop {
+            let changed = self.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if self.cancelled.load(Ordering::Acquire) {
+                return;
+            }
+            changed.as_mut().await;
         }
-        self.changed.notified().await;
     }
 }
 
@@ -667,307 +705,6 @@ pub(crate) fn commit_active_mutation() {
     let _ = ACTIVE_MUTATION.try_with(MutationCompletion::complete);
 }
 
-type ClientEffect = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
-
-pub(crate) const LSP_CLIENT_EFFECT_QUEUE_LIMIT: usize = 64;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum ClientEffectKey {
-    Document(String),
-    AllDiagnostics,
-    LogMessage,
-}
-
-struct QueuedClientEffect {
-    key: ClientEffectKey,
-    intent: u64,
-    effect: ClientEffect,
-}
-
-/// Serializes client-visible side effects with bounded, latest-intent admission.
-#[derive(Clone)]
-pub(crate) struct ClientEffectDispatcher {
-    inner: Arc<ClientEffectDispatcherInner>,
-}
-
-struct ClientEffectDispatcherInner {
-    state: Mutex<ClientEffectState>,
-    capacity: Notify,
-    idle: Notify,
-}
-
-#[derive(Default)]
-struct ClientEffectState {
-    queue: VecDeque<QueuedClientEffect>,
-    latest_intents: HashMap<ClientEffectKey, u64>,
-    cancelled: bool,
-    next_intent_id: u64,
-    next_worker_id: u64,
-    active_worker: Option<ActiveClientEffectWorker>,
-    #[cfg(test)]
-    admitted_count: usize,
-}
-
-struct ActiveClientEffectWorker {
-    id: u64,
-    abort: AbortHandle,
-}
-
-struct ClientEffectIntentGuard {
-    inner: Arc<ClientEffectDispatcherInner>,
-    key: ClientEffectKey,
-    intent: u64,
-    armed: bool,
-}
-
-impl ClientEffectIntentGuard {
-    fn register(inner: Arc<ClientEffectDispatcherInner>, key: ClientEffectKey) -> Option<Self> {
-        let intent = {
-            let mut state = lock_recovering_poison(&inner.state);
-            if state.cancelled {
-                return None;
-            }
-            state.next_intent_id = state
-                .next_intent_id
-                .checked_add(1)
-                .expect("client effect intent sequence exhausted");
-            let intent = state.next_intent_id;
-            state.latest_intents.insert(key.clone(), intent);
-            intent
-        };
-        Some(Self {
-            inner,
-            key,
-            intent,
-            armed: true,
-        })
-    }
-
-    fn intent(&self) -> u64 {
-        self.intent
-    }
-
-    fn disarm(&mut self) {
-        self.armed = false;
-    }
-}
-
-impl Drop for ClientEffectIntentGuard {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        let mut state = lock_recovering_poison(&self.inner.state);
-        if state.latest_intents.get(&self.key) == Some(&self.intent) {
-            state.latest_intents.remove(&self.key);
-        }
-    }
-}
-
-impl std::fmt::Debug for ClientEffectDispatcher {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let state = lock_recovering_poison(&self.inner.state);
-        formatter
-            .debug_struct("ClientEffectDispatcher")
-            .field("queued", &state.queue.len())
-            .field("running", &state.active_worker.is_some())
-            .field("cancelled", &state.cancelled)
-            .finish()
-    }
-}
-
-impl ClientEffectDispatcher {
-    pub(crate) fn new() -> Self {
-        Self {
-            inner: Arc::new(ClientEffectDispatcherInner {
-                state: Mutex::new(ClientEffectState::default()),
-                capacity: Notify::new(),
-                idle: Notify::new(),
-            }),
-        }
-    }
-
-    pub(crate) async fn enqueue_latest(
-        &self,
-        key: ClientEffectKey,
-        effect: impl Future<Output = ()> + Send + 'static,
-    ) {
-        let Some(mut intent) =
-            ClientEffectIntentGuard::register(Arc::clone(&self.inner), key.clone())
-        else {
-            return;
-        };
-        let intent_id = intent.intent();
-        let mut effect = Some(Box::pin(effect) as ClientEffect);
-        let registration = loop {
-            let capacity = self.inner.capacity.notified();
-            let admission = {
-                let mut state = lock_recovering_poison(&self.inner.state);
-                if state.cancelled || state.latest_intents.get(&key) != Some(&intent_id) {
-                    return;
-                }
-                if let Some(index) = state.queue.iter().position(|queued| queued.key == key) {
-                    debug_assert!(state.queue[index].intent < intent_id);
-                    state.queue.remove(index);
-                }
-                if state.queue.len() >= LSP_CLIENT_EFFECT_QUEUE_LIMIT {
-                    None
-                } else {
-                    state.queue.push_back(QueuedClientEffect {
-                        key: key.clone(),
-                        intent: intent_id,
-                        effect: effect
-                            .take()
-                            .expect("a client effect is admitted at most once"),
-                    });
-                    #[cfg(test)]
-                    {
-                        state.admitted_count += 1;
-                    }
-                    let registration = if state.active_worker.is_some() {
-                        None
-                    } else {
-                        Some(Self::register_worker(&mut state))
-                    };
-                    Some(registration)
-                }
-            };
-            if let Some(registration) = admission {
-                intent.disarm();
-                break registration;
-            }
-            capacity.await;
-        };
-
-        if let Some((worker_id, registration)) = registration {
-            self.spawn_worker(worker_id, registration);
-        }
-    }
-
-    pub(crate) fn cancel(&self) {
-        let worker_abort = {
-            let mut state = lock_recovering_poison(&self.inner.state);
-            state.cancelled = true;
-            state.queue.clear();
-            state.latest_intents.clear();
-            state
-                .active_worker
-                .as_ref()
-                .map(|worker| worker.abort.clone())
-        };
-        if let Some(worker_abort) = worker_abort {
-            worker_abort.abort();
-        }
-        self.inner.capacity.notify_waiters();
-        self.inner.idle.notify_waiters();
-    }
-
-    #[cfg(test)]
-    fn admission_count(&self) -> usize {
-        lock_recovering_poison(&self.inner.state).admitted_count
-    }
-
-    #[cfg(test)]
-    fn latest_intent_count(&self) -> usize {
-        lock_recovering_poison(&self.inner.state)
-            .latest_intents
-            .len()
-    }
-
-    #[cfg(test)]
-    pub(crate) async fn wait_idle(&self) {
-        loop {
-            let idle = self.inner.idle.notified();
-            let is_idle = {
-                let state = lock_recovering_poison(&self.inner.state);
-                state.active_worker.is_none() && state.queue.is_empty()
-            };
-            if is_idle {
-                return;
-            }
-            idle.await;
-        }
-    }
-
-    async fn drain(&self) {
-        loop {
-            let queued = {
-                let mut state = lock_recovering_poison(&self.inner.state);
-                if state.cancelled {
-                    return;
-                }
-                let queued = state.queue.pop_front();
-                if let Some(queued) = queued.as_ref()
-                    && state.latest_intents.get(&queued.key) == Some(&queued.intent)
-                {
-                    state.latest_intents.remove(&queued.key);
-                }
-                queued
-            };
-            let Some(queued) = queued else {
-                self.inner.idle.notify_waiters();
-                return;
-            };
-            self.inner.capacity.notify_waiters();
-            if AssertUnwindSafe(queued.effect)
-                .catch_unwind()
-                .await
-                .is_err()
-            {
-                tracing::error!("LSP client effect panicked");
-            }
-        }
-    }
-
-    fn register_worker(state: &mut ClientEffectState) -> (u64, AbortRegistration) {
-        state.next_worker_id = state
-            .next_worker_id
-            .checked_add(1)
-            .expect("client effect worker sequence exhausted");
-        let worker_id = state.next_worker_id;
-        let (abort, registration) = AbortHandle::new_pair();
-        state.active_worker = Some(ActiveClientEffectWorker {
-            id: worker_id,
-            abort,
-        });
-        (worker_id, registration)
-    }
-
-    fn spawn_worker(&self, worker_id: u64, registration: AbortRegistration) {
-        let dispatcher = self.clone();
-        tokio::spawn(async move {
-            let _ = Abortable::new(dispatcher.drain(), registration).await;
-            dispatcher.worker_finished(worker_id);
-        });
-    }
-
-    fn worker_finished(&self, worker_id: u64) {
-        let replacement = {
-            let mut state = lock_recovering_poison(&self.inner.state);
-            if state
-                .active_worker
-                .as_ref()
-                .is_none_or(|worker| worker.id != worker_id)
-            {
-                return;
-            }
-            state.active_worker = None;
-            if !state.cancelled && !state.queue.is_empty() {
-                Some(Self::register_worker(&mut state))
-            } else {
-                None
-            }
-        };
-
-        self.inner.capacity.notify_waiters();
-        if let Some((worker_id, registration)) = replacement {
-            self.spawn_worker(worker_id, registration);
-        } else {
-            self.inner.idle.notify_waiters();
-        }
-    }
-}
-
 #[derive(Debug)]
 enum Admission {
     Immediate,
@@ -1024,10 +761,12 @@ impl InputOrder {
     async fn wait_until_completed(&self, target: u64) {
         loop {
             let changed = self.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
             if lock_recovering_poison(&self.state).completed_mutation >= target {
                 return;
             }
-            changed.await;
+            changed.as_mut().await;
         }
     }
 
@@ -1266,6 +1005,79 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn exit_notification_uses_the_session_owned_protocol_exit_once() {
+        let (mut service, _socket) = MermanLanguageServer::service();
+        initialize_service(&mut service).await;
+        let session = service.session.clone();
+        let inner = Arc::clone(&service.inner);
+
+        assert!(
+            service
+                .call(Request::build("exit").finish())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(session.termination_count(), 1);
+        assert!(!session.terminate());
+        assert_eq!(session.termination_count(), 1);
+
+        let request = lock_recovering_poison(&inner)
+            .call(Request::build("textDocument/hover").id(2).finish());
+        assert!(request.await.is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn exit_request_is_rejected_without_terminating_the_session() {
+        let (mut service, _socket) = MermanLanguageServer::service();
+        initialize_service(&mut service).await;
+        let session = service.session.clone();
+
+        let response = service
+            .call(Request::build("exit").id(2).finish())
+            .await
+            .unwrap()
+            .expect("exit request rejection");
+        assert_eq!(
+            response.error().expect("invalid request error").code,
+            tower_lsp_server::jsonrpc::ErrorCode::InvalidRequest
+        );
+        assert_eq!(session.termination_count(), 0);
+        assert!(!session.is_terminated());
+
+        let shutdown = service
+            .call(Request::build("shutdown").id(3).finish())
+            .await
+            .unwrap()
+            .expect("shutdown response after rejected exit request");
+        assert!(shutdown.error().is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn shutdown_notification_is_ignored_without_changing_protocol_state() {
+        let (mut service, _socket) = MermanLanguageServer::service();
+        initialize_service(&mut service).await;
+        let session = service.session.clone();
+
+        assert!(
+            service
+                .call(Request::build("shutdown").finish())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(session.termination_count(), 0);
+        assert!(!session.is_terminated());
+
+        let shutdown = service
+            .call(Request::build("shutdown").id(2).finish())
+            .await
+            .unwrap()
+            .expect("shutdown response after ignored notification");
+        assert!(shutdown.error().is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn cancelled_waiting_mutation_completes_its_sequence_slot() {
         let (mut service, _socket) = MermanLanguageServer::service();
         initialize_service(&mut service).await;
@@ -1296,249 +1108,5 @@ mod tests {
             .unwrap()
             .expect("hover response after the admitted open");
         assert!(response.is_ok());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn client_effects_finish_in_enqueue_order() {
-        let dispatcher = ClientEffectDispatcher::new();
-        let (release_first_tx, release_first_rx) = tokio::sync::oneshot::channel();
-        let (first_done_tx, first_done_rx) = tokio::sync::oneshot::channel();
-        let (second_done_tx, mut second_done_rx) = tokio::sync::oneshot::channel();
-
-        dispatcher
-            .enqueue_latest(ClientEffectKey::Document("first".to_string()), async move {
-                let _ = release_first_rx.await;
-                let _ = first_done_tx.send(());
-            })
-            .await;
-        dispatcher
-            .enqueue_latest(
-                ClientEffectKey::Document("second".to_string()),
-                async move {
-                    let _ = second_done_tx.send(());
-                },
-            )
-            .await;
-
-        assert!(matches!(
-            futures::poll!(&mut second_done_rx),
-            std::task::Poll::Pending
-        ));
-        release_first_tx.send(()).unwrap();
-        first_done_rx.await.unwrap();
-        second_done_rx.await.unwrap();
-        dispatcher.wait_idle().await;
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn pending_document_effects_keep_only_the_latest_intent() {
-        let dispatcher = ClientEffectDispatcher::new();
-        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-        let superseded_ran = Arc::new(AtomicBool::new(false));
-        let latest_ran = Arc::new(AtomicBool::new(false));
-
-        dispatcher
-            .enqueue_latest(
-                ClientEffectKey::Document("blocker".to_string()),
-                async move {
-                    let _ = started_tx.send(());
-                    let _ = release_rx.await;
-                },
-            )
-            .await;
-        started_rx.await.unwrap();
-
-        let superseded_marker = Arc::clone(&superseded_ran);
-        dispatcher
-            .enqueue_latest(ClientEffectKey::Document("same".to_string()), async move {
-                superseded_marker.store(true, Ordering::Release);
-            })
-            .await;
-        let latest_marker = Arc::clone(&latest_ran);
-        dispatcher
-            .enqueue_latest(ClientEffectKey::Document("same".to_string()), async move {
-                latest_marker.store(true, Ordering::Release);
-            })
-            .await;
-
-        release_tx.send(()).unwrap();
-        dispatcher.wait_idle().await;
-
-        assert!(!superseded_ran.load(Ordering::Acquire));
-        assert!(latest_ran.load(Ordering::Acquire));
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn saturated_effect_queue_keeps_the_newest_same_key_intent() {
-        let dispatcher = ClientEffectDispatcher::new();
-        let (active_started_tx, active_started_rx) = tokio::sync::oneshot::channel();
-        let (release_active_tx, release_active_rx) = tokio::sync::oneshot::channel();
-        let (queued_started_tx, queued_started_rx) = tokio::sync::oneshot::channel();
-        let (release_queued_tx, release_queued_rx) = tokio::sync::oneshot::channel();
-
-        dispatcher
-            .enqueue_latest(
-                ClientEffectKey::Document("active".to_string()),
-                async move {
-                    let _ = active_started_tx.send(());
-                    let _ = release_active_rx.await;
-                },
-            )
-            .await;
-        active_started_rx.await.unwrap();
-        dispatcher
-            .enqueue_latest(
-                ClientEffectKey::Document("queued-blocker".to_string()),
-                async move {
-                    let _ = queued_started_tx.send(());
-                    let _ = release_queued_rx.await;
-                },
-            )
-            .await;
-        for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT - 1 {
-            dispatcher
-                .enqueue_latest(
-                    ClientEffectKey::Document(format!("queued-{index}")),
-                    async {},
-                )
-                .await;
-        }
-
-        let older_ran = Arc::new(AtomicBool::new(false));
-        let older_marker = Arc::clone(&older_ran);
-        let older = dispatcher.enqueue_latest(ClientEffectKey::LogMessage, async move {
-            older_marker.store(true, Ordering::Release);
-        });
-        tokio::pin!(older);
-        assert!(futures::poll!(&mut older).is_pending());
-
-        let newer_ran = Arc::new(AtomicBool::new(false));
-        let newer_marker = Arc::clone(&newer_ran);
-        let newer = dispatcher.enqueue_latest(ClientEffectKey::LogMessage, async move {
-            newer_marker.store(true, Ordering::Release);
-        });
-        tokio::pin!(newer);
-        assert!(futures::poll!(&mut newer).is_pending());
-
-        release_active_tx.send(()).unwrap();
-        queued_started_rx.await.unwrap();
-
-        assert!(futures::poll!(&mut newer).is_ready());
-        assert!(futures::poll!(&mut older).is_ready());
-
-        release_queued_tx.send(()).unwrap();
-        dispatcher.wait_idle().await;
-
-        assert!(!older_ran.load(Ordering::Acquire));
-        assert!(newer_ran.load(Ordering::Acquire));
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn dropped_waiting_effects_release_their_latest_intents() {
-        let dispatcher = ClientEffectDispatcher::new();
-        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-
-        dispatcher
-            .enqueue_latest(
-                ClientEffectKey::Document("active".to_string()),
-                async move {
-                    let _ = started_tx.send(());
-                    std::future::pending::<()>().await;
-                },
-            )
-            .await;
-        started_rx.await.unwrap();
-        for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT {
-            dispatcher
-                .enqueue_latest(
-                    ClientEffectKey::Document(format!("queued-{index}")),
-                    async {},
-                )
-                .await;
-        }
-
-        let baseline = dispatcher.latest_intent_count();
-        for index in 0..4 {
-            let mut waiting = Box::pin(dispatcher.enqueue_latest(
-                ClientEffectKey::Document(format!("dropped-{index}")),
-                async {},
-            ));
-            assert!(futures::poll!(&mut waiting).is_pending());
-            assert_eq!(dispatcher.latest_intent_count(), baseline + 1);
-            drop(waiting);
-            assert_eq!(dispatcher.latest_intent_count(), baseline);
-        }
-
-        dispatcher.cancel();
-        dispatcher.wait_idle().await;
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn cancelling_client_effects_waits_for_the_active_future_to_drop() {
-        let dispatcher = ClientEffectDispatcher::new();
-        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-        let (effect_alive_tx, effect_dropped_rx) = tokio::sync::oneshot::channel::<()>();
-
-        dispatcher
-            .enqueue_latest(ClientEffectKey::AllDiagnostics, async move {
-                let _effect_alive = effect_alive_tx;
-                let _ = started_tx.send(());
-                std::future::pending::<()>().await;
-            })
-            .await;
-        started_rx.await.expect("client effect should start");
-
-        dispatcher.cancel();
-        dispatcher.wait_idle().await;
-
-        assert!(
-            effect_dropped_rx.await.is_err(),
-            "idle must mean the aborted effect future has actually been dropped"
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn distinct_client_effects_apply_backpressure_at_the_queue_limit() {
-        let dispatcher = ClientEffectDispatcher::new();
-        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-        dispatcher
-            .enqueue_latest(
-                ClientEffectKey::Document("blocker".to_string()),
-                async move {
-                    let _ = started_tx.send(());
-                    let _ = release_rx.await;
-                },
-            )
-            .await;
-        started_rx.await.unwrap();
-
-        for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT {
-            dispatcher
-                .enqueue_latest(
-                    ClientEffectKey::Document(format!("queued-{index}")),
-                    async {},
-                )
-                .await;
-        }
-
-        let overflow_dispatcher = dispatcher.clone();
-        let (admitted_tx, mut admitted_rx) = tokio::sync::oneshot::channel();
-        let overflow = tokio::spawn(async move {
-            overflow_dispatcher
-                .enqueue_latest(ClientEffectKey::Document("overflow".to_string()), async {})
-                .await;
-            let _ = admitted_tx.send(());
-        });
-        assert!(matches!(
-            futures::poll!(&mut admitted_rx),
-            std::task::Poll::Pending
-        ));
-
-        release_tx.send(()).unwrap();
-        admitted_rx.await.unwrap();
-        overflow.await.unwrap();
-        dispatcher.wait_idle().await;
     }
 }

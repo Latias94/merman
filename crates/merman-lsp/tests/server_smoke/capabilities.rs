@@ -323,7 +323,8 @@ async fn lsp_service_with_diagnostic_pull_accepts_document_open() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_workspace_diagnostic_capability_does_not_disable_push_diagnostics() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")

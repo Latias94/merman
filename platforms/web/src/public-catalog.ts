@@ -102,6 +102,14 @@ export type BindingErrorKind =
   | "unknown-operation"
   | "missing-capability";
 
+export interface BindingResourceErrorDetails {
+  limit_id: string;
+  phase: string;
+  actual: number;
+  max: number;
+  profile: string;
+}
+
 export interface BindingErrorPayload {
   version: number;
   ok: false;
@@ -109,6 +117,9 @@ export interface BindingErrorPayload {
   code_name: BindingStatusCodeName | string;
   kind: BindingErrorKind | string;
   capability_id: RuntimeCapabilityId | string | null;
+  details?: {
+    resource: BindingResourceErrorDetails;
+  };
   message: string;
 }
 
@@ -254,6 +265,19 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
     return false;
   }
   const payload = error as Record<string, unknown>;
+  const resource =
+    payload.details && typeof payload.details === "object"
+      ? (payload.details as Record<string, unknown>).resource
+      : undefined;
+  const hasValidDetails =
+    payload.details === undefined ||
+    (!!resource &&
+      typeof resource === "object" &&
+      typeof (resource as Record<string, unknown>).limit_id === "string" &&
+      typeof (resource as Record<string, unknown>).phase === "string" &&
+      typeof (resource as Record<string, unknown>).actual === "number" &&
+      typeof (resource as Record<string, unknown>).max === "number" &&
+      typeof (resource as Record<string, unknown>).profile === "string");
   return (
     payload.ok === false &&
     typeof payload.version === "number" &&
@@ -262,6 +286,7 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
     typeof payload.kind === "string" &&
     (payload.capability_id === null ||
       typeof payload.capability_id === "string") &&
+    hasValidDetails &&
     typeof payload.message === "string"
   );
 }

@@ -54,16 +54,43 @@ impl CachedRenderEngine {
         self.plan.render_png(source)
     }
 
+    #[cfg(feature = "png")]
+    pub(crate) fn render_png_output(
+        &self,
+        source: &[u8],
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_png_output(source)
+    }
+
     #[cfg(feature = "jpeg")]
     pub(crate) fn render_jpeg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.render_jpeg(source)
     }
 
+    #[cfg(feature = "jpeg")]
+    pub(crate) fn render_jpeg_output(
+        &self,
+        source: &[u8],
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_jpeg_output(source)
+    }
+
     #[cfg(feature = "pdf")]
     pub(crate) fn render_pdf(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.render_pdf(source)
+    }
+
+    #[cfg(feature = "pdf")]
+    pub(crate) fn render_pdf_output(
+        &self,
+        source: &[u8],
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_pdf_output(source)
     }
 }
 

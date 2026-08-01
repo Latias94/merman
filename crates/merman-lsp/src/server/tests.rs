@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use super::semantic_token_planning_error;
+use super::test_support::TestService;
 use super::{
     CLIENT_LOG_TRUNCATION_SUFFIX, MAX_CLIENT_LOG_MESSAGE_BYTES, MermanLanguageServer,
     bounded_client_log_message,
@@ -19,7 +20,8 @@ use crate::structure::{
 use futures::StreamExt;
 use merman_analysis::{
     AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, DiagnosticCategory, DiagnosticFix,
-    DiagnosticFixEdit, SourceMap, source_limit_diagnostic_span,
+    DiagnosticFixEdit, SourceKind, SourceMap, source_descriptor_for_kind,
+    source_limit_diagnostic_span,
 };
 use merman_core::EditorRenamePolicy;
 use merman_editor_core::{DocumentKind, semantic_token_descriptor};
@@ -42,6 +44,34 @@ use tower_lsp_server::ls_types::{
     Uri, VersionedTextDocumentIdentifier,
 };
 use tower_lsp_server::ls_types::{HoverProviderCapability, OneOf};
+
+fn test_service() -> (
+    crate::MermanLspService,
+    crate::MermanClientSocket,
+    MermanLanguageServer,
+) {
+    let TestService {
+        service,
+        socket,
+        backend,
+        ..
+    } = super::test_support::service();
+    (service, socket, backend)
+}
+
+fn test_session_service() -> (
+    crate::MermanLspService,
+    crate::MermanClientSocket,
+    crate::session::LanguageSession,
+) {
+    let TestService {
+        service,
+        socket,
+        session,
+        ..
+    } = super::test_support::service();
+    (service, socket, session)
+}
 
 async fn assert_cached_snapshot_identity(
     server: &MermanLanguageServer,
@@ -112,13 +142,10 @@ async fn initialize_push_test_service(service: &mut crate::MermanLspService) {
 async fn saturate_client_effect_queue(session: &crate::session::LanguageSession) {
     let (started_tx, started_rx) = tokio::sync::oneshot::channel();
     session
-        .enqueue_latest_client_effect(
-            ClientEffectKey::Document("blocker".to_string()),
-            async move {
-                let _ = started_tx.send(());
-                std::future::pending::<()>().await;
-            },
-        )
+        .enqueue_latest_client_effect(ClientEffectKey::document_for_test("blocker"), async move {
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        })
         .await;
     started_rx
         .await
@@ -126,7 +153,7 @@ async fn saturate_client_effect_queue(session: &crate::session::LanguageSession)
     for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT {
         session
             .enqueue_latest_client_effect(
-                ClientEffectKey::Document(format!("queued-{index}")),
+                ClientEffectKey::document_for_test(format!("queued-{index}")),
                 async {},
             )
             .await;
@@ -140,7 +167,7 @@ async fn block_client_effect_worker(
     let (release_tx, release_rx) = tokio::sync::oneshot::channel();
     session
         .enqueue_latest_client_effect(
-            ClientEffectKey::Document("controlled-blocker".to_string()),
+            ClientEffectKey::document_for_test("controlled-blocker"),
             async move {
                 let _ = started_tx.send(());
                 let _ = release_rx.await;
@@ -259,6 +286,53 @@ fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_
         diagnostics[0].range,
         Range::new(Position::new(0, 0), Position::new(2, 0))
     );
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data.get("documentVersion")),
+        Some(&serde_json::json!(5))
+    );
+}
+
+#[test]
+fn diagnostics_for_document_diagram_rejection_use_canonical_resource_payload() {
+    let uri = Uri::from_str("file:///tmp/limited.md").unwrap();
+    let source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+    let options = AnalysisOptions::default().with_max_document_diagrams(Some(1));
+    let descriptor = source_descriptor_for_kind(Some(uri.as_str()), SourceKind::Markdown);
+    let rejection = options
+        .resource_limits()
+        .preflight_document(source, &descriptor)
+        .expect("the second Mermaid fence must exceed the document budget");
+    let document = StoredDocument::analysis_rejected(
+        uri,
+        5,
+        DocumentKind::Markdown,
+        std::sync::Arc::from(source),
+        rejection,
+    );
+
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(
+        &document,
+        &merman_analysis::Analyzer::with_options(options),
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].code,
+        Some(NumberOrString::String(
+            "merman.resource.document_diagrams_exceeded".to_string()
+        ))
+    );
+    assert_eq!(
+        diagnostics[0].range,
+        Range::new(Position::new(4, 0), Position::new(4, 3))
+    );
+    assert!(!diagnostics[0].message.contains("document_sync_lost"));
     assert_eq!(
         diagnostics[0]
             .data
@@ -454,8 +528,8 @@ fn capabilities_report_the_full_server_envelope() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn configuration_side_effects_follow_the_changed_policy_scope() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     initialize_test_backend(
         server,
         serde_json::json!({
@@ -509,8 +583,8 @@ async fn configuration_side_effects_follow_the_changed_policy_scope() {
 #[tokio::test(flavor = "current_thread")]
 async fn pull_diagnostic_effects_require_negotiated_refresh_support() {
     for (refresh_support, expected_refreshes) in [(false, 0), (true, 1)] {
-        let (service, _socket) = MermanLanguageServer::service();
-        let server = service.inner();
+        let (_service, _socket, server) = test_service();
+        let server = &server;
         initialize_test_backend(
             server,
             serde_json::json!({
@@ -551,8 +625,8 @@ async fn pull_diagnostic_effects_require_negotiated_refresh_support() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn push_diagnostics_admit_exactly_one_effect_per_document_event() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     initialize_test_backend(server, serde_json::json!({})).await;
     let uri = Uri::from_str("file:///tmp/push-effect-count.mmd").unwrap();
 
@@ -591,9 +665,10 @@ async fn push_diagnostics_admit_exactly_one_effect_per_document_event() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn queued_diagnostic_sync_clears_a_document_closed_before_execution() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket, server) = test_service();
+    let (mut socket, _responses) = socket.split();
     initialize_push_test_service(&mut service).await;
-    let server = service.inner();
+    let server = &server;
     let uri = Uri::from_str("file:///tmp/queued-diagnostic-close.mmd").unwrap();
     let release = block_client_effect_worker(&server.session).await;
 
@@ -624,9 +699,10 @@ async fn queued_diagnostic_sync_clears_a_document_closed_before_execution() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn queued_diagnostic_sync_publishes_a_document_opened_before_execution() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket, server) = test_service();
+    let (mut socket, _responses) = socket.split();
     initialize_push_test_service(&mut service).await;
-    let server = service.inner();
+    let server = &server;
     let uri = Uri::from_str("file:///tmp/queued-diagnostic-open.mmd").unwrap();
     let release = block_client_effect_worker(&server.session).await;
 
@@ -675,8 +751,9 @@ fn client_log_messages_have_a_bounded_utf8_allocation() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn stalled_configuration_error_log_is_bounded() {
-    let (service, mut socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, socket, server) = test_service();
+    let (mut socket, _responses) = socket.split();
+    let server = &server;
     initialize_test_backend(server, serde_json::json!({})).await;
     let release = block_client_effect_worker(&server.session).await;
     let mut resources = serde_json::Map::new();
@@ -710,8 +787,9 @@ async fn stalled_configuration_error_log_is_bounded() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn stalled_client_logs_are_latest_wins() {
-    let (service, mut socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, socket, server) = test_service();
+    let (mut socket, _responses) = socket.split();
+    let server = &server;
     let release = block_client_effect_worker(&server.session).await;
 
     server
@@ -802,8 +880,8 @@ fn diagnostics_include_rich_editor_projection_warnings() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
@@ -851,8 +929,8 @@ async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     server
         .client_profile
         .set(crate::client_profile::ClientProtocolProfile::permissive())
@@ -1025,8 +1103,8 @@ async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuration_change() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     server
         .client_profile
         .set(crate::client_profile::ClientProtocolProfile::permissive())
@@ -1062,7 +1140,11 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
         .await;
     assert!(change.affects_diagnostics());
     assert!(!change.affects_snapshots());
-    assert_eq!(server.session.probe().cache_state(&uri).await, (true, true));
+    assert_eq!(
+        server.session.probe().cache_state(&uri).await,
+        (false, false),
+        "a snapshot-only read keeps no complete cache entry; diagnostic-only configuration defers projection to demand"
+    );
     assert_eq!(
         server.session.analysis_execution_count(),
         execution_count,
@@ -1122,8 +1204,8 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
 
 #[tokio::test(flavor = "current_thread")]
 async fn did_open_uses_language_id_and_change_preserves_document_kind() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     let uri = Uri::from_str("untitled:notes").unwrap();
 
     server
@@ -1170,8 +1252,8 @@ async fn did_open_uses_language_id_and_change_preserves_document_kind() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn did_change_rejects_stale_document_versions() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
@@ -1233,8 +1315,8 @@ async fn did_change_rejects_stale_document_versions() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn did_change_applies_incremental_changes_in_order() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
@@ -1290,7 +1372,7 @@ async fn did_change_applies_incremental_changes_in_order() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn session_routes_pipelined_messages_after_initialize_completes() {
-    let (mut service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket, session) = test_session_service();
     let uri = Uri::from_str("file:///tmp/pipelined-initialize.mmd").unwrap();
 
     let initialize = service.call(
@@ -1319,21 +1401,14 @@ async fn session_routes_pipelined_messages_after_initialize_completes() {
     assert!(initialize.unwrap().expect("initialize response").is_ok());
     assert!(open.unwrap().is_none());
     assert!(
-        service
-            .inner()
-            .session
-            .probe()
-            .document(&uri)
-            .await
-            .is_some(),
+        session.probe().document(&uri).await.is_some(),
         "didOpen must be routed after the earlier initialize succeeds"
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn dropping_either_session_endpoint_terminates_all_work_exactly_once() {
-    let (service, socket) = MermanLanguageServer::service();
-    let socket_session = service.inner().session.clone();
+    let (service, socket, socket_session) = test_session_service();
 
     drop(socket);
     socket_session.wait_stopped().await;
@@ -1343,8 +1418,7 @@ async fn dropping_either_session_endpoint_terminates_all_work_exactly_once() {
     drop(service);
     assert_eq!(socket_session.termination_count(), 1);
 
-    let (service, socket) = MermanLanguageServer::service();
-    let service_session = service.inner().session.clone();
+    let (service, socket, service_session) = test_session_service();
 
     drop(service);
     service_session.wait_stopped().await;
@@ -1357,8 +1431,7 @@ async fn dropping_either_session_endpoint_terminates_all_work_exactly_once() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn exit_cancels_queued_mutations_and_stops_new_admission() {
-    let (mut service, socket) = MermanLanguageServer::service();
-    let session = service.inner().session.clone();
+    let (mut service, socket, session) = test_session_service();
     let uri = Uri::from_str("file:///tmp/exit-cancels-queued-open.mmd").unwrap();
 
     let open = service.call(
@@ -1416,7 +1489,7 @@ async fn exit_preserves_an_already_admitted_shutdown_error() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn client_effect_backpressure_does_not_hold_the_mutation_fence() {
-    let (mut service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket, session) = test_session_service();
     let initialize = Request::build("initialize")
         .params(serde_json::json!({ "capabilities": {} }))
         .id(1)
@@ -1431,7 +1504,6 @@ async fn client_effect_backpressure_does_not_hold_the_mutation_fence() {
             .unwrap()
             .is_some_and(|response| response.is_ok())
     );
-    let session = service.inner().session.clone();
     let uri = Uri::from_str("file:///tmp/effect-backpressure.mmd").unwrap();
     saturate_client_effect_queue(&session).await;
 
@@ -1481,9 +1553,8 @@ async fn client_log_backpressure_does_not_hold_mutation_fences() {
     ];
 
     for (method, params) in cases {
-        let (mut service, _socket) = MermanLanguageServer::service();
+        let (mut service, _socket, session) = test_session_service();
         initialize_test_service(&mut service).await;
-        let session = service.inner().session.clone();
         saturate_client_effect_queue(&session).await;
 
         let notification = service.call(Request::build(method).params(params).finish());
@@ -1527,7 +1598,7 @@ async fn reads_wait_for_an_earlier_unpolled_shutdown() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn session_admission_preserves_open_change_and_close_order() {
-    let (mut service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket, session) = test_session_service();
     initialize_test_service(&mut service).await;
     let uri = Uri::from_str("file:///tmp/ordered-sync.mmd").unwrap();
 
@@ -1568,9 +1639,7 @@ async fn session_admission_preserves_open_change_and_close_order() {
     assert!(open.unwrap().is_none());
     assert!(change.unwrap().is_none());
 
-    let document = service
-        .inner()
-        .session
+    let document = session
         .probe()
         .document(&uri)
         .await
@@ -1608,27 +1677,19 @@ async fn session_admission_preserves_open_change_and_close_order() {
     assert!(close.unwrap().is_none());
 
     assert!(
-        service
-            .inner()
-            .session
-            .probe()
-            .document(&uri)
-            .await
-            .is_none(),
+        session.probe().document(&uri).await.is_none(),
         "close must follow the queued reopen"
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn session_admission_orders_configuration_before_document_open() {
-    let (mut service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket, session) = test_session_service();
     initialize_test_service(&mut service).await;
     let uri = Uri::from_str("file:///tmp/configuration-before-open.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n";
 
-    service
-        .inner()
-        .session
+    session
         .update_configuration(
             default_lsp_analysis_options().with_max_source_bytes(Some(source.len() - 1)),
         )
@@ -1663,9 +1724,7 @@ async fn session_admission_orders_configuration_before_document_open() {
     assert!(configuration.unwrap().is_none());
     assert!(open.unwrap().is_none());
 
-    let document = service
-        .inner()
-        .session
+    let document = session
         .probe()
         .document(&uri)
         .await
@@ -1822,7 +1881,7 @@ async fn completion_after_an_unpolled_change_uses_only_the_committed_text() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn cancellation_reaches_a_read_waiting_for_an_earlier_mutation() {
-    let (mut service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket, session) = test_session_service();
     initialize_test_service(&mut service).await;
     let uri = Uri::from_str("file:///tmp/cancel-before-route.mmd").unwrap();
 
@@ -1879,13 +1938,7 @@ async fn cancellation_reaches_a_read_waiting_for_an_earlier_mutation() {
         tower_lsp_server::jsonrpc::ErrorCode::RequestCancelled
     );
     assert!(
-        service
-            .inner()
-            .session
-            .probe()
-            .document(&uri)
-            .await
-            .is_none(),
+        session.probe().document(&uri).await.is_none(),
         "the predecessor must still be unpolled when cancellation resolves"
     );
 
@@ -1894,8 +1947,8 @@ async fn cancellation_reaches_a_read_waiting_for_an_earlier_mutation() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn stale_push_diagnostic_context_is_suppressed() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     assert!(
@@ -1938,8 +1991,8 @@ async fn stale_push_diagnostic_context_is_suppressed() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn diagnostic_pull_uses_latest_document() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
@@ -2010,8 +2063,8 @@ async fn diagnostic_pull_uses_latest_document() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn diagnostic_pull_reuses_cached_previous_result() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
@@ -2063,8 +2116,8 @@ async fn diagnostic_pull_reuses_cached_previous_result() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
@@ -2215,8 +2268,8 @@ fn structure_helpers_cover_navigation_surface() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_handlers_return_hover_and_symbols() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server

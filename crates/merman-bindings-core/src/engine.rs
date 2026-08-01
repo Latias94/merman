@@ -1,4 +1,4 @@
-use crate::{BindingError, BindingRuntimePolicy, common};
+use crate::{BindingError, BindingRuntimePolicy, common, operation::BindingOperationOutput};
 #[cfg(feature = "analysis")]
 use merman_analysis::Analyzer;
 #[cfg(feature = "svg")]
@@ -111,7 +111,7 @@ impl BindingEngine {
         source: &[u8],
         uri: Option<&[u8]>,
         options_json: &[u8],
-    ) -> Result<Option<Vec<u8>>, BindingError> {
+    ) -> Result<Option<BindingOperationOutput>, BindingError> {
         let overlay = common::parse_request_overlay(options_json, operation.resource_scope())?;
         match overlay {
             common::BindingRequestOverlay::Unchanged => {
@@ -136,9 +136,13 @@ impl BindingEngine {
         configs: BindingOperationConfigs,
         source: &[u8],
         _uri: Option<&[u8]>,
-    ) -> Result<Vec<u8>, BindingError> {
+    ) -> Result<BindingOperationOutput, BindingError> {
         match operation.key() {
-            crate::OperationKey::SemanticJson => configs.semantic.materialize().parse_json(source),
+            crate::OperationKey::SemanticJson => configs
+                .semantic
+                .materialize()
+                .parse_json(source)
+                .map(BindingOperationOutput::plain),
             crate::OperationKey::AnalysisJson
             | crate::OperationKey::AnalysisFactsJson
             | crate::OperationKey::ValidationJson
@@ -147,7 +151,7 @@ impl BindingEngine {
                 #[cfg(feature = "analysis")]
                 {
                     let analyzer = Analyzer::with_options(configs.analysis);
-                    match operation.key() {
+                    let data = match operation.key() {
                         crate::OperationKey::AnalysisJson => analyze_json_with(&analyzer, source),
                         crate::OperationKey::AnalysisFactsJson => {
                             analyze_facts_json_with(&analyzer, source)
@@ -168,7 +172,8 @@ impl BindingEngine {
                             )
                         }
                         _ => unreachable!("analysis projection requires an analysis operation"),
-                    }
+                    }?;
+                    Ok(BindingOperationOutput::plain(data))
                 }
                 #[cfg(not(feature = "analysis"))]
                 {
@@ -196,7 +201,11 @@ impl BindingEngine {
             crate::OperationKey::Ascii => {
                 #[cfg(feature = "ascii")]
                 {
-                    configs.ascii.materialize().render_ascii(source)
+                    configs
+                        .ascii
+                        .materialize()
+                        .render_ascii(source)
+                        .map(BindingOperationOutput::plain)
                 }
                 #[cfg(not(feature = "ascii"))]
                 {
@@ -218,13 +227,19 @@ impl BindingEngine {
                         None => render,
                     };
                     match operation.key() {
-                        crate::OperationKey::Svg => render.render_svg(source),
-                        crate::OperationKey::SvgPlanJson => render.svg_plan_json(source),
-                        crate::OperationKey::LayoutJson => render.layout_json(source),
+                        crate::OperationKey::Svg => {
+                            render.render_svg(source).map(BindingOperationOutput::plain)
+                        }
+                        crate::OperationKey::SvgPlanJson => render
+                            .svg_plan_json(source)
+                            .map(BindingOperationOutput::plain),
+                        crate::OperationKey::LayoutJson => render
+                            .layout_json(source)
+                            .map(BindingOperationOutput::plain),
                         crate::OperationKey::Png => {
                             #[cfg(feature = "png")]
                             {
-                                render.render_png(source)
+                                render.render_png_output(source)
                             }
                             #[cfg(not(feature = "png"))]
                             {
@@ -235,7 +250,7 @@ impl BindingEngine {
                         crate::OperationKey::Jpeg => {
                             #[cfg(feature = "jpeg")]
                             {
-                                render.render_jpeg(source)
+                                render.render_jpeg_output(source)
                             }
                             #[cfg(not(feature = "jpeg"))]
                             {
@@ -246,7 +261,7 @@ impl BindingEngine {
                         crate::OperationKey::Pdf => {
                             #[cfg(feature = "pdf")]
                             {
-                                render.render_pdf(source)
+                                render.render_pdf_output(source)
                             }
                             #[cfg(not(feature = "pdf"))]
                             {
@@ -318,6 +333,22 @@ impl BindingEngine {
         }
     }
 
+    pub(crate) fn render_png_output(
+        &self,
+        source: &[u8],
+    ) -> Result<BindingOperationOutput, BindingError> {
+        #[cfg(feature = "png")]
+        {
+            self.render.render_png_output(source)
+        }
+
+        #[cfg(not(feature = "png"))]
+        {
+            let _ = source;
+            Err(common::feature_required_error("PNG rendering", "png"))
+        }
+    }
+
     pub fn render_jpeg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "jpeg")]
         {
@@ -331,10 +362,42 @@ impl BindingEngine {
         }
     }
 
+    pub(crate) fn render_jpeg_output(
+        &self,
+        source: &[u8],
+    ) -> Result<BindingOperationOutput, BindingError> {
+        #[cfg(feature = "jpeg")]
+        {
+            self.render.render_jpeg_output(source)
+        }
+
+        #[cfg(not(feature = "jpeg"))]
+        {
+            let _ = source;
+            Err(common::feature_required_error("JPEG rendering", "jpeg"))
+        }
+    }
+
     pub fn render_pdf(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "pdf")]
         {
             self.render.render_pdf(source)
+        }
+
+        #[cfg(not(feature = "pdf"))]
+        {
+            let _ = source;
+            Err(common::feature_required_error("PDF rendering", "pdf"))
+        }
+    }
+
+    pub(crate) fn render_pdf_output(
+        &self,
+        source: &[u8],
+    ) -> Result<BindingOperationOutput, BindingError> {
+        #[cfg(feature = "pdf")]
+        {
+            self.render.render_pdf_output(source)
         }
 
         #[cfg(not(feature = "pdf"))]
@@ -635,12 +698,9 @@ struct SemanticOperationEngine {
 impl SemanticOperationEngine {
     fn parse_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = common::source_text(source)?;
-        self.resources.check_source_bytes(source).map_err(|error| {
-            BindingError::new(
-                crate::BindingStatus::ResourceLimitExceeded,
-                error.to_string(),
-            )
-        })?;
+        self.resources
+            .check_source_bytes(source)
+            .map_err(common::input_resource_limit_error)?;
         let parsed = self
             .engine
             .parse_diagram_for_render_model_sync(source, self.parse_options)
@@ -649,12 +709,7 @@ impl SemanticOperationEngine {
 
         self.resources
             .check_render_model(parsed.model())
-            .map_err(|error| {
-                BindingError::new(
-                    crate::BindingStatus::ResourceLimitExceeded,
-                    error.to_string(),
-                )
-            })?;
+            .map_err(common::input_resource_limit_error)?;
 
         let model = parsed
             .model()
@@ -765,6 +820,13 @@ mod tests {
                 .expect_err("one-below semantic model boundary must fail");
             assert_eq!(error.status(), crate::BindingStatus::ResourceLimitExceeded);
             assert!(error.message().contains(limit), "{error:?}");
+            let details = error
+                .resource_details()
+                .expect("structured resource details");
+            assert_eq!(details.limit_id, limit);
+            assert_eq!(details.phase, "layout_model");
+            assert_eq!(details.max, (exact - 1) as u64);
+            assert_eq!(details.profile, "constrained");
         }
     }
 
@@ -793,6 +855,7 @@ mod tests {
         assert!(error.message().contains(limit), "{error:?}");
     }
 
+    #[cfg(feature = "svg")]
     #[test]
     fn engine_reuses_options_for_rendering() {
         let engine = BindingEngine::new(
@@ -803,17 +866,9 @@ mod tests {
         )
         .unwrap();
 
-        let svg = engine.render_svg(b"flowchart TD\nA[Hello]");
-        if cfg!(feature = "svg") {
-            let svg = String::from_utf8(svg.unwrap()).unwrap();
-            assert!(svg.contains("id=\"cached-engine\""));
-            assert!(svg.contains("data-merman-foreignobject"));
-        } else {
-            assert_eq!(
-                svg.unwrap_err().status(),
-                crate::BindingStatus::UnsupportedOperation
-            );
-        }
+        let svg = String::from_utf8(engine.render_svg(b"flowchart TD\nA[Hello]").unwrap()).unwrap();
+        assert!(svg.contains("id=\"cached-engine\""));
+        assert!(svg.contains("data-merman-foreignobject"));
     }
 
     #[cfg(all(feature = "svg", feature = "ascii"))]
@@ -870,6 +925,31 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|related| related["message"] == "Mermaid fence 1")
+        );
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn document_analysis_enforces_the_profile_diagram_limit() {
+        let engine = BindingEngine::new(br#"{"resources":{"profile":"constrained"}}"#).unwrap();
+        let source = "```mermaid\nflowchart TD\nA\n```\n".repeat(129);
+
+        let payload: Value = serde_json::from_slice(
+            &engine
+                .analyze_document_json(source.as_bytes(), b"file:///tmp/many.md")
+                .expect("analysis rejection is represented as a diagnostics payload"),
+        )
+        .unwrap();
+
+        assert_eq!(payload["valid"], false);
+        assert_eq!(
+            payload["diagnostics"][0]["id"],
+            "merman.resource.document_diagrams_exceeded"
+        );
+        assert!(
+            payload["diagnostics"][0]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("128"))
         );
     }
 

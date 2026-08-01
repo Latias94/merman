@@ -14,7 +14,10 @@ use std::{
 };
 
 use futures::{StreamExt, channel::mpsc, sink, stream};
-use merman_lsp::{LSP_HANDLER_CONCURRENCY, StdioTermination, serve_stdio, stdio_server};
+use merman_lsp::{
+    LSP_CONTROL_HANDLER_CONCURRENCY, LSP_ORDINARY_HANDLER_CONCURRENCY,
+    LSP_TOTAL_HANDLER_CONCURRENCY, StdioService, StdioTermination, serve_stdio, stdio_server,
+};
 use serde_json::json;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::sync::oneshot;
@@ -486,10 +489,8 @@ impl Service<Request> for PendingNotificationService {
             "exit" => {
                 assert!(id.is_none(), "exit must be a notification");
                 let exit_seen = self.exit_seen.take().expect("single exit notification");
-                Box::pin(async move {
-                    let _ = exit_seen.send(());
-                    Ok(None)
-                })
+                let _ = exit_seen.send(());
+                Box::pin(async { Ok(None) })
             }
             other => panic!("unexpected lifecycle request: {other}"),
         }
@@ -527,21 +528,47 @@ impl Service<Request> for DelayedShutdownService {
             "exit" => {
                 assert!(id.is_none(), "exit must be a notification");
                 let exit_seen = self.exit_seen.take().expect("single exit notification");
-                Box::pin(async move {
-                    let _ = exit_seen.send(());
-                    Ok(None)
-                })
+                let _ = exit_seen.send(());
+                Box::pin(async { Ok(None) })
             }
             other => panic!("unexpected lifecycle request: {other}"),
         }
     }
 }
 
+macro_rules! impl_stdio_service {
+    ($($service:ty),+ $(,)?) => {
+        $(
+            impl StdioService for $service {
+                type Error = <$service as Service<Request>>::Error;
+                type Future = <$service as Service<Request>>::Future;
+
+                fn admit(&mut self, request: Request) -> Self::Future {
+                    Service::call(self, request)
+                }
+            }
+        )+
+    };
+}
+
+impl_stdio_service!(
+    LoopbackOnlyService,
+    OverlapService,
+    DelayedShutdownService,
+    PendingNotificationService,
+);
+
 #[tokio::test(flavor = "current_thread")]
 async fn stdio_server_processes_overlapping_requests() {
     const {
+        assert!(LSP_ORDINARY_HANDLER_CONCURRENCY == 4);
+        assert!(LSP_CONTROL_HANDLER_CONCURRENCY == 4);
         assert!(
-            LSP_HANDLER_CONCURRENCY > 1,
+            LSP_TOTAL_HANDLER_CONCURRENCY
+                == LSP_ORDINARY_HANDLER_CONCURRENCY + LSP_CONTROL_HANDLER_CONCURRENCY
+        );
+        assert!(
+            LSP_ORDINARY_HANDLER_CONCURRENCY > 1,
             "stdio handler concurrency must allow overlapping requests"
         );
     }

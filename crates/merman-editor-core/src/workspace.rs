@@ -1,27 +1,12 @@
-use crate::snapshot::DocumentSnapshot;
+use crate::snapshot::{DocumentSnapshot, EditorDiagramDetection};
 use crate::types::{DocumentKind, DocumentUri};
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisDiagnosticPolicy,
-    AnalysisGeneration, AnalysisPayload, AnalysisRejection, Analyzer, DiagramParseDisposition,
-    SourceDescriptor, SourceKind, analyze_document_generation_shared,
-    analyze_document_generation_shared_cancellable,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisGeneration,
+    AnalysisPayload, AnalysisRejection, Analyzer, SourceDescriptor,
+    analyze_document_generation_shared, analyze_document_generation_shared_cancellable,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiagramDetectionValidity {
-    Valid,
-    RecoverableInvalid,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EditorDiagramDetection {
-    pub validity: DiagramDetectionValidity,
-    pub diagram_type: String,
-    pub syntax_id: String,
-    pub effective_layout_id: String,
-}
 
 #[derive(Debug)]
 pub struct DocumentWorkspace {
@@ -39,7 +24,6 @@ pub struct DocumentAnalysisContext {
 struct DocumentAnalysisContextInner {
     snapshot: DocumentSnapshot,
     payload: Arc<AnalysisPayload>,
-    detection: Option<EditorDiagramDetection>,
 }
 
 #[derive(Debug, Clone)]
@@ -81,7 +65,7 @@ impl DocumentAnalysisContext {
     }
 
     pub fn detection(&self) -> Option<&EditorDiagramDetection> {
-        self.inner.detection.as_ref()
+        self.inner.snapshot.detection()
     }
 
     pub fn analysis_generation(&self) -> &AnalysisGeneration {
@@ -94,10 +78,6 @@ impl DocumentAnalysisContext {
 
     pub fn shared_payload(&self) -> Arc<AnalysisPayload> {
         Arc::clone(&self.inner.payload)
-    }
-
-    pub fn reproject_payload(&self, policy: &AnalysisDiagnosticPolicy) -> AnalysisPayload {
-        self.analysis_generation().project(policy)
     }
 }
 
@@ -132,17 +112,37 @@ impl DocumentWorkspace {
         kind: DocumentKind,
     ) -> Result<DocumentSnapshot, AnalysisRejection> {
         let uri = uri.into();
-        let analyzed = Self::build_analysis_context_with_shared_text(
-            &self.analyzer,
-            uri.clone(),
-            version,
-            Arc::from(text),
-            kind,
-        )
-        .into_ready()?;
-        let snapshot = analyzed.snapshot().clone();
+        let snapshot =
+            Self::capture_snapshot(&self.analyzer, uri.clone(), version, Arc::from(text), kind)?;
         self.documents.insert(uri, snapshot.clone());
         Ok(snapshot)
+    }
+
+    fn capture_snapshot(
+        analyzer: &Analyzer,
+        uri: DocumentUri,
+        version: i32,
+        text: Arc<str>,
+        kind: DocumentKind,
+    ) -> Result<DocumentSnapshot, AnalysisRejection> {
+        let source = source_descriptor_for_document(&uri, kind);
+        let analysis = analyze_document_generation_shared(text, analyzer, source);
+        Self::snapshot_from_capture(version, analysis)
+    }
+
+    fn capture_snapshot_cancellable(
+        analyzer: &Analyzer,
+        uri: DocumentUri,
+        version: i32,
+        text: Arc<str>,
+        kind: DocumentKind,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Result<DocumentSnapshot, AnalysisRejection>, AnalysisCancelled> {
+        let source = source_descriptor_for_document(&uri, kind);
+        let analysis =
+            analyze_document_generation_shared_cancellable(text, analyzer, source, cancellation)?;
+        cancellation.checkpoint()?;
+        Ok(Self::snapshot_from_capture(version, analysis))
     }
 
     pub fn build_analysis_context_with_shared_text(
@@ -153,9 +153,12 @@ impl DocumentWorkspace {
         kind: DocumentKind,
     ) -> DocumentAnalysisOutcome {
         let uri = uri.into();
-        let source = source_descriptor_for_document(&uri, kind);
-        let analysis = analyze_document_generation_shared(text, analyzer, source);
-        Self::analysis_context(uri, version, kind, analyzer, analysis)
+        match Self::capture_snapshot(analyzer, uri, version, text, kind) {
+            Ok(snapshot) => {
+                DocumentAnalysisOutcome::Ready(Self::analysis_context(analyzer, snapshot))
+            }
+            Err(rejection) => DocumentAnalysisOutcome::Rejected(rejection),
+        }
     }
 
     pub fn build_analysis_context_with_shared_text_cancellable(
@@ -167,70 +170,59 @@ impl DocumentWorkspace {
         cancellation: &AnalysisCancellationToken,
     ) -> Result<DocumentAnalysisOutcome, AnalysisCancelled> {
         let uri = uri.into();
-        let source = source_descriptor_for_document(&uri, kind);
-        let analysis =
-            analyze_document_generation_shared_cancellable(text, analyzer, source, cancellation)?;
-        Self::analysis_context_cancellable(uri, version, kind, analyzer, analysis, cancellation)
+        let snapshot =
+            Self::capture_snapshot_cancellable(analyzer, uri, version, text, kind, cancellation)?;
+        match snapshot {
+            Ok(snapshot) => Ok(DocumentAnalysisOutcome::Ready(
+                Self::analysis_context_cancellable(analyzer, snapshot, cancellation)?,
+            )),
+            Err(rejection) => Ok(DocumentAnalysisOutcome::Rejected(rejection)),
+        }
     }
 
     fn analysis_context(
-        uri: DocumentUri,
-        version: i32,
-        kind: DocumentKind,
         analyzer: &Analyzer,
-        analysis: AnalysisCaptureOutcome,
-    ) -> DocumentAnalysisOutcome {
-        match analysis {
-            AnalysisCaptureOutcome::Ready(generation) => {
-                let payload = generation.project(analyzer.options().diagnostic_policy());
-                DocumentAnalysisOutcome::Ready(Self::analysis_context_ready(
-                    uri, version, kind, generation, payload,
-                ))
-            }
-            AnalysisCaptureOutcome::Rejected(rejection) => {
-                DocumentAnalysisOutcome::Rejected(rejection)
-            }
-        }
+        snapshot: DocumentSnapshot,
+    ) -> DocumentAnalysisContext {
+        let payload = snapshot
+            .analysis_generation()
+            .project(analyzer.options().diagnostic_policy());
+        Self::analysis_context_ready(snapshot, payload)
     }
 
     fn analysis_context_cancellable(
-        uri: DocumentUri,
-        version: i32,
-        kind: DocumentKind,
         analyzer: &Analyzer,
-        analysis: AnalysisCaptureOutcome,
+        snapshot: DocumentSnapshot,
         cancellation: &AnalysisCancellationToken,
-    ) -> Result<DocumentAnalysisOutcome, AnalysisCancelled> {
-        match analysis {
-            AnalysisCaptureOutcome::Ready(generation) => {
-                let payload = generation
-                    .project_cancellable(analyzer.options().diagnostic_policy(), cancellation)?;
-                Ok(DocumentAnalysisOutcome::Ready(
-                    Self::analysis_context_ready(uri, version, kind, generation, payload),
-                ))
-            }
-            AnalysisCaptureOutcome::Rejected(rejection) => {
-                Ok(DocumentAnalysisOutcome::Rejected(rejection))
-            }
-        }
+    ) -> Result<DocumentAnalysisContext, AnalysisCancelled> {
+        let payload = snapshot
+            .analysis_generation()
+            .project_cancellable(analyzer.options().diagnostic_policy(), cancellation)?;
+        Ok(Self::analysis_context_ready(snapshot, payload))
     }
 
     fn analysis_context_ready(
-        uri: DocumentUri,
-        version: i32,
-        kind: DocumentKind,
-        generation: AnalysisGeneration,
+        snapshot: DocumentSnapshot,
         payload: AnalysisPayload,
     ) -> DocumentAnalysisContext {
         let payload = Arc::new(payload);
-        let detection = detection_for_generation(&generation);
-        let generation = Arc::new(generation);
         DocumentAnalysisContext {
-            inner: Arc::new(DocumentAnalysisContextInner {
-                snapshot: DocumentSnapshot::new(uri, version, kind, generation),
-                payload,
-                detection,
-            }),
+            inner: Arc::new(DocumentAnalysisContextInner { snapshot, payload }),
+        }
+    }
+
+    fn snapshot_from_capture(
+        version: i32,
+        analysis: AnalysisCaptureOutcome,
+    ) -> Result<DocumentSnapshot, AnalysisRejection> {
+        match analysis {
+            AnalysisCaptureOutcome::Ready(generation) => Ok(
+                DocumentSnapshot::try_from_analysis_generation(version, Arc::new(generation))
+                    .expect(
+                        "workspace analysis generation must preserve the requested document URI",
+                    ),
+            ),
+            AnalysisCaptureOutcome::Rejected(rejection) => Err(rejection),
         }
     }
 
@@ -243,39 +235,8 @@ impl DocumentWorkspace {
     }
 }
 
-fn detection_for_generation(
-    generation: &merman_analysis::AnalysisGeneration,
-) -> Option<EditorDiagramDetection> {
-    let [diagram] = generation.diagrams() else {
-        return None;
-    };
-    let syntax_id = diagram.syntax().diagram_type.as_ref()?.trim();
-    let effective_layout_id = diagram.syntax().effective_layout.as_ref()?.trim();
-    if syntax_id.is_empty() || effective_layout_id.is_empty() {
-        return None;
-    }
-    let diagram_type = merman_core::diagram_type_metadata_id(syntax_id)?;
-    let validity = match diagram.parse_disposition() {
-        DiagramParseDisposition::Parsed => DiagramDetectionValidity::Valid,
-        DiagramParseDisposition::Recovered => DiagramDetectionValidity::RecoverableInvalid,
-        DiagramParseDisposition::Unavailable => return None,
-    };
-
-    Some(EditorDiagramDetection {
-        validity,
-        diagram_type: diagram_type.to_string(),
-        syntax_id: syntax_id.to_string(),
-        effective_layout_id: effective_layout_id.to_string(),
-    })
-}
-
 fn source_descriptor_for_document(uri: &DocumentUri, kind: DocumentKind) -> SourceDescriptor {
-    let source_kind = match kind {
-        DocumentKind::Diagram => SourceKind::Diagram,
-        DocumentKind::Markdown => SourceKind::Markdown,
-        DocumentKind::Mdx => SourceKind::Mdx,
-    };
-    merman_analysis::source_descriptor_for_kind(Some(uri.as_str()), source_kind)
+    merman_analysis::source_descriptor_for_kind(Some(uri.as_str()), kind.source_kind())
 }
 
 #[cfg(test)]
@@ -310,7 +271,9 @@ mod tests {
         );
 
         let initial_payload = context.shared_payload();
-        let projected = context.reproject_payload(analyzer.options().diagnostic_policy());
+        let projected = context
+            .analysis_generation()
+            .project(analyzer.options().diagnostic_policy());
 
         assert_eq!(context.snapshot() as *const DocumentSnapshot, snapshot);
         assert_eq!(
@@ -354,14 +317,10 @@ mod tests {
         let cancellation = AnalysisCancellationToken::new();
         cancellation.cancel();
 
-        let result = DocumentWorkspace::analysis_context_cancellable(
-            uri,
-            1,
-            kind,
-            &analyzer,
-            analysis,
-            &cancellation,
-        );
+        let snapshot = DocumentWorkspace::snapshot_from_capture(1, analysis)
+            .expect("capture should produce a snapshot");
+        let result =
+            DocumentWorkspace::analysis_context_cancellable(&analyzer, snapshot, &cancellation);
 
         assert_eq!(
             result.expect_err("initial payload projection should observe cancellation"),

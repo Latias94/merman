@@ -14,18 +14,8 @@ impl WasmEngine {
         wire::create_engine(&options_json)
             .map(|engine| Self { engine })
             .map_err(|error| {
-                serde_wasm_bindgen::to_value(&serde_json::json!({
-                    "version": 1,
-                    "ok": false,
-                    "error": {
-                        "code": error.status().code(),
-                        "code_name": error.status().code_name(),
-                        "kind": error.kind().id(),
-                        "capability_id": error.capability_id(),
-                        "message": error.message(),
-                    }
-                }))
-                .unwrap_or_else(|_| JsValue::from_str(error.message()))
+                serde_wasm_bindgen::to_value(&wire::error_value(&error))
+                    .unwrap_or_else(|_| JsValue::from_str(error.message()))
             })
     }
 
@@ -36,18 +26,8 @@ impl WasmEngine {
     #[wasm_bindgen(js_name = "runtimeCatalogJson")]
     pub fn runtime_catalog_json(&self) -> Result<String, JsValue> {
         wire::runtime_catalog_wire().map_err(|error| {
-            serde_wasm_bindgen::to_value(&serde_json::json!({
-                "version": 1,
-                "ok": false,
-                "error": {
-                    "code": error.status().code(),
-                    "code_name": error.status().code_name(),
-                    "kind": error.kind().id(),
-                    "capability_id": error.capability_id(),
-                    "message": error.message(),
-                }
-            }))
-            .unwrap_or_else(|_| JsValue::from_str(error.message()))
+            serde_wasm_bindgen::to_value(&wire::error_value(&error))
+                .unwrap_or_else(|_| JsValue::from_str(error.message()))
         })
     }
 

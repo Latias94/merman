@@ -10,7 +10,8 @@
 use merman_bindings_core::HostMeasurementResult;
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
-    BindingError, BindingErrorKind, BindingOperationRequest, BindingStatus,
+    BindingError, BindingErrorKind, BindingOperationRequest, BindingResourceErrorDetails,
+    BindingStatus,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -29,6 +30,7 @@ struct NativeFailure {
     status: MermanNativeStatus,
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
+    resource: Option<BindingResourceErrorDetails>,
     message: String,
 }
 
@@ -38,6 +40,7 @@ impl NativeFailure {
             status,
             kind: BindingErrorKind::Generic,
             capability_id: None,
+            resource: None,
             message: message.into(),
         }
     }
@@ -47,6 +50,7 @@ impl NativeFailure {
             status: MERMAN_NATIVE_STATUS_REENTRANT_CALL,
             kind: BindingErrorKind::ReentrantCall,
             capability_id: None,
+            resource: None,
             message: message.into(),
         }
     }
@@ -62,6 +66,7 @@ impl NativeFailure {
             status: MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
             kind: BindingErrorKind::MissingCapability,
             capability_id: Some(capability_id),
+            resource: None,
             message: message.into(),
         }
     }
@@ -233,7 +238,7 @@ fn native_error_kind_name(kind: BindingErrorKind) -> &'static str {
 }
 
 fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
-    serde_json::to_vec(&serde_json::json!({
+    let mut payload = serde_json::json!({
         "version": MERMAN_NATIVE_RESULT_SCHEMA_VERSION,
         "ok": false,
         "status": failure.status,
@@ -241,7 +246,11 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
         "kind": native_error_kind_name(failure.kind),
         "capability_id": failure.capability_id,
         "message": failure.message.as_str(),
-    }))
+    });
+    if let Some(resource) = failure.resource {
+        payload["details"] = serde_json::json!({ "resource": resource });
+    }
+    serde_json::to_vec(&payload)
     .unwrap_or_else(|_| {
         format!(
             "{{\"version\":{},\"ok\":false,\"status\":9,\"status_name\":\"internal-error\",\"kind\":\"generic\",\"capability_id\":null,\"message\":\"native error serialization failed\"}}",
@@ -279,6 +288,7 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         status,
         kind: error.kind(),
         capability_id: error.capability_id(),
+        resource: error.resource_details(),
         message: error.message().to_string(),
     }
 }
@@ -706,6 +716,7 @@ fn execute_with_engine<T>(
             status: MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
             kind: BindingErrorKind::UnknownOperation,
             capability_id: None,
+            resource: None,
             message: format!("unknown native operation code `{}`", request.operation),
         })?;
     let result = state
@@ -990,17 +1001,21 @@ unsafe fn get_native_api_impl(
             engine_try_close: Some(native_engine_try_close),
             execute_collect: Some(native_execute_collect),
             result_free: Some(native_result_free),
+            metadata_collect: Some(native_metadata_collect),
         };
-        let producer_size = size_of::<MermanNativeApi>();
-        let copy_len = usize::min(output_capacity as usize, producer_size);
+        let initialized_size = MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES
+            .iter()
+            .copied()
+            .take_while(|size| *size <= output_capacity)
+            .last()
+            .expect("the validated ABI minimum prefix is always a complete table boundary");
         unsafe {
             ptr::copy_nonoverlapping(
                 ptr::addr_of!(api).cast::<u8>(),
                 out_api.cast::<u8>(),
-                copy_len,
+                initialized_size as usize,
             );
-            ptr::addr_of_mut!((*out_api).struct_size)
-                .write(native_struct_size::<MermanNativeApi>());
+            ptr::addr_of_mut!((*out_api).struct_size).write(initialized_size);
         }
         Ok(())
     })();
@@ -1042,6 +1057,67 @@ fn runtime_catalog_impl(out_result: *mut MermanNativeResult) -> MermanNativeStat
     }
 }
 
+unsafe extern "C" fn native_metadata_collect(
+    metadata_id: MermanNativeSlice,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    unsafe {
+        result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
+            metadata_collect_impl(metadata_id, out_result)
+        })
+    }
+}
+
+fn metadata_collect_impl(
+    metadata_id: MermanNativeSlice,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    if let Err(failure) = unsafe { result_is_writable(out_result) } {
+        return failure.status;
+    }
+    if let Err(failure) = validate_disjoint_storage(
+        metadata_id.data,
+        metadata_id.len,
+        "metadata_id",
+        out_result.cast::<u8>(),
+        size_of::<MermanNativeResult>(),
+        "out_result",
+    ) {
+        return failure.status;
+    }
+    if let Err(failure) = validate_native_slice_shape(metadata_id, "metadata_id") {
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    }
+
+    let outcome = (|| {
+        let metadata_id = unsafe { native_slice_bytes(metadata_id, "metadata_id") }?;
+        let metadata_id = std::str::from_utf8(metadata_id).map_err(|error| {
+            NativeFailure::new(
+                MERMAN_NATIVE_STATUS_UTF8_ERROR,
+                format!("metadata_id must be valid UTF-8: {error}"),
+            )
+        })?;
+        merman_bindings_core::binding_metadata_json(metadata_id)
+            .map_err(native_failure_from_binding)
+    })();
+
+    match outcome {
+        Ok(metadata) => unsafe {
+            write_native_result(
+                out_result,
+                MERMAN_NATIVE_STATUS_OK,
+                MERMAN_NATIVE_OPERATION_NONE,
+                None,
+                Vec::new(),
+                metadata,
+            )
+        },
+        Err(failure) => unsafe {
+            write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+        },
+    }
+}
+
 unsafe extern "C" fn native_engine_new(
     config: *const MermanNativeEngineConfig,
     out_engine: *mut MermanNativeEngineToken,
@@ -1070,6 +1146,35 @@ unsafe fn engine_new_impl(
         return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
     }
     let config_ptr = config;
+    let fixed_storage_validation = (|| {
+        validate_disjoint_storage(
+            out_engine.cast::<u8>(),
+            size_of::<MermanNativeEngineToken>(),
+            "out_engine",
+            out_result.cast::<u8>(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        )?;
+        validate_disjoint_storage(
+            config_ptr.cast::<u8>(),
+            size_of::<MermanNativeEngineConfig>(),
+            "config",
+            out_engine.cast::<u8>(),
+            size_of::<MermanNativeEngineToken>(),
+            "out_engine",
+        )?;
+        validate_disjoint_storage(
+            config_ptr.cast::<u8>(),
+            size_of::<MermanNativeEngineConfig>(),
+            "config",
+            out_result.cast::<u8>(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        )
+    })();
+    if let Err(failure) = fixed_storage_validation {
+        return failure.status;
+    }
     let config = match unsafe { read_engine_config(config_ptr) } {
         Ok(config) => config,
         Err(failure) => {
@@ -1079,15 +1184,6 @@ unsafe fn engine_new_impl(
         }
     };
     let storage_validation = (|| {
-        validate_native_slice_shape(config.options_json, "config.options_json")?;
-        validate_disjoint_storage(
-            out_engine.cast::<u8>(),
-            size_of::<MermanNativeEngineToken>(),
-            "out_engine",
-            out_result.cast::<u8>(),
-            size_of::<MermanNativeResult>(),
-            "out_result",
-        )?;
         validate_disjoint_storage(
             config_ptr.cast::<u8>(),
             size_of::<MermanNativeEngineConfig>(),
@@ -1095,22 +1191,6 @@ unsafe fn engine_new_impl(
             config.options_json.data,
             config.options_json.len,
             "config.options_json",
-        )?;
-        validate_disjoint_storage(
-            config_ptr.cast::<u8>(),
-            size_of::<MermanNativeEngineConfig>(),
-            "config",
-            out_engine.cast::<u8>(),
-            size_of::<MermanNativeEngineToken>(),
-            "out_engine",
-        )?;
-        validate_disjoint_storage(
-            config_ptr.cast::<u8>(),
-            size_of::<MermanNativeEngineConfig>(),
-            "config",
-            out_result.cast::<u8>(),
-            size_of::<MermanNativeResult>(),
-            "out_result",
         )?;
         validate_disjoint_storage(
             config.options_json.data,
@@ -1130,10 +1210,11 @@ unsafe fn engine_new_impl(
         )
     })();
     if let Err(failure) = storage_validation {
+        return failure.status;
+    }
+    if let Err(failure) = validate_native_slice_shape(config.options_json, "config.options_json") {
         return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
     }
-    unsafe { ptr::write(out_engine, 0) };
-
     let outcome = (|| {
         let options_json =
             unsafe { native_slice_bytes(config.options_json, "config.options_json") }?;
@@ -1289,8 +1370,8 @@ unsafe extern "C" fn native_result_free(result: *mut MermanNativeResult) {
             return;
         }
         let allocation_token = ptr::addr_of!((*result).allocation_token).read();
-        release_result_allocation(allocation_token);
         ptr::write(result, initialized_native_result());
+        release_result_allocation(allocation_token);
     }));
 }
 
@@ -1304,9 +1385,51 @@ mod tests {
         struct_size: u32,
     }
 
+    /// The ABI 3 table shape before the append-only `metadata_collect` slot.
+    ///
+    /// This deliberately does not use `MermanNativeApi`: a real older consumer owns only this
+    /// prefix and may call discovery more than once with the returned `struct_size`.
+    #[repr(C)]
+    struct Abi3MinimumApi {
+        struct_size: u32,
+        abi_version: u32,
+        minimum_prefix_layout_digest: MermanNativeSlice,
+        full_descriptor_digest: MermanNativeSlice,
+        capability_catalog_digest: MermanNativeSlice,
+        package_version: MermanNativeSlice,
+        runtime_catalog: Option<MermanNativeRuntimeCatalogFn>,
+        engine_new: Option<MermanNativeEngineNewFn>,
+        engine_try_close: Option<MermanNativeEngineTryCloseFn>,
+        execute_collect: Option<MermanNativeExecuteCollectFn>,
+        result_free: Option<MermanNativeResultFreeFn>,
+    }
+
+    #[repr(C)]
+    struct Abi3MinimumApiBuffer {
+        api: Abi3MinimumApi,
+        trailing_guard: [u8; 16],
+    }
+
     fn empty_api() -> MermanNativeApi {
         MermanNativeApi {
             struct_size: native_struct_size::<MermanNativeApi>(),
+            abi_version: 0,
+            minimum_prefix_layout_digest: static_slice(&[]),
+            full_descriptor_digest: static_slice(&[]),
+            capability_catalog_digest: static_slice(&[]),
+            package_version: static_slice(&[]),
+            runtime_catalog: None,
+            engine_new: None,
+            engine_try_close: None,
+            execute_collect: None,
+            result_free: None,
+            metadata_collect: None,
+        }
+    }
+
+    fn empty_minimum_api() -> Abi3MinimumApi {
+        Abi3MinimumApi {
+            struct_size: MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
             abi_version: 0,
             minimum_prefix_layout_digest: static_slice(&[]),
             full_descriptor_digest: static_slice(&[]),
@@ -1350,6 +1473,33 @@ mod tests {
             }
         };
         serde_json::from_slice(bytes).expect("native result metadata must be valid JSON")
+    }
+
+    #[test]
+    fn native_error_json_preserves_structured_resource_details() {
+        let failure = native_failure_from_binding(BindingError::resource_limit(
+            "embedded_image_decode",
+            "max_embedded_image_bytes",
+            5,
+            4,
+            "constrained",
+            "embedded image is too large",
+        ));
+        let payload: serde_json::Value =
+            serde_json::from_slice(&native_error_json(&failure)).expect("native error JSON");
+
+        assert_eq!(payload["status_name"], "resource-limit-exceeded");
+        assert_eq!(
+            payload["details"]["resource"]["limit_id"],
+            "max_embedded_image_bytes"
+        );
+        assert_eq!(
+            payload["details"]["resource"]["phase"],
+            "embedded_image_decode"
+        );
+        assert_eq!(payload["details"]["resource"]["actual"], 5);
+        assert_eq!(payload["details"]["resource"]["max"], 4);
+        assert_eq!(payload["details"]["resource"]["profile"], "constrained");
     }
 
     fn native_config() -> MermanNativeEngineConfig {
@@ -1526,10 +1676,11 @@ mod tests {
         assert!(api.engine_new.is_some());
         assert!(api.execute_collect.is_some());
         assert!(api.result_free.is_some());
+        assert!(api.metadata_collect.is_some());
     }
 
     #[test]
-    fn discovery_writes_only_the_common_prefix_and_reports_producer_size() {
+    fn discovery_reports_only_complete_prefixes_and_preserves_tail_storage() {
         #[repr(C)]
         struct ExtendedApiBuffer {
             api: MermanNativeApi,
@@ -1557,10 +1708,12 @@ mod tests {
             buffer.api.struct_size,
             native_struct_size::<MermanNativeApi>()
         );
+        assert!(MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE < native_struct_size::<MermanNativeApi>());
         assert_eq!(
-            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
             native_struct_size::<MermanNativeApi>()
         );
+        assert!(buffer.api.metadata_collect.is_some());
         assert_eq!(buffer.suffix, [0xa5; 32]);
         let prefix_digest = unsafe {
             std::slice::from_raw_parts(
@@ -1582,6 +1735,61 @@ mod tests {
             full_digest,
             MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST.as_bytes()
         );
+
+        assert_eq!(
+            MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES,
+            &[
+                MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+                MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
+            ]
+        );
+
+        assert_eq!(
+            size_of::<Abi3MinimumApi>() as u32,
+            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE
+        );
+        let mut minimum = Abi3MinimumApiBuffer {
+            api: empty_minimum_api(),
+            trailing_guard: [0xa5; 16],
+        };
+        let minimum_api = ptr::addr_of_mut!(minimum.api).cast::<MermanNativeApi>();
+        assert_eq!(
+            unsafe { merman_get_native_api(&request, minimum_api) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            minimum.api.struct_size,
+            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE
+        );
+        assert!(minimum.api.runtime_catalog.is_some());
+        assert!(minimum.api.result_free.is_some());
+        assert_eq!(minimum.trailing_guard, [0xa5; 16]);
+
+        // The returned prefix size is itself safe input capacity. Older consumers do not need to
+        // retain a second hidden copy of their allocation size before rediscovery.
+        assert_eq!(
+            unsafe { merman_get_native_api(&request, minimum_api) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            minimum.api.struct_size,
+            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE
+        );
+        assert_eq!(minimum.trailing_guard, [0xa5; 16]);
+
+        // A capacity that ends inside the appended function pointer must not receive a partial
+        // pointer, nor be reported as if that complete slot were available.
+        minimum.api = empty_minimum_api();
+        minimum.api.struct_size = MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE + 1;
+        assert_eq!(
+            unsafe { merman_get_native_api(&request, minimum_api) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            minimum.api.struct_size,
+            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE
+        );
+        assert_eq!(minimum.trailing_guard, [0xa5; 16]);
     }
 
     #[test]
@@ -1695,13 +1903,19 @@ mod tests {
             unsafe { api.engine_new.unwrap()(&config, overlapping_engine, &mut result) },
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
         );
-        assert_ne!(result.allocation_token, 0);
-        assert!(
-            result_json(&result)["message"].as_str().is_some_and(
-                |message| message.contains("out_engine and out_result must not overlap")
-            )
+        assert_eq!(result.allocation_token, 0);
+        assert!(result.metadata_or_error_json.data.is_null());
+
+        let mut token = 0;
+        let mut result = native_result();
+        let overlapping_config = ptr::addr_of!(result).cast::<MermanNativeEngineConfig>();
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(overlapping_config, &mut token, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
         );
-        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(token, 0);
+        assert_eq!(result.allocation_token, 0);
+        assert!(result.metadata_or_error_json.data.is_null());
 
         let mut token = 0;
         let mut result = native_result();
@@ -1716,13 +1930,8 @@ mod tests {
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
         );
         assert_eq!(token, 0);
-        assert!(
-            result_json(&result)["message"]
-                .as_str()
-                .is_some_and(|message| message
-                    .contains("config.options_json and out_result must not overlap"))
-        );
-        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(result.allocation_token, 0);
+        assert!(result.metadata_or_error_json.data.is_null());
 
         let mut token = 0;
         let mut result = native_result();
@@ -1737,12 +1946,38 @@ mod tests {
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
         );
         assert_eq!(token, 0);
-        assert!(
-            result_json(&result)["message"].as_str().is_some_and(
-                |message| message.contains("config and config.options_json must not overlap")
-            )
+        assert_eq!(result.allocation_token, 0);
+        assert!(result.metadata_or_error_json.data.is_null());
+
+        let mut config = native_config();
+        let overlapping_engine =
+            ptr::addr_of_mut!(config.text_measure_user_data).cast::<MermanNativeEngineToken>();
+        let mut result = native_result();
+        assert_eq!(
+            unsafe {
+                api.engine_new.unwrap()(ptr::addr_of!(config), overlapping_engine, &mut result)
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
         );
-        unsafe { api.result_free.unwrap()(&mut result) };
+        assert!(config.text_measure_user_data.is_null());
+        assert_eq!(result.allocation_token, 0);
+        assert!(result.metadata_or_error_json.data.is_null());
+
+        let mut token = 0;
+        let mut result = native_result();
+        let mut config = native_config();
+        config.options_json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(token).cast::<u8>(),
+            len: 1,
+        };
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(token, 0);
+        assert_eq!(result.allocation_token, 0);
+        assert!(result.metadata_or_error_json.data.is_null());
     }
 
     #[test]
@@ -1768,8 +2003,11 @@ mod tests {
             root.keys().map(String::as_str).collect::<BTreeSet<_>>(),
             [
                 "capabilities",
+                "metadata_ids",
+                "options_schema_versions",
                 "output_contracts",
                 "package_version",
+                "payload_schemas",
                 "registry",
                 "resources",
                 "schema_version",
@@ -1781,6 +2019,23 @@ mod tests {
         assert_eq!(catalog["schema_version"], 1);
         assert_eq!(catalog["transport_api_version"], MERMAN_NATIVE_ABI_VERSION);
         assert_eq!(catalog["package_version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            catalog["options_schema_versions"],
+            serde_json::json!([merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION])
+        );
+        assert_eq!(
+            catalog["payload_schemas"],
+            serde_json::json!([
+                { "id": "binding-result", "version": merman_bindings_core::BINDING_RESULT_PAYLOAD_VERSION },
+                { "id": "operation-metadata", "version": merman_bindings_core::BINDING_OPERATION_SCHEMA_VERSION },
+            ])
+        );
+        let metadata_ids = catalog["metadata_ids"].as_array().unwrap();
+        assert!(
+            metadata_ids
+                .iter()
+                .any(|id| id == "diagram-family-capabilities")
+        );
         assert!(catalog.get("runtime_contract").is_none());
         assert!(catalog.get("capability_vocabulary").is_none());
         assert_eq!(
@@ -1821,6 +2076,16 @@ mod tests {
                 .is_some_and(|count| count > 0)
         );
         assert!(catalog["resources"].get("schema_version").is_none());
+        let source_limit = catalog["resources"]["limits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|limit| limit["id"] == "max_source_bytes")
+            .expect("source limit");
+        assert_eq!(
+            source_limit["operation_ids"],
+            catalog["capabilities"]["operation_ids"]
+        );
 
         let expected_digest = format!(
             "sha256:{:x}",
@@ -1833,6 +2098,97 @@ mod tests {
             )
         };
         assert_eq!(reported_digest, expected_digest.as_bytes());
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+
+    #[test]
+    fn metadata_collect_returns_owned_catalogs_and_typed_failures() {
+        let api = api_table();
+        let collect = api.metadata_collect.unwrap();
+
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { collect(borrowed_slice(b"supported-diagrams"), &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(result.operation, MERMAN_NATIVE_OPERATION_NONE);
+        assert_eq!(result.data.len, 0);
+        assert_ne!(result.allocation_token, 0);
+        assert!(result_json(&result).is_array());
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { collect(borrowed_slice(b"unknown-catalog"), &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_ne!(result.allocation_token, 0);
+        assert_eq!(result_json(&result)["status_name"], "invalid-argument");
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { collect(borrowed_slice(&[0xff]), &mut result) },
+            MERMAN_NATIVE_STATUS_UTF8_ERROR
+        );
+        assert_ne!(result.allocation_token, 0);
+        assert_eq!(result_json(&result)["status_name"], "utf8-error");
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let mut result = native_result();
+        let overlapping_id = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(result).cast::<u8>(),
+            len: 1,
+        };
+        assert_eq!(
+            unsafe { collect(overlapping_id, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(result.allocation_token, 0);
+        assert!(result.metadata_or_error_json.data.is_null());
+
+        for metadata_id in merman_bindings_core::BINDING_METADATA_IDS {
+            let mut result = native_result();
+            let status = unsafe { collect(borrowed_slice(metadata_id.as_bytes()), &mut result) };
+            match merman_bindings_core::binding_metadata_json(metadata_id) {
+                Ok(expected) => {
+                    assert_eq!(status, MERMAN_NATIVE_STATUS_OK, "{metadata_id}");
+                    let actual = unsafe {
+                        std::slice::from_raw_parts(
+                            result.metadata_or_error_json.data,
+                            result.metadata_or_error_json.len,
+                        )
+                    };
+                    assert_eq!(actual, expected, "{metadata_id}");
+                }
+                Err(expected) => {
+                    assert_eq!(
+                        status,
+                        native_failure_from_binding(expected).status,
+                        "{metadata_id}"
+                    );
+                    assert_ne!(result.allocation_token, 0, "{metadata_id}");
+                }
+            }
+            unsafe { api.result_free.unwrap()(&mut result) };
+        }
+    }
+
+    #[cfg(not(feature = "analysis"))]
+    #[test]
+    fn metadata_collect_preserves_missing_capability_failures() {
+        let api = api_table();
+        let mut result = native_result();
+        assert_eq!(
+            unsafe {
+                api.metadata_collect.unwrap()(borrowed_slice(b"lint-rule-catalog"), &mut result)
+            },
+            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+        );
+        let error = result_json(&result);
+        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
+        assert_eq!(error["capability_id"], "analysis");
         unsafe { api.result_free.unwrap()(&mut result) };
     }
 
@@ -1903,6 +2259,53 @@ mod tests {
                 .contains_key(&allocation_token)
         );
         assert_eq!(moved.allocation_token, 0);
+        unsafe { native_result_free(&mut original) };
+    }
+
+    #[test]
+    fn result_free_clears_a_moved_record_before_releasing_its_backing_allocation() {
+        let mut original = native_result();
+        let record_alignment = std::mem::align_of::<MermanNativeResult>();
+        let owned_data = vec![0; size_of::<MermanNativeResult>() + record_alignment - 1];
+        assert_eq!(
+            unsafe {
+                write_native_result(
+                    &mut original,
+                    MERMAN_NATIVE_STATUS_OK,
+                    MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+                    Some("application/json"),
+                    owned_data,
+                    b"{\"ok\":true}".to_vec(),
+                )
+            },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        let allocation_token = original.allocation_token;
+        let moved_record = unsafe { ptr::read(&original) };
+        original = native_result();
+
+        let alignment_offset = moved_record.data.data.align_offset(record_alignment);
+        assert_ne!(alignment_offset, usize::MAX);
+        let self_buffer_result = unsafe {
+            moved_record
+                .data
+                .data
+                .add(alignment_offset)
+                .cast::<MermanNativeResult>()
+        };
+        unsafe { ptr::write(self_buffer_result, moved_record) };
+
+        // The record itself now lives inside `data`. Clearing it after dropping the token-owned
+        // vectors would write through a freed pointer; Miri/ASan exercise this exact ownership
+        // shape while the registry assertion verifies the normal release path.
+        unsafe { native_result_free(self_buffer_result) };
+        assert!(
+            !allocation_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .results
+                .contains_key(&allocation_token)
+        );
         unsafe { native_result_free(&mut original) };
     }
 
@@ -2514,6 +2917,19 @@ mod tests {
             assert!(
                 data.starts_with(signature),
                 "operation {operation} did not return its declared binary format"
+            );
+            let metadata = unsafe {
+                std::slice::from_raw_parts(
+                    result.metadata_or_error_json.data,
+                    result.metadata_or_error_json.len,
+                )
+            };
+            let metadata: serde_json::Value = serde_json::from_slice(metadata).unwrap();
+            assert!(
+                metadata
+                    .get("output_plan")
+                    .is_some_and(serde_json::Value::is_object),
+                "operation {operation} did not preserve effective output-plan metadata"
             );
             unsafe { api.result_free.unwrap()(&mut result) };
         }

@@ -1,6 +1,43 @@
 use crate::color::{AsciiColorMode, AsciiColorTheme};
 use crate::error::{AsciiError, Result};
 
+/// Stable binding metadata for the terminal-grid budget owned by the ASCII renderer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct AsciiResourceLimitDescriptor {
+    pub stable_id: &'static str,
+    pub phase: &'static str,
+    pub description: &'static str,
+    pub overridable: bool,
+    pub minimum_value: usize,
+}
+
+pub const MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID: &str = "max_ascii_grid_cells";
+pub const ASCII_RESOURCE_LIMIT_DESCRIPTORS: [AsciiResourceLimitDescriptor; 1] =
+    [AsciiResourceLimitDescriptor {
+        stable_id: MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
+        phase: "ascii_layout",
+        description: "Maximum terminal grid cells allocated by ASCII layout",
+        overridable: true,
+        minimum_value: 1,
+    }];
+
+/// Returns the profile value for an ASCII-owned resource limit.
+pub fn ascii_resource_profile_value(
+    profile: merman_core::resources::ResourceProfile,
+    stable_id: &str,
+) -> Option<usize> {
+    if stable_id != MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID {
+        return None;
+    }
+    match profile {
+        merman_core::resources::ResourceProfile::Interactive => Some(250_000),
+        merman_core::resources::ResourceProfile::Constrained => Some(125_000),
+        merman_core::resources::ResourceProfile::TrustedNative => Some(1_000_000),
+        merman_core::resources::ResourceProfile::UnboundedForTrustedInput => None,
+    }
+}
+
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AsciiCharset {

@@ -2,7 +2,8 @@ use super::prelude::*;
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, mut responses) = socket.split();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -63,7 +64,7 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
         .expect("refresh channel closed");
     assert_eq!(refresh.method(), "workspace/semanticTokens/refresh");
 
-    socket
+    responses
         .send(tower_lsp_server::jsonrpc::Response::from_ok(
             refresh.id().cloned().expect("refresh request id"),
             serde_json::Value::Null,
@@ -74,7 +75,8 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_sends_follow_up_refresh_after_pending_configuration_changes() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, mut responses) = socket.split();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -154,7 +156,7 @@ async fn lsp_service_sends_follow_up_refresh_after_pending_configuration_changes
         None
     );
 
-    socket
+    responses
         .send(tower_lsp_server::jsonrpc::Response::from_ok(
             first.id().cloned().expect("first refresh request id"),
             serde_json::Value::Null,
@@ -166,7 +168,7 @@ async fn lsp_service_sends_follow_up_refresh_after_pending_configuration_changes
         .expect("expected coalesced refresh")
         .expect("refresh channel closed");
     assert_eq!(follow_up.method(), "workspace/semanticTokens/refresh");
-    socket
+    responses
         .send(tower_lsp_server::jsonrpc::Response::from_ok(
             follow_up
                 .id()
@@ -180,7 +182,8 @@ async fn lsp_service_sends_follow_up_refresh_after_pending_configuration_changes
 
 #[tokio::test(flavor = "current_thread")]
 async fn pending_semantic_refresh_does_not_block_diagnostic_refresh() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, mut responses) = socket.split();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -251,7 +254,7 @@ async fn pending_semantic_refresh_does_not_block_diagnostic_refresh() {
     );
 
     for refresh in refreshes {
-        socket
+        responses
             .send(tower_lsp_server::jsonrpc::Response::from_ok(
                 refresh.id().cloned().expect("refresh request id"),
                 serde_json::Value::Null,

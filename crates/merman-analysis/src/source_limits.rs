@@ -18,6 +18,29 @@ pub(crate) fn source_limit_rejection(
     ))
 }
 
+pub(crate) fn source_limit_rejection_cancellable(
+    source: &str,
+    descriptor: &SourceDescriptor,
+    max_source_bytes: Option<usize>,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Option<AnalysisRejection>, crate::AnalysisCancelled> {
+    cancellation.checkpoint()?;
+    let Some(limit) = max_source_bytes else {
+        return Ok(None);
+    };
+    if source.len() <= limit {
+        return Ok(None);
+    }
+    let span = source_limit_diagnostic_span_cancellable(source, cancellation)?;
+    let diagnostic = source_limit_diagnostic_for_len_and_span(source.len(), limit, span);
+    Ok(Some(AnalysisRejection::source_limit(
+        descriptor.clone(),
+        vec![diagnostic],
+        source.len(),
+        limit,
+    )))
+}
+
 pub(crate) fn source_limit_diagnostics(
     source: &str,
     max_source_bytes: Option<usize>,

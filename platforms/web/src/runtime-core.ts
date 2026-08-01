@@ -6,7 +6,10 @@ import {
 import {
   MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
 } from "./generated/text-measurement-abi.js";
-import { tightenResourceOptions } from "./generated/resource-contract.js";
+import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
+  tightenResourceOptions,
+} from "./generated/resource-contract.js";
 
 import {
   isDiagramType,
@@ -284,8 +287,11 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
     value,
     [
       "capabilities",
+      "metadata_ids",
+      "options_schema_versions",
       "output_contracts",
       "package_version",
+      "payload_schemas",
       "registry",
       "resources",
       "schema_version",
@@ -327,18 +333,55 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
     throw new Error("Merman WASM returned an invalid runtime resource contract.");
   }
   const capabilities = normalizeRuntimeCapabilities(value.capabilities);
+  const optionsSchemaVersions = normalizeSortedPositiveIntegers(
+    value.options_schema_versions,
+    "runtime options schema versions"
+  );
+  if (!optionsSchemaVersions.includes(BINDING_OPTIONS_SCHEMA_VERSION)) {
+    throw new Error(
+      `Merman WASM runtime catalog does not advertise options schema v${BINDING_OPTIONS_SCHEMA_VERSION}.`
+    );
+  }
   return {
     schema_version: 1,
     transport_api_version: catalogTransportApiVersion,
     package_version: value.package_version,
+    options_schema_versions: optionsSchemaVersions,
+    payload_schemas: normalizeRuntimePayloadSchemas(value.payload_schemas),
+    metadata_ids: normalizeSortedIdentifierIds(value.metadata_ids, "runtime metadata IDs"),
     capabilities,
     output_contracts: normalizeRuntimeOutputContracts(
       value.output_contracts,
       capabilities.output_ids
     ),
     registry: { diagram_family_count: diagramFamilyCount },
-    resources: normalizeRuntimeResourceContract(value.resources),
+    resources: normalizeRuntimeResourceContract(
+      value.resources,
+      new Set(capabilities.operation_ids)
+    ),
   };
+}
+
+function normalizeRuntimePayloadSchemas(value: unknown): RuntimeCatalog["payload_schemas"] {
+  if (!Array.isArray(value)) {
+    throw new Error("Merman WASM returned invalid runtime payload schemas.");
+  }
+  const schemas = value.map((entry) => {
+    if (!isRecord(entry)) {
+      throw new Error("Merman WASM returned an invalid runtime payload schema.");
+    }
+    assertRequiredRecordKeys(entry, ["id", "version"], "Merman WASM runtime payload schema");
+    return {
+      id: assertRuntimeIdentifier(entry.id, "runtime payload schema IDs"),
+      version: assertSafeIntegerField(entry.version, "runtime payload schema version", 1),
+    };
+  });
+  for (let index = 1; index < schemas.length; index += 1) {
+    if (schemas[index - 1].id >= schemas[index].id) {
+      throw new Error("Merman WASM runtime payload schema IDs must be sorted and unique.");
+    }
+  }
+  return schemas;
 }
 
 function normalizeRuntimeOutputContracts(
@@ -538,7 +581,8 @@ function normalizeRuntimeCapabilities(value: unknown): RuntimeCapabilities {
 }
 
 function normalizeRuntimeResourceContract(
-  value: Record<string, unknown>
+  value: Record<string, unknown>,
+  operationIds: ReadonlySet<string>
 ): RuntimeCatalog["resources"] {
   assertRequiredRecordKeys(
     value,
@@ -566,7 +610,15 @@ function normalizeRuntimeResourceContract(
     }
     assertRequiredRecordKeys(
       limit,
-      ["id", "phase", "description", "overridable", "hard_cap"],
+      [
+        "id",
+        "phase",
+        "description",
+        "overridable",
+        "hard_cap",
+        "minimum_value",
+        "operation_ids",
+      ],
       "Merman WASM runtime resource limit"
     );
     if (
@@ -574,9 +626,21 @@ function normalizeRuntimeResourceContract(
       typeof limit.phase !== "string" ||
       typeof limit.description !== "string" ||
       typeof limit.overridable !== "boolean" ||
-      typeof limit.hard_cap !== "boolean"
+      typeof limit.hard_cap !== "boolean" ||
+      !Number.isSafeInteger(limit.minimum_value) ||
+      (limit.minimum_value as number) < 0
     ) {
       throw new Error("Merman WASM returned an invalid runtime resource limit.");
+    }
+    if (limit.hard_cap && limit.overridable) {
+      throw new Error("Merman WASM runtime hard resource limits cannot be overridable.");
+    }
+    const limitOperationIds = normalizeSortedIdentifierIds(
+      limit.operation_ids,
+      `runtime resource limit ${limit.id} operation IDs`
+    );
+    if (limitOperationIds.some((id) => !operationIds.has(id))) {
+      throw new Error("Merman WASM runtime resource limit names an unavailable operation.");
     }
     return {
       id: limit.id,
@@ -584,6 +648,8 @@ function normalizeRuntimeResourceContract(
       description: limit.description,
       overridable: limit.overridable,
       hard_cap: limit.hard_cap,
+      minimum_value: limit.minimum_value as number,
+      operation_ids: limitOperationIds,
     };
   });
   const profiles = value.profiles.map((profile) => {
@@ -604,15 +670,30 @@ function normalizeRuntimeResourceContract(
     ) {
       throw new Error("Merman WASM returned an invalid runtime resource profile.");
     }
-    const profileLimits: Record<string, number | null> = {};
-    for (const [id, limit] of normalizeStringMapEntries(
+    const rawProfileLimits = new Map(normalizeStringMapEntries(
       profile.limits,
       `resource profile ${profile.id} limits`
-    )) {
-      profileLimits[id] =
+    ));
+    if (
+      rawProfileLimits.size !== limits.length ||
+      limits.some((limit) => !rawProfileLimits.has(limit.id))
+    ) {
+      throw new Error("Merman WASM runtime resource profile does not cover the declared limits.");
+    }
+    const profileLimits: Record<string, number | null> = {};
+    for (const descriptor of limits) {
+      const limit = rawProfileLimits.get(descriptor.id);
+      profileLimits[descriptor.id] =
         limit === null || limit === undefined
           ? null
-          : assertSafeIntegerField(limit, `resource profile limit ${id}`, 0);
+          : assertSafeIntegerField(
+              limit,
+              `resource profile limit ${descriptor.id}`,
+              descriptor.minimum_value
+            );
+      if (descriptor.hard_cap && profileLimits[descriptor.id] === null) {
+        throw new Error("Merman WASM runtime resource profile removed a finite hard cap.");
+      }
     }
     return {
       id: profile.id,
@@ -622,6 +703,28 @@ function normalizeRuntimeResourceContract(
       limits: profileLimits,
     };
   });
+  const profileById = new Map<string, (typeof profiles)[number]>();
+  for (const profile of profiles) {
+    if (profileById.has(profile.id)) {
+      throw new Error("Merman WASM runtime resource profile IDs must be unique.");
+    }
+    profileById.set(profile.id, profile);
+  }
+  const generalDefault = profileById.get(value.general_binding_default_profile);
+  if (!generalDefault || !profileById.has(value.cli_default_profile)) {
+    throw new Error("Merman WASM runtime resource defaults name unknown profiles.");
+  }
+  const recommendedProfiles = profiles.filter(
+    (profile) => profile.recommended_binding_default
+  );
+  if (
+    recommendedProfiles.length !== 1 ||
+    recommendedProfiles[0]?.id !== generalDefault.id
+  ) {
+    throw new Error(
+      "Merman WASM runtime resources must recommend exactly the binding default profile."
+    );
+  }
   return {
     general_binding_default_profile: value.general_binding_default_profile,
     cli_default_profile: value.cli_default_profile,
@@ -691,6 +794,19 @@ function normalizeSortedIdentifierIds(value: unknown, label: string): string[] {
     }
   }
   return identifiers;
+}
+
+function normalizeSortedPositiveIntegers(value: unknown, label: string): number[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Merman WASM returned invalid ${label}.`);
+  }
+  const integers = value.map((entry) => assertSafeIntegerField(entry, label, 1));
+  for (let index = 1; index < integers.length; index += 1) {
+    if (integers[index - 1] >= integers[index]) {
+      throw new Error(`Merman WASM ${label} must be sorted and unique.`);
+    }
+  }
+  return integers;
 }
 
 function assertRuntimeIdentifier(value: unknown, label: string): string {

@@ -11,6 +11,8 @@ use tokio::sync::Notify;
 use tokio::sync::mpsc;
 
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
+/// Maximum number of response-bearing refresh requests that can be active at once.
+pub(crate) const MAX_CONCURRENT_REFRESH_REQUESTS: usize = 2;
 
 #[derive(Clone)]
 pub(crate) struct RefreshCoordinator {
@@ -194,10 +196,12 @@ impl RefreshCoordinator {
         for lane in [&self.inner.semantic_tokens, &self.inner.diagnostics] {
             loop {
                 let idle = lane.idle.notified();
+                tokio::pin!(idle);
+                idle.as_mut().enable();
                 if recover_poison(lane.worker.lock()).is_none() {
                     break;
                 }
-                idle.await;
+                idle.as_mut().await;
             }
         }
     }

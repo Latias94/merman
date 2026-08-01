@@ -10,6 +10,7 @@ const RESOURCE_PROFILES = new Set([
   "trusted-native",
   "unbounded-for-trusted-input",
 ]);
+const BINDING_OPTIONS_SCHEMA_VERSION = 2;
 
 export async function createNodeEngine(
   {
@@ -38,7 +39,12 @@ export function normalizeBindingOptions(value = {}) {
   if (!isPlainObject(value)) throw new TypeError("bindingOptions must be a plain object.");
   rejectNonWireValues(value);
   const normalized = structuredClone(value);
-  normalized.version ??= 1;
+  normalized.version ??= BINDING_OPTIONS_SCHEMA_VERSION;
+  if (normalized.version !== BINDING_OPTIONS_SCHEMA_VERSION) {
+    throw new RangeError(
+      `Unsupported binding options schema version \`${normalized.version}\`; expected ${BINDING_OPTIONS_SCHEMA_VERSION}.`,
+    );
+  }
   normalized.runtime_policy ??= "deterministic";
   normalized.resources ??= {};
   if (!isPlainObject(normalized.resources)) {
@@ -178,6 +184,17 @@ export function validateRuntimeCatalog(value) {
   if (typeof catalog.package_version !== "string" || catalog.package_version.length === 0) {
     throw new MermanInvalidTransportError("Merman runtime catalog has an invalid package version.");
   }
+  const optionsSchemaVersions = sortedUniquePositiveIntegers(
+    catalog.options_schema_versions,
+    "options_schema_versions",
+  );
+  if (!optionsSchemaVersions.includes(BINDING_OPTIONS_SCHEMA_VERSION)) {
+    throw new MermanInvalidTransportError(
+      `Merman runtime catalog does not advertise options schema ${BINDING_OPTIONS_SCHEMA_VERSION}.`,
+    );
+  }
+  validatePayloadSchemas(catalog.payload_schemas);
+  sortedUniqueStrings(catalog.metadata_ids, "metadata_ids");
 
   const capabilities = catalog.capabilities;
   const registry = catalog.registry;
@@ -203,8 +220,29 @@ export function validateRuntimeCatalog(value) {
   validateTextMeasurement(capabilities.text_measurement, capabilityIds.includes("svg"));
   validateOutputContracts(catalog.output_contracts, outputIds);
   validateRegistry(registry);
-  validateResources(resources);
+  validateResources(resources, new Set(operationIds));
   return structuredClone(catalog);
+}
+
+function validatePayloadSchemas(value) {
+  if (!Array.isArray(value)) {
+    throw new MermanInvalidTransportError("Merman runtime catalog has invalid payload schemas.");
+  }
+  const ids = [];
+  for (const schema of value) {
+    if (
+      !isPlainObject(schema) ||
+      typeof schema.id !== "string" ||
+      schema.id.length === 0 ||
+      !positiveSafeInteger(schema.version)
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman runtime catalog has an invalid payload schema.",
+      );
+    }
+    ids.push(schema.id);
+  }
+  sortedUniqueStrings(ids, "payload_schemas.id");
 }
 
 function validateOutputContracts(value, outputIds) {
@@ -326,7 +364,7 @@ function validateRegistry(value) {
   }
 }
 
-function validateResources(value) {
+function validateResources(value, operationIds) {
   if (
     typeof value.general_binding_default_profile !== "string" ||
     value.general_binding_default_profile.length === 0 ||
@@ -342,6 +380,8 @@ function validateResources(value) {
     );
   }
   const limitIds = new Set();
+  const limitMinimums = new Map();
+  const hardCapIds = new Set();
   for (const limit of value.limits) {
     if (
       !isPlainObject(limit) ||
@@ -353,13 +393,32 @@ function validateResources(value) {
       typeof limit.description !== "string" ||
       limit.description.length === 0 ||
       typeof limit.overridable !== "boolean" ||
-      typeof limit.hard_cap !== "boolean"
+      typeof limit.hard_cap !== "boolean" ||
+      !Number.isSafeInteger(limit.minimum_value) ||
+      limit.minimum_value < 0 ||
+      !Array.isArray(limit.operation_ids)
     ) {
       throw new MermanInvalidTransportError(
         "Merman runtime catalog has an invalid resource limit.",
       );
     }
+    const limitOperationIds = sortedUniqueStrings(
+      limit.operation_ids,
+      `resources.limits.${limit.id}.operation_ids`,
+    );
+    if (!limitOperationIds.every((id) => operationIds.has(id))) {
+      throw new MermanInvalidTransportError(
+        "Merman runtime catalog resource limit names an unavailable operation.",
+      );
+    }
+    if (limit.hard_cap && limit.overridable) {
+      throw new MermanInvalidTransportError(
+        "Merman runtime catalog hard resource limits cannot be overridable.",
+      );
+    }
     limitIds.add(limit.id);
+    limitMinimums.set(limit.id, limit.minimum_value);
+    if (limit.hard_cap) hardCapIds.add(limit.id);
   }
   const profileIds = new Set();
   for (const profile of value.profiles) {
@@ -385,8 +444,12 @@ function validateResources(value) {
         "Merman runtime catalog resource profile does not cover the declared limits.",
       );
     }
-    for (const limit of Object.values(profile.limits)) {
-      if (limit !== null && (!Number.isSafeInteger(limit) || limit < 0)) {
+    for (const [id, limit] of Object.entries(profile.limits)) {
+      if (
+        (limit === null && hardCapIds.has(id)) ||
+        (limit !== null &&
+          (!Number.isSafeInteger(limit) || limit < limitMinimums.get(id)))
+      ) {
         throw new MermanInvalidTransportError(
           "Merman runtime catalog resource profile has an invalid limit.",
         );
@@ -405,9 +468,15 @@ function validateResources(value) {
   const generalDefault = value.profiles.find(
     (profile) => profile.id === value.general_binding_default_profile,
   );
-  if (generalDefault.recommended_binding_default !== true) {
+  const recommendedProfiles = value.profiles.filter(
+    (profile) => profile.recommended_binding_default === true,
+  );
+  if (
+    recommendedProfiles.length !== 1 ||
+    recommendedProfiles[0].id !== generalDefault.id
+  ) {
     throw new MermanInvalidTransportError(
-      "Merman runtime catalog general binding default is not recommended for bindings.",
+      "Merman runtime catalog must recommend exactly the general binding default profile.",
     );
   }
 }
@@ -418,6 +487,19 @@ function sameStringSet(values, expected) {
 
 function positiveSafeInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
+}
+
+function sortedUniquePositiveIntegers(value, field) {
+  if (
+    !Array.isArray(value) ||
+    value.some((item) => !positiveSafeInteger(item)) ||
+    value.some((item, index) => index > 0 && value[index - 1] >= item)
+  ) {
+    throw new MermanInvalidTransportError(
+      `Merman runtime catalog field ${field} must be a sorted unique array of positive integers.`,
+    );
+  }
+  return value;
 }
 
 function sortedUniqueStrings(value, field) {

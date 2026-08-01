@@ -1,5 +1,8 @@
-use crate::{EditorLexeme, EditorLexemeKind, SourceSpan};
+use crate::{EditorLexeme, EditorLexemeKind, ParseControl, ParseControlResult, SourceSpan};
 use std::ops::Range;
+
+const CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES: usize = 4 * 1024;
+const CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ReplacementMapping {
@@ -48,13 +51,32 @@ pub struct PreprocessedSource {
 
 impl PreprocessedSource {
     pub fn new(source: &str) -> Self {
-        Self {
-            text: source.to_string(),
+        Self::new_controlled(source, &ParseControl::new())
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    pub(super) fn new_controlled(source: &str, control: &ParseControl) -> ParseControlResult<Self> {
+        control.checkpoint()?;
+        let mut text = String::with_capacity(source.len());
+        let mut chunk_start = 0usize;
+        while source.len().saturating_sub(chunk_start) >= CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES {
+            let mut chunk_end = chunk_start + CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES;
+            while !source.is_char_boundary(chunk_end) {
+                chunk_end += 1;
+            }
+            text.push_str(&source[chunk_start..chunk_end]);
+            control.checkpoint()?;
+            chunk_start = chunk_end;
+        }
+        text.push_str(&source[chunk_start..]);
+        control.checkpoint()?;
+        Ok(Self {
+            text,
             edit_map: SourceEditMap::identity(source.len()),
             global_lexemes: Vec::new(),
             global_directive_prefixes: Vec::new(),
             recovered_incomplete_directive: false,
-        }
+        })
     }
 
     pub fn text(&self) -> &str {
@@ -103,27 +125,28 @@ impl PreprocessedSource {
         self.text
     }
 
-    pub(super) fn apply_edits(&mut self, mut edits: Vec<SourceEdit>) {
+    pub(super) fn apply_edits(
+        &mut self,
+        edits: Vec<SourceEdit>,
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
+        let mut checkpoints = ControlledEditRebuildCheckpoints::new(control)?;
         if edits.is_empty() {
-            return;
+            return Ok(());
         }
-        if edits.windows(2).any(|pair| {
-            (pair[0].range.start, pair[0].range.end) > (pair[1].range.start, pair[1].range.end)
-        }) {
-            edits.sort_by_key(|edit| (edit.range.start, edit.range.end));
-        }
-        assert_valid_edits(&self.text, &edits);
+        // Preprocessors emit edits in source order. Keeping that as an invariant avoids an
+        // uninterruptible sort inside the controlled reconstruction path.
+        assert!(
+            edits_are_sorted_controlled(&edits, &mut checkpoints)?,
+            "source edits must be sorted by range"
+        );
+        let (replacement_bytes, removed_bytes) =
+            assert_valid_edits_controlled(&self.text, &edits, &mut checkpoints)?;
 
-        let old_text = std::mem::take(&mut self.text);
-        let old_map = std::mem::replace(&mut self.edit_map, SourceEditMap::identity(0));
-        let replacement_bytes = edits
-            .iter()
-            .map(|edit| edit.replacement.len())
-            .sum::<usize>();
-        let removed_bytes = edits
-            .iter()
-            .map(|edit| edit.range.end - edit.range.start)
-            .sum::<usize>();
+        // Borrow the published state until every checkpoint and invariant check succeeds. A
+        // cancellation drops only these local builders and cannot expose a partial rewrite.
+        let old_text = &self.text;
+        let old_map = &self.edit_map;
         let mut text = String::with_capacity(
             old_text
                 .len()
@@ -134,29 +157,109 @@ impl PreprocessedSource {
         let mut cursor = 0usize;
 
         for edit in edits {
-            text.push_str(&old_text[cursor..edit.range.start]);
-            builder.copy_from(&old_map, cursor..edit.range.start);
+            checkpoints.processed_item()?;
+            checkpoints.push_str(&mut text, &old_text[cursor..edit.range.start])?;
+            builder.copy_from(old_map, cursor..edit.range.start, &mut checkpoints)?;
 
             if edit.replacement.is_empty() {
-                builder.delete_from(&old_map, edit.range.clone());
+                builder.delete_from(old_map, edit.range.clone(), &mut checkpoints)?;
             } else {
-                text.push_str(&edit.replacement);
+                checkpoints.push_str(&mut text, &edit.replacement)?;
                 builder.replace_from(
-                    &old_map,
+                    old_map,
                     edit.range.clone(),
                     edit.replacement.len(),
                     edit.mapping,
-                );
+                    &mut checkpoints,
+                )?;
             }
             cursor = edit.range.end;
         }
 
-        text.push_str(&old_text[cursor..]);
-        builder.copy_from(&old_map, cursor..old_text.len());
-        let edit_map = builder.finish(text.len());
-        debug_assert!(edit_map.is_well_formed());
+        checkpoints.push_str(&mut text, &old_text[cursor..])?;
+        builder.copy_from(old_map, cursor..old_text.len(), &mut checkpoints)?;
+        let edit_map = builder.finish(text.len(), &mut checkpoints)?;
+        #[cfg(debug_assertions)]
+        {
+            let well_formed = edit_map.is_well_formed_controlled(&mut checkpoints)?;
+            debug_assert!(well_formed);
+        }
+        checkpoints.finish()?;
+
         self.text = text;
         self.edit_map = edit_map;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn apply_edits_uncontrolled(&mut self, edits: Vec<SourceEdit>) {
+        self.apply_edits(edits, &ParseControl::new())
+            .expect("a private parse control cannot be cancelled");
+    }
+}
+
+struct ControlledEditRebuildCheckpoints<'a> {
+    control: &'a ParseControl,
+    bytes_since_checkpoint: usize,
+    items_since_checkpoint: usize,
+}
+
+impl<'a> ControlledEditRebuildCheckpoints<'a> {
+    fn new(control: &'a ParseControl) -> ParseControlResult<Self> {
+        control.checkpoint()?;
+        Ok(Self {
+            control,
+            bytes_since_checkpoint: 0,
+            items_since_checkpoint: 0,
+        })
+    }
+
+    fn push_str(&mut self, output: &mut String, value: &str) -> ParseControlResult<()> {
+        let mut start = 0usize;
+        while start < value.len() {
+            let remaining_budget = CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES
+                .saturating_sub(self.bytes_since_checkpoint);
+            if remaining_budget == 0 {
+                self.checkpoint()?;
+                continue;
+            }
+
+            let mut end = start.saturating_add(remaining_budget).min(value.len());
+            while end > start && !value.is_char_boundary(end) {
+                end -= 1;
+            }
+            if end == start {
+                self.checkpoint()?;
+                continue;
+            }
+
+            output.push_str(&value[start..end]);
+            self.bytes_since_checkpoint += end - start;
+            start = end;
+            if self.bytes_since_checkpoint == CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES {
+                self.checkpoint()?;
+            }
+        }
+        Ok(())
+    }
+
+    fn processed_item(&mut self) -> ParseControlResult<()> {
+        self.items_since_checkpoint += 1;
+        if self.items_since_checkpoint == CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS {
+            self.checkpoint()?;
+        }
+        Ok(())
+    }
+
+    fn checkpoint(&mut self) -> ParseControlResult<()> {
+        self.control.checkpoint()?;
+        self.bytes_since_checkpoint = 0;
+        self.items_since_checkpoint = 0;
+        Ok(())
+    }
+
+    fn finish(&self) -> ParseControlResult<()> {
+        self.control.checkpoint()
     }
 }
 
@@ -295,6 +398,7 @@ impl SourceEditMap {
         })
     }
 
+    #[cfg(test)]
     fn unmapped_ranges_match_segments(&self) -> bool {
         self.unmapped_output_ranges.iter().eq(self
             .segments
@@ -303,30 +407,68 @@ impl SourceEditMap {
             .map(|segment| &segment.output))
     }
 
-    fn unmapped_ranges_are_ordered(&self) -> bool {
-        self.unmapped_output_ranges
-            .windows(2)
-            .all(|pair| pair[0].end <= pair[1].start)
+    #[cfg(test)]
+    fn is_well_formed(&self) -> bool {
+        let control = ParseControl::new();
+        let mut checkpoints = ControlledEditRebuildCheckpoints::new(&control)
+            .expect("a private parse control cannot be cancelled");
+        self.is_well_formed_controlled(&mut checkpoints)
+            .expect("a private parse control cannot be cancelled")
     }
 
-    fn is_well_formed(&self) -> bool {
-        self.segments.windows(2).all(|pair| {
-            pair[0].output.end <= pair[1].output.start
-                && pair[0].original.end <= pair[1].original.start
-        }) && self
-            .segments
-            .iter()
-            .all(|segment| segment.output.start < segment.output.end)
-            && self
-                .gaps
-                .windows(2)
-                .all(|pair| pair[0].output_offset < pair[1].output_offset)
-            && self.unmapped_ranges_are_ordered()
-            && self.unmapped_ranges_match_segments()
-            && self
+    #[cfg(any(test, debug_assertions))]
+    fn is_well_formed_controlled(
+        &self,
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> ParseControlResult<bool> {
+        let mut previous_segment: Option<&EditMapSegment> = None;
+        let mut unmapped_index = 0usize;
+        for segment in &self.segments {
+            checkpoints.processed_item()?;
+            if segment.output.start >= segment.output.end {
+                return Ok(false);
+            }
+            if let Some(previous) = previous_segment
+                && (previous.output.end > segment.output.start
+                    || previous.original.end > segment.original.start)
+            {
+                return Ok(false);
+            }
+            if segment.mapping == SegmentMapping::Unmapped {
+                if self.unmapped_output_ranges.get(unmapped_index) != Some(&segment.output) {
+                    return Ok(false);
+                }
+                unmapped_index += 1;
+            }
+            previous_segment = Some(segment);
+        }
+        if unmapped_index != self.unmapped_output_ranges.len()
+            || self
                 .segments
                 .last()
-                .is_none_or(|segment| segment.output.end <= self.output_len)
+                .is_some_and(|segment| segment.output.end > self.output_len)
+        {
+            return Ok(false);
+        }
+
+        let mut previous_gap_offset: Option<usize> = None;
+        for gap in &self.gaps {
+            checkpoints.processed_item()?;
+            if previous_gap_offset.is_some_and(|offset| offset >= gap.output_offset) {
+                return Ok(false);
+            }
+            previous_gap_offset = Some(gap.output_offset);
+        }
+
+        let mut previous_unmapped_end: Option<usize> = None;
+        for range in &self.unmapped_output_ranges {
+            checkpoints.processed_item()?;
+            if previous_unmapped_end.is_some_and(|end| end > range.start) {
+                return Ok(false);
+            }
+            previous_unmapped_end = Some(range.end);
+        }
+        Ok(true)
     }
 }
 
@@ -406,7 +548,12 @@ struct EditMapCursor {
 }
 
 impl EditMapCursor {
-    fn advance_lookup_to(&mut self, old: &SourceEditMap, offset: usize) {
+    fn advance_lookup_to(
+        &mut self,
+        old: &SourceEditMap,
+        offset: usize,
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> ParseControlResult<()> {
         #[cfg(debug_assertions)]
         {
             debug_assert!(self.last_lookup_offset <= offset);
@@ -418,6 +565,7 @@ impl EditMapCursor {
             .get(self.lookup_segment_index)
             .is_some_and(|segment| segment.output.end <= offset)
         {
+            checkpoints.processed_item()?;
             self.lookup_segment_index += 1;
             #[cfg(test)]
             {
@@ -429,12 +577,14 @@ impl EditMapCursor {
             .get(self.lookup_gap_index)
             .is_some_and(|gap| gap.output_offset < offset)
         {
+            checkpoints.processed_item()?;
             self.lookup_gap_index += 1;
             #[cfg(test)]
             {
                 self.scan_stats.lookup_gap_advances += 1;
             }
         }
+        Ok(())
     }
 
     fn gap_at_lookup_offset<'a>(
@@ -447,78 +597,101 @@ impl EditMapCursor {
             .filter(|gap| gap.output_offset == offset)
     }
 
-    fn original_at_start(&mut self, old: &SourceEditMap, offset: usize) -> Option<usize> {
+    fn original_at_start(
+        &mut self,
+        old: &SourceEditMap,
+        offset: usize,
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> ParseControlResult<Option<usize>> {
         if offset > old.output_len {
-            return None;
+            return Ok(None);
         }
-        self.advance_lookup_to(old, offset);
+        self.advance_lookup_to(old, offset, checkpoints)?;
         if let Some(gap) = self.gap_at_lookup_offset(old, offset) {
-            return Some(gap.original_right);
+            return Ok(Some(gap.original_right));
         }
         if offset == old.output_len {
-            return match old.segments.last() {
+            return Ok(match old.segments.last() {
                 Some(segment) => segment.original_at_end(offset),
                 None => Some(old.original_len),
-            };
+            });
         }
-        old.segments
+        Ok(old
+            .segments
             .get(self.lookup_segment_index)
-            .filter(|segment| segment.output.start <= offset && offset < segment.output.end)?
-            .original_at_start(offset)
+            .filter(|segment| segment.output.start <= offset && offset < segment.output.end)
+            .and_then(|segment| segment.original_at_start(offset)))
     }
 
-    fn original_at_end(&mut self, old: &SourceEditMap, offset: usize) -> Option<usize> {
+    fn original_at_end(
+        &mut self,
+        old: &SourceEditMap,
+        offset: usize,
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> ParseControlResult<Option<usize>> {
         if offset > old.output_len {
-            return None;
+            return Ok(None);
         }
-        self.advance_lookup_to(old, offset);
+        self.advance_lookup_to(old, offset, checkpoints)?;
         if let Some(gap) = self.gap_at_lookup_offset(old, offset) {
-            return Some(gap.original_left);
+            return Ok(Some(gap.original_left));
         }
         if offset == 0 {
-            return match old.segments.first() {
+            return Ok(match old.segments.first() {
                 Some(segment) => segment.original_at_start(offset),
                 None => Some(0),
-            };
+            });
         }
         if let Some(segment) = old.segments.get(self.lookup_segment_index)
             && segment.output.start < offset
             && offset < segment.output.end
         {
-            return segment.original_at_end(offset);
+            return Ok(segment.original_at_end(offset));
         }
-        self.lookup_segment_index
+        Ok(self
+            .lookup_segment_index
             .checked_sub(1)
             .and_then(|index| old.segments.get(index))
-            .filter(|segment| segment.output.start < offset && offset <= segment.output.end)?
-            .original_at_end(offset)
+            .filter(|segment| segment.output.start < offset && offset <= segment.output.end)
+            .and_then(|segment| segment.original_at_end(offset)))
     }
 
-    fn original_anchor(&mut self, old: &SourceEditMap, offset: usize) -> usize {
-        self.advance_lookup_to(old, offset);
+    fn original_anchor(
+        &mut self,
+        old: &SourceEditMap,
+        offset: usize,
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> ParseControlResult<usize> {
+        self.advance_lookup_to(old, offset, checkpoints)?;
         if let Some(gap) = self.gap_at_lookup_offset(old, offset) {
-            return gap.original_right;
+            return Ok(gap.original_right);
         }
         if offset == old.output_len {
-            return old.original_len;
+            return Ok(old.original_len);
         }
-        old.segments
+        Ok(old
+            .segments
             .get(self.lookup_segment_index)
             .filter(|segment| segment.output.start <= offset && offset < segment.output.end)
-            .map_or(old.original_len, |segment| segment.original.start)
+            .map_or(old.original_len, |segment| segment.original.start))
     }
 
-    fn range_is_exact_bytes(&mut self, old: &SourceEditMap, range: &Range<usize>) -> bool {
+    fn range_is_exact_bytes(
+        &mut self,
+        old: &SourceEditMap,
+        range: &Range<usize>,
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> ParseControlResult<bool> {
         #[cfg(debug_assertions)]
         {
             debug_assert!(self.last_exact_end <= range.start);
             self.last_exact_end = range.end;
         }
         if range.start > range.end || range.end > old.output_len {
-            return false;
+            return Ok(false);
         }
         if range.start == range.end {
-            return true;
+            return Ok(true);
         }
 
         while old
@@ -526,6 +699,7 @@ impl EditMapCursor {
             .get(self.exact_segment_index)
             .is_some_and(|segment| segment.output.end <= range.start)
         {
+            checkpoints.processed_item()?;
             self.exact_segment_index += 1;
             #[cfg(test)]
             {
@@ -537,6 +711,7 @@ impl EditMapCursor {
             .get(self.exact_gap_index)
             .is_some_and(|gap| gap.output_offset <= range.start)
         {
+            checkpoints.processed_item()?;
             self.exact_gap_index += 1;
             #[cfg(test)]
             {
@@ -548,32 +723,34 @@ impl EditMapCursor {
             .get(self.exact_gap_index)
             .is_some_and(|gap| gap.output_offset < range.end)
         {
+            checkpoints.processed_item()?;
             #[cfg(test)]
             {
                 self.scan_stats.exact_gap_steps += 1;
             }
-            return false;
+            return Ok(false);
         }
 
         let mut output_offset = range.start;
         while output_offset < range.end {
             let Some(segment) = old.segments.get(self.exact_segment_index) else {
-                return false;
+                return Ok(false);
             };
+            checkpoints.processed_item()?;
             #[cfg(test)]
             {
                 self.scan_stats.exact_segment_steps += 1;
             }
             if segment.output.start > output_offset || segment.mapping != SegmentMapping::ExactBytes
             {
-                return false;
+                return Ok(false);
             }
             output_offset = segment.output.end.min(range.end);
             if segment.output.end <= range.end {
                 self.exact_segment_index += 1;
             }
         }
-        true
+        Ok(true)
     }
 }
 
@@ -596,9 +773,14 @@ impl EditMapBuilder {
         }
     }
 
-    fn copy_from(&mut self, old: &SourceEditMap, range: Range<usize>) {
+    fn copy_from(
+        &mut self,
+        old: &SourceEditMap,
+        range: Range<usize>,
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> ParseControlResult<()> {
         if range.start >= range.end {
-            return;
+            return Ok(());
         }
         #[cfg(debug_assertions)]
         {
@@ -616,6 +798,7 @@ impl EditMapBuilder {
             .get(self.cursor.copy_segment_index)
             .is_some_and(|segment| segment.output.end <= range.start)
         {
+            checkpoints.processed_item()?;
             #[cfg(test)]
             {
                 self.cursor.scan_stats.copy_segment_steps += 1;
@@ -626,6 +809,7 @@ impl EditMapBuilder {
             if segment.output.start >= range.end {
                 break;
             }
+            checkpoints.processed_item()?;
             #[cfg(test)]
             {
                 self.cursor.scan_stats.copy_segment_steps += 1;
@@ -669,6 +853,7 @@ impl EditMapBuilder {
             .get(self.cursor.copy_gap_index)
             .is_some_and(|gap| gap.output_offset < range.start)
         {
+            checkpoints.processed_item()?;
             #[cfg(test)]
             {
                 self.cursor.scan_stats.copy_gap_steps += 1;
@@ -679,6 +864,7 @@ impl EditMapBuilder {
             if gap.output_offset > range.end {
                 break;
             }
+            checkpoints.processed_item()?;
             #[cfg(test)]
             {
                 self.cursor.scan_stats.copy_gap_steps += 1;
@@ -694,22 +880,29 @@ impl EditMapBuilder {
             self.cursor.copy_gap_index += 1;
         }
         self.output_len += range.end - range.start;
+        Ok(())
     }
 
-    fn delete_from(&mut self, old: &SourceEditMap, range: Range<usize>) {
-        let left = match self.cursor.original_at_end(old, range.start) {
+    fn delete_from(
+        &mut self,
+        old: &SourceEditMap,
+        range: Range<usize>,
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> ParseControlResult<()> {
+        let left = match self.cursor.original_at_end(old, range.start, checkpoints)? {
             Some(offset) => offset,
-            None => self.cursor.original_anchor(old, range.start),
+            None => self.cursor.original_anchor(old, range.start, checkpoints)?,
         };
-        let right = match self.cursor.original_at_start(old, range.end) {
+        let right = match self.cursor.original_at_start(old, range.end, checkpoints)? {
             Some(offset) => offset,
-            None => self.cursor.original_anchor(old, range.end),
+            None => self.cursor.original_anchor(old, range.end, checkpoints)?,
         };
         self.push_gap(EditMapGap {
             output_offset: self.output_len,
             original_left: left,
             original_right: right,
         });
+        Ok(())
     }
 
     fn replace_from(
@@ -718,20 +911,23 @@ impl EditMapBuilder {
         range: Range<usize>,
         replacement_len: usize,
         mapping: ReplacementMapping,
-    ) {
-        let original_start = self.cursor.original_at_start(old, range.start);
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> ParseControlResult<()> {
+        let original_start = self
+            .cursor
+            .original_at_start(old, range.start, checkpoints)?;
         let start_is_mappable = original_start.is_some();
         let original_start = match original_start {
             Some(offset) => offset,
-            None => self.cursor.original_anchor(old, range.start),
+            None => self.cursor.original_anchor(old, range.start, checkpoints)?,
         };
-        let original_end = self.cursor.original_at_end(old, range.end);
+        let original_end = self.cursor.original_at_end(old, range.end, checkpoints)?;
         let endpoints_are_mappable = start_is_mappable && original_end.is_some();
         let original_end = original_end.unwrap_or(original_start);
         let exact = mapping == ReplacementMapping::ExactBytes
             && endpoints_are_mappable
             && replacement_len == range.end - range.start
-            && self.cursor.range_is_exact_bytes(old, &range)
+            && self.cursor.range_is_exact_bytes(old, &range, checkpoints)?
             && original_end.checked_sub(original_start) == Some(replacement_len);
         self.push_segment(EditMapSegment {
             output: self.output_len..self.output_len + replacement_len,
@@ -745,6 +941,7 @@ impl EditMapBuilder {
             },
         });
         self.output_len += replacement_len;
+        Ok(())
     }
 
     fn push_segment(&mut self, segment: EditMapSegment) {
@@ -776,15 +973,21 @@ impl EditMapBuilder {
         self.gaps.push(gap);
     }
 
-    fn finish(self, output_len: usize) -> SourceEditMap {
+    fn finish(
+        self,
+        output_len: usize,
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> ParseControlResult<SourceEditMap> {
         debug_assert_eq!(self.output_len, output_len);
         let segments = self.segments;
-        let unmapped_output_ranges = segments
-            .iter()
-            .filter(|segment| segment.mapping == SegmentMapping::Unmapped)
-            .map(|segment| segment.output.clone())
-            .collect();
-        SourceEditMap {
+        let mut unmapped_output_ranges = Vec::new();
+        for segment in &segments {
+            checkpoints.processed_item()?;
+            if segment.mapping == SegmentMapping::Unmapped {
+                unmapped_output_ranges.push(segment.output.clone());
+            }
+        }
+        Ok(SourceEditMap {
             original_len: self.original_len,
             output_len,
             segments,
@@ -792,20 +995,43 @@ impl EditMapBuilder {
             unmapped_output_ranges,
             #[cfg(test)]
             scan_stats: self.cursor.scan_stats,
-        }
+        })
     }
 }
 
-fn assert_valid_edits(source: &str, edits: &[SourceEdit]) {
+fn edits_are_sorted_controlled(
+    edits: &[SourceEdit],
+    checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+) -> ParseControlResult<bool> {
+    for pair in edits.windows(2) {
+        checkpoints.processed_item()?;
+        if (pair[0].range.start, pair[0].range.end) > (pair[1].range.start, pair[1].range.end) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn assert_valid_edits_controlled(
+    source: &str,
+    edits: &[SourceEdit],
+    checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+) -> ParseControlResult<(usize, usize)> {
     let mut cursor = 0usize;
+    let mut replacement_bytes = 0usize;
+    let mut removed_bytes = 0usize;
     for edit in edits {
+        checkpoints.processed_item()?;
         assert!(edit.range.start <= edit.range.end, "reversed source edit");
         assert!(edit.range.start >= cursor, "overlapping source edits");
         assert!(edit.range.end <= source.len(), "source edit out of bounds");
         assert!(source.is_char_boundary(edit.range.start));
         assert!(source.is_char_boundary(edit.range.end));
+        replacement_bytes = replacement_bytes.saturating_add(edit.replacement.len());
+        removed_bytes = removed_bytes.saturating_add(edit.range.end - edit.range.start);
         cursor = edit.range.end;
     }
+    Ok((replacement_bytes, removed_bytes))
 }
 
 #[cfg(test)]
@@ -818,15 +1044,15 @@ mod tests {
         let original = "前A\r\nREMOVE中#quot;后";
         let mut source = PreprocessedSource::new(original);
         let cr = source.text().find('\r').unwrap();
-        source.apply_edits(vec![SourceEdit::replace(
+        source.apply_edits_uncontrolled(vec![SourceEdit::replace(
             cr..cr + 2,
             "\n",
             ReplacementMapping::Boundaries,
         )]);
         let remove = source.text().find("REMOVE").unwrap();
-        source.apply_edits(vec![SourceEdit::delete(remove..remove + "REMOVE".len())]);
+        source.apply_edits_uncontrolled(vec![SourceEdit::delete(remove..remove + "REMOVE".len())]);
         let hash = source.text().find('#').unwrap();
-        source.apply_edits(vec![
+        source.apply_edits_uncontrolled(vec![
             SourceEdit::replace(hash..hash + 1, "ﬂ°", ReplacementMapping::Boundaries),
             SourceEdit::replace(
                 hash + "#quot".len()..hash + "#quot;".len(),
@@ -859,9 +1085,9 @@ mod tests {
     #[test]
     fn boundary_replacements_only_reject_locally_ambiguous_offsets() {
         let mut source = PreprocessedSource::new("A#x;B");
-        source.apply_edits(vec![
-            SourceEdit::replace(3..4, "¶ß", ReplacementMapping::Boundaries),
+        source.apply_edits_uncontrolled(vec![
             SourceEdit::replace(1..2, "ﬂ°", ReplacementMapping::Boundaries),
+            SourceEdit::replace(3..4, "¶ß", ReplacementMapping::Boundaries),
         ]);
         assert_eq!(source.text(), "Aﬂ°x¶ßB");
 
@@ -877,11 +1103,63 @@ mod tests {
     }
 
     #[test]
+    fn controlled_text_rebuild_cancellation_preserves_the_previous_source_atomically() {
+        let original = format!(
+            "{}TAIL",
+            "a".repeat(CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES * 2)
+        );
+        let mut source = PreprocessedSource::new(&original);
+        let before = source.clone();
+        let tail = source.text().len() - "TAIL".len();
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(1);
+
+        let result = source.apply_edits(
+            vec![SourceEdit::replace(
+                tail..tail + "TAIL".len(),
+                "tail",
+                ReplacementMapping::ExactBytes,
+            )],
+            &control,
+        );
+
+        assert!(result.is_err());
+        assert!(control.is_cancelled());
+        assert_source_state_eq(&source, &before);
+    }
+
+    #[test]
+    fn controlled_mapping_rebuild_cancellation_preserves_the_previous_source_atomically() {
+        let original = "x".repeat(CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS * 2);
+        let mut source = PreprocessedSource::new(&original);
+        source.apply_edits_uncontrolled(
+            (0..original.len())
+                .map(|offset| {
+                    SourceEdit::replace(offset..offset + 1, "x", ReplacementMapping::Boundaries)
+                })
+                .collect(),
+        );
+        assert!(source.edit_map.segments.len() > CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS);
+        assert!(source.text().len() < CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES);
+
+        let before = source.clone();
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(1);
+        let last_byte = source.text().len() - 1;
+        let result =
+            source.apply_edits(vec![SourceEdit::delete(last_byte..last_byte + 1)], &control);
+
+        assert!(result.is_err());
+        assert!(control.is_cancelled());
+        assert_source_state_eq(&source, &before);
+    }
+
+    #[test]
     fn same_offset_insertions_and_adjacent_deletions_coalesce_gaps_in_order() {
         let mut source = PreprocessedSource::new("aXbYc");
-        source.apply_edits(vec![SourceEdit::delete(1..2)]);
+        source.apply_edits_uncontrolled(vec![SourceEdit::delete(1..2)]);
 
-        source.apply_edits(vec![
+        source.apply_edits_uncontrolled(vec![
             SourceEdit::replace(1..1, "<", ReplacementMapping::Boundaries),
             SourceEdit::replace(1..1, ">", ReplacementMapping::Boundaries),
             SourceEdit::delete(1..2),
@@ -903,13 +1181,13 @@ mod tests {
     #[test]
     fn composing_an_edit_inside_generated_text_marks_only_that_region_unmappable() {
         let mut source = PreprocessedSource::new("A#x;B");
-        source.apply_edits(vec![SourceEdit::replace(
+        source.apply_edits_uncontrolled(vec![SourceEdit::replace(
             1..2,
             "ﬂ°",
             ReplacementMapping::Boundaries,
         )]);
         let degree = source.text().find('°').unwrap();
-        source.apply_edits(vec![SourceEdit::replace(
+        source.apply_edits_uncontrolled(vec![SourceEdit::replace(
             degree..degree + '°'.len_utf8(),
             "!",
             ReplacementMapping::ExactBytes,
@@ -952,7 +1230,7 @@ mod tests {
         assert!(original.len() >= MIN_INPUT_BYTES);
 
         let mut source = PreprocessedSource::new(&original);
-        source.apply_edits(crlf_normalization_edits(source.text()));
+        source.apply_edits_uncontrolled(crlf_normalization_edits(source.text()));
         assert!(!source.text().contains('\r'));
         assert!(
             source.edit_map.unmapped_output_ranges.is_empty(),
@@ -960,7 +1238,7 @@ mod tests {
         );
 
         let even_comments = comment_line_deletions(source.text(), "%% even-comment-");
-        source.apply_edits(even_comments);
+        source.apply_edits_uncontrolled(even_comments);
 
         let old_segment_count = source.edit_map.segments.len();
         let old_gap_count = source.edit_map.gaps.len();
@@ -969,7 +1247,7 @@ mod tests {
         assert!(odd_comment_count > 8_000);
         assert!(old_gap_count > 8_000);
 
-        source.apply_edits(odd_comments);
+        source.apply_edits_uncontrolled(odd_comments);
 
         let scans = source.edit_map.scan_stats;
         assert_eq!(scans.copy_ranges, odd_comment_count + 1);
@@ -1050,7 +1328,9 @@ mod tests {
                 assert_literal_mapping(&source, original, "ﬂ°quot¶ß", "#quot;");
             } else {
                 let degree = source.text().find('°').unwrap();
-                source.apply_edits(vec![SourceEdit::delete(degree..degree + '°'.len_utf8())]);
+                source.apply_edits_uncontrolled(vec![SourceEdit::delete(
+                    degree..degree + '°'.len_utf8(),
+                )]);
                 assert_mapping_invariants(
                     &source,
                     original,
@@ -1116,14 +1396,16 @@ mod tests {
             }
             SeededTransformation::Deletion => {
                 let start = source.text().find("DELETE|").unwrap();
-                source.apply_edits(vec![SourceEdit::delete(start..start + "DELETE|".len())]);
+                source.apply_edits_uncontrolled(vec![SourceEdit::delete(
+                    start..start + "DELETE|".len(),
+                )]);
             }
             SeededTransformation::CrLfNormalization => {
                 replace_once(source, "\r\n", "\n", ReplacementMapping::Boundaries);
             }
             SeededTransformation::EntityEncoding => {
                 let start = source.text().find("#quot;").unwrap();
-                source.apply_edits(vec![
+                source.apply_edits_uncontrolled(vec![
                     SourceEdit::replace(start..start + 1, "ﬂ°", ReplacementMapping::Boundaries),
                     SourceEdit::replace(
                         start + "#quot".len()..start + "#quot;".len(),
@@ -1144,7 +1426,7 @@ mod tests {
                         )
                     })
                     .collect();
-                source.apply_edits(edits);
+                source.apply_edits_uncontrolled(edits);
             }
             SeededTransformation::BoundaryReplacement => {
                 replace_once(source, "WIDE", "长值😀", ReplacementMapping::Boundaries);
@@ -1160,7 +1442,7 @@ mod tests {
         mapping: ReplacementMapping,
     ) {
         let start = source.text().find(needle).unwrap();
-        source.apply_edits(vec![SourceEdit::replace(
+        source.apply_edits_uncontrolled(vec![SourceEdit::replace(
             start..start + needle.len(),
             replacement,
             mapping,
@@ -1204,6 +1486,28 @@ mod tests {
                 original_start + original_literal.len(),
             )),
             "{output_literal:?} must map exactly to {original_literal:?}"
+        );
+    }
+
+    fn assert_source_state_eq(actual: &PreprocessedSource, expected: &PreprocessedSource) {
+        assert_eq!(actual.text, expected.text);
+        assert_eq!(actual.edit_map.original_len, expected.edit_map.original_len);
+        assert_eq!(actual.edit_map.output_len, expected.edit_map.output_len);
+        assert_eq!(actual.edit_map.segments, expected.edit_map.segments);
+        assert_eq!(actual.edit_map.gaps, expected.edit_map.gaps);
+        assert_eq!(
+            actual.edit_map.unmapped_output_ranges,
+            expected.edit_map.unmapped_output_ranges
+        );
+        assert_eq!(actual.edit_map.scan_stats, expected.edit_map.scan_stats);
+        assert_eq!(actual.global_lexemes, expected.global_lexemes);
+        assert_eq!(
+            actual.global_directive_prefixes,
+            expected.global_directive_prefixes
+        );
+        assert_eq!(
+            actual.recovered_incomplete_directive,
+            expected.recovered_incomplete_directive
         );
     }
 

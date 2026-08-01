@@ -1,10 +1,11 @@
-use crate::snapshot::{
-    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotGeneration,
-};
+use crate::snapshot::{DocumentEpoch, DocumentSnapshot, SnapshotGeneration};
 #[cfg(test)]
 use crate::sync::{lock_recovering_poison, recover_poison};
-use merman_analysis::{AnalysisCancellationToken, AnalysisCancelled, AnalysisRejection, Analyzer};
-use merman_editor_core::{DocumentAnalysisOutcome, DocumentKind, DocumentWorkspace};
+use merman_analysis::{
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisRejection,
+    Analyzer, analyze_document_generation_shared_cancellable, source_descriptor_for_kind,
+};
+use merman_editor_core::DocumentKind;
 use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 
@@ -27,7 +28,6 @@ pub(in crate::session) struct AnalysisBuildKey {
     version: i32,
     analysis_job_generation: AnalysisJobGeneration,
     snapshot_generation: SnapshotGeneration,
-    diagnostic_generation: DiagnosticGeneration,
     document_epoch: DocumentEpoch,
 }
 
@@ -43,7 +43,6 @@ impl AnalysisBuildKey {
         version: i32,
         analysis_job_generation: AnalysisJobGeneration,
         snapshot_generation: SnapshotGeneration,
-        diagnostic_generation: DiagnosticGeneration,
         document_epoch: DocumentEpoch,
     ) -> Self {
         Self {
@@ -51,7 +50,6 @@ impl AnalysisBuildKey {
             version,
             analysis_job_generation,
             snapshot_generation,
-            diagnostic_generation,
             document_epoch,
         }
     }
@@ -98,10 +96,6 @@ impl AnalysisBuildRequest {
         self.key.snapshot_generation
     }
 
-    pub(in crate::session) fn diagnostic_generation(&self) -> DiagnosticGeneration {
-        self.key.diagnostic_generation
-    }
-
     pub(in crate::session) fn document_epoch(&self) -> DocumentEpoch {
         self.key.document_epoch
     }
@@ -109,7 +103,7 @@ impl AnalysisBuildRequest {
     pub(in crate::session) fn build_cancellable(
         &self,
         cancellation: &AnalysisCancellationToken,
-    ) -> Result<Arc<DocumentAnalysisContext>, AnalysisBuildError> {
+    ) -> Result<Arc<DocumentSnapshot>, AnalysisBuildError> {
         cancellation
             .checkpoint()
             .map_err(AnalysisBuildError::Cancelled)?;
@@ -118,20 +112,33 @@ impl AnalysisBuildRequest {
             gate.wait(cancellation)
                 .map_err(AnalysisBuildError::Cancelled)?;
         }
-        let context = DocumentWorkspace::build_analysis_context_with_shared_text_cancellable(
-            &self.analyzer,
-            self.key.uri.as_str(),
-            self.key.version,
+        let source =
+            source_descriptor_for_kind(Some(self.key.uri.as_str()), self.kind.source_kind());
+        let capture = analyze_document_generation_shared_cancellable(
             Arc::clone(&self.text),
-            self.kind,
+            &self.analyzer,
+            source,
             cancellation,
         )
         .map_err(AnalysisBuildError::Cancelled)?;
         cancellation
             .checkpoint()
             .map_err(AnalysisBuildError::Cancelled)?;
-        document_analysis_context(context, self.key.uri.clone())
-            .map_err(AnalysisBuildError::Rejected)
+        match capture {
+            AnalysisCaptureOutcome::Ready(generation) => {
+                let editor = merman_editor_core::DocumentSnapshot::try_from_analysis_generation(
+                    self.key.version,
+                    Arc::new(generation),
+                )
+                .expect("LSP analysis generation must preserve the requested document URI");
+                Ok(Arc::new(DocumentSnapshot::try_from_editor(editor).expect(
+                    "LSP analysis source must preserve its validated URI",
+                )))
+            }
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                Err(AnalysisBuildError::Rejected(rejection))
+            }
+        }
     }
 
     #[cfg(test)]
@@ -139,14 +146,6 @@ impl AnalysisBuildRequest {
         self.test_gate = Some(gate);
         self
     }
-}
-
-fn document_analysis_context(
-    outcome: DocumentAnalysisOutcome,
-    uri: Uri,
-) -> Result<Arc<DocumentAnalysisContext>, AnalysisRejection> {
-    let context = outcome.into_ready()?;
-    Ok(Arc::new(DocumentAnalysisContext::from_editor(context, uri)))
 }
 
 #[cfg(test)]
@@ -159,7 +158,10 @@ pub(in crate::session) struct TestAnalysisGate {
 
 #[cfg(test)]
 impl TestAnalysisGate {
-    fn wait(&self, cancellation: &AnalysisCancellationToken) -> Result<(), AnalysisCancelled> {
+    pub(in crate::session) fn wait(
+        &self,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<(), AnalysisCancelled> {
         use std::sync::atomic::Ordering;
         use std::time::Duration;
 

@@ -321,6 +321,9 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
 
+      - name: Run Android JVM contract tests
+        run: platforms/android/gradlew -p platforms/android testDebugUnitTest --stacktrace
+
       - name: Build Android AAR
         run: platforms/android/gradlew -p platforms/android assembleRelease --stacktrace
 

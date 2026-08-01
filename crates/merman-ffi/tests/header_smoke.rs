@@ -13,6 +13,7 @@ fn header_smoke() {
         &source,
         r#"
 #include "merman.h"
+#include "merman_resource_contract.h"
 #include <string.h>
 
 #if MERMAN_NATIVE_ABI_VERSION != 3
@@ -62,12 +63,31 @@ int merman_header_smoke(void) {
     if (MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH != 3) {
         return 12;
     }
+    if (MERMAN_NATIVE_FUNCTION_METADATA_COLLECT != 5) {
+        return 13;
+    }
+    if (
+        MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE <=
+            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ||
+        MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE > sizeof(MermanNativeApi)
+    ) {
+        return 16;
+    }
     if (
         strcmp(MERMAN_NATIVE_ERROR_KIND_GENERIC, "generic") != 0 ||
         strcmp(MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION, "unknown-operation") != 0 ||
         strcmp(MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY, "missing-capability") != 0
     ) {
         return 14;
+    }
+    if (
+        strcmp(MERMAN_RESOURCE_PROFILE_INTERACTIVE, "interactive") != 0 ||
+        strcmp(MERMAN_RESOURCE_LIMIT_MAX_SOURCE_BYTES, "max_source_bytes") != 0 ||
+        MERMAN_RESOURCE_LIMIT_MAX_SOURCE_BYTES_MINIMUM != 1 ||
+        MERMAN_RESOURCE_LIMIT_MAX_SOURCE_BYTES_OVERRIDABLE != 1 ||
+        MERMAN_RESOURCE_LIMIT_SVG_BACKEND_TREE_NODES_OVERRIDABLE != 0
+    ) {
+        return 17;
     }
 
     (void)get_api;
@@ -102,10 +122,26 @@ int merman_header_smoke(void) {
         &cpp_source,
         r#"
 #include "merman.h"
+#include "merman_resource_contract.h"
 #include <type_traits>
 
 static_assert(MERMAN_NATIVE_ABI_VERSION == 3u, "unexpected native ABI version");
 static_assert(MERMAN_NATIVE_RESULT_SCHEMA_VERSION == 1u, "unexpected result schema version");
+static_assert(MERMAN_NATIVE_FUNCTION_METADATA_COLLECT == 5, "unexpected metadata slot");
+static_assert(
+    MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE > MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+    "metadata slot must remain outside the frozen prefix"
+);
+static_assert(
+    MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE <= sizeof(MermanNativeApi),
+    "metadata slot boundary must fit the current table"
+);
+static_assert(
+    MERMAN_RESOURCE_LIMIT_MAX_SOURCE_BYTES_MINIMUM == 1 &&
+        MERMAN_RESOURCE_LIMIT_MAX_SOURCE_BYTES_OVERRIDABLE == 1 &&
+        MERMAN_RESOURCE_LIMIT_SVG_BACKEND_TREE_NODES_OVERRIDABLE == 0,
+    "resource contract must expose stable string macros and override metadata"
+);
 static_assert(
     std::is_nothrow_invocable_r_v<
         MermanNativeStatus,
@@ -115,6 +151,15 @@ static_assert(
         void *
     >,
     "C++ callback type must be noexcept"
+);
+static_assert(
+    std::is_nothrow_invocable_r_v<
+        MermanNativeStatus,
+        MermanNativeMetadataCollectFn,
+        MermanNativeSlice,
+        MermanNativeResult *
+    >,
+    "C++ metadata function type must be noexcept"
 );
 
 int merman_cpp_header_smoke() {

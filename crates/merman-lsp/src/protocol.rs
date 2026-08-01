@@ -1,7 +1,12 @@
 use std::str::FromStr;
 
-use crate::session::DEFAULT_LSP_MAX_SOURCE_BYTES;
-use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity};
+use crate::session::{DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES};
+#[cfg(test)]
+use merman_analysis::analysis_options_from_json_value;
+use merman_analysis::{
+    ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS, AnalysisRuleProfile, DiagnosticSeverity,
+    MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
+};
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
 use merman_core::EditorRenamePolicy;
 use merman_editor_core::{
@@ -198,6 +203,10 @@ fn analysis_options_schema(
     severities: &[String],
     configurable_rule_ids: &[String],
 ) -> Value {
+    let max_document_diagrams = ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
+        .iter()
+        .find(|descriptor| descriptor.stable_id == MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
+        .expect("analysis must describe max_document_diagrams");
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Merman analysis options",
@@ -246,6 +255,12 @@ fn analysis_options_schema(
                                         "minimum": 1,
                                         "default": DEFAULT_LSP_MAX_SOURCE_BYTES,
                                         "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted."
+                                    },
+                                    "max_document_diagrams": {
+                                        "type": "integer",
+                                        "minimum": max_document_diagrams.minimum_value,
+                                        "default": DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS,
+                                        "description": max_document_diagrams.description
                                     }
                                 }
                             }
@@ -462,6 +477,32 @@ mod tests {
             response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
                 ["properties"]["max_source_bytes"]["default"],
             json!(DEFAULT_LSP_MAX_SOURCE_BYTES)
+        );
+        assert_eq!(
+            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
+                ["properties"]["max_document_diagrams"]["default"],
+            json!(DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS)
+        );
+        let descriptor = ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
+            .iter()
+            .find(|descriptor| descriptor.stable_id == MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
+            .expect("analysis must describe max_document_diagrams");
+        assert_eq!(
+            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
+                ["properties"]["max_document_diagrams"]["minimum"],
+            json!(descriptor.minimum_value)
+        );
+        let parsed = analysis_options_from_json_value(&json!({
+            "resources": {
+                "limits": {
+                    MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID: descriptor.minimum_value
+                }
+            }
+        }))
+        .expect("the schema minimum must be accepted by the options parser");
+        assert_eq!(
+            parsed.max_document_diagrams(),
+            Some(descriptor.minimum_value)
         );
         assert!(
             response.schema["$defs"]["analysisOptions"]["properties"]

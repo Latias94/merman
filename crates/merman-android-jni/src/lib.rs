@@ -429,7 +429,10 @@ pub extern "system" fn native_metadata_json(
         let Some(id) = required_java_string(env, id, "metadataId") else {
             return Ok(ptr::null_mut());
         };
-        Ok(result_to_java_string(env, metadata_json(&id)))
+        Ok(result_to_java_string(
+            env,
+            merman_bindings_core::binding_metadata_json(&id),
+        ))
     })
 }
 
@@ -582,21 +585,6 @@ fn acquire_engine(env: &mut Env<'_>, token: u64) -> Option<Arc<JniReusableEngine
         throw_merman_exception(env, "Merman reusable engine is closed");
     }
     engine
-}
-
-fn metadata_json(id: &str) -> Result<Vec<u8>, BindingError> {
-    match id {
-        "supported-diagrams" => merman_bindings_core::supported_diagrams_json(),
-        "ascii-capabilities" => merman_bindings_core::ascii_capabilities_json(),
-        "diagram-family-capabilities" => merman_bindings_core::diagram_family_capabilities_json(),
-        "lint-rule-catalog" => merman_bindings_core::lint_rule_catalog_json(),
-        "supported-themes" => merman_bindings_core::supported_themes_json(),
-        "supported-host-theme-presets" => merman_bindings_core::supported_host_theme_presets_json(),
-        _ => Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            format!("unknown Android metadata catalog `{id}`"),
-        )),
-    }
 }
 
 fn with_env_resolved<T, F>(env: &mut EnvUnowned<'_>, f: F) -> T

@@ -47,6 +47,15 @@ impl From<BindingErrorKind> for MermanErrorKind {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanResourceErrorDetails {
+    pub limit_id: String,
+    pub phase: String,
+    pub actual: u64,
+    pub max: u64,
+    pub profile: String,
+}
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum MermanError {
     #[error("{code_name}: {message}")]
@@ -55,6 +64,7 @@ pub enum MermanError {
         code_name: String,
         kind: MermanErrorKind,
         capability_id: Option<String>,
+        resource: Option<MermanResourceErrorDetails>,
         message: String,
     },
 }
@@ -62,11 +72,21 @@ pub enum MermanError {
 impl MermanError {
     pub fn from_binding(error: BindingError) -> Self {
         let status = error.status();
+        let resource = error
+            .resource_details()
+            .map(|details| MermanResourceErrorDetails {
+                limit_id: details.limit_id.to_string(),
+                phase: details.phase.to_string(),
+                actual: details.actual,
+                max: details.max,
+                profile: details.profile.to_string(),
+            });
         Self::Binding {
             code: status.code(),
             code_name: status.code_name().to_string(),
             kind: error.kind().into(),
             capability_id: error.capability_id().map(str::to_string),
+            resource,
             message: error.message().to_string(),
         }
     }
@@ -78,6 +98,7 @@ impl MermanError {
             code_name: status.code_name().to_string(),
             kind: MermanErrorKind::Generic,
             capability_id: None,
+            resource: None,
             message: message.into(),
         }
     }
@@ -1986,8 +2007,11 @@ mod tests {
                 .collect::<std::collections::BTreeSet<_>>(),
             std::collections::BTreeSet::from([
                 "capabilities",
+                "metadata_ids",
+                "options_schema_versions",
                 "output_contracts",
                 "package_version",
+                "payload_schemas",
                 "registry",
                 "resources",
                 "schema_version",
@@ -2024,8 +2048,22 @@ mod tests {
             cfg!(feature = "svg")
         );
         assert!(runtime_catalog.get("features").is_none());
-        assert!(runtime_catalog.get("options_schema_version").is_none());
-        assert!(runtime_catalog.get("payload_schemas").is_none());
+        assert_eq!(
+            runtime_catalog["options_schema_versions"],
+            serde_json::json!([merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION])
+        );
+        assert!(
+            runtime_catalog["payload_schemas"]
+                .as_array()
+                .is_some_and(|schemas| schemas
+                    .iter()
+                    .any(|schema| schema["id"] == "binding-result"))
+        );
+        assert!(
+            runtime_catalog["metadata_ids"]
+                .as_array()
+                .is_some_and(|ids| ids.iter().any(|id| id == "diagram-family-capabilities"))
+        );
         assert_eq!(
             runtime_catalog["resources"]["general_binding_default_profile"],
             "interactive"
@@ -2035,17 +2073,20 @@ mod tests {
     #[test]
     fn typed_resource_options_builder_uses_the_shared_descriptor() {
         let json = resource_options_json(
-            MermanResourceProfile::Constrained,
+            Some(MermanResourceProfile::Constrained),
             vec![MermanResourceLimitOverride {
-                id: MermanResourceLimitId::MaxSourceBytes,
+                id: MermanResourceOverrideId::MaxSourceBytes,
                 value: 4096,
             }],
         )
         .unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(value["version"], 1);
+        assert_eq!(value["version"], 2);
         assert_eq!(value["resources"]["profile"], "constrained");
         assert_eq!(value["resources"]["limits"]["max_source_bytes"], 4096);
+
+        let inherited = resource_options_json(None, Vec::new()).unwrap();
+        assert_eq!(inherited, r#"{"version":2}"#);
     }
 
     #[cfg(feature = "svg")]
@@ -2107,7 +2148,7 @@ mod tests {
     #[test]
     fn reusable_engine_returns_document_analysis_json() {
         let reusable = MermanReusableEngine::new(Some(
-            r#"{ "analysis": { "profile": "strict" } }"#.to_string(),
+            r#"{ "version": 2, "analysis": { "lint": { "profile": "strict" } } }"#.to_string(),
         ))
         .unwrap();
         let source = "# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
@@ -2419,6 +2460,30 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
+    fn uniffi_error_preserves_structured_resource_details() {
+        let error = MermanError::from_binding(BindingError::resource_limit(
+            "embedded_image_decode",
+            "max_embedded_image_bytes",
+            5,
+            4,
+            "constrained",
+            "embedded image is too large",
+        ));
+        let MermanError::Binding { resource, .. } = error;
+        assert_eq!(
+            resource,
+            Some(MermanResourceErrorDetails {
+                limit_id: "max_embedded_image_bytes".to_string(),
+                phase: "embedded_image_decode".to_string(),
+                actual: 5,
+                max: 4,
+                profile: "constrained".to_string(),
+            })
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
     fn engine_error_preserves_binding_status() {
         let err = engine()
             .render_svg("flowchart TD\nA".to_string(), Some("{".to_string()))
@@ -2429,12 +2494,14 @@ mod tests {
             code_name,
             kind,
             capability_id,
+            resource,
             message,
         } = err;
         assert_eq!(code, BindingStatus::OptionsJsonError.code());
         assert_eq!(code_name, BindingStatus::OptionsJsonError.code_name());
         assert_eq!(kind, MermanErrorKind::Generic);
         assert_eq!(capability_id, None);
+        assert_eq!(resource, None);
         assert!(message.contains("invalid options_json"));
     }
 
@@ -2450,12 +2517,14 @@ mod tests {
             code_name,
             kind,
             capability_id,
+            resource,
             message,
         } = err;
         assert_eq!(code, BindingStatus::UnsupportedOperation.code());
         assert_eq!(code_name, BindingStatus::UnsupportedOperation.code_name());
         assert_eq!(kind, MermanErrorKind::MissingCapability);
         assert_eq!(capability_id.as_deref(), Some("svg"));
+        assert_eq!(resource, None);
         assert_eq!(message, "SVG rendering requires the svg feature");
     }
 }

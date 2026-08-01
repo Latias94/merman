@@ -148,6 +148,7 @@ uint64_t merman_c_layout_fingerprint(void) {
     HASH_FIELD(hash, MermanNativeApi, engine_try_close);
     HASH_FIELD(hash, MermanNativeApi, execute_collect);
     HASH_FIELD(hash, MermanNativeApi, result_free);
+    HASH_FIELD(hash, MermanNativeApi, metadata_collect);
 
     return hash;
 }
@@ -164,6 +165,15 @@ int merman_c_consumer_smoke(
     static const uint8_t source[] = "flowchart TD\nA --> B";
     static const uint8_t request_options[] =
         "{\"svg\":{\"diagram_id\":\"c-request\"}}";
+    static const char *metadata_ids[] = {
+        "supported-diagrams",
+        "ascii-capabilities",
+        "diagram-family-capabilities",
+        "lint-rule-catalog",
+        "supported-themes",
+        "supported-host-theme-presets"
+    };
+    static const uint8_t unknown_metadata_id[] = "unknown-catalog";
     MermanNativeApiRequest discovery;
     MermanNativeApi api;
     MermanNativeResult result;
@@ -171,6 +181,7 @@ int merman_c_consumer_smoke(
     MermanNativeEngineToken engine = 0;
     MermanNativeOperationRequest request;
     MermanNativeStatus status;
+    size_t metadata_index;
 
     if (get_native_api == NULL) {
         return 1;
@@ -193,7 +204,8 @@ int merman_c_consumer_smoke(
         api.engine_new == NULL ||
         api.engine_try_close == NULL ||
         api.execute_collect == NULL ||
-        api.result_free == NULL
+        api.result_free == NULL ||
+        api.metadata_collect == NULL
     ) {
         return 2;
     }
@@ -222,6 +234,54 @@ int merman_c_consumer_smoke(
     ) {
         api.result_free(&result);
         return 3;
+    }
+    api.result_free(&result);
+
+    for (
+        metadata_index = 0;
+        metadata_index < (require_complete_artifact ? 6u : 1u);
+        metadata_index += 1
+    ) {
+        const char *metadata_id = metadata_ids[metadata_index];
+        result = empty_result();
+        status = api.metadata_collect(
+            borrowed_slice((const uint8_t *)metadata_id, strlen(metadata_id)),
+            &result
+        );
+        if (
+            status != MERMAN_NATIVE_STATUS_OK ||
+            result.status != MERMAN_NATIVE_STATUS_OK ||
+            result.operation != MERMAN_NATIVE_OPERATION_NONE ||
+            result.allocation_token == 0 ||
+            result.data.len != 0 ||
+            result.metadata_or_error_json.len == 0
+        ) {
+            api.result_free(&result);
+            return 31;
+        }
+        api.result_free(&result);
+        if (result.allocation_token != 0) {
+            return 32;
+        }
+    }
+
+    result = empty_result();
+    status = api.metadata_collect(
+        borrowed_slice(unknown_metadata_id, sizeof(unknown_metadata_id) - 1),
+        &result
+    );
+    if (
+        status != MERMAN_NATIVE_STATUS_INVALID_ARGUMENT ||
+        result.status != MERMAN_NATIVE_STATUS_INVALID_ARGUMENT ||
+        result.allocation_token == 0 ||
+        !bytes_contain(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+            "\"status_name\":\"invalid-argument\""
+        )
+    ) {
+        api.result_free(&result);
+        return 33;
     }
     api.result_free(&result);
 

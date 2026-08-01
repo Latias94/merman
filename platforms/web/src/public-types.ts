@@ -55,12 +55,20 @@ export interface RuntimeCatalog {
   schema_version: number;
   transport_api_version: number;
   package_version: string;
+  options_schema_versions: number[];
+  payload_schemas: RuntimePayloadSchema[];
+  metadata_ids: string[];
   capabilities: RuntimeCapabilities;
   output_contracts: RuntimeOutputContract[];
   registry: {
     diagram_family_count: number;
   };
   resources: RuntimeResourceContract;
+}
+
+export interface RuntimePayloadSchema {
+  id: string;
+  version: number;
 }
 
 export interface RuntimeOutputContract {
@@ -107,6 +115,8 @@ export interface RuntimeResourceLimit {
   description: string;
   overridable: boolean;
   hard_cap: boolean;
+  minimum_value: number;
+  operation_ids: string[];
 }
 
 export interface RuntimeResourceProfile {
@@ -124,6 +134,8 @@ export interface SvgOptions {
   css_override_policy?: "preserve" | "strip-existing-important";
   root_background_color?: string;
   drop_native_duplicate_fallbacks?: boolean;
+  viewbox_padding?: number;
+  viewBoxPadding?: number;
 }
 
 export type HostThemeAppearance = "light" | "dark";
@@ -184,7 +196,7 @@ export interface AnalysisBindingOptions {
 }
 
 export interface CommonBindingOptions extends AnalysisBindingOptions {
-  version?: 1;
+  version?: 2;
   parse?: ParseOptions;
   analysis?: AnalysisBindingOptions;
   merman?: AnalysisBindingOptions;
@@ -236,14 +248,24 @@ export interface AsciiRenderOptions {
   theme?: AsciiThemeOptions;
   sequence_mirror_actors?: boolean;
   sequenceMirrorActors?: boolean;
+  box_border_padding?: number;
+  boxBorderPadding?: number;
+  graph_padding_x?: number;
+  graphPaddingX?: number;
+  graph_padding_y?: number;
+  graphPaddingY?: number;
+  sequence_participant_spacing?: number;
+  sequenceParticipantSpacing?: number;
+  sequence_message_spacing?: number;
+  sequenceMessageSpacing?: number;
+  sequence_self_message_width?: number;
+  sequenceSelfMessageWidth?: number;
   xychart_vertical_plot_height?: number;
   xychartVerticalPlotHeight?: number;
   xychart_category_band_width?: number;
   xychartCategoryBandWidth?: number;
   xychart_horizontal_plot_width?: number;
   xychartHorizontalPlotWidth?: number;
-  max_grid_cells?: number;
-  maxGridCells?: number;
   relation_summary_diagnostics?: boolean;
   relationSummaryDiagnostics?: boolean;
 }

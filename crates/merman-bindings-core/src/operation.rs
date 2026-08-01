@@ -1,4 +1,4 @@
-use crate::common::BindingResourceScope;
+use crate::resource_contract::BindingResourceScope;
 use crate::{BindingEngine, BindingError, BindingStatus};
 use serde::Serialize;
 
@@ -67,16 +67,17 @@ impl BindingOperationKind {
         match self.key() {
             OperationKey::AnalysisJson
             | OperationKey::AnalysisFactsJson
-            | OperationKey::ValidationJson
-            | OperationKey::DocumentAnalysisJson
-            | OperationKey::DocumentAnalysisFactsJson => BindingResourceScope::Analysis,
-            OperationKey::SemanticJson | OperationKey::Ascii | OperationKey::SvgPlanJson => {
-                BindingResourceScope::Model
+            | OperationKey::ValidationJson => BindingResourceScope::AnalysisDiagram,
+            OperationKey::DocumentAnalysisJson | OperationKey::DocumentAnalysisFactsJson => {
+                BindingResourceScope::DocumentAnalysis
             }
+            OperationKey::SemanticJson | OperationKey::SvgPlanJson => BindingResourceScope::Model,
+            OperationKey::Ascii => BindingResourceScope::Ascii,
             OperationKey::LayoutJson => BindingResourceScope::Layout,
-            OperationKey::Svg | OperationKey::Png | OperationKey::Jpeg | OperationKey::Pdf => {
-                BindingResourceScope::Render
-            }
+            OperationKey::Svg => BindingResourceScope::Svg,
+            OperationKey::Png => BindingResourceScope::Png,
+            OperationKey::Jpeg => BindingResourceScope::Jpeg,
+            OperationKey::Pdf => BindingResourceScope::Pdf,
         }
     }
 }
@@ -92,11 +93,82 @@ pub struct BindingOperationRequest<'a> {
 
 /// Owned result from a binding operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct BindingOperationResult {
     pub operation: BindingOperationKind,
     pub media_type: &'static str,
     pub data: Vec<u8>,
     pub metadata_json: Vec<u8>,
+}
+
+#[derive(Debug)]
+pub(crate) struct BindingOperationOutput {
+    data: Vec<u8>,
+    output_plan: Option<BindingOutputPlan>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum BindingOutputPlan {
+    #[cfg(any(feature = "png", feature = "jpeg"))]
+    Raster {
+        requested_width_px: f64,
+        requested_height_px: f64,
+        width_px: u32,
+        height_px: u32,
+        requested_scale: f64,
+        effective_scale: f64,
+        limited: bool,
+    },
+    #[cfg(feature = "pdf")]
+    PdfFilterImages {
+        filtered_groups: usize,
+        requested_scale: f32,
+        effective_scale: f32,
+        requested_image_pixels: u64,
+        effective_image_pixels: u64,
+        limited: bool,
+    },
+}
+
+impl BindingOperationOutput {
+    pub(crate) fn plain(data: Vec<u8>) -> Self {
+        Self {
+            data,
+            output_plan: None,
+        }
+    }
+
+    #[cfg(any(feature = "png", feature = "jpeg"))]
+    pub(crate) fn raster(data: Vec<u8>, plan: merman::svg::export::RasterPlan) -> Self {
+        Self {
+            data,
+            output_plan: Some(BindingOutputPlan::Raster {
+                requested_width_px: plan.requested_width_px,
+                requested_height_px: plan.requested_height_px,
+                width_px: plan.width_px,
+                height_px: plan.height_px,
+                requested_scale: plan.requested_scale,
+                effective_scale: plan.effective_scale,
+                limited: plan.limited,
+            }),
+        }
+    }
+
+    #[cfg(feature = "pdf")]
+    pub(crate) fn pdf(data: Vec<u8>, plan: merman::svg::export::PdfFilterImagePlan) -> Self {
+        Self {
+            data,
+            output_plan: Some(BindingOutputPlan::PdfFilterImages {
+                filtered_groups: plan.filtered_groups,
+                requested_scale: plan.requested_scale,
+                effective_scale: plan.effective_scale,
+                requested_image_pixels: plan.requested_image_pixels,
+                effective_image_pixels: plan.effective_image_pixels,
+                limited: plan.limited,
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -106,6 +178,8 @@ struct BindingOperationMetadata<'a> {
     media_type: &'a str,
     runtime_policy: &'a str,
     byte_length: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_plan: Option<&'a BindingOutputPlan>,
 }
 
 /// Executes one operation through the same transport-neutral semantics as a reusable engine.
@@ -134,13 +208,13 @@ impl BindingEngine {
         if request.options_json.is_empty() {
             return self.execute_resolved(operation, request.source, request.uri);
         }
-        let data = self
+        let output = self
             .execute_request_overlay(operation, request.source, request.uri, request.options_json)?
             .map_or_else(
-                || self.execute_resolved_data(operation, request.source, request.uri),
+                || self.execute_resolved_output(operation, request.source, request.uri),
                 Ok,
             )?;
-        operation_result(operation, self.runtime_policy_id(), data)
+        operation_result(operation, self.runtime_policy_id(), output)
     }
 
     fn execute_resolved(
@@ -149,50 +223,61 @@ impl BindingEngine {
         source: &[u8],
         uri: Option<&[u8]>,
     ) -> Result<BindingOperationResult, BindingError> {
-        let data = self.execute_resolved_data(operation, source, uri)?;
-        operation_result(operation, self.runtime_policy_id(), data)
+        let output = self.execute_resolved_output(operation, source, uri)?;
+        operation_result(operation, self.runtime_policy_id(), output)
     }
 
-    fn execute_resolved_data(
+    fn execute_resolved_output(
         &self,
         operation: BindingOperationKind,
         source: &[u8],
         uri: Option<&[u8]>,
-    ) -> Result<Vec<u8>, BindingError> {
-        let data = match operation.key() {
-            OperationKey::Svg => self.render_svg(source),
-            OperationKey::SvgPlanJson => self.svg_plan_json(source),
-            OperationKey::Png => self.render_png(source),
-            OperationKey::Jpeg => self.render_jpeg(source),
-            OperationKey::Pdf => self.render_pdf(source),
-            OperationKey::Ascii => self.render_ascii(source),
-            OperationKey::SemanticJson => self.parse_json(source),
-            OperationKey::LayoutJson => self.layout_json(source),
-            OperationKey::AnalysisJson => self.analyze_json(source),
-            OperationKey::AnalysisFactsJson => self.analysis_facts_json(source),
-            OperationKey::ValidationJson => self.validate_json(source),
-            OperationKey::DocumentAnalysisJson => {
-                self.analyze_document_json(source, uri.expect("validated document URI presence"))
+    ) -> Result<BindingOperationOutput, BindingError> {
+        match operation.key() {
+            OperationKey::Png => self.render_png_output(source),
+            OperationKey::Jpeg => self.render_jpeg_output(source),
+            OperationKey::Pdf => self.render_pdf_output(source),
+            OperationKey::Svg => self.render_svg(source).map(BindingOperationOutput::plain),
+            OperationKey::SvgPlanJson => self
+                .svg_plan_json(source)
+                .map(BindingOperationOutput::plain),
+            OperationKey::Ascii => self.render_ascii(source).map(BindingOperationOutput::plain),
+            OperationKey::SemanticJson => {
+                self.parse_json(source).map(BindingOperationOutput::plain)
             }
+            OperationKey::LayoutJson => self.layout_json(source).map(BindingOperationOutput::plain),
+            OperationKey::AnalysisJson => {
+                self.analyze_json(source).map(BindingOperationOutput::plain)
+            }
+            OperationKey::AnalysisFactsJson => self
+                .analysis_facts_json(source)
+                .map(BindingOperationOutput::plain),
+            OperationKey::ValidationJson => self
+                .validate_json(source)
+                .map(BindingOperationOutput::plain),
+            OperationKey::DocumentAnalysisJson => self
+                .analyze_document_json(source, uri.expect("validated document URI presence"))
+                .map(BindingOperationOutput::plain),
             OperationKey::DocumentAnalysisFactsJson => self
-                .analyze_document_facts_json(source, uri.expect("validated document URI presence")),
-        }?;
-
-        Ok(data)
+                .analyze_document_facts_json(source, uri.expect("validated document URI presence"))
+                .map(BindingOperationOutput::plain),
+        }
     }
 }
 
 fn operation_result(
     operation: BindingOperationKind,
     runtime_policy_id: &'static str,
-    data: Vec<u8>,
+    output: BindingOperationOutput,
 ) -> Result<BindingOperationResult, BindingError> {
+    let BindingOperationOutput { data, output_plan } = output;
     let metadata_json = serde_json::to_vec(&BindingOperationMetadata {
         version: BINDING_OPERATION_SCHEMA_VERSION,
         operation_id: operation.operation_id(),
         media_type: operation.media_type(),
         runtime_policy: runtime_policy_id,
         byte_length: data.len(),
+        output_plan: output_plan.as_ref(),
     })
     .map_err(|error| {
         BindingError::new(
@@ -348,7 +433,7 @@ mod tests {
                 operation_id: "semantic-json",
                 source: b"flowchart TD\nA --> B",
                 uri: None,
-                options_json: br#"{"analysis":{"lint":{"profile":"recommended"}}}"#,
+                options_json: br#"{"analysis":{"resources":{"limits":{"max_source_bytes":2048}}}}"#,
             })
             .unwrap();
         assert!(!result.data.is_empty());
@@ -357,7 +442,7 @@ mod tests {
     #[test]
     fn reusable_semantic_output_is_stable_across_empty_version_and_real_overlays() {
         let engine =
-            BindingEngine::from_options(br#"{"parse":{"suppress_errors":false},"version":1}"#)
+            BindingEngine::from_options(br#"{"parse":{"suppress_errors":false},"version":2}"#)
                 .unwrap();
         let execute = |options_json| {
             engine
@@ -373,8 +458,8 @@ mod tests {
         let empty = execute(b"");
         for unchanged in [
             br#"{}"#.as_slice(),
-            br#"{"version":1}"#.as_slice(),
-            b"{\n  \"version\": 1\n}".as_slice(),
+            br#"{"version":2}"#.as_slice(),
+            b"{\n  \"version\": 2\n}".as_slice(),
         ] {
             let result = execute(unchanged);
             assert_eq!(result.data, empty.data);
@@ -387,45 +472,23 @@ mod tests {
     }
 
     #[test]
-    fn empty_request_borrows_base_before_unchanged_json_validates_wrapper_conflicts() {
-        let engine = BindingEngine::from_options(
+    fn reusable_engine_rejects_ambiguous_analysis_wrappers_at_construction() {
+        let error = BindingEngine::from_options(
             br#"{
                 "merman": { "fixed_today": "2025-01-01" },
-                "analysis": { "future_option": true }
+                "analysis": {}
             }"#,
         )
-        .expect("the constructor accepts exactly one analysis wrapper");
-        engine
-            .execute(BindingOperationRequest {
-                operation_id: "semantic-json",
-                source: b"flowchart TD\nA --> B",
-                uri: None,
-                options_json: b"",
-            })
-            .expect("empty request options borrow the already validated base engine");
+        .err()
+        .expect("ambiguous wrappers must fail before a reusable engine is created");
 
-        for options_json in [
-            br#"{}"#.as_slice(),
-            br#"{"version":1}"#.as_slice(),
-            b"{\n  \"version\": 1\n}".as_slice(),
-        ] {
-            let error = engine
-                .execute(BindingOperationRequest {
-                    operation_id: "semantic-json",
-                    source: b"flowchart TD\nA --> B",
-                    uri: None,
-                    options_json,
-                })
-                .expect_err("non-empty request normalization exposes the wrapper conflict");
-
-            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
-            assert!(
-                error
-                    .message()
-                    .contains("must not mix top-level analysis options"),
-                "unexpected error: {error:?}"
-            );
-        }
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("must not contain both `analysis` and `merman` wrappers"),
+            "unexpected error: {error:?}"
+        );
     }
 
     #[test]
@@ -650,6 +713,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "svg")]
     #[test]
     fn one_shot_options_reject_limits_owned_by_another_operation() {
         let error = execute_once(BindingOperationRequest {
@@ -713,6 +777,26 @@ mod tests {
         assert!(!baseline.data.is_empty());
     }
 
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn ascii_request_cannot_widen_the_constructor_grid_ceiling() {
+        let engine =
+            BindingEngine::from_options(br#"{"resources":{"limits":{"max_ascii_grid_cells":1}}}"#)
+                .unwrap();
+
+        let error = engine
+            .execute(BindingOperationRequest {
+                operation_id: "ascii",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: br#"{"resources":{"limits":{"max_ascii_grid_cells":2}}}"#,
+            })
+            .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("max_ascii_grid_cells"));
+    }
+
     #[test]
     fn one_shot_operation_may_choose_a_nondefault_profile() {
         let result = execute_once(BindingOperationRequest {
@@ -744,6 +828,33 @@ mod tests {
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("max_svg_bytes"));
+    }
+
+    #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[test]
+    fn output_options_are_artifact_wide_at_construction_and_operation_scoped_per_request() {
+        let engine = BindingEngine::from_options(
+            br#"{"raster":{"scale":2},"jpeg":{"quality":85},"pdf":{"background":"white"}}"#,
+        )
+        .expect("constructor accepts the compiled artifact option union");
+        engine
+            .execute(BindingOperationRequest {
+                operation_id: "semantic-json",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: b"",
+            })
+            .expect("unrelated constructor options do not affect semantic operations");
+
+        let error = execute_once(BindingOperationRequest {
+            operation_id: "semantic-json",
+            source: b"flowchart TD\nA --> B",
+            uri: None,
+            options_json: br#"{"raster":{"scale":2}}"#,
+        })
+        .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("raster"));
     }
 
     #[test]
@@ -908,6 +1019,101 @@ mod tests {
 
         assert_eq!(result.media_type, "image/png");
         assert!(result.data.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let metadata: serde_json::Value = serde_json::from_slice(&result.metadata_json).unwrap();
+        assert_eq!(metadata["output_plan"]["kind"], "raster");
+        assert_eq!(metadata["output_plan"]["limited"], false);
+        assert_eq!(metadata["output_plan"]["requested_scale"], 1.0);
+        assert_eq!(metadata["output_plan"]["effective_scale"], 1.0);
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn generic_png_operation_reports_resource_limited_effective_plan() {
+        let result = execute_once(BindingOperationRequest {
+            operation_id: "png",
+            source: b"flowchart TD\nA --> B",
+            uri: None,
+            options_json: br#"{
+                "version": 2,
+                "raster": {"scale": 20},
+                "resources": {"limits": {"max_raster_pixels": 4096}}
+            }"#,
+        })
+        .unwrap();
+
+        let metadata: serde_json::Value = serde_json::from_slice(&result.metadata_json).unwrap();
+        let plan = &metadata["output_plan"];
+        assert_eq!(plan["kind"], "raster");
+        assert_eq!(plan["limited"], true);
+        assert_eq!(plan["requested_scale"], 20.0);
+        assert!(
+            plan["effective_scale"].as_f64().unwrap() < plan["requested_scale"].as_f64().unwrap()
+        );
+        assert!(plan["width_px"].as_u64().unwrap() * plan["height_px"].as_u64().unwrap() <= 4096);
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn reusable_png_request_overlay_reports_its_effective_plan_without_mutating_the_engine() {
+        let engine = BindingEngine::from_options(
+            br#"{"version":2,"resources":{"profile":"trusted-native"}}"#,
+        )
+        .unwrap();
+        let limited = engine
+            .execute(BindingOperationRequest {
+                operation_id: "png",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: br#"{
+                    "version": 2,
+                    "raster": {"scale": 20},
+                    "resources": {"limits": {"max_raster_pixels": 4096}}
+                }"#,
+            })
+            .unwrap();
+        let limited_metadata: serde_json::Value =
+            serde_json::from_slice(&limited.metadata_json).unwrap();
+        assert_eq!(limited_metadata["output_plan"]["limited"], true);
+        assert!(
+            limited_metadata["output_plan"]["width_px"]
+                .as_u64()
+                .unwrap()
+                * limited_metadata["output_plan"]["height_px"]
+                    .as_u64()
+                    .unwrap()
+                <= 4096
+        );
+
+        let baseline = engine
+            .execute(BindingOperationRequest {
+                operation_id: "png",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: b"",
+            })
+            .unwrap();
+        let baseline_metadata: serde_json::Value =
+            serde_json::from_slice(&baseline.metadata_json).unwrap();
+        assert_eq!(baseline_metadata["output_plan"]["limited"], false);
+        assert_eq!(baseline_metadata["output_plan"]["requested_scale"], 1.0);
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn generic_pdf_operation_reports_effective_filter_plan() {
+        let result = execute_once(BindingOperationRequest {
+            operation_id: "pdf",
+            source: b"flowchart TD\nA --> B",
+            uri: None,
+            options_json: br#"{"version":2,"pdf":{"filterScale":2.5}}"#,
+        })
+        .unwrap();
+
+        let metadata: serde_json::Value = serde_json::from_slice(&result.metadata_json).unwrap();
+        let plan = &metadata["output_plan"];
+        assert_eq!(plan["kind"], "pdf-filter-images");
+        assert_eq!(plan["requested_scale"], 2.5);
+        assert_eq!(plan["effective_scale"], 2.5);
     }
 
     #[cfg(not(feature = "png"))]

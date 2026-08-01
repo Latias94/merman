@@ -166,6 +166,7 @@ fn api_table() -> MermanNativeApi {
         engine_try_close: None,
         execute_collect: None,
         result_free: None,
+        metadata_collect: None,
     };
     let request = MermanNativeApiRequest {
         struct_size: size_of::<MermanNativeApiRequest>() as u32,

@@ -25,6 +25,7 @@ pub struct ResourceOptionsJson {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LintOptionsJson {
     pub profile: Option<String>,
     #[serde(default)]
@@ -36,6 +37,7 @@ pub struct LintOptionsJson {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LintRuleSeverityOverrideJson {
     pub rule_id: String,
     pub severity: String,
@@ -83,6 +85,12 @@ fn analysis_options_root_value(value: &Value) -> Result<&Value, AnalysisOptionsJ
         return Ok(value);
     };
 
+    if map.contains_key("merman") && map.contains_key("analysis") {
+        return Err(AnalysisOptionsJsonError::new(
+            "options JSON must not contain both `merman` and `analysis` wrappers",
+        ));
+    }
+
     if analysis_option_keys_present(map) {
         if ["merman", "analysis"]
             .iter()
@@ -95,17 +103,12 @@ fn analysis_options_root_value(value: &Value) -> Result<&Value, AnalysisOptionsJ
         return Ok(value);
     }
 
-    let mut wrapped_keys = ["merman", "analysis"].into_iter().filter(|key| {
+    let wrapped_key = ["merman", "analysis"].into_iter().find(|key| {
         map.get(*key)
             .and_then(Value::as_object)
             .is_some_and(analysis_option_keys_present)
     });
-    if let Some(key) = wrapped_keys.next() {
-        if wrapped_keys.next().is_some() {
-            return Err(AnalysisOptionsJsonError::new(
-                "options JSON must not contain both `merman` and `analysis` wrappers with analysis options",
-            ));
-        }
+    if let Some(key) = wrapped_key {
         return Ok(map
             .get(key)
             .expect("checked key existence and object shape"));
@@ -148,8 +151,9 @@ impl AnalysisOptionsJson {
     pub fn to_analysis_options(&self) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
         let today = self.fixed_today()?;
         let offset_minutes = self.fixed_local_offset_minutes()?;
-        let mut analysis =
-            AnalysisOptions::default().with_max_source_bytes(self.max_source_bytes()?);
+        let mut analysis = AnalysisOptions::default()
+            .with_max_source_bytes(self.max_source_bytes()?)
+            .with_max_document_diagrams(self.max_document_diagrams()?);
 
         if let Some(site_config) = self.site_config()? {
             analysis = analysis.with_site_config(site_config);
@@ -170,25 +174,35 @@ impl AnalysisOptionsJson {
     }
 
     pub fn max_source_bytes(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
+        self.resource_limit(merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str())
+    }
+
+    pub fn max_document_diagrams(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
+        self.resource_limit(crate::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
+    }
+
+    fn resource_limit(&self, limit_id: &str) -> Result<Option<usize>, AnalysisOptionsJsonError> {
         let Some(resources) = self.resources.as_ref() else {
             return Ok(None);
         };
         if let Some(unknown) = resources
             .limits
             .keys()
-            .find(|id| id.as_str() != "max_source_bytes")
+            .find(|id| analysis_resource_limit_minimum_value(id).is_none())
         {
             return Err(AnalysisOptionsJsonError::new(format!(
                 "unknown analysis resource limit id: {unknown}"
             )));
         }
-        let max_source_bytes = resources.limits.get("max_source_bytes").copied();
-        if max_source_bytes == Some(0) {
-            return Err(AnalysisOptionsJsonError::new(
-                "resources.limits.max_source_bytes must be a positive integer",
-            ));
+        let limit = resources.limits.get(limit_id).copied();
+        let minimum_value = analysis_resource_limit_minimum_value(limit_id)
+            .expect("analysis resource limit id must be validated by its owner descriptor");
+        if limit.is_some_and(|value| value < minimum_value) {
+            return Err(AnalysisOptionsJsonError::new(format!(
+                "resources.limits.{limit_id} must be at least {minimum_value}"
+            )));
         }
-        Ok(max_source_bytes)
+        Ok(limit)
     }
 
     pub fn rule_config(&self) -> Result<AnalysisRuleConfig, AnalysisOptionsJsonError> {
@@ -278,6 +292,17 @@ impl AnalysisOptionsJson {
         }
         Ok(Some(MermaidConfig::from_value(site_config.clone())))
     }
+}
+
+fn analysis_resource_limit_minimum_value(limit_id: &str) -> Option<usize> {
+    let source = merman_core::resources::InputResourceLimitId::MaxSourceBytes.descriptor();
+    if limit_id == source.stable_id {
+        return Some(source.minimum_value);
+    }
+    crate::ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
+        .iter()
+        .find(|descriptor| descriptor.stable_id == limit_id)
+        .map(|descriptor| descriptor.minimum_value)
 }
 
 fn parse_lint_profile(value: &str) -> Result<AnalysisRuleProfile, AnalysisOptionsJsonError> {
@@ -614,53 +639,72 @@ mod tests {
     }
 
     #[test]
-    fn shared_analysis_options_json_requires_positive_source_limit_values() {
-        let zero = serde_json::json!({
-            "analysis": {
-                "resources": {
-                    "limits": { "max_source_bytes": 0 }
-                }
-            }
-        });
+    fn shared_analysis_options_json_applies_owner_minimum_resource_values() {
         let positive = serde_json::json!({
             "analysis": {
                 "resources": {
-                    "limits": { "max_source_bytes": 1024 }
+                    "limits": {
+                        "max_source_bytes": 1024,
+                        "max_document_diagrams": 256
+                    }
                 }
             }
         });
 
-        assert!(analysis_options_from_json_value(&zero).is_err());
+        let zero_source = serde_json::json!({
+            "analysis": { "resources": { "limits": { "max_source_bytes": 0 } } }
+        });
+        assert!(analysis_options_from_json_value(&zero_source).is_err());
+
+        let zero_document = serde_json::json!({
+            "analysis": { "resources": { "limits": { "max_document_diagrams": 0 } } }
+        });
         assert_eq!(
-            analysis_options_from_json_value(&positive)
+            analysis_options_from_json_value(&zero_document)
                 .unwrap()
-                .max_source_bytes(),
-            Some(1024)
+                .max_document_diagrams(),
+            Some(0)
+        );
+
+        let options = analysis_options_from_json_value(&positive).unwrap();
+        assert_eq!(options.max_source_bytes(), Some(1024));
+        assert_eq!(options.max_document_diagrams(), Some(256));
+
+        let unknown = serde_json::json!({
+            "resources": {
+                "limits": { "max_future_analysis_resource": 1 }
+            }
+        });
+        let error = analysis_options_from_json_value(&unknown).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("unknown analysis resource limit id"),
+            "unexpected error: {error}"
         );
     }
 
     #[test]
     fn shared_analysis_options_json_rejects_two_namespaced_analysis_wrappers() {
-        let mixed = serde_json::json!({
-            "merman": {
-                "lint": {
-                    "profile": "recommended"
-                }
-            },
-            "analysis": {
-                "resources": {
-                    "limits": { "max_source_bytes": 1024 }
-                }
-            }
-        });
+        for mixed in [
+            serde_json::json!({ "merman": {}, "analysis": {} }),
+            serde_json::json!({
+                "merman": { "fixed_today": "2025-01-01" },
+                "analysis": {}
+            }),
+            serde_json::json!({
+                "merman": {},
+                "analysis": { "fixed_today": "2025-01-01" }
+            }),
+        ] {
+            let err = analysis_options_from_json_value(&mixed).unwrap_err();
 
-        let err = analysis_options_from_json_value(&mixed).unwrap_err();
-
-        assert!(
-            err.to_string()
-                .contains("must not contain both `merman` and `analysis` wrappers"),
-            "unexpected error: {err}"
-        );
+            assert!(
+                err.to_string()
+                    .contains("must not contain both `merman` and `analysis` wrappers"),
+                "unexpected error: {err}"
+            );
+        }
     }
 
     #[test]

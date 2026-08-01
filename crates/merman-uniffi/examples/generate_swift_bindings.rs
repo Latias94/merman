@@ -193,6 +193,11 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         "case unknownOperation",
         "kind: MermanErrorKind",
         "capabilityId: String?",
+        "struct MermanResourceErrorDetails",
+        "enum MermanResourceOverrideId",
+        "public var id: MermanResourceOverrideId",
+        "func resourceOptionsJson(profile: MermanResourceProfile?",
+        "resource: MermanResourceErrorDetails?",
         "public var operationId: String",
         "public var optionsJson: String?",
         "func execute(request: MermanOperationRequest) throws",
@@ -216,6 +221,9 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         "nonisolated(unsafe) static let vtablePtr",
         "func setTextMeasurer(",
         "func clearTextMeasurer(",
+        "enum MermanResourceLimitId",
+        "public var id: MermanResourceLimitId",
+        "func resourceOptionsJson(profile: MermanResourceProfile,",
     ] {
         if source.contains(removed) {
             return Err(format!(

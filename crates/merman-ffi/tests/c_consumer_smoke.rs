@@ -249,6 +249,7 @@ fn rust_layout_fingerprint() -> u64 {
     hash_field!(hash, merman_ffi::MermanNativeApi, engine_try_close);
     hash_field!(hash, merman_ffi::MermanNativeApi, execute_collect);
     hash_field!(hash, merman_ffi::MermanNativeApi, result_free);
+    hash_field!(hash, merman_ffi::MermanNativeApi, metadata_collect);
 
     hash
 }
@@ -462,7 +463,7 @@ fn assert_native_output_environment_facts(contract: &Value, output_id: &str) {
     assert_eq!(string_ids(&images["source_ids"]), ["data-url"]);
     assert_eq!(images["filesystem_access"], false);
     assert_eq!(images["network_access"], false);
-    assert_eq!(images["caller_configurable"], false);
+    assert_eq!(images["caller_configurable"], true);
     let limits = images["limits"]
         .as_object()
         .expect("binary output embedded image limits");

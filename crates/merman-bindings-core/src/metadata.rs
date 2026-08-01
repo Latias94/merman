@@ -16,6 +16,14 @@ mod capability_descriptor {
 pub const RUNTIME_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK: &str = "host-callback";
 pub const TEXT_MEASUREMENT_PROVIDER_VENDORED: &str = "vendored";
+pub const BINDING_METADATA_IDS: [&str; 6] = [
+    "supported-diagrams",
+    "ascii-capabilities",
+    "diagram-family-capabilities",
+    "lint-rule-catalog",
+    "supported-themes",
+    "supported-host-theme-presets",
+];
 
 #[cfg(feature = "svg")]
 const TEXT_MEASUREMENT_PROVIDER_IDS: &[&str] = &[
@@ -41,6 +49,7 @@ static CONFIGURABLE_LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 /// IDs describe actual installation routes, not Cargo features: `vendored` is the built-in
 /// renderer measurer and `host-callback` means this transport accepts a host callback.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct TextMeasurementCapabilities {
     pub protocol_version: u32,
     pub provider_ids: Vec<&'static str>,
@@ -351,6 +360,7 @@ impl ArtifactCapabilitySurface {
 
 /// Stable runtime capability report shared by every transport.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeCapabilities {
     pub capability_ids: Vec<&'static str>,
     pub output_ids: Vec<&'static str>,
@@ -428,10 +438,13 @@ fn validate_sorted_unique(
 
 /// Current capabilities and policies exposed by one concrete transport artifact.
 ///
-/// This catalog intentionally excludes the global capability vocabulary and independently
-/// versioned options or result payloads. Consumers validate this artifact-owned fact set by shape,
-/// ordering, and local relations, and must tolerate newly added stable IDs.
+/// This catalog intentionally excludes the global capability vocabulary and the bodies of detailed
+/// language catalogs. It does expose the independently versioned binding schema identifiers a
+/// generic host needs before it sends options or decodes a result. Consumers validate this
+/// artifact-owned fact set by shape, ordering, and local relations, and must tolerate newly added
+/// stable IDs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeCatalog {
     pub schema_version: u32,
     /// Version of the transport that produced this catalog.
@@ -440,14 +453,29 @@ pub struct RuntimeCatalog {
     /// boundary and supplies its own version when constructing a catalog.
     pub transport_api_version: u32,
     pub package_version: &'static str,
+    /// Options JSON schemas accepted by this artifact.
+    pub options_schema_versions: Vec<u32>,
+    /// Binding-owned result and operation metadata payload schemas.
+    pub payload_schemas: Vec<RuntimePayloadSchema>,
+    /// Detailed metadata catalog IDs available through the transport's metadata dispatcher.
+    pub metadata_ids: Vec<&'static str>,
     pub capabilities: RuntimeCapabilities,
     pub output_contracts: Vec<RuntimeOutputContract>,
     pub registry: RuntimeRegistryContract,
     pub resources: RuntimeResourceContract,
 }
 
+/// One independently versioned binding payload advertised by [`RuntimeCatalog`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct RuntimePayloadSchema {
+    pub id: &'static str,
+    pub version: u32,
+}
+
 /// Runtime behavior of one output exposed by the concrete artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeOutputContract {
     pub id: &'static str,
     pub media_type: &'static str,
@@ -456,6 +484,7 @@ pub struct RuntimeOutputContract {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeSystemFontContract {
     pub source_id: &'static str,
     pub discovery: &'static str,
@@ -466,6 +495,7 @@ pub struct RuntimeSystemFontContract {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeEmbeddedImageContract {
     pub source_ids: &'static [&'static str],
     pub filesystem_access: bool,
@@ -475,6 +505,7 @@ pub struct RuntimeEmbeddedImageContract {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeEmbeddedImageLimits {
     pub max_bytes_per_image: Option<u64>,
     pub max_total_bytes: Option<u64>,
@@ -483,11 +514,13 @@ pub struct RuntimeEmbeddedImageLimits {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeRegistryContract {
     pub diagram_family_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeResourceContract {
     pub general_binding_default_profile: &'static str,
     pub cli_default_profile: &'static str,
@@ -496,15 +529,20 @@ pub struct RuntimeResourceContract {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeResourceLimit {
     pub id: &'static str,
     pub phase: &'static str,
     pub description: &'static str,
     pub overridable: bool,
     pub hard_cap: bool,
+    pub minimum_value: usize,
+    /// Transport-callable operations that accept this limit in `resources.limits`.
+    pub operation_ids: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeResourceProfile {
     pub id: &'static str,
     pub purpose: &'static str,
@@ -664,10 +702,24 @@ pub fn runtime_catalog_for(
 ) -> RuntimeCatalog {
     let capabilities = capability_surface.runtime_capabilities();
     let output_contracts = runtime_output_contracts_for(&capabilities);
+    let mut metadata_ids = BINDING_METADATA_IDS.to_vec();
+    metadata_ids.sort_unstable();
     RuntimeCatalog {
         schema_version: RUNTIME_CATALOG_SCHEMA_VERSION,
         transport_api_version,
         package_version: env!("CARGO_PKG_VERSION"),
+        options_schema_versions: vec![crate::BINDING_OPTIONS_SCHEMA_VERSION],
+        payload_schemas: vec![
+            RuntimePayloadSchema {
+                id: "binding-result",
+                version: crate::BINDING_RESULT_PAYLOAD_VERSION,
+            },
+            RuntimePayloadSchema {
+                id: "operation-metadata",
+                version: crate::BINDING_OPERATION_SCHEMA_VERSION,
+            },
+        ],
+        metadata_ids,
         output_contracts,
         registry: RuntimeRegistryContract {
             diagram_family_count: diagram_family_capabilities().len(),
@@ -717,7 +769,7 @@ fn runtime_output_contract(
                     source_ids: environment.embedded_images.source_ids,
                     filesystem_access: environment.embedded_images.filesystem_access,
                     network_access: environment.embedded_images.network_access,
-                    caller_configurable: false,
+                    caller_configurable: true,
                     limits: RuntimeEmbeddedImageLimits {
                         max_bytes_per_image: limits.max_bytes_per_image,
                         max_total_bytes: limits.max_total_bytes,
@@ -739,98 +791,61 @@ pub fn runtime_catalog_json(transport_api_version: u32) -> Result<Vec<u8>, Bindi
 }
 
 fn runtime_resource_contract_for(capabilities: &RuntimeCapabilities) -> RuntimeResourceContract {
-    #[cfg(feature = "svg")]
-    if capabilities.has_capability("svg") {
-        return svg_runtime_resource_contract();
-    }
-
-    input_runtime_resource_contract(capabilities)
-}
-
-#[cfg(feature = "svg")]
-fn svg_runtime_resource_contract() -> RuntimeResourceContract {
-    let limits = merman::svg::resource_limit_descriptors()
-        .iter()
-        .map(|descriptor| RuntimeResourceLimit {
-            id: descriptor.stable_id,
-            phase: descriptor.phase.as_str(),
-            description: descriptor.description,
-            overridable: descriptor.overridable,
-            hard_cap: descriptor.hard_cap,
-        })
-        .collect();
-    let profiles = merman::svg::resource_profile_descriptors()
-        .iter()
-        .map(|descriptor| {
-            let policy = merman::svg::RenderResourcePolicy::for_profile(descriptor.profile);
-            RuntimeResourceProfile {
-                id: descriptor.id,
-                purpose: descriptor.purpose,
-                trust_assumption: descriptor.trust_assumption,
-                recommended_binding_default: descriptor.recommended_binding_default,
-                limits: merman::svg::resource_limit_descriptors()
-                    .iter()
-                    .map(|limit| (limit.stable_id, policy.value(limit.id)))
-                    .collect(),
-            }
-        })
-        .collect();
-    RuntimeResourceContract {
-        general_binding_default_profile: merman::svg::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE.id(),
-        cli_default_profile: merman::svg::CLI_DEFAULT_RESOURCE_PROFILE.id(),
-        limits,
-        profiles,
-    }
-}
-
-fn input_runtime_resource_contract(capabilities: &RuntimeCapabilities) -> RuntimeResourceContract {
-    let limits = merman::resources::INPUT_RESOURCE_LIMIT_DESCRIPTORS
-        .iter()
+    let contract = crate::binding_resource_contract();
+    let limits = contract
+        .limits
+        .into_iter()
         .filter(|descriptor| {
-            input_resource_limit_available_for_capabilities(capabilities, descriptor.id)
-        })
-        .map(|descriptor| RuntimeResourceLimit {
-            id: descriptor.stable_id,
-            phase: descriptor.phase.as_str(),
-            description: descriptor.description,
-            overridable: descriptor.overridable,
-            hard_cap: false,
-        })
-        .collect();
-    let profiles = merman::resources::RESOURCE_PROFILE_DESCRIPTORS
-        .iter()
-        .map(|descriptor| {
-            let policy = merman::resources::InputResourcePolicy::for_profile(descriptor.profile);
-            RuntimeResourceProfile {
-                id: descriptor.id,
-                purpose: descriptor.purpose,
-                trust_assumption: descriptor.trust_assumption,
-                recommended_binding_default: descriptor.recommended_binding_default,
-                limits: merman::resources::InputResourceLimitId::ALL
-                    .into_iter()
-                    .filter(|limit| {
-                        input_resource_limit_available_for_capabilities(capabilities, *limit)
-                    })
-                    .map(|limit| (limit.as_str(), policy.value(limit)))
-                    .collect(),
+            match crate::resource_contract::resource_limit_owner(descriptor.stable_id) {
+                crate::resource_contract::BindingResourceOwner::Artifact => true,
+                crate::resource_contract::BindingResourceOwner::Capability(capability) => {
+                    capabilities.has_capability(capability)
+                }
+                crate::resource_contract::BindingResourceOwner::Outputs(outputs) => {
+                    outputs.iter().any(|output| capabilities.has_output(output))
+                }
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
     RuntimeResourceContract {
-        general_binding_default_profile:
-            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE.id(),
-        cli_default_profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE.id(),
-        limits,
-        profiles,
+        general_binding_default_profile: contract.general_binding_default_profile,
+        cli_default_profile: contract.cli_default_profile,
+        limits: limits
+            .iter()
+            .map(|descriptor| RuntimeResourceLimit {
+                id: descriptor.stable_id,
+                phase: descriptor.phase,
+                description: descriptor.description,
+                overridable: descriptor.overridable,
+                hard_cap: descriptor.hard_cap,
+                minimum_value: descriptor.minimum_value,
+                operation_ids: capabilities
+                    .operation_ids
+                    .iter()
+                    .copied()
+                    .filter(|operation_id| {
+                        crate::BindingOperationKind::from_id(operation_id).is_ok_and(|operation| {
+                            operation.resource_scope().accepts(descriptor.stable_id)
+                        })
+                    })
+                    .collect(),
+            })
+            .collect(),
+        profiles: contract
+            .profiles
+            .into_iter()
+            .map(|profile| RuntimeResourceProfile {
+                id: profile.id,
+                purpose: profile.purpose,
+                trust_assumption: profile.trust_assumption,
+                recommended_binding_default: profile.recommended_binding_default,
+                limits: limits
+                    .iter()
+                    .map(|limit| (limit.stable_id, profile.limits[limit.stable_id]))
+                    .collect(),
+            })
+            .collect(),
     }
-}
-
-fn input_resource_limit_available_for_capabilities(
-    _capabilities: &RuntimeCapabilities,
-    _id: merman::resources::InputResourceLimitId,
-) -> bool {
-    // semantic-json is capability-independent, so every artifact exposes all input limits.
-    true
 }
 
 pub fn diagram_family_capabilities() -> Vec<BindingDiagramFamilyCapability> {
@@ -1028,6 +1043,22 @@ pub fn diagram_family_capabilities_json() -> Result<Vec<u8>, BindingError> {
     let bytes = serde_json::to_vec(&diagram_family_capabilities()).map_err(internal_json_error)?;
     let _ = DIAGRAM_FAMILY_CAPABILITIES_JSON.set(bytes.clone());
     Ok(bytes)
+}
+
+/// Returns one transport-neutral binding metadata catalog by its stable identifier.
+pub fn binding_metadata_json(id: &str) -> Result<Vec<u8>, BindingError> {
+    match id {
+        "supported-diagrams" => supported_diagrams_json(),
+        "ascii-capabilities" => ascii_capabilities_json(),
+        "diagram-family-capabilities" => diagram_family_capabilities_json(),
+        "lint-rule-catalog" => lint_rule_catalog_json(),
+        "supported-themes" => supported_themes_json(),
+        "supported-host-theme-presets" => supported_host_theme_presets_json(),
+        _ => Err(BindingError::new(
+            crate::BindingStatus::InvalidArgument,
+            format!("unknown binding metadata catalog `{id}`"),
+        )),
+    }
 }
 
 fn cached_json(
@@ -1373,7 +1404,7 @@ mod tests {
                     assert_eq!(images.source_ids, ["data-url"]);
                     assert!(!images.filesystem_access);
                     assert!(!images.network_access);
-                    assert!(!images.caller_configurable);
+                    assert!(images.caller_configurable);
                     assert_eq!(images.limits.max_bytes_per_image, Some(16 * 1024 * 1024));
                     assert_eq!(images.limits.max_total_bytes, Some(32 * 1024 * 1024));
                     assert_eq!(images.limits.max_pixels_per_image, Some(16 * 1024 * 1024));
@@ -1387,69 +1418,92 @@ mod tests {
             diagram_family_capabilities().len()
         );
 
-        #[cfg(feature = "svg")]
-        {
-            let resources = &catalog.resources;
-            assert_eq!(resources.profiles.len(), 4);
-            assert_eq!(resources.limits.len(), 7);
-            assert_eq!(resources.general_binding_default_profile, "interactive");
-            assert_eq!(resources.cli_default_profile, "trusted-native");
-            assert!(resources.limits.iter().all(|limit| !limit.hard_cap));
-            let interactive = resources
+        let resources = &catalog.resources;
+        let expected_limit_count = crate::binding_resource_contract().limits.len();
+        assert_eq!(resources.profiles.len(), 4);
+        assert_eq!(resources.limits.len(), expected_limit_count);
+        assert!(
+            resources
                 .profiles
                 .iter()
-                .find(|profile| profile.id == "interactive")
-                .expect("interactive profile");
-            assert_eq!(interactive.limits["max_model_items"], Some(32_000));
-            assert_eq!(interactive.limits["max_layout_work_units"], Some(250_000));
-        }
-        #[cfg(all(not(feature = "svg"), not(feature = "ascii")))]
-        {
-            let resources = &catalog.resources;
-            assert_eq!(resources.profiles.len(), 4);
-            assert_eq!(resources.limits.len(), 4);
-            assert!(
-                resources
-                    .profiles
-                    .iter()
-                    .all(|profile| profile.limits.len() == 4)
-            );
-            assert!(
-                resources
-                    .limits
-                    .iter()
-                    .any(|limit| limit.id == "max_model_items")
-            );
-            assert_eq!(resources.general_binding_default_profile, "interactive");
-            assert_eq!(resources.cli_default_profile, "trusted-native");
-        }
-        #[cfg(all(not(feature = "svg"), feature = "ascii"))]
-        {
-            let resources = &catalog.resources;
-            let ids = resources
+                .all(|profile| profile.limits.len() == expected_limit_count)
+        );
+        assert_eq!(resources.general_binding_default_profile, "interactive");
+        assert_eq!(resources.cli_default_profile, "trusted-native");
+        assert_eq!(
+            resources
+                .profiles
+                .iter()
+                .filter(|profile| profile.recommended_binding_default)
+                .map(|profile| profile.id)
+                .collect::<Vec<_>>(),
+            vec![resources.general_binding_default_profile]
+        );
+        assert_eq!(
+            catalog.options_schema_versions,
+            vec![crate::BINDING_OPTIONS_SCHEMA_VERSION]
+        );
+        assert_eq!(
+            catalog.payload_schemas,
+            vec![
+                RuntimePayloadSchema {
+                    id: "binding-result",
+                    version: crate::BINDING_RESULT_PAYLOAD_VERSION,
+                },
+                RuntimePayloadSchema {
+                    id: "operation-metadata",
+                    version: crate::BINDING_OPERATION_SCHEMA_VERSION,
+                },
+            ]
+        );
+        let mut expected_metadata_ids = BINDING_METADATA_IDS.to_vec();
+        expected_metadata_ids.sort_unstable();
+        assert_eq!(catalog.metadata_ids, expected_metadata_ids);
+        assert_eq!(
+            resources.limits.iter().any(|limit| limit.hard_cap),
+            cfg!(any(feature = "png", feature = "jpeg", feature = "pdf"))
+        );
+        assert!(
+            resources
                 .limits
                 .iter()
-                .map(|limit| limit.id)
-                .collect::<std::collections::BTreeSet<_>>();
-            assert_eq!(
-                ids,
-                std::collections::BTreeSet::from([
-                    "max_source_bytes",
-                    "max_model_items",
-                    "max_model_text_bytes",
-                    "max_model_nesting_depth",
-                ])
-            );
-            assert_eq!(resources.general_binding_default_profile, "interactive");
-            assert_eq!(resources.cli_default_profile, "trusted-native");
-            assert!(resources.limits.iter().all(|limit| !limit.hard_cap));
-            assert!(
-                resources
-                    .limits
-                    .iter()
-                    .all(|limit| limit.phase == "source" || limit.phase == "layout_model")
-            );
-        }
+                .filter(|limit| limit.hard_cap)
+                .all(|limit| !limit.overridable)
+        );
+        assert!(
+            resources
+                .limits
+                .iter()
+                .any(|limit| limit.id == "max_model_items")
+        );
+        assert!(resources.limits.iter().all(|limit| {
+            limit.minimum_value == usize::from(limit.id != "max_document_diagrams")
+        }));
+        let interactive = resources
+            .profiles
+            .iter()
+            .find(|profile| profile.id == "interactive")
+            .expect("interactive profile");
+        assert_eq!(interactive.limits["max_model_items"], Some(32_000));
+        let source = resources
+            .limits
+            .iter()
+            .find(|limit| limit.id == "max_source_bytes")
+            .expect("source descriptor");
+        assert_eq!(source.operation_ids, catalog.capabilities.operation_ids);
+        let layout = resources
+            .limits
+            .iter()
+            .find(|limit| limit.id == "max_layout_work_units");
+        #[cfg(feature = "svg")]
+        assert_eq!(
+            layout.expect("layout descriptor").operation_ids,
+            ["jpeg", "layout-json", "pdf", "png", "svg"]
+        );
+        #[cfg(not(feature = "svg"))]
+        assert!(layout.is_none());
+        #[cfg(feature = "svg")]
+        assert_eq!(interactive.limits["max_layout_work_units"], Some(250_000));
         let json: Value = serde_json::from_slice(&runtime_catalog_json(2).unwrap()).unwrap();
         assert_eq!(json["schema_version"], RUNTIME_CATALOG_SCHEMA_VERSION);
         assert_eq!(json["transport_api_version"], 2);
@@ -1457,8 +1511,18 @@ mod tests {
         assert!(json.get("features").is_none());
         assert!(json.get("runtime_contract").is_none());
         assert!(json.get("capability_vocabulary").is_none());
-        assert!(json.get("options_schema_version").is_none());
-        assert!(json.get("payload_schemas").is_none());
+        assert_eq!(
+            json["options_schema_versions"],
+            serde_json::json!([crate::BINDING_OPTIONS_SCHEMA_VERSION])
+        );
+        assert_eq!(
+            json["payload_schemas"],
+            serde_json::to_value(&catalog.payload_schemas).unwrap()
+        );
+        assert_eq!(
+            json["metadata_ids"],
+            serde_json::to_value(&catalog.metadata_ids).unwrap()
+        );
         assert_eq!(
             json["capabilities"],
             serde_json::to_value(&catalog.capabilities).unwrap()
@@ -1527,7 +1591,7 @@ mod tests {
 
         assert_eq!(catalog.capabilities, capabilities);
         let resources = catalog.resources;
-        assert_eq!(resources.limits.len(), 4);
+        assert_eq!(resources.limits.len(), 5);
         assert!(
             resources
                 .limits
@@ -1538,7 +1602,13 @@ mod tests {
             resources
                 .profiles
                 .iter()
-                .all(|profile| profile.limits.len() == 4)
+                .all(|profile| profile.limits.len() == 5)
+        );
+        assert!(
+            resources
+                .limits
+                .iter()
+                .any(|limit| limit.id == "max_document_diagrams")
         );
     }
 
@@ -1848,6 +1918,51 @@ mod tests {
                 BindingStatus::UnsupportedOperation
             );
         }
+    }
+
+    #[test]
+    fn binding_metadata_json_dispatches_the_six_public_catalogs() {
+        let cases: [(&str, fn() -> Result<Vec<u8>, BindingError>); 6] = [
+            ("supported-diagrams", supported_diagrams_json),
+            ("ascii-capabilities", ascii_capabilities_json),
+            (
+                "diagram-family-capabilities",
+                diagram_family_capabilities_json,
+            ),
+            ("lint-rule-catalog", lint_rule_catalog_json),
+            ("supported-themes", supported_themes_json),
+            (
+                "supported-host-theme-presets",
+                supported_host_theme_presets_json,
+            ),
+        ];
+        assert_eq!(cases.map(|(id, _)| id), BINDING_METADATA_IDS);
+
+        for (id, expected) in cases {
+            match (binding_metadata_json(id), expected()) {
+                (Ok(actual), Ok(expected)) => assert_eq!(actual, expected, "{id}"),
+                (Err(actual), Err(expected)) => {
+                    assert_eq!(actual.status(), expected.status(), "{id}");
+                    assert_eq!(actual.kind(), expected.kind(), "{id}");
+                    assert_eq!(actual.capability_id(), expected.capability_id(), "{id}");
+                }
+                (actual, expected) => {
+                    panic!(
+                        "metadata dispatcher drifted for `{id}`: actual={actual:?}, expected={expected:?}"
+                    )
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn binding_metadata_json_rejects_unknown_catalogs() {
+        let error = binding_metadata_json("unknown-catalog").unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert_eq!(error.kind(), crate::BindingErrorKind::Generic);
+        assert_eq!(error.capability_id(), None);
+        assert!(error.message().contains("unknown binding metadata catalog"));
     }
 
     fn ascii_capability<'a>(

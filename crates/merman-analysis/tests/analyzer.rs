@@ -1,7 +1,8 @@
 use merman_analysis::{
-    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisOptions, AnalysisRuleConfig,
-    AnalysisRuleProfile, AnalysisStatus, Analyzer, DiagnosticCategory, DiagnosticSeverity,
-    FenceExpectedSyntaxKind, FenceTextIndexSource, SourceDescriptor, analyze_document_facts,
+    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisOptions,
+    AnalysisResourceLimit, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
+    DiagnosticCategory, DiagnosticSeverity, FenceExpectedSyntaxKind, FenceTextIndexSource,
+    SourceDescriptor, analyze_document_facts,
     document::{analyze_document, analyze_document_generation},
     source_descriptor_for_markdown_path,
 };
@@ -483,12 +484,11 @@ fn document_diagnostics_match_rich_generation_for_markdown_and_mdx() {
         let rich = analyze_document_generation(source, &analyzer, descriptor)
             .into_ready()
             .expect("document source should produce a rich analysis result");
+        let projected = rich.project(analyzer.options().diagnostic_policy());
+        let reprojected = rich.project(analyzer.options().diagnostic_policy());
 
-        assert_eq!(
-            diagnostics_only,
-            rich.project(analyzer.options().diagnostic_policy()),
-            "{path}"
-        );
+        assert_eq!(diagnostics_only, projected, "{path}");
+        assert_eq!(diagnostics_only, reprojected, "{path}");
         assert_eq!(diagnostics_only.diagnostics.len(), 1, "{path}");
         assert_eq!(
             diagnostics_only.diagnostics[0].id, "merman.parse.recovered_editor_facts",
@@ -500,6 +500,15 @@ fn document_diagnostics_match_rich_generation_for_markdown_and_mdx() {
                 .as_ref()
                 .map(|span| span.line),
             Some(6),
+            "{path}"
+        );
+        assert_eq!(
+            diagnostics_only.diagnostics[0]
+                .related
+                .iter()
+                .filter(|related| related.message == "Mermaid fence 1")
+                .count(),
+            1,
             "{path}"
         );
     }
@@ -974,8 +983,13 @@ fn plain_source_byte_limit_rejects_without_constructing_a_source_map() {
         .into_ready()
         .expect_err("source must be rejected before rich facts are constructed");
 
-    assert_eq!(rejection.source_len(), source.len());
-    assert_eq!(rejection.max_source_bytes(), 8);
+    assert_eq!(
+        rejection.resource_limit(),
+        AnalysisResourceLimit::SourceBytes {
+            source_len: source.len(),
+            max_source_bytes: 8,
+        }
+    );
     let diagnostic = &rejection.payload().diagnostics[0];
     assert_eq!(diagnostic.id, "merman.resource.source_bytes_exceeded");
     let span = diagnostic.span.as_ref().unwrap();
@@ -996,8 +1010,13 @@ fn markdown_document_source_byte_limit_applies_before_fence_analysis() {
     let rejection = analyze_document_generation(&source, &analyzer, descriptor.clone())
         .into_ready()
         .expect_err("document source must be rejected before fence analysis");
-    assert_eq!(rejection.source_len(), source.len());
-    assert_eq!(rejection.max_source_bytes(), 8);
+    assert_eq!(
+        rejection.resource_limit(),
+        AnalysisResourceLimit::SourceBytes {
+            source_len: source.len(),
+            max_source_bytes: 8,
+        }
+    );
 
     let payload = rejection.payload();
 
@@ -1060,10 +1079,136 @@ fn markdown_document_source_byte_limit_allows_exact_boundary() {
 }
 
 #[test]
+fn markdown_document_diagram_limit_allows_exact_boundary() {
+    let source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(2)));
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
+
+    let generation = analyze_document_generation(source, &analyzer, descriptor)
+        .into_ready()
+        .expect("a document at the diagram limit remains analyzable");
+
+    assert_eq!(generation.diagrams().len(), 2);
+}
+
+#[test]
+fn markdown_document_diagram_limit_rejects_before_rich_analysis() {
+    let source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(1)));
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
+
+    let rejection = analyze_document_generation(source, &analyzer, descriptor.clone())
+        .into_ready()
+        .expect_err("the second embedded diagram must exceed the document budget");
+
+    assert_eq!(
+        rejection.resource_limit(),
+        AnalysisResourceLimit::DocumentDiagrams {
+            observed_document_diagrams: 2,
+            max_document_diagrams: 1,
+        }
+    );
+    assert_eq!(rejection.payload().diagnostics.len(), 1);
+    assert_eq!(
+        rejection.payload().diagnostics[0].id,
+        "merman.resource.document_diagrams_exceeded"
+    );
+    let span = rejection.payload().diagnostics[0]
+        .span
+        .expect("document resource rejection must retain the host span");
+    assert_eq!(
+        span.byte_start,
+        source.match_indices("```mermaid").nth(1).unwrap().0
+    );
+    assert_eq!(span.byte_end, span.byte_start + "```".len());
+
+    let facts = analyze_document_facts(source, &analyzer, descriptor);
+    assert!(!facts.valid);
+    assert!(facts.diagrams.is_empty());
+}
+
+#[test]
+fn mdx_document_diagram_limit_counts_only_canonical_mermaid_fences() {
+    let source = concat!(
+        "````text\n```mermaid\nflowchart LR\nA-->B\n```\n````\n",
+        "~~~ Mermaid\nflowchart TD\nA-->B\n~~~\n",
+        ":::MERMAID\nsequenceDiagram\nA->>B: hi\n",
+    );
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(1)));
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.mdx"));
+
+    let rejection = analyze_document_generation(source, &analyzer, descriptor)
+        .into_ready()
+        .expect_err("the unclosed second Mermaid fence must exceed the limit");
+
+    assert_eq!(
+        rejection.resource_limit(),
+        AnalysisResourceLimit::DocumentDiagrams {
+            observed_document_diagrams: 2,
+            max_document_diagrams: 1,
+        }
+    );
+}
+
+#[test]
+fn document_diagram_limit_span_uses_host_utf16_coordinates() {
+    let source = "intro 🤓\r\n  ```mermaid\nflowchart TD\nA-->B\n```\n";
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(0)));
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
+
+    let rejection = analyze_document_generation(source, &analyzer, descriptor)
+        .into_ready()
+        .expect_err("the first Mermaid fence must exceed a zero diagram budget");
+    let span = rejection.payload().diagnostics[0].span.unwrap();
+
+    assert_eq!(&source[span.byte_start..span.byte_end], "```");
+    assert_eq!(span.line, 2);
+    assert_eq!(span.column, 3);
+    assert_eq!(span.lsp_range.start.line, 1);
+    assert_eq!(span.lsp_range.start.character, 2);
+    assert_eq!(span.lsp_range.end.character, 5);
+}
+
+#[test]
+fn standalone_diagram_ignores_host_document_diagram_limit() {
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(0)));
+
+    assert!(
+        analyzer
+            .analyze_generation("flowchart TD\nA-->B\n")
+            .into_ready()
+            .is_ok()
+    );
+}
+
+#[test]
+fn document_diagram_limit_rule_cannot_be_disabled() {
+    assert!(
+        AnalysisRuleConfig::default()
+            .with_rule_disabled("merman.resource.document_diagrams_exceeded")
+            .is_err()
+    );
+}
+
+#[test]
 fn mdx_document_source_byte_limit_applies_before_fence_analysis() {
     let source = format!("```mermaid\nflowchart TD\nA-->B\n```\n{}", "x".repeat(64));
-    let analyzer =
-        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    let analyzer = Analyzer::with_options(
+        AnalysisOptions::default()
+            .with_max_source_bytes(Some(8))
+            .with_max_document_diagrams(Some(0)),
+    );
     let descriptor = source_descriptor_for_markdown_path(Some("doc.mdx"));
 
     let rejection = analyze_document_generation(&source, &analyzer, descriptor)
@@ -1075,8 +1220,13 @@ fn mdx_document_source_byte_limit_applies_before_fence_analysis() {
         rejection.payload().diagnostics[0].id,
         "merman.resource.source_bytes_exceeded"
     );
-    assert_eq!(rejection.source_len(), source.len());
-    assert_eq!(rejection.max_source_bytes(), 8);
+    assert_eq!(
+        rejection.resource_limit(),
+        AnalysisResourceLimit::SourceBytes {
+            source_len: source.len(),
+            max_source_bytes: 8,
+        }
+    );
 }
 
 #[test]

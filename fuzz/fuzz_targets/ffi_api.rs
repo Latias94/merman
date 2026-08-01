@@ -8,9 +8,10 @@ use std::ptr;
 const MAX_FFI_INPUT_BYTES: usize = 16 * 1024;
 const MAX_OPTIONS_BYTES: usize = 256;
 const DEFAULT_URI: &[u8] = b"file:///fuzz.mmd";
-const FIXED_OPTIONS: &[u8] = br#"{"version":1,"fixed_today":"2025-01-01","fixed_local_offset_minutes":0,"resources":{"limits":{"max_source_bytes":16384,"max_svg_bytes":1048576,"max_model_items":2048,"max_model_text_bytes":65536,"max_layout_work_units":250000}}}"#;
+const FIXED_OPTIONS: &[u8] = br#"{"version":2,"fixed_today":"2025-01-01","fixed_local_offset_minutes":0,"resources":{"limits":{"max_source_bytes":16384,"max_svg_bytes":1048576,"max_model_items":2048,"max_model_text_bytes":65536,"max_layout_work_units":250000}}}"#;
 const MALFORMED_OPTIONS: &[u8] =
-    br#"{"version":1,"resources":{"limits":{"max_source_bytes":"bad"}}}"#;
+    br#"{"version":2,"resources":{"limits":{"max_source_bytes":"bad"}}}"#;
+const STALE_OPTIONS: &[u8] = br#"{"version":1}"#;
 
 fuzz_target!(|data: &[u8]| {
     if data.len() > MAX_FFI_INPUT_BYTES {
@@ -19,11 +20,12 @@ fuzz_target!(|data: &[u8]| {
 
     let input = decode_input(data);
     let api = discover_api();
-    let selector = input.selector % 18;
+    let selector = input.selector % 19;
 
     match selector {
         12 => consume_runtime_catalog(&api),
         17 => verify_discovery_rejects_a_stale_version(),
+        18 => consume_metadata(&api, input.source),
         _ => execute_operation(&api, input, selector),
     }
 });
@@ -44,6 +46,9 @@ fn decode_input(data: &[u8]) -> FuzzInput<'_> {
     }
     if let Some(source) = data.strip_prefix(b"invalid-options\n") {
         return text_seed(0, source, MALFORMED_OPTIONS);
+    }
+    if let Some(source) = data.strip_prefix(b"stale-options-version\n") {
+        return text_seed(0, source, STALE_OPTIONS);
     }
 
     let Some((&selector, source)) = data.split_first() else {
@@ -152,6 +157,7 @@ fn discover_api() -> MermanNativeApi {
     assert!(api.engine_try_close.is_some());
     assert!(api.execute_collect.is_some());
     assert!(api.result_free.is_some());
+    assert!(api.metadata_collect.is_some());
     api
 }
 
@@ -241,6 +247,14 @@ fn operation_for_selector(selector: u8) -> (MermanNativeOperationCode, bool) {
 fn consume_runtime_catalog(api: &MermanNativeApi) {
     let mut result = empty_result();
     let status = unsafe { api.runtime_catalog.unwrap()(&mut result) };
+    consume_result(api, &mut result, status);
+}
+
+fn consume_metadata(api: &MermanNativeApi, metadata_id: &[u8]) {
+    let mut result = empty_result();
+    let status = unsafe {
+        api.metadata_collect.unwrap()(borrowed_slice(metadata_id), &mut result)
+    };
     consume_result(api, &mut result, status);
 }
 

@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![doc = include_str!("../README.md")]
 
 //! Diagnostics-first analysis contracts and source mapping for Merman.
 //!
@@ -9,6 +10,7 @@ mod analyzer;
 mod cancellation;
 mod diagnostic_projection;
 pub mod document;
+mod document_limits;
 pub mod editor;
 pub mod markdown;
 pub mod options_json;
@@ -24,8 +26,10 @@ mod source_map;
 mod status;
 
 pub use analyzer::{
-    AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, AnalysisOptions, AnalysisSnapshotPolicy,
-    Analyzer,
+    ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS, AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity,
+    AnalysisOptions, AnalysisResourceLimitDescriptor, AnalysisResourceLimits,
+    AnalysisSnapshotPolicy, Analyzer, MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
+    analysis_resource_profile_value,
 };
 pub use cancellation::{AnalysisCancellationToken, AnalysisCancelled};
 pub use document::{
@@ -56,7 +60,8 @@ pub use result::{
     AnalysisFenceDelimiterFacts, AnalysisFlowchartEdgeDefaults, AnalysisFlowchartEdgeFacts,
     AnalysisFlowchartFacts, AnalysisFlowchartNodeFacts, AnalysisFlowchartSubgraphFacts,
     AnalysisGeneration, AnalysisLineItemFacts, AnalysisReferenceFacts, AnalysisRejection,
-    AnalysisSemanticItemFacts, AnalysisSyntaxFacts, AnalyzedDiagram, DiagramParseDisposition,
+    AnalysisResourceLimit, AnalysisSemanticItemFacts, AnalysisSyntaxFacts, AnalyzedDiagram,
+    DiagramParseDisposition,
 };
 pub use rules::{
     AnalysisRuleConfig, AnalysisRuleConfigError, AnalysisRuleProfile,

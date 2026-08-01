@@ -71,17 +71,6 @@ fn wasm_runtime_catalog() -> RuntimeCatalog {
     merman_bindings_core::runtime_catalog_for(WASM_TRANSPORT_API_VERSION, wasm_capability_surface())
 }
 
-#[derive(Debug, Serialize)]
-struct WasmErrorPayload<'a> {
-    version: u32,
-    ok: bool,
-    code: i32,
-    code_name: &'a str,
-    kind: &'a str,
-    capability_id: Option<&'a str>,
-    message: &'a str,
-}
-
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
@@ -298,24 +287,19 @@ fn json_value_result(result: Result<Vec<u8>, BindingError>) -> Result<JsValue, J
 }
 
 pub(crate) fn binding_error_to_js(err: BindingError) -> JsValue {
-    let payload = wasm_error_payload(&err);
-    payload
-        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-        .unwrap_or_else(|_| {
-            JsValue::from_str(&format!("{}: {}", payload.code_name, payload.message))
+    let fallback = format!("{}: {}", err.status().code_name(), err.message());
+    binding_error_payload_value(&err)
+        .and_then(|payload| {
+            payload
+                .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+                .map_err(|err| err.to_string())
         })
+        .unwrap_or_else(|_| JsValue::from_str(&fallback))
 }
 
-fn wasm_error_payload(err: &BindingError) -> WasmErrorPayload<'_> {
-    WasmErrorPayload {
-        version: 1,
-        ok: false,
-        code: err.status().code(),
-        code_name: err.status().code_name(),
-        kind: err.kind().id(),
-        capability_id: err.capability_id(),
-        message: err.message(),
-    }
+fn binding_error_payload_value(err: &BindingError) -> Result<serde_json::Value, String> {
+    serde_json::from_slice(&merman_bindings_core::binding_error_payload_json_bytes(err))
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -856,7 +840,7 @@ mod tests {
     #[test]
     fn wasm_error_payload_is_structured() {
         let err = merman_bindings_core::render_svg(b"flowchart TD\nA", b"{").unwrap_err();
-        let json = serde_json::to_value(wasm_error_payload(&err)).unwrap();
+        let json = binding_error_payload_value(&err).unwrap();
 
         assert_eq!(json["version"], 1);
         assert_eq!(json["ok"], false);
@@ -867,11 +851,26 @@ mod tests {
 
         if !cfg!(feature = "svg") {
             let err = merman_bindings_core::render_svg(b"flowchart TD\nA", b"{}").unwrap_err();
-            let json = serde_json::to_value(wasm_error_payload(&err)).unwrap();
+            let json = binding_error_payload_value(&err).unwrap();
             assert_eq!(json["code_name"], "MERMAN_UNSUPPORTED_OPERATION");
             assert_eq!(json["kind"], "missing-capability");
             assert_eq!(json["capability_id"], "svg");
         }
+
+        let err = BindingError::resource_limit(
+            "embedded_image_decode",
+            "max_embedded_image_bytes",
+            5,
+            4,
+            "constrained",
+            "embedded image is too large",
+        );
+        let json = binding_error_payload_value(&err).unwrap();
+        assert_eq!(
+            json["details"]["resource"]["limit_id"],
+            "max_embedded_image_bytes"
+        );
+        assert_eq!(json["details"]["resource"]["actual"], 5);
     }
 
     #[test]

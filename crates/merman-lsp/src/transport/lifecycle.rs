@@ -1,10 +1,9 @@
-use super::StdioTermination;
+use super::{StdioService, StdioTermination};
+use crate::session::ProtocolMessageShape;
 use futures::future::BoxFuture;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::task::{Context, Poll};
 use tokio::sync::Notify;
-use tower::Service;
 use tower_lsp_server::jsonrpc::{Error, Request, Response};
 
 const RUNNING: u8 = 0;
@@ -56,10 +55,12 @@ impl ProtocolLifecycleState {
     async fn exited(&self) {
         loop {
             let notified = self.exit_signal.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
             if self.has_exited() {
                 return;
             }
-            notified.await;
+            notified.as_mut().await;
         }
     }
 }
@@ -69,33 +70,28 @@ pub(super) struct ProtocolLifecycleService<S> {
     pub(super) lifecycle: Arc<ProtocolLifecycleState>,
 }
 
-impl<S> Service<Request> for ProtocolLifecycleService<S>
+impl<S> ProtocolLifecycleService<S>
 where
-    S: Service<Request, Response = Option<Response>>,
+    S: StdioService,
     S::Future: Send + 'static,
 {
-    type Response = Option<Response>;
-    type Error = S::Error;
-    type Future = BoxFuture<'static, Result<Option<Response>, S::Error>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, request: Request) -> Self::Future {
-        match (request.method(), request.id().cloned()) {
-            ("shutdown", None) => {
+    fn admit_with_lifecycle(
+        &mut self,
+        request: Request,
+    ) -> BoxFuture<'static, Result<Option<Response>, S::Error>> {
+        match ProtocolMessageShape::classify(&request) {
+            ProtocolMessageShape::ShutdownNotification => {
                 tracing::warn!("ignoring shutdown notification; shutdown must be a request");
                 Box::pin(async { Ok(None) })
             }
-            ("exit", Some(id)) => {
+            ProtocolMessageShape::ExitRequest(id) => {
                 tracing::warn!("rejecting exit request; exit must be a notification");
                 Box::pin(
                     async move { Ok(Some(Response::from_error(id, Error::invalid_request()))) },
                 )
             }
-            ("shutdown", Some(_)) => {
-                let future = self.inner.call(request);
+            ProtocolMessageShape::ShutdownRequest => {
+                let future = self.inner.admit(request);
                 let lifecycle = Arc::clone(&self.lifecycle);
                 Box::pin(async move {
                     let response = tokio::select! {
@@ -112,13 +108,13 @@ where
                     Ok(response)
                 })
             }
-            ("exit", None) => {
-                let future = self.inner.call(request);
+            ProtocolMessageShape::ExitNotification => {
+                let future = self.inner.admit(request);
                 self.lifecycle.observe_exit();
                 Box::pin(future)
             }
-            _ => {
-                let future = self.inner.call(request);
+            ProtocolMessageShape::Ordinary => {
+                let future = self.inner.admit(request);
                 let lifecycle = Arc::clone(&self.lifecycle);
                 Box::pin(async move {
                     tokio::select! {
@@ -129,5 +125,18 @@ where
                 })
             }
         }
+    }
+}
+
+impl<S> StdioService for ProtocolLifecycleService<S>
+where
+    S: StdioService,
+    S::Future: Send + 'static,
+{
+    type Error = S::Error;
+    type Future = BoxFuture<'static, Result<Option<Response>, S::Error>>;
+
+    fn admit(&mut self, request: Request) -> Self::Future {
+        self.admit_with_lifecycle(request)
     }
 }

@@ -1785,10 +1785,24 @@ impl HeadlessRenderer {
         text: &str,
         options: &merman_export::RasterOptions,
     ) -> OutputResult<Option<Vec<u8>>> {
+        Ok(self
+            .render_png_with_plan_sync(text, options)?
+            .map(|(bytes, _plan)| bytes))
+    }
+
+    /// Renders PNG and returns the effective bounded raster allocation plan used for encoding.
+    #[cfg(feature = "png")]
+    pub fn render_png_with_plan_sync(
+        &self,
+        text: &str,
+        options: &merman_export::RasterOptions,
+    ) -> OutputResult<Option<(Vec<u8>, merman_export::RasterPlan)>> {
         let Some(svg) = self.render_export_svg_sync(text)? else {
             return Ok(None);
         };
-        Ok(Some(merman_export::svg_to_png(&svg, options)?))
+        let prepared = merman_export::prepare_raster(&svg, options)?;
+        let plan = prepared.plan();
+        Ok(Some((prepared.encode_png()?, plan)))
     }
 
     #[cfg(feature = "jpeg")]
@@ -1797,10 +1811,24 @@ impl HeadlessRenderer {
         text: &str,
         options: &merman_export::RasterOptions,
     ) -> OutputResult<Option<Vec<u8>>> {
+        Ok(self
+            .render_jpeg_with_plan_sync(text, options)?
+            .map(|(bytes, _plan)| bytes))
+    }
+
+    /// Renders JPEG and returns the effective bounded raster allocation plan used for encoding.
+    #[cfg(feature = "jpeg")]
+    pub fn render_jpeg_with_plan_sync(
+        &self,
+        text: &str,
+        options: &merman_export::RasterOptions,
+    ) -> OutputResult<Option<(Vec<u8>, merman_export::RasterPlan)>> {
         let Some(svg) = self.render_export_svg_sync(text)? else {
             return Ok(None);
         };
-        Ok(Some(merman_export::svg_to_jpeg(&svg, options)?))
+        let prepared = merman_export::prepare_raster(&svg, options)?;
+        let plan = prepared.plan();
+        Ok(Some((prepared.encode_jpeg()?, plan)))
     }
 
     #[cfg(feature = "pdf")]
@@ -1815,9 +1843,23 @@ impl HeadlessRenderer {
         text: &str,
         options: &merman_export::PdfOptions,
     ) -> OutputResult<Option<Vec<u8>>> {
+        Ok(self
+            .render_pdf_with_plan_sync(text, options)?
+            .map(|(bytes, _plan)| bytes))
+    }
+
+    /// Renders PDF and returns the effective localized filter-image plan used for encoding.
+    #[cfg(feature = "pdf")]
+    pub fn render_pdf_with_plan_sync(
+        &self,
+        text: &str,
+        options: &merman_export::PdfOptions,
+    ) -> OutputResult<Option<(Vec<u8>, merman_export::PdfFilterImagePlan)>> {
         let Some(svg) = self.render_export_svg_sync(text)? else {
             return Ok(None);
         };
-        Ok(Some(merman_export::svg_to_pdf_with_options(&svg, options)?))
+        let prepared = merman_export::prepare_pdf(&svg, options)?;
+        let plan = prepared.filter_plan();
+        Ok(Some((prepared.encode()?, plan)))
     }
 }

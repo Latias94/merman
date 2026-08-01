@@ -188,7 +188,7 @@ def main() -> None:
     resource_options = (
         merman.ResourceOptionsBuilder()
         .profile(merman.ResourceProfile.CONSTRAINED)
-        .limit(merman.ResourceLimitId.MAX_SOURCE_BYTES, 4096)
+        .limit(merman.ResourceOverrideId.MAX_SOURCE_BYTES, 4096)
         .build()
         .to_options_json()
     )
@@ -197,7 +197,7 @@ def main() -> None:
             "limits": {"max_source_bytes": 4096},
             "profile": "constrained",
         },
-        "version": 1,
+        "version": 2,
     }:
         raise RuntimeError("resource options export smoke failed")
 
@@ -241,6 +241,30 @@ def main() -> None:
             raise
     else:
         raise RuntimeError("unknown operation did not preserve its typed binding error")
+
+    tiny_source_options = json.dumps(
+        {
+            "version": 2,
+            "resources": {
+                "profile": "constrained",
+                "limits": {"max_source_bytes": 8},
+            },
+        }
+    )
+    try:
+        engine.render_svg(source, tiny_source_options)
+    except merman.MermanError.Binding as error:
+        if (
+            error.code_name != "MERMAN_RESOURCE_LIMIT_EXCEEDED"
+            or error.resource is None
+            or error.resource.limit_id != "max_source_bytes"
+            or error.resource.phase != "source"
+            or error.resource.actual <= error.resource.max
+            or error.resource.profile != "constrained"
+        ):
+            raise
+    else:
+        raise RuntimeError("resource failure did not preserve structured details")
 
     png = engine.render_png(source, None)
     if not png.startswith(b"\x89PNG\r\n\x1a\n"):

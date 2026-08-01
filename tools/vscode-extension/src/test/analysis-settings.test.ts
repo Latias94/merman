@@ -16,6 +16,7 @@ describe("analysis settings normalization", () => {
         },
       },
       maxSourceBytes: 1024,
+      maxDocumentDiagrams: 256,
     }), {
       fixed_today: "2024-02-29",
       fixed_local_offset_minutes: -1439,
@@ -28,6 +29,7 @@ describe("analysis settings normalization", () => {
       resources: {
         limits: {
           max_source_bytes: 1024,
+          max_document_diagrams: 256,
         },
       },
       lint: {
@@ -49,6 +51,22 @@ describe("analysis settings normalization", () => {
     }
   });
 
+  it("keeps a document-diagram limit without requiring a source-byte override", () => {
+    assert.deepEqual(normalizeAnalysisSettings({
+      ...defaultRawAnalysisSettings(),
+      maxDocumentDiagrams: 128,
+    }), {
+      resources: {
+        limits: {
+          max_document_diagrams: 128,
+        },
+      },
+      lint: {
+        profile: "core",
+      },
+    });
+  });
+
   it("drops invalid fixed_today strings before sending LSP settings", () => {
     for (const fixedToday of ["2026-02-29", "2026-13-01", "20260705"]) {
       assert.deepEqual(normalizeAnalysisSettings({
@@ -67,6 +85,7 @@ describe("analysis settings normalization", () => {
       ...defaultRawAnalysisSettings(),
       fixedLocalOffsetMinutes: 1439.5,
       maxSourceBytes: 4096.25,
+      maxDocumentDiagrams: 256.5,
     }), {
       lint: {
         profile: "core",
@@ -76,6 +95,7 @@ describe("analysis settings normalization", () => {
       ...defaultRawAnalysisSettings(),
       fixedLocalOffsetMinutes: 1440,
       maxSourceBytes: -1,
+      maxDocumentDiagrams: 0,
     }), {
       lint: {
         profile: "core",
@@ -101,6 +121,7 @@ function defaultRawAnalysisSettings(): RawAnalysisSettings {
     fixedLocalOffsetMinutes: null,
     siteConfig: {},
     maxSourceBytes: 0,
+    maxDocumentDiagrams: 0,
     lintProfile: "core",
     enableRules: [],
     disableRules: [],

@@ -21,13 +21,16 @@ pub use protocol::{
     EXPERIMENTAL_SCHEMA_VERSION, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION,
     RuleCatalogEntry, RuleCatalogResponse,
 };
-pub use refresh_transport::MermanClientSocket;
+pub use refresh_transport::{
+    MermanClientSocket, MermanClientSocketError, MermanRequestStream, MermanResponseSink,
+};
 pub use server::MermanLanguageServer;
 pub use session::{
-    LSP_HANDLER_CONCURRENCY, LSP_MAX_MESSAGE_BYTES, LSP_REQUEST_BYTE_BUDGET, MermanLspService,
+    LSP_CONTROL_HANDLER_CONCURRENCY, LSP_MAX_MESSAGE_BYTES, LSP_ORDINARY_HANDLER_CONCURRENCY,
+    LSP_REQUEST_BYTE_BUDGET, LSP_TOTAL_HANDLER_CONCURRENCY, MermanLspService,
 };
 #[cfg(feature = "stdio")]
-pub use transport::{StdioServer, StdioTermination, serve_stdio, stdio_server};
+pub use transport::{StdioServer, StdioService, StdioTermination, serve_stdio, stdio_server};
 
 #[cfg(test)]
 mod completion_tests;

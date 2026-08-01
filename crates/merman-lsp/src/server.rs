@@ -29,8 +29,8 @@ use crate::structure::{
     selection_ranges as structure_selection_ranges,
 };
 use merman_analysis::{
-    AnalysisPayload, SourceKind, options_json::analysis_options_from_json_value,
-    source_descriptor_for_kind, source_discarded_after_limit_change_diagnostic_with_span,
+    AnalysisPayload, options_json::analysis_options_from_json_value, source_descriptor_for_kind,
+    source_discarded_after_limit_change_diagnostic_with_span,
     source_limit_diagnostic_for_len_and_span,
 };
 #[cfg(test)]
@@ -113,30 +113,7 @@ impl MermanLanguageServer {
         let (refresh_client, refresh_requests, refresh_responses) = RefreshClient::channel();
         let refresh_handle = refresh_client.clone();
         let session = LanguageSession::with_refresh_client(refresh_client);
-        let backend_session = session.clone();
-        #[cfg(test)]
-        let backend = Arc::new(OnceLock::new());
-        #[cfg(test)]
-        let backend_slot = Arc::clone(&backend);
-        let (service, socket) = LspService::build(move |client| {
-            let server = Self::new(client, backend_session.clone());
-            #[cfg(test)]
-            backend_slot
-                .set(server.clone())
-                .expect("LSP backend is constructed exactly once");
-            server
-        })
-        .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
-        .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
-        .finish();
-        #[cfg(test)]
-        let backend = backend
-            .get()
-            .expect("LSP service builder constructs its backend")
-            .clone();
-        #[cfg(test)]
-        let service = MermanLspService::with_backend_for_tests(service, session.clone(), backend);
-        #[cfg(not(test))]
+        let (service, socket) = Self::protocol_service(session.clone());
         let service = MermanLspService::new(service, session.clone());
         let socket = MermanClientSocket::new(
             socket,
@@ -147,15 +124,16 @@ impl MermanLanguageServer {
         (service, socket, refresh_handle)
     }
 
-    #[cfg(test)]
-    pub(crate) fn service_with_refresh_client()
-    -> (MermanLspService, MermanClientSocket, RefreshClient) {
-        Self::service_components()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn client_for_tests(&self) -> Client {
-        self.client.clone()
+    fn protocol_service(
+        session: LanguageSession,
+    ) -> (LspService<Self>, tower_lsp_server::ClientSocket) {
+        let backend_session = session.clone();
+        let (service, socket) =
+            LspService::build(move |client| Self::new(client, backend_session.clone()))
+                .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
+                .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
+                .finish();
+        (service, socket)
     }
 
     /// Returns the server's full capability envelope without client-side negotiation.
@@ -286,6 +264,14 @@ impl MermanLanguageServer {
         document: &StoredDocument,
         profile: &ClientProtocolProfile,
     ) -> Option<Vec<Diagnostic>> {
+        if let Some(rejection) = document.analysis_rejection() {
+            return Some(Self::analysis_payload_diagnostics_with_profile(
+                document,
+                rejection.payload(),
+                profile,
+            ));
+        }
+
         let diagnostic = if let Some(resource_limit) = document.resource_limit() {
             source_limit_diagnostic_for_len_and_span(
                 resource_limit.source_len,
@@ -382,7 +368,7 @@ impl MermanLanguageServer {
         let Some(publisher) = self.diagnostic_publisher() else {
             return;
         };
-        let key = ClientEffectKey::Document(uri.as_str().to_owned());
+        let key = ClientEffectKey::Document(uri.clone());
         self.session
             .enqueue_latest_client_effect(key, async move {
                 publisher.synchronize_uri(uri).await;
@@ -931,12 +917,7 @@ fn source_descriptor_for_document(
     uri: &tower_lsp_server::ls_types::Uri,
     kind: DocumentKind,
 ) -> merman_analysis::SourceDescriptor {
-    let source_kind = match kind {
-        DocumentKind::Diagram => SourceKind::Diagram,
-        DocumentKind::Markdown => SourceKind::Markdown,
-        DocumentKind::Mdx => SourceKind::Mdx,
-    };
-    source_descriptor_for_kind(Some(uri.as_str()), source_kind)
+    source_descriptor_for_kind(Some(uri.as_str()), kind.source_kind())
 }
 
 fn document_kind_for_language_id(
@@ -951,5 +932,7 @@ fn document_kind_for_language_id(
     }
 }
 
+#[cfg(test)]
+pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;

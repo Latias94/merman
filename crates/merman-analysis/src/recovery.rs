@@ -21,22 +21,9 @@ impl AnalysisRecoveryDiagnostic {
     }
 }
 
-pub(crate) fn merge_recovery_diagnostics(
-    diagnostics: &mut Vec<AnalysisDiagnostic>,
-    recovery_diagnostics: Vec<AnalysisRecoveryDiagnostic>,
-    primary_parse_location: Option<ParseDiagnosticLocation>,
-) {
-    for recovery in recovery_diagnostics {
-        if merge_duplicate_parse_recovery_diagnostic(diagnostics, &recovery, primary_parse_location)
-        {
-            continue;
-        }
-        diagnostics.push(recovery.diagnostic);
-    }
-}
-
-fn merge_duplicate_parse_recovery_diagnostic(
-    diagnostics: &mut [AnalysisDiagnostic],
+pub(crate) fn merge_duplicate_parse_recovery_diagnostic(
+    primary: &mut AnalysisDiagnostic,
+    primary_trailing_source_context_count: usize,
     recovery: &AnalysisRecoveryDiagnostic,
     primary_parse_location: Option<ParseDiagnosticLocation>,
 ) -> bool {
@@ -44,27 +31,41 @@ fn merge_duplicate_parse_recovery_diagnostic(
         return false;
     }
 
-    let Some(primary) = diagnostics.iter_mut().find(|diagnostic| {
-        is_same_parse_recovery_problem(diagnostic, &recovery.diagnostic, primary_parse_location)
-    }) else {
+    if !is_same_parse_recovery_problem(primary, &recovery.diagnostic, primary_parse_location) {
         return false;
-    };
+    }
 
+    let mut related_insertion_index = primary
+        .related
+        .len()
+        .saturating_sub(primary_trailing_source_context_count);
+
+    // Host-document context is normalized onto candidates during capture but remains the final
+    // related location on the wire. Insert recovery refinements immediately before that tail.
     if is_better_primary_parse_span(primary, &recovery.diagnostic) {
         if let Some(previous_span) = primary.span {
-            primary.related.push(crate::DiagnosticRelated {
-                message: "Parser reported this original parse location before recovery refinement."
-                    .to_string(),
-                span: Some(previous_span),
-            });
+            primary.related.insert(
+                related_insertion_index,
+                crate::DiagnosticRelated {
+                    message:
+                        "Parser reported this original parse location before recovery refinement."
+                            .to_string(),
+                    span: Some(previous_span),
+                },
+            );
+            related_insertion_index = related_insertion_index.saturating_add(1);
         }
         primary.span = recovery.diagnostic.span;
     }
-    primary.related.push(crate::DiagnosticRelated {
-        message: "Parser recovery produced the same syntax problem while preserving editor facts."
-            .to_string(),
-        span: recovery.diagnostic.span,
-    });
+    primary.related.insert(
+        related_insertion_index,
+        crate::DiagnosticRelated {
+            message:
+                "Parser recovery produced the same syntax problem while preserving editor facts."
+                    .to_string(),
+            span: recovery.diagnostic.span,
+        },
+    );
     true
 }
 

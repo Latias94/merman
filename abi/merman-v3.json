@@ -12,12 +12,46 @@
     "record_count": 9
   },
   "minimum_semantics": [
-    "written-results-own-nonzero-allocation-tokens",
-    "result-free-authorizes-by-token-and-clears-the-record",
-    "engine-try-close-is-nonblocking-and-success-is-quiescent",
-    "host-callback-nonlocal-exits-are-forbidden",
-    "engine-new-inputs-and-outputs-do-not-overlap",
-    "error-kind-vocabulary-is-closed"
+    {
+      "id": "written-results-own-nonzero-allocation-tokens",
+      "description": "Any producing call that writes Merman-owned result bytes writes a process-lifetime monotonic nonzero allocation_token; token exhaustion returns internal-error and leaves a caller-valid zero-initialized result unchanged."
+    },
+    {
+      "id": "result-free-authorizes-by-token-and-clears-the-record",
+      "description": "result_free authorizes release solely by a live allocation_token, never by buffer pointers; zero, unknown, stale, or random non-live tokens release nothing, and every call clears the complete supplied result record before releasing the token allocation."
+    },
+    {
+      "id": "engine-try-close-is-nonblocking-and-success-is-quiescent",
+      "description": "engine_try_close never waits: callback-active returns reentrant-call, another active operation returns busy with the token still valid, and quiescent success closes admission, retires the token, and guarantees callback and user_data quiescence."
+    },
+    {
+      "id": "host-callback-nonlocal-exits-are-forbidden",
+      "description": "Host callbacks are synchronous and MUST NOT unwind, throw, propagate SEH, call longjmp, or otherwise perform a non-local exit across the ABI boundary; Merman converts only returned status values and cannot catch foreign exceptions."
+    },
+    {
+      "id": "engine-new-inputs-and-outputs-do-not-overlap",
+      "description": "For engine_new, the config record, its options_json storage, out_engine storage, and out_result storage MUST be pairwise non-overlapping, and out_engine must be initialized to zero."
+    },
+    {
+      "id": "error-kind-vocabulary-is-closed",
+      "description": "The ABI 3 error-kind vocabulary is exactly generic, unknown-operation, missing-capability, reentrant-call, and busy; adding, removing, or renaming an error kind requires a new ABI version."
+    },
+    {
+      "id": "api-table-capacity-returns-complete-prefix",
+      "description": "Discovery treats MermanNativeApi.struct_size as input capacity and returns only the largest complete producer prefix safely initialized within that capacity; it never exposes a partial appended slot, and the returned size is safe to reuse as capacity for another discovery call."
+    },
+    {
+      "id": "moved-result-record-transfers-token-ownership",
+      "description": "Moving the complete MermanNativeResult record transfers its live allocation_token ownership; result_free clears the supplied record before releasing the token allocation, so the moved record may reside inside Merman-owned result storage."
+    },
+    {
+      "id": "input-and-callback-slices-are-borrowed",
+      "description": "Input, media-type, and callback slices are borrowed; hosts MUST NOT retain their pointers after the enclosing call or callback returns."
+    },
+    {
+      "id": "callback-state-is-constructor-owned-until-quiescent-close",
+      "description": "Callback and user_data are immutable constructor-owned engine state, remain valid until successful quiescent engine_try_close, and may be released only after that close succeeds."
+    }
   ],
   "error_kinds": [
     { "id": "generic", "c_name": "MERMAN_NATIVE_ERROR_KIND_GENERIC", "json_name": "generic", "description": "A failure without a more specific machine-readable binding classification." },
@@ -147,6 +181,19 @@
         { "name": "result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
       ],
       "description": "Release the allocation identified by allocation_token and clear the complete record. Moving the complete record transfers ownership. Zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. The token is an ownership identity, not an authorization boundary against hostile same-process memory access."
+    },
+    {
+      "id": "metadata_collect",
+      "c_name": "MermanNativeMetadataCollectFn",
+      "rust_name": "MermanNativeMetadataCollectFn",
+      "code": 5,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "metadata_id", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Collect one named binding metadata document. The UTF-8 metadata_id is borrowed for the call. Success writes JSON to metadata_or_error_json with operation none; every written success or failure result owns a nonzero allocation token and must be released with result_free."
     }
   ],
   "records": [
@@ -271,10 +318,10 @@
       "id": "api",
       "c_name": "MermanNativeApi",
       "rust_name": "MermanNativeApi",
-      "description": "A size-tagged ABI function table. The caller supplies buffer capacity in struct_size; Merman writes the common prefix, then reports the producer full size in struct_size. Function slots append in stable code order.",
+      "description": "A size-tagged ABI function table. The caller supplies buffer capacity in struct_size; Merman writes the largest complete common prefix that fits and reports that safely initialized prefix size in struct_size. Function slots append in stable code order.",
       "appends_function_slots": true,
       "fields": [
-        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to buffer capacity; Merman reports the producer full size on output" },
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to buffer capacity; Merman reports the largest complete producer prefix safely initialized within that capacity" },
         { "name": "abi_version", "c_type": "uint32_t", "rust_type": "u32", "ownership": "native ABI discriminator" },
         { "name": "minimum_prefix_layout_digest", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static minimum-prefix compatibility digest bytes" },
         { "name": "full_descriptor_digest", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static full descriptor provenance digest bytes" },
@@ -284,7 +331,7 @@
     }
   ],
   "ownership_rules": [
-    { "id": "result_buffers", "description": "Only result.data and result.metadata_or_error_json identified by a live allocation_token are Merman-owned. Callers zero-initialize the complete result and set struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero token that is never reused. If token issuance is exhausted, the call returns internal-error and leaves the caller's valid zero-initialized result untouched because no conforming result can be written. Moving the complete record transfers ownership. result_free trusts only the token, never buffer pointers; zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. Copying a live token is outside the same-process hostile-memory threat boundary. No result buffer may be passed to a host allocator." },
+    { "id": "result_buffers", "description": "Only result.data and result.metadata_or_error_json identified by a live allocation_token are Merman-owned. Callers zero-initialize the complete result and set struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero token that is never reused. If token issuance is exhausted, the call returns internal-error and leaves the caller's valid zero-initialized result untouched because no conforming result can be written. Moving the complete record transfers ownership. result_free clears the supplied record before trusting its token to release the backing allocation, so a moved record may reside inside Merman-owned result storage. Zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. Copying a live token is outside the same-process hostile-memory threat boundary. No result buffer may be passed to a host allocator." },
     { "id": "borrowed_slices", "description": "Input, media-type, and callback slices are borrowed. Hosts must not retain their pointers after the enclosing call or callback returns." },
     { "id": "engine_tokens", "description": "Engine tokens are opaque u64 values. engine_try_close never waits: callback-active returns reentrant-call, another active operation returns busy with the token still valid, and quiescent success permanently closes admission before retiring the token. A transport reference acquired before successful close cannot enter afterwards. Callback and user_data are immutable constructor-owned state and may be released after successful close." },
     { "id": "host_callbacks", "description": "Host callbacks are synchronous and borrowed for the call. They MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local exit across the ABI boundary. Merman converts returned status values only; it cannot catch foreign exceptions." },

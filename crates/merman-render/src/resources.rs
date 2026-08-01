@@ -137,6 +137,7 @@ impl ResourceLimitId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ResourceLimitDescriptor {
     pub id: ResourceLimitId,
     pub stable_id: &'static str,
@@ -144,6 +145,7 @@ pub struct ResourceLimitDescriptor {
     pub description: &'static str,
     pub overridable: bool,
     pub hard_cap: bool,
+    pub minimum_value: usize,
 }
 
 const fn input_descriptor(id: InputResourceLimitId) -> ResourceLimitDescriptor {
@@ -158,6 +160,7 @@ const fn input_descriptor(id: InputResourceLimitId) -> ResourceLimitDescriptor {
         description: descriptor.description,
         overridable: descriptor.overridable,
         hard_cap: false,
+        minimum_value: descriptor.minimum_value,
     }
 }
 
@@ -169,6 +172,7 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
         description: "Maximum serialized SVG bytes",
         overridable: true,
         hard_cap: false,
+        minimum_value: 1,
     },
     ResourceLimitDescriptor {
         id: ResourceLimitId::MaxSvgElements,
@@ -177,6 +181,7 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
         description: "Maximum SVG element count",
         overridable: true,
         hard_cap: false,
+        minimum_value: 1,
     },
     ResourceLimitDescriptor {
         id: ResourceLimitId::MaxLayoutWorkUnits,
@@ -185,6 +190,7 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
         description: "Maximum family-accounted derived layout and render geometry work units",
         overridable: true,
         hard_cap: false,
+        minimum_value: 1,
     },
 ];
 
@@ -591,6 +597,7 @@ impl OperationWorkMeter {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("resource limit exceeded during {phase}: {limit} actual={actual} max={max}")]
+#[non_exhaustive]
 pub struct ResourceLimitExceeded {
     pub phase: ResourceLimitPhase,
     pub limit: &'static str,

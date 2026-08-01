@@ -11,6 +11,7 @@ mod engine;
 mod lifecycle;
 mod metadata;
 mod operation;
+mod resource_contract;
 mod svg_plan;
 #[cfg(feature = "svg")]
 mod text_measurement;
@@ -22,7 +23,7 @@ mod render;
 
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError, BindingErrorKind,
-    BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
+    BindingResourceErrorDetails, BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
     binding_error_payload_json_bytes, error_payload_json_bytes, render_payload_json_bytes,
     render_resource_options_unavailable, resource_options_json,
 };
@@ -32,25 +33,31 @@ pub use lifecycle::{
     BindingEngineAdmissionMode, BindingOperationAdmission,
 };
 pub use metadata::{
-    ArtifactCapabilitySurface, BindingAsciiCapability, BindingAsciiCapabilityEvidence,
-    BindingDiagramFamilyCapability, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,
-    RuntimeCapabilities, RuntimeCatalog, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
-    RuntimeOutputContract, RuntimeRegistryContract, RuntimeResourceContract, RuntimeResourceLimit,
-    RuntimeResourceProfile, RuntimeSystemFontContract, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
+    ArtifactCapabilitySurface, BINDING_METADATA_IDS, BindingAsciiCapability,
+    BindingAsciiCapabilityEvidence, BindingDiagramFamilyCapability, RUNTIME_CATALOG_SCHEMA_VERSION,
+    RuleCatalogEntry, RuntimeCapabilities, RuntimeCatalog, RuntimeEmbeddedImageContract,
+    RuntimeEmbeddedImageLimits, RuntimeOutputContract, RuntimePayloadSchema,
+    RuntimeRegistryContract, RuntimeResourceContract, RuntimeResourceLimit, RuntimeResourceProfile,
+    RuntimeSystemFontContract, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
     TEXT_MEASUREMENT_PROVIDER_VENDORED, TextMeasurementCapabilities,
     TextMeasurementProviderProjection, ascii_capabilities, ascii_capabilities_json,
-    ascii_supported_diagrams, ascii_supported_diagrams_json, binding_transport_capability_surface,
-    compiled_runtime_capabilities, compiled_runtime_capability_surface,
-    configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,
-    diagram_family_capabilities, diagram_family_capabilities_json, lint_rule_catalog,
-    lint_rule_catalog_json, runtime_capabilities_json, runtime_capabilities_json_for,
-    runtime_catalog, runtime_catalog_for, runtime_catalog_json, supported_diagrams,
-    supported_diagrams_json, supported_host_theme_presets, supported_host_theme_presets_json,
-    supported_themes, supported_themes_json,
+    ascii_supported_diagrams, ascii_supported_diagrams_json, binding_metadata_json,
+    binding_transport_capability_surface, compiled_runtime_capabilities,
+    compiled_runtime_capability_surface, configurable_lint_rule_catalog,
+    configurable_lint_rule_catalog_json, diagram_family_capabilities,
+    diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
+    runtime_capabilities_json, runtime_capabilities_json_for, runtime_catalog, runtime_catalog_for,
+    runtime_catalog_json, supported_diagrams, supported_diagrams_json,
+    supported_host_theme_presets, supported_host_theme_presets_json, supported_themes,
+    supported_themes_json,
 };
 pub use operation::{
     BINDING_OPERATION_SCHEMA_VERSION, BindingOperationKind, BindingOperationRequest,
     BindingOperationResult, OperationKey, OperationSpec, compiled_operation_kind_ids, execute_once,
+};
+pub use resource_contract::{
+    BindingResourceContract, BindingResourceLimitDescriptor, BindingResourceProfileDescriptor,
+    binding_resource_contract,
 };
 pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
 
@@ -303,6 +310,31 @@ mod tests {
             "file:///tmp/example.mdx?rev=1#fence"
         );
         assert_eq!(json["diagnostics"][0]["span"]["line"], 4);
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn analyze_document_json_enforces_the_host_document_diagram_limit() {
+        let source = concat!(
+            "```mermaid\nflowchart TD\nA-->B\n```\n",
+            "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+        );
+        let options = br#"{
+            "resources": {
+                "limits": { "max_document_diagrams": 1 }
+            }
+        }"#;
+        let json: Value = serde_json::from_slice(
+            &analyze_document_json(source.as_bytes(), options, b"file:///tmp/limited.md").unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["valid"], false);
+        assert_eq!(
+            json["diagnostics"][0]["id"],
+            "merman.resource.document_diagrams_exceeded"
+        );
+        assert_eq!(json["diagnostics"][0]["span"]["line"], 5);
     }
 
     #[cfg(feature = "analysis")]

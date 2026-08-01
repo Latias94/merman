@@ -6,7 +6,7 @@ pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
     "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:4398fdaa3ef669d688402f2bb1ea864a2e42629f94f9681df8149b7d0c514cb8";
+    "sha256:ca06712df13d9cf871258c726cf4f587906245264cbc00828a12ef36542c6ba8";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -293,6 +293,7 @@ pub const MERMAN_NATIVE_FUNCTION_ENGINE_NEW: MermanNativeFunctionSlot = 1;
 pub const MERMAN_NATIVE_FUNCTION_ENGINE_TRY_CLOSE: MermanNativeFunctionSlot = 2;
 pub const MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT: MermanNativeFunctionSlot = 3;
 pub const MERMAN_NATIVE_FUNCTION_RESULT_FREE: MermanNativeFunctionSlot = 4;
+pub const MERMAN_NATIVE_FUNCTION_METADATA_COLLECT: MermanNativeFunctionSlot = 5;
 
 pub type MermanNativeEngineToken = u64;
 
@@ -402,8 +403,8 @@ pub struct MermanNativeApiRequest {
 }
 
 /// A size-tagged ABI function table. The caller supplies buffer capacity in struct_size; Merman
-/// writes the common prefix, then reports the producer full size in struct_size. Function slots
-/// append in stable code order.
+/// writes the largest complete common prefix that fits and reports that safely initialized prefix
+/// size in struct_size. Function slots append in stable code order.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct MermanNativeApi {
@@ -418,6 +419,7 @@ pub struct MermanNativeApi {
     pub engine_try_close: Option<MermanNativeEngineTryCloseFn>,
     pub execute_collect: Option<MermanNativeExecuteCollectFn>,
     pub result_free: Option<MermanNativeResultFreeFn>,
+    pub metadata_collect: Option<MermanNativeMetadataCollectFn>,
 }
 
 pub type MermanNativeTextMeasureCallback = unsafe extern "C" fn(
@@ -441,10 +443,23 @@ pub type MermanNativeExecuteCollectFn = unsafe extern "C" fn(
     out_result: *mut MermanNativeResult,
 ) -> MermanNativeStatus;
 pub type MermanNativeResultFreeFn = unsafe extern "C" fn(result: *mut MermanNativeResult) -> ();
+pub type MermanNativeMetadataCollectFn = unsafe extern "C" fn(
+    metadata_id: MermanNativeSlice,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus;
 
 pub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, result_free)
         + std::mem::size_of::<Option<MermanNativeResultFreeFn>>()) as u32;
+
+pub const MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE: u32 =
+    (std::mem::offset_of!(MermanNativeApi, metadata_collect)
+        + std::mem::size_of::<Option<MermanNativeMetadataCollectFn>>()) as u32;
+
+pub const MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES: &[u32] = &[
+    MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
+    MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
+];
 
 pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
     (
@@ -465,6 +480,6 @@ pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
     ),
     (
         "result_buffers",
-        "Only result.data and result.metadata_or_error_json identified by a live allocation_token are Merman-owned. Callers zero-initialize the complete result and set struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero token that is never reused. If token issuance is exhausted, the call returns internal-error and leaves the caller's valid zero-initialized result untouched because no conforming result can be written. Moving the complete record transfers ownership. result_free trusts only the token, never buffer pointers; zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. Copying a live token is outside the same-process hostile-memory threat boundary. No result buffer may be passed to a host allocator.",
+        "Only result.data and result.metadata_or_error_json identified by a live allocation_token are Merman-owned. Callers zero-initialize the complete result and set struct_size before every producing call. Merman assigns a process-lifetime monotonic nonzero token that is never reused. If token issuance is exhausted, the call returns internal-error and leaves the caller's valid zero-initialized result untouched because no conforming result can be written. Moving the complete record transfers ownership. result_free clears the supplied record before trusting its token to release the backing allocation, so a moved record may reside inside Merman-owned result storage. Zero, unknown, stale, and random non-live tokens release nothing and only clear the supplied record. Copying a live token is outside the same-process hostile-memory threat boundary. No result buffer may be passed to a host allocator.",
     ),
 ];

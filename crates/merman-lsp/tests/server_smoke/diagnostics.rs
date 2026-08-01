@@ -302,7 +302,8 @@ async fn lsp_service_pull_after_close_returns_stable_empty_report() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_reports_flowchart_unknown_style_target_warning() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -368,7 +369,8 @@ async fn lsp_service_smoke_reports_flowchart_unknown_style_target_warning() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_publishes_current_diagnostics_version() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -471,7 +473,8 @@ async fn lsp_service_smoke_publishes_current_diagnostics_version() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_publishes_sync_error_after_invalid_incremental_range() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -795,7 +798,8 @@ async fn lsp_service_pull_reports_sync_error_after_invalid_incremental_range() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_clears_push_diagnostics_on_close() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")

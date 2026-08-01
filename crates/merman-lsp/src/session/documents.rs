@@ -1,48 +1,57 @@
 use super::LanguageSession;
 use crate::session::analysis::executor::{
-    AnalysisExecutor, DiagnosticReprojectionLease, DiagnosticReprojectionRequest,
-    LSP_ANALYSIS_IN_FLIGHT_LIMIT,
+    AnalysisExecutor, DiagnosticProjectionOrigin, DiagnosticReprojectionKey,
+    DiagnosticReprojectionLease, DiagnosticReprojectionRequest,
 };
 #[cfg(test)]
 use crate::session::analysis::request::TestAnalysisGate;
-use crate::session::analysis::request::{AnalysisBuildKey, AnalysisBuildRequest};
+use crate::session::analysis::request::{
+    AnalysisBuildKey, AnalysisBuildRequest, AnalysisJobGeneration,
+};
 #[cfg(test)]
 use crate::session::cache::WeightedCacheStatistics;
 use crate::session::cache::{WeightedLru, WeightedReplacement, conservative_weighted_entry_bytes};
-#[cfg(test)]
-use crate::snapshot::DocumentSnapshot;
 use crate::snapshot::{
-    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotContext,
-    SnapshotGeneration,
+    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
+    SnapshotContext, SnapshotGeneration,
 };
-use futures::stream::{self, StreamExt};
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisOptions, Analyzer, DiagnosticSpan,
-    source_limit_diagnostic_span_cancellable,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisOptions, AnalysisRejection,
+    AnalysisResourceLimit, AnalysisResourceLimits, Analyzer, DiagnosticSpan, SourceDescriptor,
+    source_descriptor_for_kind,
 };
 use merman_editor_core::DocumentKind;
 use ropey::{Rope, RopeSlice};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use tower_lsp_server::ls_types::{
     Diagnostic, Position, Range, SemanticToken, TextDocumentContentChangeEvent, Uri,
 };
 
 pub(crate) const DEFAULT_LSP_MAX_SOURCE_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS: usize = 256;
 pub(crate) const DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 
 pub(crate) fn default_lsp_analysis_options() -> AnalysisOptions {
-    AnalysisOptions::default().with_max_source_bytes(Some(DEFAULT_LSP_MAX_SOURCE_BYTES))
+    AnalysisOptions::default()
+        .with_max_source_bytes(Some(DEFAULT_LSP_MAX_SOURCE_BYTES))
+        .with_max_document_diagrams(Some(DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS))
 }
 
 pub(crate) fn analysis_options_with_lsp_resource_defaults(
-    options: AnalysisOptions,
+    mut options: AnalysisOptions,
 ) -> AnalysisOptions {
     if options.max_source_bytes().is_none() {
-        options.with_max_source_bytes(Some(DEFAULT_LSP_MAX_SOURCE_BYTES))
-    } else {
-        options
+        options = options.with_max_source_bytes(Some(DEFAULT_LSP_MAX_SOURCE_BYTES));
     }
+    if options.max_document_diagrams().is_none() {
+        options = options.with_max_document_diagrams(Some(DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS));
+    }
+    options
+}
+
+fn document_source_descriptor(uri: &Uri, kind: DocumentKind) -> SourceDescriptor {
+    source_descriptor_for_kind(Some(uri.as_str()), kind.source_kind())
 }
 
 #[derive(Debug)]
@@ -69,7 +78,43 @@ struct CachedAnalysisGeneration {
     context: Arc<DocumentAnalysisContext>,
     document_epoch: DocumentEpoch,
     snapshot_generation: SnapshotGeneration,
-    diagnostic_generation: DiagnosticGeneration,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct SnapshotLease {
+    pub(super) snapshot: Arc<DocumentSnapshot>,
+    snapshot_generation: SnapshotGeneration,
+    document_epoch: DocumentEpoch,
+    analysis_job_generation: AnalysisJobGeneration,
+}
+
+impl SnapshotLease {
+    fn new(
+        snapshot: Arc<DocumentSnapshot>,
+        snapshot_generation: SnapshotGeneration,
+        document_epoch: DocumentEpoch,
+        analysis_job_generation: AnalysisJobGeneration,
+    ) -> Self {
+        Self {
+            snapshot,
+            snapshot_generation,
+            document_epoch,
+            analysis_job_generation,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct WeakDocumentSnapshot {
+    snapshot: Weak<DocumentSnapshot>,
+    snapshot_generation: SnapshotGeneration,
+    document_epoch: DocumentEpoch,
+    analysis_job_generation: AnalysisJobGeneration,
+}
+
+pub(super) enum DiagnosticProjectionPreparation {
+    Ready(SnapshotContext),
+    Project(DiagnosticReprojectionRequest),
 }
 
 fn cached_analysis_weight(uri: &Uri, context: &DocumentAnalysisContext) -> usize {
@@ -90,13 +135,14 @@ struct SnapshotConfigurationPlan {
     expected_documents_revision: Option<DocumentsRevision>,
     base_analyzer: Analyzer,
     next_options: AnalysisOptions,
-    documents: Option<Vec<SourceLimitDocumentSnapshot>>,
+    documents: Option<Vec<ResourceDocumentSnapshot>>,
 }
 
 #[derive(Debug)]
-struct SourceLimitDocumentSnapshot {
+struct ResourceDocumentSnapshot {
     uri: Uri,
-    oversized_source: Option<Arc<str>>,
+    source: SourceDescriptor,
+    text: Arc<str>,
 }
 
 #[derive(Debug)]
@@ -106,15 +152,12 @@ struct SnapshotConfigurationBatch {
     expected_documents_revision: Option<DocumentsRevision>,
     next_options: AnalysisOptions,
     analyzer: Analyzer,
-    oversized_spans: Option<HashMap<Uri, DiagnosticSpan>>,
+    resource_rejections: Option<HashMap<Uri, Option<AnalysisRejection>>>,
 }
 
 #[derive(Debug)]
 enum AnalyzerOptionsPreparation {
-    Applied(
-        AnalyzerConfigurationChange,
-        Vec<DiagnosticReprojectionRequest>,
-    ),
+    Applied(AnalyzerConfigurationChange),
     RequiresSnapshotPreparation(Box<SnapshotConfigurationPlan>),
 }
 
@@ -138,6 +181,10 @@ pub(crate) struct StoredDocument {
 #[derive(Debug, Clone)]
 enum DocumentSource {
     Available(Arc<str>),
+    AnalysisRejected {
+        text: Arc<str>,
+        rejection: AnalysisRejection,
+    },
     ResourceLimited(DocumentResourceLimit),
     Discarded(DocumentDiscardedSource),
     SyncError(DocumentSyncError),
@@ -146,7 +193,7 @@ enum DocumentSource {
 #[derive(Debug)]
 struct PreparedDocumentText {
     text: String,
-    oversized_span: Option<DiagnosticSpan>,
+    rejection: Option<AnalysisRejection>,
 }
 
 #[derive(Debug)]
@@ -155,7 +202,7 @@ struct OpenDocumentTicket {
     expected_document_epoch: Option<DocumentEpoch>,
     expected_uri_revision: u64,
     expected_configuration_revision: ConfigurationRevision,
-    max_source_bytes: Option<usize>,
+    resource_limits: AnalysisResourceLimits,
     tracker: Arc<OpenDocumentTracker>,
 }
 
@@ -228,21 +275,36 @@ impl OpenDocumentTracker {
 impl PreparedDocumentText {
     pub(crate) fn new_cancellable(
         text: String,
-        max_source_bytes: Option<usize>,
+        resource_limits: AnalysisResourceLimits,
+        source: &SourceDescriptor,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<Self, AnalysisCancelled> {
         cancellation.checkpoint()?;
-        let oversized_span = match max_source_bytes {
-            Some(limit) if text.len() > limit => Some(source_limit_diagnostic_span_cancellable(
-                &text,
-                cancellation,
-            )?),
-            _ => None,
-        };
-        Ok(Self {
-            text,
-            oversized_span,
-        })
+        let rejection =
+            resource_limits.preflight_document_cancellable(&text, source, cancellation)?;
+        Ok(Self { text, rejection })
+    }
+}
+
+fn document_source_from_rejection(text: Arc<str>, rejection: AnalysisRejection) -> DocumentSource {
+    match rejection.resource_limit() {
+        AnalysisResourceLimit::SourceBytes {
+            source_len,
+            max_source_bytes,
+        } => {
+            let span = rejection
+                .payload()
+                .diagnostics
+                .first()
+                .and_then(|diagnostic| diagnostic.span)
+                .expect("source-byte rejection must carry its canonical diagnostic span");
+            DocumentSource::ResourceLimited(DocumentResourceLimit {
+                source_len,
+                max_source_bytes,
+                span,
+            })
+        }
+        _ => DocumentSource::AnalysisRejected { text, rejection },
     }
 }
 
@@ -254,7 +316,7 @@ impl TextChangePlan {
             kind,
             expected_epoch,
             expected_configuration_revision,
-            max_source_bytes,
+            resource_limits,
             source,
             changes,
             cancellation,
@@ -283,7 +345,8 @@ impl TextChangePlan {
         let mutation = match prepared_text {
             Ok(text) => PreparedTextMutation::Text(PreparedDocumentText::new_cancellable(
                 text,
-                max_source_bytes,
+                resource_limits,
+                &document_source_descriptor(&uri, kind),
                 &cancellation,
             )?),
             Err(()) => invalid_range_mutation(),
@@ -402,7 +465,7 @@ struct TextChangePlan {
     kind: DocumentKind,
     expected_epoch: DocumentEpoch,
     expected_configuration_revision: ConfigurationRevision,
-    max_source_bytes: Option<usize>,
+    resource_limits: AnalysisResourceLimits,
     source: CapturedDocumentSource,
     changes: Vec<TextDocumentContentChangeEvent>,
     cancellation: AnalysisCancellationToken,
@@ -478,6 +541,7 @@ impl StoredDocument {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn resource_limited(
         uri: Uri,
         version: i32,
@@ -489,6 +553,22 @@ impl StoredDocument {
             version,
             kind,
             source: DocumentSource::ResourceLimited(limit),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn analysis_rejected(
+        uri: Uri,
+        version: i32,
+        kind: DocumentKind,
+        text: Arc<str>,
+        rejection: AnalysisRejection,
+    ) -> Self {
+        Self {
+            uri,
+            version,
+            kind,
+            source: DocumentSource::AnalysisRejected { text, rejection },
         }
     }
 
@@ -521,9 +601,30 @@ impl StoredDocument {
         }
     }
 
+    pub(crate) fn retained_text(&self) -> Option<&Arc<str>> {
+        match &self.source {
+            DocumentSource::Available(text) | DocumentSource::AnalysisRejected { text, .. } => {
+                Some(text)
+            }
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn text(&self) -> Option<&Arc<str>> {
+        self.retained_text()
+    }
+
+    fn analysis_text(&self) -> Option<&Arc<str>> {
         match &self.source {
             DocumentSource::Available(text) => Some(text),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn analysis_rejection(&self) -> Option<&AnalysisRejection> {
+        match &self.source {
+            DocumentSource::AnalysisRejected { rejection, .. } => Some(rejection),
             _ => None,
         }
     }
@@ -549,13 +650,15 @@ impl StoredDocument {
         }
     }
 
-    pub fn has_unavailable_source(&self) -> bool {
+    pub fn is_analysis_unavailable(&self) -> bool {
         !matches!(&self.source, DocumentSource::Available(_))
     }
 
     fn captured_source(&self) -> CapturedDocumentSource {
         match &self.source {
-            DocumentSource::Available(text) => CapturedDocumentSource::Available(Arc::clone(text)),
+            DocumentSource::Available(text) | DocumentSource::AnalysisRejected { text, .. } => {
+                CapturedDocumentSource::Available(Arc::clone(text))
+            }
             DocumentSource::ResourceLimited(limit) => {
                 CapturedDocumentSource::Unavailable(UnavailableSourceState::ResourceLimited(*limit))
             }
@@ -609,24 +712,25 @@ impl SnapshotConfigurationPlan {
         self.cancellation.checkpoint()?;
         let analyzer = self
             .base_analyzer
-            .with_snapshot_policy(self.next_options.snapshot.clone())
-            .with_diagnostic_policy(self.next_options.diagnostics.clone());
+            .with_snapshot_policy(self.next_options.snapshot_policy().clone())
+            .with_diagnostic_policy(self.next_options.diagnostic_policy().clone());
         self.cancellation.checkpoint()?;
 
-        let oversized_spans = self
+        let resource_limits = self.next_options.resource_limits();
+        let resource_rejections = self
             .documents
             .map(|documents| {
-                let mut oversized_spans = HashMap::new();
+                let mut resource_rejections = HashMap::new();
                 for document in documents {
                     self.cancellation.checkpoint()?;
-                    if let Some(source) = document.oversized_source.as_deref() {
-                        oversized_spans.insert(
-                            document.uri,
-                            source_limit_diagnostic_span_cancellable(source, &self.cancellation)?,
-                        );
-                    }
+                    let rejection = resource_limits.preflight_document_cancellable(
+                        document.text.as_ref(),
+                        &document.source,
+                        &self.cancellation,
+                    )?;
+                    resource_rejections.insert(document.uri, rejection);
                 }
-                Ok(oversized_spans)
+                Ok(resource_rejections)
             })
             .transpose()?;
         self.cancellation.checkpoint()?;
@@ -636,7 +740,7 @@ impl SnapshotConfigurationPlan {
             expected_documents_revision: self.expected_documents_revision,
             next_options: self.next_options,
             analyzer,
-            oversized_spans,
+            resource_rejections,
         })
     }
 }
@@ -739,14 +843,13 @@ impl SessionState {
                 Box::new(self.prepare_snapshot_configuration_for(request, options)),
             ))
         } else {
-            let requests = if matches!(change, AnalyzerConfigurationChange::Unchanged) {
-                Vec::new()
-            } else {
+            if !matches!(change, AnalyzerConfigurationChange::Unchanged) {
                 self.set_diagnostic_analyzer(
-                    self.analyzer.with_diagnostic_policy(options.diagnostics),
-                )
-            };
-            Some(AnalyzerOptionsPreparation::Applied(change, requests))
+                    self.analyzer
+                        .with_diagnostic_policy(options.diagnostic_policy().clone()),
+                );
+            }
+            Some(AnalyzerOptionsPreparation::Applied(change))
         }
     }
 
@@ -755,22 +858,20 @@ impl SessionState {
         request: ConfigurationRequestId,
         next_options: AnalysisOptions,
     ) -> SnapshotConfigurationPlan {
-        let source_limit_changed =
-            self.analyzer.options().max_source_bytes() != next_options.max_source_bytes();
-        let documents = source_limit_changed.then(|| {
-            let max_source_bytes = next_options.max_source_bytes();
+        let resource_limits_changed =
+            self.analyzer.options().resource_limits() != next_options.resource_limits();
+        let documents = resource_limits_changed.then(|| {
             self.documents
                 .iter()
-                .map(|(uri, record)| {
-                    let oversized_source = record.document.text().and_then(|text| {
-                        max_source_bytes
-                            .filter(|limit| text.len() > *limit)
-                            .map(|_| Arc::clone(text))
-                    });
-                    SourceLimitDocumentSnapshot {
-                        uri: uri.clone(),
-                        oversized_source,
-                    }
+                .filter_map(|(uri, record)| {
+                    record
+                        .document
+                        .retained_text()
+                        .map(|text| ResourceDocumentSnapshot {
+                            uri: uri.clone(),
+                            source: document_source_descriptor(uri, record.document.kind),
+                            text: Arc::clone(text),
+                        })
                 })
                 .collect()
         });
@@ -778,7 +879,7 @@ impl SessionState {
             cancellation: self.session_cancellation.child(),
             request,
             expected_configuration_revision: self.configuration_revision,
-            expected_documents_revision: source_limit_changed.then_some(self.documents_revision),
+            expected_documents_revision: resource_limits_changed.then_some(self.documents_revision),
             base_analyzer: self.analyzer.clone(),
             next_options,
             documents,
@@ -788,10 +889,7 @@ impl SessionState {
     fn commit_snapshot_configuration(
         &mut self,
         batch: SnapshotConfigurationBatch,
-    ) -> Option<(
-        AnalyzerConfigurationChange,
-        Vec<DiagnosticReprojectionRequest>,
-    )> {
+    ) -> Option<AnalyzerConfigurationChange> {
         if !self.is_analyzer_configuration_request_current(batch.request)
             || self.configuration_revision != batch.expected_configuration_revision
             || batch
@@ -806,38 +904,17 @@ impl SessionState {
             return None;
         }
 
-        self.replace_analyzer(batch.analyzer, batch.oversized_spans.as_ref());
-        Some((change, Vec::new()))
+        self.replace_analyzer(batch.analyzer, batch.resource_rejections.as_ref());
+        Some(change)
     }
 
-    fn set_diagnostic_analyzer(
-        &mut self,
-        analyzer: Analyzer,
-    ) -> Vec<DiagnosticReprojectionRequest> {
+    fn set_diagnostic_analyzer(&mut self, analyzer: Analyzer) {
         self.diagnostic_reprojection_cancellation.cancel();
         self.diagnostic_reprojection_cancellation = self.session_cancellation.child();
+        self.analysis_executor.invalidate_reprojections();
         self.analyzer = analyzer;
         self.advance_configuration_revision();
         self.advance_diagnostic_generation();
-        self.analysis_executor.invalidate_all();
-        self.analysis_generations
-            .iter()
-            .filter_map(|(uri, cached)| {
-                self.documents.get(uri).map(|record| {
-                    DiagnosticReprojectionRequest::new(
-                        self.analyzer.clone(),
-                        self.diagnostic_reprojection_cancellation.clone(),
-                        self.diagnostic_generation,
-                        uri.clone(),
-                        self.analysis_executor.generation_for(uri),
-                        record.epoch,
-                        cached.snapshot_generation,
-                        cached.diagnostic_generation,
-                        Arc::clone(&cached.context),
-                    )
-                })
-            })
-            .collect()
     }
 
     pub(super) fn commit_diagnostic_reprojection_context(
@@ -855,39 +932,49 @@ impl SessionState {
         {
             return None;
         }
+        if projection.projected().generation_identity() != projection.generation_identity() {
+            return None;
+        }
 
         if let Some(cached) = self.analysis_generations.peek(uri)
             && cached.document_epoch == projection.document_epoch()
             && cached.snapshot_generation == projection.snapshot_generation()
-            && cached.diagnostic_generation == projection.target_diagnostic_generation()
+            && cached.context.diagnostic_generation() == projection.target_diagnostic_generation()
         {
             return Some(Self::cached_snapshot_context(cached));
         }
 
-        let Some(cached) = self.analysis_generations.peek(uri) else {
-            return Some(Self::reprojected_snapshot_context(projection));
-        };
-        if cached.document_epoch != projection.document_epoch()
-            || cached.snapshot_generation != projection.snapshot_generation()
-            || cached.diagnostic_generation != projection.source_diagnostic_generation()
-            || !Arc::ptr_eq(&cached.context, projection.original())
-        {
-            return None;
-        }
-
         let context = Self::reprojected_snapshot_context(projection);
         let weight = cached_analysis_weight(uri, projection.projected());
-        self.analysis_generations
-            .replace_batch_preserving_recency(vec![WeightedReplacement {
-                key: uri.clone(),
-                value: CachedAnalysisGeneration {
-                    context: Arc::clone(projection.projected()),
-                    document_epoch: projection.document_epoch(),
-                    snapshot_generation: projection.snapshot_generation(),
-                    diagnostic_generation: projection.target_diagnostic_generation(),
-                },
-                weight,
-            }]);
+        let replacement = WeightedReplacement {
+            key: uri.clone(),
+            value: CachedAnalysisGeneration {
+                context: Arc::clone(projection.projected()),
+                document_epoch: projection.document_epoch(),
+                snapshot_generation: projection.snapshot_generation(),
+            },
+            weight,
+        };
+        let cached_matches_generation = self.analysis_generations.peek(uri).is_some_and(|cached| {
+            cached.document_epoch == projection.document_epoch()
+                && cached.snapshot_generation == projection.snapshot_generation()
+                && cached.context.generation_identity() == projection.generation_identity()
+        });
+        if cached_matches_generation {
+            self.analysis_generations
+                .replace_batch_preserving_recency(vec![replacement]);
+            return Some(context);
+        }
+        if self.analysis_generations.peek(uri).is_some() {
+            return None;
+        }
+        if matches!(projection.origin(), DiagnosticProjectionOrigin::FreshBuild) {
+            self.analysis_generations.insert(
+                replacement.key,
+                replacement.value,
+                replacement.weight,
+            );
+        }
         Some(context)
     }
 
@@ -901,28 +988,23 @@ impl SessionState {
         )
     }
 
-    fn discard_stale_analysis_generations(&mut self) {
-        let generation = self.diagnostic_generation;
-        self.analysis_generations
-            .retain(|_, cached| cached.diagnostic_generation == generation);
-    }
-
     fn replace_analyzer(
         &mut self,
         analyzer: Analyzer,
-        oversized_spans: Option<&HashMap<Uri, DiagnosticSpan>>,
+        resource_rejections: Option<&HashMap<Uri, Option<AnalysisRejection>>>,
     ) {
         self.diagnostic_reprojection_cancellation.cancel();
         self.diagnostic_reprojection_cancellation = self.session_cancellation.child();
         self.analyzer = analyzer;
-        if let Some(oversized_spans) = oversized_spans {
-            self.reclassify_documents_for_current_limit(oversized_spans);
+        if let Some(resource_rejections) = resource_rejections {
+            self.reclassify_documents_for_current_limits(resource_rejections);
         }
         self.advance_configuration_revision();
         self.advance_snapshot_generation();
         self.advance_diagnostic_generation();
         self.analysis_generations.clear();
         for record in self.documents.values_mut() {
+            record.snapshot = None;
             record.semantic_tokens_state = None;
         }
         self.analysis_executor.invalidate_all();
@@ -997,7 +1079,7 @@ impl SessionState {
             uri,
             expected_uri_revision,
             expected_configuration_revision: self.configuration_revision,
-            max_source_bytes: self.analyzer.options().max_source_bytes(),
+            resource_limits: self.analyzer.options().resource_limits(),
             tracker: Arc::clone(&self.open_document_tracker),
         }
     }
@@ -1029,36 +1111,16 @@ impl SessionState {
         prepared: PreparedDocumentText,
         kind: DocumentKind,
     ) -> StoredDocument {
-        if let Some(max_source_bytes) = self.analyzer.options().max_source_bytes()
-            && prepared.text.len() > max_source_bytes
-        {
-            return self.upsert_resource_limited(
-                uri,
+        let text = Arc::<str>::from(prepared.text);
+        let document = match prepared.rejection {
+            Some(rejection) => StoredDocument {
+                uri: uri.clone(),
                 version,
                 kind,
-                DocumentResourceLimit {
-                    source_len: prepared.text.len(),
-                    max_source_bytes,
-                    span: prepared
-                        .oversized_span
-                        .expect("oversized prepared source must carry a diagnostic span"),
-                },
-            );
-        }
-
-        let document =
-            StoredDocument::available(uri.clone(), version, kind, Arc::<str>::from(prepared.text));
-        self.upsert_document(uri, document)
-    }
-
-    fn upsert_resource_limited(
-        &mut self,
-        uri: Uri,
-        version: i32,
-        kind: DocumentKind,
-        resource_limit: DocumentResourceLimit,
-    ) -> StoredDocument {
-        let document = StoredDocument::resource_limited(uri.clone(), version, kind, resource_limit);
+                source: document_source_from_rejection(text, rejection),
+            },
+            None => StoredDocument::available(uri.clone(), version, kind, text),
+        };
         self.upsert_document(uri, document)
     }
 
@@ -1083,12 +1145,14 @@ impl SessionState {
                 let record = entry.get_mut();
                 record.document = document.clone();
                 record.epoch = epoch;
+                record.snapshot = None;
                 record.diagnostic_state = None;
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(DocumentRecord {
                     document: document.clone(),
                     epoch,
+                    snapshot: None,
                     diagnostic_state: None,
                     semantic_tokens_state: None,
                 });
@@ -1098,18 +1162,18 @@ impl SessionState {
         document
     }
 
-    fn reclassify_documents_for_current_limit(
+    fn reclassify_documents_for_current_limits(
         &mut self,
-        oversized_spans: &HashMap<Uri, DiagnosticSpan>,
+        resource_rejections: &HashMap<Uri, Option<AnalysisRejection>>,
     ) {
-        let current_limit = self.analyzer.options().max_source_bytes();
+        let max_source_bytes = self.analyzer.options().max_source_bytes();
         for (uri, record) in &mut self.documents {
             let next_source = match &record.document.source {
                 DocumentSource::ResourceLimited(limit) => {
                     let source_len = limit.source_len;
                     let previous_max_source_bytes = limit.max_source_bytes;
                     let span = limit.span;
-                    match current_limit {
+                    match max_source_bytes {
                         Some(max_source_bytes) if source_len > max_source_bytes => {
                             DocumentSource::ResourceLimited(DocumentResourceLimit {
                                 source_len,
@@ -1124,7 +1188,7 @@ impl SessionState {
                         }),
                     }
                 }
-                DocumentSource::Discarded(discarded) => match current_limit {
+                DocumentSource::Discarded(discarded) => match max_source_bytes {
                     Some(max_source_bytes) if discarded.source_len > max_source_bytes => {
                         DocumentSource::ResourceLimited(DocumentResourceLimit {
                             source_len: discarded.source_len,
@@ -1134,21 +1198,16 @@ impl SessionState {
                     }
                     _ => DocumentSource::Discarded(*discarded),
                 },
-                DocumentSource::Available(text) => {
-                    let Some(max_source_bytes) = current_limit else {
-                        continue;
-                    };
-                    if text.len() <= max_source_bytes {
-                        continue;
+                DocumentSource::Available(text) | DocumentSource::AnalysisRejected { text, .. } => {
+                    match resource_rejections
+                        .get(uri)
+                        .expect("resource reclassification must cover every retained document")
+                    {
+                        None => DocumentSource::Available(Arc::clone(text)),
+                        Some(rejection) => {
+                            document_source_from_rejection(Arc::clone(text), rejection.clone())
+                        }
                     }
-                    let span = *oversized_spans.get(uri).expect(
-                        "source-limit projection must cover every newly oversized document",
-                    );
-                    DocumentSource::ResourceLimited(DocumentResourceLimit {
-                        source_len: text.len(),
-                        max_source_bytes,
-                        span,
-                    })
                 }
                 DocumentSource::SyncError(_) => continue,
             };
@@ -1183,7 +1242,7 @@ impl SessionState {
             kind: current.kind,
             expected_epoch: record.epoch,
             expected_configuration_revision: self.configuration_revision,
-            max_source_bytes: self.analyzer.options().max_source_bytes(),
+            resource_limits: self.analyzer.options().resource_limits(),
             source: current.captured_source(),
             changes,
             cancellation: self.session_cancellation.child(),
@@ -1242,6 +1301,37 @@ impl SessionState {
         None
     }
 
+    pub(super) fn snapshot_lease_for_uri(&mut self, uri: &Uri) -> Option<SnapshotLease> {
+        if let Some(context) = self.cached_snapshot_context_for_uri(uri) {
+            return Some(SnapshotLease::new(
+                context.snapshot,
+                context.generation,
+                context.document_epoch,
+                self.analysis_executor.generation_for(uri),
+            ));
+        }
+
+        let captured = self.documents.get(uri)?.snapshot.clone()?;
+        let current = captured.snapshot_generation == self.snapshot_generation
+            && self.is_document_epoch_current(uri, captured.document_epoch)
+            && self
+                .analysis_executor
+                .is_generation_current(uri, captured.analysis_job_generation);
+        let snapshot = current.then(|| captured.snapshot.upgrade()).flatten();
+        if let Some(snapshot) = snapshot {
+            return Some(SnapshotLease::new(
+                snapshot,
+                captured.snapshot_generation,
+                captured.document_epoch,
+                captured.analysis_job_generation,
+            ));
+        }
+        if let Some(record) = self.documents.get_mut(uri) {
+            record.snapshot = None;
+        }
+        None
+    }
+
     #[cfg(test)]
     pub(super) fn cached_snapshot_for_probe(&self, uri: &Uri) -> Option<Arc<DocumentSnapshot>> {
         let document_epoch = self.documents.get(uri)?.epoch;
@@ -1253,7 +1343,7 @@ impl SessionState {
 
     pub(super) fn snapshot_build_request(&self, uri: &Uri) -> Option<AnalysisBuildRequest> {
         let record = self.documents.get(uri)?;
-        if record.document.has_unavailable_source() || self.has_snapshot(uri) {
+        if record.document.is_analysis_unavailable() || self.has_snapshot(uri) {
             return None;
         }
         let key = AnalysisBuildKey::new(
@@ -1261,12 +1351,11 @@ impl SessionState {
             record.document.version,
             self.analysis_executor.generation_for(uri),
             self.snapshot_generation,
-            self.diagnostic_generation,
             record.epoch,
         );
         let request = AnalysisBuildRequest::new(
             key,
-            Arc::clone(record.document.text()?),
+            Arc::clone(record.document.analysis_text()?),
             record.document.kind,
             self.analyzer.clone(),
         );
@@ -1278,13 +1367,12 @@ impl SessionState {
         Some(request)
     }
 
-    pub(super) fn insert_built_analysis(
+    pub(super) fn commit_built_snapshot(
         &mut self,
         request: &AnalysisBuildRequest,
-        analysis: Arc<DocumentAnalysisContext>,
-    ) -> Option<SnapshotContext> {
+        snapshot: Arc<DocumentSnapshot>,
+    ) -> Option<SnapshotLease> {
         if self.snapshot_generation != request.snapshot_generation()
-            || self.diagnostic_generation != request.diagnostic_generation()
             || !self.is_document_epoch_current(request.uri(), request.document_epoch())
             || !self
                 .analysis_executor
@@ -1292,25 +1380,72 @@ impl SessionState {
         {
             return None;
         }
+        if let Some(current) = self.snapshot_lease_for_uri(request.uri()) {
+            return Some(current);
+        }
 
-        let weight = cached_analysis_weight(request.uri(), &analysis);
-        self.analysis_generations.insert(
-            request.uri().clone(),
-            CachedAnalysisGeneration {
-                context: Arc::clone(&analysis),
-                document_epoch: request.document_epoch(),
-                snapshot_generation: request.snapshot_generation(),
-                diagnostic_generation: request.diagnostic_generation(),
-            },
-            weight,
-        );
-        Some(SnapshotContext::with_analysis(
-            Arc::clone(&analysis.snapshot),
-            Arc::clone(&analysis.payload),
+        let record = self.documents.get_mut(request.uri())?;
+        record.snapshot = Some(WeakDocumentSnapshot {
+            snapshot: Arc::downgrade(&snapshot),
+            snapshot_generation: request.snapshot_generation(),
+            document_epoch: request.document_epoch(),
+            analysis_job_generation: request.analysis_job_generation(),
+        });
+        Some(SnapshotLease::new(
+            snapshot,
             request.snapshot_generation(),
-            request.diagnostic_generation(),
             request.document_epoch(),
+            request.analysis_job_generation(),
         ))
+    }
+
+    pub(super) fn prepare_diagnostic_projection_for_snapshot(
+        &self,
+        snapshot: &SnapshotLease,
+        origin: DiagnosticProjectionOrigin,
+    ) -> Option<DiagnosticProjectionPreparation> {
+        if !self.is_snapshot_lease_current(snapshot)
+            || !self
+                .analysis_executor
+                .is_generation_current(snapshot.snapshot.uri(), snapshot.analysis_job_generation)
+        {
+            return None;
+        }
+        if let Some(cached) = self.analysis_generations.peek(snapshot.snapshot.uri())
+            && cached.document_epoch == snapshot.document_epoch
+            && cached.snapshot_generation == snapshot.snapshot_generation
+        {
+            if cached.context.diagnostic_generation() == self.diagnostic_generation {
+                return Some(DiagnosticProjectionPreparation::Ready(
+                    Self::cached_snapshot_context(cached),
+                ));
+            }
+            return Some(DiagnosticProjectionPreparation::Project(
+                self.diagnostic_reprojection_request_for_snapshot(
+                    snapshot.snapshot.uri().clone(),
+                    snapshot.analysis_job_generation,
+                    snapshot.document_epoch,
+                    snapshot.snapshot_generation,
+                    Arc::clone(&cached.context.snapshot),
+                    DiagnosticProjectionOrigin::Cached,
+                ),
+            ));
+        }
+        Some(DiagnosticProjectionPreparation::Project(
+            self.diagnostic_reprojection_request_for_snapshot(
+                snapshot.snapshot.uri().clone(),
+                snapshot.analysis_job_generation,
+                snapshot.document_epoch,
+                snapshot.snapshot_generation,
+                Arc::clone(&snapshot.snapshot),
+                origin,
+            ),
+        ))
+    }
+
+    pub(super) fn is_snapshot_lease_current(&self, snapshot: &SnapshotLease) -> bool {
+        self.snapshot_generation == snapshot.snapshot_generation
+            && self.is_document_epoch_current(snapshot.snapshot.uri(), snapshot.document_epoch)
     }
 
     pub(super) fn is_snapshot_context_current(&self, context: &SnapshotContext) -> bool {
@@ -1350,7 +1485,7 @@ impl SessionState {
 
     pub(super) fn has_analysis_payload(&self, uri: &Uri) -> bool {
         self.analysis_generations.peek(uri).is_some_and(|cached| {
-            cached.diagnostic_generation == self.diagnostic_generation
+            cached.context.diagnostic_generation() == self.diagnostic_generation
                 && cached.snapshot_generation == self.snapshot_generation
                 && self.is_document_epoch_current(uri, cached.document_epoch)
         })
@@ -1361,7 +1496,7 @@ impl SessionState {
         uri: &Uri,
     ) -> Option<DiagnosticReprojectionRequest> {
         let cached = self.analysis_generations.peek(uri)?;
-        if cached.diagnostic_generation == self.diagnostic_generation {
+        if cached.context.diagnostic_generation() == self.diagnostic_generation {
             return None;
         }
         let record = self.documents.get(uri)?;
@@ -1370,17 +1505,85 @@ impl SessionState {
         {
             return None;
         }
-        Some(DiagnosticReprojectionRequest::new(
-            self.analyzer.clone(),
-            self.diagnostic_reprojection_cancellation.clone(),
-            self.diagnostic_generation,
+        Some(self.diagnostic_reprojection_request_for_snapshot(
             uri.clone(),
             self.analysis_executor.generation_for(uri),
             record.epoch,
             cached.snapshot_generation,
-            cached.diagnostic_generation,
-            Arc::clone(&cached.context),
+            Arc::clone(&cached.context.snapshot),
+            DiagnosticProjectionOrigin::Cached,
         ))
+    }
+
+    pub(super) fn retry_diagnostic_reprojection_request(
+        &self,
+        request: &DiagnosticReprojectionRequest,
+    ) -> Option<DiagnosticProjectionPreparation> {
+        let uri = request.uri();
+        let record = self.documents.get(uri)?;
+        if record.epoch != request.document_epoch()
+            || self.snapshot_generation != request.snapshot_generation()
+            || !self
+                .analysis_executor
+                .is_generation_current(uri, request.analysis_job_generation())
+        {
+            return None;
+        }
+        if let Some(cached) = self.analysis_generations.peek(uri)
+            && cached.document_epoch == record.epoch
+            && cached.snapshot_generation == self.snapshot_generation
+        {
+            if cached.context.diagnostic_generation() == self.diagnostic_generation {
+                return Some(DiagnosticProjectionPreparation::Ready(
+                    Self::cached_snapshot_context(cached),
+                ));
+            }
+            return Some(DiagnosticProjectionPreparation::Project(
+                self.diagnostic_reprojection_request_for_snapshot(
+                    uri.clone(),
+                    request.analysis_job_generation(),
+                    record.epoch,
+                    self.snapshot_generation,
+                    Arc::clone(&cached.context.snapshot),
+                    DiagnosticProjectionOrigin::Cached,
+                ),
+            ));
+        }
+        Some(DiagnosticProjectionPreparation::Project(
+            self.diagnostic_reprojection_request_for_snapshot(
+                uri.clone(),
+                request.analysis_job_generation(),
+                record.epoch,
+                self.snapshot_generation,
+                Arc::clone(request.snapshot()),
+                request.origin(),
+            ),
+        ))
+    }
+
+    fn diagnostic_reprojection_request_for_snapshot(
+        &self,
+        uri: Uri,
+        analysis_job_generation: AnalysisJobGeneration,
+        document_epoch: DocumentEpoch,
+        snapshot_generation: SnapshotGeneration,
+        snapshot: Arc<DocumentSnapshot>,
+        origin: DiagnosticProjectionOrigin,
+    ) -> DiagnosticReprojectionRequest {
+        DiagnosticReprojectionRequest::new(
+            self.analyzer.options().diagnostic_policy().clone(),
+            self.diagnostic_reprojection_cancellation.clone(),
+            DiagnosticReprojectionKey::new(
+                uri,
+                analysis_job_generation,
+                document_epoch,
+                snapshot_generation,
+                self.diagnostic_generation,
+                snapshot.as_ref(),
+            ),
+            snapshot,
+            origin,
+        )
     }
 
     #[cfg(test)]
@@ -1421,7 +1624,7 @@ impl SessionState {
             Arc::clone(&cached.context.snapshot),
             Arc::clone(&cached.context.payload),
             cached.snapshot_generation,
-            cached.diagnostic_generation,
+            cached.context.diagnostic_generation(),
             cached.document_epoch,
         )
     }
@@ -1449,6 +1652,7 @@ impl SessionState {
             })
     }
 
+    #[cfg(test)]
     pub(super) fn set_semantic_tokens_state_if_current(
         &mut self,
         context: &SnapshotContext,
@@ -1463,6 +1667,25 @@ impl SessionState {
         };
         record.semantic_tokens_state = Some(StoredSemanticTokensState {
             snapshot_generation: context.generation,
+            state: Arc::new(state),
+        });
+        true
+    }
+
+    pub(super) fn set_semantic_tokens_state_if_snapshot_current(
+        &mut self,
+        snapshot: &SnapshotLease,
+        state: SemanticTokensState,
+    ) -> bool {
+        if !self.is_snapshot_lease_current(snapshot) {
+            return false;
+        }
+
+        let Some(record) = self.documents.get_mut(snapshot.snapshot.uri()) else {
+            return false;
+        };
+        record.semantic_tokens_state = Some(StoredSemanticTokensState {
+            snapshot_generation: snapshot.snapshot_generation,
             state: Arc::new(state),
         });
         true
@@ -1503,6 +1726,7 @@ impl SessionState {
 struct DocumentRecord {
     document: StoredDocument,
     epoch: DocumentEpoch,
+    snapshot: Option<WeakDocumentSnapshot>,
     diagnostic_state: Option<StoredDiagnosticState>,
     semantic_tokens_state: Option<StoredSemanticTokensState>,
 }
@@ -1673,30 +1897,6 @@ fn position_le(left: Position, right: Position) -> bool {
     left.line < right.line || (left.line == right.line && left.character <= right.character)
 }
 
-struct AnalyzerReplacement {
-    outcome: ConfigurationUpdateOutcome,
-    reprojections: Vec<DiagnosticReprojectionRequest>,
-}
-
-impl AnalyzerReplacement {
-    fn applied(
-        change: AnalyzerConfigurationChange,
-        reprojections: Vec<DiagnosticReprojectionRequest>,
-    ) -> Self {
-        Self {
-            outcome: ConfigurationUpdateOutcome::applied(change),
-            reprojections,
-        }
-    }
-
-    fn terminal(outcome: ConfigurationUpdateOutcome) -> Self {
-        Self {
-            outcome,
-            reprojections: Vec::new(),
-        }
-    }
-}
-
 impl LanguageSession {
     pub(crate) async fn open_document(
         &self,
@@ -1705,16 +1905,20 @@ impl LanguageSession {
         text: String,
         kind: DocumentKind,
     ) -> bool {
-        let ticket = self
-            .inner
-            .state
-            .lock()
-            .await
-            .capture_open_document(uri.clone());
-        let max_source_bytes = ticket.max_source_bytes;
+        let ticket = {
+            let mut state = self.inner.state.lock().await;
+            let Some(ticket) = self.commit_state_if_active(&mut state, |state| {
+                state.capture_open_document(uri.clone())
+            }) else {
+                return false;
+            };
+            ticket
+        };
+        let resource_limits = ticket.resource_limits;
+        let source = document_source_descriptor(&uri, kind);
         let cancellation = self.inner.cancellation.child();
         let prepared = match tokio::task::spawn_blocking(move || {
-            PreparedDocumentText::new_cancellable(text, max_source_bytes, &cancellation)
+            PreparedDocumentText::new_cancellable(text, resource_limits, &source, &cancellation)
         })
         .await
         {
@@ -1725,11 +1929,11 @@ impl LanguageSession {
                 return false;
             }
         };
-        self.inner
-            .state
-            .lock()
-            .await
-            .commit_open_document(ticket, version, prepared, kind)
+        let mut state = self.inner.state.lock().await;
+        self.commit_state_if_active(&mut state, |state| {
+            state.commit_open_document(ticket, version, prepared, kind)
+        })
+        .unwrap_or(false)
     }
 
     pub(crate) async fn change_document(
@@ -1738,12 +1942,12 @@ impl LanguageSession {
         version: i32,
         changes: Vec<TextDocumentContentChangeEvent>,
     ) -> Option<TextDocumentUpdate> {
-        let preparation =
-            self.inner
-                .state
-                .lock()
-                .await
-                .capture_text_changes(uri.clone(), version, changes);
+        let preparation = {
+            let mut state = self.inner.state.lock().await;
+            self.commit_state_if_active(&mut state, |state| {
+                state.capture_text_changes(uri.clone(), version, changes)
+            })?
+        };
         match preparation {
             TextChangePreparation::Immediate(update) => Some(update),
             TextChangePreparation::Prepare(plan) => {
@@ -1759,130 +1963,80 @@ impl LanguageSession {
                         return None;
                     }
                 };
-                Some(
-                    self.inner
-                        .state
-                        .lock()
-                        .await
-                        .commit_prepared_text_changes(prepared),
-                )
+                let mut state = self.inner.state.lock().await;
+                self.commit_state_if_active(&mut state, |state| {
+                    state.commit_prepared_text_changes(prepared)
+                })
             }
         }
     }
 
     pub(crate) async fn close_document(&self, uri: &Uri) {
-        self.inner.state.lock().await.remove(uri);
+        let mut state = self.inner.state.lock().await;
+        let _ = self.commit_state_if_active(&mut state, |state| state.remove(uri));
     }
 
     pub(crate) async fn update_configuration(
         &self,
         options: AnalysisOptions,
     ) -> ConfigurationUpdateOutcome {
-        let replacement = self.prepare_analyzer_replacement(options).await;
-        self.finish_analyzer_replacement(replacement).await
-    }
-
-    async fn prepare_analyzer_replacement(&self, options: AnalysisOptions) -> AnalyzerReplacement {
-        let request = self
-            .inner
-            .state
-            .lock()
-            .await
-            .begin_analyzer_configuration_request();
-        let (change, reprojections) = loop {
-            let preparation = self
-                .inner
-                .state
-                .lock()
-                .await
-                .prepare_analyzer_options(request, options.clone());
+        let request = {
+            let mut state = self.inner.state.lock().await;
+            let Some(request) = self.commit_state_if_active(&mut state, |state| {
+                state.begin_analyzer_configuration_request()
+            }) else {
+                return ConfigurationUpdateOutcome::Cancelled;
+            };
+            request
+        };
+        loop {
+            let preparation = {
+                let mut state = self.inner.state.lock().await;
+                let Some(preparation) = self.commit_state_if_active(&mut state, |state| {
+                    state.prepare_analyzer_options(request, options.clone())
+                }) else {
+                    return ConfigurationUpdateOutcome::Cancelled;
+                };
+                preparation
+            };
             let Some(preparation) = preparation else {
-                return AnalyzerReplacement::terminal(ConfigurationUpdateOutcome::Superseded);
+                return ConfigurationUpdateOutcome::Superseded;
             };
             match preparation {
-                AnalyzerOptionsPreparation::Applied(change, reprojections) => {
-                    break (change, reprojections);
+                AnalyzerOptionsPreparation::Applied(change) => {
+                    return ConfigurationUpdateOutcome::applied(change);
                 }
                 AnalyzerOptionsPreparation::RequiresSnapshotPreparation(plan) => {
                     let batch = match tokio::task::spawn_blocking(move || plan.prepare()).await {
                         Ok(Ok(batch)) => batch,
                         Ok(Err(_)) => {
-                            return AnalyzerReplacement::terminal(
-                                ConfigurationUpdateOutcome::Cancelled,
-                            );
+                            return ConfigurationUpdateOutcome::Cancelled;
                         }
                         Err(error) => {
                             tracing::error!(%error, "snapshot configuration preparation worker failed");
-                            return AnalyzerReplacement::terminal(
-                                ConfigurationUpdateOutcome::Failed,
-                            );
+                            return ConfigurationUpdateOutcome::Failed;
                         }
                     };
                     let mut state = self.inner.state.lock().await;
-                    if let Some(applied) = state.commit_snapshot_configuration(batch) {
-                        break applied;
+                    let Some((change, request_is_current)) =
+                        self.commit_state_if_active(&mut state, |state| {
+                            let change = state.commit_snapshot_configuration(batch);
+                            let request_is_current =
+                                state.is_analyzer_configuration_request_current(request);
+                            (change, request_is_current)
+                        })
+                    else {
+                        return ConfigurationUpdateOutcome::Cancelled;
+                    };
+                    if let Some(change) = change {
+                        return ConfigurationUpdateOutcome::applied(change);
                     }
-                    if !state.is_analyzer_configuration_request_current(request) {
-                        return AnalyzerReplacement::terminal(
-                            ConfigurationUpdateOutcome::Superseded,
-                        );
+                    if !request_is_current {
+                        return ConfigurationUpdateOutcome::Superseded;
                     }
                 }
             }
-        };
-        AnalyzerReplacement::applied(change, reprojections)
-    }
-
-    async fn finish_analyzer_replacement(
-        &self,
-        replacement: AnalyzerReplacement,
-    ) -> ConfigurationUpdateOutcome {
-        let AnalyzerReplacement {
-            outcome,
-            mut reprojections,
-        } = replacement;
-        if reprojections.is_empty() {
-            return outcome;
         }
-        reprojections.sort_by(|left, right| left.uri().cmp(right.uri()));
-        let mut pending = stream::iter(reprojections)
-            .map(|request| {
-                let executor = self.inner.analysis_executor.clone();
-                async move {
-                    let uri = request.uri().clone();
-                    (
-                        uri,
-                        executor.execute_diagnostic_reprojection(&request).await,
-                    )
-                }
-            })
-            .buffered(LSP_ANALYSIS_IN_FLIGHT_LIMIT);
-
-        let mut worker_failed = false;
-        while let Some((uri, projection)) = pending.next().await {
-            match projection {
-                Ok(projection) => {
-                    self.inner
-                        .state
-                        .lock()
-                        .await
-                        .commit_diagnostic_reprojection_context(&projection);
-                }
-                Err(error) if error.is_stale() => {}
-                Err(error) => {
-                    worker_failed = true;
-                    tracing::error!(%error, uri = %uri.as_str(), "diagnostic reprojection worker failed");
-                }
-            }
-        }
-        if worker_failed {
-            self.inner
-                .state
-                .lock()
-                .await
-                .discard_stale_analysis_generations();
-        }
-        outcome
     }
 
     pub(crate) async fn diagnostic_context(&self, uri: &Uri) -> Option<DiagnosticContext> {

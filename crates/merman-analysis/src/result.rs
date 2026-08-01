@@ -1,6 +1,7 @@
 use crate::analyzer::{AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, Analyzer};
-use crate::diagnostic_projection::{DiagnosticCandidate, project_diagnostic_candidates};
+use crate::diagnostic_projection::{DiagnosticCandidate, append_projected_diagnostic_candidates};
 use crate::editor::FenceExpectedSyntax;
+use crate::payload::DiagnosticRetainedWeight;
 use crate::{
     ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisCancellationToken, AnalysisCancelled,
     AnalysisDiagnostic, AnalysisPayload, DocumentDiagram, DocumentDiagramKind, FenceDelimiter,
@@ -42,8 +43,66 @@ pub enum AnalysisCaptureOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnalysisRejection {
     payload: Box<AnalysisPayload>,
-    source_len: usize,
-    max_source_bytes: usize,
+    resource_limit: AnalysisResourceLimit,
+}
+
+/// The exact admission budget that rejected an analysis before a generation was created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AnalysisResourceLimit {
+    SourceBytes {
+        source_len: usize,
+        max_source_bytes: usize,
+    },
+    DocumentDiagrams {
+        observed_document_diagrams: usize,
+        max_document_diagrams: usize,
+    },
+}
+
+impl AnalysisResourceLimit {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::SourceBytes { .. } => {
+                merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str()
+            }
+            Self::DocumentDiagrams { .. } => crate::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
+        }
+    }
+
+    pub const fn observed(self) -> usize {
+        match self {
+            Self::SourceBytes { source_len, .. } => source_len,
+            Self::DocumentDiagrams {
+                observed_document_diagrams,
+                ..
+            } => observed_document_diagrams,
+        }
+    }
+
+    pub const fn maximum(self) -> usize {
+        match self {
+            Self::SourceBytes {
+                max_source_bytes, ..
+            } => max_source_bytes,
+            Self::DocumentDiagrams {
+                max_document_diagrams,
+                ..
+            } => max_document_diagrams,
+        }
+    }
+}
+
+impl fmt::Display for AnalysisResourceLimit {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{} observed={} max={}",
+            self.id(),
+            self.observed(),
+            self.maximum()
+        )
+    }
 }
 
 impl AnalysisCaptureOutcome {
@@ -78,8 +137,25 @@ impl AnalysisRejection {
     ) -> Self {
         Self {
             payload: Box::new(AnalysisPayload::new(source, diagnostics)),
-            source_len,
-            max_source_bytes,
+            resource_limit: AnalysisResourceLimit::SourceBytes {
+                source_len,
+                max_source_bytes,
+            },
+        }
+    }
+
+    pub(crate) fn document_diagram_limit(
+        source: SourceDescriptor,
+        diagnostics: Vec<AnalysisDiagnostic>,
+        observed_document_diagrams: usize,
+        max_document_diagrams: usize,
+    ) -> Self {
+        Self {
+            payload: Box::new(AnalysisPayload::new(source, diagnostics)),
+            resource_limit: AnalysisResourceLimit::DocumentDiagrams {
+                observed_document_diagrams,
+                max_document_diagrams,
+            },
         }
     }
 
@@ -91,12 +167,8 @@ impl AnalysisRejection {
         *self.payload
     }
 
-    pub const fn source_len(&self) -> usize {
-        self.source_len
-    }
-
-    pub const fn max_source_bytes(&self) -> usize {
-        self.max_source_bytes
+    pub const fn resource_limit(&self) -> AnalysisResourceLimit {
+        self.resource_limit
     }
 }
 
@@ -138,27 +210,24 @@ impl AnalysisGeneration {
         cancellation: &AnalysisCancellationToken,
     ) -> Result<AnalysisPayload, AnalysisCancelled> {
         cancellation.checkpoint()?;
-        let mut diagnostics =
-            project_diagnostic_candidates(&self.storage.document_candidates, policy, cancellation)?;
+        let mut diagnostics = Vec::with_capacity(self.storage.document_candidates.len());
+        append_projected_diagnostic_candidates(
+            &mut diagnostics,
+            &self.storage.document_candidates,
+            policy,
+            cancellation,
+        )?;
         for diagram in &self.storage.diagrams {
             cancellation.checkpoint()?;
-            let projected = project_diagnostic_candidates(
+            append_projected_diagnostic_candidates(
+                &mut diagnostics,
                 &diagram.diagnostic_candidates,
                 policy,
                 cancellation,
             )?;
-            diagnostics.extend(crate::document::decorate_analyzed_diagnostics(
-                &self.storage.source_map,
-                self.storage.source.kind,
-                diagram,
-                projected,
-            ));
         }
         cancellation.checkpoint()?;
-        Ok(AnalysisPayload::new(
-            self.storage.source.clone(),
-            diagnostics,
-        ))
+        AnalysisPayload::new_cancellable(self.storage.source.clone(), diagnostics, cancellation)
     }
 
     pub fn environment_identity(&self) -> &AnalysisEnvironmentIdentity {
@@ -180,6 +249,7 @@ impl AnalysisGeneration {
     /// allowance, and saturates on overflow.
     pub fn estimated_owned_heap_bytes_excluding_source(&self) -> usize {
         let mut weight = RetainedWeight::new(size_of::<AnalysisGenerationStorage>());
+        let mut diagnostic_weight = DiagnosticRetainedWeight::default();
         weight.add(
             self.storage
                 .source_map
@@ -187,12 +257,13 @@ impl AnalysisGeneration {
         );
         weight.add_array::<AnalyzedDiagram>(self.storage.diagrams.capacity());
         for diagram in &self.storage.diagrams {
-            weight.add(diagram.estimated_owned_heap_bytes_excluding_source());
+            weight.add(diagram.estimated_owned_heap_bytes_excluding_source(&mut diagnostic_weight));
         }
         weight.add_array::<DiagnosticCandidate>(self.storage.document_candidates.capacity());
         for candidate in &self.storage.document_candidates {
-            weight.add(candidate.estimated_owned_heap_bytes());
+            candidate.add_estimated_owned_heap_bytes(&mut diagnostic_weight);
         }
+        weight.add(diagnostic_weight.finish());
         weight.add(ARC_ALLOCATION_OVERHEAD);
         weight.add(self.storage.source.estimated_owned_heap_bytes());
         weight.finish()
@@ -324,14 +395,17 @@ impl AnalyzedDiagram {
         self.parse_disposition
     }
 
-    fn estimated_owned_heap_bytes_excluding_source(&self) -> usize {
+    fn estimated_owned_heap_bytes_excluding_source(
+        &self,
+        diagnostic_weight: &mut DiagnosticRetainedWeight,
+    ) -> usize {
         let mut weight = RetainedWeight::default();
         weight.add_string(&self.source_id);
         weight.add(self.source.estimated_owned_heap_bytes());
         weight.add(self.syntax.estimated_owned_heap_bytes());
         weight.add_array::<DiagnosticCandidate>(self.diagnostic_candidates.capacity());
         for candidate in &self.diagnostic_candidates {
-            weight.add(candidate.estimated_owned_heap_bytes());
+            candidate.add_estimated_owned_heap_bytes(diagnostic_weight);
         }
         weight.finish()
     }
