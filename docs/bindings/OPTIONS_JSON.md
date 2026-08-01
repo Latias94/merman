@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-07-31
+Last updated: 2026-08-01
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -15,15 +15,17 @@ may select it while constructing their temporary engine. Resource options are de
 stricter: a request may only tighten the constructor's artifact-wide resource ceiling, and an
 explicit limit must belong to the selected operation.
 
-Unknown top-level fields are ignored. The `layout` and `environment` service objects reject unknown
-fields so removed service paths cannot be silently ignored. Invalid JSON, invalid UTF-8,
+Schema `2` rejects unknown top-level fields and unknown fields in compiled option objects so a typo
+or removed path cannot be silently ignored. Invalid JSON, invalid UTF-8,
 unsupported enum values, or non-finite numeric values return binding errors instead of panicking.
+Omitting `version` selects the current schema `2`; explicit legacy versions are rejected rather
+than translated implicitly.
 
 ## Full Shape
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
@@ -66,7 +68,6 @@ unsupported enum values, or non-finite numeric values return binding errors inst
     "xychartVerticalPlotHeight": 5,
     "xychartCategoryBandWidth": 3,
     "xychartHorizontalPlotWidth": 10,
-    "maxGridCells": 250000,
     "relationSummaryDiagnostics": false,
     "theme": {
       "foreground": "#e5e7eb",
@@ -95,7 +96,17 @@ unsupported enum values, or non-finite numeric values return binding errors inst
       "max_model_nesting_depth": 256,
       "max_layout_work_units": 250000,
       "max_svg_elements": 250000,
-      "max_svg_bytes": 25165824
+      "max_svg_bytes": 25165824,
+      "max_document_diagrams": 256,
+      "max_ascii_grid_cells": 250000,
+      "max_raster_width": 4096,
+      "max_raster_height": 4096,
+      "max_raster_pixels": 16777216,
+      "max_embedded_image_bytes": 16777216,
+      "max_total_embedded_image_bytes": 33554432,
+      "max_embedded_image_pixels": 16777216,
+      "max_total_embedded_image_pixels": 33554432,
+      "max_pdf_filter_image_pixels": 33554432
     }
   },
   "lint": {
@@ -121,6 +132,21 @@ unsupported enum values, or non-finite numeric values return binding errors inst
     "css_override_policy": "preserve",
     "root_background_color": "#0f172a",
     "drop_native_duplicate_fallbacks": false
+  },
+  "raster": {
+    "scale": 2,
+    "background": "#ffffff",
+    "fit_to": { "width": 1200 }
+  },
+  "jpeg": {
+    "quality": 85
+  },
+  "pdf": {
+    "background": "transparent",
+    "page_policy": {
+      "kind": "fit-css-width",
+      "max_width_px": 1200
+    }
   }
 }
 ```
@@ -131,7 +157,7 @@ Every field is optional.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `version` | integer | `1` | Options-schema version. Omit it for schema 1 compatibility; any supplied value other than `1` is rejected at the version boundary. |
+| `version` | integer | `2` | Options-schema version. Version `1` is the incompatible alpha.3 grammar and is rejected. Omitting the field uses the current schema-2 grammar for convenience callers; durable SDK integrations should send `2` explicitly. |
 | `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
 | `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date in `YYYY-MM-DD` format for time-dependent diagrams such as Gantt. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
 | `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
@@ -144,6 +170,9 @@ Every field is optional.
 | `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
 | `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
+| `raster` | object | defaults | Shared PNG/JPEG scale, background, and fit-box behavior. Requires a compiled PNG or JPEG output. |
+| `jpeg` | object | defaults | JPEG-specific encoding behavior. Requires the compiled JPEG output. |
+| `pdf` | object | defaults | PDF page and background behavior. Requires the compiled PDF output. |
 
 ## Runtime Policy
 
@@ -162,6 +191,11 @@ the native policy.
 Generic binding operation metadata records the selected policy as
 `"runtime_policy": "deterministic"` or `"runtime_policy": "native"`. Hosts should retain that
 metadata with rendered or analyzed output when reproducibility matters.
+
+PNG and JPEG operations also include an `output_plan` object with requested and effective pixel
+dimensions and scale. PDF operations include requested and effective filter-image scale and pixel
+counts. A true `limited` flag means the selected resource ceiling reduced the requested plan; hosts
+should report the effective values rather than assuming the request was applied unchanged.
 
 ## Fixed Time Options
 
@@ -343,16 +377,23 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | `ascii.default_direction` / `ascii.defaultDirection` | string | `leftRight` | `leftRight`/`left_right` or `topDown`/`top_down` for families that need a default terminal direction. |
 | `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`, `truecolor`, or `html`. |
 | `ascii.theme` | object | none | Terminal color palette with required `foreground` and `background` plus optional `line`, `accent`, `muted`, `surface`, and `border`. |
+| `ascii.box_border_padding` / `ascii.boxBorderPadding` | non-negative integer | `1` | Horizontal padding inside terminal node boxes. |
+| `ascii.graph_padding_x` / `ascii.graphPaddingX` | non-negative integer | `5` | Horizontal padding around terminal graph layouts. |
+| `ascii.graph_padding_y` / `ascii.graphPaddingY` | non-negative integer | `5` | Vertical padding around terminal graph layouts. |
+| `ascii.sequence_participant_spacing` / `ascii.sequenceParticipantSpacing` | non-negative integer | `5` | Minimum spacing between sequence participants. |
+| `ascii.sequence_message_spacing` / `ascii.sequenceMessageSpacing` | non-negative integer | `1` | Vertical spacing between sequence messages. |
+| `ascii.sequence_self_message_width` / `ascii.sequenceSelfMessageWidth` | integer at least `2` | `4` | Width reserved for sequence self-message loops. |
 | `ascii.sequence_mirror_actors` / `ascii.sequenceMirrorActors` | boolean | `false` | Renders mirrored bottom participant boxes for sequence diagrams. |
 | `ascii.xychart_vertical_plot_height` / `ascii.xychartVerticalPlotHeight` | positive integer | `5` | Compact vertical XYChart plot height. |
 | `ascii.xychart_category_band_width` / `ascii.xychartCategoryBandWidth` | positive integer | `3` | Compact vertical XYChart category width. |
 | `ascii.xychart_horizontal_plot_width` / `ascii.xychartHorizontalPlotWidth` | positive integer | `10` | Compact horizontal XYChart value axis width. |
-| `ascii.max_grid_cells` / `ascii.maxGridCells` | positive integer | `250000` | Maximum terminal grid cells for graph-like ASCII layouts before fallback or error behavior. |
 | `ascii.relation_summary_diagnostics` / `ascii.relationSummaryDiagnostics` | boolean | `false` | When true, Class/ER `relations:` fallback summaries include a `reason:` row such as `grid_budget actual=12 limit=1`, `crossing`, `route_collision`, or `overlay_collision`. |
 
 `relationSummaryDiagnostics` is intentionally opt-in. Default text output stays stable and omits
 internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests
 that need to classify why a dense Class/ER relation layout used a summary.
+
+The terminal-grid budget is resource policy, not an ASCII presentation option. Set `resources.limits.max_ascii_grid_cells`; the removed `ascii.max_grid_cells` and `ascii.maxGridCells` fields are rejected with a migration error.
 
 ## Layout Options
 
@@ -384,40 +425,53 @@ and host-owned output postprocessing belong under `svg.*`. Unknown `environment`
 
 ## Resource Options
 
-`resources` controls render-wide deterministic budgets. These limits are separate from Cargo
-features and from raster/PDF/image budgets. Cargo features decide which capabilities are compiled;
-the resource profile bounds work inside an available semantic/SVG capability. PNG/JPG pixmap,
-vector-PDF filter, embedded-image, and aggregate encoding budgets remain independent. Native PNG,
-JPEG, and PDF export also scans the host system font database on first use and caches it for the
-process lifetime. That host-dependent scan is not caller-configurable and is not bounded by
-`resources.*` or the output allocation budgets; multi-tenant or hard-limit hosts must isolate the
-process accordingly.
+`resources` controls artifact-wide deterministic budgets. Cargo features decide which capabilities
+are compiled; the resource profile bounds work inside the selected semantic, SVG, or native export
+operation. Native PNG, JPEG, and PDF export also scans the host system font database on first use
+and caches it for the process lifetime. That host-dependent scan is not caller-configurable and is
+not bounded by `resources.*`; multi-tenant or hard-limit hosts must isolate the process accordingly.
 
 Native PNG, JPEG, and PDF embedded images accept only `data:` URLs. The exporters do not resolve
 filesystem paths or network URLs. Their default decode budgets allow 16,777,216 bytes and
 16,777,216 intrinsic pixels per image, and 33,554,432 bytes and 33,554,432 intrinsic pixels in
-aggregate. Those defaults belong to the output contract, not to `resources.limits`.
+aggregate. These four budgets are part of `resources.limits` so constructor ceilings and
+per-request tightening use the same contract as semantic and SVG limits.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `resources.profile` | string | `interactive` | `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`. |
 | `resources.limits.max_source_bytes` | positive integer | profile value | Source bytes checked before parse/render work. |
+| `resources.limits.max_document_diagrams` | non-negative integer | profile value | Host-document analysis Mermaid fence count for Markdown and MDX; `0` rejects the first Mermaid fence. |
 | `resources.limits.max_model_items` | positive integer | profile value | Aggregate semantic entities and relationships across every diagram family. |
 | `resources.limits.max_model_text_bytes` | positive integer | profile value | Aggregate UTF-8 text retained by the typed semantic model. |
 | `resources.limits.max_model_nesting_depth` | positive integer | profile value | Maximum semantic nesting depth before layout. |
 | `resources.limits.max_layout_work_units` | positive integer | profile value | Deterministic family-accounted derived geometry and layout candidate work. |
 | `resources.limits.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
 | `resources.limits.max_svg_elements` | positive integer | profile value | SVG element cardinality checked before recursive postprocessing. |
+| `resources.limits.max_ascii_grid_cells` | positive integer | profile value | Terminal grid cells allocated by graph-like ASCII layout. |
+| `resources.limits.max_raster_width` | positive integer | profile value | Maximum final PNG or JPEG width in pixels. |
+| `resources.limits.max_raster_height` | positive integer | profile value | Maximum final PNG or JPEG height in pixels. |
+| `resources.limits.max_raster_pixels` | positive integer | profile value | Maximum final PNG or JPEG pixel count. |
+| `resources.limits.max_embedded_image_bytes` | positive integer | profile value | Maximum decoded data-URL bytes for one embedded image in PNG, JPEG, or PDF export. |
+| `resources.limits.max_total_embedded_image_bytes` | positive integer | profile value | Maximum aggregate decoded data-URL bytes across embedded images. |
+| `resources.limits.max_embedded_image_pixels` | positive integer | profile value | Maximum intrinsic pixels for one embedded raster image. |
+| `resources.limits.max_total_embedded_image_pixels` | positive integer | profile value | Maximum aggregate intrinsic pixels across embedded raster images. |
+| `resources.limits.max_pdf_filter_image_pixels` | positive integer | profile value | Maximum retained pixel area for PDF filter-image rasterization after deterministic downsampling. |
 
-The seven public limits are intentionally family-neutral. Each family performs source-backed,
+The seven render/model limits are intentionally family-neutral. Each family performs source-backed,
 deterministic accounting for its own nodes, relationships, nesting, synthesized geometry, and
 candidate scans, then charges those values to the shared model and layout budgets. Hosts therefore
 choose a workload profile instead of maintaining diagram-specific threshold tables.
 
-A reusable engine constructor accepts the union of resource limits enforced by its compiled
-operations. Per-request overlays are operation-specific: analysis accepts the source budget;
-semantic JSON, ASCII, and SVG planning accept source/model budgets; layout JSON additionally
-accepts layout work; SVG and export operations accept the complete render budget. An overlay may
+`max_document_diagrams` belongs to host-document analysis, not to a single Mermaid diagram or render policy. Document-analysis operations accept and preserve it, while standalone analysis, model, layout, ASCII, SVG, and export operations reject it as out of scope. Profiles define this dimension consistently with every other binding resource: `interactive` allows 256 diagrams, `constrained` 128, `trusted-native` 1,024, and `unbounded-for-trusted-input` leaves it unbounded.
+
+`max_ascii_grid_cells` belongs to ASCII layout. It replaces the removed `ascii.max_grid_cells` option so constructor ceilings, per-request tightening, runtime metadata, and every generated SDK builder use one policy path.
+
+`max_pdf_filter_image_pixels` belongs only to PDF export. It bounds the retained raster area created when SVG filters require an intermediate image; a request may tighten the constructor ceiling, while the exporter deterministically downsamples within that ceiling or returns a structured resource error when no valid plan exists.
+
+The runtime catalog also reports six native-export hard caps: `max_svg_conversion_isolation_depth`, `max_svg_conversion_filter_primitives_per_filter`, `max_total_svg_conversion_filter_primitives`, `max_svg_conversion_subroots`, `max_nested_svg_images`, and `svg_backend_tree_nodes`. They describe fixed recursion and structure guards owned by the export backend. They remain finite under `unbounded-for-trusted-input` and cannot be supplied in `resources.limits`; generated builders reject attempts to override them.
+
+A reusable engine constructor accepts the union of resource limits enforced by its compiled operations. Per-request overlays are operation-specific: standalone analysis accepts the source budget and host-document analysis additionally accepts the document fence budget; semantic JSON and SVG planning accept source/model budgets; ASCII additionally accepts its terminal-grid budget; layout JSON additionally accepts layout work; SVG accepts the render budget; PNG and JPEG additionally accept raster and embedded-image budgets; PDF accepts embedded-image and filter-image budgets. An overlay may
 select a stricter effective profile or lower a limit, but it cannot raise a constructor limit,
 replace a finite ceiling with an unbounded value, clear `resources`, or set an unrelated limit.
 One-shot operations may choose any valid profile, but their explicit limits follow the same
@@ -467,22 +521,24 @@ Do not infer a safe limit from a single warm render: compare cold parse, layout,
 failure paths separately. The benchmark methodology documents the phase boundaries and evidence
 format used by the Playground and comparison tools.
 
-Limit ids are closed under resource-contract schema `1`: an unknown id, zero value, or removed flat
-or family-specific field is rejected.
+Limit ids are closed under Options JSON schema `2`: an unknown id, a value below the
+descriptor's minimum, a non-overridable hard cap, or a removed flat or family-specific field is
+rejected.
 The runtime contract publishes every accepted id, its phase, whether it is overridable, and the
 exact value or `null` for every profile. This avoids copying profile values into host libraries.
 
 ## Runtime Contract Discovery
 
 Query the loaded artifact rather than inferring capabilities or resource values from a package
-name. Runtime-contract schema `1` includes the transport API version, package and payload schema
-versions, transport-callable capability and output IDs, complete language-catalog facts, plus the
-resource descriptor for every callable resource-aware operation. The system adapter IDs contain
-clock, time-zone, and randomness only when the all-or-nothing `native` policy is selectable;
-incomplete native sets and timing instrumentation unified by another Cargo user are omitted.
-Every artifact exposes the input limits enforced by the invariant `semantic-json` operation. SVG
-artifacts expose the complete render limit set; narrower analysis and ASCII artifacts publish only
-the additional limits their callable operations enforce.
+name. Runtime-contract schema `1` includes the transport API version, package identity,
+`options_schema_versions`, binding-owned `payload_schemas`, `metadata_ids`, transport-callable
+capability/output/operation IDs, and the resource descriptor. Each resource limit records its
+`operation_ids`, so a generic SDK can show only limits accepted by the selected operation. The
+system adapter IDs contain clock, time-zone, and randomness only when the all-or-nothing `native`
+policy is selectable; incomplete native sets and timing instrumentation unified by another Cargo
+user are omitted. Every artifact exposes the input limits enforced by the invariant
+`semantic-json` operation. SVG artifacts expose the complete render limit set; narrower analysis
+and ASCII artifacts publish only the additional limits their callable operations enforce.
 
 The same catalog's `output_contracts` array has exactly one entry for every
 `capabilities.output_ids` value. Each entry publishes its media type and nullable system-font and
@@ -503,15 +559,20 @@ environment contracts as `null`.
 
 The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `3`, and payload
 schema numbers. Reject a contract schema newer than the host understands before interpreting its
-nested fields. The atomic runtime catalog carries the vocabulary beside the contract; validate it
-before trusting the contract's capability IDs, so its descriptor-owned direct implications do not
-need to be copied into each host package.
+nested fields. Detailed language catalogs are not embedded in this flat object: use the
+transport's named metadata API (`metadata_collect` for the C ABI) for
+`supported-diagrams`, `diagram-family-capabilities`, lint rules, themes, and ASCII capabilities.
+Schema-1 consumers must tolerate additive fields. Bundled SDK wrappers require the complete current
+shape for every field they decode; they do not silently emulate older producers. A generic C host
+may accept an older compatible producer only when it feature-detects omitted discovery fields and
+does not depend on them.
 
 ## SVG Options
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
+| `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
 | `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
 | `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
 | `svg.css_override_policy` | string | `preserve` | `preserve` or `strip-existing-important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied, and can override `host_theme.output.css_override_policy`. |
@@ -541,6 +602,25 @@ semantics, and renderer-specific compatibility.
 `background-color` value, or adds one when missing. This is useful for editor previews that need the
 diagram canvas to match the host surface. The value must be a single CSS declaration value; use
 `"transparent"` when the host wants no opaque root background.
+
+## Native Export Options
+
+`raster` applies to PNG and JPEG, `jpeg` applies only to JPEG, and `pdf` applies only to PDF. A reusable engine constructor accepts the option groups compiled into its artifact, while a one-shot call or request overlay rejects groups unrelated to that operation. An artifact without the corresponding output rejects the known group instead of silently ignoring it.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `raster.scale` | positive finite number | `1` | Device-pixel scaling applied before the output resource ceiling. |
+| `raster.background` | supported color string | transparent | `transparent`, `white`, `black`, or 3/4/6/8-digit hex. JPEG requires an opaque result. |
+| `raster.fit_to.width` | positive integer | none | Optional target width in pixels. At least one fit dimension is required. |
+| `raster.fit_to.height` | positive integer | none | Optional target height in pixels. At least one fit dimension is required. |
+| `jpeg.quality` | integer from `1` to `100` | exporter default | JPEG encoder quality. |
+| `pdf.background` | supported color string | transparent | Optional PDF page background using the same supported color vocabulary. |
+| `pdf.filter_scale` / `pdf.filterScale` | positive finite number | `4` | Requested sampling scale for localized SVG filter images. The exporter may reduce it to satisfy `max_pdf_filter_image_pixels`. |
+| `pdf.page_policy.kind` | string | `fit-svg` | `fit-svg`, `fixed`, or `fit-css-width`. |
+| `pdf.page_policy.width_pt` / `height_pt` | positive finite number | required by `fixed` | Fixed PDF page dimensions in points. |
+| `pdf.page_policy.max_width_px` | positive finite number | required by `fit-css-width` | Maximum responsive SVG width in CSS pixels before conversion to PDF points. |
+
+PDF filter sampling is explicit, while its localized-image ceiling remains part of `resources.limits`. Generic operation metadata reports the requested and effective scale when the exporter reduces sampling to satisfy `max_pdf_filter_image_pixels`.
 
 ## Examples
 
@@ -660,14 +740,16 @@ Invalid options produce binding errors:
 | Feature-gated operation disabled | `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` |
 | Resource budget exceeded | `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED` |
 
+Resource failures add an optional `details.resource` object to the existing error JSON. It contains `limit_id`, `phase`, `actual`, `max`, and `profile`. Consumers that understand payload schema `1` should tolerate this additive object; non-resource errors omit `details`, preserving the previous shape.
+
 Platform wrappers surface those errors through their native exception type:
 
 - C ABI: non-zero `MermanNativeStatus`, mirrored in `MermanNativeResult.status`, with the structured
   JSON error payload in `MermanNativeResult.metadata_or_error_json`.
-- Android: `MermanException`.
-- Apple: `MermanError.binding`.
-- Flutter/Dart: `MermanException`.
-- Python UniFFI: `MermanError.Binding`.
+- Android: `MermanException.resourceDetails`.
+- Apple: the optional `resource` field on `MermanError.binding`.
+- Flutter/Dart: `MermanException.resourceDetails`.
+- Python UniFFI: the optional `resource` field on `MermanError.Binding`.
 
 ## Typed Wrapper Follow-On
 
@@ -676,12 +758,11 @@ typed builders now sit above that contract and are produced from the Rust resour
 
 | Platform | Generated API |
 | --- | --- |
-| C | `MermanResourceProfile`, `MermanResourceLimitId`, `MermanResourceLimitOverride` and `merman_resource_options_json()` |
-| Android/Kotlin | `MermanResourceOptionsBuilder` / `MermanResourceOptions` |
+| C | include `merman_resource_contract.h`; `MERMAN_BINDING_OPTIONS_SCHEMA_VERSION`, stable profile/limit string macros, and `*_MINIMUM` / `*_OVERRIDABLE` describe the JSON document the host serializes |
+| Android/Kotlin | `MermanResourceOptionsBuilder` / `MermanResourceOptions` with an optional profile and `MermanResourceOverrideId` |
 | Apple/Swift | generated `resourceOptionsJson(profile:overrides:)` |
-| Flutter/Dart | `MermanResourceOptionsBuilder` / `MermanResourceOptions` |
-| Python/UniFFI | `ResourceOptionsBuilder` / `ResourceOptions` |
-| Web/TypeScript | closed `ResourceProfile`/`ResourceLimitId` unions and `resourceOptions()`; use `rawResourceOptionsJson()` only for an explicitly external contract |
+| Flutter/Dart | `MermanResourceOptionsBuilder` / `MermanResourceOptions` with optional profile and `MermanResourceOverrideId` |
+| Python/UniFFI | `ResourceOptionsBuilder` / `ResourceOptions` with optional profile and `ResourceOverrideId` / `MermanResourceOverrideId` |
+| Web/TypeScript | closed `ResourceProfile`/`ResourceOverrideId` unions and `resourceOptions()`; use `rawResourceOptionsJson()` only for an explicitly external contract |
 
-Builders validate profile and overridable limit ids before serialization. They do not duplicate the
-budget table; hosts should query the runtime contract when presenting values or settings UI.
+Builders validate profile IDs, overridable limit IDs, and each descriptor-owned minimum before serialization. Leaving profile unset emits no `resources.profile`, so a reusable request inherits its constructor ceiling instead of silently selecting `interactive`. They do not duplicate the profile budget table; hosts should query the runtime contract when presenting values or settings UI.

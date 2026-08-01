@@ -133,6 +133,12 @@ The facts schema version is unrelated to:
   The adapter owns URI/range projection, full/delta result state, capability advertising, and
   stale-result suppression; it does not sort tokens, assign legend indices, or define language
   semantics.
+
+The bundled stdio transport admits protocol messages synchronously before their futures become
+concurrent. Ordinary data-plane work and reserved cancellation/exit work have independent bounded
+lanes. Physical analysis-worker capacity remains separate from singleflight registry membership:
+invalidating a job removes its logical result immediately, but its worker slot is not released until
+the spawned task and any blocking projection have actually exited.
 - WASM validates the same descriptor and returns the same packed words. Monaco and VS Code consume
   that descriptor without a second enum, lookup table, sort, or regex grammar.
 

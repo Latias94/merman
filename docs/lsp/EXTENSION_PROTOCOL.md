@@ -184,11 +184,13 @@ Response. The JSON below is abbreviated; implementations return the complete
 ```
 
 The schema describes the same analysis options accepted by `initialize.initializationOptions` and
-`workspace/didChangeConfiguration`: `lint`, `resources.limits.max_source_bytes`, `site_config`,
-`fixed_today`, and `fixed_local_offset_minutes`. It is intentionally permissive with
-`additionalProperties` so alpha clients are not broken by future options. Clients should use it for
-settings completion, settings validation hints, and profile/rule pickers, then use
-`merman/ruleCatalog` for the richer rule explanations and evidence metadata.
+`workspace/didChangeConfiguration`: `lint`, `resources.limits.max_source_bytes`,
+`resources.limits.max_document_diagrams`, `site_config`, `fixed_today`, and
+`fixed_local_offset_minutes`. The document-diagram limit counts Mermaid fences in Markdown and MDX
+documents; clients that omit it use the server default of 256. The schema is intentionally
+permissive with `additionalProperties` so alpha clients are not broken by future options. Clients
+should use it for settings completion, settings validation hints, and profile/rule pickers, then
+use `merman/ruleCatalog` for the richer rule explanations and evidence metadata.
 
 ## Standard LSP Pairing
 

@@ -37,9 +37,11 @@ cargo run -p merman-lsp --features stdio
 
 Language behavior comes from `merman-analysis` and `merman-editor-core`. `MermanLspService` owns synchronous message admission, while its private `LanguageSession` owns document and configuration transactions, generation acquisition and caching, stale-result suppression, cancellation, client effects, refresh coordination, and shutdown. The remaining LSP layer projects those results onto the protocol.
 
+Unconfigured sessions admit at most 4 MiB of source text and 256 Mermaid fences per Markdown or MDX document. Source-byte rejection discards the oversized text and requires a later full replacement. Fence-count rejection retains authoritative text, so ranged edits or a configuration increase can restore analysis without reopening the document. Both limits are exposed through the analysis settings and `merman/configSchema`.
+
 ## Language Features
 
-- Diagnostics, including pull diagnostics and fix-backed quick fixes.
+- Diagnostics, including pull diagnostics and fix-backed quick fixes. When several requested diagnostics own the same shared document fix, the server materializes one equivalent workspace edit rather than repeating the action.
 - Completion and completion-item resolution.
 - Hover, document symbols, selection ranges, and folding ranges.
 - Definition, references, prepare rename, and rename.
@@ -71,11 +73,14 @@ tower = { version = "0.5.2", default-features = false, features = ["util"] }
 tower-lsp-server = { version = "0.23.0", default-features = false, features = ["runtime-tokio"] }
 ```
 
-Drive both halves of the returned pair. Incoming client requests enter the ordered service; its response goes back to the client. Server-initiated requests and notifications leave through the socket, and client responses to server-initiated requests must be sent back into that socket:
+Split the returned socket once, then drive both named halves. `MermanClientSocket` is an ownership token and deliberately does not implement `Stream` or `Sink`. Incoming client requests enter the ordered service; its response goes back to the client. Server-initiated requests and notifications leave through `MermanRequestStream`, and client responses to server-initiated requests must be sent through `MermanResponseSink`:
 
 ```rust
 use futures::{SinkExt, StreamExt};
-use merman_lsp::{MermanClientSocket, MermanLanguageServer, MermanLspService};
+use merman_lsp::{
+    MermanClientSocketError, MermanLanguageServer, MermanLspService, MermanRequestStream,
+    MermanResponseSink,
+};
 use tower::{Service, ServiceExt};
 use tower_lsp_server::jsonrpc::{Request, Response};
 use tower_lsp_server::ExitedError;
@@ -87,23 +92,25 @@ async fn handle_client_request(
     service.ready().await?.call(request).await
 }
 
-async fn next_server_request(socket: &mut MermanClientSocket) -> Option<Request> {
-    socket.next().await
+async fn next_server_request(requests: &mut MermanRequestStream) -> Option<Request> {
+    requests.next().await
 }
 
 async fn handle_client_response(
-    socket: &mut MermanClientSocket,
+    responses: &mut MermanResponseSink,
     response: Response,
-) -> Result<(), ExitedError> {
-    socket.send(response).await
+) -> Result<(), MermanClientSocketError> {
+    responses.send(response).await
 }
 
-fn create_session() -> (MermanLspService, MermanClientSocket) {
-    MermanLanguageServer::service()
+fn create_session() -> (MermanLspService, MermanRequestStream, MermanResponseSink) {
+    let (service, socket) = MermanLanguageServer::service();
+    let (requests, responses) = socket.split();
+    (service, requests, responses)
 }
 ```
 
-The host transport should poll these directions concurrently. It owns the request queue: reject encoded messages larger than `LSP_MAX_MESSAGE_BYTES`, retain no more than `LSP_REQUEST_BYTE_BUDGET` across queued and running messages, and poll at most `LSP_HANDLER_CONCURRENCY` handler futures concurrently. Call the service as each accepted message enters that bounded queue so a later `$/cancelRequest` can cancel a request that is still waiting for ordered admission, and reserve a bounded path for cancellation and `exit` even while ordinary handlers are saturated. Dropping either the service or socket terminates the whole shared session and cancels its pending work exactly once. Do not leave the socket undriven because diagnostics, logs, and refresh requests use it.
+The host transport should poll these directions concurrently. It owns the request queue: reject encoded messages larger than `LSP_MAX_MESSAGE_BYTES`, retain no more than `LSP_REQUEST_BYTE_BUDGET` across queued and running ordinary messages, and poll at most `LSP_ORDINARY_HANDLER_CONCURRENCY` ordinary futures concurrently. Reserve an independent bounded control path for cancellation and `exit`; the bundled transport polls up to `LSP_CONTROL_HANDLER_CONCURRENCY` control futures, for a default `LSP_TOTAL_HANDLER_CONCURRENCY` of eight. Call the ordered Tower service as each embedded message enters its bounded queue. The bundled stdio path instead uses `StdioService::admit` to synchronously reserve ordering, register request cancellation, and perform the valid-`exit` lifecycle action. Its returned future waits for predecessors and completes or abandons the reserved ordering slot, so transports may poll futures concurrently and must be able to drop them safely. Dropping the service, the unsplit socket, or either split half terminates the whole shared session and cancels pending work exactly once. Request EOF, a successful response-sink close, and any response-sink error also terminate both directions. Closing the response half wakes a pending request poll, while closing the request half makes subsequent response operations fail immediately, so transport shutdown cannot wait forever. Do not leave either socket half undriven because diagnostics, logs, and refresh requests use them.
 
 ## Runtime And Contract Boundaries
 

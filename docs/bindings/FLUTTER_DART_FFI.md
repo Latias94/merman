@@ -24,11 +24,13 @@ try {
 }
 ```
 
-`Merman.runtimeCatalog` is the primary runtime capability API. The facade validates flat runtime-catalog schema `1`, ABI transport version `3`, sorted capability/output/operation/adapter IDs, text measurement availability, complete resource relations, and agreement between the table and catalog package versions before it creates a usable engine.
+`Merman.runtimeCatalog` is the primary runtime capability API. The facade validates flat runtime-catalog schema `1`, ABI transport version `3`, supported options and payload schema versions, named metadata IDs, sorted capability/output/operation/adapter IDs, text measurement availability, complete resource-to-operation relations, and agreement between the table and catalog package versions before it creates a usable engine.
 
-The generated `MermanResourceLimitId` and `MermanResourceProfile` enums provide the stable IDs needed to construct resource options. Limit entries also retain the `overridable` flag required by the builder; they intentionally do not duplicate the loaded artifact's descriptive metadata or budget table.
+Detailed registries remain separate from that flat catalog. `supportedDiagrams()`, `asciiCapabilities()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`, `supportedThemes()`, and `supportedHostThemePresets()` call the generic appended ABI 3 `metadata_collect` slot and return immutable typed Dart values. This restores the metadata surface without adding per-catalog native symbols or copying the six catalogs into the runtime catalog.
 
-The loaded artifact remains authoritative at runtime. `resourceLimits`, `resourceProfiles`, `resourceLimitsById`, and `resourceProfilesById` expose the same typed descriptor shapes from the runtime catalog. `generalBindingDefaultResourceProfile` and `cliDefaultResourceProfile` resolve its default IDs. Schema-1 parsing accepts additive declared IDs for ABI-compatible `openPath` and `fromDynamicLibrary` loads, but rejects missing or duplicate descriptors, undeclared or missing profile-limit references, coerced scalar types, nonpositive finite limits, unbounded hard caps, and inconsistent default recommendations.
+The generated `MermanResourceLimitId` describes the complete catalog vocabulary. `MermanResourceOverrideId` is the narrower set accepted by `MermanResourceOptionsBuilder`, whose profile is optional so reusable requests can inherit their constructor ceiling. The generated values intentionally do not duplicate the loaded artifact's descriptive metadata or budget table.
+
+The loaded artifact remains authoritative at runtime. `resourceLimits`, `resourceProfiles`, `resourceLimitsById`, and `resourceProfilesById` expose the same typed descriptor shapes from the runtime catalog, including each limit's applicable operation IDs. `generalBindingDefaultResourceProfile` and `cliDefaultResourceProfile` resolve its default IDs. Schema-1 parsing accepts additive declared IDs for ABI-compatible `openPath` and `fromDynamicLibrary` loads, but rejects missing or duplicate descriptors, undeclared or missing profile-limit references, coerced scalar types, values below the declared minimum, unbounded hard caps, and inconsistent default recommendations.
 
 The generic operation entry point returns structured data:
 
@@ -47,7 +49,7 @@ final semantic = result.jsonObject;
 
 `MermanOperationResult` contains the requested `operation`, returned `mediaType`, copied Dart-owned `bytes`, and decoded operation `metadata`. `utf8Text` and `jsonObject` are decoding conveniences. Named methods for SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation are projections over the same `execute` path.
 
-Native failures use `MermanException` and machine-readable `MermanErrorKind`. Unknown operation codes throw `MermanUnknownOperationException`; valid operations whose artifact lacks a backend throw `MermanMissingCapabilityException` with the exact `capabilityId`. `MermanBusyException` and `MermanReentrantCallException` preserve the two nonblocking engine-admission failures.
+Native failures use `MermanException` and machine-readable `MermanErrorKind`. Unknown operation codes throw `MermanUnknownOperationException`; valid operations whose artifact lacks a backend throw `MermanMissingCapabilityException` with the exact `capabilityId`. `MermanBusyException` and `MermanReentrantCallException` preserve the two nonblocking engine-admission failures. Resource failures expose optional typed `resourceDetails` with the stable limit ID, phase, actual value, effective maximum, and selected profile.
 
 ## ABI Discovery
 
@@ -59,7 +61,7 @@ Discovery sends:
 - `MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST`;
 - the Dart consumer's `MermanNativeApi` capacity.
 
-The frozen ABI 3 prefix has five ordered slots: `runtime_catalog`, `engine_new`, `engine_try_close`, `execute_collect`, and `result_free`. The producer reports its full table size after writing the common prefix. The Dart consumer accepts a producer table at least as large as `MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE`, verifies the returned ABI version and minimum-prefix digest, then verifies every function pointer it calls. It does not require the producer table size to equal the current `ffigen` struct size, so an append-only ABI 3 producer remains discoverable.
+The frozen ABI 3 prefix has five ordered slots: `runtime_catalog`, `engine_new`, `engine_try_close`, `execute_collect`, and `result_free`. The current table appends `metadata_collect` at code `5`. The caller passes its real table capacity and the producer returns the largest complete prefix safely initialized within that capacity. The Dart consumer accepts a prefix at least as large as `MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE`, verifies the returned ABI version and minimum-prefix digest, then reads an appended slot only when the returned initialized size reaches that field and its pointer is nonzero. It does not require the initialized prefix size to equal the current `ffigen` struct size, so an append-only ABI 3 producer remains discoverable without exposing a partial function pointer.
 
 The returned digests have separate roles:
 
@@ -69,8 +71,8 @@ The returned digests have separate roles:
 
 `package_version` is also provenance unless the caller deliberately pins an exact artifact:
 
-- `Merman.open()` loads the package-owned library and requires the exact generated `mermanPackageVersion`;
-- `Merman.openPath(...)` requires only compatible ABI 3 discovery and accepts another package version;
+- `Merman.open()` loads the package-owned library, requires the exact generated `mermanPackageVersion`, and treats a missing current `metadata_collect` slot as a damaged bundled artifact;
+- `Merman.openPath(...)` requires only compatible ABI 3 discovery and accepts another package version; a five-slot producer remains usable for runtime catalog and operations, while named metadata methods report that the optional slot is unavailable;
 - `Merman.fromDynamicLibrary(...)` is ABI-compatible by default and accepts `expectedPackageVersion:` when an embedding application wants an explicit exact pin.
 
 The exact package version lives in `lib/src/generated/package_version.dart`, is exported as `mermanPackageVersion`, and is updated from the workspace release authority alongside `pubspec.yaml`. The contract test rejects projection drift.
@@ -91,7 +93,7 @@ After a producing call, every written result must carry a nonzero opaque `alloca
 
 For a written result, the Dart transport validates the result status, copies data and metadata into Dart-owned memory, calls the discovered `result_free` function exactly once, and only then releases the caller-owned result record. `result_free` owns native buffer cleanup through the token; Dart never frees a result buffer pointer through `calloc` and never exposes the token publicly. The zero-token exhaustion record is also passed to `result_free`, whose ABI contract safely clears it without releasing an allocation.
 
-This ownership path applies to runtime catalog loading, engine construction results, successful operations, and structured operation failures. Moving or duplicating native result records is unnecessary in Dart.
+This ownership path applies to runtime catalog loading, named metadata loading, engine construction results, successful operations, and structured operation failures. Moving or duplicating native result records is unnecessary in Dart.
 
 ## Engine Lifecycle
 
@@ -133,7 +135,7 @@ Pass SVG, resource, layout, environment, and theme options to engine constructio
 final merman = Merman.open(
   optionsJson: '''
     {
-      "version": 1,
+      "version": 2,
       "resources": {"profile": "constrained"},
       "svg": {"pipeline": "resvg-safe"}
     }
@@ -184,7 +186,7 @@ dart run tool/abi3_contract_test.dart
 dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
 ```
 
-Use `.so` on Linux and `.dll` on Windows. The local contract test statically projects the frozen minimum prefix and allocation token, validates runtime-catalog relations, checks package-version projection, verifies BUSY/REENTRANT decoding, and deterministically fuzzes malformed native error payloads. The real-library smoke repeatedly executes generic operations, exercises result cleanup, verifies exact-version and ABI-compatible loading, uses constructor-owned text measurement, proves a callback-time REENTRANT close retains the engine, and closes successfully afterward.
+Use `.so` on Linux and `.dll` on Windows. The local contract test statically projects the frozen minimum prefix, optional metadata slot, and allocation token; validates runtime-catalog and typed metadata relations; checks package-version projection; verifies BUSY/REENTRANT decoding; and deterministically fuzzes malformed native error payloads. The real-library smoke loads all six metadata catalogs, repeatedly executes generic operations, exercises result cleanup, verifies exact-version and ABI-compatible loading, uses constructor-owned text measurement, proves a callback-time REENTRANT close retains the engine, and closes successfully afterward.
 
 The repository-wide gate also checks generated declaration freshness and can build Android slices:
 

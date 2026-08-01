@@ -34,6 +34,10 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
   that an invalid incremental edit or a ranged edit after source discard left the server without
   authoritative text. It is not an analysis rule or rule-catalog entry, and its negotiated data
   contains only the document version.
+- `merman.resource.document_diagrams_exceeded` remains an analysis-owned resource diagnostic.
+  The LSP retains authoritative Markdown/MDX text while analysis is rejected, projects the
+  canonical payload for both push and pull diagnostics, and continues accepting ranged edits. It
+  must not translate this state into `merman.lsp.document_sync_lost`.
 
 ## Current Surface
 
@@ -59,6 +63,9 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - Recommended-profile authoring hints include the canonical `init` alias reminder and the
   frontmatter `config` preference; the frontmatter-config rule now carries a migration fix that
   rewrites init/initialize directive config into YAML frontmatter.
+- A document-wide `DiagnosticFix` may be attached to several diagnostics. Analysis keeps the edit
+  slice shared, and the LSP code-action path deduplicates requested owners by that shared identity
+  before materializing the server-owned workspace edit. Diagnostic schema 1 remains unchanged.
 
 ## Request Interleaving
 

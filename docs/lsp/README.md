@@ -45,7 +45,9 @@ Plain Mermaid files and Mermaid fences in Markdown and MDX use the same typed `D
 
 `MermanLspService` synchronously admits each JSON-RPC message before transport futures can run concurrently. State mutations are ordered by arrival, while reads wait for every earlier mutation to commit or abort. One private `LanguageSession` versions source and analyzer configuration independently and owns generation acquisition, singleflight execution, weighted LRU entries, guarded commits, client effects, refresh coordination, cancellation, and endpoint lifetime. Typed session operations capture a short-lived state ticket, perform parsing or projection outside the session mutex, then commit only if the captured epoch and configuration remain current. Handlers do not own transaction choreography.
 
-The service and client socket are two endpoints of that same session. Dropping either endpoint, receiving `exit`, or closing the socket stream terminates the shared lifecycle and cancels child work exactly once. The bundled stdio transport keeps cancellation and `exit` reachable under ordinary-handler saturation and applies one absolute deadline to handler, write, flush, and output-shutdown drain work.
+Resource admission distinguishes retained text from analyzable text. Source-byte rejection drops the oversized buffer and requires full synchronization before analysis can resume. A Markdown/MDX fence-count rejection retains the buffer and canonical `AnalysisRejection`, blocks snapshot creation, and can recover through ranged edits or revision-guarded configuration reclassification. The default session ceilings are 4 MiB and 256 Mermaid fences respectively.
+
+The service and client socket are two endpoints of that same session. Embedded hosts split the socket into the named request-stream and response-sink halves before driving it; the unsplit socket deliberately implements neither `Stream` nor `Sink`. Dropping the service, the unsplit socket, or either split half terminates the shared lifecycle and cancels child work exactly once. Request EOF, response close, and response errors terminate both directions, and closing the response half wakes a pending request poll. The bundled stdio transport synchronously admits every message before polling its handler, separates four ordinary handlers from four reserved control handlers, and keeps cancellation and valid `exit` notifications reachable under ordinary saturation. `exit` requests are rejected, `shutdown` notifications are ignored, and a valid `exit` notification performs its session effects during admission so its response-less future can be dropped. One absolute deadline bounds handler, write, flush, and output-shutdown drain work.
 
 - Push diagnostics re-check currentness immediately before publication.
 - Pull diagnostics retry bounded stale computations against the latest context.
@@ -62,7 +64,7 @@ Language behavior is driven by parser-backed facts from `merman-analysis` and qu
 
 - definition, references, prepare rename, and rename operate on typed entity groups rather than raw text matches;
 - payload facts may feed hover, lint, semantic tokens, and code actions without becoming navigation or rename targets;
-- code actions use explicit `DiagnosticFix` metadata and never invent edits for diagnostics without a safe fix; and
+- code actions use explicit `DiagnosticFix` metadata, never invent edits for diagnostics without a safe fix, and materialize one workspace edit when several requested diagnostics share the same fix allocation; and
 - completion uses editor-core replacement ranges, while resolve adds documentation without changing the selected insert edit.
 
 `Unavailable` provenance means no parser-backed body facts exist. Unknown or unrecoverable body text therefore receives no guessed body symbols, navigation, rename, or semantic tokens. Source-start diagram headers and templates remain available from the static family catalog.

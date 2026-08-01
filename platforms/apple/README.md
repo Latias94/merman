@@ -39,13 +39,15 @@ let svg = try engine.renderSvg(source: source, optionsJson: options)
 precondition(svg.hasPrefix("<svg"))
 ```
 
+`resourceOptionsJson` emits Options JSON schema `2`. Pass `nil` as the profile for a reusable request overlay that must inherit its constructor ceiling; generated override records accept only `MermanResourceOverrideId` values.
+
 Use `MermanOperationRequest` and `engine.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field. The generated `MermanOperationResult` carries binary-safe bytes, media type, and operation metadata. `MermanReusableEngine` is available for repeated work with baseline options plus per-operation deep-merged overrides. Reusable requests cannot change the constructor-owned runtime policy.
 
 Empty or omitted options select deterministic runtime state even in the full native SDK. Pass `{"runtime_policy":"native"}` only when the operation should use Apple's clock, time-zone rules, and random source. Generic operation metadata records the selected `runtime_policy`; a custom slim artifact missing a requested adapter returns a typed unsupported-operation error.
 
-Generated binding errors expose `MermanErrorKind` and an optional `capabilityId`. `.unknownOperation` has no capability ID, while `.missingCapability` preserves the stable descriptor ID required by the request.
+Generated binding errors expose `MermanErrorKind`, an optional `capabilityId`, and optional `MermanResourceErrorDetails`. `.unknownOperation` has no capability ID, `.missingCapability` preserves the stable descriptor ID required by the request, and resource failures preserve typed limit evidence without message parsing.
 
-The full native SDK artifact includes semantic JSON, analysis, ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, and RaTeX math. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags. Its stable capability, output, operation, registry, and resource IDs are the authoritative description of the loaded artifact; treat a typed missing-capability error as the final answer for any attempted operation.
+The full native SDK artifact includes semantic JSON, analysis, ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, and RaTeX math. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags. Its supported options and payload schemas, metadata IDs, capability/output/operation IDs, registry facts, and resource-to-operation mappings are the authoritative description of the loaded artifact; treat a typed missing-capability error as the final answer for any attempted operation.
 
 ## Text Measurement
 

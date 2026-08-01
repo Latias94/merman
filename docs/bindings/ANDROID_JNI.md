@@ -47,9 +47,13 @@ validates:
 
 - flat runtime-catalog schema `1`;
 - Android transport API version `1`;
-- sorted, unique capability, output, operation, and adapter IDs;
-- each runtime ID against that vocabulary; and
-- text-measurement/provider consistency and resource descriptors.
+- non-empty native package metadata;
+- Options JSON schema `2` and binding-result payload schema `1`; and
+- the independent text-measurement protocol version when that capability is present.
+
+The package-owned AAR deliberately does not revalidate every producer-owned catalog relation in
+Kotlin. Rust owner tests and the AAR smoke prove those relations; the wrapper checks only the
+protocol fields it consumes and tolerates additive catalog fields.
 
 Read the validated catalog with `MermanEngine.runtimeCatalogJson()`:
 
@@ -58,6 +62,12 @@ Read the validated catalog with `MermanEngine.runtimeCatalogJson()`:
   "schema_version": 1,
   "transport_api_version": 1,
   "package_version": "<loaded artifact version>",
+  "options_schema_versions": [2],
+  "payload_schemas": [
+    { "id": "binding-result", "version": 1 },
+    { "id": "operation-metadata", "version": 1 }
+  ],
+  "metadata_ids": ["supported-diagrams", "..."],
   "capabilities": {
     "capability_ids": ["svg"],
     "operation_ids": ["svg"],
@@ -65,16 +75,20 @@ Read the validated catalog with `MermanEngine.runtimeCatalogJson()`:
     "system_adapter_ids": [],
     "text_measurement": { "protocol_version": 1, "provider_ids": ["vendored"] }
   },
+  "output_contracts": [],
   "registry": { "diagram_family_count": 35 },
   "resources": { "general_binding_default_profile": "interactive" }
 }
 ```
 
-This is the boundary used to decide whether an installed AAR can render a requested output. Do not
-infer support from Kotlin method presence or Cargo feature names. A missing output reports a typed
-`MermanException` instead of silently selecting a fallback format.
+Hosts use this catalog to decide whether the installed AAR can render a requested output. Do not
+infer support from Kotlin method presence or Cargo feature names. The native operation path remains
+the final authority and reports a typed `MermanException` instead of silently selecting a fallback
+format.
 
 `MermanException.kind` is `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, `REENTRANT_CALL`, or `GENERIC`.
+Resource failures populate `MermanException.resourceDetails` with the stable limit ID, phase, actual
+value, effective maximum, and selected profile; other failures leave it `null`.
 `capabilityId` is non-null only for `MISSING_CAPABILITY` and preserves the descriptor ID emitted by
 bindings-core. Local wrapper and lifecycle failures remain `GENERIC`; consumers should branch on
 these fields rather than parse `message`.

@@ -10,7 +10,7 @@ Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a W
 - Java 17 toolchain
 - `arm64-v8a` or `x86_64`
 
-At load time, the wrapper validates the runtime catalog schema, transport API, and presence of native package metadata rather than relying on C ABI symbols or per-method JNI name lookup. Incompatible Kotlin/native API surfaces fail before the first operation, but exact release equality is not checked; always ship both parts from the same AAR.
+At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, binding-result schema, and text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. Incompatible Kotlin/native API surfaces fail before the first operation, but exact release equality is not checked; always ship both parts from the same AAR.
 
 ## Add A Release AAR
 
@@ -62,7 +62,7 @@ check(result.mediaType == "image/png")
 val bytes = result.data
 ```
 
-Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, validation, and document analysis. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID.
+Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, validation, and document analysis. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID. Resource failures expose optional typed `resourceDetails` with the stable limit ID, phase, actual value, effective maximum, and selected profile.
 
 ## Options And Capabilities
 
@@ -75,9 +75,11 @@ val svg = MermanEngine.renderSvg(
 )
 ```
 
+`MermanResourceOptionsBuilder` emits Options JSON schema `2`. Its profile is unset by default so reusable request overlays inherit their constructor ceiling; limits accept only `MermanResourceOverrideId`, while `MermanResourceLimitId` describes the full runtime catalog.
+
 An omitted `runtime_policy` is deterministic even though the normal Android artifact compiles native adapters. Add `"runtime_policy":"native"` only when an operation should use Android's clock, time-zone rules, and random source; a custom slim artifact missing an adapter fails with a typed unsupported-operation error.
 
-Use `MermanEngine.runtimeCatalogJson()` to inspect the loaded artifact's exact capability and output subset. It returns the flat runtime catalog, including the Android transport API version. The package's normal release artifact uses the complete native feature set, but hosts should still query the catalog before exposing optional output choices.
+Use `MermanEngine.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, metadata IDs, capability/output/operation subset, and resource-to-operation mappings. It returns the flat runtime catalog, including the Android transport API version. The package's normal release artifact uses the complete native feature set, but hosts should still query the catalog before exposing optional output choices.
 
 `analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; document facts also use their independently defined schema `1`. These payload schemas are independent of Android transport version. Pass full Markdown/MDX-like content plus a URI to document analysis:
 

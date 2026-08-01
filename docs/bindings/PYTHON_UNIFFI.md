@@ -114,11 +114,14 @@ reusable_document_json = reusable.analyze_document_json(
 ```
 
 Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the
-underlying status code/name, `MermanErrorKind`, optional `capability_id`, and message from
-`merman-bindings-core`. `UNKNOWN_OPERATION` has no capability ID; `MISSING_CAPABILITY` preserves the
-exact descriptor ID. Consumers should not parse the message to distinguish them.
+underlying status code/name, `MermanErrorKind`, optional `capability_id`, optional
+`MermanResourceErrorDetails`, and message from `merman-bindings-core`. `UNKNOWN_OPERATION` has no
+capability ID; `MISSING_CAPABILITY` preserves the exact descriptor ID. Resource failures expose the
+stable limit ID, phase, actual value, effective maximum, and selected profile. Consumers should not
+parse the message to distinguish these cases.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
+`ResourceOptionsBuilder` emits Options JSON schema `2`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
 `MermanEngine.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
 references, for editor settings, diagnostic explanations, or LSP rule configuration.
 

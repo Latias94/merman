@@ -16,9 +16,9 @@ The generated API exposes:
 - `MermanReusableEngine` for operations that share baseline options and optional host text
   measurement;
 - `MermanOperationRequest` and `MermanOperationResult` for generic descriptor-owned dispatch;
-- `resource_options_json` / generated `resourceOptionsJson` for versioned resource profiles;
+- `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `2` profiles and request-local overrides;
 - `MermanTextMeasurer` for synchronous host measurement; and
-- structured `MermanError::Binding { code, code_name, kind, capability_id, message }` failures.
+- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, message }` failures, where `resource` is optional typed limit evidence.
 
 `MermanEngine::binding_api_version()` reports `3`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
@@ -32,7 +32,7 @@ owns the generic operation's options. Named methods such as
 catalog. An unavailable operation returns a structured missing-capability error instead of a
 transport-specific stub result.
 
-One-shot execution constructs a fresh engine from the request options, so a request may explicitly
+The generated resource helper takes an optional profile. Leave it unset when a reusable request must inherit its constructor ceiling; only generated override IDs can be serialized into `resources.limits`. One-shot execution constructs a fresh engine from the request options, so a request may explicitly
 select `runtime_policy`. A reusable engine instead deeply merges each request's options over its
 construction baseline; nested objects merge recursively, while arrays and scalar leaves replace
 the baseline value. The reusable engine's baseline remains unchanged, and request options cannot

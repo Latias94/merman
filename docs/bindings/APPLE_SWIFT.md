@@ -78,10 +78,11 @@ methods over that path. One-shot request options may select `runtime_policy`; re
 options deeply merge over the construction baseline but cannot replace its constructor-owned
 runtime policy.
 
-Generated `MermanError.Binding` values carry `kind: MermanErrorKind` and an optional
-`capabilityId`. `.unknownOperation` has no capability ID; `.missingCapability` preserves the exact
-descriptor capability required by the valid request. Do not distinguish them by matching the
-human-readable message.
+Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
+and optional `MermanResourceErrorDetails`. `.unknownOperation` has no capability ID;
+`.missingCapability` preserves the exact descriptor capability required by the valid request.
+Resource failures preserve the stable limit ID, phase, actual value, effective maximum, and selected
+profile. Do not distinguish these cases by matching the human-readable message.
 
 ## Capabilities And Limits
 
@@ -93,9 +94,7 @@ shape and its local relations, such as every output also being an operation and 
 system adapter also being a capability. They must tolerate newly introduced stable IDs rather than
 embedding a second copy of Merman's global vocabulary.
 
-Use `resourceOptionsJson(profile:overrides:)` to build versioned options. `.constrained` is the
-recommended profile for untrusted or multi-tenant diagrams. The complete resource decision table
-and error behavior are documented in [binding options](OPTIONS_JSON.md).
+Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `2`. `.constrained` is the recommended profile for untrusted or multi-tenant diagrams; pass `nil` for a reusable request overlay that must inherit its constructor ceiling. Override records accept only `MermanResourceOverrideId`, while the runtime catalog remains the complete source of truth for all limits. The complete resource decision table and error behavior are documented in [binding options](OPTIONS_JSON.md).
 
 ## Text Measurement
 

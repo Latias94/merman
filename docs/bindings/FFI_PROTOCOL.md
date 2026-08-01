@@ -51,12 +51,19 @@ if (merman_get_native_api(&request, &api) != MERMAN_NATIVE_STATUS_OK) {
 }
 ```
 
-`api.struct_size` is input capacity and reports the producer's full table size on success. The ABI 3
-minimum prefix ends after the five ordered slots `runtime_catalog`, `engine_new`,
+`api.struct_size` is input capacity and reports the largest complete producer prefix safely
+initialized within that capacity on success. The ABI 3 minimum prefix ends after the five ordered slots `runtime_catalog`, `engine_new`,
 `engine_try_close`, `execute_collect`, and `result_free`. A newer producer may append fields after
 that prefix. An older consumer supplies its own table capacity, consumes only fields that fit in
-that capacity, and verifies every function pointer it calls. Do not reconstruct function names or
-dynamically look up per-operation exports.
+that capacity, and verifies every function pointer it calls. Merman never reports or exposes a
+partial appended slot; a host may reuse the returned value as the next discovery capacity. Do not
+reconstruct function names or dynamically look up per-operation exports.
+
+The current table appends `metadata_collect` at function-slot code `5`. It is not part of the
+frozen minimum. Before reading or calling an appended field, a host must verify that the complete
+prefix size reported in `api.struct_size` reaches the end of that field and that the function
+pointer is non-null. A compatible producer exposing only the five-slot minimum remains
+discoverable.
 
 The returned digests have separate roles:
 
@@ -79,13 +86,19 @@ implementing a second runtime offset probe.
 ## Runtime Catalog
 
 `api.runtime_catalog` writes a `MermanNativeResult` whose `metadata_or_error_json` contains the
-flat schema-1 JSON catalog:
+flat schema-1 JSON catalog. This abridged example shows every top-level field:
 
 ```json
 {
   "schema_version": 1,
   "transport_api_version": 3,
   "package_version": "...",
+  "options_schema_versions": [2],
+  "payload_schemas": [
+    { "id": "binding-result", "version": 1 },
+    { "id": "operation-metadata", "version": 1 }
+  ],
+  "metadata_ids": ["supported-diagrams", "..."],
   "capabilities": {
     "capability_ids": ["..."],
     "operation_ids": ["..."],
@@ -93,6 +106,14 @@ flat schema-1 JSON catalog:
     "system_adapter_ids": ["..."],
     "text_measurement": null
   },
+  "output_contracts": [
+    {
+      "id": "svg",
+      "media_type": "image/svg+xml",
+      "system_fonts": null,
+      "embedded_images": null
+    }
+  ],
   "registry": { "diagram_family_count": 35 },
   "resources": { "general_binding_default_profile": "interactive", "..." : "..." }
 }
@@ -105,6 +126,20 @@ native sets and externally unified timing instrumentation are not callable throu
 and are omitted. The catalog intentionally does not repeat the global descriptor vocabulary; hosts
 should validate shape, sorted/unique IDs, and local relations without maintaining a second
 hand-written capability table. The returned JSON is not wrapped in a native-only envelope.
+
+## Named Metadata
+
+`api.metadata_collect` accepts one borrowed UTF-8 metadata ID and writes its JSON document to
+`MermanNativeResult.metadata_or_error_json`. The current IDs are `supported-diagrams`,
+`ascii-capabilities`, `diagram-family-capabilities`, `lint-rule-catalog`, `supported-themes`, and
+`supported-host-theme-presets`. This generic appended slot restores catalog access without adding
+direct exports or placing large detail catalogs in the runtime catalog.
+
+A successful metadata result uses operation `MERMAN_NATIVE_OPERATION_NONE`, has empty `data`, and
+owns a nonzero allocation token. Unknown IDs return `MERMAN_NATIVE_STATUS_INVALID_ARGUMENT` with a
+structured failure result. A known catalog whose required capability is not compiled, such as the
+lint catalog without `analysis`, returns the ordinary typed `missing-capability` failure. Free every
+written success or failure with `api.result_free`.
 
 ## Generic Operations
 
@@ -170,10 +205,16 @@ fails with `MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR`.
 
 ## Results, Errors, And Ownership
 
-The status return and `MermanNativeResult.status` agree. On success, `data` holds the requested
-bytes and `metadata_or_error_json` holds versioned operation metadata. On failure,
+The status return and `MermanNativeResult.status` agree. On successful generic operations, `data`
+holds the requested bytes and `metadata_or_error_json` holds versioned operation metadata. Named
+metadata calls instead place their JSON document in `metadata_or_error_json`. On failure,
 `metadata_or_error_json` contains a structured UTF-8 error payload. `media_type` is a borrowed
 static slice valid until the library unloads.
+
+PNG and JPEG operation metadata includes the requested and effective raster plan. PDF operation
+metadata includes the requested and effective filter-image plan. Resource ceilings may reduce the
+effective scale without changing the operation status, so hosts that expose export sizing should
+read `output_plan` instead of echoing request options.
 
 Failure payload schema `MERMAN_NATIVE_RESULT_SCHEMA_VERSION == 1` always carries `kind` and a
 nullable `capability_id`:
@@ -262,6 +303,8 @@ function-pointer types are declared `noexcept` to make this contract visible to 
   C-consumer layout fingerprint as provenance evidence, not interchangeable compatibility keys.
 - Function slots and codes may only be appended. The frozen minimum prefix cannot change within
   ABI 3; changing its layout requires ABI 4.
+- Treat appended slots as optional ABI capabilities. Check the returned initialized-prefix size and pointer
+  before calling `metadata_collect` or any future appended function.
 - Result ownership, token/free behavior, callback non-local-exit prohibition, nonblocking close
   semantics, `engine_new` storage separation, and the closed error-kind vocabulary are frozen ABI 3
   semantics. The descriptor verifier rejects changes to this explicit minimum-semantic set.

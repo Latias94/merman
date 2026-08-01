@@ -51,20 +51,21 @@ Omitting `runtime_policy` always selects deterministic runtime state, even thoug
 Choose a profile from the shared [resource decision table](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md#resource-options), then use the generated builder:
 
 ```python
-from merman import ResourceOptionsBuilder, ResourceProfile
+from merman import ResourceOptionsBuilder, ResourceOverrideId, ResourceProfile
 
 resource_options = (
     ResourceOptionsBuilder()
     .profile(ResourceProfile.CONSTRAINED)
+    .limit(ResourceOverrideId.MAX_SOURCE_BYTES, 4 * 1024 * 1024)
     .build()
     .to_options_json()
 )
 svg = engine.render_svg(source, resource_options)
 ```
 
-Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is for cooperative local editing. The native CLI's default is intentionally separate (`trusted-native`).
+Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is for cooperative local editing. Leave the profile unset when a reusable request must inherit its constructor ceiling. The native CLI's default is intentionally separate (`trusted-native`).
 
-Call `engine.runtime_catalog_json()` to inspect the loaded runtime catalog and exact profile values instead of duplicating limits in application code. `merman.get_runtime_catalog(engine)` strictly validates its flat schema `1` artifact facts, package identity, transport API, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `3` and is independent from native C ABI and the text-measurement protocol version.
+Call `engine.runtime_catalog_json()` to inspect the loaded runtime catalog and exact profile values instead of duplicating limits in application code. `merman.get_runtime_catalog(engine)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. Resource limits also report the operation IDs that accept them. New stable IDs remain forward compatible. This direct binding API version is `3` and is independent from native C ABI and the text-measurement protocol version.
 
 Diagnostics and parser facts both use their final schema `1`, independently of UniFFI binding API `3`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape must migrate to parser-backed items and explicit unavailable bodies.
 

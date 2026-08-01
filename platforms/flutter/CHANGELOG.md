@@ -12,6 +12,7 @@
 - Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the legacy Flowchart ELK backend selector; update serialized `optionsJson` before upgrading.
 - Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, and theme variables to `host_theme.theme_variables`; remove legacy `layout.text_measurer`, `layout.math_renderer`, and `host_theme.themeVariables` keys before upgrading because they are now rejected.
 - Removed underscore and shorthand binding enum aliases. Use the documented kebab-case values such as `resvg-safe`, `strip-existing-important`, `trusted-native`, and `unbounded-for-trusted-input`, plus generated host-theme preset names.
+- Replaced the incompatible prerelease options grammar with Options JSON schema `2`. Generated resource builders now leave the profile unset by default so request overlays inherit their constructor ceiling, and only `MermanResourceOverrideId` values can be written as overrides.
 
 ### Added
 
@@ -24,6 +25,7 @@
   SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation.
 - Added generated resource options so Flutter callers can choose `interactive`, `constrained`,
   `trusted-native`, or `unbounded-for-trusted-input` without copying limit tables.
+- Restored typed and cached diagram, ASCII, parser/render, lint-rule, Mermaid-theme, and host-theme metadata APIs through the appended ABI 3 `metadata_collect` slot. Exact-version package loading requires the slot, while `openPath` retains frozen five-slot prefix compatibility.
 
 ### Changed
 

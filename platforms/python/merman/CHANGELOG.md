@@ -22,14 +22,13 @@ Corresponds to merman workspace release `0.8.0-alpha.4`.
 - Removed split `runtime_contract_json()` and `runtime_capability_vocabulary_json()` discovery. Use the one atomic `runtime_catalog_json()` endpoint and `get_runtime_catalog()` decoder.
 - Moved generic operation options into `MermanOperationRequest.options_json`; call `engine.execute(request)` without a parallel options argument. Reusable operation options now deeply merge over the engine baseline but cannot change its constructor-owned runtime policy.
 - Added `options_json` to reusable convenience methods. Pass `None` to inherit the engine baseline or provide a request-local override for that operation.
+- Replaced the incompatible prerelease options grammar with Options JSON schema `2`. New resource helpers emit version `2`, omit `resources.profile` when a request should inherit its constructor ceiling, and accept only generated `ResourceOverrideId` values for overridable limits.
 
 ### Added
 
 - Added `MermanOperationRequest`, `MermanOperationResult`, and `MermanEngine.execute()` as the one descriptor-owned operation path. Named methods are wrappers over it.
 - Added real `render_png()`, `render_jpeg()`, and `render_pdf()` byte APIs when the matching artifact output capability is enabled.
-- Added the generated `ResourceOptionsBuilder` and schema 1 resource contract so
-  Python callers can select `interactive`, `constrained`, `trusted-native`, or
-  `unbounded-for-trusted-input` without duplicating limit tables.
+- Added the generated `ResourceOptionsBuilder` and schema `2` resource contract so Python callers can select `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input` without duplicating limit tables.
 
 ### Changed
 

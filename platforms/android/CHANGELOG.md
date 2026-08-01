@@ -25,6 +25,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, and theme variables to `host_theme.theme_variables`; remove legacy `layout.text_measurer`, `layout.math_renderer`, and `host_theme.themeVariables` keys before upgrading because they are now rejected.
 - Removed underscore and shorthand binding enum aliases. Use the documented kebab-case values such as `resvg-safe`, `strip-existing-important`, `trusted-native`, and `unbounded-for-trusted-input`, plus generated host-theme preset names.
 - Expanded the diagram-family capability JSON. Upgrade custom strict Kotlin/JSON decoders with the native library; the canonical record now includes logical/render-model identities, parser/render flags, authoring header, and configuration namespace.
+- Replaced the incompatible prerelease options grammar with Options JSON schema `2`. `MermanResourceOptionsBuilder` now leaves the profile unset by default so request overlays inherit their constructor ceiling, and only generated `MermanResourceOverrideId` values can be supplied as overrides.
 
 ### Added
 
