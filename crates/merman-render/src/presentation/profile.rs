@@ -1,5 +1,5 @@
 use merman_core::{Engine, MermaidConfig};
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use super::{HostTheme, PresentationError};
 
@@ -55,34 +55,48 @@ impl Presentation {
         self
     }
 
-    pub fn apply_to_engine(&self, engine: Engine) -> Engine {
-        engine.with_site_config(self.resolve().mermaid_config)
-    }
-
-    pub(crate) fn resolve(&self) -> ResolvedPresentation {
-        let mut mermaid_config = self
-            .profile
-            .map(profile_defaults)
-            .unwrap_or_else(empty_config);
+    pub fn resolve(self) -> ResolvedPresentation {
+        let mut mermaid_config = self.profile.map(profile_defaults).unwrap_or_default();
         if let Some(theme) = &self.theme {
             let theme = theme.mermaid_config_patch();
             mermaid_config.deep_merge(theme.as_value());
         }
+        let flowchart_policy = self.profile.map(|_| FlowchartPresentationPolicy {
+            edge_corner_radius: None,
+            edge_label_padding: 4.0,
+            compact_edge_corners: true,
+        });
         ResolvedPresentation {
+            presentation: self,
             mermaid_config,
-            flowchart_policy: self.profile.map(|_| FlowchartPresentationPolicy {
-                edge_corner_radius: None,
-                edge_label_padding: 4.0,
-                compact_edge_corners: true,
-            }),
+            flowchart_policy,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ResolvedPresentation {
-    pub(crate) mermaid_config: MermaidConfig,
-    pub(crate) flowchart_policy: Option<FlowchartPresentationPolicy>,
+pub struct ResolvedPresentation {
+    presentation: Presentation,
+    mermaid_config: MermaidConfig,
+    flowchart_policy: Option<FlowchartPresentationPolicy>,
+}
+
+impl ResolvedPresentation {
+    pub fn presentation(&self) -> &Presentation {
+        &self.presentation
+    }
+
+    pub fn materialize_engine(&self, engine: Engine) -> Engine {
+        engine.with_site_config(self.mermaid_config.clone())
+    }
+
+    pub(crate) fn mermaid_config(&self) -> &MermaidConfig {
+        &self.mermaid_config
+    }
+
+    pub(crate) const fn flowchart_policy(&self) -> Option<FlowchartPresentationPolicy> {
+        self.flowchart_policy
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -90,10 +104,6 @@ pub(crate) struct FlowchartPresentationPolicy {
     pub(crate) edge_corner_radius: Option<f64>,
     pub(crate) edge_label_padding: f64,
     pub(crate) compact_edge_corners: bool,
-}
-
-fn empty_config() -> MermaidConfig {
-    MermaidConfig::from_value(Value::Object(Map::new()))
 }
 
 fn profile_defaults(profile: PresentationProfile) -> MermaidConfig {

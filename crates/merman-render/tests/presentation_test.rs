@@ -6,7 +6,8 @@ use merman_render::presentation::{
 
 fn effective_config(presentation: Presentation, source: &str) -> serde_json::Value {
     presentation
-        .apply_to_engine(Engine::new())
+        .resolve()
+        .materialize_engine(Engine::new())
         .parse_metadata_sync(source)
         .expect("metadata parse should succeed")
         .effective_config

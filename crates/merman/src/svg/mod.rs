@@ -43,6 +43,8 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+use std::sync::OnceLock;
+
 pub use merman_core::runtime::{
     OperationContext, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
 };
@@ -59,6 +61,12 @@ pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
 #[cfg(feature = "math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
+pub use merman_render::presentation::{
+    HostTheme, HostThemeAppearance as PresentationThemeAppearance, HostThemePreset as ThemePreset,
+    Presentation, PresentationAspectApplicability, PresentationAspectDescriptor, PresentationError,
+    PresentationProfile, PresentationProfileDescriptor, ResolvedPresentation,
+    ThemePresetDescriptor, ThemeRole, presentation_profile_descriptors, theme_preset_descriptors,
+};
 pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
@@ -552,10 +560,14 @@ mod svg_pipeline_tests {
             ),
             ("classDiagram\nclass Animal", "class", "ClassDiagramV2"),
         ] {
-            let free_layout =
-                layout_json_sync(&renderer.engine, source, renderer.parse, &renderer.layout)
-                    .unwrap()
-                    .unwrap();
+            let free_layout = layout_json_sync(
+                renderer.materialized_engine(),
+                source,
+                renderer.parse,
+                &renderer.layout,
+            )
+            .unwrap()
+            .unwrap();
             let renderer_layout = renderer.layout_json_sync(source).unwrap().unwrap();
 
             assert_eq!(free_layout, renderer_layout);
@@ -1381,7 +1393,10 @@ Missing ref: id2,after missing,1d
 /// noisy. It stays runtime-agnostic: all work is CPU-bound and does not perform I/O.
 #[derive(Clone)]
 pub struct HeadlessRenderer {
-    engine: merman_core::Engine,
+    base_engine: merman_core::Engine,
+    presentation: RendererPresentation,
+    site_config_layers: Vec<merman_core::MermaidConfig>,
+    materialized_engine: OnceLock<merman_core::Engine>,
     parse: merman_core::ParseOptions,
     environment: RenderEnvironment,
     layout: LayoutOptions,
@@ -1389,10 +1404,42 @@ pub struct HeadlessRenderer {
     svg_debug: SvgDebugOptions,
     /// Optional renderer-owned SVG output pipeline.
     ///
-    /// A fresh renderer leaves this unset so `render_svg_sync` keeps the Mermaid-parity SVG
-    /// contract. Host theme helpers set this to the compiled profile pipeline so the profile's
-    /// output settings travel with the renderer instead of requiring each call to pass them again.
     svg_pipeline: Option<SvgPipeline>,
+}
+
+#[derive(Clone, Default)]
+enum RendererPresentation {
+    #[default]
+    None,
+    Typed(ResolvedPresentation),
+    Legacy {
+        site_config: merman_core::MermaidConfig,
+        pipeline: SvgPipeline,
+    },
+}
+
+impl RendererPresentation {
+    fn apply(&self, engine: merman_core::Engine) -> merman_core::Engine {
+        match self {
+            Self::None => engine,
+            Self::Typed(presentation) => presentation.materialize_engine(engine),
+            Self::Legacy { site_config, .. } => engine.with_site_config(site_config.clone()),
+        }
+    }
+
+    fn typed(&self) -> Option<&Presentation> {
+        match self {
+            Self::Typed(presentation) => Some(presentation.presentation()),
+            Self::None | Self::Legacy { .. } => None,
+        }
+    }
+
+    fn legacy_pipeline(&self) -> Option<&SvgPipeline> {
+        match self {
+            Self::Legacy { pipeline, .. } => Some(pipeline),
+            Self::None | Self::Typed(_) => None,
+        }
+    }
 }
 
 impl Default for HeadlessRenderer {
@@ -1409,7 +1456,10 @@ impl HeadlessRenderer {
         environment: RenderEnvironment,
     ) -> Self {
         Self {
-            engine,
+            base_engine: engine,
+            presentation: RendererPresentation::None,
+            site_config_layers: Vec::new(),
+            materialized_engine: OnceLock::new(),
             environment,
             parse: merman_core::ParseOptions::default(),
             layout: LayoutOptions::headless_svg_defaults(),
@@ -1433,12 +1483,19 @@ impl HeadlessRenderer {
     }
 
     pub fn with_engine(mut self, engine: merman_core::Engine) -> Self {
-        self.engine = engine;
+        self.base_engine = engine;
+        self.invalidate_materialized_engine();
         self
     }
 
+    /// Returns the Engine used by renderer operations after presentation and site-config layers.
     pub fn engine(&self) -> &merman_core::Engine {
-        &self.engine
+        self.materialized_engine()
+    }
+
+    /// Returns the lowest-precedence Engine before presentation and renderer site config.
+    pub fn base_engine(&self) -> &merman_core::Engine {
+        &self.base_engine
     }
 
     pub const fn parse_options(&self) -> merman_core::ParseOptions {
@@ -1462,7 +1519,9 @@ impl HeadlessRenderer {
     }
 
     pub fn svg_pipeline(&self) -> Option<&SvgPipeline> {
-        self.svg_pipeline.as_ref()
+        self.svg_pipeline
+            .as_ref()
+            .or_else(|| self.presentation.legacy_pipeline())
     }
 
     pub fn with_environment(mut self, environment: RenderEnvironment) -> Self {
@@ -1471,21 +1530,39 @@ impl HeadlessRenderer {
     }
 
     pub fn with_site_config(mut self, site_config: merman_core::MermaidConfig) -> Self {
-        self.engine = self.engine.with_site_config(site_config);
+        self.site_config_layers.push(site_config);
+        self.invalidate_materialized_engine();
         self
+    }
+
+    /// Selects product presentation independently from Mermaid site config and SVG output.
+    pub fn with_presentation(mut self, presentation: Presentation) -> Self {
+        self.presentation = RendererPresentation::Typed(presentation.resolve());
+        self.invalidate_materialized_engine();
+        self
+    }
+
+    pub fn presentation(&self) -> Option<&Presentation> {
+        self.presentation.typed()
     }
 
     pub fn with_host_theme(mut self, profile: &HostThemeProfile) -> Self {
         let compiled = profile.compile();
         let pipeline = compiled.pipeline();
-        self.engine = self.engine.with_site_config(compiled.site_config);
-        self.svg_pipeline = Some(pipeline);
+        self.presentation = RendererPresentation::Legacy {
+            site_config: compiled.site_config,
+            pipeline,
+        };
+        self.invalidate_materialized_engine();
         self
     }
 
     pub fn with_compiled_host_theme(mut self, theme: &CompiledHostTheme) -> Self {
-        self.engine = self.engine.with_site_config(theme.site_config.clone());
-        self.svg_pipeline = Some(theme.pipeline());
+        self.presentation = RendererPresentation::Legacy {
+            site_config: theme.site_config.clone(),
+            pipeline: theme.pipeline(),
+        };
+        self.invalidate_materialized_engine();
         self
     }
 
@@ -1573,7 +1650,33 @@ impl HeadlessRenderer {
         &self,
         session: &merman_render::environment::RenderSession,
     ) -> merman_core::Engine {
-        engine_with_session_context(&self.engine, session)
+        engine_with_session_context(self.materialized_engine(), session)
+    }
+
+    fn materialized_engine(&self) -> &merman_core::Engine {
+        self.materialized_engine.get_or_init(|| {
+            let mut engine = self.presentation.apply(self.base_engine.clone());
+            for site_config in &self.site_config_layers {
+                engine = engine.with_site_config(site_config.clone());
+            }
+            engine
+        })
+    }
+
+    fn invalidate_materialized_engine(&mut self) {
+        self.materialized_engine.take();
+    }
+
+    fn operation<'a>(&'a self, text: &'a str) -> Result<operation::HeadlessOperation<'a>> {
+        self.operation_with_engine(self.materialized_engine(), text)
+    }
+
+    fn operation_with_engine<'a>(
+        &'a self,
+        engine: &merman_core::Engine,
+        text: &'a str,
+    ) -> Result<operation::HeadlessOperation<'a>> {
+        operation::HeadlessOperation::new(engine, text, self.parse, &self.layout, &self.environment)
     }
 
     pub fn parse_metadata_sync(&self, text: &str) -> Result<merman_core::ParseMetadata> {
@@ -1599,38 +1702,17 @@ impl HeadlessRenderer {
     }
 
     pub fn layout_json_sync(&self, text: &str) -> Result<Option<serde_json::Value>> {
-        operation::HeadlessOperation::new(
-            &self.engine,
-            text,
-            self.parse,
-            &self.layout,
-            &self.environment,
-        )?
-        .layout_json()
+        self.operation(text)?.layout_json()
     }
 
     /// Parses and lays out one typed render artifact for inspection before SVG rendering.
     pub fn prepare_render_sync(&self, text: &str) -> Result<Option<PreparedRender>> {
-        operation::HeadlessOperation::new(
-            &self.engine,
-            text,
-            self.parse,
-            &self.layout,
-            &self.environment,
-        )?
-        .prepare_render()
+        self.operation(text)?.prepare_render()
     }
 
     /// Parses one typed semantic stage for admission before layout starts.
     pub fn prepare_semantic_sync(&self, text: &str) -> Result<Option<PreparedSemantic>> {
-        operation::HeadlessOperation::new(
-            &self.engine,
-            text,
-            self.parse,
-            &self.layout,
-            &self.environment,
-        )?
-        .prepare_semantic()
+        self.operation(text)?.prepare_semantic()
     }
 
     /// Parses one Mermaid diagram and reports its required and missing SVG capabilities.
@@ -1640,14 +1722,7 @@ impl HeadlessRenderer {
     /// `HeadlessError::Parse(merman_core::Error::DetectType(_))`; runtime, parse, and resource
     /// failures are never folded into capability absence.
     pub fn plan_svg_sync(&self, text: &str) -> Result<Option<RenderCapabilityPlan>> {
-        operation::HeadlessOperation::new(
-            &self.engine,
-            text,
-            self.parse,
-            &self.layout,
-            &self.environment,
-        )?
-        .plan_render()
+        self.operation(text)?.plan_render()
     }
 
     pub fn render_svg_sync(&self, text: &str) -> Result<Option<String>> {
@@ -1660,7 +1735,11 @@ impl HeadlessRenderer {
         let Some(prepared) = self.prepare_render_sync(text)? else {
             return Ok(None);
         };
-        let rendered = match &self.svg_pipeline {
+        Ok(Some(self.render_prepared_svg(prepared)?))
+    }
+
+    fn render_prepared_svg(&self, prepared: PreparedRender) -> Result<RenderedSvg> {
+        let rendered = match self.svg_pipeline() {
             Some(pipeline) => prepared.render_svg_with_pipeline_report_and_debug(
                 &self.svg,
                 &self.svg_debug,
@@ -1668,7 +1747,7 @@ impl HeadlessRenderer {
             )?,
             None => prepared.render_svg_report_with_debug(&self.svg, &self.svg_debug)?,
         };
-        Ok(Some(rendered))
+        Ok(rendered)
     }
 
     /// Renders one diagram with additional Mermaid site config defaults.
@@ -1681,9 +1760,17 @@ impl HeadlessRenderer {
         text: &str,
         site_config: merman_core::MermaidConfig,
     ) -> Result<Option<String>> {
-        self.clone()
-            .with_site_config(site_config)
-            .render_svg_sync(text)
+        let engine = self
+            .materialized_engine()
+            .clone()
+            .with_site_config(site_config);
+        let Some(prepared) = self
+            .operation_with_engine(&engine, text)?
+            .prepare_render()?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(self.render_prepared_svg(prepared)?.into_svg()))
     }
 
     /// Renders one diagram with a host/editor theme profile.
@@ -1770,7 +1857,7 @@ impl HeadlessRenderer {
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn export_pipeline(&self) -> SvgPipeline {
-        self.svg_pipeline
+        self.svg_pipeline()
             .clone()
             .unwrap_or_else(SvgPipeline::resvg_safe)
     }

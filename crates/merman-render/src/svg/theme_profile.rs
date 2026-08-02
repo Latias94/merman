@@ -270,12 +270,12 @@ impl HostThemeProfile {
             .with_profile(PresentationProfile::MermanModern)
             .resolve();
         let mut site_config = resolved
-            .mermaid_config
+            .mermaid_config()
             .as_value()
             .as_object()
             .cloned()
             .unwrap_or_default();
-        if let Some(policy) = resolved.flowchart_policy {
+        if let Some(policy) = resolved.flowchart_policy() {
             let flowchart = site_config
                 .entry("flowchart")
                 .or_insert_with(|| Value::Object(Map::new()))
