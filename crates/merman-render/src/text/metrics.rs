@@ -562,6 +562,7 @@ fn measure_inline_html_layout(
 #[cfg(test)]
 mod inline_planning_tests {
     use super::*;
+    use crate::text::VendoredFontMetricsTextMeasurer;
     use std::cell::RefCell;
 
     #[derive(Default)]
