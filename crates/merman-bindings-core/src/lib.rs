@@ -59,7 +59,9 @@ pub use resource_contract::{
     BindingResourceContract, BindingResourceLimitDescriptor, BindingResourceProfileDescriptor,
     binding_resource_contract,
 };
-pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
+pub use svg_plan::{
+    SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, SvgPlanPresentationAspect, svg_plan_json,
+};
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {

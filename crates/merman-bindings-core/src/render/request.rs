@@ -1,16 +1,17 @@
 #[cfg(test)]
 use crate::common::binding_runtime_policy_from;
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, binding_resource_policy,
-    binding_site_config, css_declaration_value, finite_positive, internal_json_error,
-    no_diagram_error, normalize_option, runtime_policy_error,
+    BindingError, BindingOptions, BindingStatus, PresentationOptionsJson,
+    PresentationThemeOptionsJson, binding_resource_policy, binding_site_config,
+    css_declaration_value, finite_positive, internal_json_error, no_diagram_error,
+    normalize_option, runtime_policy_error,
 };
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use merman::svg::{
-    HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset, HostThemePreset,
-    HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions, MeasurementProfileId,
-    RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    HeadlessRenderer, HostTheme, LayoutOptions, MeasurementProfileId, Presentation,
+    PresentationProfile, PresentationThemeAppearance, RenderEnvironment, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemePreset, ThemeRole,
 };
 use std::sync::Arc;
 
@@ -29,7 +30,7 @@ pub(super) struct RenderRequestPlan {
 pub(super) struct RenderOperationConfig {
     environment: RenderEnvironment,
     lenient_parsing: bool,
-    host_theme_site_config: Option<merman::MermaidConfig>,
+    presentation: Option<Presentation>,
     site_config: Option<merman::MermaidConfig>,
     layout: LayoutOptions,
     svg: merman::svg::SvgRenderOptions,
@@ -228,12 +229,11 @@ impl RenderOperationConfig {
             .and_then(|parse| parse.suppress_errors)
             .unwrap_or(false);
         let mut output = merman::svg::SvgOutputPolicy::default();
-        let mut host_theme_site_config = None;
-        if let Some(host_theme) = options.host_theme.as_ref() {
-            let compiled = binding_host_theme(host_theme)?;
-            output = compiled.output;
-            host_theme_site_config = Some(compiled.site_config);
-        }
+        let presentation = options
+            .presentation
+            .as_ref()
+            .map(binding_presentation)
+            .transpose()?;
         let site_config = binding_site_config(options)?;
 
         let mut layout = LayoutOptions::headless_svg_defaults();
@@ -305,7 +305,7 @@ impl RenderOperationConfig {
         Ok(Self {
             environment,
             lenient_parsing,
-            host_theme_site_config,
+            presentation,
             site_config,
             layout,
             svg: svg_options,
@@ -326,8 +326,8 @@ impl RenderOperationConfig {
         } else {
             renderer.with_strict_parsing()
         };
-        if let Some(site_config) = self.host_theme_site_config {
-            renderer = renderer.with_site_config(site_config);
+        if let Some(presentation) = self.presentation {
+            renderer = renderer.with_presentation(presentation);
         }
         if let Some(site_config) = self.site_config {
             renderer = renderer.with_site_config(site_config);
@@ -478,273 +478,86 @@ fn finite_nonnegative(value: f64, name: &'static str) -> Result<f64, BindingErro
     }
 }
 
-fn binding_host_theme(
-    host_theme: &HostThemeOptionsJson,
-) -> Result<merman::svg::CompiledHostTheme, BindingError> {
-    let mut profile = if let Some(preset) = host_theme.preset.as_deref() {
-        HostThemeProfile::from_preset(binding_host_theme_preset(preset)?)
+fn binding_presentation(options: &PresentationOptionsJson) -> Result<Presentation, BindingError> {
+    let mut presentation = Presentation::new();
+    if let Some(profile) = options.profile.as_deref() {
+        let profile = PresentationProfile::from_id(profile.trim()).map_err(|_| {
+            BindingError::new(
+                BindingStatus::InvalidArgument,
+                format!("unsupported presentation.profile: {profile}"),
+            )
+        })?;
+        presentation = presentation.with_profile(profile);
+    }
+    if let Some(theme) = options.theme.as_ref() {
+        presentation = presentation.with_theme(binding_presentation_theme(theme)?);
+    }
+    Ok(presentation)
+}
+
+fn binding_presentation_theme(
+    options: &PresentationThemeOptionsJson,
+) -> Result<HostTheme, BindingError> {
+    let mut theme = if let Some(preset) = options.preset.as_deref() {
+        let preset = ThemePreset::from_id(preset.trim()).map_err(|_| {
+            BindingError::new(
+                BindingStatus::InvalidArgument,
+                format!("unsupported presentation.theme.preset: {preset}"),
+            )
+        })?;
+        HostTheme::from_preset(preset)
     } else {
-        HostThemeProfile::default()
+        HostTheme::new()
     };
 
-    if let Some(appearance) = host_theme.appearance.as_deref() {
-        profile.appearance = match normalize_option(appearance).as_str() {
-            "light" => HostThemeAppearance::Light,
-            "dark" => HostThemeAppearance::Dark,
+    if let Some(appearance) = options.appearance.as_deref() {
+        theme = theme.with_appearance(match appearance.trim() {
+            "light" => PresentationThemeAppearance::Light,
+            "dark" => PresentationThemeAppearance::Dark,
             other => {
                 return Err(BindingError::new(
                     BindingStatus::InvalidArgument,
-                    format!("unsupported host_theme.appearance: {other}"),
+                    format!("unsupported presentation.theme.appearance: {other}"),
                 ));
             }
-        };
+        });
     }
-
-    if let Some(font_family) = host_theme
-        .font_family
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        profile.font_family = Some(font_family.to_string());
+    if let Some(font_family) = options.font_family.as_deref() {
+        theme = theme
+            .try_with_font_family(font_family)
+            .map_err(binding_presentation_error)?;
     }
-    if let Some(font_size) = host_theme
-        .font_size
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        profile.font_size = Some(css_declaration_value(font_size, "host_theme.font_size")?);
+    if let Some(font_size) = options.font_size.as_deref() {
+        theme = theme
+            .try_with_font_size(font_size)
+            .map_err(binding_presentation_error)?;
     }
-
-    if let Some(roles) = host_theme.roles.as_ref() {
-        apply_host_theme_roles(&mut profile.roles, roles)?;
-    }
-
-    if let Some(palette) = host_theme.series_palette.as_ref() {
-        let mut parsed = Vec::with_capacity(palette.len());
-        for (index, color) in palette.iter().enumerate() {
-            parsed.push(
-                css_declaration_value(color, "host_theme.series_palette").map_err(|err| {
-                    BindingError::new(err.status(), format!("{} at index {index}", err.message()))
-                })?,
-            );
-        }
-        profile.series_palette = parsed;
-    }
-
-    if let Some(output) = host_theme.output.as_ref() {
-        if let Some(pipeline) = output.pipeline.as_deref() {
-            profile.output.pipeline = match normalize_option(pipeline).as_str() {
-                "parity" => HostThemePipelinePreset::Parity,
-                "readable" => HostThemePipelinePreset::Readable,
-                "resvg-safe" => HostThemePipelinePreset::ResvgSafe,
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported host_theme.output.pipeline: {other}"),
-                    ));
-                }
-            };
-        }
-        if let Some(policy) = output.css_override_policy.as_deref() {
-            profile.output.css_override_policy = match normalize_option(policy).as_str() {
-                "preserve" => merman::svg::CssOverridePolicy::Preserve,
-                "strip-existing-important" => {
-                    merman::svg::CssOverridePolicy::StripExistingImportant
-                }
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported host_theme.output.css_override_policy: {other}"),
-                    ));
-                }
-            };
-        }
-        if let Some(root_background) = output.root_background.as_deref() {
-            profile.output.root_background = match normalize_option(root_background).as_str() {
-                "none" => HostThemeRootBackground::None,
-                "canvas" => HostThemeRootBackground::Canvas,
-                _ => HostThemeRootBackground::Color(css_declaration_value(
-                    root_background,
-                    "host_theme.output.root_background",
-                )?),
-            };
-        }
-        if let Some(drop) = output.drop_native_duplicate_fallbacks {
-            profile.output.drop_native_duplicate_fallbacks = drop;
-        }
-        if let Some(scoped_css) = output.scoped_css.as_deref() {
-            profile.output.scoped_css = Some(scoped_css.to_string());
+    if let Some(roles) = options.roles.as_ref() {
+        for (id, value) in roles {
+            let role = ThemeRole::from_id(id).map_err(|_| {
+                BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!("unsupported presentation.theme.roles key: {id}"),
+                )
+            })?;
+            theme = theme
+                .try_with_role(role, value)
+                .map_err(binding_presentation_error)?;
         }
     }
-
-    if let Some(theme_variables) = host_theme.theme_variables.as_ref() {
-        profile.theme_variables.extend(theme_variables.clone());
+    if let Some(palette) = options.series_palette.as_ref() {
+        theme = theme
+            .try_with_series_palette(palette.iter().cloned())
+            .map_err(binding_presentation_error)?;
     }
-    if let Some(site_config) = host_theme.site_config.as_ref() {
-        let Some(object) = site_config.as_object() else {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                "host_theme.site_config must be a JSON object",
-            ));
-        };
-        profile.site_config = object.clone();
-    }
-
-    Ok(profile.compile())
+    Ok(theme)
 }
 
-fn binding_host_theme_preset(value: &str) -> Result<HostThemePreset, BindingError> {
-    match normalize_option(value).as_str() {
-        "editor-light" => Ok(HostThemePreset::EditorLight),
-        "editor-dark" => Ok(HostThemePreset::EditorDark),
-        "one-dark" => Ok(HostThemePreset::OneDark),
-        "gruvbox-light" => Ok(HostThemePreset::GruvboxLight),
-        "gruvbox-dark" => Ok(HostThemePreset::GruvboxDark),
-        "ayu-light" => Ok(HostThemePreset::AyuLight),
-        "ayu-dark" => Ok(HostThemePreset::AyuDark),
-        "merman-modern" => Ok(HostThemePreset::MermanModern),
-        "mermaid" => Ok(HostThemePreset::Mermaid),
-        other => Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            format!("unsupported host_theme.preset: {other}"),
-        )),
-    }
-}
-
-fn apply_host_theme_roles(
-    target: &mut HostThemeRoles,
-    roles: &crate::common::HostThemeRolesJson,
-) -> Result<(), BindingError> {
-    set_role(
-        &mut target.canvas,
-        roles.canvas.as_deref(),
-        "host_theme.roles.canvas",
-    )?;
-    set_role(
-        &mut target.surface,
-        roles.surface.as_deref(),
-        "host_theme.roles.surface",
-    )?;
-    set_role(
-        &mut target.surface_alt,
-        roles.surface_alt.as_deref(),
-        "host_theme.roles.surface_alt",
-    )?;
-    set_role(
-        &mut target.surface_muted,
-        roles.surface_muted.as_deref(),
-        "host_theme.roles.surface_muted",
-    )?;
-    set_role(
-        &mut target.text,
-        roles.text.as_deref(),
-        "host_theme.roles.text",
-    )?;
-    set_role(
-        &mut target.subtle_text,
-        roles.subtle_text.as_deref(),
-        "host_theme.roles.subtle_text",
-    )?;
-    set_role(
-        &mut target.border,
-        roles.border.as_deref(),
-        "host_theme.roles.border",
-    )?;
-    set_role(
-        &mut target.line,
-        roles.line.as_deref(),
-        "host_theme.roles.line",
-    )?;
-    set_role(
-        &mut target.edge_label_background,
-        roles.edge_label_background.as_deref(),
-        "host_theme.roles.edge_label_background",
-    )?;
-    set_role(
-        &mut target.cluster_background,
-        roles.cluster_background.as_deref(),
-        "host_theme.roles.cluster_background",
-    )?;
-    set_role(
-        &mut target.cluster_border,
-        roles.cluster_border.as_deref(),
-        "host_theme.roles.cluster_border",
-    )?;
-    set_role(
-        &mut target.note_background,
-        roles.note_background.as_deref(),
-        "host_theme.roles.note_background",
-    )?;
-    set_role(
-        &mut target.note_border,
-        roles.note_border.as_deref(),
-        "host_theme.roles.note_border",
-    )?;
-    set_role(
-        &mut target.note_text,
-        roles.note_text.as_deref(),
-        "host_theme.roles.note_text",
-    )?;
-    set_role(
-        &mut target.actor_background,
-        roles.actor_background.as_deref(),
-        "host_theme.roles.actor_background",
-    )?;
-    set_role(
-        &mut target.actor_border,
-        roles.actor_border.as_deref(),
-        "host_theme.roles.actor_border",
-    )?;
-    set_role(
-        &mut target.actor_text,
-        roles.actor_text.as_deref(),
-        "host_theme.roles.actor_text",
-    )?;
-    set_role(
-        &mut target.activation_background,
-        roles.activation_background.as_deref(),
-        "host_theme.roles.activation_background",
-    )?;
-    set_role(
-        &mut target.activation_border,
-        roles.activation_border.as_deref(),
-        "host_theme.roles.activation_border",
-    )?;
-    set_role(
-        &mut target.error,
-        roles.error.as_deref(),
-        "host_theme.roles.error",
-    )?;
-    set_role(
-        &mut target.warning,
-        roles.warning.as_deref(),
-        "host_theme.roles.warning",
-    )?;
-    set_role(
-        &mut target.success,
-        roles.success.as_deref(),
-        "host_theme.roles.success",
-    )?;
-    Ok(())
-}
-
-fn set_role(
-    target: &mut Option<String>,
-    value: Option<&str>,
-    name: &str,
-) -> Result<(), BindingError> {
-    if value.is_some() {
-        *target = css_role_value(value, name)?;
-    }
-    Ok(())
-}
-
-fn css_role_value(value: Option<&str>, name: &str) -> Result<Option<String>, BindingError> {
-    value
-        .map(|value| css_declaration_value(value, name))
-        .transpose()
+fn binding_presentation_error(error: merman::svg::PresentationError) -> BindingError {
+    BindingError::new(
+        BindingStatus::InvalidArgument,
+        format!("invalid presentation.{error}"),
+    )
 }
 
 fn classify_render_error(err: merman::svg::HeadlessError) -> BindingError {

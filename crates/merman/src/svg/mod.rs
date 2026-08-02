@@ -65,9 +65,10 @@ pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::presentation::{
     HostTheme, HostThemeAppearance as PresentationThemeAppearance, HostThemePreset as ThemePreset,
-    Presentation, PresentationAspectApplicability, PresentationAspectDescriptor, PresentationError,
-    PresentationProfile, PresentationProfileDescriptor, ResolvedPresentation,
-    ThemePresetDescriptor, ThemeRole, presentation_profile_descriptors, theme_preset_descriptors,
+    Presentation, PresentationAspectApplicability, PresentationAspectDescriptor,
+    PresentationAspectResolution, PresentationAspectState, PresentationError, PresentationProfile,
+    PresentationProfileDescriptor, ResolvedPresentation, ThemePresetDescriptor, ThemeRole,
+    presentation_profile_descriptors, theme_preset_descriptors,
 };
 pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,

@@ -9,8 +9,9 @@ pub use presets::{HostThemePreset, ThemePresetDescriptor, theme_preset_descripto
 pub(crate) use profile::FlowchartPresentationPolicy;
 pub use profile::{
     Presentation, PresentationAspectApplicability, PresentationAspectDescriptor,
-    PresentationProfile, PresentationProfileDescriptor, PresentationRenderPolicy,
-    ResolvedPresentation, presentation_profile_descriptors,
+    PresentationAspectResolution, PresentationAspectState, PresentationProfile,
+    PresentationProfileDescriptor, PresentationRenderPolicy, ResolvedPresentation,
+    presentation_profile_descriptors,
 };
 pub use theme::{HostTheme, HostThemeAppearance, ThemeRole};
 

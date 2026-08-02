@@ -93,6 +93,7 @@ impl ResolvedPresentation {
     /// Returns the small renderer-owned policy that accompanies the materialized Mermaid config.
     pub const fn render_policy(&self) -> PresentationRenderPolicy {
         PresentationRenderPolicy {
+            profile: self.presentation.profile,
             flowchart: self.flowchart_policy,
         }
     }
@@ -113,12 +114,97 @@ impl ResolvedPresentation {
 /// value alongside the resulting typed render model.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct PresentationRenderPolicy {
+    profile: Option<PresentationProfile>,
     flowchart: Option<FlowchartPresentationPolicy>,
 }
 
 impl PresentationRenderPolicy {
+    pub const fn profile(self) -> Option<PresentationProfile> {
+        self.profile
+    }
+
     pub(crate) const fn flowchart(self) -> Option<FlowchartPresentationPolicy> {
         self.flowchart
+    }
+
+    pub(crate) fn resolve_aspects(
+        self,
+        flowchart_svg_applicable: bool,
+        uses_elk: bool,
+        elk_available: bool,
+    ) -> Vec<PresentationAspectResolution> {
+        match self.profile {
+            None => Vec::new(),
+            Some(PresentationProfile::MermanModern) => {
+                let [global_defaults, flowchart_svg, flowchart_elk_default] = MERMAN_MODERN_ASPECTS;
+                vec![
+                    PresentationAspectResolution::new(
+                        global_defaults,
+                        PresentationAspectState::Active,
+                    ),
+                    PresentationAspectResolution::new(
+                        flowchart_svg,
+                        if flowchart_svg_applicable {
+                            PresentationAspectState::Active
+                        } else {
+                            PresentationAspectState::Inactive
+                        },
+                    ),
+                    PresentationAspectResolution::new(
+                        flowchart_elk_default,
+                        if !flowchart_svg_applicable || !uses_elk {
+                            PresentationAspectState::Inactive
+                        } else if elk_available {
+                            PresentationAspectState::Active
+                        } else {
+                            PresentationAspectState::Blocked
+                        },
+                    ),
+                ]
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PresentationAspectState {
+    Active,
+    Inactive,
+    Blocked,
+}
+
+impl PresentationAspectState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Inactive => "inactive",
+            Self::Blocked => "blocked",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PresentationAspectResolution {
+    descriptor: PresentationAspectDescriptor,
+    state: PresentationAspectState,
+}
+
+impl PresentationAspectResolution {
+    const fn new(descriptor: PresentationAspectDescriptor, state: PresentationAspectState) -> Self {
+        Self { descriptor, state }
+    }
+
+    pub const fn id(self) -> &'static str {
+        self.descriptor.id()
+    }
+
+    pub const fn state(self) -> PresentationAspectState {
+        self.state
+    }
+
+    pub const fn required_capability_id(self) -> Option<&'static str> {
+        self.descriptor.required_capability_id()
     }
 }
 

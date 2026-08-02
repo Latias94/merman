@@ -2,8 +2,8 @@
 
 use merman::Engine;
 use merman::svg::{
-    HeadlessRenderer, HostTheme, HostThemeProfile, Presentation, PresentationProfile, SvgPipeline,
-    SvgPipelinePreset, ThemePreset,
+    HeadlessRenderer, HostTheme, HostThemeProfile, Presentation, PresentationAspectState,
+    PresentationProfile, SvgPipeline, SvgPipelinePreset, ThemePreset,
 };
 use merman_core::MermaidConfig;
 use serde_json::{Value, json};
@@ -47,6 +47,15 @@ fn assert_json_keys_absent(value: &Value, forbidden: &[&str]) {
         }
         _ => {}
     }
+}
+
+fn aspect_state(plan: &merman::svg::RenderCapabilityPlan, id: &str) -> PresentationAspectState {
+    plan.presentation_aspects()
+        .iter()
+        .copied()
+        .find(|aspect| aspect.id() == id)
+        .unwrap_or_else(|| panic!("missing presentation aspect `{id}`"))
+        .state()
 }
 
 #[test]
@@ -238,4 +247,66 @@ fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() 
         &layout,
         &["edgeCornerRadius", "edgeLabelPadding", "compactEdgeCorners"],
     );
+}
+
+#[test]
+fn render_plan_reports_each_presentation_aspect_independently() {
+    let sequence = HeadlessRenderer::new()
+        .with_presentation(presentation())
+        .plan_svg_sync(SOURCE)
+        .expect("sequence plan should succeed")
+        .expect("sequence diagram should be detected");
+    assert_eq!(sequence.presentation_profile_id(), Some("merman-modern"));
+    assert_eq!(
+        aspect_state(&sequence, "global-defaults"),
+        PresentationAspectState::Active
+    );
+    assert_eq!(
+        aspect_state(&sequence, "flowchart-svg"),
+        PresentationAspectState::Inactive
+    );
+    assert_eq!(
+        aspect_state(&sequence, "flowchart-elk-default"),
+        PresentationAspectState::Inactive
+    );
+
+    let dagre = HeadlessRenderer::new()
+        .with_presentation(presentation())
+        .with_site_config(config(json!({
+            "flowchart": { "defaultRenderer": "dagre-wrapper" },
+        })))
+        .plan_svg_sync("flowchart TD\nA --> B")
+        .expect("Flowchart plan should succeed")
+        .expect("Flowchart should be detected");
+    assert!(dagre.is_ready());
+    assert_eq!(
+        aspect_state(&dagre, "flowchart-svg"),
+        PresentationAspectState::Active
+    );
+    assert_eq!(
+        aspect_state(&dagre, "flowchart-elk-default"),
+        PresentationAspectState::Inactive
+    );
+
+    let default_flowchart = HeadlessRenderer::new()
+        .with_presentation(presentation())
+        .plan_svg_sync("flowchart TD\nA --> B")
+        .expect("Flowchart plan should succeed")
+        .expect("Flowchart should be detected");
+    let expected_state = if merman::svg::layout_elk_available() {
+        PresentationAspectState::Active
+    } else {
+        PresentationAspectState::Blocked
+    };
+    assert_eq!(
+        aspect_state(&default_flowchart, "flowchart-elk-default"),
+        expected_state
+    );
+
+    let parity = HeadlessRenderer::new()
+        .plan_svg_sync(SOURCE)
+        .expect("parity plan should succeed")
+        .expect("sequence diagram should be detected");
+    assert_eq!(parity.presentation_profile_id(), None);
+    assert!(parity.presentation_aspects().is_empty());
 }

@@ -118,9 +118,10 @@ impl PreparedSemantic {
 
     /// Reports required and missing renderer capabilities without starting layout.
     pub fn render_plan(&self) -> Result<merman_render::family::RenderCapabilityPlan> {
-        Ok(merman_render::family::plan_render(
+        Ok(merman_render::family::plan_render_with_policy(
             &self.parsed,
             &self.session,
+            self.render_policy,
         )?)
     }
 
