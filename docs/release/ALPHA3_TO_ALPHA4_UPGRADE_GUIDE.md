@@ -181,7 +181,8 @@ The main changelog groups alpha.4 by user outcome. Source and embedding integrat
 
 - Replace `SourceMap::line_starts()` with behavioral queries: use `line_count()` to iterate, `line_start(index)` for one start offset, and `line_bounds(index)` for the content bounds of one line. `SourceMap::new(Arc<str>)` is a synchronous convenience constructor; there is no public cancellable `SourceMap` constructor.
 - Replace `SourceMap::source_arc()` with `SourceMap::shared_source()`. `SharedTextSlice` retains one `Arc<str>` plus validated UTF-8 bounds; `whole`, `from_range`, `as_ref` / deref, and `source_arc()` do not copy source text. Use `to_owned_text()` only when an owned `String` is intentionally required.
-- Decode shared configuration through `AnalysisOptionsJson`. The root object and its `lint` object ignore unknown fields for forward compatibility. Direct decoding of `LintOptionsJson`, `LintRuleSeverityOverrideJson`, and `ResourceOptionsJson` remains strict; `resources` is a versioned strict schema even when nested below the root. `ParseOptionsJson` and the `parse` member were removed without replacements.
+- Decode shared configuration through `AnalysisOptionsJson`. The root object and its `lint` object ignore unknown fields for forward compatibility. Alpha.4 makes direct `LintOptionsJson`, `LintRuleSeverityOverrideJson`, and `ResourceOptionsJson` decoding strict; alpha.3 ignored unknown fields in those nested shapes. `resources` is strict even when nested below the permissive root.
+- Replace alpha.3 `resources.max_source_bytes` with `resources.limits.max_source_bytes`, and place the new analysis-only fence admission at `resources.limits.max_document_diagrams`. Alpha.3 `resources.profile`, SVG, Flowchart, Class, and label-limit fields do not belong to alpha.4 `ResourceOptionsJson`; configure render resource policy at the rendering boundary instead. `ParseOptionsJson` and the `parse` member were removed without replacements.
 
 ### Editor facts and semantic-token planning
 
@@ -192,11 +193,12 @@ The main changelog groups alpha.4 by user outcome. Source and embedding integrat
 
   | Alpha.3 | Alpha.4 |
   | --- | --- |
-  | `SemanticToken` | `PlannedToken` |
+  | `SemanticToken` | `PlannedToken`; `modifier` becomes `modifier_bits` / `has_modifier()`, and `fact_source` is removed |
   | `SemanticTokenKind` | `PlannedTokenKind` |
   | `SemanticTokenModifier` | `PlannedTokenModifier` |
-  | `SemanticTokenLegend` / `semantic_token_legend()` | descriptor types / `semantic_token_descriptor()` |
-  | `semantic_tokens_for_snapshot*` | `plan_semantic_tokens_for_snapshot*` |
+  | `SemanticTokenLegend` / `semantic_token_legend()` | `SemanticTokenDescriptor` / `semantic_token_descriptor()`; `token_types` and `token_modifiers` become `token_kinds` and `modifiers` descriptor slices |
+  | `semantic_tokens_for_snapshot(snapshot)` | `plan_semantic_tokens_for_snapshot(snapshot)` |
+  | `semantic_tokens_for_snapshot_range(snapshot, start_line, end_line)` | `plan_semantic_tokens_for_snapshot_range(snapshot, range)` |
   | `token_type_index(kind)` | `kind.code()` and generated descriptor data |
   | `token_modifier_index(modifier)` | `modifier.index()` / `modifier.bit()` and generated descriptor data |
 
@@ -207,9 +209,10 @@ The main changelog groups alpha.4 by user outcome. Source and embedding integrat
 ### LSP embedding
 
 - `MermanLanguageServer::service()` now returns `(MermanLspService, MermanClientSocket)` instead of tower-lsp's `(LspService<MermanLanguageServer>, ClientSocket)`. Drive the ordered service through `tower::Service<Request>`, call `MermanClientSocket::split()` once, and concurrently drive the returned `MermanRequestStream` and `MermanResponseSink`.
+- Replace direct `MermanLanguageServer::new(Client)` construction with `MermanLanguageServer::service()`; the new socket is Merman-owned and no public constructor accepts tower-lsp's client handle.
 - Replace the `tower-lsp` dependency with `tower-lsp-server`. Update `tower_lsp::jsonrpc` to `tower_lsp_server::jsonrpc`, `tower_lsp::lsp_types` to `tower_lsp_server::ls_types`, and `tower_lsp::ExitedError` to `tower_lsp_server::ExitedError`.
 - Enable the `stdio` feature explicitly when installing or building the bundled `merman-lsp` executable with `--no-default-features`. `stdio_server()` returns Merman's bounded `StdioServer`; replace tower-lsp's `.concurrency_level(...)` with `.ordinary_concurrency_level(...)`, or call `serve_stdio(...)` when the caller needs the explicit `StdioTermination` result.
-- Remove `StdioService`, `LSP_CONTROL_HANDLER_CONCURRENCY`, and `LSP_TOTAL_HANDLER_CONCURRENCY` uses without replacement. Custom transports drive `MermanLspService` through `tower::Service<Request>` and own their scheduling. The public stdio tuning surface retains only `LSP_ORDINARY_HANDLER_CONCURRENCY`, `LSP_REQUEST_BYTE_BUDGET`, and `LSP_MAX_MESSAGE_BYTES`; the bundled transport internally owns a 96-token retained-deferred budget and four ordinary consumers.
+- Rename `LSP_HANDLER_CONCURRENCY` to `LSP_ORDINARY_HANDLER_CONCURRENCY`. Remove `StdioService`, `LSP_CONTROL_HANDLER_CONCURRENCY`, and `LSP_TOTAL_HANDLER_CONCURRENCY` uses without replacement. Custom transports drive `MermanLspService` through `tower::Service<Request>` and own their scheduling. The public stdio tuning surface otherwise retains `LSP_REQUEST_BYTE_BUDGET` and `LSP_MAX_MESSAGE_BYTES`; the bundled transport internally owns a 96-token retained-deferred budget and four ordinary consumers.
 - Update exhaustive `StdioTermination` matches for `InputOverloaded`. Only legal, ID-less, valid-parameter cancel/exit messages whose encoded body is at most 4 KiB use the private immediate-control path. Ordinary request overload returns JSON-RPC `-32099` and continues only when that error can enter the bounded output lane. Notification overload, an unretainable overload error, or exhausted overload-output budget terminates with `InputOverloaded`; once input integrity is lost, later cancel/exit frames are not promised. `OutputClosed` wins when stdout failure races another termination.
 - Send `RULE_CATALOG_METHOD` and `CONFIG_SCHEMA_METHOD` through the ordered service instead of calling removed `MermanLanguageServer::rule_catalog()` or `config_schema()` helpers. Rust-only static consumers can call `RuleCatalogResponse::current()` and `ConfigSchemaResponse::current()`.
 

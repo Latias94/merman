@@ -1,7 +1,7 @@
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisOptions, AnalysisOptionsJson, AnalysisResourceLimit,
     Analyzer, LintOptionsJson, LintRuleSeverityOverrideJson, ResourceOptionsJson, SharedTextSlice,
-    SourceMap,
+    SourceDescriptor, SourceMap, analyze_document_generation_shared_cancellable,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -49,6 +49,23 @@ fn root_options_are_permissive_while_direct_nested_schemas_are_strict() {
         .is_err(),
         "resources remain a strict versioned schema even through the root"
     );
+
+    let resources: ResourceOptionsJson = serde_json::from_value(json!({
+        "limits": {
+            "max_source_bytes": 64,
+            "max_document_diagrams": 2
+        }
+    }))
+    .expect("the alpha.4 limits map is the supported resource shape");
+    assert_eq!(resources.limits["max_source_bytes"], 64);
+    assert_eq!(resources.limits["max_document_diagrams"], 2);
+    assert!(
+        serde_json::from_value::<ResourceOptionsJson>(json!({
+            "max_source_bytes": 64
+        }))
+        .is_err(),
+        "the alpha.3 resource shape must not decode silently"
+    );
 }
 
 #[test]
@@ -89,6 +106,24 @@ fn cancellable_generation_capture_reuses_caller_owned_text() {
         )
         .unwrap();
     let generation = outcome.as_ready().expect("the source should be accepted");
+
+    assert!(Arc::ptr_eq(
+        &generation.source_map().shared_source().source_arc(),
+        &source
+    ));
+}
+
+#[test]
+fn cancellable_document_capture_reuses_caller_owned_text() {
+    let source: Arc<str> = Arc::from("flowchart TD\nA-->B\n");
+    let outcome = analyze_document_generation_shared_cancellable(
+        Arc::clone(&source),
+        &Analyzer::new(),
+        SourceDescriptor::diagram().with_path("file:///diagram.mmd"),
+        &AnalysisCancellationToken::new(),
+    )
+    .unwrap();
+    let generation = outcome.as_ready().expect("the document should be accepted");
 
     assert!(Arc::ptr_eq(
         &generation.source_map().shared_source().source_arc(),

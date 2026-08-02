@@ -12,7 +12,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Completed parser, editor, typed layout, and SVG support for all 35 Mermaid 11.16 diagram families, including Cynefin, Railroad, Swimlane, and Wardley. #21 #22 #23 #24
 - Reworked `merman-cli` around explicit native `render` and `batch` workflows plus a pinned `mmdc@11.16.0` compatibility path, with recoverable transactional output, bounded resource acquisition, generated completions, and recursive man pages.
-- Made `merman-lsp` more reliable during rapid edits and request saturation by sharing versioned analysis, suppressing stale results, bounding retained work, and keeping valid small cancellation and shutdown controls reachable while input integrity is preserved. #26
+- Made `merman-lsp` more reliable during rapid edits and request saturation by sharing versioned analysis, suppressing stale results, bounding retained work, and keeping valid small cancellation and exit controls reachable while input integrity is preserved. #26
 - Split browser delivery into lockstep full, render, analysis, editor, and ASCII packages, and rebuilt the Playground around isolated runtime, editor, compare, and benchmark lifecycles.
 - Replaced the C, Android, and Flutter ABI 2 path with generated ABI 3 contracts, and aligned Apple and Python UniFFI packages with the same runtime capability model.
 - Reduced the dependency closure of analysis-only products and removed repeated work from Requirement, Mindmap, Kanban, Class, and layered-layout hot paths.
