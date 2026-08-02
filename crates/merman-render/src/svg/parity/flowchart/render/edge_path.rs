@@ -28,9 +28,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                 edge,
                 origin_x,
                 origin_y,
-                abs_top_transform: 0.0,
                 trace_enabled,
-                viewbox_current_bounds: None,
             },
             scratch,
         )

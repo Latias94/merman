@@ -55,6 +55,8 @@ export const SUPPORTED_HOST_THEME_PRESETS = [
   "gruvbox-dark",
   "ayu-light",
   "ayu-dark",
+  "merman-modern",
+  "mermaid",
 ] as const;
 
 export type HostThemePresetName = (typeof SUPPORTED_HOST_THEME_PRESETS)[number];

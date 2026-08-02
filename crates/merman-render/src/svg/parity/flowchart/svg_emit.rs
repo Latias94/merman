@@ -109,6 +109,10 @@ fn render_flowchart_svg_model(
         default_edge_style,
         node_border_color,
         node_fill_color,
+        node_corner_radius,
+        edge_corner_radius,
+        edge_label_padding,
+        compact_edge_corners,
     } = prepare_flowchart_render_config(model, effective_config_value, diagram_type);
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
@@ -230,6 +234,10 @@ fn render_flowchart_svg_model(
         class_defs: &model.class_defs,
         node_border_color,
         node_fill_color,
+        node_corner_radius,
+        edge_corner_radius,
+        edge_label_padding,
+        compact_edge_corners,
         default_edge_interpolate,
         default_edge_style,
         trace_edge_id: flowchart_edge_trace.map(|(edge_id, _)| edge_id),

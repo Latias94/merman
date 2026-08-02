@@ -1204,7 +1204,9 @@ flowchart TD
                 "gruvbox-light",
                 "gruvbox-dark",
                 "ayu-light",
-                "ayu-dark"
+                "ayu-dark",
+                "merman-modern",
+                "mermaid"
             ]
         );
         assert!(merman_core::supported_themes().contains(&"default"));
