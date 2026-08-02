@@ -73,3 +73,9 @@ disjoint low-bit domains over sign-bit-preserving monotonic counters. They preve
 cross-kind use and are not authorization boundaries. Result-buffer ownership is identified only
 by a live result-domain `allocation_token`. Moving a complete result transfers ownership when the
 source is cleared; `result_free` never trusts nested pointers or the result record address.
+
+`ffi-contract-baseline/` contains the reviewed, immutable dependency-closure and native-artifact
+reports anchored to baseline commit `5117c0ae12da2c0346b47061642286174cea3f5f`. Its finalized
+lock binds both complete report files, the fixed Git tree, the probe registry, and every declared
+source input. Capture work remains under ignored `target/`; only the three reviewed JSON contract
+files are promoted into `abi/ffi-contract-baseline/`.

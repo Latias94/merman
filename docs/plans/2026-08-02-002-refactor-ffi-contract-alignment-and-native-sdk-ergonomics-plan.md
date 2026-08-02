@@ -406,7 +406,7 @@ Run Cargo commands sequentially and reuse the normal workspace target directory.
 ### Fixed baseline evidence
 
 - Capture dependency tuples and representative stripped semantic/full native artifacts from exact revision `5117c0ae12da2c0346b47061642286174cea3f5f` before implementation changes, or from a separate read-only worktree at that exact revision.
-- Store normalized JSON reports under `target/ffi-contract-baseline/` with Rust/Cargo/tool versions, target triple, artifact recipe, stripping command, and measurement boundary.
+- Capture normalized JSON reports under `target/ffi-contract-baseline/`, then review and promote the immutable reports and finalized lock under `abi/ffi-contract-baseline/`. Record Rust/Cargo/tool versions, target triple, artifact recipe, stripping command, and measurement boundary.
 - Final verification must name and consume those exact reports. Regenerating the baseline from the implementation HEAD is a test failure.
 
 ### Static and generation gates
@@ -420,9 +420,9 @@ Run Cargo commands sequentially and reuse the normal workspace target directory.
 - `python3 scripts/test_verify_platform_bindings.py`
 - `python3 scripts/test_artifact_profile_recipe.py`
 - `python3 scripts/test_verify_artifact_dependency_closures.py`
-- `python3 scripts/verify_artifact_dependency_closures.py --baseline target/ffi-contract-baseline/dependency-closures.json`
+- `python3 scripts/verify_artifact_dependency_closures.py --baseline abi/ffi-contract-baseline/dependency-closures.json`
 - `python3 scripts/test_verify_native_artifact_sizes.py`
-- `python3 scripts/verify_native_artifact_sizes.py --baseline target/ffi-contract-baseline/native-artifact-sizes.json`
+- `python3 scripts/verify_native_artifact_sizes.py --baseline abi/ffi-contract-baseline/native-artifact-sizes.json`
 - `python3 scripts/test_release_projection.py`
 - `python3 scripts/test_release_process.py`
 - `python3 scripts/test_workflow_path_filters.py`

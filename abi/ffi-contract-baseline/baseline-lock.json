@@ -1,0 +1,24 @@
+{
+  "baseline_commit": "5117c0ae12da2c0346b47061642286174cea3f5f",
+  "baseline_input_sha256": {
+    "Cargo.lock": "sha256:d8a360a8a3ae88d70d576dba0a359208ce9e79ecc99af4fc3111fb7b6336f5b4",
+    "Cargo.toml": "sha256:8072740f0b55d1c812d429d90d81b2be940d21129509ae1c1205411779e4f56c",
+    "capabilities/artifact-profiles-v1.json": "sha256:3a9db8c437ec1467da6a6f83d2d379516d3d92787cd5b9cd5a7ca24a6db3b284",
+    "crates/merman-android-jni/Cargo.toml": "sha256:69e3011f50dd46576b7f53e0b7c9b48a8941fef816a7709011f176c72257b63f",
+    "crates/merman-bindings-core/Cargo.toml": "sha256:19441569a15a25c06aa9a5f692f771da92e891f951853eaf9781dfa9186a842a",
+    "crates/merman-ffi/Cargo.toml": "sha256:a80a3a01771348707bce0014f09e6226678519e1ac80b8ccd7a002a5668ac333",
+    "crates/merman-node/Cargo.lock": "sha256:57dc7213143fe18778bf6c51be3f2eb31a0a0d13f542756c36cbd7eb605104ed",
+    "crates/merman-node/Cargo.toml": "sha256:a25e2af1d47745042ae54a00039a15e05707005782e8d9885f649b2cf5c94eea",
+    "crates/merman-uniffi/Cargo.toml": "sha256:2460dd51e8539a87a347276aa8201e2087125bebca62fbfc6444ef7a37f36aa7",
+    "platforms/node/candidate-builds.json": "sha256:26b863961e3c394fa72e74979f04306260ff2d6227603bade66a705580b7acea",
+    "rust-toolchain.toml": "sha256:12dc5d64dbd96c1b07be2943241d52d9f6127a79ba47a820455ba7b873fc896a"
+  },
+  "baseline_tree": "4ebfe46d8f48508ac6489d0bfea09ed469d97746",
+  "dependency_report_file_sha256": "sha256:ef0ad59c70e79d2fb41da4a8a96b42e464b3574ffd7f38c300f2556d385f9365",
+  "dependency_report_schema_version": 3,
+  "native_artifact_report_file_sha256": "sha256:ab442c8e7e43ee122269d9c76bd1177af73a55afc8575ae0173d15ad8eef2ba5",
+  "native_artifact_report_schema_version": 3,
+  "probe_registry_sha256": "sha256:d0fbe54389c0d61c8908f66319974921fea0e9b2405004c22645d964299a5fb1",
+  "schema_version": 2,
+  "source_snapshot_sha256": "sha256:ea1b9925ea7796ff3e8fcd483dcc933c36991066c32e2e392cb104bdfe1f9abd"
+}

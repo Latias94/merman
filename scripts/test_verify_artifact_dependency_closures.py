@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 from typing import Sequence
 
@@ -30,6 +33,8 @@ from github_workflow_contract import (  # noqa: E402
     workflow_step,
 )
 from verify_artifact_dependency_closures import (  # noqa: E402
+    AttributionClosure,
+    AttributionPackage,
     FEATURE_MARKER,
     LINUX_REFERENCE_SCOPE,
     PACKAGE_MARKER,
@@ -38,17 +43,37 @@ from verify_artifact_dependency_closures import (  # noqa: E402
     ClosureClaim,
     ClosureObservation,
     ClosureVerificationError,
+    DependencyClosure,
     PackageFeatureExclusion,
+    ProbeClosureObservation,
     VerificationCase,
+    _closure_expansion_failures,
+    _format_probe_matrix_failures,
     _select_cases,
     authoritative_rustsec_profile_ids,
     cargo_tree_command,
     check_case,
     closure_fingerprint,
+    dependency_baseline_report,
     load_verification_cases,
+    load_dependency_baseline,
+    parse_attribution_cargo_tree,
     parse_cargo_tree,
+    probe_attribution_command,
+    probe_runtime_command,
     verify_cases,
+    verify_dependency_baseline,
 )
+from ffi_contract_dependency_probes import (  # noqa: E402
+    BASELINE_COMMIT,
+    BASELINE_TREE,
+    load_dependency_probes,
+    probe_registry_sha256,
+)
+from ffi_contract_baseline_contract import (  # noqa: E402
+    BASELINE_LOCK_SCHEMA_VERSION,
+)
+import verify_artifact_dependency_closures as dependency_verifier  # noqa: E402
 
 
 def recipe(
@@ -336,6 +361,18 @@ class CargoTreeCommandTests(unittest.TestCase):
             command[command.index("--edges") + 1],
             "normal,no-proc-macro",
         )
+        self.assertIn('build.rustc="rustc"', command)
+        self.assertIn("build.incremental=false", command)
+
+    def test_command_accepts_resolved_toolchain_paths(self) -> None:
+        command = cargo_tree_command(
+            case(),
+            cargo_path="/toolchain/bin/cargo",
+            rustc_path="/toolchain/bin/rustc",
+        )
+
+        self.assertEqual(command[:2], ["/toolchain/bin/cargo", "tree"])
+        self.assertIn('build.rustc="/toolchain/bin/rustc"', command)
 
     def test_host_requires_the_linux_reference_target(self) -> None:
         with self.assertRaisesRegex(
@@ -474,6 +511,486 @@ class CargoTreeParserTests(unittest.TestCase):
             ),
         )
         self.assertEqual(len({closure_fingerprint(item) for item in closures}), 4)
+
+
+class FixedFfiBaselineTests(unittest.TestCase):
+    def test_fixed_baseline_rejects_local_build_environment_overrides(self) -> None:
+        with (
+            mock.patch.dict(os.environ, {"RUSTC": "/tmp/rustc"}, clear=True),
+            self.assertRaisesRegex(
+                ClosureVerificationError,
+                "environment overrides: RUSTC",
+            ),
+        ):
+            verify_dependency_baseline(
+                Path("baseline-is-not-read.json"),
+                repo_root=SCRIPT_DIR.parent,
+                runner=lambda command: subprocess.CompletedProcess(command, 1, "", ""),
+            )
+
+    def test_readiness_reports_public_and_private_lanes_independently(self) -> None:
+        probes = load_dependency_probes()
+        report = _format_probe_matrix_failures(
+            "fixture failure",
+            probes,
+            (("private-node", "node-wasm-full", "fixture"),),
+        )
+        self.assertIn(
+            "ffi-contract-readiness lane=public-native status=ok",
+            report,
+        )
+        self.assertIn(
+            "ffi-contract-readiness lane=private-node status=failed",
+            report,
+        )
+
+    def test_fixed_baseline_allows_dependency_removal_and_role_feature_narrowing(
+        self,
+    ) -> None:
+        baseline = self._comparison_probe(
+            runtime=(
+                self._runtime_package("root", ("a", "b")),
+                self._runtime_package("removed", ()),
+            ),
+            attribution=(
+                self._attribution_package(
+                    "root",
+                    ("a", "b"),
+                    ("build", "normal"),
+                    {"build": ("b",), "normal": ("a",)},
+                ),
+                self._attribution_package(
+                    "removed",
+                    (),
+                    ("normal",),
+                    {"normal": ()},
+                ),
+            ),
+        )
+        current = self._comparison_probe(
+            runtime=(self._runtime_package("root", ("a",)),),
+            attribution=(
+                self._attribution_package(
+                    "root",
+                    ("a",),
+                    ("normal",),
+                    {"normal": ("a",)},
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            _closure_expansion_failures(baseline, current, "fixture"),
+            [],
+        )
+
+    def test_fixed_baseline_rejects_package_feature_and_role_expansion(self) -> None:
+        baseline = self._comparison_probe(
+            runtime=(self._runtime_package("root", ("a",)),),
+            attribution=(
+                self._attribution_package(
+                    "root",
+                    ("a",),
+                    ("normal",),
+                    {"normal": ("a",)},
+                ),
+            ),
+        )
+        current = self._comparison_probe(
+            runtime=(
+                self._runtime_package("root", ("a", "new-feature")),
+                self._runtime_package("added", ()),
+            ),
+            attribution=(
+                self._attribution_package(
+                    "root",
+                    ("a", "build-feature"),
+                    ("build", "normal"),
+                    {"build": ("build-feature",), "normal": ("a",)},
+                ),
+            ),
+        )
+
+        failures = _closure_expansion_failures(baseline, current, "fixture")
+        self.assertTrue(any("gained package added" in failure for failure in failures))
+        self.assertTrue(any("gained features: new-feature" in failure for failure in failures))
+        self.assertTrue(any("gained roles: build" in failure for failure in failures))
+        self.assertTrue(
+            any("gained build features: build-feature" in failure for failure in failures)
+        )
+
+        replaced_version = self._comparison_probe(
+            runtime=(
+                {
+                    **self._runtime_package("root", ("a",)),
+                    "version": "2.0.0",
+                },
+            ),
+            attribution=tuple(baseline["attribution"]["packages"]),
+        )
+        self.assertTrue(
+            any(
+                "gained package root v2.0.0" in failure
+                for failure in _closure_expansion_failures(
+                    baseline,
+                    replaced_version,
+                    "fixture",
+                )
+            )
+        )
+
+    def test_probe_commands_are_package_scoped_and_split_runtime_from_attribution(
+        self,
+    ) -> None:
+        probe = next(
+            item for item in load_dependency_probes() if item.probe_id == "ffi-svg-linux"
+        )
+        runtime = probe_runtime_command(probe)
+        attribution = probe_attribution_command(probe)
+
+        for command in (runtime, attribution):
+            self.assertEqual(command[command.index("--package") + 1], "merman-ffi")
+            self.assertTrue(
+                command[command.index("--manifest-path") + 1].endswith(
+                    "crates/merman-ffi/Cargo.toml"
+                )
+            )
+            self.assertEqual(command[command.index("--features") + 1], "svg")
+            self.assertEqual(
+                command[command.index("--target") + 1],
+                "x86_64-unknown-linux-gnu",
+            )
+        self.assertEqual(
+            runtime[runtime.index("--edges") + 1],
+            "normal,no-proc-macro",
+        )
+        self.assertIn("--prefix", runtime)
+        self.assertEqual(
+            attribution[attribution.index("--edges") + 1],
+            "normal,build",
+        )
+        self.assertIn("--no-dedupe", attribution)
+        self.assertNotIn("--prefix", attribution)
+
+    def test_attribution_parser_propagates_normal_build_and_proc_macro_roles(
+        self,
+    ) -> None:
+        output = "\n".join(
+            (
+                tree_line("root", ("root-feature",)),
+                "|-- " + tree_line("shared", ("normal-feature",)),
+                "|-- " + tree_line("macro", ("derive",), proc_macro=True),
+                "|   `-- " + tree_line("macro-support", ("parse",)),
+                "|   [build-dependencies]",
+                "|   `-- " + tree_line("macro-build", ("cc",)),
+                "[build-dependencies]",
+                "`-- " + tree_line("build-root", ("build",)),
+                "    `-- " + tree_line("shared", ("build-feature",)),
+            )
+        )
+
+        closure = parse_attribution_cargo_tree(output)
+        packages = {package.package: package for package in closure.packages}
+        self.assertEqual(packages["root"].roles, ("normal",))
+        self.assertEqual(packages["macro"].roles, ("proc-macro",))
+        self.assertEqual(packages["macro-support"].roles, ("proc-macro",))
+        self.assertEqual(packages["macro-build"].roles, ("build",))
+        self.assertEqual(packages["build-root"].roles, ("build",))
+        self.assertEqual(packages["shared"].roles, ("build", "normal"))
+        self.assertEqual(
+            packages["shared"].role_features,
+            {
+                "build": ("build-feature",),
+                "normal": ("normal-feature",),
+            },
+        )
+
+    def test_attribution_parser_merges_one_package_across_all_compiler_roles(
+        self,
+    ) -> None:
+        output = "\n".join(
+            (
+                tree_line("root"),
+                "|-- " + tree_line("shared", ("normal",)),
+                "|-- " + tree_line("macro", proc_macro=True),
+                "|   `-- " + tree_line("shared", ("proc",)),
+                "[build-dependencies]",
+                "|-- " + tree_line("build-macro", ("derive",), proc_macro=True),
+                "|   `-- " + tree_line("shared", ("build",)),
+                "`-- " + tree_line("shared", ("build",)),
+            )
+        )
+
+        closure = parse_attribution_cargo_tree(output)
+        packages = {package.package: package for package in closure.packages}
+        self.assertEqual(
+            packages["build-macro"].roles,
+            ("build", "proc-macro"),
+        )
+        self.assertEqual(
+            packages["shared"].roles,
+            ("build", "normal", "proc-macro"),
+        )
+        self.assertEqual(
+            packages["shared"].role_features,
+            {
+                "build": ("build",),
+                "normal": ("normal",),
+                "proc-macro": ("proc",),
+            },
+        )
+
+    def test_fixed_report_is_self_digested_and_whole_file_locked(self) -> None:
+        probes = load_dependency_probes()
+        observations = tuple(self._observation(probe) for probe in probes)
+        report = dependency_baseline_report(
+            observations,
+            repo_root=SCRIPT_DIR.parent,
+            toolchain=self._toolchain(),
+            source_snapshot_sha256=self._snapshot_sha256(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            baseline = root / "dependency-closures.json"
+            baseline.write_text(
+                json.dumps(report, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            digest = "sha256:" + hashlib.sha256(baseline.read_bytes()).hexdigest()
+            lock = root / "lock.json"
+            lock.write_text(
+                json.dumps(
+                    {
+                        "schema_version": BASELINE_LOCK_SCHEMA_VERSION,
+                        "baseline_commit": BASELINE_COMMIT,
+                        "baseline_input_sha256": {
+                            record["path"]: record["sha256"]
+                            for record in report["inputs"]
+                        },
+                        "source_snapshot_sha256": self._snapshot_sha256(),
+                        "baseline_tree": BASELINE_TREE,
+                        "dependency_report_schema_version": 3,
+                        "dependency_report_file_sha256": digest,
+                        "native_artifact_report_schema_version": 3,
+                        "native_artifact_report_file_sha256": "sha256:" + "4" * 64,
+                        "probe_registry_sha256": probe_registry_sha256(probes),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            loaded = load_dependency_baseline(
+                baseline,
+                lock_path=lock,
+                repo_root=SCRIPT_DIR.parent,
+            )
+            self.assertEqual(loaded["baseline_commit"], BASELINE_COMMIT)
+
+            report["probes"][0]["runtime_legal"]["package_count"] += 1
+            baseline.write_text(json.dumps(report), encoding="utf-8")
+            with self.assertRaisesRegex(ClosureVerificationError, "embedded digest"):
+                load_dependency_baseline(
+                    baseline,
+                    lock_path=lock,
+                    repo_root=SCRIPT_DIR.parent,
+                )
+
+            tampered = json.loads(json.dumps(report))
+            tampered["probes"][0]["runtime_legal"]["package_count"] -= 1
+            tampered["toolchain"]["cargo_version"] = "cargo changed"
+            tampered["report_sha256"] = dependency_verifier._embedded_report_sha256(
+                tampered
+            )
+            baseline.write_text(json.dumps(tampered), encoding="utf-8")
+            with self.assertRaisesRegex(ClosureVerificationError, "whole-file digest"):
+                load_dependency_baseline(
+                    baseline,
+                    lock_path=lock,
+                    repo_root=SCRIPT_DIR.parent,
+                )
+
+    def test_pending_lock_digest_is_rejected(self) -> None:
+        probes = load_dependency_probes()
+        observations = tuple(self._observation(probe) for probe in probes)
+        report = dependency_baseline_report(
+            observations,
+            repo_root=SCRIPT_DIR.parent,
+            toolchain=self._toolchain(),
+            source_snapshot_sha256=self._snapshot_sha256(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            baseline = root / "dependency-closures.json"
+            baseline.write_text(json.dumps(report), encoding="utf-8")
+            lock = root / "lock.json"
+            lock.write_text(
+                json.dumps(
+                    {
+                        "schema_version": BASELINE_LOCK_SCHEMA_VERSION,
+                        "baseline_commit": BASELINE_COMMIT,
+                        "baseline_input_sha256": {
+                            record["path"]: record["sha256"]
+                            for record in report["inputs"]
+                        },
+                        "source_snapshot_sha256": self._snapshot_sha256(),
+                        "baseline_tree": BASELINE_TREE,
+                        "dependency_report_schema_version": 3,
+                        "dependency_report_file_sha256": "pending",
+                        "native_artifact_report_schema_version": 3,
+                        "native_artifact_report_file_sha256": "pending",
+                        "probe_registry_sha256": probe_registry_sha256(probes),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ClosureVerificationError, "not finalized"):
+                load_dependency_baseline(
+                    baseline,
+                    lock_path=lock,
+                    repo_root=SCRIPT_DIR.parent,
+                )
+
+    def test_other_report_zero_digest_is_not_an_atomic_lock(self) -> None:
+        probes = load_dependency_probes()
+        report = dependency_baseline_report(
+            tuple(self._observation(probe) for probe in probes),
+            repo_root=SCRIPT_DIR.parent,
+            toolchain=self._toolchain(),
+            source_snapshot_sha256=self._snapshot_sha256(),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            baseline = root / "dependency-closures.json"
+            baseline.write_text(json.dumps(report), encoding="utf-8")
+            lock = root / "lock.json"
+            lock.write_text(
+                json.dumps(
+                    {
+                        "schema_version": BASELINE_LOCK_SCHEMA_VERSION,
+                        "baseline_commit": BASELINE_COMMIT,
+                        "baseline_input_sha256": {
+                            record["path"]: record["sha256"]
+                            for record in report["inputs"]
+                        },
+                        "source_snapshot_sha256": self._snapshot_sha256(),
+                        "baseline_tree": BASELINE_TREE,
+                        "dependency_report_schema_version": 3,
+                        "dependency_report_file_sha256": (
+                            "sha256:" + hashlib.sha256(baseline.read_bytes()).hexdigest()
+                        ),
+                        "native_artifact_report_schema_version": 3,
+                        "native_artifact_report_file_sha256": "sha256:" + "0" * 64,
+                        "probe_registry_sha256": probe_registry_sha256(probes),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ClosureVerificationError, "not finalized"):
+                load_dependency_baseline(
+                    baseline,
+                    lock_path=lock,
+                    repo_root=SCRIPT_DIR.parent,
+                )
+
+    def test_known_workspace_feature_unified_report_is_rejected_before_decode(
+        self,
+    ) -> None:
+        rejected = next(iter(dependency_verifier.REJECTED_BASELINE_FILE_SHA256))
+        with (
+            mock.patch.object(dependency_verifier, "bytes_sha256", return_value=rejected),
+            mock.patch.object(
+                type(dependency_verifier.STRICT_BASELINE_JSON),
+                "load_bytes",
+                return_value=(b"rejected", None),
+            ),
+            self.assertRaisesRegex(ClosureVerificationError, "feature-unified"),
+        ):
+            load_dependency_baseline(Path("does-not-need-to-exist.json"))
+
+    @staticmethod
+    def _observation(probe: object) -> ProbeClosureObservation:
+        runtime_identities = {
+            (package, "1.0.0", "registry+https://github.com/rust-lang/crates.io-index"):
+                frozenset()
+            for package in probe.required_runtime_packages
+        }
+        attribution_identities = {
+            (package, "1.0.0", "registry+https://github.com/rust-lang/crates.io-index")
+            for package in probe.required_attribution_packages
+        }
+        runtime = DependencyClosure(runtime_identities)
+        attribution = AttributionClosure(
+            tuple(
+                AttributionPackage(
+                    package,
+                    version,
+                    source,
+                    (),
+                    ("normal",),
+                    {"normal": ()},
+                )
+                for package, version, source in sorted(attribution_identities)
+            )
+        )
+        return ProbeClosureObservation(probe, runtime, attribution)
+
+    @staticmethod
+    def _toolchain() -> dict[str, object]:
+        return {
+            "cargo": {
+                "path": "/toolchain/bin/cargo",
+                "sha256": "sha256:" + "1" * 64,
+            },
+            "rustc": {
+                "path": "/toolchain/bin/rustc",
+                "sha256": "sha256:" + "2" * 64,
+            },
+            "cargo_version": "cargo 1.95.0",
+            "rustc_verbose": "rustc 1.95.0\nhost: aarch64-apple-darwin",
+            "host_target": "aarch64-apple-darwin",
+        }
+
+    @staticmethod
+    def _snapshot_sha256() -> str:
+        return "sha256:" + "3" * 64
+
+    @staticmethod
+    def _comparison_probe(
+        *,
+        runtime: tuple[dict[str, object], ...],
+        attribution: tuple[dict[str, object], ...],
+    ) -> dict[str, object]:
+        return {
+            "runtime_legal": {"packages": list(runtime)},
+            "attribution": {"packages": list(attribution)},
+        }
+
+    @staticmethod
+    def _runtime_package(
+        package: str,
+        features: tuple[str, ...],
+    ) -> dict[str, object]:
+        return {
+            "package": package,
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "features": list(features),
+        }
+
+    @classmethod
+    def _attribution_package(
+        cls,
+        package: str,
+        features: tuple[str, ...],
+        roles: tuple[str, ...],
+        role_features: dict[str, tuple[str, ...]],
+    ) -> dict[str, object]:
+        row = cls._runtime_package(package, features)
+        row["roles"] = list(roles)
+        row["role_features"] = {
+            role: list(values) for role, values in role_features.items()
+        }
+        return row
 
 
 class ClaimTests(unittest.TestCase):

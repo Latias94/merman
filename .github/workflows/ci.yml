@@ -340,7 +340,7 @@ jobs:
         if: matrix.parity
         run: |
           cargo run --locked -p xtask -- verify-generated
-          python3 scripts/verify_artifact_dependency_closures.py
+          python3 scripts/verify_artifact_dependency_closures.py --baseline abi/ffi-contract-baseline/dependency-closures.json
           cargo run --locked -p xtask -- verify-feature-matrix --strict
           python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
 

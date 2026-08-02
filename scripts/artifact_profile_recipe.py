@@ -117,6 +117,7 @@ def cargo_build_args(
     locked: bool = False,
     target: str | None = None,
     build_tool: CargoBuildTool = "cargo",
+    repo_root: Path = REPO_ROOT,
 ) -> list[str]:
     """Project one validated descriptor recipe into a Cargo build command."""
     reject_cargo_profile_environment_overrides(recipe)
@@ -133,7 +134,13 @@ def cargo_build_args(
         raise RuntimeError(
             f"artifact profile {recipe.profile_id!r} does not declare target {target!r}"
         )
-    return _cargo_build_args(recipe, locked=locked, target=target, build_tool=build_tool)
+    return _cargo_build_args(
+        recipe,
+        locked=locked,
+        target=target,
+        build_tool=build_tool,
+        repo_root=repo_root,
+    )
 
 
 def cargo_host_build_args(
@@ -142,6 +149,7 @@ def cargo_host_build_args(
     *,
     locked: bool = False,
     build_tool: CargoBuildTool = "cargo",
+    repo_root: Path = REPO_ROOT,
 ) -> list[str]:
     """Build a target-set recipe for the validated current host without `--target`."""
     reject_cargo_profile_environment_overrides(recipe)
@@ -154,7 +162,13 @@ def cargo_host_build_args(
             f"artifact profile {recipe.profile_id!r} does not declare host target "
             f"{host_target!r}"
         )
-    return _cargo_build_args(recipe, locked=locked, target=None, build_tool=build_tool)
+    return _cargo_build_args(
+        recipe,
+        locked=locked,
+        target=None,
+        build_tool=build_tool,
+        repo_root=repo_root,
+    )
 
 
 def rustc_host_target() -> str:
@@ -187,6 +201,7 @@ def _cargo_build_args(
     locked: bool,
     target: str | None,
     build_tool: CargoBuildTool,
+    repo_root: Path,
 ) -> list[str]:
     """Project validated Cargo selectors; target is omitted only for a host build."""
 
@@ -226,7 +241,7 @@ def _cargo_build_args(
         recipe.package,
         *target_args,
         "--manifest-path",
-        str(REPO_ROOT / recipe.manifest),
+        str(repo_root / recipe.manifest),
     ]
     if locked:
         args.append("--locked")

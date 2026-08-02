@@ -23,6 +23,7 @@ on:
       - scripts/generate-rust-license-report.py
       - scripts/python_wheel_licenses.py
       - scripts/verify_artifact_dependency_closures.py
+      - "abi/ffi-contract-baseline/**"
       - scripts/verify_rustsec_exceptions.py
       - ".github/workflows/security-audit.yml"
   pull_request:
@@ -44,6 +45,7 @@ on:
       - scripts/generate-rust-license-report.py
       - scripts/python_wheel_licenses.py
       - scripts/verify_artifact_dependency_closures.py
+      - "abi/ffi-contract-baseline/**"
       - scripts/verify_rustsec_exceptions.py
       - ".github/workflows/security-audit.yml"
   schedule:
@@ -103,7 +105,7 @@ jobs:
         run: python3 scripts/verify_rustsec_exceptions.py
 
       - name: Verify target-scoped advisory artifact-profile coverage
-        run: python3 scripts/verify_artifact_dependency_closures.py
+        run: python3 scripts/verify_artifact_dependency_closures.py --baseline abi/ffi-contract-baseline/dependency-closures.json
 
       - name: Verify checked-in Rust dependency notices
         run: python3 scripts/generate-rust-license-report.py --check
