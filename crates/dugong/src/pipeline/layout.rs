@@ -3,6 +3,8 @@
 //! This pipeline follows upstream Dagre's structure more closely (ranking, normalization,
 //! ordering, BK positioning, translation).
 
+use rustc_hash::FxHashSet;
+
 use crate::graphlib;
 use crate::{
     EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, acyclic, add_border_segments,
@@ -251,48 +253,9 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
 
     util::normalize_ranks(g);
 
-    // Remove edge label proxy nodes, storing their rank on the corresponding edge label.
-    for v in std::mem::take(&mut edge_proxy_nodes) {
-        let Some(node) = g.node(&v).cloned() else {
-            let _ = g.remove_node(&v);
-            continue;
-        };
-        if node.dummy.as_deref() != Some("edge-proxy") {
-            let _ = g.remove_node(&v);
-            continue;
-        }
-        let Some(edge_obj) = node.edge_obj else {
-            let _ = g.remove_node(&v);
-            continue;
-        };
-        if let Some(lbl) = g.edge_mut_by_key(&edge_obj) {
-            lbl.label_rank = node.rank;
-        }
-        let _ = g.remove_node(&v);
-    }
+    // Finish every label-rank writeback before the single graph-wide proxy retirement pass.
+    remove_edge_label_proxies(g, edge_proxy_nodes);
 
-    // Defensive parity: if the caller-provided graph already contained edge-proxy nodes,
-    // remove them as well to match the previous best-effort behavior.
-    let mut leftovers: Vec<String> = Vec::new();
-    g.for_each_node(|id, n| {
-        if n.dummy.as_deref() == Some("edge-proxy") {
-            leftovers.push(id.to_string());
-        }
-    });
-    for v in leftovers {
-        let Some(node) = g.node(&v).cloned() else {
-            let _ = g.remove_node(&v);
-            continue;
-        };
-        let Some(edge_obj) = node.edge_obj else {
-            let _ = g.remove_node(&v);
-            continue;
-        };
-        if let Some(lbl) = g.edge_mut_by_key(&edge_obj) {
-            lbl.label_rank = node.rank;
-        }
-        let _ = g.remove_node(&v);
-    }
     // Dagre uses `assignRankMinMax` to annotate compound nodes with their rank span, derived from
     // the `nestingGraph` border top/bottom nodes. This rank span is later used by subgraph
     // ordering and border segment generation.
@@ -545,6 +508,79 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     }
 }
 
+/// Writes proxy ranks back before retiring every proxy through one graph-wide removal pass.
+///
+/// Generated proxies retain the upstream writeback order. Caller-provided defensive leftovers are
+/// processed afterwards in stable node order, matching the former two-loop behavior when multiple
+/// proxies target the same edge.
+fn remove_edge_label_proxies(
+    g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    generated_proxy_ids: Vec<String>,
+) -> usize {
+    remove_edge_label_proxies_with(g, generated_proxy_ids, remove_nodes_batch)
+}
+
+fn remove_edge_label_proxies_with<F>(
+    g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    mut generated_proxy_ids: Vec<String>,
+    retire_batch: F,
+) -> usize
+where
+    F: FnOnce(&mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>, &[String]) -> usize,
+{
+    for id in &generated_proxy_ids {
+        write_edge_label_proxy_rank(g, id);
+    }
+
+    let leftover_ids = {
+        let generated_ids: FxHashSet<&str> =
+            generated_proxy_ids.iter().map(String::as_str).collect();
+        let mut leftovers = Vec::new();
+        g.for_each_node(|id, node| {
+            if node.dummy.as_deref() == Some("edge-proxy") && !generated_ids.contains(id) {
+                leftovers.push(id.to_string());
+            }
+        });
+        leftovers
+    };
+
+    for id in &leftover_ids {
+        write_edge_label_proxy_rank(g, id);
+    }
+    generated_proxy_ids.extend(leftover_ids);
+
+    if generated_proxy_ids.is_empty() {
+        return 0;
+    }
+
+    retire_batch(g, &generated_proxy_ids)
+}
+
+fn remove_nodes_batch(
+    g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ids: &[String],
+) -> usize {
+    g.remove_nodes(ids.iter().map(String::as_str))
+}
+
+fn write_edge_label_proxy_rank(
+    g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    id: &str,
+) {
+    let writeback = g.node(id).and_then(|node| {
+        if node.dummy.as_deref() != Some("edge-proxy") {
+            return None;
+        }
+        node.edge_obj.clone().map(|edge_obj| (edge_obj, node.rank))
+    });
+    let Some((edge_obj, rank)) = writeback else {
+        return;
+    };
+    if let Some(label) = g.edge_mut_by_key(&edge_obj) {
+        label.label_rank = rank;
+    }
+}
+
 /// Restore non-centered edge-label geometry after `makeSpaceForEdgeLabels` and normalization.
 ///
 /// Source: `@dagrejs/dagre` `layout.js::fixupEdgeLabelCoords` at the pinned Dagre revision.
@@ -566,4 +602,197 @@ fn fixup_edge_label_coords(graph: &mut graphlib::Graph<NodeLabel, EdgeLabel, Gra
         }
         edge.x = Some(x);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_graph() -> graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        graphlib::Graph::new(graphlib::GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn edge_label_proxies_write_back_then_retire_in_one_batch() {
+        let mut graph = test_graph();
+        for id in [
+            "a",
+            "b",
+            "c",
+            "d",
+            "e",
+            "f",
+            "cluster",
+            "keep_before_child",
+            "generated",
+            "generated_only",
+            "generated_non_proxy",
+            "caller_proxy",
+            "orphan_proxy",
+            "keep_after_child",
+        ] {
+            graph.set_node(id, NodeLabel::default());
+        }
+        graph.set_parent("keep_before_child", "cluster");
+        graph.set_parent("generated_non_proxy", "cluster");
+        graph.set_parent("caller_proxy", "cluster");
+        graph.set_parent("orphan_proxy", "cluster");
+        graph.set_parent("keep_after_child", "cluster");
+
+        graph.set_edge_named("c", "d", Some("keep_before"), Some(EdgeLabel::default()));
+        graph.set_edge_named("a", "b", Some("target"), Some(EdgeLabel::default()));
+        graph.set_edge_named(
+            "e",
+            "f",
+            Some("generated_target"),
+            Some(EdgeLabel::default()),
+        );
+        graph.set_edge_named(
+            "generated",
+            "a",
+            Some("drop_generated"),
+            Some(EdgeLabel::default()),
+        );
+        graph.set_edge_named("d", "c", Some("keep_after"), Some(EdgeLabel::default()));
+        graph.set_edge_named(
+            "caller_proxy",
+            "b",
+            Some("drop_caller"),
+            Some(EdgeLabel::default()),
+        );
+
+        let target = graphlib::EdgeKey::new("a", "b", Some("target"));
+        let generated_target = graphlib::EdgeKey::new("e", "f", Some("generated_target"));
+        graph.set_node(
+            "generated",
+            NodeLabel {
+                rank: Some(4),
+                dummy: Some("edge-proxy".to_string()),
+                edge_obj: Some(target.clone()),
+                ..Default::default()
+            },
+        );
+        graph.set_node(
+            "generated_only",
+            NodeLabel {
+                rank: Some(6),
+                dummy: Some("edge-proxy".to_string()),
+                edge_obj: Some(generated_target),
+                ..Default::default()
+            },
+        );
+        graph.set_node(
+            "generated_non_proxy",
+            NodeLabel {
+                rank: Some(5),
+                dummy: Some("other".to_string()),
+                edge_obj: Some(target.clone()),
+                ..Default::default()
+            },
+        );
+        graph.set_node(
+            "caller_proxy",
+            NodeLabel {
+                rank: Some(7),
+                dummy: Some("edge-proxy".to_string()),
+                edge_obj: Some(target),
+                ..Default::default()
+            },
+        );
+        graph.set_node(
+            "orphan_proxy",
+            NodeLabel {
+                rank: Some(9),
+                dummy: Some("edge-proxy".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let mut retirement_passes = 0;
+        let removed = remove_edge_label_proxies_with(
+            &mut graph,
+            vec![
+                "generated".to_string(),
+                "generated_only".to_string(),
+                "missing_generated".to_string(),
+                "generated_non_proxy".to_string(),
+            ],
+            |graph, ids| {
+                retirement_passes += 1;
+                remove_nodes_batch(graph, ids)
+            },
+        );
+
+        assert_eq!(removed, 5);
+        assert_eq!(retirement_passes, 1);
+        for removed_id in [
+            "generated",
+            "generated_only",
+            "generated_non_proxy",
+            "caller_proxy",
+            "orphan_proxy",
+        ] {
+            assert!(!graph.has_node(removed_id));
+        }
+        assert_eq!(
+            graph.node_ids(),
+            vec![
+                "a",
+                "b",
+                "c",
+                "d",
+                "e",
+                "f",
+                "cluster",
+                "keep_before_child",
+                "keep_after_child",
+            ]
+        );
+        assert_eq!(
+            graph.children("cluster"),
+            vec!["keep_before_child", "keep_after_child"]
+        );
+        assert_eq!(
+            graph.edge("a", "b", Some("target")).unwrap().label_rank,
+            Some(7),
+            "the caller-provided leftover must keep the former last-write-wins order",
+        );
+        assert_eq!(
+            graph
+                .edge("e", "f", Some("generated_target"))
+                .unwrap()
+                .label_rank,
+            Some(6),
+            "a generated proxy must write back independently of leftover collisions",
+        );
+        assert_eq!(
+            graph
+                .edge_keys()
+                .into_iter()
+                .map(|edge| edge.name.unwrap())
+                .collect::<Vec<_>>(),
+            vec!["keep_before", "target", "generated_target", "keep_after"],
+        );
+    }
+
+    #[test]
+    fn edge_label_proxy_retirement_skips_the_batch_when_no_proxy_exists() {
+        let mut graph = test_graph();
+        graph.set_node("keep", NodeLabel::default());
+
+        let mut retirement_passes = 0;
+        assert_eq!(
+            remove_edge_label_proxies_with(&mut graph, Vec::new(), |graph, ids| {
+                retirement_passes += 1;
+                remove_nodes_batch(graph, ids)
+            }),
+            0
+        );
+        assert_eq!(retirement_passes, 0);
+        assert!(graph.has_node("keep"));
+    }
 }
