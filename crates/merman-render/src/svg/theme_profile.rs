@@ -1,7 +1,11 @@
 use merman_core::MermaidConfig;
-use merman_core::theme_color::{ColorChannel, ThemeColor};
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
+
+use crate::presentation::{
+    HostTheme as PresentationHostTheme, HostThemeAppearance as PresentationAppearance,
+    HostThemePreset as PresentationThemePreset, Presentation, PresentationProfile, ThemeRole,
+};
 
 use super::pipeline::{CssOverridePolicy, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset};
 
@@ -262,38 +266,35 @@ impl HostThemeProfile {
 
     /// Uses Merman's modern flowchart defaults without changing the SVG output pipeline.
     pub fn merman_modern() -> Self {
-        let mut flowchart = Map::new();
-        flowchart.insert(
-            "defaultRenderer".to_string(),
-            Value::String("elk".to_string()),
-        );
-        flowchart.insert("edgeLabelPadding".to_string(), Value::from(4));
-        flowchart.insert("compactEdgeCorners".to_string(), Value::Bool(true));
-
-        let mut site_config = Map::new();
-        site_config.insert("theme".to_string(), Value::String("redux".to_string()));
-        site_config.insert("look".to_string(), Value::String("neo".to_string()));
-        site_config.insert("flowchart".to_string(), Value::Object(flowchart));
-
-        let theme_variables = [
-            ("mainBkg", "#F8FAFC"),
-            ("nodeBorder", "#64748B"),
-            ("nodeTextColor", "#1E293B"),
-            ("primaryColor", "#F8FAFC"),
-            ("primaryBorderColor", "#64748B"),
-            ("primaryTextColor", "#1E293B"),
-            ("lineColor", "#64748B"),
-            ("arrowheadColor", "#64748B"),
-            ("edgeLabelBackground", "#FFFFFF"),
-            ("clusterBkg", "#F1F5F9"),
-            ("clusterBorder", "#CBD5E1"),
-        ]
-        .into_iter()
-        .map(|(key, value)| (key.to_string(), Value::String(value.to_string())))
-        .collect();
+        let resolved = Presentation::new()
+            .with_profile(PresentationProfile::MermanModern)
+            .resolve();
+        let mut site_config = resolved
+            .mermaid_config
+            .as_value()
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        if let Some(policy) = resolved.flowchart_policy {
+            let flowchart = site_config
+                .entry("flowchart")
+                .or_insert_with(|| Value::Object(Map::new()))
+                .as_object_mut()
+                .expect("presentation profile flowchart config must be an object");
+            if let Some(radius) = policy.edge_corner_radius {
+                flowchart.insert("edgeCornerRadius".to_string(), legacy_number(radius));
+            }
+            flowchart.insert(
+                "edgeLabelPadding".to_string(),
+                legacy_number(policy.edge_label_padding),
+            );
+            flowchart.insert(
+                "compactEdgeCorners".to_string(),
+                Value::Bool(policy.compact_edge_corners),
+            );
+        }
 
         Self {
-            theme_variables,
             site_config,
             ..Self::default()
         }
@@ -305,348 +306,81 @@ impl HostThemeProfile {
     }
 
     pub fn editor_light() -> Self {
-        Self {
-            appearance: HostThemeAppearance::Light,
-            font_family: Some(
-                r#"Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif"#
-                    .to_string(),
-            ),
-            font_size: Some("14px".to_string()),
-            roles: HostThemeRoles {
-                canvas: Some("#ffffff".to_string()),
-                surface: Some("#f8fafc".to_string()),
-                surface_alt: Some("#e2e8f0".to_string()),
-                surface_muted: Some("#f1f5f9".to_string()),
-                text: Some("#0f172a".to_string()),
-                subtle_text: Some("#475569".to_string()),
-                border: Some("#94a3b8".to_string()),
-                line: Some("#64748b".to_string()),
-                edge_label_background: Some("#ffffff".to_string()),
-                cluster_background: Some("#f1f5f9".to_string()),
-                cluster_border: Some("#cbd5e1".to_string()),
-                note_background: Some("#fff7ed".to_string()),
-                note_border: Some("#fdba74".to_string()),
-                note_text: Some("#7c2d12".to_string()),
-                actor_background: Some("#f8fafc".to_string()),
-                actor_border: Some("#94a3b8".to_string()),
-                actor_text: Some("#0f172a".to_string()),
-                activation_background: Some("#e2e8f0".to_string()),
-                activation_border: Some("#94a3b8".to_string()),
-                error: Some("#dc2626".to_string()),
-                warning: Some("#d97706".to_string()),
-                success: Some("#059669".to_string()),
-            },
-            series_palette: vec![
-                "#2563eb".to_string(),
-                "#059669".to_string(),
-                "#d97706".to_string(),
-                "#7c3aed".to_string(),
-                "#0891b2".to_string(),
-                "#be123c".to_string(),
-                "#a16207".to_string(),
-                "#65a30d".to_string(),
-            ],
-            output: HostThemeOutput::resvg_safe_editor(),
-            theme_variables: Map::new(),
-            site_config: Map::new(),
-        }
+        Self::from_presentation_theme(PresentationThemePreset::EditorLight)
     }
 
     pub fn editor_dark() -> Self {
-        Self {
-            appearance: HostThemeAppearance::Dark,
-            font_family: Some(
-                r#"Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif"#
-                    .to_string(),
-            ),
-            font_size: Some("14px".to_string()),
-            roles: HostThemeRoles {
-                canvas: Some("#0f172a".to_string()),
-                surface: Some("#111827".to_string()),
-                surface_alt: Some("#1f2937".to_string()),
-                surface_muted: Some("#334155".to_string()),
-                text: Some("#e5e7eb".to_string()),
-                subtle_text: Some("#cbd5e1".to_string()),
-                border: Some("#475569".to_string()),
-                line: Some("#94a3b8".to_string()),
-                edge_label_background: Some("#0f172a".to_string()),
-                cluster_background: Some("#1e293b".to_string()),
-                cluster_border: Some("#475569".to_string()),
-                note_background: Some("#422006".to_string()),
-                note_border: Some("#f59e0b".to_string()),
-                note_text: Some("#fef3c7".to_string()),
-                actor_background: Some("#1f2937".to_string()),
-                actor_border: Some("#475569".to_string()),
-                actor_text: Some("#e5e7eb".to_string()),
-                activation_background: Some("#334155".to_string()),
-                activation_border: Some("#64748b".to_string()),
-                error: Some("#f87171".to_string()),
-                warning: Some("#fbbf24".to_string()),
-                success: Some("#34d399".to_string()),
-            },
-            series_palette: vec![
-                "#60a5fa".to_string(),
-                "#34d399".to_string(),
-                "#f59e0b".to_string(),
-                "#c084fc".to_string(),
-                "#22d3ee".to_string(),
-                "#fb7185".to_string(),
-                "#facc15".to_string(),
-                "#a3e635".to_string(),
-            ],
-            output: HostThemeOutput::resvg_safe_editor(),
-            theme_variables: Map::new(),
-            site_config: Map::new(),
-        }
+        Self::from_presentation_theme(PresentationThemePreset::EditorDark)
     }
 
     pub fn one_dark() -> Self {
-        Self::editor_profile(
-            HostThemeAppearance::Dark,
-            HostThemeRoles {
-                canvas: Some("#282c34".to_string()),
-                surface: Some("#21252b".to_string()),
-                surface_alt: Some("#2c313a".to_string()),
-                surface_muted: Some("#3e4451".to_string()),
-                text: Some("#abb2bf".to_string()),
-                subtle_text: Some("#828997".to_string()),
-                border: Some("#3e4451".to_string()),
-                line: Some("#61afef".to_string()),
-                edge_label_background: Some("#282c34".to_string()),
-                cluster_background: Some("#2c313a".to_string()),
-                cluster_border: Some("#3e4451".to_string()),
-                note_background: Some("#3a2f1b".to_string()),
-                note_border: Some("#e5c07b".to_string()),
-                note_text: Some("#f0dca4".to_string()),
-                actor_background: Some("#2c313a".to_string()),
-                actor_border: Some("#3e4451".to_string()),
-                actor_text: Some("#abb2bf".to_string()),
-                activation_background: Some("#3e4451".to_string()),
-                activation_border: Some("#5c6370".to_string()),
-                error: Some("#e06c75".to_string()),
-                warning: Some("#e5c07b".to_string()),
-                success: Some("#98c379".to_string()),
-            },
-            [
-                "#61afef", "#98c379", "#e5c07b", "#c678dd", "#56b6c2", "#e06c75", "#d19a66",
-                "#be5046",
-            ],
-            HostThemeOutput::resvg_safe_editor(),
-        )
+        Self::from_presentation_theme(PresentationThemePreset::OneDark)
     }
 
     pub fn gruvbox_light() -> Self {
-        Self::editor_profile(
-            HostThemeAppearance::Light,
-            HostThemeRoles {
-                canvas: Some("#fbf1c7".to_string()),
-                surface: Some("#f2e5bc".to_string()),
-                surface_alt: Some("#ebdbb2".to_string()),
-                surface_muted: Some("#d5c4a1".to_string()),
-                text: Some("#3c3836".to_string()),
-                subtle_text: Some("#665c54".to_string()),
-                border: Some("#d5c4a1".to_string()),
-                line: Some("#7c6f64".to_string()),
-                edge_label_background: Some("#fbf1c7".to_string()),
-                cluster_background: Some("#ebdbb2".to_string()),
-                cluster_border: Some("#d5c4a1".to_string()),
-                note_background: Some("#f2e5bc".to_string()),
-                note_border: Some("#d79921".to_string()),
-                note_text: Some("#3c3836".to_string()),
-                actor_background: Some("#ebdbb2".to_string()),
-                actor_border: Some("#d5c4a1".to_string()),
-                actor_text: Some("#3c3836".to_string()),
-                activation_background: Some("#d5c4a1".to_string()),
-                activation_border: Some("#bdae93".to_string()),
-                error: Some("#cc241d".to_string()),
-                warning: Some("#d79921".to_string()),
-                success: Some("#98971a".to_string()),
-            },
-            [
-                "#458588", "#98971a", "#d79921", "#b16286", "#689d6a", "#cc241d", "#d65d0e",
-                "#427b58",
-            ],
-            HostThemeOutput::resvg_safe_editor(),
-        )
+        Self::from_presentation_theme(PresentationThemePreset::GruvboxLight)
     }
 
     pub fn gruvbox_dark() -> Self {
-        Self::editor_profile(
-            HostThemeAppearance::Dark,
-            HostThemeRoles {
-                canvas: Some("#282828".to_string()),
-                surface: Some("#3c3836".to_string()),
-                surface_alt: Some("#504945".to_string()),
-                surface_muted: Some("#665c54".to_string()),
-                text: Some("#ebdbb2".to_string()),
-                subtle_text: Some("#d5c4a1".to_string()),
-                border: Some("#665c54".to_string()),
-                line: Some("#d5c4a1".to_string()),
-                edge_label_background: Some("#282828".to_string()),
-                cluster_background: Some("#3c3836".to_string()),
-                cluster_border: Some("#665c54".to_string()),
-                note_background: Some("#3c3836".to_string()),
-                note_border: Some("#fabd2f".to_string()),
-                note_text: Some("#fbf1c7".to_string()),
-                actor_background: Some("#3c3836".to_string()),
-                actor_border: Some("#665c54".to_string()),
-                actor_text: Some("#ebdbb2".to_string()),
-                activation_background: Some("#504945".to_string()),
-                activation_border: Some("#7c6f64".to_string()),
-                error: Some("#fb4934".to_string()),
-                warning: Some("#fabd2f".to_string()),
-                success: Some("#b8bb26".to_string()),
-            },
-            [
-                "#83a598", "#b8bb26", "#fabd2f", "#d3869b", "#8ec07c", "#fb4934", "#fe8019",
-                "#689d6a",
-            ],
-            HostThemeOutput::resvg_safe_editor(),
-        )
+        Self::from_presentation_theme(PresentationThemePreset::GruvboxDark)
     }
 
     pub fn ayu_light() -> Self {
-        Self::editor_profile(
-            HostThemeAppearance::Light,
-            HostThemeRoles {
-                canvas: Some("#fafafa".to_string()),
-                surface: Some("#f3f4f5".to_string()),
-                surface_alt: Some("#e6e8eb".to_string()),
-                surface_muted: Some("#d9d7ce".to_string()),
-                text: Some("#5c6773".to_string()),
-                subtle_text: Some("#8a9199".to_string()),
-                border: Some("#d9d7ce".to_string()),
-                line: Some("#55b4d4".to_string()),
-                edge_label_background: Some("#fafafa".to_string()),
-                cluster_background: Some("#f3f4f5".to_string()),
-                cluster_border: Some("#d9d7ce".to_string()),
-                note_background: Some("#fff3bf".to_string()),
-                note_border: Some("#ffaa33".to_string()),
-                note_text: Some("#5c6773".to_string()),
-                actor_background: Some("#f3f4f5".to_string()),
-                actor_border: Some("#d9d7ce".to_string()),
-                actor_text: Some("#5c6773".to_string()),
-                activation_background: Some("#e6e8eb".to_string()),
-                activation_border: Some("#d9d7ce".to_string()),
-                error: Some("#f07171".to_string()),
-                warning: Some("#ffaa33".to_string()),
-                success: Some("#86b300".to_string()),
-            },
-            [
-                "#55b4d4", "#86b300", "#ffaa33", "#a37acc", "#4cbf99", "#f07171", "#f2ae49",
-                "#399ee6",
-            ],
-            HostThemeOutput::resvg_safe_editor(),
-        )
+        Self::from_presentation_theme(PresentationThemePreset::AyuLight)
     }
 
     pub fn ayu_dark() -> Self {
-        Self::editor_profile(
-            HostThemeAppearance::Dark,
-            HostThemeRoles {
-                canvas: Some("#0b0e14".to_string()),
-                surface: Some("#11151c".to_string()),
-                surface_alt: Some("#1f2430".to_string()),
-                surface_muted: Some("#343b48".to_string()),
-                text: Some("#bfbdb6".to_string()),
-                subtle_text: Some("#8a9199".to_string()),
-                border: Some("#343b48".to_string()),
-                line: Some("#59c2ff".to_string()),
-                edge_label_background: Some("#0b0e14".to_string()),
-                cluster_background: Some("#1f2430".to_string()),
-                cluster_border: Some("#343b48".to_string()),
-                note_background: Some("#332a14".to_string()),
-                note_border: Some("#ffb454".to_string()),
-                note_text: Some("#ffdf99".to_string()),
-                actor_background: Some("#1f2430".to_string()),
-                actor_border: Some("#343b48".to_string()),
-                actor_text: Some("#bfbdb6".to_string()),
-                activation_background: Some("#343b48".to_string()),
-                activation_border: Some("#4f5866".to_string()),
-                error: Some("#f07178".to_string()),
-                warning: Some("#ffb454".to_string()),
-                success: Some("#aad94c".to_string()),
-            },
-            [
-                "#59c2ff", "#aad94c", "#ffb454", "#d2a6ff", "#95e6cb", "#f07178", "#f29668",
-                "#39bae6",
-            ],
-            HostThemeOutput::resvg_safe_editor(),
-        )
+        Self::from_presentation_theme(PresentationThemePreset::AyuDark)
     }
 
-    fn editor_profile<const N: usize>(
-        appearance: HostThemeAppearance,
-        roles: HostThemeRoles,
-        palette: [&str; N],
-        output: HostThemeOutput,
-    ) -> Self {
+    fn from_presentation_theme(preset: PresentationThemePreset) -> Self {
+        let theme = PresentationHostTheme::from_preset(preset);
         Self {
-            appearance,
-            font_family: Some(
-                r#"Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif"#
-                    .to_string(),
-            ),
-            font_size: Some("14px".to_string()),
-            roles,
-            series_palette: palette.iter().map(|color| color.to_string()).collect(),
-            output,
+            appearance: match theme.appearance().unwrap_or_default() {
+                PresentationAppearance::Light => HostThemeAppearance::Light,
+                PresentationAppearance::Dark => HostThemeAppearance::Dark,
+            },
+            font_family: theme.font_family().map(str::to_string),
+            font_size: theme.font_size().map(str::to_string),
+            roles: legacy_roles(&theme),
+            series_palette: theme.series_palette().to_vec(),
+            output: HostThemeOutput::resvg_safe_editor(),
             theme_variables: Map::new(),
             site_config: Map::new(),
         }
     }
 
     pub fn compile(&self) -> CompiledHostTheme {
-        let mut root = Map::new();
-
-        let mut theme_variables = Map::new();
         let has_profile_theme_input = self.appearance.is_dark()
             || self.font_family.is_some()
             || self.font_size.is_some()
             || self.roles.has_values()
             || !self.series_palette.is_empty()
             || !self.theme_variables.is_empty();
-
-        if has_profile_theme_input {
-            root.insert("theme".to_string(), Value::String("base".to_string()));
-            root.insert(
-                "darkMode".to_string(),
-                Value::Bool(self.appearance.is_dark()),
-            );
-            theme_variables.insert(
-                "darkMode".to_string(),
-                Value::Bool(self.appearance.is_dark()),
-            );
-        }
-
-        if let Some(font_family) = self.font_family.as_deref().filter(|s| !s.trim().is_empty()) {
-            root.insert(
-                "fontFamily".to_string(),
-                Value::String(font_family.trim().to_string()),
-            );
-            put_str(&mut theme_variables, "fontFamily", font_family);
-        }
-        if let Some(font_size) = self.font_size.as_deref().filter(|s| !s.trim().is_empty()) {
-            put_str(&mut theme_variables, "fontSize", font_size);
-        }
-
-        let resolved_roles = ResolvedHostThemeRoles::new(&self.roles);
-        put_theme_roles(&mut theme_variables, &resolved_roles);
-        put_series_palette(&mut theme_variables, &self.series_palette);
-        put_diagram_config(
-            &mut root,
-            &mut theme_variables,
-            &resolved_roles,
-            &self.series_palette,
+        let appearance = has_profile_theme_input.then_some(match self.appearance {
+            HostThemeAppearance::Light => PresentationAppearance::Light,
+            HostThemeAppearance::Dark => PresentationAppearance::Dark,
+        });
+        let theme = PresentationHostTheme::from_parts_unchecked(
+            appearance,
+            nonempty(self.font_family.as_deref()),
+            nonempty(self.font_size.as_deref()),
+            presentation_roles(&self.roles),
+            self.series_palette.clone(),
         );
-
-        merge_object(&mut theme_variables, &self.theme_variables);
-        if !theme_variables.is_empty() {
-            root.insert("themeVariables".to_string(), Value::Object(theme_variables));
+        let mut site_config = theme.mermaid_config_patch();
+        if !self.theme_variables.is_empty() {
+            let mut override_root = Map::new();
+            override_root.insert(
+                "themeVariables".to_string(),
+                Value::Object(self.theme_variables.clone()),
+            );
+            site_config.deep_merge(&Value::Object(override_root));
         }
-        merge_object(&mut root, &self.site_config);
+        site_config.deep_merge(&Value::Object(self.site_config.clone()));
 
-        let canvas_color = root
+        let canvas_color = site_config
+            .as_value()
             .get("themeVariables")
             .and_then(Value::as_object)
             .and_then(|variables| variables.get("background"))
@@ -656,7 +390,7 @@ impl HostThemeProfile {
             .map(str::to_owned);
 
         CompiledHostTheme {
-            site_config: MermaidConfig::from_value(Value::Object(root)),
+            site_config,
             output: SvgOutputPolicy {
                 preset: self.output.pipeline.into(),
                 css_override_policy: self.output.css_override_policy,
@@ -669,6 +403,87 @@ impl HostThemeProfile {
                 scoped_css: self.output.scoped_css.clone(),
             },
         }
+    }
+}
+
+fn legacy_roles(theme: &PresentationHostTheme) -> HostThemeRoles {
+    let role = |role| theme.role(role).map(str::to_string);
+    HostThemeRoles {
+        canvas: role(ThemeRole::Canvas),
+        surface: role(ThemeRole::Surface),
+        surface_alt: role(ThemeRole::SurfaceAlt),
+        surface_muted: role(ThemeRole::SurfaceMuted),
+        text: role(ThemeRole::Text),
+        subtle_text: role(ThemeRole::SubtleText),
+        border: role(ThemeRole::Border),
+        line: role(ThemeRole::Line),
+        edge_label_background: role(ThemeRole::EdgeLabelBackground),
+        cluster_background: role(ThemeRole::ClusterBackground),
+        cluster_border: role(ThemeRole::ClusterBorder),
+        note_background: role(ThemeRole::NoteBackground),
+        note_border: role(ThemeRole::NoteBorder),
+        note_text: role(ThemeRole::NoteText),
+        actor_background: role(ThemeRole::ActorBackground),
+        actor_border: role(ThemeRole::ActorBorder),
+        actor_text: role(ThemeRole::ActorText),
+        activation_background: role(ThemeRole::ActivationBackground),
+        activation_border: role(ThemeRole::ActivationBorder),
+        error: role(ThemeRole::Error),
+        warning: role(ThemeRole::Warning),
+        success: role(ThemeRole::Success),
+    }
+}
+
+fn presentation_roles(
+    roles: &HostThemeRoles,
+) -> [(ThemeRole, Option<String>); ThemeRole::ALL.len()] {
+    [
+        (ThemeRole::Canvas, roles.canvas.clone()),
+        (ThemeRole::Surface, roles.surface.clone()),
+        (ThemeRole::SurfaceAlt, roles.surface_alt.clone()),
+        (ThemeRole::SurfaceMuted, roles.surface_muted.clone()),
+        (ThemeRole::Text, roles.text.clone()),
+        (ThemeRole::SubtleText, roles.subtle_text.clone()),
+        (ThemeRole::Border, roles.border.clone()),
+        (ThemeRole::Line, roles.line.clone()),
+        (
+            ThemeRole::EdgeLabelBackground,
+            roles.edge_label_background.clone(),
+        ),
+        (
+            ThemeRole::ClusterBackground,
+            roles.cluster_background.clone(),
+        ),
+        (ThemeRole::ClusterBorder, roles.cluster_border.clone()),
+        (ThemeRole::NoteBackground, roles.note_background.clone()),
+        (ThemeRole::NoteBorder, roles.note_border.clone()),
+        (ThemeRole::NoteText, roles.note_text.clone()),
+        (ThemeRole::ActorBackground, roles.actor_background.clone()),
+        (ThemeRole::ActorBorder, roles.actor_border.clone()),
+        (ThemeRole::ActorText, roles.actor_text.clone()),
+        (
+            ThemeRole::ActivationBackground,
+            roles.activation_background.clone(),
+        ),
+        (ThemeRole::ActivationBorder, roles.activation_border.clone()),
+        (ThemeRole::Error, roles.error.clone()),
+        (ThemeRole::Warning, roles.warning.clone()),
+        (ThemeRole::Success, roles.success.clone()),
+    ]
+}
+
+fn nonempty(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn legacy_number(value: f64) -> Value {
+    if value.fract() == 0.0 && value >= i64::MIN as f64 && value <= i64::MAX as f64 {
+        Value::from(value as i64)
+    } else {
+        Value::from(value)
     }
 }
 
@@ -739,491 +554,6 @@ impl CompiledHostTheme {
     pub fn pipeline(&self) -> SvgPipeline {
         self.output.pipeline()
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ResolvedHostThemeRoles<'a> {
-    canvas: Option<&'a str>,
-    surface: Option<&'a str>,
-    surface_alt: Option<&'a str>,
-    surface_muted: Option<&'a str>,
-    text: Option<&'a str>,
-    subtle_text: Option<&'a str>,
-    border: Option<&'a str>,
-    line: Option<&'a str>,
-    edge_label_background: Option<&'a str>,
-    commit_label_background: Option<&'a str>,
-    cluster_background: Option<&'a str>,
-    swimlane_background_odd: Option<&'a str>,
-    cluster_border: Option<&'a str>,
-    note_background: Option<&'a str>,
-    note_border: Option<&'a str>,
-    note_text: Option<&'a str>,
-    actor_background: Option<&'a str>,
-    actor_border: Option<&'a str>,
-    actor_text: Option<&'a str>,
-    activation_background: Option<&'a str>,
-    activation_border: Option<&'a str>,
-    error: Option<&'a str>,
-    warning: Option<&'a str>,
-    success: Option<&'a str>,
-}
-
-impl<'a> ResolvedHostThemeRoles<'a> {
-    fn new(roles: &'a HostThemeRoles) -> Self {
-        let canvas = roles.canvas.as_deref();
-        let surface = roles.surface.as_deref();
-        let surface_alt = roles.surface_alt.as_deref().or(surface);
-        let surface_muted = roles.surface_muted.as_deref().or(surface_alt);
-        let text = roles.text.as_deref();
-        let subtle_text = roles.subtle_text.as_deref().or(text);
-        let border = roles.border.as_deref();
-        let line = roles.line.as_deref().or(border);
-
-        Self {
-            canvas,
-            surface,
-            surface_alt,
-            surface_muted,
-            text,
-            subtle_text,
-            border,
-            line,
-            edge_label_background: roles.edge_label_background.as_deref().or(canvas),
-            commit_label_background: roles.edge_label_background.as_deref().or(surface),
-            cluster_background: roles.cluster_background.as_deref().or(surface_alt),
-            swimlane_background_odd: roles.cluster_background.as_deref().or(surface_muted),
-            cluster_border: roles.cluster_border.as_deref().or(border),
-            note_background: roles.note_background.as_deref().or(surface_alt),
-            note_border: roles.note_border.as_deref().or(border),
-            note_text: roles.note_text.as_deref().or(text),
-            actor_background: roles.actor_background.as_deref().or(surface_alt),
-            actor_border: roles.actor_border.as_deref().or(border),
-            actor_text: roles.actor_text.as_deref().or(text),
-            activation_background: roles.activation_background.as_deref().or(surface_muted),
-            activation_border: roles.activation_border.as_deref().or(border),
-            error: roles.error.as_deref(),
-            warning: roles.warning.as_deref(),
-            success: roles.success.as_deref(),
-        }
-    }
-}
-
-fn put_theme_roles(theme_variables: &mut Map<String, Value>, roles: &ResolvedHostThemeRoles<'_>) {
-    put_opt(theme_variables, "background", roles.canvas);
-    put_opt(theme_variables, "primaryColor", roles.surface);
-    put_opt(theme_variables, "mainBkg", roles.surface);
-    put_opt(theme_variables, "secondaryColor", roles.surface_alt);
-    put_opt(theme_variables, "tertiaryColor", roles.surface_muted);
-    put_opt(theme_variables, "primaryTextColor", roles.text);
-    put_opt(theme_variables, "nodeTextColor", roles.text);
-    put_opt(theme_variables, "textColor", roles.text);
-    put_opt(theme_variables, "titleColor", roles.text);
-    put_opt(theme_variables, "secondaryTextColor", roles.subtle_text);
-    put_opt(theme_variables, "tertiaryTextColor", roles.subtle_text);
-    put_opt(theme_variables, "primaryBorderColor", roles.border);
-    put_opt(theme_variables, "nodeBorder", roles.border);
-    put_opt(theme_variables, "lineColor", roles.line);
-    put_opt(theme_variables, "arrowheadColor", roles.line);
-    put_opt(
-        theme_variables,
-        "edgeLabelBackground",
-        roles.edge_label_background,
-    );
-
-    put_opt(theme_variables, "clusterBkg", roles.cluster_background);
-    put_opt(theme_variables, "clusterBorder", roles.cluster_border);
-
-    put_opt(theme_variables, "noteBkgColor", roles.note_background);
-    put_opt(theme_variables, "noteBorderColor", roles.note_border);
-    put_opt(theme_variables, "noteTextColor", roles.note_text);
-
-    put_opt(theme_variables, "actorBkg", roles.actor_background);
-    put_opt(theme_variables, "actorBorder", roles.actor_border);
-    put_opt(theme_variables, "actorTextColor", roles.actor_text);
-    put_opt(theme_variables, "actorLineColor", roles.line);
-    put_opt(theme_variables, "signalColor", roles.line.or(roles.text));
-    put_opt(theme_variables, "signalTextColor", roles.text);
-    put_opt(theme_variables, "labelTextColor", roles.text);
-    put_opt(theme_variables, "loopTextColor", roles.text);
-    put_opt(theme_variables, "labelBoxBkgColor", roles.surface_alt);
-    put_opt(theme_variables, "labelBoxBorderColor", roles.border);
-    put_opt(
-        theme_variables,
-        "activationBkgColor",
-        roles.activation_background,
-    );
-    put_opt(
-        theme_variables,
-        "activationBorderColor",
-        roles.activation_border,
-    );
-
-    put_opt(theme_variables, "classText", roles.text);
-    put_opt(theme_variables, "labelColor", roles.text);
-    put_opt(theme_variables, "transitionColor", roles.line);
-    put_opt(theme_variables, "transitionLabelColor", roles.text);
-    put_opt(theme_variables, "stateLabelColor", roles.text);
-    put_opt(theme_variables, "stateBkg", roles.surface);
-    put_opt(theme_variables, "stateBorder", roles.border);
-    put_opt(theme_variables, "specialStateColor", roles.line);
-    put_opt(
-        theme_variables,
-        "compositeBackground",
-        roles.canvas.or(roles.surface),
-    );
-
-    put_opt(
-        theme_variables,
-        "attributeBackgroundColorOdd",
-        roles.surface,
-    );
-    put_opt(
-        theme_variables,
-        "attributeBackgroundColorEven",
-        roles.surface_alt,
-    );
-    put_opt(theme_variables, "rowOdd", roles.surface);
-    put_opt(theme_variables, "rowEven", roles.surface_alt);
-
-    put_opt(theme_variables, "requirementBackground", roles.surface);
-    put_opt(theme_variables, "requirementBorderColor", roles.border);
-    put_opt(theme_variables, "requirementTextColor", roles.text);
-    put_opt(theme_variables, "relationColor", roles.line);
-    put_opt(
-        theme_variables,
-        "relationLabelBackground",
-        roles.edge_label_background,
-    );
-    put_opt(theme_variables, "relationLabelColor", roles.text);
-    put_opt(
-        theme_variables,
-        "requirementEdgeLabelBackground",
-        roles.edge_label_background,
-    );
-
-    put_opt(theme_variables, "pieTitleTextColor", roles.text);
-    put_opt(theme_variables, "pieSectionTextColor", roles.text);
-    put_opt(theme_variables, "pieLegendTextColor", roles.subtle_text);
-    put_opt(theme_variables, "pieStrokeColor", roles.border);
-    put_opt(theme_variables, "pieOuterStrokeColor", roles.border);
-
-    put_opt(theme_variables, "commitLabelColor", roles.text);
-    put_opt(
-        theme_variables,
-        "commitLabelBackground",
-        roles.commit_label_background,
-    );
-    put_opt(theme_variables, "commitLineColor", roles.line);
-    put_opt(theme_variables, "tagLabelColor", roles.text);
-    put_opt(theme_variables, "tagLabelBackground", roles.surface);
-    put_opt(theme_variables, "tagLabelBorder", roles.border);
-
-    put_opt(theme_variables, "quadrant1Fill", roles.surface);
-    put_opt(theme_variables, "quadrant2Fill", roles.surface_alt);
-    put_opt(
-        theme_variables,
-        "quadrant3Fill",
-        roles.canvas.or(roles.surface),
-    );
-    put_opt(theme_variables, "quadrant4Fill", roles.surface_muted);
-    put_opt(theme_variables, "quadrant1TextFill", roles.text);
-    put_opt(theme_variables, "quadrant2TextFill", roles.text);
-    put_opt(theme_variables, "quadrant3TextFill", roles.text);
-    put_opt(theme_variables, "quadrant4TextFill", roles.text);
-    put_opt(theme_variables, "quadrantPointFill", roles.line);
-    put_opt(theme_variables, "quadrantPointTextFill", roles.text);
-    put_opt(theme_variables, "quadrantTitleFill", roles.text);
-    put_opt(theme_variables, "quadrantXAxisTextFill", roles.subtle_text);
-    put_opt(theme_variables, "quadrantYAxisTextFill", roles.subtle_text);
-    put_opt(
-        theme_variables,
-        "quadrantExternalBorderStrokeFill",
-        roles.border,
-    );
-    put_opt(
-        theme_variables,
-        "quadrantInternalBorderStrokeFill",
-        roles.border,
-    );
-
-    put_opt(theme_variables, "archEdgeColor", roles.line);
-    put_opt(theme_variables, "archEdgeArrowColor", roles.line);
-    put_opt(
-        theme_variables,
-        "archGroupBorderColor",
-        roles.cluster_border,
-    );
-
-    put_opt(theme_variables, "emUiFill", roles.surface);
-    put_opt(theme_variables, "emUiStroke", roles.border);
-    put_opt(theme_variables, "emRelationStroke", roles.line);
-    put_opt(theme_variables, "emArrowhead", roles.line);
-    put_opt(
-        theme_variables,
-        "emSwimlaneBackgroundOdd",
-        roles.swimlane_background_odd,
-    );
-    put_opt(
-        theme_variables,
-        "emSwimlaneBackgroundStroke",
-        roles.cluster_border,
-    );
-
-    put_opt(theme_variables, "taskTextDarkColor", roles.text);
-    put_opt(theme_variables, "taskTextClickableColor", roles.line);
-    put_opt(theme_variables, "taskTextColor", roles.text);
-    put_opt(theme_variables, "taskTextOutsideColor", roles.subtle_text);
-    put_opt(theme_variables, "taskBkgColor", roles.surface);
-    put_opt(theme_variables, "taskBorderColor", roles.border);
-    put_opt(theme_variables, "activeTaskBkgColor", roles.surface_muted);
-    put_opt(theme_variables, "activeTaskBorderColor", roles.line);
-    put_opt(
-        theme_variables,
-        "doneTaskBkgColor",
-        roles.success.or(roles.surface_alt),
-    );
-    put_opt(
-        theme_variables,
-        "doneTaskBorderColor",
-        roles.success.or(roles.border),
-    );
-    put_opt(theme_variables, "critBkgColor", roles.error);
-    put_opt(
-        theme_variables,
-        "critBorderColor",
-        roles.error.or(roles.border),
-    );
-    put_opt(theme_variables, "excludeBkgColor", roles.surface_alt);
-    put_opt(theme_variables, "gridColor", roles.border);
-    put_opt(
-        theme_variables,
-        "todayLineColor",
-        roles.warning.or(roles.error).or(roles.line),
-    );
-    put_opt(
-        theme_variables,
-        "vertLineColor",
-        roles.warning.or(roles.line),
-    );
-    put_opt(
-        theme_variables,
-        "sectionBkgColor",
-        roles.cluster_background.or(roles.surface_alt),
-    );
-    put_opt(theme_variables, "sectionBkgColor2", roles.surface_muted);
-    put_opt(theme_variables, "altSectionBkgColor", roles.canvas);
-
-    put_opt(theme_variables, "errorBkgColor", roles.error);
-    put_opt(theme_variables, "errorTextColor", roles.text);
-
-    put_opt(theme_variables, "faceColor", roles.surface);
-    put_opt(theme_variables, "border2", roles.cluster_border);
-}
-
-fn put_series_palette(theme_variables: &mut Map<String, Value>, palette: &[String]) {
-    if palette.is_empty() {
-        return;
-    }
-
-    let mut xy = Map::new();
-    xy.insert(
-        "plotColorPalette".to_string(),
-        Value::String(palette.join(",")),
-    );
-    xy.insert("accentColor".to_string(), Value::String(palette[0].clone()));
-    theme_variables.insert("xyChart".to_string(), Value::Object(xy));
-
-    for (index, color) in palette.iter().enumerate() {
-        let label = readable_text_color(color);
-        put_str(theme_variables, &format!("cScale{index}"), color);
-        put_str(theme_variables, &format!("cScalePeer{index}"), color);
-        put_str(theme_variables, &format!("cScaleLabel{index}"), &label);
-        put_str(theme_variables, &format!("cScaleInv{index}"), &label);
-        put_str(theme_variables, &format!("git{index}"), color);
-        put_str(theme_variables, &format!("gitBranchLabel{index}"), &label);
-        put_str(theme_variables, &format!("pie{}", index + 1), color);
-        put_str(theme_variables, &format!("venn{}", index + 1), color);
-        put_str(theme_variables, &format!("fillType{index}"), color);
-        put_str(theme_variables, &format!("actor{index}"), color);
-    }
-}
-
-fn put_diagram_config(
-    root: &mut Map<String, Value>,
-    theme_variables: &mut Map<String, Value>,
-    roles: &ResolvedHostThemeRoles<'_>,
-    palette: &[String],
-) {
-    let mut packet = Map::new();
-    put_opt(&mut packet, "startByteColor", roles.line);
-    put_opt(&mut packet, "endByteColor", roles.border.or(roles.line));
-    put_opt(&mut packet, "labelColor", roles.text);
-    put_opt(&mut packet, "titleColor", roles.text);
-    put_opt(&mut packet, "blockStrokeColor", roles.border);
-    put_opt(&mut packet, "blockFillColor", roles.surface);
-    put_nonempty_object(root, "packet", packet);
-
-    let mut treemap = Map::new();
-    put_opt(&mut treemap, "titleColor", roles.text);
-    put_opt(&mut treemap, "labelColor", roles.text);
-    put_opt(&mut treemap, "valueColor", roles.subtle_text);
-    put_opt(&mut treemap, "sectionStrokeColor", roles.border);
-    put_opt(&mut treemap, "sectionFillColor", roles.surface_alt);
-    put_opt(&mut treemap, "leafStrokeColor", roles.border);
-    put_opt(&mut treemap, "leafFillColor", roles.surface);
-    put_nonempty_object(root, "treemap", treemap);
-
-    let mut tree_view = Map::new();
-    put_opt(&mut tree_view, "labelColor", roles.text);
-    put_opt(&mut tree_view, "lineColor", roles.line);
-    if !tree_view.is_empty() {
-        let entry = theme_variables.get("treeView");
-        let mut merged = entry
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        merge_object(&mut merged, &tree_view);
-        theme_variables.insert("treeView".to_string(), Value::Object(merged));
-    }
-
-    let mut radar = Map::new();
-    put_opt(&mut radar, "axisColor", roles.line);
-    put_opt(&mut radar, "graticuleColor", roles.border);
-    put_nonempty_object(root, "radar", radar);
-
-    let mut eventmodeling = Map::new();
-    put_opt(
-        &mut eventmodeling,
-        "emProcessorFill",
-        palette.get(3).map(String::as_str).or(roles.surface_alt),
-    );
-    put_opt(&mut eventmodeling, "emProcessorStroke", roles.border);
-    put_opt(
-        &mut eventmodeling,
-        "emReadModelFill",
-        palette
-            .get(1)
-            .map(String::as_str)
-            .or(roles.success)
-            .or(roles.surface_alt),
-    );
-    put_opt(
-        &mut eventmodeling,
-        "emReadModelStroke",
-        roles.success.or(roles.border),
-    );
-    put_opt(
-        &mut eventmodeling,
-        "emCommandFill",
-        palette.first().map(String::as_str).or(roles.surface_alt),
-    );
-    put_opt(
-        &mut eventmodeling,
-        "emCommandStroke",
-        roles.line.or(roles.border),
-    );
-    put_opt(
-        &mut eventmodeling,
-        "emEventFill",
-        palette
-            .get(2)
-            .map(String::as_str)
-            .or(roles.warning)
-            .or(roles.surface_alt),
-    );
-    put_opt(
-        &mut eventmodeling,
-        "emEventStroke",
-        roles.warning.or(roles.border),
-    );
-    for (key, value) in eventmodeling {
-        theme_variables.insert(key, value);
-    }
-
-    let mut c4 = Map::new();
-    for prefix in [
-        "person",
-        "system",
-        "system_db",
-        "system_queue",
-        "container",
-        "container_db",
-        "container_queue",
-        "component",
-        "component_db",
-        "component_queue",
-        "external_person",
-        "external_system",
-        "external_system_db",
-        "external_system_queue",
-        "external_container",
-        "external_container_db",
-        "external_container_queue",
-        "external_component",
-        "external_component_db",
-        "external_component_queue",
-    ] {
-        put_opt(&mut c4, &format!("{prefix}_bg_color"), roles.surface);
-        put_opt(&mut c4, &format!("{prefix}_border_color"), roles.border);
-    }
-    put_nonempty_object(root, "c4", c4);
-}
-
-fn put_nonempty_object(root: &mut Map<String, Value>, key: &str, object: Map<String, Value>) {
-    if !object.is_empty() {
-        root.insert(key.to_string(), Value::Object(object));
-    }
-}
-
-fn put_opt(map: &mut Map<String, Value>, key: &str, value: Option<&str>) {
-    if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
-        put_str(map, key, value);
-    }
-}
-
-fn put_str(map: &mut Map<String, Value>, key: &str, value: &str) {
-    map.insert(key.to_string(), Value::String(value.trim().to_string()));
-}
-
-fn merge_object(target: &mut Map<String, Value>, source: &Map<String, Value>) {
-    for (key, value) in source {
-        match (target.get_mut(key), value) {
-            (Some(Value::Object(target)), Value::Object(source)) => {
-                merge_object(target, source);
-            }
-            _ => {
-                target.insert(key.clone(), value.clone());
-            }
-        }
-    }
-}
-
-fn readable_text_color(color: &str) -> String {
-    let Ok(color) = ThemeColor::parse(color.trim()) else {
-        return "#ffffff".to_string();
-    };
-    let luminance = relative_luminance(
-        color.channel(ColorChannel::Red) / 255.0,
-        color.channel(ColorChannel::Green) / 255.0,
-        color.channel(ColorChannel::Blue) / 255.0,
-    );
-    if luminance > 0.45 {
-        "#000000".to_string()
-    } else {
-        "#ffffff".to_string()
-    }
-}
-
-fn relative_luminance(r: f64, g: f64, b: f64) -> f64 {
-    fn linear(channel: f64) -> f64 {
-        if channel <= 0.04045 {
-            channel / 12.92
-        } else {
-            ((channel + 0.055) / 1.055).powf(2.4)
-        }
-    }
-    0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
 }
 
 #[cfg(test)]
@@ -1604,13 +934,5 @@ mod tests {
             .attribute("style")
             .unwrap_or_default();
         assert!(style.contains("background-color:#0f172a"), "{style}");
-    }
-
-    #[test]
-    fn host_palette_readability_accepts_the_shared_color_surface() {
-        assert_eq!(readable_text_color("white"), "#000000");
-        assert_eq!(readable_text_color("rgb(255 255 255 / .2)"), "#000000");
-        assert_eq!(readable_text_color("rebeccapurple"), "#ffffff");
-        assert_eq!(readable_text_color("var(--host-color)"), "#ffffff");
     }
 }
