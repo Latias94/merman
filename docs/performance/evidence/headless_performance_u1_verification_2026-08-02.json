@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "evidence_class": "verification-manifest",
+  "claim_scope": "headless-performance-u1-harness-only",
+  "source_revision": {
+    "commit": "5117c0ae12da2c0346b47061642286174cea3f5f",
+    "tree": "4ebfe46d8f48508ac6489d0bfea09ed469d97746",
+    "production_source_changed_since_program_start": false
+  },
+  "source_disposition": {
+    "approved_untracked_receipt": "docs/performance/headless_performance_branch_start_2026-08-02.md",
+    "excluded_pre_existing_untracked_paths": [
+      "rust_out",
+      "test-results/"
+    ]
+  },
+  "log_storage": {
+    "root": "target/perf-evidence/u1/verification",
+    "committed": false,
+    "integrity": "Each raw log is bound below by byte length and SHA-256; the committed summary is the durable record."
+  },
+  "checks": [
+    {
+      "id": "python_contracts",
+      "command": "python3 tools/bench/test_perf_contracts.py",
+      "started_at": "2026-08-02T14:49:24+08:00",
+      "finished_at": "2026-08-02T14:49:25+08:00",
+      "exit_code": 0,
+      "log_bytes": 5301,
+      "log_sha256": "2789b1dff4d374f3d5ff02df644bb02f8f34d5801b88180c133c299076caa351",
+      "summary": "100 tests passed"
+    },
+    {
+      "id": "cargo_fmt",
+      "command": "cargo fmt --all -- --check",
+      "started_at": "2026-08-02T14:49:25+08:00",
+      "finished_at": "2026-08-02T14:49:28+08:00",
+      "exit_code": 0,
+      "log_bytes": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summary": "No formatting differences"
+    },
+    {
+      "id": "git_diff_check",
+      "command": "git diff --check",
+      "started_at": "2026-08-02T14:49:28+08:00",
+      "finished_at": "2026-08-02T14:49:28+08:00",
+      "exit_code": 0,
+      "log_bytes": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "summary": "No tracked whitespace errors"
+    },
+    {
+      "id": "pipeline_check",
+      "command": "CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_BENCH_DEBUG=0 cargo check --locked -p merman --features complete-svg --bench pipeline",
+      "started_at": "2026-08-02T14:49:28+08:00",
+      "finished_at": "2026-08-02T14:49:40+08:00",
+      "exit_code": 0,
+      "log_bytes": 1189,
+      "log_sha256": "612397d07709b32e23d18389e756aedca74b69494c6650f1c40862cb5dc0633f",
+      "summary": "Pipeline benchmark target checked successfully"
+    },
+    {
+      "id": "pipeline_fixture_test",
+      "command": "CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo nextest run --locked -p merman --features complete-svg --test pipeline_bench_fixtures",
+      "started_at": "2026-08-02T14:49:40+08:00",
+      "finished_at": "2026-08-02T14:50:17+08:00",
+      "exit_code": 0,
+      "log_bytes": 1545,
+      "log_sha256": "fd901c6c6bac2f87c2b9776ffb31de7e71c4554fc896f1d60004b72eae3bf699",
+      "summary": "1 test passed"
+    },
+    {
+      "id": "admission_inventory_test",
+      "command": "CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo nextest run --locked -p xtask native_cross_family_corpus_matches_admission_inventory",
+      "started_at": "2026-08-02T14:50:17+08:00",
+      "finished_at": "2026-08-02T14:51:15+08:00",
+      "exit_code": 0,
+      "log_bytes": 2052,
+      "log_sha256": "15ea03240caf52ee03003d8303a2ca3d34dadbc2b1b392a670a20fc7fe8403cb",
+      "summary": "1 test passed; 616 skipped by exact filter"
+    },
+    {
+      "id": "compiled_verifier",
+      "command": "CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_BENCH_DEBUG=0 python3 tools/bench/verify_pipeline_bench_list.py --target-dir target --features svg,layout-cytoscape,layout-elk,math",
+      "started_at": "2026-08-02T14:51:15+08:00",
+      "finished_at": "2026-08-02T14:51:15+08:00",
+      "exit_code": 0,
+      "log_bytes": 82,
+      "log_sha256": "d9a07fa5426925afb2e51413d9f85445174a57c8b727295e4fe958f588815684",
+      "summary": "357 benchmarks, 357 receipts, 7 lane groups"
+    },
+    {
+      "id": "criterion_exact",
+      "command": "target/release/deps/pipeline-ef39f4949ca912a4 --bench --color never --noplot --sample-size 10 --warm-up-time 1 --measurement-time 1 --discard-baseline --exact end_to_end/error_basic",
+      "started_at": "2026-08-02T14:51:15+08:00",
+      "finished_at": "2026-08-02T14:51:17+08:00",
+      "exit_code": 0,
+      "executable_sha256": "2ac1cd9f9b3e195b1afe82861baafddd8728f7c20880efab4229dbac859fb6a8",
+      "log_bytes": 825,
+      "log_sha256": "1a18061f7ae1f46f2ad11b8e14aa6a3e788e6f48201aac515a6deeabea57a011",
+      "summary": "Exactly one matching preflight receipt and one postflight receipt; timing output is smoke-only"
+    }
+  ]
+}
