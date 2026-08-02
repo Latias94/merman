@@ -479,7 +479,7 @@ B -->|No| D[Debug]";
                 merman::svg::Presentation::new()
                     .with_profile(merman::svg::PresentationProfile::MermanModern)
                     .with_theme(merman::svg::HostTheme::from_preset(
-                        merman::svg::ThemePreset::OneDark,
+                        merman::svg::HostThemePreset::OneDark,
                     )),
             )
             .with_site_config(merman::MermaidConfig::from_value(serde_json::json!({

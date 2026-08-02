@@ -36,7 +36,6 @@ static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
-static SUPPORTED_HOST_THEME_PRESETS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static RUNTIME_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 #[cfg(feature = "analysis")]
@@ -925,29 +924,6 @@ pub fn supported_themes() -> &'static [&'static str] {
     merman::supported_themes()
 }
 
-/// Legacy flat theme-preset discovery retained for v0.7 source compatibility.
-///
-/// The values are projected from the same presentation descriptors as
-/// [`presentation_catalog_json`]; this compatibility view is not a second authority.
-pub fn supported_host_theme_presets() -> &'static [&'static str] {
-    static IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
-    #[cfg(feature = "svg")]
-    {
-        IDS.get_or_init(|| {
-            merman::svg::theme_preset_descriptors()
-                .iter()
-                .map(|descriptor| descriptor.id())
-                .collect()
-        })
-        .as_slice()
-    }
-    #[cfg(not(feature = "svg"))]
-    {
-        let _ = &IDS;
-        &[]
-    }
-}
-
 fn presentation_catalog_for(
     capability_surface: &ArtifactCapabilitySurface,
 ) -> BindingPresentationCatalog {
@@ -1100,13 +1076,6 @@ pub fn ascii_capabilities_json() -> Result<Vec<u8>, BindingError> {
 
 pub fn supported_themes_json() -> Result<Vec<u8>, BindingError> {
     cached_json(&SUPPORTED_THEMES_JSON, supported_themes)
-}
-
-pub fn supported_host_theme_presets_json() -> Result<Vec<u8>, BindingError> {
-    cached_json(
-        &SUPPORTED_HOST_THEME_PRESETS_JSON,
-        supported_host_theme_presets,
-    )
 }
 
 pub fn presentation_catalog_json() -> Result<Vec<u8>, BindingError> {
@@ -1995,26 +1964,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_host_theme_preset_view_uses_the_presentation_descriptors() {
-        if cfg!(feature = "svg") {
-            assert_eq!(
-                supported_host_theme_presets(),
-                &[
-                    "editor-light",
-                    "editor-dark",
-                    "one-dark",
-                    "gruvbox-light",
-                    "gruvbox-dark",
-                    "ayu-light",
-                    "ayu-dark",
-                ]
-            );
-        } else {
-            assert!(supported_host_theme_presets().is_empty());
-        }
-    }
-
-    #[test]
     fn ascii_supported_diagrams_reflects_feature_surface() {
         if cfg!(feature = "ascii") {
             assert_eq!(
@@ -2116,8 +2065,6 @@ mod tests {
         let ascii_capabilities: Value =
             serde_json::from_slice(&ascii_capabilities_json().unwrap()).unwrap();
         let themes: Value = serde_json::from_slice(&supported_themes_json().unwrap()).unwrap();
-        let host_presets: Value =
-            serde_json::from_slice(&supported_host_theme_presets_json().unwrap()).unwrap();
         let presentation_catalog: Value =
             serde_json::from_slice(&presentation_catalog_json().unwrap()).unwrap();
         let family_capabilities: Value =
@@ -2158,14 +2105,6 @@ mod tests {
         );
         assert!(presentation_catalog["theme_presets"].is_array());
         assert!(presentation_catalog["profiles"].is_array());
-        assert!(host_presets.is_array());
-        assert_eq!(
-            host_presets.as_array().unwrap().len(),
-            presentation_catalog["theme_presets"]
-                .as_array()
-                .unwrap()
-                .len()
-        );
         let flowchart = family_capabilities
             .as_array()
             .unwrap()
@@ -2307,7 +2246,7 @@ mod tests {
 
     #[test]
     fn binding_metadata_json_rejects_unknown_catalogs() {
-        let error = binding_metadata_json("unknown-catalog").unwrap_err();
+        let error = binding_metadata_json("supported-host-theme-presets").unwrap_err();
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert_eq!(error.kind(), crate::BindingErrorKind::Generic);

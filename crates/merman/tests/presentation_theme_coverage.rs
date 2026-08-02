@@ -1,6 +1,9 @@
 #![cfg(feature = "svg")]
 
-use merman::svg::{HeadlessRenderer, HostThemeProfile};
+use merman::svg::{
+    CssOverridePolicy, HeadlessRenderer, HostTheme, HostThemePreset, Presentation,
+    PresentationProfile, SvgOutputPolicy, SvgPipelinePreset, ThemeRole,
+};
 
 const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
     commit
@@ -55,41 +58,58 @@ const USER_ER_GRUVBOX_LABEL_REGRESSION: &str = r#"erDiagram
     }
 "#;
 
-fn render_with_dark_profile(name: &str, source: &str) -> String {
-    let profile = HostThemeProfile::editor_dark();
-    let compiled = profile.compile();
+fn themed_renderer(preset: HostThemePreset, name: &str) -> HeadlessRenderer {
+    let theme = HostTheme::from_preset(preset);
+    let background = theme
+        .role(ThemeRole::Canvas)
+        .expect("bundled themes must define a canvas color")
+        .to_string();
+    let pipeline = SvgOutputPolicy {
+        preset: SvgPipelinePreset::ResvgSafe,
+        css_override_policy: CssOverridePolicy::StripExistingImportant,
+        root_background_color: Some(background),
+        drop_native_duplicate_fallbacks: false,
+        scoped_css: None,
+    }
+    .pipeline();
+
     HeadlessRenderer::new()
-        .with_compiled_host_theme(&compiled)
+        .with_presentation(Presentation::new().with_theme(theme))
+        .with_svg_pipeline(pipeline)
         .with_vendored_text_measurer()
         .with_diagram_id(name)
-        .render_svg_with_pipeline_sync(source, &compiled.pipeline())
+}
+
+fn render_with_editor_dark_theme(name: &str, source: &str) -> String {
+    themed_renderer(HostThemePreset::EditorDark, name)
+        .render_svg_sync(source)
         .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
 #[test]
-fn empty_host_theme_profile_preserves_default_svg_bytes() {
+fn empty_presentation_preserves_default_svg_bytes() {
     let source = "sequenceDiagram\nAlice->>Bob: Hello";
     let default_svg = HeadlessRenderer::new()
         .with_diagram_id("empty-profile-parity")
         .render_svg_sync(source)
         .expect("default render should succeed")
         .expect("sequence diagram should be detected");
-    let empty_profile_svg = HeadlessRenderer::new()
-        .with_host_theme(&HostThemeProfile::default())
+    let empty_presentation_svg = HeadlessRenderer::new()
+        .with_presentation(Presentation::new())
         .with_diagram_id("empty-profile-parity")
         .render_svg_sync(source)
-        .expect("empty-profile render should succeed")
+        .expect("empty presentation render should succeed")
         .expect("sequence diagram should be detected");
 
-    assert_eq!(empty_profile_svg, default_svg);
+    assert_eq!(empty_presentation_svg, default_svg);
 }
 
 #[test]
 fn merman_modern_profile_renders_non_flowchart_without_elk() {
     let source = "sequenceDiagram\nAlice->>Bob: Hello";
     let svg = HeadlessRenderer::new()
-        .with_host_theme(&HostThemeProfile::merman_modern())
+        .with_presentation(Presentation::new().with_profile(PresentationProfile::MermanModern))
         .with_diagram_id("modern-non-flowchart")
         .render_svg_sync(source)
         .expect("modern profile should not require ELK for sequence diagrams")
@@ -103,7 +123,7 @@ fn assert_contains_all(name: &str, svg: &str, expected: &[&str]) {
     assert!(!svg.contains("NaN"), "{name}: leaked NaN");
     assert!(
         !svg.contains("<foreignObject"),
-        "{name}: host profile should use resvg-safe output"
+        "{name}: explicit output policy should use resvg-safe output"
     );
     for needle in expected {
         assert!(
@@ -265,7 +285,7 @@ fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[
             text.attribute("style").is_some_and(
                 |style| style.contains("font-size:14px") || style.contains("font-size: 14px")
             ),
-            "{name}: ER fallback label should inherit host theme font size: {svg}"
+            "{name}: ER fallback label should inherit presentation theme font size: {svg}"
         );
         assert!(
             text.attribute("class")
@@ -276,95 +296,91 @@ fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[
 }
 
 #[test]
-fn host_theme_profile_covers_core_diagram_roles() {
+fn presentation_theme_covers_core_diagram_roles() {
     let cases: &[(&str, &str, &[&str])] = &[
         (
-            "host-theme-flowchart",
+            "presentation-theme-flowchart",
             "flowchart TD\n  A[Host] -->|Edge| B[Theme]",
             &["#111827", "#e5e7eb", "#475569", "#94a3b8"],
         ),
         (
-            "host-theme-sequence",
+            "presentation-theme-sequence",
             "sequenceDiagram\n  participant A as Alpha\n  participant B as Beta\n  A->>B: Hello\n  Note over A,B: Profile note",
             &["#1f2937", "#e5e7eb", "#94a3b8", "#422006", "#f59e0b"],
         ),
         (
-            "host-theme-class",
+            "presentation-theme-class",
             "classDiagram\n  Animal <|-- Dog\n  class Animal {\n    +bark()\n  }\n  note for Animal \"Profile note\"",
             &["#111827", "#e5e7eb", "#475569", "#422006", "#f59e0b"],
         ),
         (
-            "host-theme-state",
+            "presentation-theme-state",
             "stateDiagram-v2\n  [*] --> Idle: start\n  Idle --> Done: finish",
             &["#111827", "#e5e7eb", "#94a3b8"],
         ),
         (
-            "host-theme-xychart",
+            "presentation-theme-xychart",
             "xychart-beta\n  title Profile\n  x-axis [\"A\", \"B\"]\n  y-axis \"Value\" 0 --> 10\n  bar [4, 7]",
             &["#60a5fa", "#e5e7eb"],
         ),
         (
-            "host-theme-pie",
+            "presentation-theme-pie",
             "pie title Profile Pie\n  \"A\" : 4\n  \"B\" : 7",
             &["#60a5fa", "#34d399", "#e5e7eb"],
         ),
         (
-            "host-theme-quadrant",
+            "presentation-theme-quadrant",
             "quadrantChart\n  title Profile Matrix\n  x-axis Low --> High\n  y-axis Low --> High\n  quadrant-1 Invest\n  A: [0.7, 0.8]",
             &["#111827", "#1f2937", "#e5e7eb", "#94a3b8"],
         ),
     ];
 
     for (name, source, expected) in cases {
-        let svg = render_with_dark_profile(name, source);
+        let svg = render_with_editor_dark_theme(name, source);
         assert_contains_all(name, &svg, expected);
     }
 }
 
 #[test]
 #[cfg(feature = "layout-cytoscape")]
-fn host_theme_profile_series_palette_reaches_ordinal_diagrams() {
+fn presentation_theme_series_palette_reaches_ordinal_diagrams() {
     let cases: &[(&str, &str, &[&str])] = &[
         (
-            "host-theme-mindmap",
+            "presentation-theme-mindmap",
             "mindmap\n  Root\n    Child",
             &["#60a5fa", "#34d399"],
         ),
         (
-            "host-theme-gitgraph",
+            "presentation-theme-gitgraph",
             "gitGraph\n  commit id: \"A\"\n  branch dev\n  checkout dev\n  commit id: \"B\"",
             &["#60a5fa", "#34d399"],
         ),
         (
-            "host-theme-journey",
+            "presentation-theme-journey",
             "journey\n  title Profile Journey\n  section Checkout\n    Sign Up: 5: Alice\n    Pay: 3: Bob",
             &["#60a5fa", "#34d399"],
         ),
         (
-            "host-theme-timeline",
+            "presentation-theme-timeline",
             "timeline\n  title Profile Timeline\n  section 2026\n    Alpha : Start\n    Beta : Ship",
             &["#60a5fa", "#34d399"],
         ),
         (
-            "host-theme-venn",
+            "presentation-theme-venn",
             "venn-beta\n  set A[\"Core\"]:10\n  set B[\"Editor\"]:8\n  union A,B[\"Shared\"]:3",
             &["#60a5fa", "#34d399"],
         ),
     ];
 
     for (name, source, expected) in cases {
-        let svg = render_with_dark_profile(name, source);
+        let svg = render_with_editor_dark_theme(name, source);
         assert_contains_all(name, &svg, expected);
     }
 }
 
 #[test]
-fn gruvbox_host_theme_keeps_er_relationship_label_fallbacks_readable() {
-    let profile = HostThemeProfile::gruvbox_dark();
-    let svg = HeadlessRenderer::new()
-        .with_host_theme(&profile)
-        .with_vendored_text_measurer()
-        .with_diagram_id("gruvbox-er-labels")
+fn gruvbox_presentation_theme_keeps_er_relationship_label_fallbacks_readable() {
+    let svg = themed_renderer(HostThemePreset::GruvboxDark, "gruvbox-er-labels")
         .render_svg_sync(USER_ER_GRUVBOX_LABEL_REGRESSION)
         .unwrap_or_else(|err| panic!("gruvbox ER render failed: {err}"))
         .unwrap_or_else(|| panic!("gruvbox ER render produced no diagram"));
@@ -388,7 +404,7 @@ fn gruvbox_host_theme_keeps_er_relationship_label_fallbacks_readable() {
 }
 
 #[test]
-fn host_theme_profile_centers_gitgraph_branch_labels_with_editor_fonts() {
+fn presentation_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
     let plain = HeadlessRenderer::new()
         .with_vendored_text_measurer()
         .with_diagram_id("gitgraph-plain-baseline")
@@ -397,11 +413,7 @@ fn host_theme_profile_centers_gitgraph_branch_labels_with_editor_fonts() {
         .unwrap_or_else(|| panic!("plain gitGraph render produced no diagram"));
     assert_gitgraph_branch_labels_keep_mermaid_parity_baseline("plain-gitgraph", &plain);
 
-    let profile = HostThemeProfile::one_dark();
-    let themed = HeadlessRenderer::new()
-        .with_host_theme(&profile)
-        .with_vendored_text_measurer()
-        .with_diagram_id("gitgraph-one-dark-baseline")
+    let themed = themed_renderer(HostThemePreset::OneDark, "gitgraph-one-dark-baseline")
         .render_svg_sync(USER_GITGRAPH_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("one-dark gitGraph render failed: {err}"))
         .unwrap_or_else(|| panic!("one-dark gitGraph render produced no diagram"));
@@ -411,10 +423,7 @@ fn host_theme_profile_centers_gitgraph_branch_labels_with_editor_fonts() {
         &["main", "develop", "feature"],
     );
 
-    let cherry_pick = HeadlessRenderer::new()
-        .with_host_theme(&profile)
-        .with_vendored_text_measurer()
-        .with_diagram_id("gitgraph-one-dark-cherry-pick")
+    let cherry_pick = themed_renderer(HostThemePreset::OneDark, "gitgraph-one-dark-cherry-pick")
         .render_svg_sync(USER_GITGRAPH_CHERRYPICK_TAG_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("one-dark cherry-pick gitGraph render failed: {err}"))
         .unwrap_or_else(|| panic!("one-dark cherry-pick gitGraph render produced no diagram"));
@@ -427,10 +436,10 @@ fn host_theme_profile_centers_gitgraph_branch_labels_with_editor_fonts() {
 
 #[test]
 #[cfg(feature = "layout-cytoscape")]
-fn host_theme_profile_covers_additional_current_diagram_surfaces() {
+fn presentation_theme_covers_additional_current_diagram_surfaces() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
-            "host-theme-er",
+            "presentation-theme-er",
             "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  CUSTOMER {\n    string name\n  }",
             &["#111827", "#e5e7eb", "#94a3b8", "#475569"],
             &[
@@ -439,7 +448,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-requirement",
+            "presentation-theme-requirement",
             "requirementDiagram\n  requirement req1 {\n    id: 1\n    text: Host requirement\n    risk: high\n    verifymethod: analysis\n  }\n  element sys {\n    type: system\n  }\n  sys - satisfies -> req1",
             &["#111827", "#e5e7eb", "#475569", "#94a3b8"],
             &[
@@ -449,19 +458,21 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-gantt",
+            "presentation-theme-gantt",
             "gantt\n  title Profile Plan\n  dateFormat YYYY-MM-DD\n  section Core\n  Build : 2026-01-01, 15d\n  Critical :crit, 2026-01-16, 2d\n  Ship :done, 2026-01-18, 3d",
-            &["#e5e7eb", "#475569", "#34d399", "#f87171", "#fbbf24"],
+            &[
+                "#e5e7eb", "#1f2937", "#475569", "#34d399", "#f87171", "#fbbf24",
+            ],
             &[
                 ".grid .tick{stroke:#475569;",
-                ".done0,#host-theme-gantt .done1",
-                "{stroke:#34d399;fill:#34d399;",
-                ".crit0,#host-theme-gantt .crit1",
-                "{stroke:#f87171;fill:#f87171;",
+                ".done0,#presentation-theme-gantt .done1",
+                "{stroke:#34d399;fill:#1f2937;",
+                ".crit0,#presentation-theme-gantt .crit1",
+                "{stroke:#f87171;fill:#1f2937;",
             ],
         ),
         (
-            "host-theme-architecture",
+            "presentation-theme-architecture",
             "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n  service db(database)[DB] in core\n  api:R --> L:db",
             &["#94a3b8", "#475569", "#e5e7eb"],
             &[
@@ -470,7 +481,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-block",
+            "presentation-theme-block",
             "block\n  block:Core\n    A[\"Alpha\"]\n    B[\"Beta\"]\n  end\n  A --> B",
             &["#e5e7eb", "rgba(30, 41, 59, 0.5)", "#475569", "#94a3b8"],
             &[
@@ -479,16 +490,16 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-kanban",
+            "presentation-theme-kanban",
             "kanban\n  todo[Todo]\n    card[Dark Card]@{ assigned: \"Core\", priority: \"High\" }",
             &["#60a5fa", "#34d399", "#e5e7eb", "#475569"],
             &[
-                ".section-root rect,#host-theme-kanban .section-root path",
-                ".node rect,#host-theme-kanban .node circle",
+                ".section-root rect,#presentation-theme-kanban .section-root path",
+                ".node rect,#presentation-theme-kanban .node circle",
             ],
         ),
         (
-            "host-theme-packet",
+            "presentation-theme-packet",
             "packet\ntitle Profile Packet\n+8: \"Byte\"\n+16: \"Word\"",
             &["#94a3b8", "#475569", "#e5e7eb", "#111827"],
             &[
@@ -497,7 +508,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-sankey",
+            "presentation-theme-sankey",
             "sankey\nSource,Target,10\nTarget,Done,2",
             &["#e5e7eb", "#111827"],
             &[
@@ -506,7 +517,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-radar",
+            "presentation-theme-radar",
             "radar-beta\n  title Profile Radar\n  axis Speed, Quality, Cost\n  curve Team{8, 7, 4}",
             &["#e5e7eb", "#60a5fa", "#94a3b8", "#475569"],
             &[
@@ -516,7 +527,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-treemap",
+            "presentation-theme-treemap",
             "treemap-beta\n  \"Profile Section\"\n    \"Profile Leaf\": 42",
             &["#e5e7eb", "#cbd5e1", "#475569", "#1f2937", "#111827"],
             &[
@@ -525,7 +536,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-c4",
+            "presentation-theme-c4",
             "C4Component\nComponentDb(db, \"Database\", \"Postgres\", \"Stores data\")\nComponentQueue(queue, \"Queue\", \"NATS\", \"Events\")",
             &["#111827", "#475569"],
             &[
@@ -534,7 +545,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-tree-view",
+            "presentation-theme-tree-view",
             include_str!("../../../fixtures/treeView/upstream_docs_treeview_basic.mmd"),
             &["#e5e7eb", "#94a3b8"],
             &[
@@ -543,7 +554,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-ishikawa",
+            "presentation-theme-ishikawa",
             include_str!(
                 "../../../fixtures/ishikawa/upstream_cypress_ishikawa_spec_1_should_render_a_simple_ishikawa_diagram_001.mmd"
             ),
@@ -554,7 +565,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "host-theme-eventmodeling",
+            "presentation-theme-eventmodeling",
             include_str!("../../../fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd"),
             &[
                 "#e5e7eb", "#111827", "#1e293b", "#475569", "#34d399", "#60a5fa", "#f59e0b",
@@ -571,7 +582,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
     ];
 
     for (name, source, expected, dom_expected) in cases {
-        let svg = render_with_dark_profile(name, source);
+        let svg = render_with_editor_dark_theme(name, source);
         assert_contains_all(name, &svg, expected);
         assert_current_dom_consumes(name, &svg, dom_expected);
     }

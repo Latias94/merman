@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  BUNDLED_THEME_PRESETS,
-  SUPPORTED_HOST_THEME_PRESETS,
-} from "../dist/public-catalog.js";
 import * as coreRuntime from "../dist/runtime-core.js";
-import { supportedHostThemePresets } from "../dist/runtime-render.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 
 function presentationCatalogFixture({ themePresets, profiles } = {}) {
@@ -82,33 +77,6 @@ test("presentation catalog accepts future IDs, caches per surface, and returns d
   assert.equal(full.presentationCatalog().theme_presets[0].id, "editor-light");
   assert.equal(fullCalls, 1);
   assert.equal(analysisCalls, 1);
-});
-
-test("legacy host-theme discovery is a bundled compatibility view over the runtime catalog", async () => {
-  const runtime = bindSurfaceRuntime(
-    async () => ({
-      default: async () => {},
-      presentationCatalog: () => presentationCatalogFixture(),
-    }),
-    {
-      initMerman: coreRuntime.initMerman,
-      presentationCatalog: coreRuntime.presentationCatalog,
-      supportedHostThemePresets,
-    },
-  );
-  await runtime.initMerman();
-
-  assert.deepEqual(runtime.supportedHostThemePresets(), ["editor-light"]);
-  assert.deepEqual(SUPPORTED_HOST_THEME_PRESETS, BUNDLED_THEME_PRESETS);
-  assert.deepEqual(BUNDLED_THEME_PRESETS, [
-    "editor-light",
-    "editor-dark",
-    "one-dark",
-    "gruvbox-light",
-    "gruvbox-dark",
-    "ayu-light",
-    "ayu-dark",
-  ]);
 });
 
 test("presentation catalog rejects unsupported schemas", async () => {

@@ -9,16 +9,13 @@ export {
   WEB_OUTPUTS,
   SUPPORTED_ASCII_DIAGRAMS,
   SUPPORTED_DIAGRAMS,
-  SUPPORTED_HOST_THEME_PRESETS,
   SUPPORTED_THEMES,
   isAsciiDiagramType,
   isBindingErrorPayload,
   isBindingStatusCodeName,
   isBundledThemePresetName,
   isDiagramType,
-  isHostThemePresetName,
   isThemeName,
-  normalizeHostThemePresetName,
   normalizeBundledThemePresetName,
   normalizeThemeName,
 } from "./public-catalog.js";
@@ -96,7 +93,6 @@ export {
   renderSvgElement,
   renderSvgToElement,
   renderSvgWithTextMeasurer,
-  supportedHostThemePresets,
   svgPlanJson,
 } from "./runtime-render.js";
 export {

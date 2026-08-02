@@ -132,6 +132,7 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         "self.options_json = options_json",
         "UNKNOWN_OPERATION",
         "def execute(self, request: MermanOperationRequest) -> MermanOperationResult:",
+        "def presentation_catalog_json(self) -> str:",
         "def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:",
         "def reusable_engine_with_text_measurer(",
     ] {
@@ -149,6 +150,7 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         "UNKNOWN_OUTPUT",
         "def set_text_measurer(",
         "def clear_text_measurer(",
+        "def supported_host_theme_presets(",
         "class MermanResourceLimitId(",
         "id:MermanResourceLimitId",
     ] {
@@ -465,6 +467,7 @@ mod tests {
              self.options_json = options_json\n\
              UNKNOWN_OPERATION\n\
              def execute(self, request: MermanOperationRequest) -> MermanOperationResult:\n    pass\n\
+             def presentation_catalog_json(self) -> str:\n    pass\n\
              def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
              def reusable_engine_with_text_measurer(self):\n    pass\n",
         )
@@ -477,6 +480,7 @@ mod tests {
              self.options_json = options_json\n\
              UNKNOWN_OPERATION\n\
              def execute(self, request: MermanOperationRequest) -> MermanOperationResult:\n    pass\n\
+             def presentation_catalog_json(self) -> str:\n    pass\n\
              def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
              def reusable_engine_with_text_measurer(self):\n    pass\n\
              def execute(self, request: MermanOperationRequest,options_json: typing.Optional[str]):\n    pass\n",

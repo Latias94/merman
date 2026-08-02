@@ -10,8 +10,8 @@
 - Replaced format-specific option envelopes with generic `optionsJson` on `execute` and every convenience method. Request options deeply override the reusable engine baseline for one call; `runtime_policy` remains constructor-owned.
 - Replaced parser-backed document facts with their final schema 1 shape. Other versions are rejected before body decoding; remove `fact_source: "text_scan"` handling and consume parser-backed items with explicit unavailable bodies.
 - Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the legacy Flowchart ELK backend selector; update serialized `optionsJson` before upgrading.
-- Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, and theme variables to `host_theme.theme_variables`; remove legacy `layout.text_measurer`, `layout.math_renderer`, and `host_theme.themeVariables` keys before upgrading because they are now rejected.
-- Removed underscore and shorthand binding enum aliases. Use the documented kebab-case values such as `resvg-safe`, `strip-existing-important`, `trusted-native`, and `unbounded-for-trusted-input`, plus generated host-theme preset names.
+- Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, semantic host colors to `presentation.theme`, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `host_theme` group and the old `layout.text_measurer` / `layout.math_renderer` fields are rejected.
+- Removed underscore and shorthand binding enum aliases plus `supportedHostThemePresets()`. Use documented kebab-case values and the open-ended typed `presentationCatalog()` result instead of a closed preset list.
 - Replaced the incompatible prerelease options grammar with Options JSON schema `2`. Generated resource builders now leave the profile unset by default so request overlays inherit their constructor ceiling, and only `MermanResourceOverrideId` values can be written as overrides.
 
 ### Added
@@ -25,7 +25,7 @@
   SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation.
 - Added generated resource options so Flutter callers can choose `interactive`, `constrained`,
   `trusted-native`, or `unbounded-for-trusted-input` without copying limit tables.
-- Restored typed and cached diagram, ASCII, parser/render, lint-rule, Mermaid-theme, and host-theme metadata APIs through the appended ABI 3 `metadata_collect` slot. Exact-version package loading requires the slot, while `openPath` retains frozen five-slot prefix compatibility.
+- Restored typed and cached diagram, ASCII, parser/render, lint-rule, Mermaid-theme, and presentation metadata APIs through the appended ABI 3 `metadata_collect` slot. Exact-version package loading requires the slot, while `openPath` retains frozen five-slot prefix compatibility.
 
 ### Changed
 

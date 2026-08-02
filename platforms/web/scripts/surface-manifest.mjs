@@ -61,7 +61,6 @@ const renderRuntimeExportNames = [
   "parseObject",
   "layoutJson",
   "layoutObject",
-  "supportedHostThemePresets",
 ];
 
 const renderWasmExportNames = [
@@ -134,12 +133,10 @@ export const packageStableValueExportNames = [
   "UNAVAILABLE_DIAGRAM_DETECTION",
   "BUNDLED_THEME_PRESETS",
   "SUPPORTED_THEMES",
-  "SUPPORTED_HOST_THEME_PRESETS",
   "SUPPORTED_DIAGRAMS",
   "SUPPORTED_ASCII_DIAGRAMS",
   "BINDING_STATUS_CODE_NAMES",
   "isThemeName",
-  "isHostThemePresetName",
   "isDiagramType",
   "isAsciiDiagramType",
   "isBindingStatusCodeName",
@@ -147,7 +144,6 @@ export const packageStableValueExportNames = [
   "isBindingErrorPayload",
   "normalizeThemeName",
   "normalizeBundledThemePresetName",
-  "normalizeHostThemePresetName",
   "encodeOptions",
 ];
 

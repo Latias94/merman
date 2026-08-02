@@ -208,25 +208,6 @@ impl HostTheme {
         compiler::compile(self)
     }
 
-    pub(crate) fn from_parts_unchecked(
-        appearance: Option<HostThemeAppearance>,
-        font_family: Option<String>,
-        font_size: Option<String>,
-        roles: impl IntoIterator<Item = (ThemeRole, Option<String>)>,
-        series_palette: Vec<String>,
-    ) -> Self {
-        Self {
-            appearance,
-            font_family,
-            font_size,
-            roles: roles
-                .into_iter()
-                .filter_map(|(role, value)| value.map(|value| (role, value)))
-                .collect(),
-            series_palette,
-        }
-    }
-
     pub(super) fn bundled(
         appearance: HostThemeAppearance,
         roles: &[(ThemeRole, &str)],

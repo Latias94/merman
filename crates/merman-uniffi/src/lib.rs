@@ -24,7 +24,6 @@ pub const UNIFFI_BINDING_API_VERSION: u32 = 3;
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
 static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
-static SUPPORTED_HOST_THEME_PRESETS: OnceLock<Vec<String>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MermanErrorKind {
@@ -583,14 +582,6 @@ impl MermanEngine {
 
     pub fn supported_themes(&self) -> Vec<String> {
         cached_string_vec(&SUPPORTED_THEMES, merman_bindings_core::supported_themes)
-    }
-
-    /// Deprecated compatibility view. Use [`Self::presentation_catalog_json`] for discovery.
-    pub fn supported_host_theme_presets(&self) -> Vec<String> {
-        cached_string_vec(
-            &SUPPORTED_HOST_THEME_PRESETS,
-            merman_bindings_core::supported_host_theme_presets,
-        )
     }
 
     pub fn diagram_family_capabilities(&self) -> Vec<MermanDiagramFamilyCapability> {

@@ -22,8 +22,8 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Replaced the zero-filled `MermanTextMeasureResult` constructor with shape-specific `metrics`, `length`, `horizontalExtents`, and `wrappedWithRawWidth` factories; custom measurers must now provide every field required by the selected shape.
 - Replaced parser-backed document facts with their final schema 1 shape. Other versions are rejected before body decoding; remove `fact_source: "text_scan"` handling and consume parser-backed items with explicit unavailable bodies.
 - Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the legacy Flowchart ELK backend selector; update serialized `optionsJson` before upgrading.
-- Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, and theme variables to `host_theme.theme_variables`; remove legacy `layout.text_measurer`, `layout.math_renderer`, and `host_theme.themeVariables` keys before upgrading because they are now rejected.
-- Removed underscore and shorthand binding enum aliases. Use the documented kebab-case values such as `resvg-safe`, `strip-existing-important`, `trusted-native`, and `unbounded-for-trusted-input`, plus generated host-theme preset names.
+- Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, semantic host colors to `presentation.theme`, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `host_theme` group and the old `layout.text_measurer` / `layout.math_renderer` fields are rejected.
+- Removed underscore and shorthand binding enum aliases plus the old host-theme preset discovery method. Use the documented kebab-case values and `presentationCatalogJson()` for open-ended theme/profile discovery.
 - Expanded the diagram-family capability JSON. Upgrade custom strict Kotlin/JSON decoders with the native library; the canonical record now includes logical/render-model identities, parser/render flags, authoring header, and configuration namespace.
 - Replaced the incompatible prerelease options grammar with Options JSON schema `2`. `MermanResourceOptionsBuilder` now leaves the profile unset by default so request overlays inherit their constructor ceiling, and only generated `MermanResourceOverrideId` values can be supplied as overrides.
 
@@ -33,6 +33,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Added the generated `MermanResourceOptionsBuilder` and runtime resource catalog so Android
   callers can select `interactive`, `constrained`, `trusted-native`, or
   `unbounded-for-trusted-input` without duplicating limit tables.
+- Added `presentationCatalogJson()` for artifact-aware theme preset, presentation profile, aspect, and missing-capability discovery.
 
 ### Changed
 

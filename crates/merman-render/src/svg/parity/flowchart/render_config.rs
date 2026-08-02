@@ -1,6 +1,6 @@
 //! Flowchart render configuration preparation.
 
-use crate::config::{config_bool, config_f64};
+use crate::config::config_f64;
 use crate::flowchart::FlowchartConfigView;
 use crate::presentation::FlowchartPresentationPolicy;
 use crate::text::{TextStyle, WrapMode};
@@ -78,18 +78,13 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     let node_corner_radius = config_f64(effective_config_value, &["themeVariables", "radius"])
         .unwrap_or(5.0)
         .max(0.0);
-    let presentation_policy = presentation_policy
-        .or_else(|| legacy_flowchart_presentation_policy(effective_config_value));
+    let presentation_policy = presentation_policy.unwrap_or_default();
     let edge_corner_radius = presentation_policy
-        .and_then(|policy| policy.edge_corner_radius)
+        .edge_corner_radius
         .unwrap_or(node_corner_radius)
         .max(0.0);
-    let edge_label_padding = presentation_policy
-        .map(|policy| policy.edge_label_padding)
-        .unwrap_or(0.0)
-        .max(0.0);
-    let compact_edge_corners =
-        presentation_policy.is_some_and(|policy| policy.compact_edge_corners);
+    let edge_label_padding = presentation_policy.edge_label_padding.max(0.0);
+    let compact_edge_corners = presentation_policy.compact_edge_corners;
 
     FlowchartRenderConfig {
         font_family,
@@ -114,24 +109,4 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         edge_label_padding,
         compact_edge_corners,
     }
-}
-
-/// Temporary compatibility adapter for the v0.7 host-theme profile projection.
-///
-/// Typed presentation always wins. Remove these private Mermaid-config reads after every
-/// first-party producer has migrated to `Presentation`.
-fn legacy_flowchart_presentation_policy(
-    effective_config_value: &serde_json::Value,
-) -> Option<FlowchartPresentationPolicy> {
-    let edge_corner_radius = config_f64(effective_config_value, &["flowchart", "edgeCornerRadius"]);
-    let edge_label_padding = config_f64(effective_config_value, &["flowchart", "edgeLabelPadding"]);
-    let compact_edge_corners =
-        config_bool(effective_config_value, &["flowchart", "compactEdgeCorners"]);
-
-    (edge_corner_radius.is_some() || edge_label_padding.is_some() || compact_edge_corners.is_some())
-        .then_some(FlowchartPresentationPolicy {
-            edge_corner_radius,
-            edge_label_padding: edge_label_padding.unwrap_or(0.0),
-            compact_edge_corners: compact_edge_corners.unwrap_or(false),
-        })
 }

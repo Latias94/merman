@@ -9,9 +9,9 @@ use crate::common::{
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use merman::svg::{
-    HeadlessRenderer, HostTheme, LayoutOptions, MeasurementProfileId, Presentation,
-    PresentationProfile, PresentationThemeAppearance, RenderEnvironment, TextMeasurementPhase,
-    TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemePreset, ThemeRole,
+    HeadlessRenderer, HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions,
+    MeasurementProfileId, Presentation, PresentationProfile, RenderEnvironment,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemeRole,
 };
 use std::sync::Arc;
 
@@ -499,7 +499,7 @@ fn binding_presentation_theme(
     options: &PresentationThemeOptionsJson,
 ) -> Result<HostTheme, BindingError> {
     let mut theme = if let Some(preset) = options.preset.as_deref() {
-        let preset = ThemePreset::from_id(preset.trim()).map_err(|_| {
+        let preset = HostThemePreset::from_id(preset.trim()).map_err(|_| {
             BindingError::new(
                 BindingStatus::InvalidArgument,
                 format!("unsupported presentation.theme.preset: {preset}"),
@@ -512,8 +512,8 @@ fn binding_presentation_theme(
 
     if let Some(appearance) = options.appearance.as_deref() {
         theme = theme.with_appearance(match appearance.trim() {
-            "light" => PresentationThemeAppearance::Light,
-            "dark" => PresentationThemeAppearance::Dark,
+            "light" => HostThemeAppearance::Light,
+            "dark" => HostThemeAppearance::Dark,
             other => {
                 return Err(BindingError::new(
                     BindingStatus::InvalidArgument,

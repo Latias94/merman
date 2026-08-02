@@ -45,15 +45,15 @@ cargo run -p merman --no-default-features --features png \
 
 Pass `-- --ascii` to `example_04_ascii_output` for ASCII-only output.
 
-## Host Output And Themes
+## Presentation And Output
 
-These examples use only the basic SVG path. They demonstrate a custom output pipeline, a reusable host theme profile, and a stylized built-in host theme:
+These examples use only the basic SVG path. They demonstrate a custom output pipeline, an explicit presentation theme, and a stylized bundled theme:
 
 ```bash
 cargo run -p merman --no-default-features --features svg \
   --example example_11_custom_output_environment > host-preview.svg
 cargo run -p merman --no-default-features --features svg \
-  --example example_12_host_theme_profile > host-theme.svg
+  --example example_12_presentation_theme > presentation-theme.svg
 cargo run -p merman --no-default-features --features svg \
   --example example_13_stylized_theme_showcase > showcase.svg
 ```

@@ -117,11 +117,7 @@ void decodesTypedMetadataCatalogs() {
     'supported_semantics': ['nodes', 'edges'],
     'limits': ['html-labels'],
     'evidence': [
-      {
-        'kind': evidence.kind,
-        'source': evidence.source,
-        'note': evidence.note,
-      },
+      {'kind': evidence.kind, 'source': evidence.source, 'note': evidence.note},
     ],
   });
   final family = MermanDiagramFamilyCapability.fromJson({
@@ -149,6 +145,33 @@ void decodesTypedMetadataCatalogs() {
     'configurable': false,
     'fixable': false,
   });
+  final presentation = MermanPresentationCatalog.fromJson({
+    'schema_version': 1,
+    'theme_presets': [
+      {
+        'id': 'one-dark',
+        'appearance': 'dark',
+        'fully_available': true,
+        'missing_capability_ids': <String>[],
+      },
+    ],
+    'profiles': [
+      {
+        'id': 'merman-modern',
+        'fully_available': false,
+        'missing_capability_ids': ['layout-elk'],
+        'aspects': [
+          {
+            'id': 'flowchart-routing',
+            'applicability': {'kind': 'family', 'family_id': 'flowchart'},
+            'required_capability_id': 'layout-elk',
+            'available': false,
+            'missing_capability_ids': ['layout-elk'],
+          },
+        ],
+      },
+    ],
+  });
 
   _expect(
     ascii.evidence.single.note == 'typed evidence' &&
@@ -163,7 +186,12 @@ void decodesTypedMetadataCatalogs() {
         family.hasHeader &&
         family.configNamespace == 'flowchart' &&
         rule.id == 'parse-error' &&
-        rule.evidence.single == 'ADR-0070',
+        rule.evidence.single == 'ADR-0070' &&
+        presentation.themePresets.single.id == 'one-dark' &&
+        presentation.profiles.single.aspects.single.applicability.familyId ==
+            'flowchart' &&
+        presentation.profiles.single.missingCapabilityIds.single ==
+            'layout-elk',
     'typed metadata records must preserve their public contract',
   );
 }
@@ -193,9 +221,48 @@ void acceptsAdditiveTypedMetadataFields() {
     'config_namespace': null,
     'future_field': 1,
   });
+  final presentation = MermanPresentationCatalog.fromJson({
+    'schema_version': 1,
+    'theme_presets': [
+      {
+        'id': 'future-theme',
+        'appearance': 'adaptive',
+        'fully_available': true,
+        'missing_capability_ids': <String>[],
+        'future_field': true,
+      },
+    ],
+    'profiles': [
+      {
+        'id': 'future-profile',
+        'fully_available': true,
+        'missing_capability_ids': <String>[],
+        'aspects': [
+          {
+            'id': 'future-aspect',
+            'applicability': {
+              'kind': 'future-scope',
+              'family_id': null,
+              'future_field': 1,
+            },
+            'required_capability_id': null,
+            'available': true,
+            'missing_capability_ids': <String>[],
+            'future_field': 1,
+          },
+        ],
+        'future_field': 1,
+      },
+    ],
+    'future_field': 1,
+  });
 
   _expect(
-    ascii.diagramType == 'flowchart-v2' && family.metadataId == null,
+    ascii.diagramType == 'flowchart-v2' &&
+        family.metadataId == null &&
+        presentation.themePresets.single.appearance == 'adaptive' &&
+        presentation.profiles.single.aspects.single.applicability.kind ==
+            'future-scope',
     'typed metadata decoders must ignore additive JSON fields',
   );
 }
@@ -803,8 +870,8 @@ Map<String, Object?> _catalog({
       'ascii-capabilities',
       'diagram-family-capabilities',
       'lint-rule-catalog',
+      'presentation-catalog',
       'supported-diagrams',
-      'supported-host-theme-presets',
       'supported-themes',
     ],
     'capabilities': {

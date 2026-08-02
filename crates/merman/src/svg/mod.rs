@@ -45,8 +45,6 @@
 
 use std::sync::{Arc, OnceLock};
 
-use merman_render::presentation::PresentationRenderPolicy;
-
 pub use merman_core::runtime::{
     OperationContext, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
 };
@@ -64,11 +62,10 @@ pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::presentation::{
-    HostTheme, HostThemeAppearance as PresentationThemeAppearance, HostThemePreset as ThemePreset,
-    Presentation, PresentationAspectApplicability, PresentationAspectDescriptor,
-    PresentationAspectResolution, PresentationAspectState, PresentationError, PresentationProfile,
-    PresentationProfileDescriptor, ResolvedPresentation, ThemePresetDescriptor, ThemeRole,
-    presentation_profile_descriptors, theme_preset_descriptors,
+    HostTheme, HostThemeAppearance, HostThemePreset, Presentation, PresentationAspectApplicability,
+    PresentationAspectDescriptor, PresentationAspectResolution, PresentationAspectState,
+    PresentationError, PresentationProfile, PresentationProfileDescriptor, ResolvedPresentation,
+    ThemeRole, presentation_profile_descriptors, theme_preset_descriptors,
 };
 pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
@@ -79,15 +76,12 @@ pub use merman_render::resources::{
     resource_profile_descriptors,
 };
 pub use merman_render::svg::{
-    CompiledHostTheme, CssOverridePolicy, CssOverridePostprocessor,
-    ForeignObjectFallbackPostprocessor, HostThemeAppearance, HostThemeOutput,
-    HostThemePipelinePreset, HostThemePreset, HostThemeProfile, HostThemeProfileBuilder,
-    HostThemeRoles, HostThemeRootBackground, IconRegistry, IconRegistryError, IconSvg,
-    ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
-    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
-    SvgDebugOptions, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
-    SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions, finalize_resvg_svg,
-    foreign_object_label_fallback_svg_text, supported_host_theme_presets,
+    CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor, IconRegistry,
+    IconRegistryError, IconSvg, ResvgCompatibleSvg, RootBackgroundPostprocessor,
+    SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor,
+    StripForeignObjectPostprocessor, SvgDebugOptions, SvgOutputPolicy, SvgPipeline,
+    SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata, SvgPostprocessor,
+    SvgRenderOptions, finalize_resvg_svg, foreign_object_label_fallback_svg_text,
 };
 pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
@@ -465,6 +459,17 @@ mod svg_pipeline_tests {
                     })
                 })
             })
+    }
+
+    fn resvg_safe_theme_pipeline(background: &str) -> SvgPipeline {
+        SvgOutputPolicy {
+            preset: SvgPipelinePreset::ResvgSafe,
+            css_override_policy: CssOverridePolicy::StripExistingImportant,
+            root_background_color: Some(background.to_string()),
+            drop_native_duplicate_fallbacks: false,
+            scoped_css: None,
+        }
+        .pipeline()
     }
 
     fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
@@ -1209,23 +1214,11 @@ flowchart TD
     }
 
     #[test]
-    fn supported_host_theme_presets_are_separate_from_mermaid_themes() {
-        assert_eq!(
-            supported_host_theme_presets(),
-            &[
-                "editor-light",
-                "editor-dark",
-                "one-dark",
-                "gruvbox-light",
-                "gruvbox-dark",
-                "ayu-light",
-                "ayu-dark",
-                "merman-modern",
-                "mermaid"
-            ]
-        );
+    fn presentation_theme_presets_are_separate_from_mermaid_themes() {
+        assert!(!theme_preset_descriptors().is_empty());
         assert!(merman_core::supported_themes().contains(&"default"));
         assert!(!merman_core::supported_themes().contains(&"one-dark"));
+        assert!(HostThemePreset::from_id("merman-modern").is_err());
     }
 
     #[test]
@@ -1257,12 +1250,13 @@ flowchart TD
     }
 
     #[test]
-    fn host_theme_profile_applies_editor_roles_and_pipeline() {
-        let profile = HostThemeProfile::editor_dark();
-        let compiled = profile.compile();
+    fn presentation_theme_and_svg_output_policy_are_applied_independently() {
         let renderer = HeadlessRenderer::new()
-            .with_compiled_host_theme(&compiled)
-            .with_diagram_id("host-theme-profile");
+            .with_presentation(
+                Presentation::new().with_theme(HostTheme::from_preset(HostThemePreset::EditorDark)),
+            )
+            .with_svg_pipeline(resvg_safe_theme_pipeline("#0f172a"))
+            .with_diagram_id("presentation-theme");
 
         let svg = renderer
             .render_svg_sync(
@@ -1286,18 +1280,18 @@ flowchart TD
     }
 
     #[test]
-    fn host_theme_profile_raw_theme_variables_win_over_roles() {
-        let profile = HostThemeProfile::builder()
-            .roles(HostThemeRoles {
-                border: Some("#111111".to_string()),
-                text: Some("#eeeeee".to_string()),
-                ..HostThemeRoles::default()
-            })
-            .theme_variable("nodeBorder", "#abcdef")
-            .build();
+    fn explicit_mermaid_theme_variables_override_presentation_roles() {
+        let theme = HostTheme::new()
+            .try_with_role(ThemeRole::Border, "#111111")
+            .expect("border role should be valid")
+            .try_with_role(ThemeRole::Text, "#eeeeee")
+            .expect("text role should be valid");
         let renderer = HeadlessRenderer::new()
-            .with_host_theme(&profile)
-            .with_diagram_id("host-theme-override");
+            .with_presentation(Presentation::new().with_theme(theme))
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "themeVariables": {"nodeBorder": "#abcdef"}
+            })))
+            .with_diagram_id("presentation-theme-override");
 
         let svg = renderer
             .render_svg_sync("flowchart TD\n  A[Host]")
@@ -1306,50 +1300,6 @@ flowchart TD
 
         assert!(svg.contains("#abcdef"), "{svg}");
         assert!(svg.contains("#eeeeee"), "{svg}");
-    }
-
-    #[test]
-    fn render_svg_with_host_theme_is_request_scoped() {
-        let renderer = HeadlessRenderer::new().with_diagram_id("request-host-theme");
-        let profile = HostThemeProfile::editor_dark();
-        let source = "flowchart TD\n  A[Host] --> B[Theme]";
-
-        let themed = renderer
-            .render_svg_with_host_theme_sync(source, &profile)
-            .unwrap()
-            .unwrap();
-        let plain = renderer.render_svg_sync(source).unwrap().unwrap();
-
-        assert!(themed.contains("#111827"), "{themed}");
-        assert!(
-            root_style_property_is(&themed, "background-color", "#0f172a"),
-            "{themed}"
-        );
-        assert!(!themed.contains("<foreignObject"), "{themed}");
-        assert!(
-            !root_style_property_is(&plain, "background-color", "#0f172a"),
-            "{plain}"
-        );
-        assert!(plain.contains("<foreignObject"), "{plain}");
-    }
-
-    #[test]
-    fn render_svg_with_compiled_host_theme_reuses_compiled_profile() {
-        let renderer = HeadlessRenderer::new().with_diagram_id("request-compiled-theme");
-        let compiled = HostThemeProfile::one_dark().compile();
-        let source = "flowchart TD\n  A[Compiled] --> B[Theme]";
-
-        let svg = renderer
-            .render_svg_with_compiled_host_theme_sync(source, &compiled)
-            .unwrap()
-            .unwrap();
-
-        assert!(svg.contains("#21252b"), "{svg}");
-        assert!(
-            root_style_property_is(&svg, "background-color", "#282c34"),
-            "{svg}"
-        );
-        assert!(!svg.contains("<foreignObject"), "{svg}");
     }
 
     #[test]
@@ -1397,7 +1347,7 @@ Missing ref: id2,after missing,1d
 #[derive(Clone)]
 pub struct HeadlessRenderer {
     base_engine: merman_core::Engine,
-    presentation: RendererPresentation,
+    presentation: Option<Arc<ResolvedPresentation>>,
     site_config_layers: Vec<merman_core::MermaidConfig>,
     materialized_engine: OnceLock<merman_core::Engine>,
     parse: merman_core::ParseOptions,
@@ -1408,52 +1358,6 @@ pub struct HeadlessRenderer {
     /// Optional renderer-owned SVG output pipeline.
     ///
     svg_pipeline: Option<SvgPipeline>,
-}
-
-#[derive(Clone, Default)]
-enum RendererPresentation {
-    #[default]
-    None,
-    Typed(Arc<ResolvedPresentation>),
-    Legacy {
-        site_config: merman_core::MermaidConfig,
-        pipeline: SvgPipeline,
-    },
-}
-
-impl RendererPresentation {
-    fn apply(&self, engine: merman_core::Engine) -> merman_core::Engine {
-        match self {
-            Self::None => engine,
-            Self::Typed(presentation) => presentation.materialize_engine(engine),
-            Self::Legacy { site_config, .. } => engine.with_site_config(site_config.clone()),
-        }
-    }
-
-    fn typed(&self) -> Option<&Presentation> {
-        self.resolved()
-            .map(|presentation| presentation.presentation())
-    }
-
-    fn resolved(&self) -> Option<&Arc<ResolvedPresentation>> {
-        match self {
-            Self::Typed(presentation) => Some(presentation),
-            Self::None | Self::Legacy { .. } => None,
-        }
-    }
-
-    fn render_policy(&self) -> PresentationRenderPolicy {
-        self.resolved()
-            .map(|presentation| presentation.render_policy())
-            .unwrap_or_default()
-    }
-
-    fn legacy_pipeline(&self) -> Option<&SvgPipeline> {
-        match self {
-            Self::Legacy { pipeline, .. } => Some(pipeline),
-            Self::None | Self::Typed(_) => None,
-        }
-    }
 }
 
 impl Default for HeadlessRenderer {
@@ -1471,7 +1375,7 @@ impl HeadlessRenderer {
     ) -> Self {
         Self {
             base_engine: engine,
-            presentation: RendererPresentation::None,
+            presentation: None,
             site_config_layers: Vec::new(),
             materialized_engine: OnceLock::new(),
             environment,
@@ -1533,9 +1437,7 @@ impl HeadlessRenderer {
     }
 
     pub fn svg_pipeline(&self) -> Option<&SvgPipeline> {
-        self.svg_pipeline
-            .as_ref()
-            .or_else(|| self.presentation.legacy_pipeline())
+        self.svg_pipeline.as_ref()
     }
 
     pub fn with_environment(mut self, environment: RenderEnvironment) -> Self {
@@ -1551,33 +1453,15 @@ impl HeadlessRenderer {
 
     /// Selects product presentation independently from Mermaid site config and SVG output.
     pub fn with_presentation(mut self, presentation: Presentation) -> Self {
-        self.presentation = RendererPresentation::Typed(Arc::new(presentation.resolve()));
+        self.presentation = Some(Arc::new(presentation.resolve()));
         self.invalidate_materialized_engine();
         self
     }
 
     pub fn presentation(&self) -> Option<&Presentation> {
-        self.presentation.typed()
-    }
-
-    pub fn with_host_theme(mut self, profile: &HostThemeProfile) -> Self {
-        let compiled = profile.compile();
-        let pipeline = compiled.pipeline();
-        self.presentation = RendererPresentation::Legacy {
-            site_config: compiled.site_config,
-            pipeline,
-        };
-        self.invalidate_materialized_engine();
-        self
-    }
-
-    pub fn with_compiled_host_theme(mut self, theme: &CompiledHostTheme) -> Self {
-        self.presentation = RendererPresentation::Legacy {
-            site_config: theme.site_config.clone(),
-            pipeline: theme.pipeline(),
-        };
-        self.invalidate_materialized_engine();
-        self
+        self.presentation
+            .as_deref()
+            .map(ResolvedPresentation::presentation)
     }
 
     pub fn with_svg_pipeline(mut self, pipeline: SvgPipeline) -> Self {
@@ -1669,7 +1553,10 @@ impl HeadlessRenderer {
 
     fn materialized_engine(&self) -> &merman_core::Engine {
         self.materialized_engine.get_or_init(|| {
-            let mut engine = self.presentation.apply(self.base_engine.clone());
+            let mut engine = self.base_engine.clone();
+            if let Some(presentation) = self.presentation.as_deref() {
+                engine = presentation.materialize_engine(engine);
+            }
             for site_config in &self.site_config_layers {
                 engine = engine.with_site_config(site_config.clone());
             }
@@ -1696,7 +1583,10 @@ impl HeadlessRenderer {
             self.parse,
             &self.layout,
             &self.environment,
-            self.presentation.render_policy(),
+            self.presentation
+                .as_deref()
+                .map(ResolvedPresentation::render_policy)
+                .unwrap_or_default(),
         )
     }
 
@@ -1792,32 +1682,6 @@ impl HeadlessRenderer {
             return Ok(None);
         };
         Ok(Some(self.render_prepared_svg(prepared)?.into_svg()))
-    }
-
-    /// Renders one diagram with a host/editor theme profile.
-    ///
-    /// This is the request-level counterpart to [`HeadlessRenderer::with_host_theme`]: it does not
-    /// mutate this renderer, and it applies the profile's compiled SVG output pipeline only to this
-    /// render call.
-    pub fn render_svg_with_host_theme_sync(
-        &self,
-        text: &str,
-        profile: &HostThemeProfile,
-    ) -> Result<Option<String>> {
-        self.clone().with_host_theme(profile).render_svg_sync(text)
-    }
-
-    /// Renders one diagram with a precompiled host/editor theme.
-    ///
-    /// Prefer this in hot editor paths when the same profile is reused for many diagrams.
-    pub fn render_svg_with_compiled_host_theme_sync(
-        &self,
-        text: &str,
-        theme: &CompiledHostTheme,
-    ) -> Result<Option<String>> {
-        self.clone()
-            .with_compiled_host_theme(theme)
-            .render_svg_sync(text)
     }
 
     pub fn render_svg_with_pipeline_sync(

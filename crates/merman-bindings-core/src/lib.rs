@@ -49,8 +49,7 @@ pub use metadata::{
     lint_rule_catalog_json, presentation_catalog_json, presentation_catalog_json_for,
     runtime_capabilities_json, runtime_capabilities_json_for, runtime_catalog, runtime_catalog_for,
     runtime_catalog_json, runtime_catalog_json_for, supported_diagrams, supported_diagrams_json,
-    supported_host_theme_presets, supported_host_theme_presets_json, supported_themes,
-    supported_themes_json,
+    supported_themes, supported_themes_json,
 };
 pub use operation::{
     BINDING_OPERATION_SCHEMA_VERSION, BindingOperationKind, BindingOperationRequest,

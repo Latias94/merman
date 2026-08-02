@@ -24,6 +24,16 @@ impl PresentationProfile {
             .find(|profile| profile.id() == id)
             .ok_or_else(|| PresentationError::UnknownPresentationProfile(id.to_string()))
     }
+
+    const fn flowchart_policy(self) -> FlowchartPresentationPolicy {
+        match self {
+            Self::MermanModern => FlowchartPresentationPolicy {
+                edge_corner_radius: None,
+                edge_label_padding: 4.0,
+                compact_edge_corners: true,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -61,15 +71,9 @@ impl Presentation {
             let theme = theme.mermaid_config_patch();
             mermaid_config.deep_merge(theme.as_value());
         }
-        let flowchart_policy = self.profile.map(|_| FlowchartPresentationPolicy {
-            edge_corner_radius: None,
-            edge_label_padding: 4.0,
-            compact_edge_corners: true,
-        });
         ResolvedPresentation {
             presentation: self,
             mermaid_config,
-            flowchart_policy,
         }
     }
 }
@@ -78,7 +82,6 @@ impl Presentation {
 pub struct ResolvedPresentation {
     presentation: Presentation,
     mermaid_config: MermaidConfig,
-    flowchart_policy: Option<FlowchartPresentationPolicy>,
 }
 
 impl ResolvedPresentation {
@@ -94,28 +97,18 @@ impl ResolvedPresentation {
     pub const fn render_policy(&self) -> PresentationRenderPolicy {
         PresentationRenderPolicy {
             profile: self.presentation.profile,
-            flowchart: self.flowchart_policy,
         }
-    }
-
-    pub(crate) fn mermaid_config(&self) -> &MermaidConfig {
-        &self.mermaid_config
-    }
-
-    pub(crate) const fn flowchart_policy(&self) -> Option<FlowchartPresentationPolicy> {
-        self.flowchart_policy
     }
 }
 
 /// Opaque renderer policy derived from a resolved product presentation.
 ///
-/// The policy intentionally excludes Mermaid configuration and host theme data. Callers should
+/// The policy intentionally excludes Mermaid configuration and presentation theme data. Callers should
 /// first materialize the resolved presentation into the parsing engine, then carry this compact
 /// value alongside the resulting typed render model.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct PresentationRenderPolicy {
     profile: Option<PresentationProfile>,
-    flowchart: Option<FlowchartPresentationPolicy>,
 }
 
 impl PresentationRenderPolicy {
@@ -124,7 +117,10 @@ impl PresentationRenderPolicy {
     }
 
     pub(crate) const fn flowchart(self) -> Option<FlowchartPresentationPolicy> {
-        self.flowchart
+        match self.profile {
+            Some(profile) => Some(profile.flowchart_policy()),
+            None => None,
+        }
     }
 
     pub(crate) fn resolve_aspects(
@@ -208,7 +204,7 @@ impl PresentationAspectResolution {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct FlowchartPresentationPolicy {
     pub(crate) edge_corner_radius: Option<f64>,
     pub(crate) edge_label_padding: f64,

@@ -55,9 +55,7 @@ const stableWrapperOnlyExports = new Set([
   "isBindingStatusCodeName",
   "isBundledThemePresetName",
   "isDiagramType",
-  "isHostThemePresetName",
   "isThemeName",
-  "normalizeHostThemePresetName",
   "normalizeBundledThemePresetName",
   "normalizeThemeName",
 ]);

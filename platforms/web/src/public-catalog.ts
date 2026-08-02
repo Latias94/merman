@@ -59,12 +59,6 @@ export const BUNDLED_THEME_PRESETS = [
 
 export type BundledThemePresetName = (typeof BUNDLED_THEME_PRESETS)[number];
 
-/** @deprecated Use BUNDLED_THEME_PRESETS or presentationCatalog(). */
-export const SUPPORTED_HOST_THEME_PRESETS = BUNDLED_THEME_PRESETS;
-
-/** @deprecated Use BundledThemePresetName for bundled constants or string IDs from presentationCatalog(). */
-export type HostThemePresetName = BundledThemePresetName;
-
 export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
 
 export const SUPPORTED_ASCII_DIAGRAMS = [
@@ -250,13 +244,6 @@ export function isBundledThemePresetName(
   return (BUNDLED_THEME_PRESETS as readonly string[]).includes(preset);
 }
 
-/** @deprecated Use isBundledThemePresetName(). Runtime discovery must use presentationCatalog(). */
-export function isHostThemePresetName(
-  preset: string
-): preset is HostThemePresetName {
-  return isBundledThemePresetName(preset);
-}
-
 export function isDiagramType(diagram: string): diagram is DiagramType {
   return (SUPPORTED_DIAGRAMS as readonly string[]).includes(diagram);
 }
@@ -312,11 +299,4 @@ export function normalizeBundledThemePresetName(
   preset: string | null | undefined
 ): BundledThemePresetName | null {
   return preset && isBundledThemePresetName(preset) ? preset : null;
-}
-
-/** @deprecated Use normalizeBundledThemePresetName(). Runtime discovery must use presentationCatalog(). */
-export function normalizeHostThemePresetName(
-  preset: string | null | undefined
-): HostThemePresetName | null {
-  return normalizeBundledThemePresetName(preset);
 }

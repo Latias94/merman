@@ -799,16 +799,6 @@ if (hasCapability("svg")) {
 }
 
 assert.deepEqual(api.supportedThemes(), [...api.SUPPORTED_THEMES]);
-if (hasCapability("svg")) {
-  assert.deepEqual(
-    api.supportedHostThemePresets(),
-    presentationCatalog.theme_presets
-      .map(({ id }) => id)
-      .filter(api.isBundledThemePresetName),
-  );
-} else {
-  assert.equal(typeof api.supportedHostThemePresets, "undefined");
-}
 
 assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
 assert.equal(

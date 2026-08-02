@@ -1,11 +1,5 @@
-import {
-  encodeOptions,
-  getMerman,
-  presentationCatalog,
-} from "./runtime-core.js";
-import { isBundledThemePresetName } from "./public-catalog.js";
+import { encodeOptions, getMerman } from "./runtime-core.js";
 import { assertSafeSvgForDom } from "./svg-safety.js";
-import type { HostThemePresetName } from "./public-catalog.js";
 import type {
   BrowserTextMeasurementSession,
   HostTextMeasureRequest,
@@ -25,14 +19,6 @@ export function svgPlanJson(
   options?: SvgBindingOptions | string
 ): SvgPlanResult {
   return getMerman().svgPlanJson(source, encodeOptions(options));
-}
-
-/** @deprecated Use presentationCatalog(). */
-export function supportedHostThemePresets(): HostThemePresetName[] {
-  return presentationCatalog()
-    .theme_presets
-    .map(({ id }) => id)
-    .filter(isBundledThemePresetName);
 }
 
 export function renderSvgWithTextMeasurer(

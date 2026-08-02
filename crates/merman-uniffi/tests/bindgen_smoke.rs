@@ -116,8 +116,8 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose presentation_catalog_json"
     );
     assert!(
-        generated.contains("def supported_host_theme_presets"),
-        "generated binding should retain the v0.7 compatibility method"
+        !generated.contains("def supported_host_theme_presets"),
+        "generated binding should not expose the removed host-theme compatibility method"
     );
     assert!(
         generated.contains("def diagram_family_capabilities"),

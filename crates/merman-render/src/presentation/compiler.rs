@@ -7,9 +7,9 @@ use super::{HostTheme, ThemeRole};
 pub(super) fn compile(theme: &HostTheme) -> MermaidConfig {
     let mut root = Map::new();
     let mut theme_variables = Map::new();
+    let dark = theme.appearance().unwrap_or_default().is_dark();
 
     if theme.has_values() {
-        let dark = theme.appearance().unwrap_or_default().is_dark();
         root.insert("theme".to_string(), Value::String("base".to_string()));
         root.insert("darkMode".to_string(), Value::Bool(dark));
         theme_variables.insert("darkMode".to_string(), Value::Bool(dark));
@@ -28,7 +28,12 @@ pub(super) fn compile(theme: &HostTheme) -> MermaidConfig {
 
     let roles = ResolvedThemeRoles::new(theme);
     put_theme_roles(&mut theme_variables, &roles);
-    put_series_palette(&mut theme_variables, theme.series_palette());
+    put_series_palette(
+        &mut theme_variables,
+        theme.series_palette(),
+        roles.canvas,
+        dark,
+    );
     put_diagram_config(
         &mut root,
         &mut theme_variables,
@@ -140,13 +145,13 @@ fn put_theme_roles(theme_variables: &mut Map<String, Value>, roles: &ResolvedThe
     put_opt(theme_variables, "actorBkg", roles.actor_background);
     put_opt(theme_variables, "actorBorder", roles.actor_border);
     put_opt(theme_variables, "actorTextColor", roles.actor_text);
-    put_opt(theme_variables, "actorLineColor", roles.line);
+    put_opt(theme_variables, "actorLineColor", roles.actor_border);
     put_opt(theme_variables, "signalColor", roles.line.or(roles.text));
     put_opt(theme_variables, "signalTextColor", roles.text);
-    put_opt(theme_variables, "labelTextColor", roles.text);
-    put_opt(theme_variables, "loopTextColor", roles.text);
-    put_opt(theme_variables, "labelBoxBkgColor", roles.surface_alt);
-    put_opt(theme_variables, "labelBoxBorderColor", roles.border);
+    put_opt(theme_variables, "labelTextColor", roles.actor_text);
+    put_opt(theme_variables, "loopTextColor", roles.actor_text);
+    put_opt(theme_variables, "labelBoxBkgColor", roles.actor_background);
+    put_opt(theme_variables, "labelBoxBorderColor", roles.actor_border);
     put_opt(
         theme_variables,
         "activationBkgColor",
@@ -268,17 +273,13 @@ fn put_theme_roles(theme_variables: &mut Map<String, Value>, roles: &ResolvedThe
     put_opt(theme_variables, "taskBorderColor", roles.border);
     put_opt(theme_variables, "activeTaskBkgColor", roles.surface_muted);
     put_opt(theme_variables, "activeTaskBorderColor", roles.line);
-    put_opt(
-        theme_variables,
-        "doneTaskBkgColor",
-        roles.success.or(roles.surface_alt),
-    );
+    put_opt(theme_variables, "doneTaskBkgColor", roles.surface_alt);
     put_opt(
         theme_variables,
         "doneTaskBorderColor",
         roles.success.or(roles.border),
     );
-    put_opt(theme_variables, "critBkgColor", roles.error);
+    put_opt(theme_variables, "critBkgColor", roles.surface_alt);
     put_opt(
         theme_variables,
         "critBorderColor",
@@ -309,7 +310,12 @@ fn put_theme_roles(theme_variables: &mut Map<String, Value>, roles: &ResolvedThe
     put_opt(theme_variables, "border2", roles.cluster_border);
 }
 
-fn put_series_palette(theme_variables: &mut Map<String, Value>, palette: &[String]) {
+fn put_series_palette(
+    theme_variables: &mut Map<String, Value>,
+    palette: &[String],
+    canvas: Option<&str>,
+    dark: bool,
+) {
     if palette.is_empty() {
         return;
     }
@@ -323,13 +329,13 @@ fn put_series_palette(theme_variables: &mut Map<String, Value>, palette: &[Strin
     theme_variables.insert("xyChart".to_string(), Value::Object(xy));
 
     for (index, color) in palette.iter().enumerate() {
-        let label = readable_text_color(color);
+        let label = readable_text_color(color, canvas, dark);
         put_str(theme_variables, &format!("cScale{index}"), color);
         put_str(theme_variables, &format!("cScalePeer{index}"), color);
-        put_str(theme_variables, &format!("cScaleLabel{index}"), &label);
-        put_str(theme_variables, &format!("cScaleInv{index}"), &label);
+        put_str(theme_variables, &format!("cScaleLabel{index}"), label);
+        put_str(theme_variables, &format!("cScaleInv{index}"), label);
         put_str(theme_variables, &format!("git{index}"), color);
-        put_str(theme_variables, &format!("gitBranchLabel{index}"), &label);
+        put_str(theme_variables, &format!("gitBranchLabel{index}"), label);
         put_str(theme_variables, &format!("pie{}", index + 1), color);
         put_str(theme_variables, &format!("venn{}", index + 1), color);
         put_str(theme_variables, &format!("fillType{index}"), color);
@@ -485,20 +491,33 @@ fn merge_object(target: &mut Map<String, Value>, source: &Map<String, Value>) {
     }
 }
 
-fn readable_text_color(color: &str) -> String {
+fn readable_text_color(color: &str, canvas: Option<&str>, dark: bool) -> &'static str {
     let Ok(color) = ThemeColor::parse(color.trim()) else {
-        return "#ffffff".to_string();
+        return "#ffffff";
     };
-    let luminance = relative_luminance(
+    let fallback = if dark { [0.0; 3] } else { [1.0; 3] };
+    let canvas = canvas
+        .and_then(|canvas| ThemeColor::parse(canvas.trim()).ok())
+        .map_or(fallback, |canvas| composite_over(&canvas, fallback));
+    let [red, green, blue] = composite_over(&color, canvas);
+    let luminance = relative_luminance(red, green, blue);
+    let black_contrast = (luminance + 0.05) / 0.05;
+    let white_contrast = 1.05 / (luminance + 0.05);
+    if black_contrast >= white_contrast {
+        "#000000"
+    } else {
+        "#ffffff"
+    }
+}
+
+fn composite_over(color: &ThemeColor, background: [f64; 3]) -> [f64; 3] {
+    let alpha = color.channel(ColorChannel::Alpha);
+    let foreground = [
         color.channel(ColorChannel::Red) / 255.0,
         color.channel(ColorChannel::Green) / 255.0,
         color.channel(ColorChannel::Blue) / 255.0,
-    );
-    if luminance > 0.45 {
-        "#000000".to_string()
-    } else {
-        "#ffffff".to_string()
-    }
+    ];
+    std::array::from_fn(|index| foreground[index] * alpha + background[index] * (1.0 - alpha))
 }
 
 fn relative_luminance(r: f64, g: f64, b: f64) -> f64 {
@@ -518,9 +537,57 @@ mod tests {
 
     #[test]
     fn palette_readability_accepts_the_shared_color_surface() {
-        assert_eq!(readable_text_color("white"), "#000000");
-        assert_eq!(readable_text_color("rgb(255 255 255 / .2)"), "#000000");
-        assert_eq!(readable_text_color("rebeccapurple"), "#ffffff");
-        assert_eq!(readable_text_color("var(--host-color)"), "#ffffff");
+        assert_eq!(readable_text_color("white", None, false), "#000000");
+        assert_eq!(readable_text_color("#777777", None, false), "#000000");
+        assert_eq!(readable_text_color("rebeccapurple", None, false), "#ffffff");
+        assert_eq!(
+            readable_text_color("var(--host-color)", None, false),
+            "#ffffff"
+        );
+    }
+
+    #[test]
+    fn palette_readability_composites_transparency_against_the_canvas() {
+        assert_eq!(
+            readable_text_color("rgb(255 255 255 / .2)", Some("#000000"), true),
+            "#ffffff"
+        );
+        assert_eq!(
+            readable_text_color("rgb(0 0 0 / .2)", Some("#ffffff"), false),
+            "#000000"
+        );
+    }
+
+    #[test]
+    fn sequence_and_gantt_variables_follow_their_semantic_owners() {
+        let theme = HostTheme::new()
+            .try_with_role(ThemeRole::SurfaceAlt, "#202122")
+            .unwrap()
+            .try_with_role(ThemeRole::Text, "#303132")
+            .unwrap()
+            .try_with_role(ThemeRole::Border, "#404142")
+            .unwrap()
+            .try_with_role(ThemeRole::ActorBackground, "#505152")
+            .unwrap()
+            .try_with_role(ThemeRole::ActorBorder, "#606162")
+            .unwrap()
+            .try_with_role(ThemeRole::ActorText, "#707172")
+            .unwrap()
+            .try_with_role(ThemeRole::Error, "#803030")
+            .unwrap()
+            .try_with_role(ThemeRole::Success, "#308030")
+            .unwrap();
+        let config = compile(&theme);
+        let variables = &config.as_value()["themeVariables"];
+
+        assert_eq!(variables["actorLineColor"], "#606162");
+        assert_eq!(variables["labelBoxBkgColor"], "#505152");
+        assert_eq!(variables["labelBoxBorderColor"], "#606162");
+        assert_eq!(variables["labelTextColor"], "#707172");
+        assert_eq!(variables["loopTextColor"], "#707172");
+        assert_eq!(variables["doneTaskBkgColor"], "#202122");
+        assert_eq!(variables["doneTaskBorderColor"], "#308030");
+        assert_eq!(variables["critBkgColor"], "#202122");
+        assert_eq!(variables["critBorderColor"], "#803030");
     }
 }

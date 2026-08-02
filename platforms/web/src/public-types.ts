@@ -3,7 +3,6 @@ import type {
   BindingStatusCodeName,
   DiagramFamilyCapability,
   DiagramType,
-  BundledThemePresetName,
   LintBindingOptions,
   LintRuleCatalogEntry,
   LintRuleCatalogResponse,
@@ -172,57 +171,6 @@ export interface SvgOptions {
 }
 
 export type PresentationThemeAppearance = "light" | "dark";
-
-/** @deprecated Use PresentationThemeAppearance. */
-export type HostThemeAppearance = PresentationThemeAppearance;
-
-/** @deprecated Use PresentationThemeOptions.roles with kebab-case role IDs. */
-export interface HostThemeRolesOptions {
-  canvas?: string;
-  surface?: string;
-  surface_alt?: string;
-  surface_muted?: string;
-  text?: string;
-  subtle_text?: string;
-  border?: string;
-  line?: string;
-  edge_label_background?: string;
-  cluster_background?: string;
-  cluster_border?: string;
-  note_background?: string;
-  note_border?: string;
-  note_text?: string;
-  actor_background?: string;
-  actor_border?: string;
-  actor_text?: string;
-  activation_background?: string;
-  activation_border?: string;
-  error?: string;
-  warning?: string;
-  success?: string;
-}
-
-/** @deprecated Configure output with SvgOptions. */
-export interface HostThemeOutputOptions {
-  pipeline?: "parity" | "readable" | "resvg-safe";
-  css_override_policy?: "preserve" | "strip-existing-important";
-  root_background?: "none" | "canvas" | string;
-  drop_native_duplicate_fallbacks?: boolean;
-  scoped_css?: string;
-}
-
-/** @deprecated Use PresentationThemeOptions. This legacy shape is not accepted by Options JSON schema 2. */
-export interface HostThemeOptions {
-  preset?: BundledThemePresetName;
-  appearance?: HostThemeAppearance;
-  font_family?: string;
-  font_size?: string;
-  roles?: HostThemeRolesOptions;
-  series_palette?: string[];
-  output?: HostThemeOutputOptions;
-  theme_variables?: Record<string, unknown>;
-  site_config?: MermaidSiteConfig;
-}
 
 export interface PresentationThemeOptions {
   preset?: string;

@@ -2,8 +2,8 @@
 
 use merman::Engine;
 use merman::svg::{
-    HeadlessRenderer, HostTheme, HostThemeProfile, Presentation, PresentationAspectState,
-    PresentationProfile, SvgPipeline, SvgPipelinePreset, ThemePreset,
+    HeadlessRenderer, HostTheme, HostThemePreset, Presentation, PresentationAspectState,
+    PresentationProfile, SvgPipeline, SvgPipelinePreset,
 };
 use merman_core::MermaidConfig;
 use serde_json::{Value, json};
@@ -26,7 +26,7 @@ fn effective_config(renderer: &HeadlessRenderer, source: &str) -> Value {
 fn presentation() -> Presentation {
     Presentation::new()
         .with_profile(PresentationProfile::MermanModern)
-        .with_theme(HostTheme::from_preset(ThemePreset::OneDark))
+        .with_theme(HostTheme::from_preset(HostThemePreset::OneDark))
 }
 
 fn assert_json_keys_absent(value: &Value, forbidden: &[&str]) {
@@ -154,11 +154,6 @@ fn presentation_does_not_select_or_override_svg_output_policy() {
         reverse.svg_pipeline().map(SvgPipeline::preset),
         Some(SvgPipelinePreset::Readable)
     );
-
-    let migrated = HeadlessRenderer::new()
-        .with_host_theme(&HostThemeProfile::editor_dark())
-        .with_presentation(presentation());
-    assert!(migrated.svg_pipeline().is_none());
 }
 
 #[test]
