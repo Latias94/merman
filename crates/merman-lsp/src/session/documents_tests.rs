@@ -287,7 +287,7 @@ fn commit_built_snapshot_for_test(
     request: &AnalysisBuildRequest,
     snapshot: Arc<DocumentSnapshot>,
 ) -> Option<(SnapshotContext, Arc<DocumentAnalysisContext>)> {
-    let snapshot = store.commit_built_snapshot(request, snapshot)?;
+    let snapshot = store.commit_built_snapshot_direct_for_test(request, snapshot)?;
     match store.prepare_diagnostic_projection_for_snapshot(&snapshot)? {
         DiagnosticProjectionPreparation::Ready(context) => {
             let cached = store.cached_analysis_generation(request.uri())?;
@@ -3703,7 +3703,7 @@ fn diagnostic_preparation_touches_the_cache_once() {
         .build_cancellable(&AnalysisCancellationToken::new())
         .unwrap();
     let inserted = store
-        .commit_built_snapshot(&request, Arc::clone(&snapshot))
+        .commit_built_snapshot_direct_for_test(&request, Arc::clone(&snapshot))
         .expect("snapshot admission should succeed");
     drop(inserted);
 
@@ -3784,7 +3784,7 @@ fn oversized_snapshot_is_request_local_only() {
     let weak = Arc::downgrade(&snapshot);
 
     let lease = store
-        .commit_built_snapshot(&request, Arc::clone(&snapshot))
+        .commit_built_snapshot_direct_for_test(&request, Arc::clone(&snapshot))
         .expect("an oversized snapshot should remain valid for the current request");
     drop(snapshot);
 
@@ -3878,6 +3878,129 @@ fn cancelled_and_stale_builds_do_not_change_cache_weight_or_eviction_order() {
             store.analysis_cache_total_weight(),
             store.analysis_cache_len(),
             store.analysis_cache_statistics().evictions,
+        ),
+        before
+    );
+}
+
+#[tokio::test]
+async fn duplicate_build_waiter_cannot_resurrect_an_evicted_cache_entry() {
+    let a = Uri::from_str("file:///tmp/duplicate-build-a.mmd").unwrap();
+    let b = Uri::from_str("file:///tmp/duplicate-build-b.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+
+    let mut sizing = SessionState::new();
+    sizing.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let sizing_request = sizing.snapshot_build_request(&a).unwrap();
+    let sizing_snapshot = sizing_request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
+    let budget = SessionState::estimated_snapshot_cache_entry_weight(&a, &sizing_snapshot);
+
+    let mut store = SessionState::with_analysis_cache_budget(budget);
+    store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    store.upsert_text(b.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let executor = store.analysis_executor();
+    let a_request = store.snapshot_build_request(&a).unwrap();
+    let (first, second) = tokio::join!(executor.execute(&a_request), executor.execute(&a_request));
+    let first = first.unwrap();
+    let second = second.unwrap();
+    assert!(Arc::ptr_eq(first.snapshot(), second.snapshot()));
+
+    store
+        .commit_built_snapshot(&a_request, &first)
+        .expect("the first waiter should admit the shared build");
+    assert!(store.has_snapshot(&a));
+
+    let b_request = store.snapshot_build_request(&b).unwrap();
+    let b_analysis = executor.execute(&b_request).await.unwrap();
+    store
+        .commit_built_snapshot(&b_request, &b_analysis)
+        .expect("the newer build should replace the older cache entry");
+    assert!(!store.has_snapshot(&a));
+    assert!(store.has_snapshot(&b));
+    let before = (
+        store.analysis_cache_total_weight(),
+        store.analysis_cache_statistics(),
+    );
+
+    let request_local = store
+        .commit_built_snapshot(&a_request, &second)
+        .expect("the duplicate waiter remains a valid request-local result");
+
+    assert!(Arc::ptr_eq(&request_local.snapshot, second.snapshot()));
+    assert!(!store.has_snapshot(&a));
+    assert!(store.has_snapshot(&b));
+    assert_eq!(
+        (
+            store.analysis_cache_total_weight(),
+            store.analysis_cache_statistics(),
+        ),
+        before
+    );
+}
+
+#[tokio::test]
+async fn cache_hit_consumes_a_new_build_outputs_admission_claim() {
+    let a = Uri::from_str("file:///tmp/cache-hit-build-a.mmd").unwrap();
+    let b = Uri::from_str("file:///tmp/cache-hit-build-b.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+
+    let mut sizing = SessionState::new();
+    sizing.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let sizing_request = sizing.snapshot_build_request(&a).unwrap();
+    let sizing_snapshot = sizing_request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
+    let budget = SessionState::estimated_snapshot_cache_entry_weight(&a, &sizing_snapshot);
+
+    let mut store = SessionState::with_analysis_cache_budget(budget);
+    store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    store.upsert_text(b.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let executor = store.analysis_executor();
+    let a_request = store.snapshot_build_request(&a).unwrap();
+
+    let initial = executor.execute(&a_request).await.unwrap();
+    let initial_snapshot = Arc::clone(initial.snapshot());
+    store
+        .commit_built_snapshot(&a_request, &initial)
+        .expect("the initial build should enter the cache");
+    drop(initial);
+
+    let (first, second) = tokio::join!(executor.execute(&a_request), executor.execute(&a_request));
+    let first = first.unwrap();
+    let second = second.unwrap();
+    assert!(Arc::ptr_eq(first.snapshot(), second.snapshot()));
+    assert!(!Arc::ptr_eq(&initial_snapshot, first.snapshot()));
+    let cached = store
+        .commit_built_snapshot(&a_request, &first)
+        .expect("the new build should observe the resident snapshot");
+    assert!(Arc::ptr_eq(&cached.snapshot, &initial_snapshot));
+    drop(cached);
+
+    let b_request = store.snapshot_build_request(&b).unwrap();
+    let b_analysis = executor.execute(&b_request).await.unwrap();
+    store
+        .commit_built_snapshot(&b_request, &b_analysis)
+        .expect("the newer URI should evict the resident snapshot");
+    assert!(!store.has_snapshot(&a));
+    assert!(store.has_snapshot(&b));
+    let before = (
+        store.analysis_cache_total_weight(),
+        store.analysis_cache_statistics(),
+    );
+
+    let request_local = store
+        .commit_built_snapshot(&a_request, &second)
+        .expect("the duplicate new-build waiter remains request-local");
+
+    assert!(Arc::ptr_eq(&request_local.snapshot, second.snapshot()));
+    assert!(!store.has_snapshot(&a));
+    assert!(store.has_snapshot(&b));
+    assert_eq!(
+        (
+            store.analysis_cache_total_weight(),
+            store.analysis_cache_statistics(),
         ),
         before
     );

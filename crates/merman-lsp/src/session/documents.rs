@@ -1,6 +1,8 @@
 use super::LanguageSession;
 use crate::session::analysis::AnalysisJobGeneration;
-use crate::session::analysis::executor::{AnalysisExecutor, DiagnosticReprojectionLease};
+use crate::session::analysis::executor::{
+    AnalysisExecutionLease, AnalysisExecutor, DiagnosticReprojectionLease,
+};
 #[cfg(test)]
 use crate::session::analysis::request::TestAnalysisGate;
 use crate::session::analysis::request::{

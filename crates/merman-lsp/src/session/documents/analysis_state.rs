@@ -239,7 +239,27 @@ impl SessionState {
     pub(in crate::session) fn commit_built_snapshot(
         &mut self,
         request: &AnalysisBuildRequest,
+        analysis: &AnalysisExecutionLease,
+    ) -> Option<SnapshotLease> {
+        self.commit_built_snapshot_inner(request, Arc::clone(analysis.snapshot()), || {
+            analysis.claim_cache_admission()
+        })
+    }
+
+    #[cfg(test)]
+    pub(in crate::session::documents) fn commit_built_snapshot_direct_for_test(
+        &mut self,
+        request: &AnalysisBuildRequest,
         snapshot: Arc<DocumentSnapshot>,
+    ) -> Option<SnapshotLease> {
+        self.commit_built_snapshot_inner(request, snapshot, || true)
+    }
+
+    fn commit_built_snapshot_inner(
+        &mut self,
+        request: &AnalysisBuildRequest,
+        snapshot: Arc<DocumentSnapshot>,
+        claim_cache_admission: impl FnOnce() -> bool,
     ) -> Option<SnapshotLease> {
         if self.snapshot_generation != request.snapshot_generation()
             || !self.is_document_epoch_current(request.uri(), request.document_epoch())
@@ -254,6 +274,7 @@ impl SessionState {
             snapshot_generation: request.snapshot_generation(),
             analysis_job_generation: request.analysis_job_generation(),
         };
+        let cache_admission = claim_cache_admission();
         if let Some(current) = self
             .analysis_cache
             .current_without_touch(request.uri(), stamp)
@@ -267,11 +288,11 @@ impl SessionState {
                 Some(current.authority()),
             ));
         }
-        let cache_authority = self.analysis_cache.insert_snapshot(
-            request.uri().clone(),
-            stamp,
-            Arc::clone(&snapshot),
-        );
+        let cache_authority = cache_admission.then(|| {
+            self.analysis_cache
+                .insert_snapshot(request.uri().clone(), stamp, Arc::clone(&snapshot))
+        });
+        let cache_authority = cache_authority.flatten();
         Some(SnapshotLease::new(
             snapshot,
             None,

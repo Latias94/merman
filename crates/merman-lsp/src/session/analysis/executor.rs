@@ -12,9 +12,7 @@ use merman_analysis::AnalysisCancellationToken;
 use merman_analysis::Analyzer;
 use std::collections::HashMap;
 use std::fmt;
-#[cfg(test)]
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 use tower_lsp_server::ls_types::Uri;
@@ -232,8 +230,28 @@ struct PendingAnalysis {
 
 #[derive(Clone)]
 enum AnalysisWorkOutput {
-    Build(Arc<DocumentSnapshot>),
+    Build(Arc<AnalysisBuildOutput>),
     Reproject(Arc<DiagnosticReprojectionResult>),
+}
+
+struct AnalysisBuildOutput {
+    snapshot: Arc<DocumentSnapshot>,
+    cache_admission_claimed: AtomicBool,
+}
+
+impl AnalysisBuildOutput {
+    fn new(snapshot: Arc<DocumentSnapshot>) -> Self {
+        Self {
+            snapshot,
+            cache_admission_claimed: AtomicBool::new(false),
+        }
+    }
+
+    fn claim_cache_admission(&self) -> bool {
+        self.cache_admission_claimed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
 }
 
 impl AnalysisRegistry {
@@ -353,7 +371,7 @@ impl AnalysisWaiter {
 }
 
 pub(in crate::session) struct AnalysisExecutionLease {
-    snapshot: Arc<DocumentSnapshot>,
+    output: Arc<AnalysisBuildOutput>,
     _waiter: AnalysisWaiter,
 }
 
@@ -361,14 +379,18 @@ impl fmt::Debug for AnalysisExecutionLease {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("AnalysisExecutionLease")
-            .field("snapshot", &self.snapshot)
+            .field("snapshot", &self.output.snapshot)
             .finish_non_exhaustive()
     }
 }
 
 impl AnalysisExecutionLease {
     pub(in crate::session) fn snapshot(&self) -> &Arc<DocumentSnapshot> {
-        &self.snapshot
+        &self.output.snapshot
+    }
+
+    pub(in crate::session) fn claim_cache_admission(&self) -> bool {
+        self.output.claim_cache_admission()
     }
 }
 
@@ -551,7 +573,7 @@ impl AnalysisExecutor {
             ));
         };
         Ok(AnalysisExecutionLease {
-            snapshot: context,
+            output: context,
             _waiter: waiter,
         })
     }
@@ -824,6 +846,8 @@ impl AnalysisExecutor {
                         match work {
                             AnalysisWork::Build(request) => request
                                 .build_cancellable(&cancellation)
+                                .map(AnalysisBuildOutput::new)
+                                .map(Arc::new)
                                 .map(AnalysisWorkOutput::Build)
                                 .map_err(AnalysisWorkError::Build),
                             AnalysisWork::Reproject(request) => request

@@ -244,12 +244,11 @@ impl LanguageSession {
             }
             Err(error) => return Err(analysis_execution_error(error)),
         };
-        let snapshot = Arc::clone(analysis.snapshot());
         let committed = {
             let mut state = self.inner.state.lock().await;
             let Some((snapshot, document_exists)) =
                 self.commit_state_if_active(&mut state, |state| {
-                    let snapshot = state.commit_built_snapshot(&request, snapshot);
+                    let snapshot = state.commit_built_snapshot(&request, &analysis);
                     let document_exists = state.get(request.uri()).is_some();
                     (snapshot, document_exists)
                 })
@@ -310,11 +309,12 @@ impl LanguageSession {
             let mut state = self.inner.state.lock().await;
             let Some((preparation, document_exists)) =
                 self.commit_state_if_active(&mut state, |state| {
-                    let preparation = state
-                        .commit_built_snapshot(&request, Arc::clone(analysis.snapshot()))
-                        .and_then(|snapshot| {
-                            state.prepare_diagnostic_projection_for_snapshot(&snapshot)
-                        });
+                    let preparation =
+                        state
+                            .commit_built_snapshot(&request, &analysis)
+                            .and_then(|snapshot| {
+                                state.prepare_diagnostic_projection_for_snapshot(&snapshot)
+                            });
                     let document_exists = state.get(request.uri()).is_some();
                     (preparation, document_exists)
                 })
