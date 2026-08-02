@@ -22,7 +22,7 @@ extern "C" {
 
 #define MERMAN_NATIVE_ABI_VERSION 3u
 #define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110"
-#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:a97675e38eaffb001c55d8b89159ef14d6cb5746b58d849e103c881a1be5e73a"
+#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:ca06712df13d9cf871258c726cf4f587906245264cbc00828a12ef36542c6ba8"
 #define MERMAN_NATIVE_RESULT_SCHEMA_VERSION 1u
 #define MERMAN_NATIVE_ERROR_KIND_BUSY "busy"
 #define MERMAN_NATIVE_ERROR_KIND_GENERIC "generic"
@@ -75,70 +75,54 @@ enum {
     MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON = 13
 };
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_NONE 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_NONE 0
-#define MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_STATUS_NONE 1
-#define MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_ERROR_KIND_NONE "generic"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_SVG 1
 #define MERMAN_NATIVE_OPERATION_ID_SVG "svg"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_SVG "svg"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG "image/svg+xml"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_PNG 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_PNG 1
 #define MERMAN_NATIVE_OPERATION_ID_PNG "png"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_PNG "png"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_PNG "image/png"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_JPEG 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_JPEG 1
 #define MERMAN_NATIVE_OPERATION_ID_JPEG "jpeg"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_JPEG "jpeg"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_JPEG "image/jpeg"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_PDF 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_PDF 1
 #define MERMAN_NATIVE_OPERATION_ID_PDF "pdf"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_PDF "pdf"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_PDF "application/pdf"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_ASCII 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_ASCII 1
 #define MERMAN_NATIVE_OPERATION_ID_ASCII "ascii"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_ASCII "ascii"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_ASCII "text/plain; charset=utf-8"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_SEMANTIC_JSON 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_SEMANTIC_JSON 1
 #define MERMAN_NATIVE_OPERATION_ID_SEMANTIC_JSON "semantic-json"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SEMANTIC_JSON "application/json"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_LAYOUT_JSON 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_LAYOUT_JSON 1
 #define MERMAN_NATIVE_OPERATION_ID_LAYOUT_JSON "layout-json"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_LAYOUT_JSON "svg"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_LAYOUT_JSON "application/json"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_ANALYSIS_JSON 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_ANALYSIS_JSON 1
 #define MERMAN_NATIVE_OPERATION_ID_ANALYSIS_JSON "analysis-json"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_ANALYSIS_JSON "analysis"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_ANALYSIS_JSON "application/json"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_ANALYSIS_FACTS_JSON 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_ANALYSIS_FACTS_JSON 1
 #define MERMAN_NATIVE_OPERATION_ID_ANALYSIS_FACTS_JSON "analysis-facts-json"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_ANALYSIS_FACTS_JSON "analysis"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_ANALYSIS_FACTS_JSON "application/json"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_VALIDATION_JSON 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_VALIDATION_JSON 1
 #define MERMAN_NATIVE_OPERATION_ID_VALIDATION_JSON "validation-json"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_VALIDATION_JSON "analysis"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_VALIDATION_JSON "application/json"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_DOCUMENT_ANALYSIS_JSON 1
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_DOCUMENT_ANALYSIS_JSON 1
 #define MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_JSON "document-analysis-json"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_DOCUMENT_ANALYSIS_JSON "analysis"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_DOCUMENT_ANALYSIS_JSON "application/json"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_DOCUMENT_ANALYSIS_FACTS_JSON 1
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_DOCUMENT_ANALYSIS_FACTS_JSON 1
 #define MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_FACTS_JSON "document-analysis-facts-json"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_DOCUMENT_ANALYSIS_FACTS_JSON "analysis"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_DOCUMENT_ANALYSIS_FACTS_JSON "application/json"
 #define MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG_PLAN_JSON 0
-#define MERMAN_NATIVE_OPERATION_EXECUTABLE_SVG_PLAN_JSON 1
 #define MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON "svg-plan-json"
 #define MERMAN_NATIVE_OPERATION_CAPABILITY_SVG_PLAN_JSON "svg"
 #define MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON "application/json"
@@ -338,27 +322,6 @@ struct MermanNativeApi {
  *   inside Merman-owned result storage. Zero, unknown, stale, and random non-live tokens release
  *   nothing and only clear the supplied record. Copying a live token is outside the same-process
  *   hostile-memory threat boundary. No result buffer may be passed to a host allocator.
- *
- * Opaque scalar rules from the ABI descriptor:
- * - engine_token: An opaque process-lifetime monotonic engine identity. The low-bit domain tag
- *   rejects accidental cross-kind use, every issued value remains positive when projected through a
- *   signed 64-bit host integer, and the token is not an authorization boundary.
- * - result_allocation_token: An opaque process-lifetime monotonic result-allocation ownership
- *   identity stored in MermanNativeResult.allocation_token. The low-bit domain tag rejects
- *   accidental engine-token use, every issued value remains positive when projected through a
- *   signed 64-bit host integer, and the token is not an authorization boundary.
- *
- * Unsafe caller-memory preconditions from the ABI descriptor:
- * - record_pointer_alignment: Every caller-supplied native record pointer must be naturally aligned
- *   for its declared C record type. Status-returning entry points reject safely allocated
- *   misaligned records before typed access; the void result_free operation treats a misaligned
- *   record as invalid and releases nothing.
- * - caller_memory_validity: For the complete duration of a call, every caller record and every
- *   storage range reachable through it must be readable, live, and immutable except for declared
- *   writable outputs, which must remain writable and live. Runtime validation detects only
- *   representable shape, size, alignment, range, and documented overlap errors; dangling,
- *   unreadable, concurrently mutated, or otherwise invalid memory remains a caller contract
- *   violation and is not promised a typed status.
  */
 MermanNativeStatus merman_get_native_api(const MermanNativeApiRequest *request, MermanNativeApi *out_api) MERMAN_NATIVE_NOEXCEPT;
 

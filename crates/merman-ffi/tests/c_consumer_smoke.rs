@@ -68,6 +68,29 @@ fn abi3_minimum_header_consumer_smoke() {
     }
 }
 
+#[test]
+fn abi3_published_six_header_consumer_smoke() {
+    let library_path = compile_c_library(
+        "tests/abi3_published_six_consumer.c",
+        "merman_abi3_published_six_consumer",
+        "tests/fixtures/abi3-published-six",
+    );
+
+    unsafe {
+        let library = Library::new(&library_path).unwrap_or_else(|error| {
+            panic!(
+                "failed to load ABI3 published-six consumer {}: {error}",
+                library_path.display()
+            )
+        });
+        let smoke: libloading::Symbol<unsafe extern "C" fn(NativeGetApi) -> i32> = library
+            .get(b"merman_abi3_published_six_consumer_smoke")
+            .expect("load ABI3 published-six consumer symbol");
+        let result = smoke(merman_ffi::merman_get_native_api);
+        assert_eq!(result, 0, "ABI3 published-six consumer returned {result}");
+    }
+}
+
 fn has_native_sdk_operation_features() -> bool {
     cfg!(all(
         feature = "svg",

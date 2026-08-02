@@ -6,7 +6,7 @@ pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
     "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:ca06712df13d9cf871258c726cf4f587906245264cbc00828a12ef36542c6ba8";
+    "sha256:a97675e38eaffb001c55d8b89159ef14d6cb5746b58d849e103c881a1be5e73a";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -61,62 +61,77 @@ pub fn merman_native_status_is_known(status: MermanNativeStatus) -> bool {
 pub type MermanNativeOperationCode = i32;
 pub const MERMAN_NATIVE_OPERATION_NONE: MermanNativeOperationCode = 0;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_NONE: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_NONE: bool = false;
+pub const MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_STATUS_NONE: MermanNativeStatus = 1;
+pub const MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_ERROR_KIND_NONE: &str = "generic";
 pub const MERMAN_NATIVE_OPERATION_SVG: MermanNativeOperationCode = 1;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_SVG: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_SVG: &str = "svg";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_SVG: &str = "svg";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG: &str = "image/svg+xml";
 pub const MERMAN_NATIVE_OPERATION_PNG: MermanNativeOperationCode = 2;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_PNG: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_PNG: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_PNG: &str = "png";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_PNG: &str = "png";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_PNG: &str = "image/png";
 pub const MERMAN_NATIVE_OPERATION_JPEG: MermanNativeOperationCode = 3;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_JPEG: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_JPEG: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_JPEG: &str = "jpeg";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_JPEG: &str = "jpeg";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_JPEG: &str = "image/jpeg";
 pub const MERMAN_NATIVE_OPERATION_PDF: MermanNativeOperationCode = 4;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_PDF: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_PDF: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_PDF: &str = "pdf";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_PDF: &str = "pdf";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_PDF: &str = "application/pdf";
 pub const MERMAN_NATIVE_OPERATION_ASCII: MermanNativeOperationCode = 5;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_ASCII: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_ASCII: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_ASCII: &str = "ascii";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_ASCII: &str = "ascii";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_ASCII: &str = "text/plain; charset=utf-8";
 pub const MERMAN_NATIVE_OPERATION_SEMANTIC_JSON: MermanNativeOperationCode = 6;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_SEMANTIC_JSON: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_SEMANTIC_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_SEMANTIC_JSON: &str = "semantic-json";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SEMANTIC_JSON: &str = "application/json";
 pub const MERMAN_NATIVE_OPERATION_LAYOUT_JSON: MermanNativeOperationCode = 7;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_LAYOUT_JSON: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_LAYOUT_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_LAYOUT_JSON: &str = "layout-json";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_LAYOUT_JSON: &str = "svg";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_LAYOUT_JSON: &str = "application/json";
 pub const MERMAN_NATIVE_OPERATION_ANALYSIS_JSON: MermanNativeOperationCode = 8;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_ANALYSIS_JSON: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_ANALYSIS_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_ANALYSIS_JSON: &str = "analysis-json";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_ANALYSIS_JSON: &str = "analysis";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_ANALYSIS_JSON: &str = "application/json";
 pub const MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON: MermanNativeOperationCode = 9;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_ANALYSIS_FACTS_JSON: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_ANALYSIS_FACTS_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_ANALYSIS_FACTS_JSON: &str = "analysis-facts-json";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_ANALYSIS_FACTS_JSON: &str = "analysis";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_ANALYSIS_FACTS_JSON: &str = "application/json";
 pub const MERMAN_NATIVE_OPERATION_VALIDATION_JSON: MermanNativeOperationCode = 10;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_VALIDATION_JSON: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_VALIDATION_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_VALIDATION_JSON: &str = "validation-json";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_VALIDATION_JSON: &str = "analysis";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_VALIDATION_JSON: &str = "application/json";
 pub const MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON: MermanNativeOperationCode = 11;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_DOCUMENT_ANALYSIS_JSON: bool = true;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_DOCUMENT_ANALYSIS_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_JSON: &str = "document-analysis-json";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_DOCUMENT_ANALYSIS_JSON: &str = "analysis";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_DOCUMENT_ANALYSIS_JSON: &str = "application/json";
 pub const MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON: MermanNativeOperationCode = 12;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_DOCUMENT_ANALYSIS_FACTS_JSON: bool = true;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_DOCUMENT_ANALYSIS_FACTS_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_FACTS_JSON: &str =
     "document-analysis-facts-json";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_DOCUMENT_ANALYSIS_FACTS_JSON: &str = "analysis";
@@ -124,13 +139,22 @@ pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_DOCUMENT_ANALYSIS_FACTS_JSON: &str 
     "application/json";
 pub const MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON: MermanNativeOperationCode = 13;
 pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG_PLAN_JSON: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_SVG_PLAN_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON: &str = "svg-plan-json";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_SVG_PLAN_JSON: &str = "svg";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON: &str = "application/json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MermanNativeOperationFailureDescriptor {
+    pub status: MermanNativeStatus,
+    pub error_kind: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MermanNativeOperationDescriptor {
     pub code: MermanNativeOperationCode,
+    pub executable: bool,
+    pub non_executable_failure: Option<MermanNativeOperationFailureDescriptor>,
     pub operation_id: Option<&'static str>,
     pub capability_id: Option<&'static str>,
     pub media_type: Option<&'static str>,
@@ -140,6 +164,11 @@ pub struct MermanNativeOperationDescriptor {
 pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor] = &[
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_NONE,
+        executable: false,
+        non_executable_failure: Some(MermanNativeOperationFailureDescriptor {
+            status: 1,
+            error_kind: "generic",
+        }),
         operation_id: None,
         capability_id: None,
         media_type: None,
@@ -147,6 +176,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_SVG,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("svg"),
         capability_id: Some("svg"),
         media_type: Some("image/svg+xml"),
@@ -154,6 +185,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_PNG,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("png"),
         capability_id: Some("png"),
         media_type: Some("image/png"),
@@ -161,6 +194,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_JPEG,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("jpeg"),
         capability_id: Some("jpeg"),
         media_type: Some("image/jpeg"),
@@ -168,6 +203,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_PDF,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("pdf"),
         capability_id: Some("pdf"),
         media_type: Some("application/pdf"),
@@ -175,6 +212,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_ASCII,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("ascii"),
         capability_id: Some("ascii"),
         media_type: Some("text/plain; charset=utf-8"),
@@ -182,6 +221,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("semantic-json"),
         capability_id: None,
         media_type: Some("application/json"),
@@ -189,6 +230,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_LAYOUT_JSON,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("layout-json"),
         capability_id: Some("svg"),
         media_type: Some("application/json"),
@@ -196,6 +239,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_ANALYSIS_JSON,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("analysis-json"),
         capability_id: Some("analysis"),
         media_type: Some("application/json"),
@@ -203,6 +248,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("analysis-facts-json"),
         capability_id: Some("analysis"),
         media_type: Some("application/json"),
@@ -210,6 +257,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_VALIDATION_JSON,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("validation-json"),
         capability_id: Some("analysis"),
         media_type: Some("application/json"),
@@ -217,6 +266,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("document-analysis-json"),
         capability_id: Some("analysis"),
         media_type: Some("application/json"),
@@ -224,6 +275,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("document-analysis-facts-json"),
         capability_id: Some("analysis"),
         media_type: Some("application/json"),
@@ -231,6 +284,8 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
     },
     MermanNativeOperationDescriptor {
         code: MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON,
+        executable: true,
+        non_executable_failure: None,
         operation_id: Some("svg-plan-json"),
         capability_id: Some("svg"),
         media_type: Some("application/json"),
@@ -296,6 +351,11 @@ pub const MERMAN_NATIVE_FUNCTION_RESULT_FREE: MermanNativeFunctionSlot = 4;
 pub const MERMAN_NATIVE_FUNCTION_METADATA_COLLECT: MermanNativeFunctionSlot = 5;
 
 pub type MermanNativeEngineToken = u64;
+pub(crate) const MERMAN_NATIVE_TOKEN_DOMAIN_MASK: u64 = 3;
+pub(crate) const MERMAN_NATIVE_TOKEN_COUNTER_SHIFT: u32 = 2;
+pub(crate) const MERMAN_NATIVE_TOKEN_COUNTER_MAX: u64 = 2305843009213693951;
+pub(crate) const MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG: u64 = 1;
+pub(crate) const MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG: u64 = 2;
 
 /// A size-tagged borrowed byte slice. Null data is valid only with zero length.
 #[repr(C)]

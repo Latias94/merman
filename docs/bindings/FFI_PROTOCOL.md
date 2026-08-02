@@ -83,6 +83,15 @@ inspect the ownership token. The generated header and release C smoke tests carr
 layout fingerprint. Application bindings should consume the generated declarations rather than
 implementing a second runtime offset probe.
 
+Every caller-supplied record pointer must be naturally aligned for its declared C type. All record
+storage and every byte range reachable through a record must remain readable, live, and immutable
+for the complete call, except for declared output storage, which must remain writable and live.
+Merman rejects detectable size, alignment, representable-range, and documented-overlap faults
+before typed access. It cannot safely probe dangling or unreadable pointers and cannot convert
+concurrent mutation into a typed status; those remain caller contract violations. The void
+`result_free` operation treats a safely allocated misaligned result record as invalid and releases
+nothing.
+
 ## Runtime Catalog
 
 `api.runtime_catalog` writes a `MermanNativeResult` whose `metadata_or_error_json` contains the
@@ -164,7 +173,8 @@ api.result_free(&result);
 
 Initialize `out_engine` to zero before `engine_new`. The `config` record, its `options_json` byte
 storage, `out_engine`, and `out_result` must be pairwise disjoint; obvious overlap is rejected with
-`MERMAN_NATIVE_STATUS_INVALID_ARGUMENT` before Merman writes either output.
+`MERMAN_NATIVE_STATUS_INVALID_ARGUMENT` before Merman writes either output. A nonzero
+`out_engine` is likewise rejected and is not overwritten.
 
 Then select an operation with `MermanNativeOperationRequest.operation` and execute the same route
 for every operation:
@@ -196,6 +206,12 @@ PDF, ASCII, semantic JSON, layout JSON, analysis JSON, analysis facts, validatio
 URI-requiring document analysis operations. `MERMAN_NATIVE_OPERATION_*_REQUIRES_URI_*` identifies
 the two document operations; pass an empty URI for all other operations. When a requested
 operation is not compiled, the result has `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION`.
+
+`MERMAN_NATIVE_OPERATION_NONE` is a defined non-executable sentinel used by catalog, metadata, and
+constructor results. Passing it to `execute_collect` returns
+`MERMAN_NATIVE_STATUS_INVALID_ARGUMENT` with the generic error kind. A numeric code outside the
+known operation vocabulary instead returns `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` with
+`unknown-operation`.
 
 `options_json` is a generic binding options document, not a format-specific envelope. Merman
 recursively merges it over the engine configuration for this operation: request values replace
@@ -257,7 +273,11 @@ If the process-lifetime token space itself is exhausted, the producing call retu
 `MERMAN_NATIVE_STATUS_INTERNAL_ERROR` and leaves a valid zero-initialized result record untouched;
 it cannot write a conforming owned result without a nonzero token.
 
-Engine values are opaque nonzero `uint64_t` tokens, not pointers.
+Engine values are opaque nonzero `uint64_t` tokens, not pointers. Engine and result-allocation
+tokens use separate low-bit domains over independent monotonic counters. The sign bit is never set,
+so every valid token remains positive when a generated language binding represents it as a signed
+64-bit integer. Domain tagging rejects accidental cross-kind use; it is not authorization or
+hostile same-process tenant isolation.
 `api.engine_try_close(engine)` never waits:
 
 - If a host callback is active, it returns `MERMAN_NATIVE_STATUS_REENTRANT_CALL`.
@@ -303,14 +323,30 @@ function-pointer types are declared `noexcept` to make this contract visible to 
   C-consumer layout fingerprint as provenance evidence, not interchangeable compatibility keys.
 - Function slots and codes may only be appended. The frozen minimum prefix cannot change within
   ABI 3; changing its layout requires ABI 4.
+- The immutable `abi/merman-v3-published-six.semantic.json` projection freezes the public
+  six-slot surface anchored to commit `5117c0ae12da2c0346b47061642286174cea3f5f`, including the
+  reviewed ABI 3 semantic hardening established with this verifier. The separate six-slot header
+  fixture remains byte-identical to that commit. The generated
+  `abi/merman-v3-current-full.semantic.json` projection freezes every subsequently reviewed ABI 3
+  entry. Both projections have separately compiled digests.
+- Semantic verification compares stable keys and complete entries before generated-file freshness.
+  Existing statuses, error kinds, callbacks, operations, records, fields, opaque scalars,
+  signatures, and ownership/lifecycle rules cannot be deleted, reordered, or changed. Only
+  descriptor-declared operation, record, function-slot, ownership-rule, and caller-memory-rule
+  append points may grow.
+- A valid append is a two-step review operation: `gen-native-abi` writes the candidate current-full
+  snapshot only after the old frozen snapshot passes its digest and monotonic checks; the verifier
+  then remains red until a maintainer reviews the diff and explicitly freezes the new digest.
+  Regenerating snapshots therefore cannot silently legitimize a semantic mutation.
 - Treat appended slots as optional ABI capabilities. Check the returned initialized-prefix size and pointer
   before calling `metadata_collect` or any future appended function.
-- Result ownership, token/free behavior, callback non-local-exit prohibition, nonblocking close
-  semantics, `engine_new` storage separation, and the closed error-kind vocabulary are frozen ABI 3
-  semantics. The descriptor verifier rejects changes to this explicit minimum-semantic set.
+- Result ownership, token-domain/free behavior, callback non-local-exit prohibition, nonblocking
+  close semantics, `engine_new` storage separation and zero-output precondition, caller-memory
+  obligations, `NONE` handling, status-kind mappings, and the closed error-kind vocabulary are
+  frozen ABI 3 semantics. The descriptor verifier rejects changes to these semantic projections.
 - Except for the API table's capacity negotiation, records require exact generated sizes. The
-  package's C smoke tests compile and run both the current header and the frozen minimum-prefix
-  consumer; applications do not need to duplicate a runtime offset probe.
+  package's C smoke tests compile and run the current header plus frozen five-slot and published
+  six-slot consumers; applications do not need to duplicate a runtime offset probe.
 - Treat `MERMAN_NATIVE_RESULT_SCHEMA_VERSION`, error kind strings, and `capability_id` as one
   machine-readable failure contract.
 - Treat diagnostics and analysis-facts payload schema versions as independent contracts.

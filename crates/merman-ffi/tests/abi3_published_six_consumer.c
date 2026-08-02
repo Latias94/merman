@@ -9,16 +9,11 @@ typedef MermanNativeStatus (*MermanGetNativeApiFn)(
     MermanNativeApi *out_api
 );
 
-enum {
-    ABI3_FROZEN_STATUS_INVALID_ENGINE = 15,
-    ABI3_FROZEN_OPERATION_SEMANTIC_JSON = 6
-};
-
-typedef struct MermanNativeApiMinimumBuffer {
-    /* `merman.h` in this fixture is the published five-slot ABI 3 header. */
+typedef struct MermanNativeApiPublishedSixBuffer {
+    /* This fixture is the exact six-slot header from baseline commit 5117c0ae. */
     MermanNativeApi api;
     uint8_t trailing_guard[16];
-} MermanNativeApiMinimumBuffer;
+} MermanNativeApiPublishedSixBuffer;
 
 static MermanNativeSlice borrowed_slice(const uint8_t *data, size_t len) {
     MermanNativeSlice slice;
@@ -26,6 +21,10 @@ static MermanNativeSlice borrowed_slice(const uint8_t *data, size_t len) {
     slice.data = data;
     slice.len = len;
     return slice;
+}
+
+static MermanNativeResult empty_result(void) {
+    return (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
 }
 
 static int guard_is_intact(const uint8_t *bytes, size_t len) {
@@ -57,10 +56,11 @@ __declspec(dllexport)
 #else
 __attribute__((visibility("default")))
 #endif
-int merman_abi3_minimum_consumer_smoke(MermanGetNativeApiFn get_native_api) {
+int merman_abi3_published_six_consumer_smoke(MermanGetNativeApiFn get_native_api) {
     static const uint8_t source[] = "flowchart TD\nA --> B";
+    static const uint8_t metadata_id[] = "supported-diagrams";
     MermanNativeApiRequest request;
-    MermanNativeApiMinimumBuffer api_buffer;
+    MermanNativeApiPublishedSixBuffer api_buffer;
     MermanNativeApi *api = &api_buffer.api;
     MermanNativeEngineConfig config;
     MermanNativeEngineToken engine = 0;
@@ -81,92 +81,84 @@ int merman_abi3_minimum_consumer_smoke(MermanGetNativeApiFn get_native_api) {
     memset(&api_buffer, 0, sizeof(api_buffer));
     memset(api_buffer.trailing_guard, 0xa5, sizeof(api_buffer.trailing_guard));
     api->struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi);
-
-    if (
-        get_native_api(&request, api) != MERMAN_NATIVE_STATUS_OK ||
-        api->struct_size != MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi)
-    ) {
-        return 2;
-    }
-    /* The returned size is safe to reuse as the next discovery capacity. */
     if (
         get_native_api(&request, api) != MERMAN_NATIVE_STATUS_OK ||
         api->struct_size != MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi) ||
-        !guard_is_intact(api_buffer.trailing_guard, sizeof(api_buffer.trailing_guard))
-    ) {
-        return 2;
-    }
-    if (
-        api->abi_version != MERMAN_NATIVE_ABI_VERSION ||
-        api->minimum_prefix_layout_digest.data == NULL ||
-        api->full_descriptor_digest.data == NULL ||
-        api->capability_catalog_digest.data == NULL ||
+        !guard_is_intact(api_buffer.trailing_guard, sizeof(api_buffer.trailing_guard)) ||
         api->runtime_catalog == NULL ||
         api->engine_new == NULL ||
         api->engine_try_close == NULL ||
         api->execute_collect == NULL ||
-        api->result_free == NULL
+        api->result_free == NULL ||
+        api->metadata_collect == NULL
     ) {
-        return 3;
+        return 2;
     }
 
-    memset(&result, 0, sizeof(result));
-    result.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult);
+    result = empty_result();
     if (
         api->runtime_catalog(&result) != MERMAN_NATIVE_STATUS_OK ||
-        result.status != MERMAN_NATIVE_STATUS_OK ||
         result.operation != MERMAN_NATIVE_OPERATION_NONE ||
         result.allocation_token == 0
+    ) {
+        api->result_free(&result);
+        return 3;
+    }
+    api->result_free(&result);
+
+    result = empty_result();
+    if (
+        api->metadata_collect(
+            borrowed_slice(metadata_id, sizeof(metadata_id) - 1),
+            &result
+        ) != MERMAN_NATIVE_STATUS_OK ||
+        result.operation != MERMAN_NATIVE_OPERATION_NONE ||
+        result.allocation_token == 0 ||
+        result.metadata_or_error_json.len == 0
     ) {
         api->result_free(&result);
         return 4;
     }
     api->result_free(&result);
-    if (result.allocation_token != 0) {
-        return 5;
-    }
 
     memset(&config, 0, sizeof(config));
     config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineConfig);
     config.options_json = borrowed_slice(NULL, 0);
-    memset(&result, 0, sizeof(result));
-    result.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult);
+    result = empty_result();
     if (
         api->engine_new(&config, &engine, &result) != MERMAN_NATIVE_STATUS_OK ||
         engine == 0 ||
         result.allocation_token == 0
     ) {
         api->result_free(&result);
-        return 6;
+        return 5;
     }
     api->result_free(&result);
 
     memset(&operation, 0, sizeof(operation));
     operation.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeOperationRequest);
-    operation.operation = ABI3_FROZEN_OPERATION_SEMANTIC_JSON;
+    operation.operation = MERMAN_NATIVE_OPERATION_SEMANTIC_JSON;
     operation.source = borrowed_slice(source, sizeof(source) - 1);
     operation.uri = borrowed_slice(NULL, 0);
     operation.options_json = borrowed_slice(NULL, 0);
-    memset(&result, 0, sizeof(result));
-    result.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult);
+    result = empty_result();
     if (
         api->execute_collect(engine, &operation, &result) != MERMAN_NATIVE_STATUS_OK ||
-        result.operation != ABI3_FROZEN_OPERATION_SEMANTIC_JSON ||
+        result.operation != MERMAN_NATIVE_OPERATION_SEMANTIC_JSON ||
         result.allocation_token == 0 ||
         !bytes_contain(result.data.data, result.data.len, "{")
     ) {
         api->result_free(&result);
         api->engine_try_close(engine);
-        return 7;
+        return 6;
     }
     api->result_free(&result);
 
     if (api->engine_try_close(engine) != MERMAN_NATIVE_STATUS_OK) {
+        return 7;
+    }
+    if (api->engine_try_close(engine) != MERMAN_NATIVE_STATUS_INVALID_ENGINE) {
         return 8;
     }
-    if (api->engine_try_close(engine) != ABI3_FROZEN_STATUS_INVALID_ENGINE) {
-        return 9;
-    }
-
     return 0;
 }

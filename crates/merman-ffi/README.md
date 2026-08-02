@@ -76,6 +76,12 @@ MermanNativeStatus merman_get_native_api(
 
 The host supplies `MERMAN_NATIVE_ABI_VERSION` and `MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST`, then receives the common prefix of a size-tagged function table. `MermanNativeApi.struct_size` is the host capacity on input and the largest complete producer prefix safely initialized within that capacity on output. The returned minimum-prefix digest is the compatibility key, the full descriptor digest records producer provenance, and the capability catalog digest identifies the loaded artifact. Every other record requires its exact generated size. Use `MERMAN_NATIVE_RESULT_INIT` to fully zero-initialize each result before a producing call; setting only `struct_size` in otherwise uninitialized storage is invalid. The generated C header and release C smoke tests carry the compile-run layout fingerprint, so applications should not implement a second runtime offset probe.
 
+Caller-supplied record pointers must be naturally aligned. Every record and reachable byte range
+must remain readable, live, and immutable for the complete call, except for declared output
+storage, which must remain writable. Merman can reject detectable size, alignment, range, and
+overlap faults; dangling, unreadable, or concurrently mutated memory remains a C caller contract
+violation and is not promised a typed error.
+
 Every operation follows the same path:
 
 1. Call `merman_get_native_api`.
@@ -83,6 +89,11 @@ Every operation follows the same path:
 3. Set `MermanNativeOperationRequest.operation` to the requested operation enum.
 4. Call `api.execute_collect`.
 5. Release every result with `api.result_free`, then close the token with `api.engine_try_close`.
+
+Initialize the `out_engine` value to zero before `engine_new`; a nonzero value is rejected without
+being overwritten. `MERMAN_NATIVE_OPERATION_NONE` is a defined metadata/result sentinel and is not
+executable: `execute_collect` returns invalid argument with the generic error kind. Unknown numeric
+operation codes continue to return unsupported operation with `unknown-operation`.
 
 Engine options select runtime state explicitly. Omitting `runtime_policy` uses Merman's deterministic clock, UTC time zone, and fixed random seed, even when native adapters are compiled. Set `{ "runtime_policy": "native" }` only when the operation should consult the compiled system clock, time-zone, and random adapters. If one is unavailable, engine creation returns the typed unsupported-operation status. Successful generic operation metadata includes `"runtime_policy":"deterministic"` or `"runtime_policy":"native"`.
 
@@ -100,7 +111,16 @@ The generic operation enums cover SVG, PNG, JPEG, PDF, ASCII, semantic JSON, lay
 
 `MermanNativeResult.data` and `metadata_or_error_json` are Merman-owned only after Merman has written the result, and only until `api.result_free(&result)`. Ownership is identified by a process-lifetime monotonic nonzero `allocation_token`, never by the nested buffer pointers or record address. Moving the complete result transfers ownership when the source is cleared and no duplicate live token remains. Zero, unknown, stale, and random tokens release nothing. Fully zero-initialize every result before a producing call, release every Merman-written result including failures before reuse, and never pass its buffers to a host allocator. Inputs and callback request slices are borrowed for the call only.
 
-Engine values are opaque nonzero tokens, not pointers. `engine_try_close` never waits: it returns `MERMAN_NATIVE_STATUS_BUSY` while an operation is active and `MERMAN_NATIVE_STATUS_REENTRANT_CALL` while the engine is inside its host callback, retaining the token in both cases. A successful close permanently prevents new admissions before retiring the token and is the point after which the host may release the immutable callback and `user_data`. Callback-free engines admit concurrent operations; callback-configured engines reject a competing operation with the typed `busy` failure.
+Engine values are opaque nonzero tokens, not pointers. Engine and result-allocation tokens use
+disjoint low-bit domains while preserving the sign bit, so valid tokens remain positive in signed
+64-bit language projections. This catches accidental cross-kind use but does not authenticate a
+caller or isolate hostile same-process tenants. `engine_try_close` never waits: it returns
+`MERMAN_NATIVE_STATUS_BUSY` while an operation is active and
+`MERMAN_NATIVE_STATUS_REENTRANT_CALL` while the engine is inside its host callback, retaining the
+token in both cases. A successful close permanently prevents new admissions before retiring the
+token and is the point after which the host may release the immutable callback and `user_data`.
+Callback-free engines admit concurrent operations; callback-configured engines reject a competing
+operation with the typed `busy` failure.
 
 Merman provides deterministic vendored text measurement by default. A preview host can set `MermanNativeEngineConfig.text_measure` to measure with its actual display font stack. The callback is synchronous; return `handled = 0` when a request cannot be answered faithfully and Merman will fall back for that request. A callback must not unwind, throw, propagate SEH, call `longjmp`, or otherwise cross the ABI through a non-local exit; catch host-language failures and return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`. The operation/result-kind and request vocabulary contracts are generated in [`include/merman_text_measurement_abi.h`](include/merman_text_measurement_abi.h).
 

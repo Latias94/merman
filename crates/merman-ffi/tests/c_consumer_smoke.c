@@ -288,6 +288,20 @@ int merman_c_consumer_smoke(
     memset(&config, 0, sizeof(config));
     config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineConfig);
     config.options_json = borrowed_slice(NULL, 0);
+    engine = UINT64_C(42);
+    result = empty_result();
+    status = api.engine_new(&config, &engine, &result);
+    if (
+        status != MERMAN_NATIVE_STATUS_INVALID_ARGUMENT ||
+        result.status != MERMAN_NATIVE_STATUS_INVALID_ARGUMENT ||
+        engine != UINT64_C(42)
+    ) {
+        api.result_free(&result);
+        return 34;
+    }
+    api.result_free(&result);
+
+    engine = 0;
     result = empty_result();
     status = api.engine_new(&config, &engine, &result);
     if (
@@ -380,6 +394,25 @@ int merman_c_consumer_smoke(
         api.result_free(&result);
         api.engine_try_close(engine);
         return 6;
+    }
+    api.result_free(&result);
+
+    request.operation = MERMAN_NATIVE_OPERATION_NONE;
+    result = empty_result();
+    status = api.execute_collect(engine, &request, &result);
+    if (
+        status != MERMAN_NATIVE_STATUS_INVALID_ARGUMENT ||
+        result.status != MERMAN_NATIVE_STATUS_INVALID_ARGUMENT ||
+        result.operation != MERMAN_NATIVE_OPERATION_NONE ||
+        !bytes_contain(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+            "\"kind\":\"" MERMAN_NATIVE_ERROR_KIND_GENERIC "\""
+        )
+    ) {
+        api.result_free(&result);
+        api.engine_try_close(engine);
+        return 61;
     }
     api.result_free(&result);
 
