@@ -167,6 +167,53 @@ fn transaction_plan_sorts_artifacts_and_keeps_document_last() {
     );
     assert_eq!(plan.entries()[0].target(), &targets.artifact_a);
     assert_eq!(plan.entries()[1].target(), &targets.artifact_z);
+    assert_eq!(plan.target_indices.len(), plan.entries().len());
+    assert_eq!(plan.target_indices.get(&targets.artifact_a), Some(&0));
+    assert_eq!(plan.target_indices.get(&targets.artifact_z), Some(&1));
+    assert_eq!(plan.target_indices.get(&targets.manifest), Some(&2));
+    assert_eq!(plan.target_indices.get(&targets.document), Some(&3));
+}
+
+#[test]
+fn transaction_plan_indexes_every_target_across_representative_cardinalities() {
+    let temp = tempfile::tempdir().unwrap();
+    for artifact_count in [0, 1, 16, 64, 256] {
+        let mut entries = (0..artifact_count)
+            .map(|index| {
+                let target = relative(temp.path(), &format!("artifact-{index:03}.svg"));
+                if index % 2 == 0 {
+                    TransactionEntryPlan::write(TransactionRole::Artifact, target)
+                } else {
+                    TransactionEntryPlan::delete_artifact(target)
+                }
+            })
+            .collect::<Vec<_>>();
+        entries.push(TransactionEntryPlan::write(
+            TransactionRole::Manifest,
+            relative(temp.path(), ".merman-manifest.json"),
+        ));
+
+        let plan = TransactionPlan::new(entries).unwrap();
+        assert_eq!(plan.entries().len(), artifact_count + 1);
+        assert_eq!(plan.target_indices.len(), plan.entries().len());
+        for (index, entry) in plan.entries().iter().enumerate() {
+            assert_eq!(plan.target_indices.get(entry.target()), Some(&index));
+        }
+    }
+}
+
+#[test]
+fn transaction_plan_rejects_duplicate_targets_before_building_the_index() {
+    let temp = tempfile::tempdir().unwrap();
+    let artifact = relative(temp.path(), "duplicate.svg");
+    let error = TransactionPlan::new([
+        TransactionEntryPlan::write(TransactionRole::Artifact, artifact.clone()),
+        TransactionEntryPlan::write(TransactionRole::Artifact, artifact),
+    ])
+    .unwrap_err();
+
+    assert!(matches!(&error, TransactionError::InvalidState { .. }));
+    assert!(error.to_string().contains("duplicate targets"));
 }
 
 #[test]
@@ -719,6 +766,30 @@ fn independent_stage_slots_are_send_and_write_without_a_shared_mutex() {
     staging.ready().unwrap().commit().unwrap();
     assert_eq!(read(temp.path().join("a.svg")), b"new-a");
     assert_eq!(read(temp.path().join("document.md")), b"new-document");
+}
+
+#[test]
+fn stage_slot_rejects_targets_outside_the_plan() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let unknown = relative(temp.path(), "unknown.svg");
+    let mut staging = LockedRecoveredRoot::acquire(temp.path())
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )])
+            .unwrap(),
+        )
+        .unwrap();
+
+    let error = staging.stage_slot(&unknown).err().unwrap();
+    assert!(matches!(&error, TransactionError::InvalidState { .. }));
+    assert!(error.to_string().contains("outside the transaction plan"));
+
+    staging.stage_bytes(&manifest, b"new").unwrap();
+    staging.ready().unwrap().commit().unwrap();
 }
 
 #[test]
