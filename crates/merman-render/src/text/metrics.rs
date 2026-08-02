@@ -118,54 +118,300 @@ fn measure_inline_runs_width_px(
         .sum()
 }
 
-fn append_inline_runs(target: &mut Vec<InlineTextRun>, source: &[InlineTextRun]) {
-    for run in source.iter().filter(|run| !run.text.is_empty()) {
-        if let Some(last) = target.last_mut().filter(|last| {
-            last.bold == run.bold && last.italic == run.italic && last.code == run.code
-        }) {
-            last.text.push_str(&run.text);
-        } else {
-            target.push(run.clone());
+#[derive(Debug, Clone, Copy)]
+struct InlineRunFragment {
+    run_index: usize,
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InlineBreakSegment {
+    fragment_start: usize,
+    fragment_end: usize,
+}
+
+#[derive(Debug, Default)]
+struct InlineHtmlPlanningStats {
+    #[cfg(test)]
+    source_bytes: usize,
+    #[cfg(test)]
+    run_visits: usize,
+    #[cfg(test)]
+    break_segments: usize,
+    #[cfg(test)]
+    fragment_refs: usize,
+    #[cfg(test)]
+    fragment_capacity_refs: usize,
+    #[cfg(test)]
+    fragment_copies: usize,
+    #[cfg(test)]
+    line_plan_updates: usize,
+    #[cfg(test)]
+    line_plan_bytes: usize,
+    #[cfg(test)]
+    merged_scratch_bytes: usize,
+    #[cfg(test)]
+    callback_requests: usize,
+    #[cfg(test)]
+    callback_bytes: usize,
+}
+
+impl InlineHtmlPlanningStats {
+    fn record_source(&mut self, bytes: usize, runs: usize) {
+        #[cfg(test)]
+        {
+            self.source_bytes += bytes;
+            // One pass computes the exact concatenation capacity; the second fills it.
+            self.run_visits += runs.saturating_mul(2);
         }
+        #[cfg(not(test))]
+        let _ = (bytes, runs);
+    }
+
+    fn record_indexed_run(&mut self) {
+        #[cfg(test)]
+        {
+            self.run_visits += 1;
+        }
+    }
+
+    fn record_segment(&mut self) {
+        #[cfg(test)]
+        {
+            self.break_segments += 1;
+        }
+    }
+
+    fn record_fragment(&mut self) {
+        #[cfg(test)]
+        {
+            self.fragment_refs += 1;
+        }
+    }
+
+    fn record_fragment_capacity(&mut self, capacity: usize) {
+        #[cfg(test)]
+        {
+            self.fragment_capacity_refs += capacity;
+        }
+        #[cfg(not(test))]
+        let _ = capacity;
+    }
+
+    fn record_line_plan(&mut self) {
+        #[cfg(test)]
+        {
+            self.line_plan_bytes += std::mem::size_of::<InlineLinePlan>();
+        }
+    }
+
+    fn record_line_plan_update(&mut self) {
+        #[cfg(test)]
+        {
+            self.line_plan_updates += 1;
+        }
+    }
+
+    fn record_merged_scratch(&mut self, bytes: usize) {
+        #[cfg(test)]
+        {
+            self.merged_scratch_bytes = self.merged_scratch_bytes.max(bytes);
+        }
+        #[cfg(not(test))]
+        let _ = bytes;
+    }
+
+    fn record_callback(&mut self, bytes: usize) {
+        #[cfg(test)]
+        {
+            self.callback_requests += 1;
+            self.callback_bytes += bytes;
+        }
+        #[cfg(not(test))]
+        let _ = bytes;
+    }
+
+    #[cfg(test)]
+    fn logical_temporary_bytes(&self) -> usize {
+        self.source_bytes
+            + self.break_segments * std::mem::size_of::<&str>()
+            + self.fragment_capacity_refs * std::mem::size_of::<InlineRunFragment>()
+            + self.break_segments * std::mem::size_of::<InlineBreakSegment>()
+            + self.line_plan_bytes
+            + self.merged_scratch_bytes
     }
 }
 
-fn split_inline_runs_at_html_breaks(runs: &[InlineTextRun]) -> Vec<Vec<InlineTextRun>> {
-    let text = runs.iter().map(|run| run.text.as_str()).collect::<String>();
-    if text.is_empty() {
-        return vec![Vec::new()];
+#[derive(Debug)]
+struct InlineBreakPlan {
+    fragments: Vec<InlineRunFragment>,
+    segments: Vec<InlineBreakSegment>,
+}
+
+fn index_inline_run_breaks(
+    runs: &[InlineTextRun],
+    stats: &mut InlineHtmlPlanningStats,
+) -> InlineBreakPlan {
+    let source_bytes = runs.iter().map(|run| run.text.len()).sum();
+    stats.record_source(source_bytes, runs.len());
+    if source_bytes == 0 {
+        stats.record_segment();
+        return InlineBreakPlan {
+            fragments: Vec::new(),
+            segments: vec![InlineBreakSegment {
+                fragment_start: 0,
+                fragment_end: 0,
+            }],
+        };
     }
 
-    let mut segments = Vec::new();
-    let mut segment_start = 0usize;
-    for segment in html_break_spaces_segments(&text) {
-        let segment_end = segment_start + segment.len();
-        let mut segment_runs = Vec::new();
-        let mut run_start = 0usize;
+    // Unicode line breaking needs the logical text as one string. Build it once, then advance a
+    // single run cursor across the resulting byte offsets. A run is never restarted for each
+    // segment, and segment text is never copied into owned run objects.
+    let mut text = String::with_capacity(source_bytes);
+    for run in runs {
+        text.push_str(&run.text);
+    }
+    let break_segments = html_break_spaces_segments(&text);
 
-        for run in runs {
+    let fragment_capacity = runs
+        .len()
+        .saturating_add(break_segments.len().saturating_sub(1));
+    stats.record_fragment_capacity(fragment_capacity);
+    let mut fragments = Vec::with_capacity(fragment_capacity);
+    let mut segments = Vec::with_capacity(break_segments.len());
+    let mut segment_start = 0usize;
+    let mut run_index = 0usize;
+    let mut run_start = 0usize;
+
+    for break_segment in break_segments {
+        let segment_end = segment_start + break_segment.len();
+        let fragment_start = fragments.len();
+        while run_index < runs.len() && run_start < segment_end {
+            let run = &runs[run_index];
             let run_end = run_start + run.text.len();
+            stats.record_indexed_run();
+            if run_end <= segment_start {
+                run_start = run_end;
+                run_index += 1;
+                continue;
+            }
+
             let overlap_start = segment_start.max(run_start);
             let overlap_end = segment_end.min(run_end);
             if overlap_start < overlap_end {
-                let fragment = &run.text[overlap_start - run_start..overlap_end - run_start];
-                append_inline_runs(
-                    &mut segment_runs,
-                    &[InlineTextRun {
-                        text: fragment.to_string(),
-                        bold: run.bold,
-                        italic: run.italic,
-                        code: run.code,
-                    }],
-                );
+                fragments.push(InlineRunFragment {
+                    run_index,
+                    start: overlap_start - run_start,
+                    end: overlap_end - run_start,
+                });
+                stats.record_fragment();
             }
-            run_start = run_end;
-        }
 
-        segments.push(segment_runs);
+            if run_end <= segment_end {
+                run_start = run_end;
+                run_index += 1;
+            } else {
+                break;
+            }
+        }
+        segments.push(InlineBreakSegment {
+            fragment_start,
+            fragment_end: fragments.len(),
+        });
+        stats.record_segment();
         segment_start = segment_end;
     }
-    segments
+
+    InlineBreakPlan {
+        fragments,
+        segments,
+    }
+}
+
+fn same_inline_style(left: &InlineTextRun, right: &InlineTextRun) -> bool {
+    left.bold == right.bold && left.italic == right.italic && left.code == right.code
+}
+
+fn measure_inline_fragments_width_px(
+    measurer: &dyn TextMeasurer,
+    runs: &[InlineTextRun],
+    fragments: &[InlineRunFragment],
+    style: &TextStyle,
+    scratch: &mut String,
+    stats: &mut InlineHtmlPlanningStats,
+) -> f64 {
+    // Keep every request observable. `TextMeasurer` may route to a stateful or fallible host, so
+    // this shared planner cannot reuse widths without an operation-owned built-in profile token.
+    let mut width = 0.0;
+    let mut index = 0usize;
+    while index < fragments.len() {
+        let first = fragments[index];
+        let first_run = &runs[first.run_index];
+        let mut end = index + 1;
+        while end < fragments.len() && same_inline_style(first_run, &runs[fragments[end].run_index])
+        {
+            end += 1;
+        }
+
+        let text = if end == index + 1 {
+            &first_run.text[first.start..first.end]
+        } else if fragments[index..end]
+            .windows(2)
+            .all(|pair| pair[0].run_index == pair[1].run_index && pair[0].end == pair[1].start)
+        {
+            let last = fragments[end - 1];
+            &first_run.text[first.start..last.end]
+        } else {
+            scratch.clear();
+            for fragment in &fragments[index..end] {
+                scratch.push_str(&runs[fragment.run_index].text[fragment.start..fragment.end]);
+            }
+            stats.record_merged_scratch(scratch.len());
+            scratch.as_str()
+        };
+        let run_style = inline_text_style(style, first_run.bold, first_run.italic, first_run.code);
+        stats.record_callback(text.len());
+        width += measure_inline_run_width_px(measurer, text, &run_style, WrapMode::HtmlLike, false);
+        index = end;
+    }
+    width
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct InlineLinePlan {
+    fragment_start: usize,
+    fragment_end: usize,
+}
+
+impl InlineLinePlan {
+    fn from_segment(segment: InlineBreakSegment) -> Self {
+        Self {
+            fragment_start: segment.fragment_start,
+            fragment_end: segment.fragment_end,
+        }
+    }
+
+    fn is_empty(self) -> bool {
+        self.fragment_start == self.fragment_end
+    }
+
+    fn fragments<'a>(self, fragments: &'a [InlineRunFragment]) -> &'a [InlineRunFragment] {
+        &fragments[self.fragment_start..self.fragment_end]
+    }
+
+    fn append(&mut self, segment: InlineBreakSegment, stats: &mut InlineHtmlPlanningStats) -> Self {
+        let checkpoint = *self;
+        if self.is_empty() {
+            *self = Self::from_segment(segment);
+        } else {
+            debug_assert_eq!(self.fragment_end, segment.fragment_start);
+            self.fragment_end = segment.fragment_end;
+        }
+        stats.record_line_plan_update();
+        checkpoint
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -182,13 +428,40 @@ fn measure_inline_html_line_layout(
     style: &TextStyle,
     max_width: Option<f64>,
 ) -> InlineHtmlLineLayout {
-    let natural_width =
-        measure_inline_runs_width_px(measurer, runs, style, WrapMode::HtmlLike, false);
-    let segments = split_inline_runs_at_html_breaks(runs);
-    let min_content_width = segments
+    let mut stats = InlineHtmlPlanningStats::default();
+    measure_inline_html_line_layout_with_stats(measurer, runs, style, max_width, &mut stats)
+}
+
+fn measure_inline_html_line_layout_with_stats(
+    measurer: &dyn TextMeasurer,
+    runs: &[InlineTextRun],
+    style: &TextStyle,
+    max_width: Option<f64>,
+    stats: &mut InlineHtmlPlanningStats,
+) -> InlineHtmlLineLayout {
+    let mut scratch = String::new();
+    let natural_width = runs
+        .iter()
+        .filter(|run| !run.text.is_empty())
+        .map(|run| {
+            let run_style = inline_text_style(style, run.bold, run.italic, run.code);
+            stats.record_callback(run.text.len());
+            measure_inline_run_width_px(measurer, &run.text, &run_style, WrapMode::HtmlLike, false)
+        })
+        .sum();
+    let breaks = index_inline_run_breaks(runs, stats);
+    let min_content_width = breaks
+        .segments
         .iter()
         .map(|segment| {
-            measure_inline_runs_width_px(measurer, segment, style, WrapMode::HtmlLike, false)
+            measure_inline_fragments_width_px(
+                measurer,
+                runs,
+                &breaks.fragments[segment.fragment_start..segment.fragment_end],
+                style,
+                &mut scratch,
+                stats,
+            )
         })
         .fold(0.0_f64, f64::max);
 
@@ -209,37 +482,48 @@ fn measure_inline_html_line_layout(
         };
     }
 
-    let mut current = Vec::new();
+    // A candidate line is always one contiguous range in the indexed fragment table. Appending
+    // and rolling back therefore update two offsets instead of copying a growing fragment vector.
+    let mut current = InlineLinePlan::default();
+    stats.record_line_plan();
     let mut wrapped_width = 0.0_f64;
     let mut line_count = 0usize;
-    for segment in segments {
-        let mut candidate = current.clone();
-        append_inline_runs(&mut candidate, &segment);
-        let candidate_width =
-            measure_inline_runs_width_px(measurer, &candidate, style, WrapMode::HtmlLike, false);
-        if current.is_empty() || candidate_width <= max_width {
-            current = candidate;
+    for segment in breaks.segments.iter().copied() {
+        let checkpoint = current.append(segment, stats);
+        let candidate_width = measure_inline_fragments_width_px(
+            measurer,
+            runs,
+            current.fragments(&breaks.fragments),
+            style,
+            &mut scratch,
+            stats,
+        );
+        if checkpoint.is_empty() || candidate_width <= max_width {
             continue;
         }
 
-        wrapped_width = wrapped_width.max(measure_inline_runs_width_px(
+        current = checkpoint;
+        wrapped_width = wrapped_width.max(measure_inline_fragments_width_px(
             measurer,
-            &current,
+            runs,
+            current.fragments(&breaks.fragments),
             style,
-            WrapMode::HtmlLike,
-            false,
+            &mut scratch,
+            stats,
         ));
         line_count += 1;
-        current = segment;
+        current = InlineLinePlan::from_segment(segment);
+        stats.record_line_plan_update();
     }
 
     if !current.is_empty() {
-        wrapped_width = wrapped_width.max(measure_inline_runs_width_px(
+        wrapped_width = wrapped_width.max(measure_inline_fragments_width_px(
             measurer,
-            &current,
+            runs,
+            current.fragments(&breaks.fragments),
             style,
-            WrapMode::HtmlLike,
-            false,
+            &mut scratch,
+            stats,
         ));
         line_count += 1;
     }
@@ -273,6 +557,276 @@ fn measure_inline_html_layout(
     }
     layout.line_count = layout.line_count.max(1);
     layout
+}
+
+#[cfg(test)]
+mod inline_planning_tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    #[derive(Default)]
+    struct RecordingMeasurer {
+        calls: RefCell<Vec<(String, Option<String>, Option<String>, Option<String>)>>,
+    }
+
+    impl TextMeasurer for RecordingMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            _max_width: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            self.calls.borrow_mut().push((
+                text.to_string(),
+                style.font_weight.clone(),
+                style.font_style.clone(),
+                style.font_family.clone(),
+            ));
+            TextMetrics {
+                width: text.len() as f64,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+
+    fn run(text: impl Into<String>, variant: usize) -> InlineTextRun {
+        InlineTextRun {
+            text: text.into(),
+            bold: variant == 1,
+            italic: variant == 2,
+            code: variant == 3,
+        }
+    }
+
+    fn fixed_byte_runs(
+        source_bytes: usize,
+        run_count: usize,
+        break_count: usize,
+    ) -> Vec<InlineTextRun> {
+        assert!(source_bytes > 0);
+        assert!((1..=source_bytes).contains(&run_count));
+        assert!(break_count < source_bytes);
+
+        let mut text = vec![b'a'; source_bytes];
+        for index in 0..break_count {
+            let offset = (index + 1) * source_bytes / (break_count + 1);
+            text[offset] = b' ';
+        }
+
+        let mut runs = Vec::with_capacity(run_count);
+        let mut start = 0usize;
+        for index in 0..run_count {
+            let end = (index + 1) * source_bytes / run_count;
+            runs.push(run(
+                String::from_utf8(text[start..end].to_vec()).expect("ASCII workload"),
+                index % 4,
+            ));
+            start = end;
+        }
+        runs
+    }
+
+    fn fragment_text(runs: &[InlineTextRun], fragments: &[InlineRunFragment]) -> String {
+        let mut text = String::new();
+        for fragment in fragments {
+            text.push_str(&runs[fragment.run_index].text[fragment.start..fragment.end]);
+        }
+        text
+    }
+
+    #[test]
+    fn indexed_break_walk_preserves_unicode_and_cross_run_fragments() {
+        let runs = vec![
+            run("A\u{301} ", 0),
+            run("👩‍💻 ", 1),
+            run("مرحبا ", 2),
+            run("世界", 3),
+        ];
+        let expected_text = runs.iter().map(|run| run.text.as_str()).collect::<String>();
+        let expected_segments = html_break_spaces_segments(&expected_text);
+        let mut stats = InlineHtmlPlanningStats::default();
+        let plan = index_inline_run_breaks(&runs, &mut stats);
+        let actual_segments = plan
+            .segments
+            .iter()
+            .map(|segment| {
+                fragment_text(
+                    &runs,
+                    &plan.fragments[segment.fragment_start..segment.fragment_end],
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual_segments,
+            expected_segments
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(stats.source_bytes, expected_text.len());
+        assert_eq!(stats.break_segments, actual_segments.len());
+        assert!(stats.fragment_refs <= runs.len() + actual_segments.len() - 1);
+        assert_eq!(stats.run_visits, runs.len() * 2 + stats.fragment_refs);
+    }
+
+    #[test]
+    fn opaque_measurer_observes_the_legacy_request_order() {
+        let measurer = RecordingMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+        let runs = vec![run("aa ", 0), run("BB", 1), run(" cc", 0)];
+        let mut stats = InlineHtmlPlanningStats::default();
+
+        let layout = measure_inline_html_line_layout_with_stats(
+            &measurer,
+            &runs,
+            &style,
+            Some(4.0),
+            &mut stats,
+        );
+
+        let calls = measurer.calls.into_inner();
+        let regular = |text: &str| (text.to_string(), None, None, Some("sans-serif".to_string()));
+        let bold = |text: &str| {
+            (
+                text.to_string(),
+                Some("700".to_string()),
+                None,
+                Some("sans-serif".to_string()),
+            )
+        };
+        assert_eq!(
+            calls,
+            vec![
+                regular("aa "),
+                bold("BB"),
+                regular(" cc"),
+                regular("aa "),
+                bold("BB"),
+                regular(" "),
+                regular("cc"),
+                regular("aa "),
+                regular("aa "),
+                bold("BB"),
+                regular(" "),
+                regular("aa "),
+                bold("BB"),
+                regular(" cc"),
+                bold("BB"),
+                regular(" "),
+                regular("cc"),
+            ]
+        );
+        assert_eq!(layout.line_count, 3);
+        assert_eq!(layout.natural_width, 8.0);
+        assert_eq!(layout.min_content_width, 3.0);
+        assert_eq!(layout.wrapped_width, 3.0);
+        assert_eq!(stats.callback_requests, calls.len());
+        assert_eq!(
+            stats.callback_bytes,
+            calls.iter().map(|(text, ..)| text.len()).sum::<usize>()
+        );
+    }
+
+    #[test]
+    fn rich_html_path_handles_many_styles_breaks_entities_and_unicode() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+        let mut html = String::new();
+        for index in 0..1024 {
+            let (open, close) = match index % 3 {
+                0 => ("<strong>", "</strong>"),
+                1 => ("<em>", "</em>"),
+                _ => ("<code>", "</code>"),
+            };
+            html.push_str(open);
+            html.push_str("a ");
+            html.push_str(close);
+        }
+        html.push_str("&amp;\r\n<br>👩‍💻 مرحبا 世界");
+
+        let metrics = measure_html_with_inline_styles(
+            &measurer,
+            &html,
+            &style,
+            Some(96.0),
+            WrapMode::HtmlLike,
+        );
+
+        assert!(metrics.width.is_finite() && metrics.width > 0.0);
+        assert!(metrics.height.is_finite() && metrics.height > 0.0);
+        assert!(metrics.line_count > 2);
+    }
+
+    #[test]
+    fn inline_planner_work_is_additive_for_fixed_byte_r_by_k_matrix() {
+        const SOURCE_BYTES: usize = 4096;
+        let style = TextStyle {
+            font_family: Some("sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+
+        for run_count in [1, 32, 256] {
+            for break_count in [0, 31, 255] {
+                let runs = fixed_byte_runs(SOURCE_BYTES, run_count, break_count);
+                let measurer = RecordingMeasurer::default();
+                let mut stats = InlineHtmlPlanningStats::default();
+                let _ = measure_inline_html_line_layout_with_stats(
+                    &measurer,
+                    &runs,
+                    &style,
+                    Some(32.0),
+                    &mut stats,
+                );
+
+                let segment_count = break_count + 1;
+                let fragment_bound = run_count + break_count;
+                assert_eq!(stats.source_bytes, SOURCE_BYTES);
+                assert_eq!(stats.break_segments, segment_count);
+                assert!(stats.fragment_refs <= fragment_bound);
+                assert_eq!(stats.fragment_capacity_refs, fragment_bound);
+                assert_eq!(stats.run_visits, run_count * 2 + stats.fragment_refs);
+                assert_eq!(stats.fragment_copies, 0);
+                assert!(stats.line_plan_updates <= segment_count * 2);
+                assert_eq!(stats.line_plan_bytes, std::mem::size_of::<InlineLinePlan>());
+
+                let temporary_byte_bound = SOURCE_BYTES
+                    + segment_count * std::mem::size_of::<&str>()
+                    + fragment_bound * std::mem::size_of::<InlineRunFragment>()
+                    + segment_count * std::mem::size_of::<InlineBreakSegment>()
+                    + std::mem::size_of::<InlineLinePlan>();
+                assert!(stats.logical_temporary_bytes() <= temporary_byte_bound);
+                assert_eq!(stats.callback_requests, measurer.calls.borrow().len());
+                assert_eq!(
+                    stats.callback_bytes,
+                    measurer
+                        .calls
+                        .borrow()
+                        .iter()
+                        .map(|(text, ..)| text.len())
+                        .sum::<usize>()
+                );
+            }
+        }
+    }
 }
 
 pub fn measure_html_with_inline_styles(
