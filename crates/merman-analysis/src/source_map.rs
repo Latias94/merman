@@ -95,12 +95,359 @@ pub enum SourceMapError {
 #[derive(Debug, Clone)]
 pub struct SourceMap {
     source: SharedTextSlice,
-    line_starts: Arc<[usize]>,
+    line_index: Arc<LineIndex>,
     line_metrics: Arc<Mutex<LineMetricCache>>,
 }
 
 /// Per-source allowance charged for lazily materialized UTF-16 line metrics.
 pub(crate) const SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES: usize = 256 * 1024;
+const LINE_INDEX_CHECKPOINT_BYTES: usize = 4 * 1024;
+const BITMAP_WORD_BITS: usize = u64::BITS as usize;
+const BITMAP_RANK_WORDS: usize = 8;
+const LINE_INDEX_BOX_ALLOCATION_OVERHEAD: usize = 2 * size_of::<usize>();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LineIndexRepresentation {
+    Offsets32,
+    OffsetsWide,
+    Bitmap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LineIndexBuildPass {
+    Count,
+    Fill,
+}
+
+#[derive(Debug)]
+enum LineIndex {
+    Offsets32(Box<[u32]>),
+    OffsetsWide(Box<[usize]>),
+    Bitmap(BitmapLineIndex),
+}
+
+#[derive(Debug)]
+struct BitmapLineIndex {
+    bits: Box<[u64]>,
+    block_ranks: Box<[usize]>,
+    line_count: usize,
+}
+
+impl LineIndex {
+    fn build(source: &str) -> Self {
+        Self::build_with_checkpoint(source, |_, _| Ok::<_, std::convert::Infallible>(()))
+            .expect("infallible line-index scan")
+    }
+
+    fn build_cancellable(
+        source: &str,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Self, crate::AnalysisCancelled> {
+        Self::build_with_checkpoint(source, |_, _| cancellation.checkpoint())
+    }
+
+    fn build_with_checkpoint<E>(
+        source: &str,
+        mut checkpoint: impl FnMut(LineIndexBuildPass, usize) -> Result<(), E>,
+    ) -> Result<Self, E> {
+        let mut line_count = 0usize;
+        scan_line_starts(
+            source,
+            |offset| checkpoint(LineIndexBuildPass::Count, offset),
+            |_| {
+                line_count = line_count
+                    .checked_add(1)
+                    .expect("source line count must fit usize");
+            },
+        )?;
+
+        let representation = select_line_index_representation(source.len(), line_count);
+        Self::fill_with_checkpoint(source, representation, line_count, |offset| {
+            checkpoint(LineIndexBuildPass::Fill, offset)
+        })
+    }
+
+    fn fill_with_checkpoint<E>(
+        source: &str,
+        representation: LineIndexRepresentation,
+        line_count: usize,
+        mut checkpoint: impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<Self, E> {
+        let mut builder = LineIndexBuilder::new(representation, source.len(), line_count);
+        let mut filled = 0usize;
+        scan_line_starts(source, &mut checkpoint, |start| {
+            builder.push(filled, start);
+            filled += 1;
+        })?;
+        assert_eq!(
+            filled, line_count,
+            "line-index count and fill passes diverged"
+        );
+        builder.finish(line_count, source.len(), checkpoint)
+    }
+
+    fn line_count(&self) -> usize {
+        match self {
+            Self::Offsets32(starts) => starts.len(),
+            Self::OffsetsWide(starts) => starts.len(),
+            Self::Bitmap(index) => index.line_count,
+        }
+    }
+
+    fn line_start(&self, line_index: usize) -> Option<usize> {
+        match self {
+            Self::Offsets32(starts) => starts.get(line_index).map(|&start| start as usize),
+            Self::OffsetsWide(starts) => starts.get(line_index).copied(),
+            Self::Bitmap(index) => index.line_start(line_index),
+        }
+    }
+
+    fn line_index_for_offset(&self, offset: usize) -> usize {
+        match self {
+            Self::Offsets32(starts) => {
+                let offset = u32::try_from(offset)
+                    .expect("32-bit line index cannot represent an out-of-range source offset");
+                match starts.binary_search(&offset) {
+                    Ok(index) => index,
+                    Err(0) => 0,
+                    Err(index) => index - 1,
+                }
+            }
+            Self::OffsetsWide(starts) => match starts.binary_search(&offset) {
+                Ok(index) => index,
+                Err(0) => 0,
+                Err(index) => index - 1,
+            },
+            Self::Bitmap(index) => index.line_index_for_offset(offset),
+        }
+    }
+
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::new(size_of::<Self>());
+        match self {
+            Self::Offsets32(starts) => {
+                weight.add(LINE_INDEX_BOX_ALLOCATION_OVERHEAD);
+                weight.add_array::<u32>(starts.len());
+            }
+            Self::OffsetsWide(starts) => {
+                weight.add(LINE_INDEX_BOX_ALLOCATION_OVERHEAD);
+                weight.add_array::<usize>(starts.len());
+            }
+            Self::Bitmap(index) => {
+                weight.add(LINE_INDEX_BOX_ALLOCATION_OVERHEAD.saturating_mul(2));
+                weight.add_array::<u64>(index.bits.len());
+                weight.add_array::<usize>(index.block_ranks.len());
+            }
+        }
+        weight.finish()
+    }
+
+    #[cfg(test)]
+    fn representation(&self) -> LineIndexRepresentation {
+        match self {
+            Self::Offsets32(_) => LineIndexRepresentation::Offsets32,
+            Self::OffsetsWide(_) => LineIndexRepresentation::OffsetsWide,
+            Self::Bitmap(_) => LineIndexRepresentation::Bitmap,
+        }
+    }
+
+    #[cfg(test)]
+    fn build_forced(source: &str, representation: LineIndexRepresentation) -> Self {
+        if representation == LineIndexRepresentation::Offsets32 {
+            assert!(source.len() <= u32::MAX as usize);
+        }
+        let mut line_count = 0usize;
+        scan_line_starts(
+            source,
+            |_| Ok::<_, std::convert::Infallible>(()),
+            |_| line_count += 1,
+        )
+        .expect("infallible forced line-index count");
+        Self::fill_with_checkpoint(source, representation, line_count, |_| {
+            Ok::<_, std::convert::Infallible>(())
+        })
+        .expect("infallible forced line-index fill")
+    }
+}
+
+impl BitmapLineIndex {
+    fn line_start(&self, line_index: usize) -> Option<usize> {
+        if line_index >= self.line_count {
+            return None;
+        }
+
+        let block_index = self
+            .block_ranks
+            .partition_point(|&rank| rank <= line_index)
+            .saturating_sub(1);
+        let mut remaining = line_index - self.block_ranks[block_index];
+        let first_word = block_index * BITMAP_RANK_WORDS;
+        let end_word = (first_word + BITMAP_RANK_WORDS).min(self.bits.len());
+        for word_index in first_word..end_word {
+            let word = self.bits[word_index];
+            let set_bits = word.count_ones() as usize;
+            if remaining < set_bits {
+                return Some(
+                    word_index * BITMAP_WORD_BITS + select_set_bit(word, remaining) as usize,
+                );
+            }
+            remaining -= set_bits;
+        }
+        unreachable!("bitmap rank metadata must locate every retained line start")
+    }
+
+    fn line_index_for_offset(&self, offset: usize) -> usize {
+        let word_index = offset / BITMAP_WORD_BITS;
+        let block_index = word_index / BITMAP_RANK_WORDS;
+        let first_word = block_index * BITMAP_RANK_WORDS;
+        let mut rank = self.block_ranks[block_index];
+        for word in &self.bits[first_word..word_index] {
+            rank += word.count_ones() as usize;
+        }
+        let bit_index = offset % BITMAP_WORD_BITS;
+        let mask = if bit_index == BITMAP_WORD_BITS - 1 {
+            u64::MAX
+        } else {
+            (1u64 << (bit_index + 1)) - 1
+        };
+        rank += (self.bits[word_index] & mask).count_ones() as usize;
+        rank.checked_sub(1)
+            .expect("every source line index must retain the initial zero offset")
+    }
+}
+
+enum LineIndexBuilder {
+    Offsets32(Box<[u32]>),
+    OffsetsWide(Box<[usize]>),
+    Bitmap {
+        bits: Box<[u64]>,
+        block_ranks: Box<[usize]>,
+    },
+}
+
+impl LineIndexBuilder {
+    fn new(representation: LineIndexRepresentation, source_len: usize, line_count: usize) -> Self {
+        match representation {
+            LineIndexRepresentation::Offsets32 => {
+                Self::Offsets32(vec![0; line_count].into_boxed_slice())
+            }
+            LineIndexRepresentation::OffsetsWide => {
+                Self::OffsetsWide(vec![0; line_count].into_boxed_slice())
+            }
+            LineIndexRepresentation::Bitmap => {
+                let word_count = bitmap_word_count(source_len);
+                let block_count = word_count.div_ceil(BITMAP_RANK_WORDS);
+                Self::Bitmap {
+                    bits: vec![0; word_count].into_boxed_slice(),
+                    block_ranks: vec![0; block_count + 1].into_boxed_slice(),
+                }
+            }
+        }
+    }
+
+    fn push(&mut self, line_index: usize, start: usize) {
+        match self {
+            Self::Offsets32(starts) => {
+                starts[line_index] = u32::try_from(start)
+                    .expect("selected 32-bit line offsets must fit their representation");
+            }
+            Self::OffsetsWide(starts) => starts[line_index] = start,
+            Self::Bitmap { bits, .. } => {
+                bits[start / BITMAP_WORD_BITS] |= 1u64 << (start % BITMAP_WORD_BITS);
+            }
+        }
+    }
+
+    fn finish<E>(
+        mut self,
+        line_count: usize,
+        source_len: usize,
+        mut checkpoint: impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<LineIndex, E> {
+        match &mut self {
+            Self::Offsets32(_) | Self::OffsetsWide(_) => {}
+            Self::Bitmap { bits, block_ranks } => {
+                let mut rank = 0usize;
+                for block_index in 0..block_ranks.len() - 1 {
+                    if block_index
+                        % (LINE_INDEX_CHECKPOINT_BYTES / (BITMAP_RANK_WORDS * size_of::<u64>()))
+                        == 0
+                    {
+                        checkpoint(
+                            (block_index * BITMAP_RANK_WORDS * size_of::<u64>()).min(source_len),
+                        )?;
+                    }
+                    let first_word = block_index * BITMAP_RANK_WORDS;
+                    let end_word = (first_word + BITMAP_RANK_WORDS).min(bits.len());
+                    rank += bits[first_word..end_word]
+                        .iter()
+                        .map(|word| word.count_ones() as usize)
+                        .sum::<usize>();
+                    block_ranks[block_index + 1] = rank;
+                }
+                checkpoint(source_len)?;
+                assert_eq!(rank, line_count, "bitmap rank metadata lost line starts");
+            }
+        }
+
+        Ok(match self {
+            Self::Offsets32(starts) => LineIndex::Offsets32(starts),
+            Self::OffsetsWide(starts) => LineIndex::OffsetsWide(starts),
+            Self::Bitmap { bits, block_ranks } => LineIndex::Bitmap(BitmapLineIndex {
+                bits,
+                block_ranks,
+                line_count,
+            }),
+        })
+    }
+}
+
+fn select_line_index_representation(
+    source_len: usize,
+    line_count: usize,
+) -> LineIndexRepresentation {
+    let bitmap_bytes = bitmap_index_storage_bytes(source_len);
+    let wide_bytes = LINE_INDEX_BOX_ALLOCATION_OVERHEAD
+        .saturating_add(line_count.saturating_mul(size_of::<usize>()));
+
+    if source_len <= u32::MAX as usize {
+        let offsets32_bytes = LINE_INDEX_BOX_ALLOCATION_OVERHEAD
+            .saturating_add(line_count.saturating_mul(size_of::<u32>()));
+        if offsets32_bytes <= bitmap_bytes && offsets32_bytes <= wide_bytes {
+            return LineIndexRepresentation::Offsets32;
+        }
+    }
+
+    if wide_bytes <= bitmap_bytes {
+        LineIndexRepresentation::OffsetsWide
+    } else {
+        LineIndexRepresentation::Bitmap
+    }
+}
+
+fn bitmap_word_count(source_len: usize) -> usize {
+    source_len / BITMAP_WORD_BITS + 1
+}
+
+fn bitmap_index_storage_bytes(source_len: usize) -> usize {
+    let word_count = bitmap_word_count(source_len);
+    let block_count = word_count.div_ceil(BITMAP_RANK_WORDS);
+    LINE_INDEX_BOX_ALLOCATION_OVERHEAD
+        .saturating_mul(2)
+        .saturating_add(word_count.saturating_mul(size_of::<u64>()))
+        .saturating_add((block_count + 1).saturating_mul(size_of::<usize>()))
+}
+
+fn select_set_bit(mut word: u64, mut index: usize) -> u32 {
+    loop {
+        let bit = word.trailing_zeros();
+        if index == 0 {
+            return bit;
+        }
+        word &= word - 1;
+        index -= 1;
+    }
+}
 
 impl SourceMap {
     pub fn new(source: impl Into<Arc<str>>) -> Self {
@@ -108,8 +455,8 @@ impl SourceMap {
     }
 
     pub(crate) fn from_shared_text(source: SharedTextSlice) -> Self {
-        let line_starts = line_starts(source.as_str());
-        Self::from_source_and_line_starts(source, line_starts)
+        let line_index = LineIndex::build(source.as_str());
+        Self::from_source_and_line_index(source, line_index)
     }
 
     pub(crate) fn new_cancellable(
@@ -123,15 +470,15 @@ impl SourceMap {
         source: SharedTextSlice,
         cancellation: &crate::AnalysisCancellationToken,
     ) -> Result<Self, crate::AnalysisCancelled> {
-        let line_starts = line_starts_cancellable(source.as_str(), cancellation)?;
+        let line_index = LineIndex::build_cancellable(source.as_str(), cancellation)?;
         cancellation.checkpoint()?;
-        Ok(Self::from_source_and_line_starts(source, line_starts))
+        Ok(Self::from_source_and_line_index(source, line_index))
     }
 
-    fn from_source_and_line_starts(source: SharedTextSlice, line_starts: Vec<usize>) -> Self {
+    fn from_source_and_line_index(source: SharedTextSlice, line_index: LineIndex) -> Self {
         Self {
             source,
-            line_starts: Arc::from(line_starts.into_boxed_slice()),
+            line_index: Arc::new(line_index),
             line_metrics: Arc::new(Mutex::new(LineMetricCache::new(
                 SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES,
             ))),
@@ -150,14 +497,20 @@ impl SourceMap {
         self.source.as_str().len()
     }
 
-    pub fn line_starts(&self) -> &[usize] {
-        &self.line_starts
+    /// Returns the number of logical source lines, including a trailing empty line.
+    pub fn line_count(&self) -> usize {
+        self.line_index.line_count()
+    }
+
+    /// Returns the byte offset at which the requested logical line starts.
+    pub fn line_start(&self, line_index: usize) -> Option<usize> {
+        self.line_index.line_start(line_index)
     }
 
     pub(crate) fn estimated_owned_heap_bytes_excluding_source(&self) -> usize {
         let mut weight = RetainedWeight::default();
         weight.add(ARC_ALLOCATION_OVERHEAD);
-        weight.add_array::<usize>(self.line_starts.len());
+        weight.add(self.line_index.estimated_owned_heap_bytes());
         weight.add(ARC_ALLOCATION_OVERHEAD);
         weight.add(size_of::<Mutex<LineMetricCache>>());
         weight.add(SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES);
@@ -229,12 +582,8 @@ impl SourceMap {
     }
 
     pub fn line_bounds(&self, line_index: usize) -> Option<(usize, usize)> {
-        let start = *self.line_starts.get(line_index)?;
-        let next_start = self
-            .line_starts
-            .get(line_index + 1)
-            .copied()
-            .unwrap_or(self.source_len());
+        let start = self.line_start(line_index)?;
+        let next_start = self.line_start(line_index + 1).unwrap_or(self.source_len());
         Some((
             start,
             line_content_end(self.source().as_bytes(), start, next_start),
@@ -260,11 +609,7 @@ impl SourceMap {
     }
 
     fn line_index_for_offset(&self, offset: usize) -> usize {
-        match self.line_starts.binary_search(&offset) {
-            Ok(index) => index,
-            Err(0) => 0,
-            Err(index) => index - 1,
-        }
+        self.line_index.line_index_for_offset(offset)
     }
 
     fn offset_metrics(&self, offset: usize) -> Result<OffsetMetrics, SourceMapError> {
@@ -367,18 +712,14 @@ impl SourceMap {
         mut checkpoint: impl FnMut() -> Result<(), E>,
     ) -> Result<Option<Arc<LineMetric>>, E> {
         checkpoint()?;
-        let Some(&start) = self.line_starts.get(line_index) else {
+        let Some(start) = self.line_start(line_index) else {
             return Ok(None);
         };
         if let Some(metric) = self.line_metric_cache().get(line_index) {
             return Ok(Some(metric));
         }
 
-        let next_start = self
-            .line_starts
-            .get(line_index + 1)
-            .copied()
-            .unwrap_or(self.source_len());
+        let next_start = self.line_start(line_index + 1).unwrap_or(self.source_len());
         let computed = Arc::new(line_metric_with_checkpoint(
             self.source(),
             start,
@@ -897,26 +1238,12 @@ fn byte_range_span_without_source_copy_with_checkpoint<E>(
     ))
 }
 
-fn line_starts(source: &str) -> Vec<usize> {
-    line_starts_with_checkpoint(source, |_| Ok::<_, std::convert::Infallible>(()))
-        .expect("infallible line-start scan")
-}
-
-fn line_starts_cancellable(
-    source: &str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<Vec<usize>, crate::AnalysisCancelled> {
-    line_starts_with_checkpoint(source, |_| {
-        cancellation.checkpoint()?;
-        Ok(())
-    })
-}
-
-fn line_starts_with_checkpoint<E>(
+fn scan_line_starts<E>(
     source: &str,
     mut checkpoint: impl FnMut(usize) -> Result<(), E>,
-) -> Result<Vec<usize>, E> {
-    let mut starts = vec![0];
+    mut visit: impl FnMut(usize),
+) -> Result<(), E> {
+    visit(0);
     let bytes = source.as_bytes();
     let mut idx = 0usize;
     let mut next_checkpoint = 0usize;
@@ -931,11 +1258,11 @@ fn line_starts_with_checkpoint<E>(
                 if bytes.get(idx) == Some(&b'\n') {
                     idx += 1;
                 }
-                starts.push(idx);
+                visit(idx);
             }
             b'\n' => {
                 idx += 1;
-                starts.push(idx);
+                visit(idx);
             }
             _ => {
                 idx += 1;
@@ -943,7 +1270,7 @@ fn line_starts_with_checkpoint<E>(
         }
     }
     checkpoint(idx)?;
-    Ok(starts)
+    Ok(())
 }
 
 fn line_metric_with_checkpoint<E>(
@@ -1020,6 +1347,241 @@ fn line_content_end(bytes: &[u8], start: usize, next_start: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn oracle_line_starts(source: &str) -> Vec<usize> {
+        let mut starts = vec![0];
+        let mut chars = source.char_indices().peekable();
+        while let Some((offset, ch)) = chars.next() {
+            match ch {
+                '\r' => {
+                    let mut next_start = offset + 1;
+                    if chars.peek().is_some_and(|(_, ch)| *ch == '\n') {
+                        let (line_feed, _) = chars.next().expect("peeked line feed");
+                        next_start = line_feed + 1;
+                    }
+                    starts.push(next_start);
+                }
+                '\n' => starts.push(offset + 1),
+                _ => {}
+            }
+        }
+        starts
+    }
+
+    #[test]
+    fn shared_text_slice_preserves_range_and_source_identity_without_copying() {
+        let source = Arc::<str>::from("prefix 🤓 suffix");
+        let start = source.find('🤓').unwrap();
+        let end = start + '🤓'.len_utf8();
+        let slice = SharedTextSlice::from_range(Arc::clone(&source), start, end).unwrap();
+        let whole = SharedTextSlice::whole(Arc::clone(&source));
+
+        assert_eq!(slice.as_str(), "🤓");
+        assert_eq!(slice.start(), start);
+        assert_eq!(slice.end(), end);
+        assert!(slice.shares_source_allocation_with(&whole));
+        assert!(Arc::ptr_eq(&slice.source_arc(), &source));
+    }
+
+    #[test]
+    fn shared_text_slice_rejects_invalid_or_non_boundary_ranges() {
+        let source = Arc::<str>::from("a🤓b");
+        let emoji = source.find('🤓').unwrap();
+
+        assert!(SharedTextSlice::from_range(Arc::clone(&source), 3, 2).is_none());
+        assert!(SharedTextSlice::from_range(Arc::clone(&source), 0, source.len() + 1).is_none());
+        assert!(
+            SharedTextSlice::from_range(Arc::clone(&source), emoji + 1, source.len()).is_none()
+        );
+        assert!(SharedTextSlice::from_range(source, 0, emoji + 1).is_none());
+    }
+
+    #[test]
+    fn every_line_index_representation_matches_the_mixed_newline_oracle() {
+        let source = "α\r\n🤓\rb\n\n终";
+        let expected = oracle_line_starts(source);
+
+        for representation in [
+            LineIndexRepresentation::Offsets32,
+            LineIndexRepresentation::OffsetsWide,
+            LineIndexRepresentation::Bitmap,
+        ] {
+            let index = LineIndex::build_forced(source, representation);
+            assert_eq!(index.representation(), representation);
+            assert_eq!(index.line_count(), expected.len());
+            assert_eq!(
+                (0..index.line_count())
+                    .map(|line| index.line_start(line).unwrap())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            assert_eq!(index.line_start(index.line_count()), None);
+
+            for offset in 0..=source.len() {
+                if !source.is_char_boundary(offset) {
+                    continue;
+                }
+                let expected_line = expected.partition_point(|&start| start <= offset) - 1;
+                assert_eq!(
+                    index.line_index_for_offset(offset),
+                    expected_line,
+                    "{representation:?} diverged at byte {offset}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn public_line_queries_cover_empty_terminal_and_mixed_newline_lines() {
+        let empty = SourceMap::new("");
+        assert_eq!(empty.line_count(), 1);
+        assert_eq!(empty.line_start(0), Some(0));
+        assert_eq!(empty.line_start(1), None);
+
+        let map = SourceMap::new("a\r\nb\rc\n");
+        assert_eq!(map.line_count(), 4);
+        assert_eq!(
+            (0..map.line_count())
+                .map(|line| map.line_start(line).unwrap())
+                .collect::<Vec<_>>(),
+            vec![0, 3, 5, 7]
+        );
+    }
+
+    #[test]
+    fn bitmap_rank_select_handles_crlf_and_line_starts_at_block_boundaries() {
+        let source = format!("{}\r\n{}\n", "a".repeat(510), "b".repeat(511));
+        let index = LineIndex::build_forced(&source, LineIndexRepresentation::Bitmap);
+
+        assert_eq!(source.len(), 1024);
+        assert_eq!(index.line_count(), 3);
+        assert_eq!(index.line_start(0), Some(0));
+        assert_eq!(index.line_start(1), Some(512));
+        assert_eq!(index.line_start(2), Some(1024));
+        assert_eq!(index.line_index_for_offset(511), 0);
+        assert_eq!(index.line_index_for_offset(512), 1);
+        assert_eq!(index.line_index_for_offset(1023), 1);
+        assert_eq!(index.line_index_for_offset(1024), 2);
+    }
+
+    #[test]
+    fn representation_selection_is_size_based_and_has_stable_ties() {
+        assert_eq!(
+            select_line_index_representation(1024 * 1024, 1),
+            LineIndexRepresentation::Offsets32
+        );
+        assert_eq!(
+            select_line_index_representation(1024 * 1024, 1024 * 1024 + 1),
+            LineIndexRepresentation::Bitmap
+        );
+
+        let source_len = 4096;
+        let bitmap_bytes = bitmap_index_storage_bytes(source_len);
+        let largest_offsets32 =
+            (bitmap_bytes - LINE_INDEX_BOX_ALLOCATION_OVERHEAD) / size_of::<u32>();
+        assert_eq!(
+            select_line_index_representation(source_len, largest_offsets32),
+            LineIndexRepresentation::Offsets32
+        );
+        assert_eq!(
+            select_line_index_representation(source_len, largest_offsets32 + 1),
+            LineIndexRepresentation::Bitmap
+        );
+
+        #[cfg(target_pointer_width = "64")]
+        assert_eq!(
+            select_line_index_representation(u32::MAX as usize + 1, 2),
+            LineIndexRepresentation::OffsetsWide
+        );
+    }
+
+    #[test]
+    fn forced_representations_allocate_only_their_exact_logical_storage() {
+        let source = "a\nb\r\nc\rd";
+        let line_count = oracle_line_starts(source).len();
+
+        match LineIndex::build_forced(source, LineIndexRepresentation::Offsets32) {
+            LineIndex::Offsets32(starts) => assert_eq!(starts.len(), line_count),
+            other => panic!("unexpected forced representation: {other:?}"),
+        }
+        match LineIndex::build_forced(source, LineIndexRepresentation::OffsetsWide) {
+            LineIndex::OffsetsWide(starts) => assert_eq!(starts.len(), line_count),
+            other => panic!("unexpected forced representation: {other:?}"),
+        }
+        match LineIndex::build_forced(source, LineIndexRepresentation::Bitmap) {
+            LineIndex::Bitmap(index) => {
+                let words = bitmap_word_count(source.len());
+                assert_eq!(index.bits.len(), words);
+                assert_eq!(
+                    index.block_ranks.len(),
+                    words.div_ceil(BITMAP_RANK_WORDS) + 1
+                );
+            }
+            other => panic!("unexpected forced representation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn retained_line_index_weight_covers_metadata_and_every_box_allocation() {
+        let source = "a\nb\r\nc\rd";
+        let line_count = oracle_line_starts(source).len();
+
+        let offsets32 = LineIndex::build_forced(source, LineIndexRepresentation::Offsets32);
+        assert_eq!(
+            offsets32.estimated_owned_heap_bytes(),
+            size_of::<LineIndex>()
+                + LINE_INDEX_BOX_ALLOCATION_OVERHEAD
+                + line_count * size_of::<u32>()
+        );
+
+        let offsets_wide = LineIndex::build_forced(source, LineIndexRepresentation::OffsetsWide);
+        assert_eq!(
+            offsets_wide.estimated_owned_heap_bytes(),
+            size_of::<LineIndex>()
+                + LINE_INDEX_BOX_ALLOCATION_OVERHEAD
+                + line_count * size_of::<usize>()
+        );
+
+        let bitmap = LineIndex::build_forced(source, LineIndexRepresentation::Bitmap);
+        let word_count = bitmap_word_count(source.len());
+        let rank_count = word_count.div_ceil(BITMAP_RANK_WORDS) + 1;
+        assert_eq!(
+            bitmap.estimated_owned_heap_bytes(),
+            size_of::<LineIndex>()
+                + 2 * LINE_INDEX_BOX_ALLOCATION_OVERHEAD
+                + word_count * size_of::<u64>()
+                + rank_count * size_of::<usize>()
+        );
+    }
+
+    #[test]
+    fn dense_four_megabyte_newline_indexes_stay_below_one_megabyte() {
+        fn assert_compact(source: String) {
+            assert_eq!(source.len(), 4 * 1024 * 1024);
+            let index = LineIndex::build(&source);
+            assert_eq!(index.representation(), LineIndexRepresentation::Bitmap);
+            assert!(index.estimated_owned_heap_bytes() < 1024 * 1024);
+        }
+
+        assert_compact("\n".repeat(4 * 1024 * 1024));
+        assert_compact("\r".repeat(4 * 1024 * 1024));
+        assert_compact("\r\n".repeat(2 * 1024 * 1024));
+    }
+
+    #[test]
+    fn cancellation_in_either_build_pass_never_returns_a_partial_index() {
+        let source = "a\n".repeat(8 * 1024);
+        for cancelled_pass in [LineIndexBuildPass::Count, LineIndexBuildPass::Fill] {
+            let result = LineIndex::build_with_checkpoint(&source, |pass, offset| {
+                if pass == cancelled_pass && offset >= LINE_INDEX_CHECKPOINT_BYTES {
+                    Err((pass, offset))
+                } else {
+                    Ok(())
+                }
+            });
+            assert!(matches!(result, Err((pass, _)) if pass == cancelled_pass));
+        }
+    }
 
     #[test]
     fn maps_ascii_offsets_to_one_based_cli_positions() {
@@ -1219,7 +1781,7 @@ mod tests {
         let source = "\n".repeat(100_000);
         let map = SourceMap::new(source);
 
-        assert_eq!(map.line_starts().len(), 100_001);
+        assert_eq!(map.line_count(), 100_001);
         assert_eq!(map.cached_line_metric_count(), 0);
         assert_eq!(map.line_bounds(99_999), Some((99_999, 99_999)));
         assert_eq!(map.cached_line_metric_count(), 0);
@@ -1495,6 +2057,8 @@ mod tests {
     fn source_map_clones_share_one_line_metric_budget() {
         let map = SourceMap::new("a\né");
         let clone = map.clone();
+
+        assert!(Arc::ptr_eq(&map.line_index, &clone.line_index));
 
         assert_eq!(
             clone.utf16_position(4).unwrap(),
