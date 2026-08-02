@@ -67,6 +67,37 @@ fn render_with_dark_profile(name: &str, source: &str) -> String {
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
+#[test]
+fn empty_host_theme_profile_preserves_default_svg_bytes() {
+    let source = "sequenceDiagram\nAlice->>Bob: Hello";
+    let default_svg = HeadlessRenderer::new()
+        .with_diagram_id("empty-profile-parity")
+        .render_svg_sync(source)
+        .expect("default render should succeed")
+        .expect("sequence diagram should be detected");
+    let empty_profile_svg = HeadlessRenderer::new()
+        .with_host_theme(&HostThemeProfile::default())
+        .with_diagram_id("empty-profile-parity")
+        .render_svg_sync(source)
+        .expect("empty-profile render should succeed")
+        .expect("sequence diagram should be detected");
+
+    assert_eq!(empty_profile_svg, default_svg);
+}
+
+#[test]
+fn merman_modern_profile_renders_non_flowchart_without_elk() {
+    let source = "sequenceDiagram\nAlice->>Bob: Hello";
+    let svg = HeadlessRenderer::new()
+        .with_host_theme(&HostThemeProfile::merman_modern())
+        .with_diagram_id("modern-non-flowchart")
+        .render_svg_sync(source)
+        .expect("modern profile should not require ELK for sequence diagrams")
+        .expect("sequence diagram should be detected");
+
+    assert!(svg.contains(r#"aria-roledescription="sequence""#), "{svg}");
+}
+
 fn assert_contains_all(name: &str, svg: &str, expected: &[&str]) {
     assert!(svg.starts_with("<svg"), "{name}: expected SVG");
     assert!(!svg.contains("NaN"), "{name}: leaked NaN");
