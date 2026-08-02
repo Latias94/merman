@@ -127,6 +127,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l runtime
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
 vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
@@ -210,6 +211,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l runtime 
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
 vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
@@ -363,6 +365,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l runtime -
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
 vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default' -r -f -a "none\t''

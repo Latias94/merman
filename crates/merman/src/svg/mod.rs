@@ -1879,7 +1879,7 @@ impl HeadlessRenderer {
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn export_pipeline(&self) -> SvgPipeline {
         self.svg_pipeline()
-            .clone()
+            .cloned()
             .unwrap_or_else(SvgPipeline::resvg_safe)
     }
 

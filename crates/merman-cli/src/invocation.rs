@@ -345,6 +345,7 @@ pub(crate) struct ResolvedRuntimeOptions {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedRenderOptions {
+    pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
     pub(crate) text_measurer: crate::cli::TextMeasurerKind,
     pub(crate) math_renderer: Option<crate::cli::MathRendererKind>,
     pub(crate) container_width: Option<f64>,
@@ -805,11 +806,21 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     let parse = ParseCliArgs {
         suppress_errors: false,
         config_file: args.parse.config_file.clone(),
-        theme: Some(args.parse.theme.as_str().to_string()),
+        theme: args
+            .parse
+            .theme
+            .or_else(|| {
+                args.render
+                    .presentation_profile
+                    .is_none()
+                    .then_some(crate::cli::MmdcTheme::Default)
+            })
+            .map(|theme| theme.as_str().to_string()),
         runtime: args.parse.runtime.clone(),
     };
     let runtime_policy = resolve_render_runtime_policy(&parse, args.quiet)?;
     let render = RenderCliArgs {
+        presentation_profile: args.render.presentation_profile,
         text_measurer: Some(args.render.text_measurer),
         math_renderer: args.render.math_renderer,
         container_width: Some(args.render.container_width),
@@ -1388,6 +1399,7 @@ fn resolve_parse_options(
 #[cfg(feature = "svg")]
 fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
     ResolvedRenderOptions {
+        presentation_profile: args.presentation_profile,
         text_measurer: args
             .text_measurer
             .unwrap_or(crate::cli::TextMeasurerKind::Vendored),
@@ -1589,6 +1601,7 @@ fn validate_graphical_output_options(
         }
         #[cfg(feature = "svg")]
         if options.render.text_measurer.is_some()
+            || options.render.presentation_profile.is_some()
             || options.render.math_renderer.is_some()
             || options.render.container_width.is_some()
             || options.render.container_height.is_some()
@@ -1635,6 +1648,7 @@ fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Res
         ));
     }
     if options.render.text_measurer.is_some()
+        || options.render.presentation_profile.is_some()
         || options.render.math_renderer.is_some()
         || options.render.container_width.is_some()
         || options.render.container_height.is_some()
