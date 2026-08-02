@@ -1,5 +1,6 @@
 package io.merman
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -50,7 +51,17 @@ object MermanEngine {
     }
 
     private val supportedHostThemePresetsJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        metadataJson("supported-host-theme-presets")
+        val presets = JSONObject(presentationCatalogJson())
+            .getJSONArray("theme_presets")
+        JSONArray().apply {
+            for (index in 0 until presets.length()) {
+                put(presets.getJSONObject(index).getString("id"))
+            }
+        }.toString()
+    }
+
+    private val presentationCatalogJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        metadataJson("presentation-catalog")
     }
 
     /** Executes any operation ID exposed by [runtimeCatalogJson]. */
@@ -125,8 +136,15 @@ object MermanEngine {
     @JvmStatic
     fun supportedThemesJson(): String = supportedThemesJsonCache
 
+    @Deprecated(
+        message = "Use presentationCatalogJson(); this flat list is a compatibility view derived from the presentation catalog.",
+        replaceWith = ReplaceWith("presentationCatalogJson()"),
+    )
     @JvmStatic
     fun supportedHostThemePresetsJson(): String = supportedHostThemePresetsJsonCache
+
+    @JvmStatic
+    fun presentationCatalogJson(): String = presentationCatalogJsonCache
 
     private fun executeText(
         operationId: String,

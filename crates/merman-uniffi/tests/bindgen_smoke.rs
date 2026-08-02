@@ -112,8 +112,12 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose ascii_capabilities"
     );
     assert!(
+        generated.contains("def presentation_catalog_json"),
+        "generated binding should expose presentation_catalog_json"
+    );
+    assert!(
         generated.contains("def supported_host_theme_presets"),
-        "generated binding should expose supported_host_theme_presets"
+        "generated binding should retain the v0.7 compatibility method"
     );
     assert!(
         generated.contains("def diagram_family_capabilities"),

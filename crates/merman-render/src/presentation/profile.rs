@@ -251,6 +251,22 @@ pub enum PresentationAspectApplicability {
     Family(&'static str),
 }
 
+impl PresentationAspectApplicability {
+    pub const fn kind_id(self) -> &'static str {
+        match self {
+            Self::AllDiagrams => "all-diagrams",
+            Self::Family(_) => "family",
+        }
+    }
+
+    pub const fn family_id(self) -> Option<&'static str> {
+        match self {
+            Self::AllDiagrams => None,
+            Self::Family(family_id) => Some(family_id),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PresentationAspectDescriptor {
     id: &'static str,

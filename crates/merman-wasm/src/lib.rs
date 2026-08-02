@@ -245,6 +245,14 @@ pub fn supported_themes() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[wasm_bindgen(js_name = presentationCatalog)]
+pub fn presentation_catalog() -> Result<JsValue, JsValue> {
+    json_value_result(merman_bindings_core::presentation_catalog_json_for(
+        &wasm_capability_surface(),
+    ))
+}
+
+/// Deprecated compatibility view. Use [`presentation_catalog`] for discovery.
 #[wasm_bindgen(js_name = supportedHostThemePresets)]
 pub fn supported_host_theme_presets() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(merman_bindings_core::supported_host_theme_presets())

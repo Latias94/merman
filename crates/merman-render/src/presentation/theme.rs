@@ -13,6 +13,13 @@ pub enum HostThemeAppearance {
 }
 
 impl HostThemeAppearance {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+
     pub const fn is_dark(self) -> bool {
         matches!(self, Self::Dark)
     }
