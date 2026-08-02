@@ -7,6 +7,8 @@ mod links;
 mod node;
 mod rough_cache;
 #[cfg(test)]
+mod rough_dispatch_tests;
+#[cfg(test)]
 mod rough_lifecycle_probe;
 pub(in crate::svg::parity) mod roughjs;
 mod style;

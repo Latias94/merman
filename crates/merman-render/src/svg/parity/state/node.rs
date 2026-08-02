@@ -659,32 +659,6 @@ pub(super) fn render_state_node_svg(
                 .unwrap_or(ctx.theme_defaults.rough_stroke_width_value)
                 .max(0.0);
 
-            let rough_start = timing.start();
-            let key = StateRoughCacheKey {
-                tag: 6,
-                a: w.to_bits(),
-                b: h.to_bits(),
-                seed: ctx.hand_drawn_seed.seed(),
-            };
-            if timing.is_enabled() {
-                details.leaf_roughjs_calls += 1;
-                details.leaf_roughjs_unique.insert(key);
-            }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
-                roughjs_paths_for_svg_path(
-                    &mermaid_rounded_rect_path_data(w, h),
-                    "#ECECFF",
-                    "#9370DB",
-                    1.3,
-                    "0 0",
-                    &ctx.hand_drawn_seed,
-                )
-                .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
-            });
-            if let Some(s) = rough_start {
-                details.leaf_nodes_roughjs += s.elapsed();
-            }
-
             let label_span_style = if text_style_attr.is_empty() {
                 None
             } else {
@@ -773,6 +747,32 @@ pub(super) fn render_state_node_svg(
                 }
                 drop(_g_emit);
                 return;
+            }
+
+            let rough_start = timing.start();
+            let key = StateRoughCacheKey {
+                tag: 6,
+                a: w.to_bits(),
+                b: h.to_bits(),
+                seed: ctx.hand_drawn_seed.seed(),
+            };
+            if timing.is_enabled() {
+                details.leaf_roughjs_calls += 1;
+                details.leaf_roughjs_unique.insert(key);
+            }
+            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
+                roughjs_paths_for_svg_path(
+                    &mermaid_rounded_rect_path_data(w, h),
+                    "#ECECFF",
+                    "#9370DB",
+                    1.3,
+                    "0 0",
+                    &ctx.hand_drawn_seed,
+                )
+                .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
+            });
+            if let Some(s) = rough_start {
+                details.leaf_nodes_roughjs += s.elapsed();
             }
 
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
