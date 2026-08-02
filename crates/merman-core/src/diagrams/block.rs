@@ -7,6 +7,7 @@ use crate::{
     ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
     editor::EditorLexemeJournal,
 };
+use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, hash_map::Entry};
 
@@ -58,10 +59,20 @@ pub struct BlockDiagramRenderModel {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub warning_facts: Vec<DiagramWarningFact>,
+    #[serde(default, rename = "classes")]
+    pub class_defs: IndexMap<String, BlockClassDefRenderModel>,
     #[serde(skip)]
     compat_root_id: String,
-    #[serde(skip)]
-    compat_classes: HashMap<String, ClassDef>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct BlockClassDefRenderModel {
+    pub id: String,
+    #[serde(default)]
+    pub styles: Vec<String>,
+    #[serde(default, rename = "textStyles")]
+    pub text_styles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -223,13 +234,6 @@ fn clone_block_tree_nonrecursive(
         .unwrap_or_else(|| clone_block_shallow(block)))
 }
 
-#[derive(Debug, Clone, Default)]
-struct ClassDef {
-    id: String,
-    styles: Vec<String>,
-    text_styles: Vec<String>,
-}
-
 #[derive(Debug, Default)]
 struct BlockDb {
     root_id: String,
@@ -238,7 +242,7 @@ struct BlockDb {
     blocks: Vec<Block>,
     edges: Vec<Block>,
     edge_count: HashMap<String, i64>,
-    classes: HashMap<String, ClassDef>,
+    classes: IndexMap<String, BlockClassDefRenderModel>,
     warning_facts: Vec<DiagramWarningFact>,
 }
 
@@ -283,14 +287,14 @@ impl BlockDb {
     }
 
     fn add_style_class(&mut self, id: &str, style_attributes: &str) {
-        let entry = self
-            .classes
-            .entry(id.to_string())
-            .or_insert_with(|| ClassDef {
-                id: id.to_string(),
-                styles: Vec::new(),
-                text_styles: Vec::new(),
-            });
+        let entry =
+            self.classes
+                .entry(id.to_string())
+                .or_insert_with(|| BlockClassDefRenderModel {
+                    id: id.to_string(),
+                    styles: Vec::new(),
+                    text_styles: Vec::new(),
+                });
 
         for raw in style_attributes.split(',') {
             let fixed = raw.split(';').next().unwrap_or("").trim().to_string();
@@ -627,7 +631,7 @@ fn block_render_edge_to_value(edge: &BlockEdgeRenderModel) -> Value {
     Value::Object(obj)
 }
 
-fn block_compat_classes_to_value(classes: &HashMap<String, ClassDef>) -> Value {
+fn block_compat_classes_to_value(classes: &IndexMap<String, BlockClassDefRenderModel>) -> Value {
     let mut obj = Map::new();
     for (k, v) in classes {
         obj.insert(
@@ -713,8 +717,8 @@ fn block_db_to_render_model(db: &BlockDb) -> BlockDiagramRenderModel {
             .collect(),
         edges: db.edges.iter().map(block_to_render_edge).collect(),
         warning_facts: db.warning_facts.clone(),
+        class_defs: db.classes.clone(),
         compat_root_id: db.root_id.clone(),
-        compat_classes: db.classes.clone(),
     }
 }
 
@@ -1718,7 +1722,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             ));
         }
         self.editor_facts.push_directive_prefix("classDef");
-        let id = self.parse_identifier_like()?;
+        let id = self.parse_classdef_id()?;
         let css = self.take_rest_of_line_trimmed();
         if id.text == "default" {
             self.record_lexeme(EditorLexemeKind::Keyword, id.span);
@@ -2238,7 +2242,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         Ok(id)
     }
 
-    fn parse_identifier_like(&mut self) -> Result<BlockSpannedText> {
+    fn parse_classdef_id(&mut self) -> Result<BlockSpannedText> {
         self.skip_ws_and_comments();
         let start = self.pos;
         while let Some(c) = self.peek_char() {
@@ -2253,10 +2257,19 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "expected identifier".to_string(),
             ));
         }
-        Ok(BlockSpannedText {
-            text: self.input[start..self.pos].trim().to_string(),
-            span: SourceSpan::new(start, self.pos),
-        })
+        let span = SourceSpan::new(start, self.pos);
+        let text = self.input[start..self.pos].trim().to_string();
+        if !text
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        {
+            return Err(Error::diagram_parse_exact(
+                "block",
+                format!("invalid classDef identifier: {text}"),
+                span,
+            ));
+        }
+        Ok(BlockSpannedText { text, span })
     }
 
     fn parse_identifier_list(
@@ -2429,7 +2442,7 @@ pub(crate) fn render_model_to_compat_json(
         .iter()
         .map(block_render_node_to_value)
         .collect::<Vec<_>>();
-    let classes = block_compat_classes_to_value(&model.compat_classes);
+    let classes = block_compat_classes_to_value(&model.class_defs);
     let mut out = Map::new();
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert("blocks".to_string(), Value::Array(blocks));
@@ -3191,6 +3204,21 @@ C<["Route"]>(left,down)
         let black = classes.get("black").unwrap();
         assert_eq!(black["id"].as_str().unwrap(), "black");
         assert_eq!(black["styles"][0].as_str().unwrap(), "color:#ffffff");
+    }
+
+    #[test]
+    fn classdef_ids_follow_mermaid_word_identifier_vocabulary() {
+        let text = "block\nA\nclassDef foo.bar fill:#f00\nclass A foo.bar\n";
+        let error = parse_block(text, &meta()).expect_err("dotted classDef id must be rejected");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected structured Block parse error");
+        };
+        let start = text.find("foo.bar").expect("fixture classDef id");
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(start, start + "foo.bar".len()))
+        );
+        assert!(diagnostic.message().contains("invalid classDef identifier"));
     }
 
     #[test]

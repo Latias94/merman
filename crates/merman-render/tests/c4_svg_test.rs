@@ -26,6 +26,17 @@ fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment)
         .to_owned()
 }
 
+fn layout_c4_with_options(source: &str, options: &LayoutOptions) -> C4DiagramLayout {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact = family::prepare(parsed, options, session).expect("layout ok");
+    let projection = artifact.layout_json().expect("serialize C4 layout");
+    serde_json::from_value(projection["layout"]["C4Diagram"].clone()).expect("C4 layout projection")
+}
+
 #[derive(Debug)]
 struct C4TypeWidthProbe;
 
@@ -115,4 +126,23 @@ Person_Ext(external, "External")
             .unwrap_or_else(|| panic!("missing C4 type label {label}: {svg}"));
         assert_eq!(text.attribute("textLength"), Some(expected), "{label}");
     }
+}
+
+#[test]
+fn c4_uses_explicit_screen_available_width_without_changing_container_geometry() {
+    let source = include_str!(
+        "../../../fixtures/c4/upstream_docs_c4_c4_container_diagram_c4container_006.mmd"
+    );
+    let default = layout_c4_with_options(source, &LayoutOptions::default());
+    let wide_screen = layout_c4_with_options(
+        source,
+        &LayoutOptions::default().with_screen_available_width(1280.0),
+    );
+
+    assert_eq!(default.container_width, 800.0);
+    assert_eq!(default.screen_available_width, None);
+    assert_eq!(wide_screen.container_width, 800.0);
+    assert_eq!(wide_screen.screen_available_width, Some(1280.0));
+    assert!(wide_screen.width > default.width);
+    assert!(wide_screen.height < default.height);
 }

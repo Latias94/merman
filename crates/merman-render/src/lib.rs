@@ -169,6 +169,7 @@ impl Error {
 /// This models the element that owns diagram layout, not a browser page viewport and not the
 /// final SVG viewport emitted after layout.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct LayoutOptions {
     /// Width of the host layout container in CSS pixels.
     ///
@@ -176,6 +177,11 @@ pub struct LayoutOptions {
     pub container_width: f64,
     /// Height of the host layout container in CSS pixels.
     pub container_height: f64,
+    /// Browser `screen.availWidth` in CSS pixels when the host has a screen environment.
+    ///
+    /// Mermaid's C4 renderer uses the available screen width rather than its container width.
+    /// `None` keeps headless rendering deterministic by falling back to `container_width`.
+    pub screen_available_width: Option<f64>,
 }
 
 impl Default for LayoutOptions {
@@ -183,6 +189,7 @@ impl Default for LayoutOptions {
         Self {
             container_width: 800.0,
             container_height: 600.0,
+            screen_available_width: None,
         }
     }
 }
@@ -191,6 +198,19 @@ impl LayoutOptions {
     /// Returns geometry defaults suitable for headless SVG rendering.
     pub fn headless_svg_defaults() -> Self {
         Self::default()
+    }
+
+    /// Sets the host layout container dimensions in CSS pixels.
+    pub fn with_container_size(mut self, width: f64, height: f64) -> Self {
+        self.container_width = width;
+        self.container_height = height;
+        self
+    }
+
+    /// Supplies the browser `screen.availWidth` observed by the host.
+    pub fn with_screen_available_width(mut self, width: f64) -> Self {
+        self.screen_available_width = Some(width);
+        self
     }
 }
 

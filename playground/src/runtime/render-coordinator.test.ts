@@ -211,6 +211,49 @@ test("request identity includes all presentation axes and stores the same-snapsh
   assert.equal(planCalls.length, 2);
 });
 
+test("freezes browser layout geometry into each render snapshot", async () => {
+  let screenAvailableWidth = 1280;
+  const renderOptions: Array<Readonly<MermanRenderOptions>> = [];
+  const domainFacade: MermanDomainFacade = {
+    ...facade(),
+    render(source, _theme, _configJson, options = {}) {
+      renderOptions.push(options);
+      return {
+        artifact: projectSafeInlineSvg(
+          `<svg xmlns="http://www.w3.org/2000/svg"><text>${source}</text></svg>`
+        ),
+        error: null,
+        renderTime: 2,
+        status: "success",
+      };
+    },
+  };
+  const coordinator = createRenderCoordinator({
+    captureLayoutEnvironment: () => ({
+      containerWidth: VIEWPORT.width,
+      containerHeight: VIEWPORT.height,
+      screenAvailableWidth,
+    }),
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+
+  coordinator.setInput(input("layout-environment", domainFacade));
+  await waitFor(() => renderOptions.length === 1);
+  assert.deepEqual(renderOptions[0].layoutEnvironment, {
+    containerWidth: 800,
+    containerHeight: 600,
+    screenAvailableWidth: 1280,
+  });
+  assert.equal(Object.isFrozen(renderOptions[0].layoutEnvironment), true);
+
+  screenAvailableWidth = 1440;
+  coordinator.setInput(input("layout-environment", domainFacade));
+  await waitFor(() => renderOptions.length === 2);
+  assert.equal(renderOptions[1].layoutEnvironment?.screenAvailableWidth, 1440);
+});
+
 test("keeps a successful render when SVG plan collection fails", async () => {
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),

@@ -71,6 +71,11 @@ test("freezes one configured input for detection, parse, layout, and render", ()
     '{"layout":"elk"}',
     {
       diagramFont: "arial",
+      layoutEnvironment: {
+        containerWidth: 800,
+        containerHeight: 600,
+        screenAvailableWidth: 1280,
+      },
       presentationProfileId: "merman-modern",
       presentationThemePresetId: "editor-light",
       svgPipeline: "resvg-safe",
@@ -91,9 +96,33 @@ test("freezes one configured input for detection, parse, layout, and render", ()
         preset: "editor-light",
       },
     },
+    layout: {
+      container_width: 800,
+      container_height: 600,
+      screen_available_width: 1280,
+    },
     svg: { pipeline: "resvg-safe" },
   });
   assert.equal("host_theme" in (input.bindingOptions ?? {}), false);
+});
+
+test("keeps headless layout distinct from an observed browser screen", () => {
+  const input = configuredMermanOperationInput(
+    "C4Context\nPerson(customer, Customer)",
+    "default",
+    "{}",
+    {
+      layoutEnvironment: {
+        containerWidth: 800,
+        containerHeight: 600,
+      },
+    },
+  );
+
+  assert.deepEqual(input.bindingOptions.layout, {
+    container_width: 800,
+    container_height: 600,
+  });
 });
 
 test("keeps the default font in Mermaid config without enabling a presentation theme", () => {

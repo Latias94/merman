@@ -614,14 +614,8 @@ fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
     )
     .expect("parse ok")
     .expect("diagram detected");
-    let layout = layout_flowchart_render_model(
-        &parsed,
-        &LayoutOptions {
-            ..Default::default()
-        },
-        &session,
-    )
-    .expect("layout ok");
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &session)
+        .expect("layout ok");
 
     let cluster = |id: &str| {
         layout
@@ -872,14 +866,8 @@ fn flowchart_edge_to_ancestor_cluster_keeps_explicit_nested_directions() {
     )
     .expect("parse ok")
     .expect("diagram detected");
-    let layout = layout_flowchart_render_model(
-        &parsed,
-        &LayoutOptions {
-            ..Default::default()
-        },
-        &session,
-    )
-    .expect("layout ok");
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &session)
+        .expect("layout ok");
 
     let nodes_by_id = layout
         .nodes

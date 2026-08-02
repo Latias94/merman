@@ -41,5 +41,17 @@ function bindingOptionsForRender(
   if (options?.svgPipeline) {
     bindingOptions.svg = { pipeline: options.svgPipeline };
   }
+  if (options?.layoutEnvironment) {
+    bindingOptions.layout = {
+      container_width: options.layoutEnvironment.containerWidth,
+      container_height: options.layoutEnvironment.containerHeight,
+      ...(options.layoutEnvironment.screenAvailableWidth === undefined
+        ? {}
+        : {
+            screen_available_width:
+              options.layoutEnvironment.screenAvailableWidth,
+          }),
+    };
+  }
   return bindingOptions;
 }

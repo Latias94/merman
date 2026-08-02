@@ -34,13 +34,25 @@ export type MermanSvgPipeline = (typeof MERMAN_SVG_PIPELINES)[number];
 export type MermanTextMeasurementMode = "browser" | "headless";
 export type MermanRenderFailureStage = "render" | "svg-validation";
 
+export interface MermanLayoutEnvironment {
+  readonly containerHeight: number;
+  readonly containerWidth: number;
+  readonly screenAvailableWidth?: number;
+}
+
 export interface MermanRenderOptions {
   diagramFont?: DiagramFont;
+  layoutEnvironment?: MermanLayoutEnvironment;
   presentationProfileId?: string | null;
   presentationThemePresetId?: string | null;
   svgPipeline?: MermanSvgPipeline;
   textMeasurementMode?: MermanTextMeasurementMode;
 }
+
+export type MermanUserRenderOptions = Omit<
+  MermanRenderOptions,
+  "layoutEnvironment"
+>;
 
 export function isMermanSvgPipeline(
   value: unknown

@@ -78,7 +78,8 @@ than translated implicitly.
   },
   "layout": {
     "container_width": 1024,
-    "container_height": 768
+    "container_height": 768,
+    "screen_available_width": 1440
   },
   "environment": {
     "text_measurement": "vendored",
@@ -380,10 +381,13 @@ The terminal-grid budget is resource policy, not an ASCII presentation option. S
 | --- | --- | --- | --- |
 | `layout.container_width` | positive finite number | renderer default | Available width of the host layout container in CSS pixels. |
 | `layout.container_height` | positive finite number | renderer default | Available height of the host layout container in CSS pixels. |
+| `layout.screen_available_width` | positive finite number | `layout.container_width` | Browser `screen.availWidth` in CSS pixels. This is distinct because Mermaid's C4 renderer uses the available screen width rather than the owning container width. |
 
 Container dimensions describe the element that owns diagram layout, not the browser page viewport
-or the final SVG viewBox. The removed `layout.viewport_width` and `layout.viewport_height` names
-are rejected; update requests rather than relying on an alias.
+or the final SVG viewBox. Browser hosts that need C4 parity should also pass
+`layout.screen_available_width`; headless hosts can omit it for deterministic container-width
+behavior. The removed `layout.viewport_width` and `layout.viewport_height` names are rejected;
+update requests rather than relying on an alias.
 
 ## Render Environment Options
 

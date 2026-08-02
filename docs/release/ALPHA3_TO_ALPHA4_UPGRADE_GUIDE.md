@@ -192,6 +192,7 @@ The main changelog groups alpha.4 by user outcome. Source and embedding integrat
 - Replace field-based `RenderResourceLimits` with sealed `RenderResourcePolicy`. Select `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`, then apply validated overrides by stable limit id.
 - Implement custom wrapped text measurement through `measure_wrapped` using the complete `TextStyle`, including `font_style`. The `measure_wrapped_raw` and heuristic-only `wrap_text_lines_px` APIs are removed; use `wrap_text_lines_measurer` when callers need explicit wrapping.
 - Rename `LayoutOptions.viewport_width` / `viewport_height` and matching binding/Web fields to `container_width` / `container_height`; Typst uses `container-width` / `container-height`. CLI users continue to use `--width` / `--height`.
+- `LayoutOptions` is now non-exhaustive. Start with `LayoutOptions::default()` or `LayoutOptions::headless_svg_defaults()`, then use `with_container_size(...)`, `with_screen_available_width(...)`, or direct field mutation. Browser hosts should pass `screen.availWidth` for C4 parity; headless hosts can omit it, which falls back to `container_width`.
 - Remove `LayoutOptions::use_manatee_layout`; select the `layout-cytoscape` capability instead. Remove `FlowchartElkBackend`; Flowchart ELK always uses the Mermaid adapter and Eclipse ELK layered implementation.
 - Use documented kebab-case binding values such as `resvg-safe`, `strip-existing-important`, `trusted-native`, and `unbounded-for-trusted-input`; underscore and shorthand aliases are removed.
 

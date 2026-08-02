@@ -225,7 +225,11 @@ mod tests {
     #[test]
     fn render_svg_accepts_options_json() {
         let options = br#"{
-            "layout": { "container_width": 640, "container_height": 480 },
+            "layout": {
+                "container_width": 640,
+                "container_height": 480,
+                "screen_available_width": 1280
+            },
             "environment": { "text_measurement": "deterministic" },
             "svg": { "diagram_id": "bindings core diagram", "pipeline": "readable" }
         }"#;
@@ -1093,14 +1097,21 @@ Missing ref: id2,after missing,1d
 
     #[test]
     fn invalid_option_value_returns_invalid_argument() {
-        let err = render_svg(
-            b"flowchart TD\nA",
-            br#"{ "layout": { "container_width": -1 } }"#,
-        )
-        .unwrap_err();
+        for (options, field) in [
+            (
+                br#"{ "layout": { "container_width": -1 } }"#.as_slice(),
+                "layout.container_width",
+            ),
+            (
+                br#"{ "layout": { "screen_available_width": 0 } }"#.as_slice(),
+                "layout.screen_available_width",
+            ),
+        ] {
+            let err = render_svg(b"flowchart TD\nA", options).unwrap_err();
 
-        assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("layout.container_width"));
+            assert_eq!(err.status(), BindingStatus::InvalidArgument);
+            assert!(err.message().contains(field), "{err:?}");
+        }
     }
 
     #[test]

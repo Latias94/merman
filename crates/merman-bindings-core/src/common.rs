@@ -389,6 +389,7 @@ pub(crate) struct AsciiThemeOptionsJson {
 pub(crate) struct LayoutOptionsJson {
     pub(crate) container_width: Option<f64>,
     pub(crate) container_height: Option<f64>,
+    pub(crate) screen_available_width: Option<f64>,
 }
 
 #[cfg(feature = "svg")]

@@ -244,6 +244,10 @@ impl RenderOperationConfig {
             if let Some(height) = layout_json.container_height {
                 layout.container_height = finite_positive(height, "layout.container_height")?;
             }
+            if let Some(width) = layout_json.screen_available_width {
+                layout.screen_available_width =
+                    Some(finite_positive(width, "layout.screen_available_width")?);
+            }
         }
 
         let mut svg_options = merman::svg::SvgRenderOptions::default();

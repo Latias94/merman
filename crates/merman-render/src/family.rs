@@ -1230,6 +1230,7 @@ fn prepare_non_class_render(
                     execution.text_measurer(),
                     execution.container_width,
                     execution.container_height,
+                    execution.screen_available_width,
                 )
             })?)
         }

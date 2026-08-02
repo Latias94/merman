@@ -773,14 +773,8 @@ fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
         .begin_session()
         .expect("begin render session");
 
-    let layout = layout_flowchart_render_model(
-        parsed,
-        &LayoutOptions {
-            ..Default::default()
-        },
-        session,
-    )
-    .expect("layout ok");
+    let layout = layout_flowchart_render_model(parsed, &LayoutOptions::default(), session)
+        .expect("layout ok");
 
     let edge = layout
         .edges
@@ -847,9 +841,7 @@ fn flowchart_html_labels_allow_browser_font_fallback_overflow() {
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -883,9 +875,7 @@ fn flowchart_layout_uses_host_text_measurer_for_font_widths() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let baseline_options = LayoutOptions {
-        ..Default::default()
-    };
+    let baseline_options = LayoutOptions::default();
     let wide_options = LayoutOptions::default();
     let wide_session = environment_with_measurer(
         "test.flowchart-width-scaled",
@@ -1465,9 +1455,7 @@ A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", 
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let layout = layout_flowchart_render_model(
         parsed.clone(),
         &layout_options,
@@ -1662,9 +1650,7 @@ fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1700,9 +1686,7 @@ fn flowchart_html_edge_labels_use_non_markdown_paragraph_wrapper() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1728,9 +1712,7 @@ fn flowchart_html_edge_label_svg_width_matches_layout_bbox() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let layout = layout_flowchart_render_model(
         parsed.clone(),
         &layout_options,
@@ -1785,9 +1767,7 @@ fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1825,9 +1805,7 @@ fn flowchart_empty_subgraph_node_applies_inline_style() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1863,9 +1841,7 @@ fn flowchart_crossed_circle_aliases_use_source_symmetric_root_bounds() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1910,9 +1886,7 @@ linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1961,9 +1935,7 @@ fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available()
             .expect("parse ok")
             .expect("diagram detected");
 
-        let layout_options = LayoutOptions {
-            ..Default::default()
-        };
+        let layout_options = LayoutOptions::default();
         render_flowchart_artifact(
             parsed,
             &layout_options,
@@ -2019,9 +1991,7 @@ D@{ shape: datastore, label: "Datastore" }
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,

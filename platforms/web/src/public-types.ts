@@ -37,6 +37,7 @@ export interface ParseOptions {
 export interface LayoutOptions {
   container_width?: number;
   container_height?: number;
+  screen_available_width?: number;
 }
 
 export interface RenderEnvironmentOptions {
