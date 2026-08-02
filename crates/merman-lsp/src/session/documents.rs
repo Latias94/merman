@@ -1,27 +1,28 @@
 use super::LanguageSession;
+use crate::session::analysis::AnalysisJobGeneration;
 use crate::session::analysis::executor::{AnalysisExecutor, DiagnosticReprojectionLease};
 #[cfg(test)]
 use crate::session::analysis::request::TestAnalysisGate;
 use crate::session::analysis::request::{
-    AnalysisBuildKey, AnalysisBuildRequest, AnalysisJobGeneration, DiagnosticProjectionOrigin,
-    DiagnosticReprojectionKey, DiagnosticReprojectionRequest,
+    AnalysisBuildKey, AnalysisBuildRequest, DiagnosticReprojectionKey,
+    DiagnosticReprojectionRequest,
 };
+use crate::session::analysis_cache::{AnalysisCache, AnalysisCacheAuthority, AnalysisCacheStamp};
 #[cfg(test)]
 use crate::session::cache::WeightedCacheStatistics;
-use crate::session::cache::{WeightedLru, WeightedReplacement, conservative_weighted_entry_bytes};
 use crate::snapshot::{
     DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
     SnapshotContext, SnapshotGeneration,
 };
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisOptions, AnalysisRejection,
-    AnalysisResourceLimit, AnalysisResourceLimits, Analyzer, DiagnosticSpan, SourceDescriptor,
-    source_descriptor_for_kind,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnosticPolicy, AnalysisOptions,
+    AnalysisRejection, AnalysisResourceLimit, AnalysisResourceLimits, Analyzer, DiagnosticSpan,
+    SourceDescriptor, source_descriptor_for_kind,
 };
 use merman_editor_core::DocumentKind;
 use ropey::{Rope, RopeSlice};
 use std::collections::HashMap;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 use tower_lsp_server::ls_types::{
     Diagnostic, Position, Range, SemanticToken, TextDocumentContentChangeEvent, Uri,
 };
@@ -69,63 +70,81 @@ pub(super) struct SessionState {
     next_document_epoch: u64,
     documents: HashMap<Uri, DocumentRecord>,
     open_document_tracker: Arc<OpenDocumentTracker>,
-    analysis_generations: WeightedLru<Uri, CachedAnalysisGeneration>,
+    analysis_cache: AnalysisCache,
     #[cfg(test)]
     analysis_test_gate: Option<Arc<TestAnalysisGate>>,
-}
-
-#[derive(Debug)]
-struct CachedAnalysisGeneration {
-    context: Arc<DocumentAnalysisContext>,
-    document_epoch: DocumentEpoch,
-    snapshot_generation: SnapshotGeneration,
 }
 
 #[derive(Debug, Clone)]
 pub(super) struct SnapshotLease {
     pub(super) snapshot: Arc<DocumentSnapshot>,
+    context: Option<Arc<DocumentAnalysisContext>>,
     snapshot_generation: SnapshotGeneration,
     document_epoch: DocumentEpoch,
     analysis_job_generation: AnalysisJobGeneration,
+    cache_authority: Option<AnalysisCacheAuthority>,
 }
 
 impl SnapshotLease {
     fn new(
         snapshot: Arc<DocumentSnapshot>,
+        context: Option<Arc<DocumentAnalysisContext>>,
         snapshot_generation: SnapshotGeneration,
         document_epoch: DocumentEpoch,
         analysis_job_generation: AnalysisJobGeneration,
+        cache_authority: Option<AnalysisCacheAuthority>,
     ) -> Self {
         Self {
             snapshot,
+            context,
             snapshot_generation,
             document_epoch,
             analysis_job_generation,
+            cache_authority,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-struct WeakDocumentSnapshot {
-    snapshot: Weak<DocumentSnapshot>,
-    snapshot_generation: SnapshotGeneration,
-    document_epoch: DocumentEpoch,
-    analysis_job_generation: AnalysisJobGeneration,
+pub(super) struct DiagnosticProjectionTicket {
+    request: DiagnosticReprojectionRequest,
+    cache_authority: Option<AnalysisCacheAuthority>,
+}
+
+impl DiagnosticProjectionTicket {
+    fn new(
+        request: DiagnosticReprojectionRequest,
+        cache_authority: Option<AnalysisCacheAuthority>,
+    ) -> Self {
+        Self {
+            request,
+            cache_authority,
+        }
+    }
+
+    pub(super) fn request(&self) -> &DiagnosticReprojectionRequest {
+        &self.request
+    }
+
+    pub(super) fn uri(&self) -> &Uri {
+        self.request.uri()
+    }
+
+    #[cfg(test)]
+    pub(in crate::session::documents) fn snapshot(&self) -> &Arc<DocumentSnapshot> {
+        self.request.snapshot()
+    }
 }
 
 pub(super) enum DiagnosticProjectionPreparation {
     Ready(SnapshotContext),
-    Project(DiagnosticReprojectionRequest),
+    Project(DiagnosticProjectionTicket),
 }
 
-fn cached_analysis_weight(uri: &Uri, context: &DocumentAnalysisContext) -> usize {
-    context
-        .estimated_owned_weight()
-        .total()
-        .saturating_add(conservative_weighted_entry_bytes::<
-            Uri,
-            CachedAnalysisGeneration,
-        >(uri.as_str().len()))
+pub(super) enum AnalysisPreparation {
+    Ready(SnapshotContext),
+    Project(DiagnosticProjectionTicket),
+    Build(Box<AnalysisBuildRequest>),
 }
 
 #[derive(Debug)]
@@ -744,7 +763,7 @@ impl SessionState {
             next_document_epoch: 0,
             documents: HashMap::new(),
             open_document_tracker: Arc::new(OpenDocumentTracker::default()),
-            analysis_generations: WeightedLru::new(analysis_cache_budget),
+            analysis_cache: AnalysisCache::new(analysis_cache_budget),
             #[cfg(test)]
             analysis_test_gate: None,
         }
@@ -833,21 +852,19 @@ impl SessionState {
     fn upsert_document(&mut self, uri: Uri, document: StoredDocument) -> StoredDocument {
         self.open_document_tracker.advance(&uri);
         self.analysis_executor.invalidate(&uri);
-        self.analysis_generations.remove(&uri);
+        self.analysis_cache.remove(&uri);
         let epoch = self.next_document_epoch();
         match self.documents.entry(uri) {
             std::collections::hash_map::Entry::Occupied(mut entry) => {
                 let record = entry.get_mut();
                 record.document = document.clone();
                 record.epoch = epoch;
-                record.snapshot = None;
                 record.diagnostic_state = None;
             }
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(DocumentRecord {
                     document: document.clone(),
                     epoch,
-                    snapshot: None,
                     diagnostic_state: None,
                     semantic_tokens_state: None,
                 });
@@ -926,7 +943,7 @@ impl SessionState {
             self.open_document_tracker.advance(uri);
             self.advance_documents_revision();
         }
-        self.analysis_generations.remove(uri);
+        self.analysis_cache.remove(uri);
     }
 }
 
@@ -934,7 +951,6 @@ impl SessionState {
 struct DocumentRecord {
     document: StoredDocument,
     epoch: DocumentEpoch,
-    snapshot: Option<WeakDocumentSnapshot>,
     diagnostic_state: Option<StoredDiagnosticState>,
     semantic_tokens_state: Option<StoredSemanticTokensState>,
 }

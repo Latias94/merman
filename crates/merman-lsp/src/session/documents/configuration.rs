@@ -75,10 +75,7 @@ impl SessionState {
             ))
         } else {
             if !matches!(change, AnalyzerConfigurationChange::Unchanged) {
-                self.set_diagnostic_analyzer(
-                    self.analyzer
-                        .with_diagnostic_policy(options.diagnostic_policy().clone()),
-                );
+                self.apply_diagnostic_policy(options.diagnostic_policy().clone());
             }
             Some(AnalyzerOptionsPreparation::Applied(change))
         }
@@ -139,13 +136,14 @@ impl SessionState {
         Some(change)
     }
 
-    fn set_diagnostic_analyzer(&mut self, analyzer: Analyzer) {
+    fn apply_diagnostic_policy(&mut self, policy: AnalysisDiagnosticPolicy) {
         self.diagnostic_reprojection_cancellation.cancel();
         self.diagnostic_reprojection_cancellation = self.session_cancellation.child();
         self.analysis_executor.invalidate_reprojections();
-        self.analyzer = analyzer;
+        self.analyzer = self.analyzer.with_diagnostic_policy(policy);
         self.advance_configuration_revision();
         self.advance_diagnostic_generation();
+        self.analysis_cache.downgrade_complete_entries();
     }
 
     pub(in crate::session::documents) fn replace_analyzer(
@@ -162,9 +160,8 @@ impl SessionState {
         self.advance_configuration_revision();
         self.advance_snapshot_generation();
         self.advance_diagnostic_generation();
-        self.analysis_generations.clear();
+        self.analysis_cache.clear();
         for record in self.documents.values_mut() {
-            record.snapshot = None;
             record.semantic_tokens_state = None;
         }
         self.analysis_executor.invalidate_all();

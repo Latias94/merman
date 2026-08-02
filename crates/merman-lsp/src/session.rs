@@ -20,6 +20,7 @@ use tower_lsp_server::ls_types::Uri;
 use tower_lsp_server::{ExitedError, LspService};
 
 mod analysis;
+mod analysis_cache;
 #[cfg(test)]
 mod analysis_tests;
 mod cache;

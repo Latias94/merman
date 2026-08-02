@@ -1,9 +1,8 @@
 use self::executor::AnalysisExecutor;
-use self::request::DiagnosticProjectionOrigin;
 use super::LanguageSession;
 use super::documents::{
-    DiagnosticContext, DiagnosticProjectionPreparation, DocumentDiagnosticState,
-    SemanticTokensState, SnapshotLease, StoredDocument,
+    AnalysisPreparation, DiagnosticContext, DiagnosticProjectionPreparation,
+    DocumentDiagnosticState, SemanticTokensState, SnapshotLease, StoredDocument,
 };
 use crate::snapshot::{DocumentSnapshot, SnapshotContext};
 use merman_analysis::AnalysisPayload;
@@ -15,6 +14,9 @@ pub(super) mod executor;
 pub(super) mod request;
 
 const MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS: usize = 3;
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub(in crate::session) struct AnalysisJobGeneration(pub(in crate::session) u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SnapshotPurpose {
@@ -268,48 +270,34 @@ impl LanguageSession {
         uri: &Uri,
         purpose: SnapshotPurpose,
     ) -> Result<Option<SnapshotContext>> {
-        let (cached, preparation, request, executor) = {
+        let (preparation, executor) = {
             let mut state = self.inner.state.lock().await;
             let Some(captured) = self.commit_state_if_active(&mut state, |state| {
-                let cached = state
-                    .has_analysis_payload(uri)
-                    .then(|| state.cached_snapshot_context_for_uri(uri))
-                    .flatten();
-                let preparation = cached.is_none().then(|| {
-                    state
-                        .diagnostic_reprojection_request(uri)
-                        .map(DiagnosticProjectionPreparation::Project)
-                        .or_else(|| {
-                            let snapshot = state.snapshot_lease_for_uri(uri)?;
-                            state.prepare_diagnostic_projection_for_snapshot(
-                                &snapshot,
-                                DiagnosticProjectionOrigin::FreshBuild,
-                            )
-                        })
-                });
-                let preparation = preparation.flatten();
-                let request = (cached.is_none() && preparation.is_none())
-                    .then(|| state.snapshot_build_request(uri))
-                    .flatten();
-                (cached, preparation, request, state.analysis_executor())
+                (
+                    state.prepare_analysis_for_uri(uri),
+                    state.analysis_executor(),
+                )
             }) else {
                 return Ok(None);
             };
             captured
         };
 
-        if cached.is_some() {
-            return Ok(cached);
-        }
-
-        if let Some(preparation) = preparation {
-            return self
-                .resolve_diagnostic_projection(&executor, preparation, purpose)
-                .await;
-        }
-
-        let Some(request) = request else {
+        let Some(preparation) = preparation else {
             return Ok(None);
+        };
+        let request = match preparation {
+            AnalysisPreparation::Ready(context) => return Ok(Some(context)),
+            AnalysisPreparation::Project(ticket) => {
+                return self
+                    .resolve_diagnostic_projection(
+                        &executor,
+                        DiagnosticProjectionPreparation::Project(ticket),
+                        purpose,
+                    )
+                    .await;
+            }
+            AnalysisPreparation::Build(request) => request,
         };
         let analysis = match executor.execute(&request).await {
             Ok(analysis) => analysis,
@@ -325,10 +313,7 @@ impl LanguageSession {
                     let preparation = state
                         .commit_built_snapshot(&request, Arc::clone(analysis.snapshot()))
                         .and_then(|snapshot| {
-                            state.prepare_diagnostic_projection_for_snapshot(
-                                &snapshot,
-                                DiagnosticProjectionOrigin::FreshBuild,
-                            )
+                            state.prepare_diagnostic_projection_for_snapshot(&snapshot)
                         });
                     let document_exists = state.get(request.uri()).is_some();
                     (preparation, document_exists)
@@ -355,19 +340,19 @@ impl LanguageSession {
         purpose: SnapshotPurpose,
     ) -> Result<Option<SnapshotContext>> {
         for _ in 0..MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS {
-            let request = match preparation {
+            let ticket = match preparation {
                 DiagnosticProjectionPreparation::Ready(context) => return Ok(Some(context)),
-                DiagnosticProjectionPreparation::Project(request) => request,
+                DiagnosticProjectionPreparation::Project(ticket) => ticket,
             };
-            let projection = match executor.execute_diagnostic_reprojection(&request).await {
+            let projection = match executor
+                .execute_diagnostic_reprojection(ticket.request())
+                .await
+            {
                 Ok(projection) => projection,
                 Err(error) if error.is_stale() => {
                     let state = self.inner.state.lock().await;
-                    let Some(next) = state.retry_diagnostic_reprojection_request(&request) else {
-                        return stale_or_missing_result(
-                            purpose,
-                            state.get(request.uri()).is_some(),
-                        );
+                    let Some(next) = state.retry_diagnostic_reprojection_request(&ticket) else {
+                        return stale_or_missing_result(purpose, state.get(ticket.uri()).is_some());
                     };
                     preparation = next;
                     continue;
@@ -377,12 +362,13 @@ impl LanguageSession {
             let mut state = self.inner.state.lock().await;
             let Some((context, next, document_exists)) =
                 self.commit_state_if_active(&mut state, |state| {
-                    let context = state.commit_diagnostic_reprojection_context(&projection);
+                    let context =
+                        state.commit_diagnostic_reprojection_context(&ticket, &projection);
                     let next = context
                         .is_none()
-                        .then(|| state.retry_diagnostic_reprojection_request(&request))
+                        .then(|| state.retry_diagnostic_reprojection_request(&ticket))
                         .flatten();
-                    let document_exists = state.get(request.uri()).is_some();
+                    let document_exists = state.get(ticket.uri()).is_some();
                     (context, next, document_exists)
                 })
             else {
@@ -400,7 +386,7 @@ impl LanguageSession {
         }
         let uri = match &preparation {
             DiagnosticProjectionPreparation::Ready(context) => context.snapshot.uri(),
-            DiagnosticProjectionPreparation::Project(request) => request.uri(),
+            DiagnosticProjectionPreparation::Project(ticket) => ticket.uri(),
         };
         self.stale_or_missing(uri, purpose).await
     }

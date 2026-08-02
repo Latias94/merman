@@ -1,12 +1,11 @@
+use super::AnalysisJobGeneration;
 use crate::session::analysis::request::{
-    AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, AnalysisJobGeneration,
-    DiagnosticProjectionOrigin, DiagnosticReprojectionKey, DiagnosticReprojectionRequest,
-    DiagnosticReprojectionResult,
+    AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, DiagnosticReprojectionKey,
+    DiagnosticReprojectionRequest, DiagnosticReprojectionResult,
 };
-use crate::snapshot::{
-    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
-    SnapshotGeneration,
-};
+#[cfg(test)]
+use crate::snapshot::{DiagnosticGeneration, DocumentEpoch, SnapshotGeneration};
+use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot};
 use crate::sync::lock_recovering_poison;
 use merman_analysis::AnalysisCancellationToken;
 #[cfg(test)]
@@ -375,7 +374,6 @@ impl AnalysisExecutionLease {
 
 pub(in crate::session) struct DiagnosticReprojectionLease {
     result: Arc<DiagnosticReprojectionResult>,
-    origin: DiagnosticProjectionOrigin,
     _waiter: AnalysisWaiter,
 }
 
@@ -389,36 +387,12 @@ impl fmt::Debug for DiagnosticReprojectionLease {
 }
 
 impl DiagnosticReprojectionLease {
-    pub(in crate::session) fn uri(&self) -> &Uri {
-        self.result.uri()
-    }
-
-    pub(in crate::session) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
-        self.result.analysis_job_generation()
-    }
-
-    pub(in crate::session) fn document_epoch(&self) -> DocumentEpoch {
-        self.result.document_epoch()
-    }
-
-    pub(in crate::session) fn snapshot_generation(&self) -> SnapshotGeneration {
-        self.result.snapshot_generation()
-    }
-
-    pub(in crate::session) fn target_diagnostic_generation(&self) -> DiagnosticGeneration {
-        self.result.target_diagnostic_generation()
-    }
-
-    pub(in crate::session) fn generation_identity(&self) -> usize {
-        self.result.generation_identity()
+    pub(in crate::session) fn key(&self) -> &DiagnosticReprojectionKey {
+        self.result.key()
     }
 
     pub(in crate::session) fn projected(&self) -> &Arc<DocumentAnalysisContext> {
         self.result.projected()
-    }
-
-    pub(in crate::session) fn origin(&self) -> DiagnosticProjectionOrigin {
-        self.origin
     }
 
     #[cfg(test)]
@@ -598,7 +572,6 @@ impl AnalysisExecutor {
         };
         Ok(DiagnosticReprojectionLease {
             result,
-            origin: request.origin(),
             _waiter: waiter,
         })
     }
@@ -1186,7 +1159,6 @@ mod tests {
                 context.as_ref(),
             ),
             context,
-            DiagnosticProjectionOrigin::FreshBuild,
         )
     }
 
