@@ -29,6 +29,26 @@ fn presentation() -> Presentation {
         .with_theme(HostTheme::from_preset(ThemePreset::OneDark))
 }
 
+fn assert_json_keys_absent(value: &Value, forbidden: &[&str]) {
+    match value {
+        Value::Object(object) => {
+            for (key, value) in object {
+                assert!(
+                    !forbidden.contains(&key.as_str()),
+                    "unexpected private presentation key `{key}` in {object:?}"
+                );
+                assert_json_keys_absent(value, forbidden);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                assert_json_keys_absent(value, forbidden);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[test]
 fn renderer_configuration_precedence_is_independent_of_builder_order() {
     let base = Engine::new().with_site_config(config(json!({
@@ -157,4 +177,65 @@ fn direct_parse_and_prepared_semantic_share_the_same_materialized_engine() {
 
     assert_eq!(exposed, direct);
     assert_eq!(prepared, direct);
+}
+
+#[test]
+fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() {
+    let renderer = HeadlessRenderer::new()
+        .with_presentation(presentation())
+        .with_site_config(config(json!({
+            "flowchart": {
+                "defaultRenderer": "dagre-wrapper",
+                "edgeLabelPadding": 0,
+                "compactEdgeCorners": false,
+            },
+        })));
+    let source = r#"flowchart TD
+    A[Start] --> B{Condition?}
+    B -->|Yes| C[Execute]
+    B -->|No| D[End]
+"#;
+
+    let effective = effective_config(&renderer, source);
+    assert_eq!(effective["flowchart"]["defaultRenderer"], "dagre-wrapper");
+    let svg = renderer
+        .render_svg_sync(source)
+        .expect("typed presentation render should succeed")
+        .expect("flowchart should be detected");
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class") == Some("label")
+                && node.attribute("data-id") == Some("L_B_C_0")
+        })
+        .expect("B-C edge label group");
+    let background = label
+        .parent()
+        .expect("edge label container")
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .expect("edge label background");
+    assert_eq!(background.attribute("rx"), Some("4"));
+    assert_eq!(background.attribute("ry"), Some("4"));
+
+    let isolated = HeadlessRenderer::new()
+        .with_presentation(presentation())
+        .with_site_config(config(json!({
+            "flowchart": { "defaultRenderer": "dagre-wrapper" },
+        })));
+    let effective = effective_config(&isolated, source);
+    assert!(effective["flowchart"].get("edgeCornerRadius").is_none());
+    assert!(effective["flowchart"].get("edgeLabelPadding").is_none());
+    assert!(effective["flowchart"].get("compactEdgeCorners").is_none());
+
+    let layout = isolated
+        .layout_json_sync(source)
+        .expect("layout projection should succeed")
+        .expect("flowchart should be detected");
+    assert_json_keys_absent(
+        &layout,
+        &["edgeCornerRadius", "edgeLabelPadding", "compactEdgeCorners"],
+    );
 }

@@ -43,7 +43,9 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
+
+use merman_render::presentation::PresentationRenderPolicy;
 
 pub use merman_core::runtime::{
     OperationContext, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
@@ -1411,7 +1413,7 @@ pub struct HeadlessRenderer {
 enum RendererPresentation {
     #[default]
     None,
-    Typed(ResolvedPresentation),
+    Typed(Arc<ResolvedPresentation>),
     Legacy {
         site_config: merman_core::MermaidConfig,
         pipeline: SvgPipeline,
@@ -1428,10 +1430,21 @@ impl RendererPresentation {
     }
 
     fn typed(&self) -> Option<&Presentation> {
+        self.resolved()
+            .map(|presentation| presentation.presentation())
+    }
+
+    fn resolved(&self) -> Option<&Arc<ResolvedPresentation>> {
         match self {
-            Self::Typed(presentation) => Some(presentation.presentation()),
+            Self::Typed(presentation) => Some(presentation),
             Self::None | Self::Legacy { .. } => None,
         }
+    }
+
+    fn render_policy(&self) -> PresentationRenderPolicy {
+        self.resolved()
+            .map(|presentation| presentation.render_policy())
+            .unwrap_or_default()
     }
 
     fn legacy_pipeline(&self) -> Option<&SvgPipeline> {
@@ -1537,7 +1550,7 @@ impl HeadlessRenderer {
 
     /// Selects product presentation independently from Mermaid site config and SVG output.
     pub fn with_presentation(mut self, presentation: Presentation) -> Self {
-        self.presentation = RendererPresentation::Typed(presentation.resolve());
+        self.presentation = RendererPresentation::Typed(Arc::new(presentation.resolve()));
         self.invalidate_materialized_engine();
         self
     }
@@ -1676,7 +1689,14 @@ impl HeadlessRenderer {
         engine: &merman_core::Engine,
         text: &'a str,
     ) -> Result<operation::HeadlessOperation<'a>> {
-        operation::HeadlessOperation::new(engine, text, self.parse, &self.layout, &self.environment)
+        operation::HeadlessOperation::new_with_render_policy(
+            engine,
+            text,
+            self.parse,
+            &self.layout,
+            &self.environment,
+            self.presentation.render_policy(),
+        )
     }
 
     pub fn parse_metadata_sync(&self, text: &str) -> Result<merman_core::ParseMetadata> {

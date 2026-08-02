@@ -1,5 +1,6 @@
 use crate::environment::RenderSession;
 use crate::model::*;
+use crate::presentation::{FlowchartPresentationPolicy, PresentationRenderPolicy};
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
     ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
@@ -180,6 +181,22 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 }
 
 #[derive(Debug)]
+pub(crate) struct FlowchartFamilyArtifact {
+    pair: FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout>,
+    policy: Option<FlowchartPresentationPolicy>,
+}
+
+impl FlowchartFamilyArtifact {
+    pub(crate) fn pair(&self) -> &FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn policy(&self) -> Option<FlowchartPresentationPolicy> {
+        self.policy
+    }
+}
+
+#[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
@@ -195,7 +212,7 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
-    Flowchart(Box<FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout>>),
+    Flowchart(Box<FlowchartFamilyArtifact>),
     Swimlane(Box<FamilyPair<diagrams::flowchart::FlowchartModel, SwimlaneLayout>>),
     #[cfg(feature = "layout-cytoscape")]
     Architecture(
@@ -416,7 +433,7 @@ impl BuiltinFamilyArtifact {
             Self::State(pair) => pair.compatibility_json(metadata),
             Self::Sequence(pair) => pair.compatibility_json(metadata),
             Self::Zenuml(pair) => pair.compatibility_json(metadata),
-            Self::Flowchart(pair) => pair.compatibility_json(metadata),
+            Self::Flowchart(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Swimlane(pair) => pair.compatibility_json(metadata),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => pair.compatibility_json(metadata),
@@ -455,7 +472,7 @@ impl BuiltinFamilyArtifact {
             Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout()),
             Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
-            Self::Flowchart(pair) => LayoutProjection::Flowchart(pair.layout()),
+            Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
             Self::Swimlane(pair) => LayoutProjection::SwimlaneDiagram(pair.layout()),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
@@ -814,9 +831,7 @@ fn render_family_artifact_svg(
     }
     crate::svg::render_builtin_family_artifact(
         &artifact.family,
-        &artifact.metadata.effective_config,
-        &artifact.metadata.diagram_type,
-        artifact.metadata.title.as_deref(),
+        &artifact.metadata,
         &artifact.session,
         &options,
         debug,
@@ -830,6 +845,18 @@ fn prepare_pair<S, L>(
 ) -> Result<Box<FamilyPair<S, L>>> {
     let layout = layout(&semantic)?;
     Ok(Box::new(FamilyPair::new(semantic, layout)))
+}
+
+fn prepare_flowchart_artifact(
+    semantic: diagrams::flowchart::FlowchartModel,
+    policy: Option<FlowchartPresentationPolicy>,
+    layout: impl FnOnce(&diagrams::flowchart::FlowchartModel) -> Result<FlowchartLayout>,
+) -> Result<Box<FlowchartFamilyArtifact>> {
+    let layout = layout(&semantic)?;
+    Ok(Box::new(FlowchartFamilyArtifact {
+        pair: FamilyPair::new(semantic, layout),
+        policy,
+    }))
 }
 
 fn flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel) -> bool {
@@ -1028,13 +1055,28 @@ pub fn prepare(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
+    prepare_with_render_policy(
+        parsed,
+        options,
+        session,
+        PresentationRenderPolicy::default(),
+    )
+}
+
+/// Prepares one family artifact with renderer policy derived from a resolved presentation.
+pub fn prepare_with_render_policy(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: RenderSession,
+    render_policy: PresentationRenderPolicy,
+) -> Result<FamilyRenderArtifact> {
     plan_render(&parsed, &session)?.ensure_available()?;
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
     if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
         return prepare_class_render(parsed, options, session);
     }
-    prepare_non_class_render(parsed, options, session)
+    prepare_non_class_render(parsed, options, session, render_policy)
 }
 
 #[inline(never)]
@@ -1042,6 +1084,7 @@ fn prepare_non_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
     session: RenderSession,
+    render_policy: PresentationRenderPolicy,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model) = parsed.into_parts();
     let diagram_type = meta.diagram_type.as_str();
@@ -1107,16 +1150,16 @@ fn prepare_non_class_render(
                 )
             })?)
         }
-        RenderSemanticModel::Flowchart(model) => {
-            BuiltinFamilyArtifact::Flowchart(prepare_pair(model, |model| {
+        RenderSemanticModel::Flowchart(model) => BuiltinFamilyArtifact::Flowchart(
+            prepare_flowchart_artifact(model, render_policy.flowchart(), |model| {
                 crate::layout_flowchart_typed_by_engine(
                     diagram_type,
                     model,
                     &meta.effective_config,
                     &execution,
                 )
-            })?)
-        }
+            })?,
+        ),
         #[cfg(feature = "layout-cytoscape")]
         RenderSemanticModel::Architecture(model) => {
             BuiltinFamilyArtifact::Architecture(prepare_pair(model, |model| {

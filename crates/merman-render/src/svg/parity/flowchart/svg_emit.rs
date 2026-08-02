@@ -14,15 +14,19 @@ pub(in crate::svg::parity) fn render_flowchart_svg_model_with_config(
     effective_config: &merman_core::MermaidConfig,
     diagram_type: &str,
     diagram_title: Option<&str>,
+    presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     render_flowchart_svg_model(
-        layout,
-        None,
-        model,
-        effective_config,
-        diagram_type,
-        diagram_title,
+        FlowchartSvgModelRequest {
+            layout,
+            swimlane_layout: None,
+            model,
+            effective_config,
+            diagram_type,
+            diagram_title,
+            presentation_policy,
+        },
         options,
     )
 }
@@ -37,25 +41,42 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_svg_model_with_swimlan
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     render_flowchart_svg_model(
-        layout,
-        Some(swimlane_layout),
-        model,
-        effective_config,
-        diagram_type,
-        diagram_title,
+        FlowchartSvgModelRequest {
+            layout,
+            swimlane_layout: Some(swimlane_layout),
+            model,
+            effective_config,
+            diagram_type,
+            diagram_title,
+            presentation_policy: None,
+        },
         options,
     )
 }
 
+struct FlowchartSvgModelRequest<'a> {
+    layout: &'a FlowchartLayout,
+    swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
+    model: &'a crate::flowchart::FlowchartModel,
+    effective_config: &'a merman_core::MermaidConfig,
+    diagram_type: &'a str,
+    diagram_title: Option<&'a str>,
+    presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
+}
+
 fn render_flowchart_svg_model(
-    layout: &FlowchartLayout,
-    swimlane_layout: Option<&crate::model::SwimlaneLayout>,
-    model: &crate::flowchart::FlowchartModel,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_type: &str,
-    diagram_title: Option<&str>,
+    request: FlowchartSvgModelRequest<'_>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let FlowchartSvgModelRequest {
+        layout,
+        swimlane_layout,
+        model,
+        effective_config,
+        diagram_type,
+        diagram_title,
+        presentation_policy,
+    } = request;
     if model
         .nodes
         .iter()
@@ -113,7 +134,12 @@ fn render_flowchart_svg_model(
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,
-    } = prepare_flowchart_render_config(model, effective_config_value, diagram_type);
+    } = prepare_flowchart_render_config(
+        model,
+        effective_config_value,
+        diagram_type,
+        presentation_policy,
+    );
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
         FxHashMap::with_capacity_and_hasher(

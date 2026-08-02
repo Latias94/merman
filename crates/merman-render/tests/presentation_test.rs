@@ -169,6 +169,9 @@ fn explicit_theme_overrides_modern_theme_defaults_without_erasing_profile_aspect
     assert_eq!(config["themeVariables"]["background"], "#282c34");
     assert_eq!(config["look"], "neo");
     assert_eq!(config["flowchart"]["defaultRenderer"], "elk");
+    assert!(config["flowchart"].get("edgeCornerRadius").is_none());
+    assert!(config["flowchart"].get("edgeLabelPadding").is_none());
+    assert!(config["flowchart"].get("compactEdgeCorners").is_none());
 }
 
 #[test]

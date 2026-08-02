@@ -6,10 +6,11 @@ mod profile;
 mod theme;
 
 pub use presets::{HostThemePreset, ThemePresetDescriptor, theme_preset_descriptors};
+pub(crate) use profile::FlowchartPresentationPolicy;
 pub use profile::{
     Presentation, PresentationAspectApplicability, PresentationAspectDescriptor,
-    PresentationProfile, PresentationProfileDescriptor, ResolvedPresentation,
-    presentation_profile_descriptors,
+    PresentationProfile, PresentationProfileDescriptor, PresentationRenderPolicy,
+    ResolvedPresentation, presentation_profile_descriptors,
 };
 pub use theme::{HostTheme, HostThemeAppearance, ThemeRole};
 

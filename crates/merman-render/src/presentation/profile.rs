@@ -90,12 +90,35 @@ impl ResolvedPresentation {
         engine.with_site_config(self.mermaid_config.clone())
     }
 
+    /// Returns the small renderer-owned policy that accompanies the materialized Mermaid config.
+    pub const fn render_policy(&self) -> PresentationRenderPolicy {
+        PresentationRenderPolicy {
+            flowchart: self.flowchart_policy,
+        }
+    }
+
     pub(crate) fn mermaid_config(&self) -> &MermaidConfig {
         &self.mermaid_config
     }
 
     pub(crate) const fn flowchart_policy(&self) -> Option<FlowchartPresentationPolicy> {
         self.flowchart_policy
+    }
+}
+
+/// Opaque renderer policy derived from a resolved product presentation.
+///
+/// The policy intentionally excludes Mermaid configuration and host theme data. Callers should
+/// first materialize the resolved presentation into the parsing engine, then carry this compact
+/// value alongside the resulting typed render model.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct PresentationRenderPolicy {
+    flowchart: Option<FlowchartPresentationPolicy>,
+}
+
+impl PresentationRenderPolicy {
+    pub(crate) const fn flowchart(self) -> Option<FlowchartPresentationPolicy> {
+        self.flowchart
     }
 }
 
