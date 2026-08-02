@@ -47,6 +47,8 @@ _CONTRACT_RECEIPT_FIELDS = frozenset(
         "marker",
         "owned_bytes",
         "release_proof",
+        "render_cancellation",
+        "early_termination_proof",
         "configured_seed_zero",
         "fallback_capable_configured_seeds",
     }
@@ -115,6 +117,8 @@ _RECEIPT_CONTRACT_FIELDS = frozenset(
     {
         "owned_bytes",
         "release_proof",
+        "render_cancellation",
+        "early_termination_proof",
         "configured_seed_zero",
         "fallback_capable_configured_seeds",
     }
@@ -651,6 +655,8 @@ def load_owner_contract(
         "release_proof": (
             "weak_string_allocation_witnesses_sampled_after_operation_cache_drop"
         ),
+        "render_cancellation": "not_applicable_no_render_control_or_checkpoint",
+        "early_termination_proof": "result_error_after_nonempty_operation_cache",
         "configured_seed_zero": (
             "configured_hand_drawn_seed_zero_resolves_to_operation_seed_before_cache_bypass"
         ),
@@ -1651,6 +1657,10 @@ def _validate_receipt(
         raise LifecycleContractError("receipt owned-byte definition drifted")
     if contracts["release_proof"] != contract_receipt["release_proof"]:
         raise LifecycleContractError("receipt release-proof definition drifted")
+    if contracts["render_cancellation"] != contract_receipt["render_cancellation"]:
+        raise LifecycleContractError("receipt render-cancellation claim boundary drifted")
+    if contracts["early_termination_proof"] != contract_receipt["early_termination_proof"]:
+        raise LifecycleContractError("receipt early-termination proof definition drifted")
     if contracts["configured_seed_zero"] != contract_receipt["configured_seed_zero"]:
         raise LifecycleContractError("receipt configured-zero contract drifted")
     fallback_seeds = tuple(

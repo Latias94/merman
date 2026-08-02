@@ -372,6 +372,8 @@ def valid_receipt(mode: str) -> dict[str, object]:
             "release_proof": (
                 "weak_string_allocation_witnesses_sampled_after_operation_cache_drop"
             ),
+            "render_cancellation": "not_applicable_no_render_control_or_checkpoint",
+            "early_termination_proof": "result_error_after_nonempty_operation_cache",
             "configured_seed_zero": (
                 "configured_hand_drawn_seed_zero_resolves_to_operation_seed_before_cache_bypass"
             ),
@@ -681,6 +683,14 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             "weak_string_allocation_witnesses_sampled_after_operation_cache_drop",
         )
         self.assertEqual(
+            contract["receipt"]["render_cancellation"],
+            "not_applicable_no_render_control_or_checkpoint",
+        )
+        self.assertEqual(
+            contract["receipt"]["early_termination_proof"],
+            "result_error_after_nonempty_operation_cache",
+        )
+        self.assertEqual(
             contract["probe"]["test_name"],
             "svg::parity::state::rough_lifecycle_probe::state_rough_lifecycle_probe_receipt",
         )
@@ -722,6 +732,15 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
                 lifecycle.LifecycleContractError, "detailed request specs"
             ):
                 lifecycle.load_owner_contract(path, lane=self.lane(), root=ROOT)
+
+            for field in ("render_cancellation", "early_termination_proof"):
+                damaged = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+                damaged["receipt"][field] = "drifted"
+                path.write_text(json.dumps(damaged), encoding="utf-8")
+                with self.subTest(field=field), self.assertRaisesRegex(
+                    lifecycle.LifecycleContractError, field
+                ):
+                    lifecycle.load_owner_contract(path, lane=self.lane(), root=ROOT)
 
             provenance_mutations = (
                 ("relation", "candidate_ancestor", "relation"),

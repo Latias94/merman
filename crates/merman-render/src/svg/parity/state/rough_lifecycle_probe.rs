@@ -14,6 +14,8 @@ const STATE_ROUGH_LIFECYCLE_CONTROLS_SCHEMA: &str = "merman.state_rough_lifecycl
 const OWNED_BYTES_DEFINITION: &str = "sum_of_cached_string_capacities";
 const RELEASE_PROOF_DEFINITION: &str =
     "weak_string_allocation_witnesses_sampled_after_operation_cache_drop";
+const RENDER_CANCELLATION_CONTRACT: &str = "not_applicable_no_render_control_or_checkpoint";
+const EARLY_TERMINATION_PROOF: &str = "result_error_after_nonempty_operation_cache";
 const CONFIGURED_ZERO_CONTRACT: &str =
     "configured_hand_drawn_seed_zero_resolves_to_operation_seed_before_cache_bypass";
 const AFTER_ROOT_ERROR_SENTINEL: &str = "State Rough lifecycle control error after root render";
@@ -633,6 +635,8 @@ pub(super) fn state_rough_lifecycle_after_root(completed_svg: &str) -> Result<()
 struct StateRoughLifecycleContracts {
     owned_bytes: &'static str,
     release_proof: &'static str,
+    render_cancellation: &'static str,
+    early_termination_proof: &'static str,
     configured_seed_zero: &'static str,
     fallback_capable_configured_seeds: [f64; 2],
 }
@@ -1281,6 +1285,8 @@ fn build_state_rough_lifecycle_receipt(
         contracts: StateRoughLifecycleContracts {
             owned_bytes: OWNED_BYTES_DEFINITION,
             release_proof: RELEASE_PROOF_DEFINITION,
+            render_cancellation: RENDER_CANCELLATION_CONTRACT,
+            early_termination_proof: EARLY_TERMINATION_PROOF,
             configured_seed_zero: CONFIGURED_ZERO_CONTRACT,
             fallback_capable_configured_seeds: [4_294_967_296.0, -1.0],
         },
@@ -1362,6 +1368,12 @@ fn validate_state_rough_lifecycle_receipt(
     }
     if receipt.contracts.release_proof != RELEASE_PROOF_DEFINITION {
         return Err("release-proof definition drifted".to_string());
+    }
+    if receipt.contracts.render_cancellation != RENDER_CANCELLATION_CONTRACT {
+        return Err("render-cancellation claim boundary drifted".to_string());
+    }
+    if receipt.contracts.early_termination_proof != EARLY_TERMINATION_PROOF {
+        return Err("early-termination proof definition drifted".to_string());
     }
     if receipt.contracts.configured_seed_zero != CONFIGURED_ZERO_CONTRACT {
         return Err("configured-zero contract drifted".to_string());
@@ -1874,6 +1886,14 @@ fn state_rough_lifecycle_marker_wraps_one_strict_json_schema() {
     assert_eq!(
         value["contracts"]["release_proof"],
         RELEASE_PROOF_DEFINITION
+    );
+    assert_eq!(
+        value["contracts"]["render_cancellation"],
+        RENDER_CANCELLATION_CONTRACT
+    );
+    assert_eq!(
+        value["contracts"]["early_termination_proof"],
+        EARLY_TERMINATION_PROOF
     );
 }
 

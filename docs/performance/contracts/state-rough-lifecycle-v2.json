@@ -14,6 +14,8 @@
     "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_RECEIPT_V2=",
     "owned_bytes": "sum_of_cached_string_capacities",
     "release_proof": "weak_string_allocation_witnesses_sampled_after_operation_cache_drop",
+    "render_cancellation": "not_applicable_no_render_control_or_checkpoint",
+    "early_termination_proof": "result_error_after_nonempty_operation_cache",
     "configured_seed_zero": "configured_hand_drawn_seed_zero_resolves_to_operation_seed_before_cache_bypass",
     "fallback_capable_configured_seeds": [4294967296.0, -1.0]
   },
