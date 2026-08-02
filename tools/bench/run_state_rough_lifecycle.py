@@ -463,17 +463,22 @@ def _git_object_id(value: object, *, context: str) -> str:
     return revision
 
 
-def _describe_file(path: Path, *, root: Path) -> dict[str, object]:
+def _describe_file(
+    path: Path, *, root: Path, absolute_path: bool = False
+) -> dict[str, object]:
     try:
         resolved = path.resolve(strict=True)
     except OSError as error:
         raise LifecycleContractError(f"file does not exist: {path}") from error
     if not resolved.is_file():
         raise LifecycleContractError(f"path is not a file: {resolved}")
-    try:
-        display = resolved.relative_to(root.resolve(strict=True)).as_posix()
-    except ValueError:
+    if absolute_path:
         display = str(resolved)
+    else:
+        try:
+            display = resolved.relative_to(root.resolve(strict=True)).as_posix()
+        except ValueError:
+            display = str(resolved)
     return {
         "path": display,
         "bytes": resolved.stat().st_size,
@@ -1826,7 +1831,7 @@ def build_test_executable(
             f"cargo produced {len(executables)} matching merman-render lib test executables"
         )
     executable = next(iter(executables))
-    descriptor = _describe_file(executable, root=root)
+    descriptor = _describe_file(executable, root=root, absolute_path=True)
     return executable, {
         "command": command,
         "environment": {"CARGO_BUILD_JOBS": "1", "CARGO_INCREMENTAL": "0"},
@@ -2122,6 +2127,15 @@ def _validate_success_report(
     build_executable = _validate_file_descriptor(
         build["executable"], context="baseline driver report.build.executable"
     )
+    if not Path(str(build_executable["path"])).is_absolute():
+        raise LifecycleContractError(
+            "baseline build executable path must be absolute across worktrees"
+        )
+    executable_path = Path(str(build_executable["path"]))
+    if not executable_path.is_absolute():
+        raise LifecycleContractError(
+            "baseline built test executable path must be absolute"
+        )
     probe = _object(
         report["probe"],
         fields=_PROBE_REPORT_FIELDS,
@@ -2178,12 +2192,11 @@ def _validate_success_report(
         raise LifecycleContractError(
             "baseline controls and decision receipt used different test executables"
         )
-    executable_path = Path(str(build_executable["path"]))
-    if not executable_path.is_absolute():
-        executable_path = repo_root() / executable_path
     probe_executable_path = Path(probe_command[0])
     if not probe_executable_path.is_absolute():
-        probe_executable_path = repo_root() / probe_executable_path
+        raise LifecycleContractError(
+            "baseline probe command executable path must be absolute"
+        )
     if probe_executable_path.resolve() != executable_path.resolve():
         raise LifecycleContractError(
             "baseline probe command differs from the built test executable"

@@ -363,7 +363,8 @@ def success_baseline_report(
     lane = resolve_lane_selector(load_corpus(CORPUS_PATH), lifecycle.DEFAULT_LANE)
     descriptor = lifecycle._describe_file(CONTRACT_PATH, root=ROOT)
     harness = lifecycle._harness_report(ROOT)
-    file_descriptor = {"path": "target/debug/test", "bytes": 1, "sha256": "d" * 64}
+    executable_path = str((ROOT / "target" / "debug" / "test").resolve())
+    file_descriptor = {"path": executable_path, "bytes": 1, "sha256": "d" * 64}
     controls_receipt = controls_receipt or valid_controls("baseline")
     return {
         "schema": lifecycle.DRIVER_SCHEMA,
@@ -404,7 +405,7 @@ def success_baseline_report(
         },
         "probe": {
             "command": [
-                "target/debug/test",
+                executable_path,
                 (
                     "svg::parity::state::rough_lifecycle_probe::"
                     "state_rough_lifecycle_probe_receipt"
@@ -422,7 +423,7 @@ def success_baseline_report(
         "controls": {
             "probe": {
                 "command": [
-                    "target/debug/test",
+                    executable_path,
                     (
                         "svg::parity::state::rough_lifecycle_probe::"
                         "state_rough_lifecycle_release_controls"
@@ -918,6 +919,9 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             lambda report: report["controls"]["probe"]["command"].__setitem__(
                 0, "target/debug/different-test"
             ),
+            lambda report: report["build"]["executable"].__setitem__(
+                "path", "target/debug/test"
+            ),
         )
         with tempfile.TemporaryDirectory() as raw:
             path = Path(raw) / "baseline.json"
@@ -988,7 +992,9 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
     def test_build_discovers_exactly_one_lib_test_executable(self) -> None:
         contract = self.contract()
         with tempfile.TemporaryDirectory() as raw:
-            executable = Path(raw) / "merman-render-test"
+            fake_root = Path(raw)
+            executable = fake_root / "target" / "merman-render-test"
+            executable.parent.mkdir()
             executable.write_bytes(b"test executable")
             cargo_message = {
                 "reason": "compiler-artifact",
@@ -1003,18 +1009,66 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             )
             with mock.patch.object(subprocess, "run", return_value=completed) as run:
                 discovered, report = lifecycle.build_test_executable(
-                    ROOT,
+                    fake_root,
                     contract=contract,
-                    target_dir=ROOT / "target",
+                    target_dir=fake_root / "target",
                     toolchain=None,
                     timeout_seconds=30,
                 )
 
             self.assertEqual(discovered, executable.resolve())
             self.assertEqual(report["executable"]["sha256"], lifecycle._sha256_path(executable))
+            self.assertEqual(report["executable"]["path"], str(executable.resolve()))
             command = run.call_args.args[0]
             self.assertEqual(command[:6], ["cargo", "test", "--locked", "-p", "merman-render", "--lib"])
             self.assertEqual(run.call_args.kwargs["env"]["CARGO_BUILD_JOBS"], "1")
+
+    def test_baseline_executable_provenance_is_cross_worktree_safe(self) -> None:
+        contract = self.contract()
+        lane = self.lane()
+        candidate = lifecycle._validate_receipt(
+            valid_receipt("candidate"), contract=contract
+        )
+        candidate_controls = lifecycle._validate_controls_receipt(
+            valid_controls("candidate"), contract=contract
+        )
+        expected_contract = lifecycle._describe_file(CONTRACT_PATH, root=ROOT)
+        expected_harness = lifecycle._harness_report(ROOT)
+        expected_host = success_baseline_report(valid_receipt("baseline"))["host"]
+        with (
+            tempfile.TemporaryDirectory() as baseline_raw,
+            tempfile.TemporaryDirectory() as candidate_raw,
+            tempfile.TemporaryDirectory() as report_raw,
+        ):
+            report = success_baseline_report(valid_receipt("baseline"))
+            baseline_executable = str(
+                Path(baseline_raw) / "target" / "debug" / "test"
+            )
+            report["build"]["executable"]["path"] = baseline_executable
+            report["probe"]["command"][0] = baseline_executable
+            report["controls"]["probe"]["command"][0] = baseline_executable
+            path = Path(report_raw) / "baseline.json"
+            path.write_text(json.dumps(report), encoding="utf-8")
+            with mock.patch.object(
+                lifecycle,
+                "repo_root",
+                return_value=Path(candidate_raw),
+            ):
+                result = lifecycle.compare_with_baseline(
+                    candidate,
+                    candidate_controls,
+                    path,
+                    contract=contract,
+                    lane=lane,
+                    expected_contract=expected_contract,
+                    expected_harness=expected_harness,
+                    expected_host=expected_host,
+                    expected_baseline_commit=BASELINE_COMMIT,
+                    expected_baseline_tree=BASELINE_TREE,
+                )
+
+        self.assertTrue(result["revision_equal"])
+        self.assertTrue(result["release_control_semantics_equal"])
 
     def test_probe_runs_only_the_exact_ignored_test(self) -> None:
         contract = self.contract()
