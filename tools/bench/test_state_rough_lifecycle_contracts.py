@@ -29,7 +29,7 @@ CONTRACT_PATH = (
     / "docs"
     / "performance"
     / "contracts"
-    / "state-rough-lifecycle-v1.json"
+    / "state-rough-lifecycle-v2.json"
 )
 SHA_A = "sha256:" + "a" * 64
 BASELINE_COMMIT = "a" * 40
@@ -82,6 +82,90 @@ def counters(**overrides: int | None) -> dict[str, object]:
     }
 
 
+def release_proof(
+    request_counters: dict[str, object],
+    peak: dict[str, int],
+    *,
+    mode: str,
+    cache_allowed: bool,
+) -> dict[str, object]:
+    if cache_allowed:
+        geometry_witnesses = sum(
+            int(request_counters[kind]["operation_misses"])
+            for kind in lifecycle._COUNTER_KINDS
+        )
+        allocation_witnesses = int(
+            request_counters["circle"]["operation_misses"]
+        ) + 2 * int(request_counters["paths"]["operation_misses"])
+        witnessed_owned_bytes = peak["owned_bytes"]
+    else:
+        geometry_witnesses = 0
+        allocation_witnesses = 0
+        witnessed_owned_bytes = 0
+    return {
+        "cache_drop_observed": True,
+        "geometry_witnesses": geometry_witnesses,
+        "allocation_witnesses": allocation_witnesses,
+        "witnessed_owned_bytes": witnessed_owned_bytes,
+        "live_allocation_witnesses": (
+            allocation_witnesses if mode == "baseline" else 0
+        ),
+        "live_owned_bytes": witnessed_owned_bytes if mode == "baseline" else 0,
+    }
+
+
+def expected_release_rollup(
+    mode: str, *, long_lived_only: bool
+) -> dict[str, object]:
+    if long_lived_only:
+        operation_count = 2_048
+        total_geometry_witnesses = 4_096
+        total_allocation_witnesses = 6_144
+        total_witnessed_owned_bytes = 65_536
+    else:
+        operation_count = 2_057
+        total_geometry_witnesses = 4_110
+        total_allocation_witnesses = 6_165
+        total_witnessed_owned_bytes = 65_760
+    return {
+        "operation_count": operation_count,
+        "total_geometry_witnesses": total_geometry_witnesses,
+        "total_allocation_witnesses": total_allocation_witnesses,
+        "total_witnessed_owned_bytes": total_witnessed_owned_bytes,
+        "max_live_allocation_witnesses_after_operation": (
+            3 if mode == "baseline" else 0
+        ),
+        "max_live_owned_bytes_after_operation": 32 if mode == "baseline" else 0,
+        "all_cache_drops_observed": True,
+    }
+
+
+def independent_release_rollup(
+    proofs: list[dict[str, object]],
+) -> dict[str, object]:
+    return {
+        "operation_count": len(proofs),
+        "total_geometry_witnesses": sum(
+            int(proof["geometry_witnesses"]) for proof in proofs
+        ),
+        "total_allocation_witnesses": sum(
+            int(proof["allocation_witnesses"]) for proof in proofs
+        ),
+        "total_witnessed_owned_bytes": sum(
+            int(proof["witnessed_owned_bytes"]) for proof in proofs
+        ),
+        "max_live_allocation_witnesses_after_operation": max(
+            (int(proof["live_allocation_witnesses"]) for proof in proofs),
+            default=0,
+        ),
+        "max_live_owned_bytes_after_operation": max(
+            (int(proof["live_owned_bytes"]) for proof in proofs), default=0
+        ),
+        "all_cache_drops_observed": bool(proofs)
+        and all(proof["cache_drop_observed"] is True for proof in proofs),
+    }
+
+
 def operation(
     ordinal: int,
     *,
@@ -102,15 +186,15 @@ def operation(
         seed_resolution = "configured_fallback_capable"
     elif mode == "baseline" and ordinal == 2:
         request_counters = counters(operation_builds=0, tls_hits=1)
-        peak = footprint(1, 8)
+        peak = footprint(2, 32)
         seed_resolution = "configured_deterministic"
     elif mode == "baseline" and ordinal == 3:
         request_counters = counters(operation_builds=0, global_hits=1)
-        peak = footprint(1, 8)
+        peak = footprint(2, 32)
         seed_resolution = "configured_deterministic"
     else:
         request_counters = counters()
-        peak = footprint(1, 8)
+        peak = footprint(2, 32)
         seed_resolution = (
             "operation_resolved"
             if configured_seed == 0.0
@@ -125,6 +209,12 @@ def operation(
         "counters": request_counters,
         "operation_peak": peak,
         "post_operation_retained": state,
+        "release_proof": release_proof(
+            request_counters,
+            peak,
+            mode=mode,
+            cache_allowed=not fallback,
+        ),
     }
 
 
@@ -150,6 +240,20 @@ def request(
             mode=mode,
             configured_seed=configured_seed,
             fallback=fallback,
+        ),
+    }
+
+
+def long_release_record(request_count: int, *, mode: str) -> dict[str, object]:
+    request_counters = counters()
+    peak = footprint(2, 32)
+    return {
+        "request_count": request_count,
+        "cache_allowed": True,
+        "counters": request_counters,
+        "operation_peak": peak,
+        "release_proof": release_proof(
+            request_counters, peak, mode=mode, cache_allowed=True
         ),
     }
 
@@ -226,11 +330,12 @@ def valid_receipt(mode: str) -> dict[str, object]:
         entry["svg"] = dict(requests[0]["svg"])
     request_counters = [entry["operation"]["counters"] for entry in requests]
     final_retained = retained(1, 10) if mode == "baseline" else retained()
-    long_counters = counters(
-        operation_lookups=4096,
-        operation_hits=2048,
-        operation_misses=2048,
-        operation_builds=2048,
+    long_release_proofs = [
+        long_release_record(request_count, mode=mode)
+        for request_count in range(1, 2_049)
+    ]
+    long_counters = lifecycle._counter_sum(
+        [proof["counters"] for proof in long_release_proofs]
     )
     checkpoints = [
         {
@@ -261,9 +366,12 @@ def valid_receipt(mode: str) -> dict[str, object]:
         for kind in lifecycle._COUNTER_KINDS
     }
     return {
-        "schema": "merman.state_rough_lifecycle.v1",
+        "schema": "merman.state_rough_lifecycle.v2",
         "contracts": {
             "owned_bytes": "sum_of_cached_string_capacities",
+            "release_proof": (
+                "weak_string_allocation_witnesses_sampled_after_operation_cache_drop"
+            ),
             "configured_seed_zero": (
                 "configured_hand_drawn_seed_zero_resolves_to_operation_seed_before_cache_bypass"
             ),
@@ -295,6 +403,10 @@ def valid_receipt(mode: str) -> dict[str, object]:
             "max_operation_peak": footprint(2, 32),
             "max_post_operation_retained": final_retained,
             "final_retained": final_retained,
+            "release_proofs": long_release_proofs,
+            "release_rollup": expected_release_rollup(
+                mode, long_lived_only=True
+            ),
         },
         "rollup": {
             "svg": {
@@ -313,6 +425,7 @@ def valid_receipt(mode: str) -> dict[str, object]:
             "legacy_cross_operation_cache_observed": mode == "baseline",
             "configured_zero_operation_resolution_observed": True,
             "fallback_bypass_observed": True,
+            "release": expected_release_rollup(mode, long_lived_only=False),
         },
     }
 
@@ -333,25 +446,47 @@ def valid_controls(mode: str) -> dict[str, object]:
         result["outcome"] = outcome
         return result
 
+    def failure_control(sentinel: str, outcome: str) -> dict[str, object]:
+        return {
+            "sentinel": sentinel,
+            "engine_lifecycle": {
+                "engine_instances": 1,
+                "engine_reused_across_requests": True,
+                "request_count": 3,
+            },
+            "reference_svg": dict(shared_svg),
+            "failure_svg": dict(shared_svg),
+            "recovery_svg": dict(shared_svg),
+            "reference_operation": control_operation("success"),
+            "operation": control_operation(outcome),
+            "recovery_operation": control_operation("success"),
+        }
+
     return {
-        "schema": "merman.state_rough_lifecycle_controls.v1",
-        "error": {
-            "sentinel": "State Rough lifecycle control error after root render",
-            "operation": control_operation("error"),
-        },
-        "unwind": {
-            "sentinel": "State Rough lifecycle control unwind after root render",
-            "operation": control_operation("unwind"),
-        },
+        "schema": "merman.state_rough_lifecycle_controls.v2",
+        "error": failure_control(
+            "State Rough lifecycle control error after root render", "error"
+        ),
+        "unwind": failure_control(
+            "State Rough lifecycle control unwind after root render", "unwind"
+        ),
         "concurrency": {
+            "engine_lifecycle": {
+                "engine_instances": 1,
+                "engine_reused_across_requests": True,
+                "request_count": 4,
+            },
             "workers": 2,
             "overlap_observed": True,
             "serial_svg": dict(shared_svg),
             "worker_svgs": [dict(shared_svg), dict(shared_svg)],
+            "recovery_svg": dict(shared_svg),
+            "serial_operation": control_operation("success"),
             "operations": [
                 control_operation("success"),
                 control_operation("success"),
             ],
+            "recovery_operation": control_operation("success"),
         },
     }
 
@@ -462,6 +597,33 @@ def refresh_rollup_counters(receipt: dict[str, object]) -> None:
     }
 
 
+def refresh_operation_release_proof(
+    value: dict[str, object], *, mode: str
+) -> None:
+    value["release_proof"] = release_proof(
+        value["counters"],
+        value["operation_peak"],
+        mode=mode,
+        cache_allowed=bool(value["cache_allowed"]),
+    )
+
+
+def refresh_release_rollups(receipt: dict[str, object]) -> None:
+    long_proofs = receipt["long_lived"]["release_proofs"]
+    receipt["long_lived"]["release_rollup"] = independent_release_rollup(
+        [proof["release_proof"] for proof in long_proofs]
+    )
+    receipt["rollup"]["release"] = independent_release_rollup(
+        [
+            *(
+                entry["operation"]["release_proof"]
+                for entry in receipt["requests"]
+            ),
+            *(proof["release_proof"] for proof in long_proofs),
+        ]
+    )
+
+
 class StateRoughLifecycleContractsTest(unittest.TestCase):
     @staticmethod
     def lane():
@@ -513,6 +675,11 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
         contract = self.contract()
 
         self.assertEqual(contract["lane_id"], lifecycle.DEFAULT_LANE)
+        self.assertEqual(contract["schema_version"], 2)
+        self.assertEqual(
+            contract["receipt"]["release_proof"],
+            "weak_string_allocation_witnesses_sampled_after_operation_cache_drop",
+        )
         self.assertEqual(
             contract["probe"]["test_name"],
             "svg::parity::state::rough_lifecycle_probe::state_rough_lifecycle_probe_receipt",
@@ -539,8 +706,8 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
 
             path.write_text(
                 CONTRACT_PATH.read_text(encoding="utf-8").replace(
-                    '"schema_version": 1',
-                    '"schema_version": 1, "schema_version": 1',
+                    '"schema_version": 2',
+                    '"schema_version": 2, "schema_version": 2',
                     1,
                 ),
                 encoding="utf-8",
@@ -572,8 +739,8 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
                     lifecycle.load_owner_contract(path, lane=self.lane(), root=ROOT)
 
             controls_mutations = (
-                ("schema", "merman.state_rough_lifecycle_controls.v2", "schema"),
-                ("marker", "MERMAN_STATE_ROUGH_LIFECYCLE_CONTROLS_V2=", "marker"),
+                ("schema", "merman.state_rough_lifecycle_controls.v1", "schema"),
+                ("marker", "MERMAN_STATE_ROUGH_LIFECYCLE_CONTROLS_V1=", "marker"),
                 ("test_name", "drifted", "test name"),
                 ("scenarios", ["error", "concurrency"], "scenarios"),
                 ("configured_seed", 24.0, "configured seed"),
@@ -605,6 +772,105 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             "zero_post_operation_retained_state",
             lifecycle.validate_mode(candidate, mode="candidate"),
         )
+        self.assertEqual(
+            baseline["long_lived"]["release_rollup"],
+            {
+                "operation_count": 2_048,
+                "total_geometry_witnesses": 4_096,
+                "total_allocation_witnesses": 6_144,
+                "total_witnessed_owned_bytes": 65_536,
+                "max_live_allocation_witnesses_after_operation": 3,
+                "max_live_owned_bytes_after_operation": 32,
+                "all_cache_drops_observed": True,
+            },
+        )
+        self.assertEqual(
+            candidate["rollup"]["release"],
+            {
+                "operation_count": 2_057,
+                "total_geometry_witnesses": 4_110,
+                "total_allocation_witnesses": 6_165,
+                "total_witnessed_owned_bytes": 65_760,
+                "max_live_allocation_witnesses_after_operation": 0,
+                "max_live_owned_bytes_after_operation": 0,
+                "all_cache_drops_observed": True,
+            },
+        )
+
+    def test_detailed_seed_resolution_and_cache_policy_are_ordinal_bound(self) -> None:
+        contract = self.contract()
+
+        mutations = []
+
+        wrong_deterministic_seed = valid_receipt("candidate")
+        wrong_deterministic_seed["requests"][0]["operation"]["resolved_seed"] = 8.0
+        mutations.append((wrong_deterministic_seed, "deterministic"))
+
+        wrong_deterministic_resolution = valid_receipt("candidate")
+        wrong_deterministic_resolution["requests"][3]["operation"][
+            "seed_resolution"
+        ] = "operation_resolved"
+        mutations.append((wrong_deterministic_resolution, "deterministic"))
+
+        deterministic_bypass = valid_receipt("candidate")
+        deterministic_operation = deterministic_bypass["requests"][4]["operation"]
+        deterministic_operation["cache_allowed"] = False
+        deterministic_operation["counters"] = counters(
+            operation_lookups=0,
+            operation_hits=0,
+            operation_misses=0,
+            operation_builds=0,
+            bypass_builds=2,
+        )
+        deterministic_operation["operation_peak"] = footprint()
+        refresh_operation_release_proof(
+            deterministic_operation, mode="candidate"
+        )
+        mutations.append((deterministic_bypass, "deterministic"))
+
+        unresolved_zero = valid_receipt("candidate")
+        unresolved_zero["requests"][6]["operation"]["resolved_seed"] = 0.0
+        mutations.append((unresolved_zero, "configured-zero"))
+
+        fallback_seed_drift = valid_receipt("candidate")
+        fallback_seed_drift["requests"][7]["operation"]["resolved_seed"] = 1.0
+        mutations.append((fallback_seed_drift, "fallback"))
+
+        fallback_cache_entry = valid_receipt("candidate")
+        fallback_operation = fallback_cache_entry["requests"][8]["operation"]
+        fallback_operation["cache_allowed"] = True
+        fallback_operation["counters"] = counters()
+        fallback_operation["operation_peak"] = footprint(2, 32)
+        refresh_operation_release_proof(fallback_operation, mode="candidate")
+        mutations.append((fallback_cache_entry, "fallback"))
+
+        for receipt, pattern in mutations:
+            with self.subTest(pattern=pattern), self.assertRaisesRegex(
+                lifecycle.LifecycleContractError, pattern
+            ):
+                lifecycle._validate_receipt(receipt, contract=contract)
+
+    def test_cross_version_schedule_projection_includes_seed_cache_semantics(self) -> None:
+        baseline = valid_receipt("baseline")
+        candidate = valid_receipt("candidate")
+        baseline_projection = lifecycle._schedule_projection(baseline)
+        self.assertEqual(
+            baseline_projection, lifecycle._schedule_projection(candidate)
+        )
+
+        mutations = (
+            ("resolved_seed", 12.0),
+            ("seed_resolution", "operation_resolved"),
+            ("cache_allowed", False),
+            ("outcome", "error"),
+        )
+        for field, value in mutations:
+            drifted = valid_receipt("candidate")
+            drifted["requests"][3]["operation"][field] = value
+            with self.subTest(field=field):
+                self.assertNotEqual(
+                    baseline_projection, lifecycle._schedule_projection(drifted)
+                )
 
     def test_release_controls_are_strict_and_mode_aware(self) -> None:
         contract = self.contract()
@@ -636,7 +902,9 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
 
         no_peak = valid_controls("candidate")
         no_peak["unwind"]["operation"]["operation_peak"] = footprint()
-        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "populate"):
+        with self.assertRaisesRegex(
+            lifecycle.LifecycleContractError, "operation cache|release tracker"
+        ):
             lifecycle._validate_controls_receipt(no_peak, contract=contract)
 
         no_reuse = valid_controls("candidate")
@@ -644,6 +912,10 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             operation_hits=0,
             operation_misses=2,
             operation_builds=2,
+        )
+        no_reuse["error"]["operation"]["operation_peak"] = footprint(4, 64)
+        refresh_operation_release_proof(
+            no_reuse["error"]["operation"], mode="candidate"
         )
         with self.assertRaisesRegex(lifecycle.LifecycleContractError, "reuse"):
             lifecycle._validate_controls_receipt(no_reuse, contract=contract)
@@ -700,6 +972,123 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
         with self.assertRaisesRegex(lifecycle.LifecycleContractError, "decreased"):
             lifecycle._validate_receipt(underflow, contract=contract)
 
+    def test_release_proof_schema_and_nonvacuous_witnesses_fail_closed(self) -> None:
+        contract = self.contract()
+
+        unknown = valid_receipt("candidate")
+        unknown["requests"][0]["operation"]["release_proof"]["unexpected"] = 1
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "unknown"):
+            lifecycle._validate_receipt(unknown, contract=contract)
+
+        missing = valid_receipt("candidate")
+        del missing["requests"][0]["operation"]["release_proof"][
+            "cache_drop_observed"
+        ]
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "missing"):
+            lifecycle._validate_receipt(missing, contract=contract)
+
+        vacuous = valid_receipt("candidate")
+        target = vacuous["requests"][0]["operation"]
+        target["counters"] = counters(
+            operation_hits=2,
+            operation_misses=0,
+            operation_builds=0,
+        )
+        target["operation_peak"] = footprint()
+        refresh_operation_release_proof(target, mode="candidate")
+        refresh_rollup_counters(vacuous)
+        refresh_release_rollups(vacuous)
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "vacuous"):
+            lifecycle._validate_receipt(vacuous, contract=contract)
+
+    def test_release_mode_rejects_candidate_leaks_and_baseline_underreporting(self) -> None:
+        contract = self.contract()
+
+        candidate = valid_receipt("candidate")
+        candidate_proof = candidate["long_lived"]["release_proofs"][127][
+            "release_proof"
+        ]
+        candidate_proof["live_allocation_witnesses"] = 1
+        candidate_proof["live_owned_bytes"] = 1
+        refresh_release_rollups(candidate)
+        parsed_candidate = lifecycle._validate_receipt(candidate, contract=contract)
+        with self.assertRaisesRegex(
+            lifecycle.LifecycleContractError, "live witnessed allocations"
+        ):
+            lifecycle.validate_mode(parsed_candidate, mode="candidate")
+
+        baseline = valid_receipt("baseline")
+        baseline_proof = baseline["requests"][0]["operation"]["release_proof"]
+        baseline_proof["live_allocation_witnesses"] = 2
+        baseline_proof["live_owned_bytes"] = 16
+        parsed_baseline = lifecycle._validate_receipt(baseline, contract=contract)
+        with self.assertRaisesRegex(
+            lifecycle.LifecycleContractError, "live witnesses differ"
+        ):
+            lifecycle.validate_mode(parsed_baseline, mode="baseline")
+
+    def test_long_lived_release_proofs_require_all_ordinals_and_exact_rollups(self) -> None:
+        contract = self.contract()
+
+        short = valid_receipt("candidate")
+        short["long_lived"]["release_proofs"].pop()
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "cardinality"):
+            lifecycle._validate_receipt(short, contract=contract)
+
+        ordinal_drift = valid_receipt("candidate")
+        ordinal_drift["long_lived"]["release_proofs"][1023][
+            "request_count"
+        ] = 1023
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "ordinals"):
+            lifecycle._validate_receipt(ordinal_drift, contract=contract)
+
+        long_rollup_lie = valid_receipt("candidate")
+        long_rollup_lie["long_lived"]["release_rollup"][
+            "total_allocation_witnesses"
+        ] += 1
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "release rollup"):
+            lifecycle._validate_receipt(long_rollup_lie, contract=contract)
+
+        main_rollup_lie = valid_receipt("candidate")
+        main_rollup_lie["rollup"]["release"][
+            "total_witnessed_owned_bytes"
+        ] += 1
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "release rollup"):
+            lifecycle._validate_receipt(main_rollup_lie, contract=contract)
+
+    def test_control_recovery_fields_identity_and_release_gates_fail_closed(self) -> None:
+        contract = self.contract()
+
+        missing = valid_controls("candidate")
+        del missing["error"]["reference_svg"]
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "missing"):
+            lifecycle._validate_controls_receipt(missing, contract=contract)
+
+        identity_drift = valid_controls("candidate")
+        identity_drift["unwind"]["failure_svg"]["identity"] = (
+            "sha256:" + "d" * 64
+        )
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "SVG identity"):
+            lifecycle._validate_controls_receipt(identity_drift, contract=contract)
+
+        engine_drift = valid_controls("candidate")
+        engine_drift["concurrency"]["engine_lifecycle"]["request_count"] = 3
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "request_count"):
+            lifecycle._validate_controls_receipt(engine_drift, contract=contract)
+
+        for operation_index in range(10):
+            leaked = valid_controls("candidate")
+            parsed = lifecycle._validate_controls_receipt(leaked, contract=contract)
+            operations = lifecycle._control_operations(parsed)
+            self.assertEqual(len(operations), 10)
+            leaked_proof = operations[operation_index]["release_proof"]
+            leaked_proof["live_allocation_witnesses"] = 1
+            leaked_proof["live_owned_bytes"] = 1
+            with self.subTest(operation_index=operation_index), self.assertRaisesRegex(
+                lifecycle.LifecycleContractError, "live witnessed allocations"
+            ):
+                lifecycle.validate_controls_mode(parsed, mode="candidate")
+
     def test_counter_identities_fail_closed(self) -> None:
         receipt = valid_receipt("candidate")
         receipt["requests"][0]["operation"]["counters"]["circle"][
@@ -727,7 +1116,10 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
         )
         refresh_rollup_counters(hit)
         parsed_hit = lifecycle._validate_receipt(hit, contract=self.contract())
-        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "cross-operation"):
+        with self.assertRaisesRegex(
+            lifecycle.LifecycleContractError,
+            "candidate operation-owned|cross-operation",
+        ):
             lifecycle.validate_mode(parsed_hit, mode="candidate")
 
         retained_candidate = valid_receipt("candidate")
@@ -757,7 +1149,7 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             "",
             contract=contract,
         )
-        self.assertEqual(parsed["schema"], "merman.state_rough_lifecycle.v1")
+        self.assertEqual(parsed["schema"], "merman.state_rough_lifecycle.v2")
 
         with self.assertRaisesRegex(lifecycle.LifecycleContractError, "exactly one"):
             lifecycle.parse_probe_output(
@@ -784,7 +1176,7 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
         )
         self.assertEqual(
             parsed_controls["schema"],
-            "merman.state_rough_lifecycle_controls.v1",
+            "merman.state_rough_lifecycle_controls.v2",
         )
         with self.assertRaisesRegex(lifecycle.LifecycleContractError, "exactly one"):
             lifecycle.parse_controls_output(
@@ -870,6 +1262,7 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
                 dict(different_svg),
                 dict(different_svg),
             ]
+            drifted_controls["concurrency"]["recovery_svg"] = dict(different_svg)
             path.write_text(
                 json.dumps(
                     success_baseline_report(baseline, drifted_controls)

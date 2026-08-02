@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "lane_id": "state-rough-retained-lifecycle",
   "workload": "state-rough-seeded-long-lived-v1",
   "evidence_class": "candidate-bound",
@@ -10,9 +10,10 @@
     "baseline_source_clean": true
   },
   "receipt": {
-    "schema": "merman.state_rough_lifecycle.v1",
-    "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_RECEIPT_V1=",
+    "schema": "merman.state_rough_lifecycle.v2",
+    "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_RECEIPT_V2=",
     "owned_bytes": "sum_of_cached_string_capacities",
+    "release_proof": "weak_string_allocation_witnesses_sampled_after_operation_cache_drop",
     "configured_seed_zero": "configured_hand_drawn_seed_zero_resolves_to_operation_seed_before_cache_bypass",
     "fallback_capable_configured_seeds": [4294967296.0, -1.0]
   },
@@ -25,8 +26,8 @@
     "features": []
   },
   "controls": {
-    "schema": "merman.state_rough_lifecycle_controls.v1",
-    "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_CONTROLS_V1=",
+    "schema": "merman.state_rough_lifecycle_controls.v2",
+    "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_CONTROLS_V2=",
     "test_name": "svg::parity::state::rough_lifecycle_probe::state_rough_lifecycle_release_controls",
     "scenarios": ["error", "unwind", "concurrency"],
     "error_sentinel": "State Rough lifecycle control error after root render",

@@ -56,6 +56,11 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         hand_drawn_seed.seed().number(),
         !hand_drawn_seed.seed().may_use_math_random(),
     );
+    #[cfg(test)]
+    let rough_cache =
+        StateRoughCache::with_release_tracker(rough_lifecycle_probe.release_tracker());
+    #[cfg(not(test))]
+    let rough_cache = StateRoughCache::default();
 
     let has_acc_title = model
         .acc_title
@@ -129,7 +134,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         measurer,
         text_style,
         theme_defaults: StateThemeDefaults::from_config(effective_config),
-        rough_cache: StateRoughCache::default(),
+        rough_cache,
         #[cfg(test)]
         rough_lifecycle_probe,
     };
@@ -348,8 +353,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         timing,
         &mut detail,
     );
-    #[cfg(test)]
-    state_rough_lifecycle_after_root()?;
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
@@ -452,11 +455,10 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     }
     #[cfg(test)]
     {
-        let completed = root_document.complete(out);
-        if completed.is_ok() {
-            ctx.rough_lifecycle_probe.mark_success();
-        }
-        completed
+        let completed = root_document.complete(out)?;
+        state_rough_lifecycle_after_root(&completed)?;
+        ctx.rough_lifecycle_probe.mark_success();
+        Ok(completed)
     }
     #[cfg(not(test))]
     root_document.complete(out)

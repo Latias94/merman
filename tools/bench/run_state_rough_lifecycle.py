@@ -22,7 +22,7 @@ DEFAULT_CORPUS = Path("tools/bench/corpus.json")
 DEFAULT_LANE = "state-rough-retained-lifecycle"
 DEFAULT_REPORT_ROOT = Path("target/bench")
 DEFAULT_TIMEOUT_SECONDS = 1_800
-DRIVER_SCHEMA = "merman.state_rough_lifecycle_driver.v1"
+DRIVER_SCHEMA = "merman.state_rough_lifecycle_driver.v2"
 
 _CONTRACT_FIELDS = frozenset(
     {
@@ -46,6 +46,7 @@ _CONTRACT_RECEIPT_FIELDS = frozenset(
         "schema",
         "marker",
         "owned_bytes",
+        "release_proof",
         "configured_seed_zero",
         "fallback_capable_configured_seeds",
     }
@@ -113,6 +114,7 @@ _RECEIPT_FIELDS = frozenset(
 _RECEIPT_CONTRACT_FIELDS = frozenset(
     {
         "owned_bytes",
+        "release_proof",
         "configured_seed_zero",
         "fallback_capable_configured_seeds",
     }
@@ -158,6 +160,7 @@ _OPERATION_FIELDS = frozenset(
         "counters",
         "operation_peak",
         "post_operation_retained",
+        "release_proof",
     }
 )
 _COUNTER_FIELDS = frozenset({"circle", "paths"})
@@ -176,6 +179,27 @@ _KIND_COUNTER_FIELDS = frozenset(
 )
 _FOOTPRINT_FIELDS = frozenset({"entries", "owned_bytes"})
 _RETAINED_FIELDS = frozenset({"global", "tls"})
+_RELEASE_PROOF_FIELDS = frozenset(
+    {
+        "cache_drop_observed",
+        "geometry_witnesses",
+        "allocation_witnesses",
+        "witnessed_owned_bytes",
+        "live_allocation_witnesses",
+        "live_owned_bytes",
+    }
+)
+_RELEASE_ROLLUP_FIELDS = frozenset(
+    {
+        "operation_count",
+        "total_geometry_witnesses",
+        "total_allocation_witnesses",
+        "total_witnessed_owned_bytes",
+        "max_live_allocation_witnesses_after_operation",
+        "max_live_owned_bytes_after_operation",
+        "all_cache_drops_observed",
+    }
+)
 _CHECKPOINT_FIELDS = frozenset(
     {"request_count", "geometry_label_bytes", "configured_seed", "retained"}
 )
@@ -189,6 +213,17 @@ _LONG_LIVED_FIELDS = frozenset(
         "max_operation_peak",
         "max_post_operation_retained",
         "final_retained",
+        "release_proofs",
+        "release_rollup",
+    }
+)
+_LONG_LIVED_RELEASE_PROOF_FIELDS = frozenset(
+    {
+        "request_count",
+        "cache_allowed",
+        "counters",
+        "operation_peak",
+        "release_proof",
     }
 )
 _ROLLUP_FIELDS = frozenset(
@@ -203,15 +238,40 @@ _ROLLUP_FIELDS = frozenset(
         "legacy_cross_operation_cache_observed",
         "configured_zero_operation_resolution_observed",
         "fallback_bypass_observed",
+        "release",
     }
 )
 
 _CONTROLS_RECEIPT_FIELDS = frozenset(
     {"schema", "error", "unwind", "concurrency"}
 )
-_FAILURE_CONTROL_FIELDS = frozenset({"sentinel", "operation"})
+_CONTROL_ENGINE_LIFECYCLE_FIELDS = frozenset(
+    {"engine_instances", "engine_reused_across_requests", "request_count"}
+)
+_FAILURE_CONTROL_FIELDS = frozenset(
+    {
+        "sentinel",
+        "engine_lifecycle",
+        "reference_svg",
+        "failure_svg",
+        "recovery_svg",
+        "reference_operation",
+        "operation",
+        "recovery_operation",
+    }
+)
 _CONCURRENCY_CONTROL_FIELDS = frozenset(
-    {"workers", "overlap_observed", "serial_svg", "worker_svgs", "operations"}
+    {
+        "engine_lifecycle",
+        "workers",
+        "overlap_observed",
+        "serial_svg",
+        "worker_svgs",
+        "recovery_svg",
+        "serial_operation",
+        "operations",
+        "recovery_operation",
+    }
 )
 
 _REPORT_FIELDS = frozenset(
@@ -538,7 +598,7 @@ def load_owner_contract(
     contract = _object(
         strict_json_path(path), fields=_CONTRACT_FIELDS, context="owner contract"
     )
-    if contract["schema_version"] != 1:
+    if contract["schema_version"] != 2:
         raise LifecycleContractError("unsupported owner contract schema_version")
     if contract["lane_id"] != lane.id:
         raise LifecycleContractError("owner contract lane_id differs from corpus lane")
@@ -585,9 +645,12 @@ def load_owner_contract(
         context="owner contract.receipt",
     )
     expected_receipt_strings = {
-        "schema": "merman.state_rough_lifecycle.v1",
-        "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_RECEIPT_V1=",
+        "schema": "merman.state_rough_lifecycle.v2",
+        "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_RECEIPT_V2=",
         "owned_bytes": "sum_of_cached_string_capacities",
+        "release_proof": (
+            "weak_string_allocation_witnesses_sampled_after_operation_cache_drop"
+        ),
         "configured_seed_zero": (
             "configured_hand_drawn_seed_zero_resolves_to_operation_seed_before_cache_bypass"
         ),
@@ -644,8 +707,8 @@ def load_owner_contract(
         context="owner contract.controls",
     )
     expected_control_strings = {
-        "schema": "merman.state_rough_lifecycle_controls.v1",
-        "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_CONTROLS_V1=",
+        "schema": "merman.state_rough_lifecycle_controls.v2",
+        "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_CONTROLS_V2=",
         "test_name": (
             "svg::parity::state::rough_lifecycle_probe::"
             "state_rough_lifecycle_release_controls"
@@ -879,6 +942,173 @@ def _validate_retained(value: object, *, context: str) -> dict[str, object]:
     return retained
 
 
+def _validate_release_proof(
+    value: object,
+    *,
+    counters: Mapping[str, object],
+    operation_peak: Mapping[str, object],
+    cache_allowed: bool,
+    context: str,
+) -> dict[str, object]:
+    proof = _object(value, fields=_RELEASE_PROOF_FIELDS, context=context)
+    cache_drop_observed = _boolean(
+        proof["cache_drop_observed"], context=f"{context}.cache_drop_observed"
+    )
+    parsed = {
+        field: _nonnegative_int(proof[field], context=f"{context}.{field}")
+        for field in _RELEASE_PROOF_FIELDS
+        if field != "cache_drop_observed"
+    }
+    if not cache_drop_observed:
+        raise LifecycleContractError(
+            f"{context} did not observe the operation cache being dropped"
+        )
+
+    circle = counters["circle"]
+    paths = counters["paths"]
+    assert isinstance(circle, Mapping)
+    assert isinstance(paths, Mapping)
+    expected_geometry_witnesses = int(circle["operation_misses"]) + int(
+        paths["operation_misses"]
+    )
+    expected_allocation_witnesses = int(circle["operation_misses"]) + 2 * int(
+        paths["operation_misses"]
+    )
+    if parsed["geometry_witnesses"] != expected_geometry_witnesses:
+        raise LifecycleContractError(
+            f"{context}.geometry_witnesses differs from operation misses"
+        )
+    if parsed["allocation_witnesses"] != expected_allocation_witnesses:
+        raise LifecycleContractError(
+            f"{context}.allocation_witnesses differs from witnessed string allocations"
+        )
+    if parsed["live_allocation_witnesses"] > parsed["allocation_witnesses"]:
+        raise LifecycleContractError(
+            f"{context}.live_allocation_witnesses exceeds tracked allocations"
+        )
+    if parsed["live_owned_bytes"] > parsed["witnessed_owned_bytes"]:
+        raise LifecycleContractError(
+            f"{context}.live_owned_bytes exceeds witnessed owned bytes"
+        )
+    if (parsed["live_allocation_witnesses"] == 0) != (
+        parsed["live_owned_bytes"] == 0
+    ):
+        raise LifecycleContractError(
+            f"{context} live allocation and owned-byte witnesses disagree"
+        )
+
+    peak_entries = int(operation_peak["entries"])
+    peak_owned_bytes = int(operation_peak["owned_bytes"])
+    if cache_allowed:
+        if parsed["geometry_witnesses"] != peak_entries:
+            raise LifecycleContractError(
+                f"{context}.geometry_witnesses differs from operation cache entries"
+            )
+        if parsed["witnessed_owned_bytes"] != peak_owned_bytes:
+            raise LifecycleContractError(
+                f"{context}.witnessed_owned_bytes differs from operation cache owned bytes"
+            )
+        if (
+            parsed["geometry_witnesses"] == 0
+            or parsed["allocation_witnesses"] == 0
+            or parsed["witnessed_owned_bytes"] == 0
+        ):
+            raise LifecycleContractError(
+                f"{context} release tracker is vacuous for a cache-eligible operation"
+            )
+    elif any(parsed.values()) or peak_entries != 0 or peak_owned_bytes != 0:
+        raise LifecycleContractError(
+            f"{context} must be empty when the operation bypasses caching"
+        )
+    return proof
+
+
+def _validate_release_rollup(value: object, *, context: str) -> dict[str, object]:
+    rollup = _object(value, fields=_RELEASE_ROLLUP_FIELDS, context=context)
+    for field in _RELEASE_ROLLUP_FIELDS:
+        if field == "all_cache_drops_observed":
+            _boolean(rollup[field], context=f"{context}.{field}")
+        else:
+            _nonnegative_int(rollup[field], context=f"{context}.{field}")
+    return rollup
+
+
+def _release_rollup(
+    proofs: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    return {
+        "operation_count": len(proofs),
+        "total_geometry_witnesses": sum(
+            int(proof["geometry_witnesses"]) for proof in proofs
+        ),
+        "total_allocation_witnesses": sum(
+            int(proof["allocation_witnesses"]) for proof in proofs
+        ),
+        "total_witnessed_owned_bytes": sum(
+            int(proof["witnessed_owned_bytes"]) for proof in proofs
+        ),
+        "max_live_allocation_witnesses_after_operation": max(
+            (int(proof["live_allocation_witnesses"]) for proof in proofs),
+            default=0,
+        ),
+        "max_live_owned_bytes_after_operation": max(
+            (int(proof["live_owned_bytes"]) for proof in proofs), default=0
+        ),
+        "all_cache_drops_observed": bool(proofs)
+        and all(bool(proof["cache_drop_observed"]) for proof in proofs),
+    }
+
+
+def _validate_operation_release_mode(
+    operation: Mapping[str, object], *, mode: str, context: str
+) -> None:
+    cache_allowed = bool(operation["cache_allowed"])
+    proof = operation["release_proof"]
+    counters = operation["counters"]
+    assert isinstance(proof, Mapping)
+    assert isinstance(counters, Mapping)
+    if mode == "candidate":
+        for kind in _COUNTER_KINDS:
+            kind_counters = counters[kind]
+            assert isinstance(kind_counters, Mapping)
+            if (
+                int(kind_counters["tls_hits"]) != 0
+                or int(kind_counters["global_hits"]) != 0
+                or int(kind_counters["operation_misses"])
+                != int(kind_counters["operation_builds"])
+            ):
+                raise LifecycleContractError(
+                    f"{context}.{kind} violates candidate operation-owned cache counters"
+                )
+        if cache_allowed and (
+            int(proof["geometry_witnesses"]) == 0
+            or int(proof["allocation_witnesses"]) == 0
+            or int(proof["witnessed_owned_bytes"]) == 0
+        ):
+            raise LifecycleContractError(
+                f"{context} candidate release proof is vacuous"
+            )
+        if (
+            int(proof["live_allocation_witnesses"]) != 0
+            or int(proof["live_owned_bytes"]) != 0
+        ):
+            raise LifecycleContractError(
+                f"{context} candidate still has live witnessed allocations after cache drop"
+            )
+    elif mode == "baseline":
+        if cache_allowed and (
+            int(proof["live_allocation_witnesses"])
+            != int(proof["allocation_witnesses"])
+            or int(proof["live_owned_bytes"])
+            != int(proof["witnessed_owned_bytes"])
+        ):
+            raise LifecycleContractError(
+                f"{context} baseline live witnesses differ from tracked allocations"
+            )
+    else:
+        raise LifecycleContractError(f"unsupported lifecycle mode: {mode}")
+
+
 def _validate_operation(value: object, *, context: str) -> dict[str, object]:
     operation = _object(value, fields=_OPERATION_FIELDS, context=context)
     _finite_number(operation["configured_seed"], context=f"{context}.configured_seed")
@@ -926,10 +1156,19 @@ def _validate_operation(value: object, *, context: str) -> dict[str, object]:
             raise LifecycleContractError(
                 f"{context}.{kind} entered a cache while bypass was required"
             )
-    _validate_footprint(operation["operation_peak"], context=f"{context}.operation_peak")
+    operation_peak = _validate_footprint(
+        operation["operation_peak"], context=f"{context}.operation_peak"
+    )
     _validate_retained(
         operation["post_operation_retained"],
         context=f"{context}.post_operation_retained",
+    )
+    _validate_release_proof(
+        operation["release_proof"],
+        counters=counters,
+        operation_peak=operation_peak,
+        cache_allowed=cache_allowed,
+        context=f"{context}.release_proof",
     )
     return operation
 
@@ -992,10 +1231,38 @@ def _control_operations(
     operations = concurrency["operations"]
     assert isinstance(operations, list)
     return (
+        error["reference_operation"],
         error["operation"],
+        error["recovery_operation"],
+        unwind["reference_operation"],
         unwind["operation"],
+        unwind["recovery_operation"],
+        concurrency["serial_operation"],
         *operations,
+        concurrency["recovery_operation"],
     )
+
+
+def _validate_control_engine_lifecycle(
+    value: object, *, context: str, expected_request_count: int
+) -> dict[str, object]:
+    lifecycle = _object(
+        value, fields=_CONTROL_ENGINE_LIFECYCLE_FIELDS, context=context
+    )
+    if _positive_int(
+        lifecycle["engine_instances"], context=f"{context}.engine_instances"
+    ) != 1:
+        raise LifecycleContractError(f"{context} must use exactly one Engine")
+    if not _boolean(
+        lifecycle["engine_reused_across_requests"],
+        context=f"{context}.engine_reused_across_requests",
+    ):
+        raise LifecycleContractError(f"{context} must reuse its Engine")
+    if _positive_int(
+        lifecycle["request_count"], context=f"{context}.request_count"
+    ) != expected_request_count:
+        raise LifecycleContractError(f"{context}.request_count drifted")
+    return lifecycle
 
 
 def _validate_controls_receipt(
@@ -1033,10 +1300,43 @@ def _validate_controls_receipt(
             raise LifecycleContractError(
                 f"controls receipt {scenario} sentinel drifted"
             )
+        _validate_control_engine_lifecycle(
+            control["engine_lifecycle"],
+            context=f"controls receipt.{scenario}.engine_lifecycle",
+            expected_request_count=3,
+        )
+        reference_svg = _validate_svg(
+            control["reference_svg"],
+            context=f"controls receipt.{scenario}.reference_svg",
+        )
+        failure_svg = _validate_svg(
+            control["failure_svg"],
+            context=f"controls receipt.{scenario}.failure_svg",
+        )
+        recovery_svg = _validate_svg(
+            control["recovery_svg"],
+            context=f"controls receipt.{scenario}.recovery_svg",
+        )
+        if reference_svg != failure_svg or reference_svg != recovery_svg:
+            raise LifecycleContractError(
+                f"controls receipt {scenario} reference/failure/recovery SVG identity drifted"
+            )
+        _validate_control_operation(
+            control["reference_operation"],
+            context=f"controls receipt.{scenario}.reference_operation",
+            expected_outcome="success",
+            configured_seed=configured_seed,
+        )
         _validate_control_operation(
             control["operation"],
             context=f"controls receipt.{scenario}.operation",
             expected_outcome=expected_outcome,
+            configured_seed=configured_seed,
+        )
+        _validate_control_operation(
+            control["recovery_operation"],
+            context=f"controls receipt.{scenario}.recovery_operation",
+            expected_outcome="success",
             configured_seed=configured_seed,
         )
 
@@ -1050,6 +1350,11 @@ def _validate_controls_receipt(
     )
     if workers != controls_contract["workers"]:
         raise LifecycleContractError("controls receipt concurrency workers drifted")
+    _validate_control_engine_lifecycle(
+        concurrency["engine_lifecycle"],
+        context="controls receipt.concurrency.engine_lifecycle",
+        expected_request_count=workers + 2,
+    )
     if not _boolean(
         concurrency["overlap_observed"],
         context="controls receipt.concurrency.overlap_observed",
@@ -1079,6 +1384,20 @@ def _validate_controls_receipt(
         raise LifecycleContractError(
             "controls receipt worker output differs from the serial SVG"
         )
+    recovery_svg = _validate_svg(
+        concurrency["recovery_svg"],
+        context="controls receipt.concurrency.recovery_svg",
+    )
+    if recovery_svg != serial_svg:
+        raise LifecycleContractError(
+            "controls receipt recovery output differs from the serial SVG"
+        )
+    _validate_control_operation(
+        concurrency["serial_operation"],
+        context="controls receipt.concurrency.serial_operation",
+        expected_outcome="success",
+        configured_seed=configured_seed,
+    )
     operations = [
         _validate_control_operation(
             operation,
@@ -1097,6 +1416,12 @@ def _validate_controls_receipt(
         raise LifecycleContractError(
             "controls receipt concurrent operation cardinality drifted"
         )
+    _validate_control_operation(
+        concurrency["recovery_operation"],
+        context="controls receipt.concurrency.recovery_operation",
+        expected_outcome="success",
+        configured_seed=configured_seed,
+    )
     return receipt
 
 
@@ -1113,9 +1438,17 @@ def validate_controls_mode(
         "release_control_operation_peak",
         "concurrent_operation_overlap",
         "concurrent_serial_svg_identity",
+        "failure_reference_recovery_svg_identity",
+        "control_engine_reuse",
+        "release_control_weak_allocation_witnesses",
     ]
     retained = []
-    for operation in operations:
+    for index, operation in enumerate(operations):
+        _validate_operation_release_mode(
+            operation,
+            mode=mode,
+            context=f"controls receipt operation[{index}]",
+        )
         snapshot = operation["post_operation_retained"]
         assert isinstance(snapshot, Mapping)
         retained.append(snapshot)
@@ -1144,6 +1477,7 @@ def validate_controls_mode(
             (
                 "release_controls_zero_cross_operation_hits",
                 "release_controls_zero_post_operation_retention",
+                "release_controls_zero_live_allocation_witnesses",
             )
         )
     else:
@@ -1167,6 +1501,46 @@ def _validate_request(value: object, *, context: str) -> dict[str, object]:
     return request
 
 
+def _validate_detailed_operation_semantics(
+    operation: Mapping[str, object], *, ordinal: int
+) -> None:
+    configured_seed = float(operation["configured_seed"])
+    resolved_seed = float(operation["resolved_seed"])
+    seed_resolution = operation["seed_resolution"]
+    cache_allowed = operation["cache_allowed"]
+    context = f"receipt detailed request {ordinal}"
+
+    if ordinal <= 6:
+        if (
+            resolved_seed != configured_seed
+            or seed_resolution != "configured_deterministic"
+            or cache_allowed is not True
+        ):
+            raise LifecycleContractError(
+                f"{context} deterministic seed/cache semantics drifted"
+            )
+    elif ordinal == 7:
+        if (
+            resolved_seed == 0.0
+            or seed_resolution != "operation_resolved"
+            or cache_allowed is not True
+        ):
+            raise LifecycleContractError(
+                f"{context} configured-zero seed/cache semantics drifted"
+            )
+    elif ordinal in (8, 9):
+        if (
+            resolved_seed != configured_seed
+            or seed_resolution != "configured_fallback_capable"
+            or cache_allowed is not False
+        ):
+            raise LifecycleContractError(
+                f"{context} fallback seed/cache semantics drifted"
+            )
+    else:
+        raise LifecycleContractError(f"{context} is outside the registered schedule")
+
+
 def _validate_checkpoint(value: object, *, context: str) -> dict[str, object]:
     checkpoint = _object(value, fields=_CHECKPOINT_FIELDS, context=context)
     _positive_int(checkpoint["request_count"], context=f"{context}.request_count")
@@ -1177,6 +1551,45 @@ def _validate_checkpoint(value: object, *, context: str) -> dict[str, object]:
     _finite_number(checkpoint["configured_seed"], context=f"{context}.configured_seed")
     _validate_retained(checkpoint["retained"], context=f"{context}.retained")
     return checkpoint
+
+
+def _validate_long_lived_release_proof(
+    value: object, *, context: str
+) -> dict[str, object]:
+    record = _object(
+        value, fields=_LONG_LIVED_RELEASE_PROOF_FIELDS, context=context
+    )
+    _positive_int(record["request_count"], context=f"{context}.request_count")
+    cache_allowed = _boolean(
+        record["cache_allowed"], context=f"{context}.cache_allowed"
+    )
+    counters = _validate_counters(record["counters"], context=f"{context}.counters")
+    for kind in _COUNTER_KINDS:
+        kind_counters = counters[kind]
+        assert isinstance(kind_counters, Mapping)
+        if (
+            int(kind_counters["draw_requests"]) <= 0
+            or int(kind_counters["operation_hits"]) <= 0
+            or int(kind_counters["operation_misses"]) <= 0
+        ):
+            raise LifecycleContractError(
+                f"{context}.{kind} did not exercise and reuse operation-owned geometry"
+            )
+        if int(kind_counters["bypass_builds"]) != 0:
+            raise LifecycleContractError(
+                f"{context}.{kind} bypassed deterministic long-lived caching"
+            )
+    operation_peak = _validate_footprint(
+        record["operation_peak"], context=f"{context}.operation_peak"
+    )
+    _validate_release_proof(
+        record["release_proof"],
+        counters=counters,
+        operation_peak=operation_peak,
+        cache_allowed=cache_allowed,
+        context=f"{context}.release_proof",
+    )
+    return record
 
 
 def _counter_sum(
@@ -1236,6 +1649,8 @@ def _validate_receipt(
     )
     if contracts["owned_bytes"] != contract_receipt["owned_bytes"]:
         raise LifecycleContractError("receipt owned-byte definition drifted")
+    if contracts["release_proof"] != contract_receipt["release_proof"]:
+        raise LifecycleContractError("receipt release-proof definition drifted")
     if contracts["configured_seed_zero"] != contract_receipt["configured_seed_zero"]:
         raise LifecycleContractError("receipt configured-zero contract drifted")
     fallback_seeds = tuple(
@@ -1324,6 +1739,9 @@ def _validate_receipt(
             raise LifecycleContractError(
                 f"receipt detailed request {request['ordinal']} differs from owner spec"
             )
+        _validate_detailed_operation_semantics(
+            operation, ordinal=int(request["ordinal"])
+        )
 
     checkpoints = [
         _validate_checkpoint(checkpoint, context=f"receipt.checkpoints[{index}]")
@@ -1382,8 +1800,10 @@ def _validate_receipt(
         if float(checkpoint["configured_seed"]) != long_seed_base + request_count:
             raise LifecycleContractError("long-lived checkpoint seed schedule drifted")
     _validate_svg(long_lived["svg"], context="receipt.long_lived.svg")
-    _validate_counters(long_lived["counters"], context="receipt.long_lived.counters")
-    _validate_footprint(
+    long_counters = _validate_counters(
+        long_lived["counters"], context="receipt.long_lived.counters"
+    )
+    long_max_operation_peak = _validate_footprint(
         long_lived["max_operation_peak"],
         context="receipt.long_lived.max_operation_peak",
     )
@@ -1412,6 +1832,64 @@ def _validate_receipt(
                     "long-lived maximum post-operation retention is below an observed snapshot"
                 )
 
+    long_release_proofs = [
+        _validate_long_lived_release_proof(
+            proof, context=f"receipt.long_lived.release_proofs[{index}]"
+        )
+        for index, proof in enumerate(
+            _list(
+                long_lived["release_proofs"],
+                context="receipt.long_lived.release_proofs",
+            )
+        )
+    ]
+    if len(long_release_proofs) != long_lived_count:
+        raise LifecycleContractError(
+            "long-lived release-proof cardinality drifted"
+        )
+    if tuple(int(proof["request_count"]) for proof in long_release_proofs) != tuple(
+        range(1, long_lived_count + 1)
+    ):
+        raise LifecycleContractError(
+            "long-lived release-proof request ordinals must be contiguous"
+        )
+    if not all(proof["cache_allowed"] is True for proof in long_release_proofs):
+        raise LifecycleContractError(
+            "long-lived deterministic requests must all allow caching"
+        )
+    long_release_counters = _counter_sum(
+        [proof["counters"] for proof in long_release_proofs]
+    )
+    if dict(long_counters) != long_release_counters:
+        raise LifecycleContractError(
+            "long-lived counters differ from per-request release proofs"
+        )
+    expected_long_peak = {
+        "entries": max(
+            int(proof["operation_peak"]["entries"])
+            for proof in long_release_proofs
+        ),
+        "owned_bytes": max(
+            int(proof["operation_peak"]["owned_bytes"])
+            for proof in long_release_proofs
+        ),
+    }
+    if dict(long_max_operation_peak) != expected_long_peak:
+        raise LifecycleContractError(
+            "long-lived maximum operation peak differs from release proofs"
+        )
+    long_release_rollup = _validate_release_rollup(
+        long_lived["release_rollup"],
+        context="receipt.long_lived.release_rollup",
+    )
+    expected_long_release_rollup = _release_rollup(
+        [proof["release_proof"] for proof in long_release_proofs]
+    )
+    if dict(long_release_rollup) != expected_long_release_rollup:
+        raise LifecycleContractError(
+            "long-lived release rollup differs from per-request proofs"
+        )
+
     rollup = _object(receipt["rollup"], fields=_ROLLUP_FIELDS, context="receipt.rollup")
     _validate_svg(rollup["svg"], context="receipt.rollup.svg")
     rollup_counters = _validate_counters(
@@ -1429,6 +1907,9 @@ def _validate_receipt(
     retained_growth = _validate_retained(
         rollup["retained_growth"], context="receipt.rollup.retained_growth"
     )
+    release_rollup = _validate_release_rollup(
+        rollup["release"], context="receipt.rollup.release"
+    )
     for field in (
         "operation_cache_reuse_observed",
         "legacy_cross_operation_cache_observed",
@@ -1445,8 +1926,6 @@ def _validate_receipt(
         assert isinstance(counters, Mapping)
         request_counters.append(counters)
     expected_counters = _counter_sum(request_counters)
-    long_counters = long_lived["counters"]
-    assert isinstance(long_counters, Mapping)
     expected_counters = {
         kind: {
             field: int(expected_counters[kind][field])
@@ -1495,6 +1974,19 @@ def _validate_receipt(
     }
     if retained_growth != expected_growth:
         raise LifecycleContractError("receipt retained growth calculation drifted")
+    detailed_release_proofs = [
+        request["operation"]["release_proof"] for request in requests
+    ]
+    expected_release_rollup = _release_rollup(
+        [
+            *detailed_release_proofs,
+            *(proof["release_proof"] for proof in long_release_proofs),
+        ]
+    )
+    if dict(release_rollup) != expected_release_rollup:
+        raise LifecycleContractError(
+            "receipt release rollup differs from detailed and long-lived operations"
+        )
 
     same_ordinals = tuple(schedule["same_seed_request_ordinals"])
     same_requests = [requests[int(ordinal) - 1] for ordinal in same_ordinals]
@@ -1595,7 +2087,27 @@ def validate_mode(
         "primary_and_fresh_thread_coverage",
         "same_seed_output_identity",
         "registered_detailed_request_specs",
+        "per_operation_release_proof",
+        "long_lived_release_proof_cardinality",
+        "release_rollup_identity",
     ]
+    for index, request in enumerate(requests):
+        operation = request["operation"]
+        assert isinstance(operation, Mapping)
+        _validate_operation_release_mode(
+            operation,
+            mode=mode,
+            context=f"receipt.requests[{index}].operation",
+        )
+    long_release_proofs = long_lived["release_proofs"]
+    assert isinstance(long_release_proofs, list)
+    for index, proof in enumerate(long_release_proofs):
+        assert isinstance(proof, Mapping)
+        _validate_operation_release_mode(
+            proof,
+            mode=mode,
+            context=f"receipt.long_lived.release_proofs[{index}]",
+        )
     detailed_counters = _counter_sum(
         [request["operation"]["counters"] for request in requests]
     )
@@ -1655,6 +2167,7 @@ def validate_mode(
                 "legacy_tls_and_global_hits",
                 "legacy_retained_state_growth",
                 "legacy_max_post_operation_retention",
+                "legacy_live_allocation_witnesses_observed",
             ]
         )
     elif mode == "candidate":
@@ -1700,6 +2213,7 @@ def validate_mode(
                 "zero_post_operation_retained_state",
                 "zero_max_post_operation_retained_state",
                 "request_count_independent_retention",
+                "zero_live_allocation_witnesses_after_cache_drop",
             ]
         )
     else:
@@ -1959,6 +2473,10 @@ def _schedule_projection(receipt: Mapping[str, object]) -> dict[str, object]:
                 "geometry_label_bytes": request["geometry_label_bytes"],
                 "ordinary_nodes": request["ordinary_nodes"],
                 "configured_seed": request["operation"]["configured_seed"],
+                "resolved_seed": request["operation"]["resolved_seed"],
+                "seed_resolution": request["operation"]["seed_resolution"],
+                "cache_allowed": request["operation"]["cache_allowed"],
+                "outcome": request["operation"]["outcome"],
             }
             for request in receipt["requests"]
         ],
@@ -2003,20 +2521,48 @@ def _controls_semantic_projection(
     return {
         "error": {
             "sentinel": error["sentinel"],
+            "engine_lifecycle": error["engine_lifecycle"],
+            "reference_svg": error["reference_svg"],
+            "failure_svg": error["failure_svg"],
+            "recovery_svg": error["recovery_svg"],
+            "reference_operation": _control_operation_semantics(
+                error["reference_operation"]
+            ),
             "operation": _control_operation_semantics(error["operation"]),
+            "recovery_operation": _control_operation_semantics(
+                error["recovery_operation"]
+            ),
         },
         "unwind": {
             "sentinel": unwind["sentinel"],
+            "engine_lifecycle": unwind["engine_lifecycle"],
+            "reference_svg": unwind["reference_svg"],
+            "failure_svg": unwind["failure_svg"],
+            "recovery_svg": unwind["recovery_svg"],
+            "reference_operation": _control_operation_semantics(
+                unwind["reference_operation"]
+            ),
             "operation": _control_operation_semantics(unwind["operation"]),
+            "recovery_operation": _control_operation_semantics(
+                unwind["recovery_operation"]
+            ),
         },
         "concurrency": {
+            "engine_lifecycle": concurrency["engine_lifecycle"],
             "workers": concurrency["workers"],
             "overlap_observed": concurrency["overlap_observed"],
             "serial_svg": concurrency["serial_svg"],
             "worker_svgs": concurrency["worker_svgs"],
+            "recovery_svg": concurrency["recovery_svg"],
+            "serial_operation": _control_operation_semantics(
+                concurrency["serial_operation"]
+            ),
             "operations": [
                 _control_operation_semantics(operation) for operation in operations
             ],
+            "recovery_operation": _control_operation_semantics(
+                concurrency["recovery_operation"]
+            ),
         },
     }
 

@@ -201,7 +201,7 @@
       "history_aliases": [],
       "size_vector": [1, 16, 64, 256, 1024, 2048],
       "workload": "state-rough-seeded-long-lived-v1",
-      "evidence_contract": "docs/performance/contracts/state-rough-lifecycle-v1.json",
+      "evidence_contract": "docs/performance/contracts/state-rough-lifecycle-v2.json",
       "measurement_metrics": [
         "operation_cache_hits",
         "cross_operation_cache_hits",
