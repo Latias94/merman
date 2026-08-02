@@ -153,12 +153,23 @@ def validate_pipeline_bench_list(
             f"missing={missing_benches}, unexpected={unexpected_benches}"
         )
 
-    requires_receipts = any(
-        lane.evidence_contract == _NATIVE_CRITERION_PREFLIGHT_CONTRACT
+    active_native_lanes = [
+        lane
         for lane in corpus.lanes
         if lane.transport == "native-criterion"
         and lane_selector_group(lane.selector) in current
-    )
+    ]
+    declared_contracts = {lane.evidence_contract for lane in active_native_lanes}
+    if declared_contracts == {None}:
+        requires_receipts = False
+    elif declared_contracts == {_NATIVE_CRITERION_PREFLIGHT_CONTRACT}:
+        requires_receipts = True
+    else:
+        raise PipelineBenchListError(
+            "pipeline native Criterion lanes must uniformly declare "
+            f"{_NATIVE_CRITERION_PREFLIGHT_CONTRACT!r}; "
+            f"actual={sorted(repr(value) for value in declared_contracts)}"
+        )
     receipt_count = 0
     if requires_receipts:
         try:

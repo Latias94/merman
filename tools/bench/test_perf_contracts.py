@@ -14,6 +14,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -191,6 +192,24 @@ class CorpusContractsTest(unittest.TestCase):
             verify_pipeline_bench_list.validate_pipeline_bench_list(
                 corpus, without_receipt
             )
+
+        for contract in (None, "docs/performance/contracts/unknown.json"):
+            mixed = replace(
+                corpus,
+                lanes=tuple(
+                    replace(lane, evidence_contract=contract)
+                    if lane.id == "render-svg"
+                    else lane
+                    for lane in corpus.lanes
+                ),
+            )
+            with self.subTest(contract=contract), self.assertRaisesRegex(
+                verify_pipeline_bench_list.PipelineBenchListError,
+                "uniformly declare",
+            ):
+                verify_pipeline_bench_list.validate_pipeline_bench_list(
+                    mixed, output
+                )
 
     def test_binding_request_corpus_owns_one_complete_benchmark_list(self) -> None:
         corpus = load_corpus(BINDING_REQUEST_CORPUS_PATH)
@@ -2182,16 +2201,21 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             corpus.parent.mkdir(parents=True)
             corpus.write_text(
                 json.dumps(
-                    {
-                        "schema_version": 1,
-                        "default_group": "end_to_end",
-                        "suites": {},
-                        "fixtures": [],
-                    }
+                    CompareSelfContractsTest._minimal_corpus(
+                        schema_version=2,
+                        default_group="end_to_end",
+                    )
                 )
                 + "\n",
                 encoding="utf-8",
             )
+            contract_source = (
+                ROOT
+                / "docs/performance/contracts/native-criterion-preflight-v1.json"
+            )
+            contract_target = checkout / contract_source.relative_to(ROOT)
+            contract_target.parent.mkdir(parents=True)
+            contract_target.write_bytes(contract_source.read_bytes())
             bench_source = checkout / "benches" / "pipeline.rs"
             bench_source.parent.mkdir()
             bench_source.write_text("fn main() {}\n", encoding="utf-8")
@@ -2241,13 +2265,19 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 "executable": True,
                 "mode": "0555",
             }
+            receipt = CompareSelfContractsTest._preflight_receipt()
+            receipt_line = "[bench][preflight] " + json.dumps(
+                receipt, separators=(",", ":")
+            )
             discovery_stdout = "end_to_end/flowchart_medium: benchmark\n"
-            combined = discovery_stdout + "\n"
+            combined = "\n".join((discovery_stdout, receipt_line))
             discovery = {
                 "bench_count": 1,
                 "benches": ["end_to_end/flowchart_medium"],
                 "skipped": {},
-                "preflight_receipts": {},
+                "preflight_receipts": {
+                    "end_to_end/flowchart_medium": receipt,
+                },
                 "output_sha256": compare_self.hashlib.sha256(
                     combined.encode("utf-8")
                 ).hexdigest(),
@@ -2310,7 +2340,11 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     "executable_sha256": executable_description["sha256"],
                 },
             }
-            listed = mock.Mock(returncode=0, stdout=discovery_stdout, stderr="")
+            listed = mock.Mock(
+                returncode=0,
+                stdout=discovery_stdout,
+                stderr=receipt_line,
+            )
             package_id = f"path+file://{checkout}#merman@0.0.0"
             metadata = mock.Mock(
                 returncode=0,
@@ -2363,6 +2397,59 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             )
             self.assertEqual(run.call_args_list[1].args[0][0], str(executable))
             self.assertNotIn("build", run.call_args_list[0].args[0])
+
+            invalid_rediscoveries = {
+                "missing": mock.Mock(
+                    returncode=0,
+                    stdout=discovery_stdout,
+                    stderr="",
+                ),
+                "extra": mock.Mock(
+                    returncode=0,
+                    stdout=discovery_stdout,
+                    stderr=receipt_line
+                    + "\n[bench][preflight] "
+                    + json.dumps(
+                        CompareSelfContractsTest._preflight_receipt(
+                            "end_to_end/class_medium", output_sha256="c" * 64
+                        ),
+                        separators=(",", ":"),
+                    ),
+                ),
+            }
+            for label, invalid_rediscovery in invalid_rediscoveries.items():
+                with (
+                    self.subTest(label=label),
+                    mock.patch.object(
+                        compare_self, "_git_provenance", return_value=git
+                    ),
+                    mock.patch.object(
+                        compare_self, "_toolchain_version", return_value="rustc test"
+                    ),
+                    mock.patch.object(
+                        compare_self, "_cargo_version", return_value="cargo test"
+                    ),
+                    mock.patch.object(
+                        compare_self,
+                        "_run_process",
+                        side_effect=[metadata, invalid_rediscovery],
+                    ),
+                ):
+                    invalid_runner, _invalid_provenance, invalid_errors = (
+                        compare_self._prepare_reused_runner(
+                            recipe,
+                            origin=origin,
+                            source_report={
+                                "path": "/tmp/discovery.json",
+                                "sha256": "c" * 64,
+                            },
+                            timeout_seconds=1,
+                        )
+                    )
+                self.assertIsNone(invalid_runner)
+                self.assertTrue(
+                    any("preflight receipts differ" in error for error in invalid_errors)
+                )
 
             runner_mutations = {
                 "Git revision": lambda value: value["git"].__setitem__(
@@ -2865,16 +2952,21 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             corpus.parent.mkdir(parents=True)
             corpus.write_text(
                 json.dumps(
-                    {
-                        "schema_version": 1,
-                        "default_group": "end_to_end",
-                        "suites": {},
-                        "fixtures": [],
-                    }
+                    CompareSelfContractsTest._minimal_corpus(
+                        schema_version=2,
+                        default_group="end_to_end",
+                    )
                 )
                 + "\n",
                 encoding="utf-8",
             )
+            contract_source = (
+                ROOT
+                / "docs/performance/contracts/native-criterion-preflight-v1.json"
+            )
+            contract_target = checkout / contract_source.relative_to(ROOT)
+            contract_target.parent.mkdir(parents=True)
+            contract_target.write_bytes(contract_source.read_bytes())
             bench_source = checkout / "benches" / "pipeline.rs"
             bench_source.parent.mkdir()
             bench_source.write_text("fn main() {}\n", encoding="utf-8")
@@ -2924,10 +3016,14 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 stdout="",
                 stderr="Removed 42 files, 12.3MiB total",
             )
+            receipt = CompareSelfContractsTest._preflight_receipt()
+            receipt_line = "[bench][preflight] " + json.dumps(
+                receipt, separators=(",", ":")
+            )
             discovery_result = mock.Mock(
                 returncode=0,
                 stdout="end_to_end/flowchart_medium: benchmark\n",
-                stderr="",
+                stderr=receipt_line,
             )
             git = {
                 "revision": "a" * 40,
@@ -3011,6 +3107,69 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 run_process.call_args_list[2].kwargs["env"]["CARGO_BUILD_JOBS"],
                 "1",
             )
+            self.assertEqual(
+                provenance["discovery"]["preflight_receipts"],
+                {"end_to_end/flowchart_medium": receipt},
+            )
+
+            invalid_discoveries = {
+                "missing": mock.Mock(
+                    returncode=0,
+                    stdout="end_to_end/flowchart_medium: benchmark\n",
+                    stderr="",
+                ),
+                "extra": mock.Mock(
+                    returncode=0,
+                    stdout="end_to_end/flowchart_medium: benchmark\n",
+                    stderr=receipt_line
+                    + "\n[bench][preflight] "
+                    + json.dumps(
+                        CompareSelfContractsTest._preflight_receipt(
+                            "end_to_end/class_medium", output_sha256="c" * 64
+                        ),
+                        separators=(",", ":"),
+                    ),
+                ),
+            }
+            for label, invalid_discovery in invalid_discoveries.items():
+                with (
+                    self.subTest(label=label),
+                    mock.patch.object(
+                        compare_self, "_git_provenance", return_value=git
+                    ),
+                    mock.patch.object(
+                        compare_self, "_toolchain_version", return_value="rustc"
+                    ),
+                    mock.patch.object(
+                        compare_self, "_cargo_version", return_value="cargo"
+                    ),
+                    mock.patch.object(
+                        compare_self,
+                        "_run_process",
+                        side_effect=[
+                            metadata_result,
+                            clean_result,
+                            cargo_result,
+                            invalid_discovery,
+                        ],
+                    ),
+                ):
+                    invalid_runner, _invalid_provenance, invalid_errors = (
+                        compare_self._prepare_runner(
+                            recipe,
+                            allow_dirty=False,
+                            timeout_seconds=1,
+                            freeze_plan=compare_self.SharedTargetFreezePlan(
+                                target_dir=target_dir,
+                                context=f"prepare-{label}",
+                            ),
+                            build_sequence=1,
+                        )
+                    )
+                self.assertIsNone(invalid_runner)
+                self.assertTrue(
+                    any("preflight receipts differ" in error for error in invalid_errors)
+                )
 
     def test_shared_target_freeze_rejects_source_digest_drift_during_copy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
