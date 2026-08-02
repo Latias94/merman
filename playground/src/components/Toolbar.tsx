@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import {
   useAppStore,
-  type HostThemePreset,
+  type SvgPipeline,
   type TextMeasurementMode,
   type Theme,
   type UITheme,
@@ -38,15 +38,18 @@ import {
   selectMermanFacade,
   useMermanRuntime,
 } from "@/src/runtime/use-merman-runtime";
+import { presentationProfileStatus } from "@/src/runtime/presentation-status";
+import {
+  isMermanSvgPipeline,
+  MERMAN_SVG_PIPELINES,
+} from "@/src/runtime/merman-core";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
 import {
   createMarkdownImageLink,
   createMermaidLiveEditorUrl,
 } from "@/src/lib/mermaid-live";
 import {
-  SUPPORTED_HOST_THEME_PRESETS,
   SUPPORTED_THEMES,
-  normalizeHostThemePresetName,
   normalizeThemeName,
 } from "@mermanjs/web";
 import { Button } from "@/components/ui/button";
@@ -96,16 +99,32 @@ const TEXT_MEASUREMENT_VALUES: readonly TextMeasurementMode[] = [
   "browser",
   "headless",
 ];
+const NO_PRESENTATION_SELECTION = "__none__";
+const PRESENTATION_STATUS_ID = "presentation-profile-status";
+
+function openIdOptions(
+  ids: readonly string[],
+  selectedId: string | null,
+  labelFor: (id: string) => string,
+): { value: string; label: string }[] {
+  const values = [...new Set(ids)];
+  if (selectedId && !values.includes(selectedId)) values.push(selectedId);
+  return values.map((value) => ({ value, label: labelFor(value) }));
+}
 
 export function Toolbar() {
   const { t } = useTranslation();
   const {
     code,
     diagramTheme,
-    hostThemePreset,
     mermaidConfig,
+    presentationProfileId,
+    presentationThemePresetId,
     setDiagramTheme,
-    setHostThemePreset,
+    setPresentationProfileId,
+    setPresentationThemePresetId,
+    setSvgPipeline,
+    svgPipeline,
     textMeasurementMode,
     setTextMeasurementMode,
     diagramFont,
@@ -119,14 +138,18 @@ export function Toolbar() {
       code: state.code,
       diagramFont: state.diagramFont,
       diagramTheme: state.diagramTheme,
-      hostThemePreset: state.hostThemePreset,
       mermaidConfig: state.mermaidConfig,
+      presentationProfileId: state.presentationProfileId,
+      presentationThemePresetId: state.presentationThemePresetId,
       setDiagramFont: state.setDiagramFont,
       setDiagramTheme: state.setDiagramTheme,
-      setHostThemePreset: state.setHostThemePreset,
+      setPresentationProfileId: state.setPresentationProfileId,
+      setPresentationThemePresetId: state.setPresentationThemePresetId,
+      setSvgPipeline: state.setSvgPipeline,
       setTextMeasurementMode: state.setTextMeasurementMode,
       setUITheme: state.setUITheme,
       showExamples: state.showExamples,
+      svgPipeline: state.svgPipeline,
       textMeasurementMode: state.textMeasurementMode,
       toggleExamples: state.toggleExamples,
       uiTheme: state.uiTheme,
@@ -140,6 +163,13 @@ export function Toolbar() {
   const asciiSupport = useAsciiSupport();
   const [isExporting, setIsExporting] = useState(false);
   const currentLang = getCurrentLanguage();
+  const presentationCatalog = useMemo(() => {
+    try {
+      return facade?.presentationCatalog() ?? null;
+    } catch {
+      return null;
+    }
+  }, [facade]);
 
   const themeOptions: { value: Theme; label: string }[] = useMemo(() => {
     const seen = new Set<Theme>();
@@ -156,21 +186,54 @@ export function Toolbar() {
       }));
   }, [facade, t]);
 
-  const hostThemeOptions: { value: HostThemePreset; label: string }[] = useMemo(
-    () => [
-      { value: "none", label: t("hostThemes.none") },
-      ...SUPPORTED_HOST_THEME_PRESETS.map((preset) => ({
-        value: preset,
-        label: t(`hostThemes.${preset}`, { defaultValue: preset }),
-      })),
-    ],
-    [t]
+  const presentationThemeOptions = useMemo(
+    () =>
+      openIdOptions(
+        presentationCatalog?.theme_presets.map((preset) => preset.id) ?? [],
+        presentationThemePresetId,
+        (id) => t(`presentationThemes.${id}`, { defaultValue: id }),
+      ),
+    [presentationCatalog, presentationThemePresetId, t],
   );
-
-  const renderThemeLabel =
-    hostThemePreset === "none"
-      ? t(`themes.${diagramTheme}`, { defaultValue: diagramTheme })
-      : t(`hostThemes.${hostThemePreset}`, { defaultValue: hostThemePreset });
+  const presentationProfileOptions = useMemo(
+    () =>
+      openIdOptions(
+        presentationCatalog?.profiles.map((profile) => profile.id) ?? [],
+        presentationProfileId,
+        (id) => t(`presentationProfiles.${id}`, { defaultValue: id }),
+      ),
+    [presentationCatalog, presentationProfileId, t],
+  );
+  const currentProfileStatus = useMemo(() => {
+    if (!presentationCatalog || !presentationProfileId) return null;
+    const catalogProfile = presentationCatalog.profiles.find(
+      (profile) => profile.id === presentationProfileId,
+    );
+    if (!catalogProfile?.fully_available && !currentBatch) return null;
+    return presentationProfileStatus({
+      catalog: presentationCatalog,
+      detection:
+        currentBatch?.detection ?? {
+          status: "unavailable",
+          validity: "unknown",
+          diagramType: null,
+          syntaxId: null,
+          effectiveLayoutId: null,
+        },
+      plan: currentBatch?.svgPlan ?? null,
+      selectedProfileId: presentationProfileId,
+    });
+  }, [currentBatch, presentationCatalog, presentationProfileId]);
+  const presentationStatusText = !presentationProfileId
+    ? t("presentationStatus.none")
+    : currentProfileStatus
+      ? t(`presentationStatus.${currentProfileStatus.kind}`, {
+          capabilities:
+            currentProfileStatus.missingCapabilityIds.join(", ") || "—",
+          profile: presentationProfileId,
+        })
+      : t("presentationStatus.pending", { profile: presentationProfileId });
+  const renderThemeLabel = t("toolbar.presentation");
   const renderSettingsLabel = t("toolbar.renderSettings");
   const asciiCapability = asciiSupport.capabilityFor(diagramType);
   const asciiSupported = asciiSupport.isSupported(diagramType);
@@ -201,7 +264,7 @@ export function Toolbar() {
         snapshot.source,
         snapshot.theme,
         snapshot.configJson,
-        { ...snapshot.options, pipeline }
+        { ...snapshot.options, svgPipeline: pipeline }
       );
       if (result.status === "failure") {
         throw new Error(result.error.summary);
@@ -307,14 +370,16 @@ export function Toolbar() {
       return;
     }
     try {
-      await copyShareUrl(
+      await copyShareUrl({
         code,
-        diagramTheme,
-        mermaidConfig,
-        hostThemePreset,
+        theme: diagramTheme,
+        config: mermaidConfig,
+        presentationProfileId,
+        presentationThemePresetId,
+        svgPipeline,
         textMeasurementMode,
-        diagramFont
-      );
+        diagramFont,
+      });
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
@@ -324,8 +389,10 @@ export function Toolbar() {
     copyShareUrl,
     diagramFont,
     diagramTheme,
-    hostThemePreset,
     mermaidConfig,
+    presentationProfileId,
+    presentationThemePresetId,
+    svgPipeline,
     t,
     textMeasurementMode,
   ]);
@@ -342,10 +409,11 @@ export function Toolbar() {
     );
   }, [code, diagramTheme, mermaidConfig, t]);
 
-  const normalizeHostThemeValue = useCallback((value: string): HostThemePreset => {
-    if (value === "none") return "none";
-    return normalizeHostThemePresetName(value) ?? "none";
-  }, []);
+  const normalizePresentationId = useCallback(
+    (value: string): string | null =>
+      value === NO_PRESENTATION_SELECTION ? null : value,
+    [],
+  );
   const normalizeTextMeasurementValue = useCallback(
     (value: string): TextMeasurementMode =>
       value === "headless" ? "headless" : "browser",
@@ -355,6 +423,11 @@ export function Toolbar() {
     (value: string): DiagramFont =>
       isDiagramFont(value) ? value : "trebuchet",
     []
+  );
+  const normalizeSvgPipeline = useCallback(
+    (value: string): SvgPipeline =>
+      isMermanSvgPipeline(value) ? value : "parity",
+    [],
   );
 
   const handleLanguageChange = useCallback((lang: string) => {
@@ -367,7 +440,7 @@ export function Toolbar() {
       <DropdownMenuSeparator />
       <DropdownMenuLabel>{t("toolbar.mermaidTheme")}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
-        value={hostThemePreset === "none" ? diagramTheme : ""}
+        value={diagramTheme}
         onValueChange={(v) => setDiagramTheme(normalizeThemeName(v))}
       >
         {themeOptions.map((option) => (
@@ -377,17 +450,44 @@ export function Toolbar() {
         ))}
       </DropdownMenuRadioGroup>
       <DropdownMenuSeparator />
-      <DropdownMenuLabel>{t("toolbar.hostTheme")}</DropdownMenuLabel>
+      <DropdownMenuLabel>{t("toolbar.presentationTheme")}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
-        value={hostThemePreset}
-        onValueChange={(v) => setHostThemePreset(normalizeHostThemeValue(v))}
+        value={presentationThemePresetId ?? NO_PRESENTATION_SELECTION}
+        onValueChange={(value) =>
+          setPresentationThemePresetId(normalizePresentationId(value))
+        }
       >
-        {hostThemeOptions.map((option) => (
+        <DropdownMenuRadioItem value={NO_PRESENTATION_SELECTION}>
+          {t("presentationThemes.none")}
+        </DropdownMenuRadioItem>
+        {presentationThemeOptions.map((option) => (
           <DropdownMenuRadioItem key={option.value} value={option.value}>
             {option.label}
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>{t("toolbar.presentationProfile")}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        aria-describedby={PRESENTATION_STATUS_ID}
+        value={presentationProfileId ?? NO_PRESENTATION_SELECTION}
+        onValueChange={(value) =>
+          setPresentationProfileId(normalizePresentationId(value))
+        }
+      >
+        <DropdownMenuRadioItem value={NO_PRESENTATION_SELECTION}>
+          {t("presentationProfiles.none")}
+        </DropdownMenuRadioItem>
+        {presentationProfileOptions.map((option) => (
+          <DropdownMenuRadioItem key={option.value} value={option.value}>
+            {option.label}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+      <DropdownMenuSeparator />
+      <p className="max-w-72 px-2 py-1 text-xs text-muted-foreground">
+        {presentationStatusText}
+      </p>
     </DropdownMenuContent>
   );
 
@@ -417,6 +517,18 @@ export function Toolbar() {
         {TEXT_MEASUREMENT_VALUES.map((mode) => (
           <DropdownMenuRadioItem key={mode} value={mode}>
             {t(`textMeasurement.${mode}`)}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>{t("toolbar.svgOutput")}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        value={svgPipeline}
+        onValueChange={(value) => setSvgPipeline(normalizeSvgPipeline(value))}
+      >
+        {MERMAN_SVG_PIPELINES.map((pipeline) => (
+          <DropdownMenuRadioItem key={pipeline} value={pipeline}>
+            {t(`svgPipelines.${pipeline}`)}
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
@@ -455,6 +567,13 @@ export function Toolbar() {
     <>
       <Toaster position="bottom-right" richColors />
       <header className="relative flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b bg-card px-3 sm:px-4">
+        <span
+          id={PRESENTATION_STATUS_ID}
+          className="sr-only"
+          aria-live="polite"
+        >
+          {presentationStatusText}
+        </span>
         {/* 左侧：Logo 和功能按钮 */}
         <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2">
@@ -502,6 +621,7 @@ export function Toolbar() {
                     variant="outline"
                     size="icon-sm"
                     aria-label={t("toolbar.theme")}
+                    aria-describedby={PRESENTATION_STATUS_ID}
                   >
                     <Palette className="size-4" />
                   </Button>
@@ -631,6 +751,7 @@ export function Toolbar() {
                     size="sm"
                     className="w-8 px-0 sm:w-auto sm:px-2.5"
                     aria-label={t("toolbar.theme")}
+                    aria-describedby={PRESENTATION_STATUS_ID}
                   >
                     <Palette className="size-4" />
                     <span className="hidden sm:inline">{renderThemeLabel}</span>

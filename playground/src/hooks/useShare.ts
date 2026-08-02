@@ -1,33 +1,77 @@
 import { useCallback, useEffect, useState } from "react";
+import { isBundledThemePresetName } from "@mermanjs/web";
 
-interface ShareData {
+import {
+  isMermanSvgPipeline,
+  type MermanSvgPipeline,
+} from "../runtime/merman-core.ts";
+
+export interface ShareData {
   code: string;
   theme: string;
   config?: string;
-  hostThemePreset?: string;
+  presentationThemePresetId: string | null;
+  presentationProfileId: string | null;
+  svgPipeline: MermanSvgPipeline;
   textMeasurementMode?: string;
   diagramFont?: string;
 }
 
-/**
- * 压缩并编码数据为 URL 安全的字符串
- */
-function encode(data: ShareData): string {
-  const json = JSON.stringify(data);
-  // 使用 Base64 编码，URL 安全
-  const base64 = btoa(encodeURIComponent(json));
-  return base64;
+export function encodeShareHash(data: ShareData): string {
+  const payload = {
+    code: data.code,
+    theme: data.theme,
+    ...(data.config !== undefined ? { config: data.config } : {}),
+    presentationThemePresetId: data.presentationThemePresetId,
+    presentationProfileId: data.presentationProfileId,
+    svgPipeline: data.svgPipeline,
+    ...(data.textMeasurementMode !== undefined
+      ? { textMeasurementMode: data.textMeasurementMode }
+      : {}),
+    ...(data.diagramFont !== undefined
+      ? { diagramFont: data.diagramFont }
+      : {}),
+  };
+  return btoa(encodeURIComponent(JSON.stringify(payload)));
 }
 
-/**
- * 解码 URL 中的数据
- */
-function decode(hash: string): ShareData | null {
+export function decodeShareHash(hash: string): ShareData | null {
   try {
     const base64 = hash.startsWith("#") ? hash.slice(1) : hash;
     if (!base64) return null;
-    const json = decodeURIComponent(atob(base64));
-    return JSON.parse(json);
+    const value: unknown = JSON.parse(decodeURIComponent(atob(base64)));
+    if (!isRecord(value)) return null;
+    if (typeof value.code !== "string" || typeof value.theme !== "string") {
+      return null;
+    }
+
+    const hasNewPresentation = [
+      "presentationThemePresetId",
+      "presentationProfileId",
+      "svgPipeline",
+    ].some((key) => Object.hasOwn(value, key));
+    const presentation = hasNewPresentation
+      ? {
+          presentationThemePresetId: nullableString(
+            value.presentationThemePresetId,
+          ),
+          presentationProfileId: nullableString(value.presentationProfileId),
+          svgPipeline: normalizeSvgPipeline(value.svgPipeline),
+        }
+      : migrateLegacyHostTheme(value.hostThemePreset);
+
+    return {
+      code: value.code,
+      theme: value.theme,
+      ...(typeof value.config === "string" ? { config: value.config } : {}),
+      ...presentation,
+      ...(typeof value.textMeasurementMode === "string"
+        ? { textMeasurementMode: value.textMeasurementMode }
+        : {}),
+      ...(typeof value.diagramFont === "string"
+        ? { diagramFont: value.diagramFont }
+        : {}),
+    };
   } catch {
     return null;
   }
@@ -36,59 +80,23 @@ function decode(hash: string): ShareData | null {
 export function useShare() {
   const [initialData, setInitialData] = useState<ShareData | null>(null);
 
-  // 页面加载时检查 URL hash
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash) {
-      const data = decode(hash);
-      if (data) {
-        setInitialData(data);
-      }
-    }
+    const data = decodeShareHash(window.location.hash);
+    if (data) setInitialData(data);
   }, []);
 
-  const createShareUrl = useCallback((
-    code: string,
-    theme: string,
-    config?: string,
-    hostThemePreset?: string,
-    textMeasurementMode?: string,
-    diagramFont?: string
-  ): string => {
-    const encoded = encode({
-      code,
-      theme,
-      config,
-      hostThemePreset,
-      textMeasurementMode,
-      diagramFont,
-    });
+  const createShareUrl = useCallback((data: ShareData): string => {
     const baseUrl = `${window.location.origin}${window.location.pathname}`;
-    return `${baseUrl}#${encoded}`;
+    return `${baseUrl}#${encodeShareHash(data)}`;
   }, []);
 
   const copyShareUrl = useCallback(
-    async (
-      code: string,
-      theme: string,
-      config?: string,
-      hostThemePreset?: string,
-      textMeasurementMode?: string,
-      diagramFont?: string
-    ): Promise<void> => {
-      const url = createShareUrl(
-        code,
-        theme,
-        config,
-        hostThemePreset,
-        textMeasurementMode,
-        diagramFont
-      );
+    async (data: ShareData): Promise<void> => {
+      const url = createShareUrl(data);
       await navigator.clipboard.writeText(url);
-      // 更新 URL 但不刷新页面
       window.history.replaceState(null, "", url);
     },
-    [createShareUrl]
+    [createShareUrl],
   );
 
   const clearShareUrl = useCallback(() => {
@@ -102,4 +110,41 @@ export function useShare() {
     copyShareUrl,
     clearShareUrl,
   };
+}
+
+function migrateLegacyHostTheme(value: unknown): Pick<
+  ShareData,
+  "presentationThemePresetId" | "presentationProfileId" | "svgPipeline"
+> {
+  if (typeof value !== "string" || value === "none" || value === "mermaid") {
+    return {
+      presentationThemePresetId: null,
+      presentationProfileId: null,
+      svgPipeline: "parity",
+    };
+  }
+  if (value === "merman-modern") {
+    return {
+      presentationThemePresetId: null,
+      presentationProfileId: value,
+      svgPipeline: "parity",
+    };
+  }
+  return {
+    presentationThemePresetId: value,
+    presentationProfileId: null,
+    svgPipeline: isBundledThemePresetName(value) ? "resvg-safe" : "parity",
+  };
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function normalizeSvgPipeline(value: unknown): MermanSvgPipeline {
+  return isMermanSvgPipeline(value) ? value : "parity";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

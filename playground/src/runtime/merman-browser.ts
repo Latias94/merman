@@ -11,12 +11,14 @@ import {
   MERMAN_WASM_URL,
   packageVersion,
   parseJson,
+  presentationCatalog,
   renderAscii,
   renderSvg,
   renderSvgWithTextMeasurer,
   runtimeCatalog,
   supportedDiagrams,
   supportedThemes,
+  svgPlanJson,
   UNAVAILABLE_DIAGRAM_DETECTION,
   validate,
   type HostTextMeasurer,
@@ -67,6 +69,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
   return {
     packageVersion: packageVersion(),
 
+    presentationCatalog,
     runtimeCatalog,
 
     detectDiagram(
@@ -191,6 +194,21 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
           status: "failure",
         };
       }
+    },
+
+    svgPlan(
+      code,
+      theme = "default",
+      configJson = DEFAULT_MERMAID_CONFIG,
+      options,
+    ) {
+      const input = configuredMermanOperationInput(
+        code,
+        theme,
+        configJson,
+        options,
+      );
+      return svgPlanJson(input.source, input.bindingOptions);
     },
 
     validate,

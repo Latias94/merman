@@ -2,6 +2,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import {
   UNAVAILABLE_DIAGRAM_DETECTION,
   type DiagramDetectionFacts,
+  type SvgPlanResult,
 } from "@mermanjs/web";
 
 import type {
@@ -104,6 +105,7 @@ interface CompletedBatchBase {
   readonly diagnostics: RenderDiagnostics | null;
   readonly publishedAt: number;
   readonly snapshot: FrozenRenderSnapshot;
+  readonly svgPlan: SvgPlanResult | null;
 }
 
 export type RenderSuccessState = CompletedBatchBase &
@@ -207,9 +209,10 @@ interface RequestIdentity {
   readonly configJson: string;
   readonly diagnosticsEnabled: boolean;
   readonly diagramFont: MermanRenderOptions["diagramFont"];
-  readonly hostThemePreset: MermanRenderOptions["hostThemePreset"];
-  readonly pipeline: MermanRenderOptions["pipeline"];
+  readonly presentationProfileId: MermanRenderOptions["presentationProfileId"];
+  readonly presentationThemePresetId: MermanRenderOptions["presentationThemePresetId"];
   readonly source: string;
+  readonly svgPipeline: MermanRenderOptions["svgPipeline"];
   readonly textMeasurementMode: MermanRenderOptions["textMeasurementMode"];
   readonly theme: string;
   readonly viewportHeight: number | null;
@@ -358,6 +361,7 @@ export function createRenderCoordinator({
   ): Promise<CompletedRenderBatch> => {
     const { facade, snapshot } = request;
     const detection = detectDiagram(facade, snapshot);
+    const svgPlan = collectSvgPlan(facade, snapshot);
     const externalRequirements = mermaidExternalRequirementsFor(detection);
     const comparePromise = renderCompare(
       compare,
@@ -374,6 +378,7 @@ export function createRenderCoordinator({
       snapshot,
       detection,
       diagnostics,
+      svgPlan,
       merman,
       mermaid,
       now()
@@ -471,6 +476,26 @@ export function createRenderCoordinator({
     setInput,
     suspend,
   };
+}
+
+function collectSvgPlan(
+  facade: MermanDomainFacade,
+  snapshot: FrozenRenderSnapshot
+): SvgPlanResult | null {
+  if (!snapshot.options.presentationProfileId) {
+    return null;
+  }
+
+  try {
+    return facade.svgPlan(
+      snapshot.source,
+      snapshot.theme,
+      snapshot.configJson,
+      snapshot.options
+    );
+  } catch {
+    return null;
+  }
 }
 
 function detectDiagram(
@@ -661,6 +686,7 @@ function classifyBatch(
   snapshot: FrozenRenderSnapshot,
   detection: DiagramDetectionFacts,
   diagnostics: RenderDiagnostics | null,
+  svgPlan: SvgPlanResult | null,
   merman: MermanBatchResult,
   mermaid: MermaidBatchResult | null,
   publishedAt: number
@@ -671,6 +697,7 @@ function classifyBatch(
     diagnostics,
     publishedAt,
     snapshot,
+    svgPlan,
   };
   if (!mermaid) {
     return merman.status === "success"
@@ -761,9 +788,10 @@ function requestIdentity(
     configJson: input.configJson,
     diagnosticsEnabled,
     diagramFont: input.options.diagramFont,
-    hostThemePreset: input.options.hostThemePreset,
-    pipeline: input.options.pipeline,
+    presentationProfileId: input.options.presentationProfileId,
+    presentationThemePresetId: input.options.presentationThemePresetId,
     source: input.source,
+    svgPipeline: input.options.svgPipeline,
     textMeasurementMode: input.options.textMeasurementMode,
     theme: input.theme,
     viewportHeight: viewport?.height ?? null,
@@ -779,10 +807,11 @@ function sameRequestIdentity(
     left.source === right.source &&
     left.theme === right.theme &&
     left.configJson === right.configJson &&
-    left.hostThemePreset === right.hostThemePreset &&
+    left.presentationProfileId === right.presentationProfileId &&
+    left.presentationThemePresetId === right.presentationThemePresetId &&
     left.textMeasurementMode === right.textMeasurementMode &&
     left.diagramFont === right.diagramFont &&
-    left.pipeline === right.pipeline &&
+    left.svgPipeline === right.svgPipeline &&
     left.compareEnabled === right.compareEnabled &&
     left.diagnosticsEnabled === right.diagnosticsEnabled &&
     left.viewportWidth === right.viewportWidth &&
