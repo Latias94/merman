@@ -163,25 +163,61 @@ alpha.4 artifact has already been published there.
 
 The main changelog groups alpha.4 by user outcome. Source and embedding integrations should also apply the detailed replacements below; no deprecated aliases are retained unless this guide explicitly says otherwise.
 
-### Analysis and editor ownership
+### Analysis capture and ownership
 
 - Rename Rust `AnalysisResult` to `AnalysisGeneration`, `Analyzer::analyze_result` to `Analyzer::analyze_generation`, and `analyze_document_result{,_shared}` to `analyze_document_generation{,_shared}`. Use `generation.project(&policy)` instead of direct `payload()` or `diagnostics()` access; `Analyzer::analyze()` remains the diagnostics-only payload path, and `Analyzer::analyze_facts()` owns serialized facts.
-- Match `AnalysisCaptureOutcome::Ready` / `Rejected` from rich Analyzer entry points, and match `DocumentAnalysisOutcome` from editor document builders. `DocumentWorkspace::upsert` now returns `Result<DocumentSnapshot, AnalysisRejection>`; cancellable entry points still wrap the outcome in `Result<_, AnalysisCancelled>`.
-- Obtain sealed `AnalysisGeneration` and `AnalyzedDiagram` values from Analyzer or document-analysis entry points instead of assembling fields, and use their read-only accessors instead of public fields. `DocumentSnapshot` and `FenceSnapshot` are also accessor-based; construct a snapshot with `DocumentSnapshot::try_from_analysis_generation(version, Arc<AnalysisGeneration>)`, whose URI and kind come from the generation's `SourceDescriptor`.
-- Replace public `AnalysisOptions` fields and struct literals with builders and accessors. Remove `parse` / `with_parse_options` because analysis now owns strict parser semantics; use `with_source`, `with_site_config`, `with_fixed_today`, `try_with_fixed_local_offset_minutes`, `with_runtime_policy`, `with_max_source_bytes`, `with_max_document_diagrams`, and `with_rule_config` as applicable. Inspect invalidation state through `snapshot_policy()`, `diagnostic_policy()`, and `resource_limits()`, and replace `snapshot_affecting_eq` with `left.snapshot_policy() == right.snapshot_policy()`.
+- Replace `Analyzer::with_engine_and_options(engine, options)` with `Analyzer::with_engine(engine, options)`. Registry customizations already installed on `engine` are preserved, while the site configuration and runtime policy in `options` are the final parser authority.
+- Rich capture returns `AnalysisCaptureOutcome::Ready` or `Rejected`. Use `as_ready()`, `into_ready()`, or `rejection()` rather than assuming a generation exists. A rejection exposes its canonical diagnostics through `payload()` / `into_payload()` and its typed admission reason through `resource_limit()`; inspect the latter with `AnalysisResourceLimit::{id, observed, maximum}`.
+- Cancellable shared-source entry points now require caller-owned `Arc<str>`, including `Analyzer::analyze_generation_shared_cancellable` and `analyze_document_generation_shared_cancellable`. Promote borrowed input before calling them so cancellation never hides an uninterruptible full-source copy. `Analyzer::analyze_generation(&str)` remains the synchronous, non-cancellable convenience entry point.
+- Obtain sealed `AnalysisGeneration` and `AnalyzedDiagram` values from Analyzer or document-analysis entry points instead of assembling fields, and use `source()`, `source_map()`, `diagrams()`, and `text()` accessors. `AnalysisGeneration::snapshot_policy()` was removed without a replacement: a generation deliberately does not retain the full snapshot policy. `AnalysisOptions::snapshot_policy()` remains available for invalidation decisions.
+- `DocumentSnapshot` and `FenceSnapshot` are also accessor-based. Replace direct field access with `uri()`, `version()`, `kind()`, `text()`, `shared_text()`, `source_map()`, `fences()`, and fence accessors as applicable. Construct a snapshot with `DocumentSnapshot::try_from_analysis_generation(version, Arc<AnalysisGeneration>)`; its URI and kind come from the generation's `SourceDescriptor`.
+- Match `DocumentAnalysisOutcome` from editor document builders. `DocumentWorkspace::upsert` now returns `Result<DocumentSnapshot, AnalysisRejection>`; cancellable entry points still wrap their outcome in `Result<_, AnalysisCancelled>`.
+- Replace public `AnalysisOptions` fields and struct literals with builders and accessors. Remove `parse` / `with_parse_options` because analysis owns strict parser semantics; use `with_source`, `with_site_config`, `with_fixed_today`, `try_with_fixed_local_offset_minutes`, `with_runtime_policy`, `with_max_source_bytes`, `with_max_document_diagrams`, and `with_rule_config` as applicable. Inspect invalidation state through `AnalysisOptions::{snapshot_policy, diagnostic_policy, resource_limits}`, and replace `snapshot_affecting_eq` with `left.snapshot_policy() == right.snapshot_policy()`.
 - Update custom `DiagramSemanticParser` overlays to accept `&ParseControl` and return `ParseControlResult<Result<Value>>`. Checkpoint cancellable work, return cancellation through the outer result, return Mermaid failures through the inner result, and handle `merman_core::Error::ParseCancelled` in exhaustive matches.
-- Analyzer entry points now honor `SourceDescriptor` kind directly: Markdown and MDX inputs use canonical fence extraction and `max_document_diagrams` admission instead of producing one whole-document Mermaid generation.
-- Existing `DiagnosticFix::new` calls continue to work, but direct struct literals must account for `edits: Arc<[DiagnosticFixEdit]>`. `AnalysisRuleConfig::with_rule_enabled`, `with_rule_disabled`, and `with_rule_severity` now return `Result<Self, AnalysisRuleConfigError>` and reject unknown or non-configurable rule ids.
+- Analyzer entry points honor `SourceDescriptor` kind directly: Markdown and MDX inputs use canonical fence extraction and `max_document_diagrams` admission instead of producing one whole-document Mermaid generation.
+- Existing `DiagnosticFix::new` calls continue to work, but direct struct literals must account for `edits: Arc<[DiagnosticFixEdit]>`. `AnalysisRuleConfig::with_rule_enabled`, `with_rule_disabled`, and `with_rule_severity` return `Result<Self, AnalysisRuleConfigError>` and reject unknown or non-configurable rule ids.
+
+### Shared text, source maps, and Options JSON
+
+- Replace `SourceMap::line_starts()` with behavioral queries: use `line_count()` to iterate, `line_start(index)` for one start offset, and `line_bounds(index)` for the content bounds of one line. `SourceMap::new(Arc<str>)` is a synchronous convenience constructor; there is no public cancellable `SourceMap` constructor.
+- Replace `SourceMap::source_arc()` with `SourceMap::shared_source()`. `SharedTextSlice` retains one `Arc<str>` plus validated UTF-8 bounds; `whole`, `from_range`, `as_ref` / deref, and `source_arc()` do not copy source text. Use `to_owned_text()` only when an owned `String` is intentionally required.
+- Decode shared configuration through `AnalysisOptionsJson`. The root object and its `lint` object ignore unknown fields for forward compatibility. Direct decoding of `LintOptionsJson`, `LintRuleSeverityOverrideJson`, and `ResourceOptionsJson` remains strict; `resources` is a versioned strict schema even when nested below the root. `ParseOptionsJson` and the `parse` member were removed without replacements.
+
+### Editor facts and semantic-token planning
+
 - Rename Rust `workspace_symbols` to `search_document_symbols` and one-shot Web/WASM `editorWorkspaceSymbols` to `editorSearchDocumentSymbols`; browser editor sessions expose `searchDocumentSymbols`. Remove uses of `workspace_symbols_for_snapshots`, `DocumentWorkspace::build_snapshot*`, and `DocumentWorkspace::snapshots`; use `upsert`, `DocumentWorkspace::build_analysis_context_with_shared_text`, or explicit per-document search according to the workflow.
 - Replace `Engine::parse_diagram_with_editor_facts_sync` with `parse_diagram_snapshot_sync` or `parse_diagram_snapshot_with_type_sync`. `parse_metadata{,_sync}` no longer accepts `ParseOptions` or returns `Option`; `Engine::parse` and the VS Code `merman.analysis.parse.suppress_errors` setting are removed.
 - Treat parser/editor fact structs as non-exhaustive. Construct `EditorSemanticSymbol`, `EditorSemanticFacts`, `FenceSemanticItem`, and `FenceReferenceGroup` through their constructors, `Default`, and `with_*` methods instead of struct literals.
+- Migrate semantic-token callers using this exact mapping:
+
+  | Alpha.3 | Alpha.4 |
+  | --- | --- |
+  | `SemanticToken` | `PlannedToken` |
+  | `SemanticTokenKind` | `PlannedTokenKind` |
+  | `SemanticTokenModifier` | `PlannedTokenModifier` |
+  | `SemanticTokenLegend` / `semantic_token_legend()` | descriptor types / `semantic_token_descriptor()` |
+  | `semantic_tokens_for_snapshot*` | `plan_semantic_tokens_for_snapshot*` |
+  | `token_type_index(kind)` | `kind.code()` and generated descriptor data |
+  | `token_modifier_index(modifier)` | `modifier.index()` / `modifier.bit()` and generated descriptor data |
+
+  Both planner entry points return `Result<SemanticTokenPlan, TokenPlanError>`. Range planning accepts editor-core's protocol-neutral `Range`, not separate start/end line integers. Packed output and LSP names come from the generated descriptor contract rather than parallel handwritten index tables.
+- Delete TextScan compatibility code; there is no alpha.4 replacement for `ShapeObjectValuePrefix`, `shape_object_value_prefix`, `FenceTextIndex::from_text`, `FenceTextIndex::merge_text_scan_node_ids`, `FenceTextIndexSource::TextScan`, `FenceTextIndexSource::is_text_scan`, or `AnalysisSyntaxFacts::text_scan`.
 - The serialized `AnalysisFactsPayload` remains schema `1` but is parser-only: `fact_source: "text_scan"` is removed, unavailable bodies use `"unavailable"`, every semantic item includes `rename_policy`, and unsupported version discriminators are rejected before decoding the body.
 
 ### LSP embedding
 
 - `MermanLanguageServer::service()` now returns `(MermanLspService, MermanClientSocket)` instead of tower-lsp's `(LspService<MermanLanguageServer>, ClientSocket)`. Drive the ordered service through `tower::Service<Request>`, call `MermanClientSocket::split()` once, and concurrently drive the returned `MermanRequestStream` and `MermanResponseSink`.
-- Enable the `stdio` feature explicitly when installing or building the bundled `merman-lsp` executable with `--no-default-features`. `stdio_server()` now returns Merman's bounded `StdioServer`; replace tower-lsp's `.concurrency_level(...)` with `.ordinary_concurrency_level(...)`, or call `serve_stdio(...)` for the complete lifecycle. Replace `LSP_HANDLER_CONCURRENCY` with the ordinary, control, and total concurrency constants; custom compatible services implement synchronous `StdioService::admit`.
+- Replace the `tower-lsp` dependency with `tower-lsp-server`. Update `tower_lsp::jsonrpc` to `tower_lsp_server::jsonrpc`, `tower_lsp::lsp_types` to `tower_lsp_server::ls_types`, and `tower_lsp::ExitedError` to `tower_lsp_server::ExitedError`.
+- Enable the `stdio` feature explicitly when installing or building the bundled `merman-lsp` executable with `--no-default-features`. `stdio_server()` returns Merman's bounded `StdioServer`; replace tower-lsp's `.concurrency_level(...)` with `.ordinary_concurrency_level(...)`, or call `serve_stdio(...)` when the caller needs the explicit `StdioTermination` result.
+- Remove `StdioService`, `LSP_CONTROL_HANDLER_CONCURRENCY`, and `LSP_TOTAL_HANDLER_CONCURRENCY` uses without replacement. Custom transports drive `MermanLspService` through `tower::Service<Request>` and own their scheduling. The public stdio tuning surface retains only `LSP_ORDINARY_HANDLER_CONCURRENCY`, `LSP_REQUEST_BYTE_BUDGET`, and `LSP_MAX_MESSAGE_BYTES`; the bundled transport internally owns a 96-token retained-deferred budget and four ordinary consumers.
+- Update exhaustive `StdioTermination` matches for `InputOverloaded`. Only legal, ID-less, valid-parameter cancel/exit messages whose encoded body is at most 4 KiB use the private immediate-control path. Ordinary request overload returns JSON-RPC `-32099` and continues only when that error can enter the bounded output lane. Notification overload, an unretainable overload error, or exhausted overload-output budget terminates with `InputOverloaded`; once input integrity is lost, later cancel/exit frames are not promised. `OutputClosed` wins when stdout failure races another termination.
 - Send `RULE_CATALOG_METHOD` and `CONFIG_SCHEMA_METHOD` through the ordered service instead of calling removed `MermanLanguageServer::rule_catalog()` or `config_schema()` helpers. Rust-only static consumers can call `RuleCatalogResponse::current()` and `ConfigSchemaResponse::current()`.
+
+### Retained wire names
+
+- The Rust type `AnalysisResult` is removed, but the TypeScript/WASM wire-level `AnalysisResult` name remains unchanged.
+- `AnalysisPayload` and `AnalysisFactsPayload` continue to use independent schema version `1` contracts.
+- Mermaid diagram and compatibility identifiers such as `flowchart-v2` remain wire names; Rust type or planner renames do not rewrite them.
 
 ### Rendering and option contracts
 

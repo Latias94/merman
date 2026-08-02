@@ -113,13 +113,25 @@ The crate has no default features and does not depend on SVG, raster, PDF, or ed
 
 The optional `system-clock`, `system-timezone`, `system-random`, and `system-timing` features only make their matching runtime adapters available. They do not change Mermaid language coverage or select ambient host state automatically.
 
+## Options JSON
+
+`AnalysisOptionsJson` is the shared forward-compatible configuration root. Unknown fields at the root and inside `lint` are ignored so older configuration transports can read newer additive settings. The `resources` object remains a strict versioned schema even when it is nested under the root.
+
+Direct `serde_json` decoding of `LintOptionsJson`, `LintRuleSeverityOverrideJson`, or `ResourceOptionsJson` is intentionally strict and rejects unknown fields. Decode through `AnalysisOptionsJson` or `analysis_options_json_from_json_value` when forward compatibility is required; decode a nested type directly only when validating that exact nested schema is the goal.
+
+## Source Mapping And Shared Text
+
+`SourceMap` exposes behavior rather than its private adaptive line-index representation. Use `line_count()`, `line_start(index)`, and `line_bounds(index)` together with its byte, Unicode-scalar, and UTF-16 position APIs. `SourceMap::new` is a synchronous convenience constructor that scans the complete source; cancellable construction remains internal to analysis pipelines.
+
+`SharedTextSlice` retains an `Arc<str>` plus validated UTF-8 bounds. `whole` and `from_range` share the caller's allocation, `source_arc()` clones only the `Arc`, and `to_owned_text()` is the explicit copying boundary.
+
 ## Payload Contracts
 
 The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independent, versioned JSON contracts. Their current public versions are both `1`; consumers must validate the version belonging to the payload they decode.
 
 Facts use `fact_source: "unavailable"` when parser-backed body semantics do not exist. They do not invent body symbols, references, or rename targets. Current writers include `rename_policy` on each semantic item; older additive readers that do not see it must treat the item as non-renamable.
 
-`DocumentDiagram::text`, `AnalyzedDiagram::text()`, and editor `FenceSnapshot::text()` use `SharedTextSlice`, which shares immutable document storage instead of copying every fence body. `AnalysisGeneration` and `AnalyzedDiagram` are read-only canonical outputs; obtain them from `Analyzer` or the document-analysis entry points. Use `as_str()` or `AsRef<str>` for borrowed access and `to_owned_text()` only when an owned buffer is required.
+`DocumentDiagram::text`, `AnalyzedDiagram::text()`, and editor `FenceSnapshot::text()` use `SharedTextSlice`, so fence bodies share immutable document storage. `AnalysisGeneration` and `AnalyzedDiagram` are read-only canonical outputs; obtain them from `Analyzer` or the document-analysis entry points.
 
 ## Related Documentation
 

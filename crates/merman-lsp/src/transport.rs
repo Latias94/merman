@@ -127,6 +127,9 @@ where
 }
 
 /// Describes why a stdio language-server session stopped.
+///
+/// `OutputClosed` is dominant when output failure races another stop reason because required
+/// responses can no longer be delivered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StdioTermination {
     /// The client closed the input stream without sending `exit`.
@@ -138,6 +141,9 @@ pub enum StdioTermination {
     /// The client sent `exit` without a preceding `shutdown` request.
     ExitWithoutShutdown,
     /// The transport could not retain an ordinary message without losing input integrity.
+    ///
+    /// This includes an overloaded notification, or a request whose complete overload response
+    /// cannot enter the bounded output lane.
     InputOverloaded,
 }
 
@@ -391,6 +397,11 @@ enum TransportStop {
 }
 
 /// Merman's bounded, frame-preserving stdio transport.
+///
+/// The transport privately executes exact, valid, ID-less cancel and exit notifications inline
+/// when their encoded frame is small enough. Ordinary messages share one retained admission
+/// budget and a separate consumer concurrency limit. Request overload is reported with a bounded
+/// JSON-RPC error when possible; notification overload terminates input integrity.
 #[derive(Debug)]
 pub struct StdioServer<I, O, L> {
     stdin: I,
@@ -457,7 +468,10 @@ where
         self
     }
 
-    /// Serves messages until an input/output stream closes or a valid `exit` is dispatched.
+    /// Serves messages until the session terminates, discarding the detailed stop reason.
+    ///
+    /// Use [`serve_stdio`] when the host needs to distinguish clean input close, protocol exit,
+    /// overload, and output failure.
     pub async fn serve(self, service: MermanLspService) {
         let _ = self.serve_inner(service).await;
     }
@@ -812,11 +826,14 @@ where
     }
 }
 
-/// Serves an LSP session until an input/output stream closes or the client sends `exit`.
+/// Serves an LSP session until input closes, output fails, overload loses input integrity, or the
+/// client sends a valid `exit` notification.
 ///
 /// Framing is owned here so a rejected `exit` request cannot make an upstream buffered reader
 /// discard later frames from the same client write. A valid notification cancels in-flight handlers
-/// through the lifecycle wrapper before the transport drains its task queue.
+/// through the lifecycle wrapper before the transport drains its task queue. Exact small controls
+/// bypass ordinary capacity only while input remains synchronized. `OutputClosed` dominates a
+/// concurrent protocol or overload stop.
 pub async fn serve_stdio<I, O, L>(
     stdin: I,
     stdout: O,

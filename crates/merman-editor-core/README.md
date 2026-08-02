@@ -54,6 +54,12 @@ When a host already owns an `Arc<AnalysisGeneration>`, use `DocumentSnapshot::tr
 
 The removed TextScan implementation is not maintained in parallel. This does not change LSP document revision numbers or Mermaid's own `*-v2` diagram IDs.
 
+## Semantic Token Planning
+
+Use `plan_semantic_tokens_for_snapshot` or `plan_semantic_tokens_for_snapshot_range`. Both return `Result<SemanticTokenPlan, TokenPlanError>`; range planning accepts editor-core's protocol-neutral `Range`. Inspect `SemanticTokenPlan::tokens()` for `PlannedToken` values or `packed()` for the generated five-word LSP-relative UTF-16 representation.
+
+`semantic_token_descriptor()` is the single descriptor for `PlannedTokenKind` codes, `PlannedTokenModifier` bits, LSP legend indices, and packed-field order. Hosts should derive protocol tables from that descriptor rather than maintaining a second legend or numeric mapping.
+
 ## Boundary
 
 This crate owns semantic editor behavior, not transport policy. URI conversion, protocol request and response types, client capability negotiation, document synchronization, cancellation wiring, and UI behavior belong to adapters such as `merman-lsp` or `@mermanjs/web-editor`.

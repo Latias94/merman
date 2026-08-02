@@ -1,5 +1,13 @@
 #![forbid(unsafe_code)]
 
+//! Ordered Mermaid language-server services and the optional bounded stdio transport.
+//!
+//! Embedded transports drive [`MermanLspService`] through Tower's `Service<Request>` contract and
+//! own their own scheduling. With the `stdio` feature, `stdio_server` and `serve_stdio` provide
+//! Merman's private admission policy, including exact small control handling, bounded ordinary
+//! work, recoverable request overload, and `StdioTermination::InputOverloaded` when input
+//! integrity cannot be preserved.
+
 mod client_profile;
 mod code_actions;
 mod completion;

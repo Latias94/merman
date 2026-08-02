@@ -9,6 +9,10 @@ use std::sync::{Arc, Mutex};
 
 pub type LineCol = SourcePosition;
 
+/// An immutable UTF-8 slice that retains one shared source allocation.
+///
+/// Cloning and subslicing do not copy source bytes. Use [`SharedTextSlice::to_owned_text`] only
+/// when the caller explicitly needs an independent `String`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SharedTextSlice {
     source: Arc<str>,
@@ -17,6 +21,7 @@ pub struct SharedTextSlice {
 }
 
 impl SharedTextSlice {
+    /// Covers the complete shared source allocation.
     pub fn whole(source: Arc<str>) -> Self {
         let end = source.len();
         Self {
@@ -26,6 +31,7 @@ impl SharedTextSlice {
         }
     }
 
+    /// Creates a shared slice when both bounds are ordered, in range, and UTF-8 boundaries.
     pub fn from_range(source: Arc<str>, start: usize, end: usize) -> Option<Self> {
         if start > end
             || end > source.len()
@@ -42,14 +48,17 @@ impl SharedTextSlice {
             .expect("document extraction should produce valid UTF-8 slice bounds")
     }
 
+    /// Borrows the selected UTF-8 text.
     pub fn as_str(&self) -> &str {
         &self.source[self.start..self.end]
     }
 
+    /// Clones the owning `Arc` without copying source bytes.
     pub fn source_arc(&self) -> Arc<str> {
         Arc::clone(&self.source)
     }
 
+    /// Copies the selected text into a new owned `String`.
     pub fn to_owned_text(&self) -> String {
         self.as_str().to_owned()
     }
@@ -92,6 +101,10 @@ pub enum SourceMapError {
     ReversedRange { start: usize, end: usize },
 }
 
+/// Source-position mapping backed by a private adaptive line index.
+///
+/// Callers query line and position behavior; the compact retained representation is deliberately
+/// not exposed.
 #[derive(Debug, Clone)]
 pub struct SourceMap {
     source: SharedTextSlice,
@@ -450,6 +463,10 @@ fn select_set_bit(mut word: u64, mut index: usize) -> u32 {
 }
 
 impl SourceMap {
+    /// Builds a complete source map synchronously.
+    ///
+    /// This convenience constructor scans the full source before returning. Cooperative
+    /// cancellation is reserved for the crate's analysis pipelines.
     pub fn new(source: impl Into<Arc<str>>) -> Self {
         Self::from_shared_text(SharedTextSlice::whole(source.into()))
     }
@@ -489,6 +506,7 @@ impl SourceMap {
         self.source.as_str()
     }
 
+    /// Returns the shared source view retained by this map.
     pub fn shared_source(&self) -> &SharedTextSlice {
         &self.source
     }
@@ -581,6 +599,7 @@ impl SourceMap {
         self.span_cancellable(0, self.source_len(), cancellation)
     }
 
+    /// Returns the content byte bounds for a logical line, excluding its line terminator.
     pub fn line_bounds(&self, line_index: usize) -> Option<(usize, usize)> {
         let start = self.line_start(line_index)?;
         let next_start = self.line_start(line_index + 1).unwrap_or(self.source_len());
