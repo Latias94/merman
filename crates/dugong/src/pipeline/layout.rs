@@ -795,4 +795,63 @@ mod tests {
         assert_eq!(retirement_passes, 0);
         assert!(graph.has_node("keep"));
     }
+
+    fn proxy_curve_graph(
+        count: usize,
+    ) -> (
+        graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        Vec<String>,
+    ) {
+        let mut graph = test_graph();
+        graph.set_node("a", NodeLabel::default());
+        graph.set_node("b", NodeLabel::default());
+        graph.set_edge_named("a", "b", Some("target"), Some(EdgeLabel::default()));
+        let target = graphlib::EdgeKey::new("a", "b", Some("target"));
+        let mut ids = Vec::with_capacity(count);
+        for index in 0..count {
+            let id = format!("proxy_{index}");
+            graph.set_node(
+                &id,
+                NodeLabel {
+                    rank: Some(i32::try_from(index).unwrap()),
+                    dummy: Some("edge-proxy".to_string()),
+                    edge_obj: Some(target.clone()),
+                    ..Default::default()
+                },
+            );
+            ids.push(id);
+        }
+        (graph, ids)
+    }
+
+    #[test]
+    fn edge_label_proxy_retirement_curve_reduces_live_removals_to_one_graph_pass() {
+        for count in [1, 2, 4, 8, 16, 32, 64, 128] {
+            let (mut sequential, ids) = proxy_curve_graph(count);
+            let mut sequential_removals = 0;
+            for id in &ids {
+                write_edge_label_proxy_rank(&mut sequential, id);
+                if sequential.remove_node(id) {
+                    sequential_removals += 1;
+                }
+            }
+
+            let (mut batched, ids) = proxy_curve_graph(count);
+            let mut graph_passes = 0;
+            let removed = remove_edge_label_proxies_with(&mut batched, ids, |graph, ids| {
+                graph_passes += 1;
+                remove_nodes_batch(graph, ids)
+            });
+
+            assert_eq!(sequential_removals, count);
+            assert_eq!(removed, count);
+            assert_eq!(graph_passes, 1);
+            assert_eq!(batched.node_ids(), sequential.node_ids());
+            assert_eq!(batched.edge_keys(), sequential.edge_keys());
+            assert_eq!(
+                batched.edge("a", "b", Some("target")),
+                sequential.edge("a", "b", Some("target")),
+            );
+        }
+    }
 }

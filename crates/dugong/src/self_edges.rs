@@ -432,4 +432,63 @@ mod tests {
         }
         assert_eq!(graph.edge_count(), 0);
     }
+
+    fn self_edge_curve_graph(count: usize) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = test_graph();
+        graph.set_node(
+            "a",
+            NodeLabel {
+                width: 40.0,
+                height: 20.0,
+                x: Some(100.0),
+                y: Some(80.0),
+                ..Default::default()
+            },
+        );
+        for index in 0..count {
+            let id = format!("self_{index}");
+            graph.set_node(
+                &id,
+                self_edge_dummy(&id, Some(150.0 + index as f64), Some(70.0 + index as f64)),
+            );
+        }
+        graph
+    }
+
+    fn position_self_edges_sequentially(
+        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ) -> usize {
+        let mut ids = Vec::new();
+        graph.for_each_node(|id, node| {
+            if node.dummy.as_deref() == Some("selfedge") {
+                ids.push(id.to_string());
+            }
+        });
+        let mut removals = 0;
+        for id in ids {
+            if restore_self_edge(graph, &id) && graph.remove_node(&id) {
+                removals += 1;
+            }
+        }
+        removals
+    }
+
+    #[test]
+    fn self_edge_retirement_curve_reduces_live_removals_to_one_graph_pass() {
+        for count in [1, 2, 4, 8, 16, 32, 64, 128] {
+            let mut sequential = self_edge_curve_graph(count);
+            let sequential_removals = position_self_edges_sequentially(&mut sequential);
+
+            let mut batched = self_edge_curve_graph(count);
+            let graph_passes = position_self_edges_counted(&mut batched);
+
+            assert_eq!(sequential_removals, count);
+            assert_eq!(graph_passes, 1);
+            assert_eq!(batched.node_ids(), sequential.node_ids());
+            assert_eq!(batched.edge_keys(), sequential.edge_keys());
+            for edge in batched.edge_keys() {
+                assert_eq!(batched.edge_by_key(&edge), sequential.edge_by_key(&edge));
+            }
+        }
+    }
 }
