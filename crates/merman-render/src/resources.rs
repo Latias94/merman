@@ -50,6 +50,31 @@ pub enum ResourceLimitPhase {
     SvgPostprocess,
 }
 
+/// Stable reason why a resource check failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ResourceLimitCause {
+    /// The requested work exceeded the configured policy ceiling.
+    Ceiling,
+    /// Computing cumulative work overflowed the platform counter.
+    ArithmeticOverflow,
+}
+
+impl ResourceLimitCause {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ceiling => "ceiling",
+            Self::ArithmeticOverflow => "arithmetic_overflow",
+        }
+    }
+}
+
+impl std::fmt::Display for ResourceLimitCause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl ResourceLimitPhase {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -394,6 +419,7 @@ impl RenderResourcePolicy {
         }
         let limit = ResourceLimitId::Render(id);
         Err(ResourceLimitExceeded {
+            cause: ResourceLimitCause::Ceiling,
             phase,
             limit: limit.as_str(),
             actual,
@@ -425,6 +451,7 @@ impl RenderResourcePolicy {
         ) && complexity.nesting_depth > MAX_RECURSIVE_MODEL_TREE_DEPTH
         {
             return Err(ResourceLimitExceeded {
+                cause: ResourceLimitCause::Ceiling,
                 phase: ResourceLimitPhase::LayoutModel,
                 limit: "typed_model_tree_depth",
                 actual: complexity.nesting_depth,
@@ -469,6 +496,7 @@ impl RenderResourcePolicy {
         )?;
         if elements > MAX_RESVG_TREE_NODES {
             return Err(ResourceLimitExceeded {
+                cause: ResourceLimitCause::Ceiling,
                 phase: ResourceLimitPhase::SvgPostprocess,
                 limit: SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
                 actual: elements,
@@ -484,6 +512,7 @@ impl RenderResourcePolicy {
             return Ok(());
         }
         Err(ResourceLimitExceeded {
+            cause: ResourceLimitCause::Ceiling,
             phase: ResourceLimitPhase::SvgPostprocess,
             limit: SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
             actual: tree_depth,
@@ -566,16 +595,26 @@ impl OperationWorkMeter {
 
     /// Checks whether a phase estimate fits without reserving or consuming the estimate.
     pub(crate) fn preflight(&self, additional: usize) -> Result<(), ResourceLimitExceeded> {
+        if additional == 0 {
+            return Ok(());
+        }
         let used = self.used.load(std::sync::atomic::Ordering::Relaxed);
-        self.policy
-            .check_layout_work_units(used.saturating_add(additional))
+        let next = used
+            .checked_add(additional)
+            .ok_or_else(|| self.arithmetic_overflow())?;
+        self.policy.check_layout_work_units(next)
     }
 
     /// Charges work atomically. A rejected charge leaves the cumulative usage unchanged.
     pub(crate) fn charge(&self, additional: usize) -> Result<(), ResourceLimitExceeded> {
+        if additional == 0 {
+            return Ok(());
+        }
         let mut used = self.used.load(std::sync::atomic::Ordering::Relaxed);
         loop {
-            let next = used.saturating_add(additional);
+            let next = used
+                .checked_add(additional)
+                .ok_or_else(|| self.arithmetic_overflow())?;
             self.policy.check_layout_work_units(next)?;
             match self.used.compare_exchange_weak(
                 used,
@@ -589,16 +628,35 @@ impl OperationWorkMeter {
         }
     }
 
+    pub(crate) fn arithmetic_overflow(&self) -> ResourceLimitExceeded {
+        let max = self.policy.render_effective_values
+            [RenderResourceLimitId::MaxLayoutWorkUnits.index()]
+        .unwrap_or(usize::MAX);
+        ResourceLimitExceeded {
+            cause: ResourceLimitCause::ArithmeticOverflow,
+            phase: ResourceLimitPhase::LayoutModel,
+            limit: ResourceLimitId::Render(RenderResourceLimitId::MaxLayoutWorkUnits).as_str(),
+            actual: usize::MAX,
+            max,
+            profile: self.policy.profile(),
+            explicit_overrides: self
+                .policy
+                .explicit_overrides()
+                .map(|(id, value)| ResourceLimitOverride { id, value })
+                .collect(),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn used(&self) -> usize {
         self.used.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("resource limit exceeded during {phase}: {limit} actual={actual} max={max}")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ResourceLimitExceeded {
+    pub cause: ResourceLimitCause,
     pub phase: ResourceLimitPhase,
     pub limit: &'static str,
     pub actual: usize,
@@ -607,9 +665,26 @@ pub struct ResourceLimitExceeded {
     pub explicit_overrides: Vec<ResourceLimitOverride>,
 }
 
+impl std::fmt::Display for ResourceLimitExceeded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "resource limit exceeded during {}: {}",
+            self.phase, self.limit
+        )?;
+        if self.cause == ResourceLimitCause::ArithmeticOverflow {
+            write!(f, " cause={}", self.cause)?;
+        }
+        write!(f, " actual={} max={}", self.actual, self.max)
+    }
+}
+
+impl std::error::Error for ResourceLimitExceeded {}
+
 impl ResourceLimitExceeded {
     fn from_input(policy: &RenderResourcePolicy, error: InputResourceLimitExceeded) -> Self {
         Self {
+            cause: ResourceLimitCause::Ceiling,
             phase: match error.phase {
                 InputResourceLimitPhase::Source => ResourceLimitPhase::Source,
                 InputResourceLimitPhase::Model => ResourceLimitPhase::LayoutModel,
@@ -757,6 +832,7 @@ mod tests {
         let error = limits.check_layout_work_units(8).unwrap_err();
         assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
         assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
         assert_eq!(error.actual, 8);
         assert_eq!(error.max, 7);
     }
@@ -784,11 +860,31 @@ mod tests {
         meter.charge(8).unwrap();
 
         let error = meter.charge(usize::MAX).unwrap_err();
+        assert_eq!(error.cause, ResourceLimitCause::ArithmeticOverflow);
         assert_eq!(error.actual, usize::MAX);
         assert_eq!(error.max, 10);
         assert_eq!(meter.used(), 8);
         meter.charge(2).unwrap();
         assert_eq!(meter.used(), 10);
+    }
+
+    #[test]
+    fn operation_work_meter_overflow_fails_under_unlimited_policy() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        meter.charge(usize::MAX).unwrap();
+
+        let preflight_error = meter.preflight(1).unwrap_err();
+        assert_eq!(
+            preflight_error.cause,
+            ResourceLimitCause::ArithmeticOverflow
+        );
+        assert_eq!(preflight_error.limit, "max_layout_work_units");
+        assert_eq!(preflight_error.max, usize::MAX);
+        assert_eq!(meter.used(), usize::MAX);
+
+        let charge_error = meter.charge(1).unwrap_err();
+        assert_eq!(charge_error.cause, ResourceLimitCause::ArithmeticOverflow);
+        assert_eq!(meter.used(), usize::MAX);
     }
 
     #[test]

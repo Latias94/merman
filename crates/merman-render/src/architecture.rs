@@ -8,6 +8,7 @@ use crate::model::{
     ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout, Bounds, LayoutEdge,
     LayoutNode, LayoutPoint,
 };
+use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use indexmap::IndexMap;
@@ -16,6 +17,49 @@ use merman_core::diagrams::architecture::{
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
+
+struct ArchitectureManateeWorkControl<'a> {
+    meter: &'a OperationWorkMeter,
+    denied: Option<ResourceLimitExceeded>,
+}
+
+impl<'a> ArchitectureManateeWorkControl<'a> {
+    fn new(meter: &'a OperationWorkMeter) -> Self {
+        Self {
+            meter,
+            denied: None,
+        }
+    }
+
+    fn take_denied(&mut self) -> Option<ResourceLimitExceeded> {
+        self.denied.take()
+    }
+}
+
+impl manatee::algo::fcose::WorkControl for ArchitectureManateeWorkControl<'_> {
+    fn charge(&mut self, units: usize) -> std::result::Result<(), manatee::WorkFailure> {
+        match self.meter.charge(units) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.denied = Some(error);
+                Err(manatee::WorkFailure::Interrupted)
+            }
+        }
+    }
+}
+
+fn checked_architecture_adapter_work_units(model: &ArchitectureModelView<'_>) -> Option<usize> {
+    let hint_members = model
+        .layout_hints
+        .iter()
+        .try_fold(0usize, |total, hint| total.checked_add(hint.members.len()))?;
+    model
+        .nodes
+        .len()
+        .checked_add(model.groups.len())?
+        .checked_add(model.edges.len())?
+        .checked_add(hint_members)
+}
 
 fn architecture_relative_placement_constraints<'a>(
     spatial_maps: &[IndexMap<&'a str, (i32, i32)>],
@@ -1169,9 +1213,16 @@ pub(crate) fn layout_architecture_diagram_typed(
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     operation_seed: u64,
+    work_meter: &OperationWorkMeter,
 ) -> Result<ArchitectureDiagramLayout> {
     let model = ArchitectureModelView::from_typed(model);
-    layout_architecture_diagram_model(&model, effective_config, text_measurer, operation_seed)
+    layout_architecture_diagram_model(
+        &model,
+        effective_config,
+        text_measurer,
+        operation_seed,
+        work_meter,
+    )
 }
 
 fn layout_architecture_diagram_model(
@@ -1179,6 +1230,7 @@ fn layout_architecture_diagram_model(
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     operation_seed: u64,
+    work_meter: &OperationWorkMeter,
 ) -> Result<ArchitectureDiagramLayout> {
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);
@@ -1202,10 +1254,34 @@ fn layout_architecture_diagram_model(
         config_f64(effective_config, &["architecture", "edgeElasticity"])
             .filter(|v| v.is_finite() && *v >= 0.0)
             .unwrap_or(0.45);
-    let fcose_num_iter = config_f64(effective_config, &["architecture", "numIter"])
-        .filter(|v| v.is_finite() && *v >= 1.0)
-        .map(|v| v.round() as usize)
-        .unwrap_or(2500);
+    let fcose_num_iter = manatee::algo::fcose::FcoseIterationSchedule::normalize_configured_number(
+        config_f64(effective_config, &["architecture", "numIter"]),
+    )
+    .map_err(|_| work_meter.arithmetic_overflow())?;
+    let adapter_work_units = checked_architecture_adapter_work_units(model)
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let kernel_admission_units = if model.nodes.is_empty() {
+        0
+    } else {
+        let indexed_node_upper_bound = model
+            .nodes
+            .len()
+            .checked_add(model.groups.len())
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+        manatee::algo::fcose::FcoseIterationSchedule::from_normalized_counts(
+            fcose_num_iter,
+            indexed_node_upper_bound,
+            model.edges.len(),
+            true,
+        )
+        .map_err(|_| work_meter.arithmetic_overflow())?
+        .maximum_work_units()
+    };
+    let admission_units = adapter_work_units
+        .checked_add(kernel_admission_units)
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    work_meter.preflight(admission_units)?;
+    work_meter.charge(adapter_work_units)?;
     let fcose_random_policy = architecture_seed_policy(
         value_at(effective_config, &["architecture", "seed"]),
         operation_seed,
@@ -1253,14 +1329,27 @@ fn layout_architecture_diagram_model(
             fcose_num_iter,
             fcose_random_policy,
         })?;
-
-        let result = manatee::algo::fcose::layout_indexed_with_random_policy(
+        let mut work_control = ArchitectureManateeWorkControl::new(work_meter);
+        let result = manatee::algo::fcose::layout_indexed_with_random_policy_and_work_control(
             &plan.graph,
             &plan.options,
             plan.random_policy,
+            &mut work_control,
         )
-        .map_err(|e| Error::InvalidModel {
-            message: format!("manatee layout failed: {e}"),
+        .map_err(|error| match error {
+            manatee::Error::WorkFailure(manatee::WorkFailure::Interrupted) => work_control
+                .take_denied()
+                .map(Error::from)
+                .unwrap_or_else(|| Error::InvalidModel {
+                    message: "manatee work control interrupted without a resource error"
+                        .to_string(),
+                }),
+            manatee::Error::WorkFailure(manatee::WorkFailure::ArithmeticOverflow) => {
+                Error::from(work_meter.arithmetic_overflow())
+            }
+            error => Error::InvalidModel {
+                message: format!("manatee layout failed: {error}"),
+            },
         })?;
         let projection = project_architecture_fcose_result(&plan, &mut nodes, result);
         fcose_compound_bounds = projection.compound_bounds;
@@ -1512,6 +1601,73 @@ mod tests {
             .with_reset_seed_each_run(true),
         })
         .expect("build architecture FCoSE input plan")
+    }
+
+    fn single_node_model<'a>() -> super::ArchitectureModelView<'a> {
+        super::ArchitectureModelView {
+            nodes: vec![super::ArchitectureNodeView {
+                id: "api",
+                node_type: super::ArchitectureNodeType::Service,
+                title: None,
+                in_group: None,
+            }],
+            groups: Vec::new(),
+            edges: Vec::new(),
+            layout_hints: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn architecture_work_admission_is_exact_and_non_consuming_on_rejection() {
+        use crate::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+        };
+
+        let model = single_node_model();
+        let config = serde_json::json!({"architecture": {"numIter": 5, "randomize": false}});
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 10)
+            .unwrap();
+        let exact_meter = OperationWorkMeter::new(exact_policy);
+        super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &exact_meter)
+            .unwrap();
+        assert_eq!(exact_meter.used(), 10);
+
+        let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 9)
+            .unwrap();
+        let narrow_meter = OperationWorkMeter::new(narrow_policy);
+        let error =
+            super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &narrow_meter)
+                .unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected layout work resource error");
+        };
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(error.actual, 10);
+        assert_eq!(error.max, 9);
+        assert_eq!(narrow_meter.used(), 0);
+    }
+
+    #[test]
+    fn architecture_num_iter_overflow_fails_under_unlimited_policy() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause};
+
+        let model = single_node_model();
+        let config = serde_json::json!({"architecture": {"numIter": f64::MAX}});
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        let error = super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &meter)
+            .unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected layout work resource error");
+        };
+        assert_eq!(error.cause, ResourceLimitCause::ArithmeticOverflow);
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(meter.used(), 0);
     }
 
     #[test]

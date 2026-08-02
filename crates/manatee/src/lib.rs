@@ -13,7 +13,7 @@ pub use algo::{
     Algorithm, AlignmentConstraint, FcoseOptions, FcoseRandomPolicy, FcoseRandomSource,
     RelativePlacementConstraint,
 };
-pub use error::{Error, Result};
+pub use error::{Error, Result, WorkFailure};
 pub use graph::{
     Anchor, BoundsExtras, Compound, Edge, Graph, LayoutRect, LayoutResult, Node, Point,
 };

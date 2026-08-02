@@ -1,7 +1,7 @@
 #![allow(clippy::needless_range_loop)]
 
 use crate::algo::FcoseOptions;
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, WorkFailure};
 use crate::graph::{Anchor, BoundsExtras, Graph, LayoutRect, LayoutResult, Point};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hash::FxHashMap;
@@ -9,6 +9,188 @@ use rustc_hash::FxHashMap;
 mod spectral;
 
 const GEOMETRY_EPSILON: f64 = 1e-9;
+const DEFAULT_FCOSE_ITERATIONS: usize = 2500;
+
+/// Caller-owned work control for the FCoSE kernel.
+///
+/// Implementations must either accept a complete tranche or reject it without advancing their
+/// budget. Manatee deliberately keeps the failure neutral so renderers can map it to their own
+/// resource error type without creating a reverse dependency.
+pub trait WorkControl {
+    fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure>;
+}
+
+/// Work control used by compatibility entry points that do not impose a caller budget.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopWorkControl;
+
+impl WorkControl for NoopWorkControl {
+    fn charge(&mut self, _units: usize) -> std::result::Result<(), WorkFailure> {
+        Ok(())
+    }
+}
+
+/// Checked execution schedule for one FCoSE invocation.
+///
+/// The schedule preserves the existing CoSE loop contract: every run has an effective maximum of
+/// `max(configured, nodes * 5)`, while the loop body executes at most `maximum - 1` times because
+/// the historical termination check happens before the first tranche at `total == maximum`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FcoseIterationSchedule {
+    configured_iterations: usize,
+    effective_max_iterations: usize,
+    run_count: usize,
+    setup_work_units: usize,
+    iteration_work_units: usize,
+    maximum_work_units: usize,
+}
+
+impl FcoseIterationSchedule {
+    /// Normalize a JavaScript-style numeric `numIter` and construct a checked graph schedule.
+    ///
+    /// Finite positive values are rounded. Missing, non-finite, and values below one retain the
+    /// established 2500-iteration fallback. Values outside `usize` and any derived arithmetic
+    /// overflow fail closed.
+    pub fn from_configured_number(
+        configured: Option<f64>,
+        node_count: usize,
+        edge_count: usize,
+        rerun: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let configured_iterations = Self::normalize_configured_number(configured)?;
+        Self::from_normalized_counts(configured_iterations, node_count, edge_count, rerun)
+    }
+
+    pub fn normalize_configured_number(
+        configured: Option<f64>,
+    ) -> std::result::Result<usize, WorkFailure> {
+        let Some(configured) = configured.filter(|value| value.is_finite() && *value >= 1.0) else {
+            return Ok(DEFAULT_FCOSE_ITERATIONS);
+        };
+        let rounded = configured.round();
+        if rounded >= usize::MAX as f64 {
+            return Err(WorkFailure::ArithmeticOverflow);
+        }
+        Ok(rounded as usize)
+    }
+
+    pub fn from_indexed_graph(
+        configured: Option<usize>,
+        graph: &IndexedGraph,
+        rerun: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let node_count = graph
+            .nodes
+            .len()
+            .checked_add(graph.compounds.len())
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let edge_count = graph
+            .edges
+            .iter()
+            .filter(|edge| {
+                edge.source < graph.nodes.len()
+                    && edge.target < graph.nodes.len()
+                    && edge.source != edge.target
+            })
+            .count();
+        Self::from_options(configured, node_count, edge_count, rerun)
+    }
+
+    fn from_options(
+        configured: Option<usize>,
+        node_count: usize,
+        edge_count: usize,
+        rerun: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        Self::from_normalized_counts(
+            configured
+                .filter(|value| *value > 0)
+                .unwrap_or(DEFAULT_FCOSE_ITERATIONS),
+            node_count,
+            edge_count,
+            rerun,
+        )
+    }
+
+    /// Builds a checked schedule from an already-normalized iteration count and graph cardinality.
+    ///
+    /// Adapters can use this before materializing an [`IndexedGraph`] when their source counts are
+    /// a conservative upper bound of the eventual indexed graph.
+    pub fn from_normalized_counts(
+        configured_iterations: usize,
+        node_count: usize,
+        edge_count: usize,
+        rerun: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let configured_iterations = if configured_iterations == 0 {
+            DEFAULT_FCOSE_ITERATIONS
+        } else {
+            configured_iterations
+        };
+        let node_iteration_floor = node_count
+            .checked_mul(5)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let effective_max_iterations = configured_iterations.max(node_iteration_floor);
+        let run_count = if rerun { 2 } else { 1 };
+        let setup_work_units = node_count
+            .checked_add(edge_count)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        if node_count == 0 {
+            return Ok(Self {
+                configured_iterations,
+                effective_max_iterations,
+                run_count,
+                setup_work_units,
+                iteration_work_units: 0,
+                maximum_work_units: setup_work_units,
+            });
+        }
+        let iteration_work_units = setup_work_units.max(1);
+        let executed_iterations_per_run = effective_max_iterations
+            .checked_sub(1)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let iteration_maximum = executed_iterations_per_run
+            .checked_mul(run_count)
+            .and_then(|iterations| iterations.checked_mul(iteration_work_units))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let maximum_work_units = setup_work_units
+            .checked_add(iteration_maximum)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+
+        Ok(Self {
+            configured_iterations,
+            effective_max_iterations,
+            run_count,
+            setup_work_units,
+            iteration_work_units,
+            maximum_work_units,
+        })
+    }
+
+    pub const fn configured_iterations(self) -> usize {
+        self.configured_iterations
+    }
+
+    pub const fn effective_max_iterations(self) -> usize {
+        self.effective_max_iterations
+    }
+
+    pub const fn run_count(self) -> usize {
+        self.run_count
+    }
+
+    pub const fn setup_work_units(self) -> usize {
+        self.setup_work_units
+    }
+
+    pub const fn iteration_work_units(self) -> usize {
+        self.iteration_work_units
+    }
+
+    pub const fn maximum_work_units(self) -> usize {
+        self.maximum_work_units
+    }
+}
 
 // FCoSE only needs these two-dimensional operations. Keep their scalar evaluation order explicit:
 // the covariance and transform checkpoints are sensitive to floating-point accumulation drift.
@@ -339,8 +521,26 @@ pub fn layout_indexed_with_random_policy(
     opts: &IndexedFcoseOptions,
     random_policy: FcoseRandomPolicy,
 ) -> Result<IndexedLayoutResult> {
+    let mut work_control = NoopWorkControl;
+    layout_indexed_with_random_policy_and_work_control(
+        graph,
+        opts,
+        random_policy,
+        &mut work_control,
+    )
+}
+
+/// Lay out an indexed graph with explicit randomness and caller-owned work accounting.
+pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Sized>(
+    graph: &IndexedGraph,
+    opts: &IndexedFcoseOptions,
+    random_policy: FcoseRandomPolicy,
+    work_control: &mut W,
+) -> Result<IndexedLayoutResult> {
     graph.validate()?;
 
+    let schedule = FcoseIterationSchedule::from_indexed_graph(opts.num_iter, graph, opts.rerun)?;
+    work_control.charge(schedule.setup_work_units())?;
     let mut sim = SimGraph::from_indexed(graph);
 
     let constraints = Constraints::from_indexed_opts(&sim, opts);
@@ -352,10 +552,9 @@ pub fn layout_indexed_with_random_policy(
         .unwrap_or(usize::from(opts.randomize));
     let mut rng = new_fcose_random(random_policy);
     advance_random(&mut rng, random_seed_offset);
-    let run_count = if opts.rerun { 2 } else { 1 };
     let mut owner_bounds = OwnerBounds::new(sim.nodes.len() + 1);
 
-    for run_idx in 0..run_count {
+    for run_idx in 0..schedule.run_count() {
         reset_fcose_random_for_run(&mut rng, random_policy, random_seed_offset, run_idx);
         // Mirror upstream component center bookkeeping (`eles.boundingBox()` before layout) by
         // ensuring compound rects wrap their current children before we compute `orig_center`.
@@ -392,7 +591,14 @@ pub fn layout_indexed_with_random_policy(
             .relocate_center
             .or_else(|| sim.bounding_box_center_eles(run_idx))
             .unwrap_or((0.0, 0.0));
-        sim.run_spring_embedder(&constraints, opts, &mut rng, &mut owner_bounds);
+        sim.run_spring_embedder(
+            &constraints,
+            opts,
+            schedule,
+            &mut rng,
+            &mut owner_bounds,
+            work_control,
+        )?;
 
         // Ensure compound node rectangles reflect the final child placements before we compute the
         // "current" component bounding box for relocation (`aux.relocateComponent(...)` parity).
@@ -403,7 +609,7 @@ pub fn layout_indexed_with_random_policy(
         let dy = orig_center.1 - new_center.1;
         sim.translate(dx, dy);
 
-        if run_idx + 1 < run_count {
+        if run_idx + 1 < schedule.run_count() {
             sim.update_bounds(&mut owner_bounds);
         }
     }
@@ -1347,7 +1553,6 @@ impl SimGraph {
     const FINAL_TEMPERATURE: f64 = 0.04; // cose-base `CoSELayout.initSpringEmbedder()`
     const GRID_CALCULATION_CHECK_PERIOD: usize = 10; // layout-base `FDLayoutConstants.GRID_CALCULATION_CHECK_PERIOD`
 
-    const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
     const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
 
@@ -2157,20 +2362,22 @@ impl SimGraph {
         out
     }
 
-    fn run_spring_embedder(
+    fn run_spring_embedder<W: WorkControl + ?Sized>(
         &mut self,
         constraints: &Constraints,
         opts: &IndexedFcoseOptions,
+        schedule: FcoseIterationSchedule,
         rng: &mut FcoseRandom,
         owner_bounds: &mut OwnerBounds,
-    ) {
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
         // `cytoscape-fcose` constructs a fresh CoSELayout for every `layout.run()`. Keep the
         // generation-based FR-grid deduplication scratch run-local as well; reusing markers while
         // restarting the generation counter can silently drop repulsion pairs on the second run.
         self.surrounding_seen.fill(0);
 
         if self.nodes.is_empty() {
-            return;
+            return Ok(());
         }
 
         // Recompute per-edge ideal lengths (layout-base `FDLayout.calcIdealEdgeLengths`).
@@ -2291,11 +2498,7 @@ impl SimGraph {
         let initial_cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL;
         let mut cooling_factor = initial_cooling_factor;
         let max_node_displacement = Self::MAX_NODE_DISPLACEMENT_INCREMENTAL;
-        let configured_max_iterations = opts
-            .num_iter
-            .filter(|v| *v > 0)
-            .unwrap_or(Self::MAX_ITERATIONS);
-        let max_iterations = configured_max_iterations.max(self.nodes.len() * 5);
+        let max_iterations = schedule.effective_max_iterations();
         let max_cooling_cycle = (max_iterations as f64) / (Self::CONVERGENCE_CHECK_PERIOD as f64);
         let final_temperature = Self::FINAL_TEMPERATURE;
         let mut cooling_cycle = 0.0f64;
@@ -2331,9 +2534,12 @@ impl SimGraph {
                 let numerator = (100.0 * (initial_cooling_factor - final_temperature)).ln();
                 let denominator = max_cooling_cycle.ln().max(1e-9);
                 let power = numerator / denominator;
-                let schedule = cooling_cycle.powf(power) / 100.0;
-                cooling_factor = (initial_cooling_factor - schedule).max(final_temperature);
+                let cooling_adjustment = cooling_cycle.powf(power) / 100.0;
+                cooling_factor =
+                    (initial_cooling_factor - cooling_adjustment).max(final_temperature);
             }
+
+            work_control.charge(schedule.iteration_work_units())?;
 
             let mut total_displacement = 0.0f64;
 
@@ -2629,6 +2835,7 @@ impl SimGraph {
         // Ensure compound rectangles reflect the final leaf positions before callers compute
         // component bbox/centering (e.g. `aux.relocateComponent(...)` parity).
         self.update_bounds(owner_bounds);
+        Ok(())
     }
 
     fn nodes_apply_gravity_mask(&self) -> Vec<bool> {
@@ -4062,15 +4269,36 @@ impl Mulberry32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoundsExtras, Constraints, FcoseRandom, FcoseRandomPolicy, FcoseRandomSource,
-        IndexedAlignmentConstraint, IndexedCompound, IndexedEdge, IndexedFcoseOptions,
-        IndexedGraph, IndexedNode, IndexedRelativePlacementConstraint, Mulberry32, RelConstraint,
-        RepulsionGrid, SimGraph, SimNode, Vec2, XorShift64Star,
-        apply_reflection_for_relative_placement, layout, layout_indexed, new_fcose_random,
+        BoundsExtras, Constraints, FcoseIterationSchedule, FcoseRandom, FcoseRandomPolicy,
+        FcoseRandomSource, IndexedAlignmentConstraint, IndexedCompound, IndexedEdge,
+        IndexedFcoseOptions, IndexedGraph, IndexedNode, IndexedRelativePlacementConstraint,
+        Mulberry32, RelConstraint, RepulsionGrid, SimGraph, SimNode, Vec2, WorkControl,
+        XorShift64Star, apply_reflection_for_relative_placement, layout, layout_indexed,
+        layout_indexed_with_random_policy_and_work_control, new_fcose_random,
         procrustes_transform_for_alignments, reset_fcose_random_for_run,
     };
     use crate::algo::{AlignmentConstraint, FcoseOptions, RelativePlacementConstraint};
+    use crate::error::{Error, WorkFailure};
     use crate::graph::{Anchor, Compound, Edge, Graph, Node, Point};
+
+    #[derive(Default)]
+    struct RecordingWorkControl {
+        charges: Vec<usize>,
+        reject_after: Option<usize>,
+    }
+
+    impl WorkControl for RecordingWorkControl {
+        fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            if self
+                .reject_after
+                .is_some_and(|accepted| self.charges.len() >= accepted)
+            {
+                return Err(WorkFailure::Interrupted);
+            }
+            self.charges.push(units);
+            Ok(())
+        }
+    }
 
     fn node_at(left: f64, top: f64, w: f64, h: f64) -> SimNode {
         SimNode {
@@ -4112,6 +4340,171 @@ mod tests {
             dx,
             dy
         );
+    }
+
+    #[test]
+    fn iteration_schedule_normalizes_numbers_and_preserves_loop_boundary() {
+        let empty = FcoseIterationSchedule::from_configured_number(None, 0, 0, true).unwrap();
+        assert_eq!(empty.setup_work_units(), 0);
+        assert_eq!(empty.iteration_work_units(), 0);
+        assert_eq!(empty.maximum_work_units(), 0);
+
+        let fallback = FcoseIterationSchedule::from_configured_number(None, 2, 1, true).unwrap();
+        assert_eq!(fallback.configured_iterations(), 2500);
+        assert_eq!(fallback.effective_max_iterations(), 2500);
+        assert_eq!(fallback.run_count(), 2);
+        assert_eq!(fallback.setup_work_units(), 3);
+        assert_eq!(fallback.iteration_work_units(), 3);
+        assert_eq!(fallback.maximum_work_units(), 3 + 2 * 2499 * 3);
+
+        let node_floor =
+            FcoseIterationSchedule::from_configured_number(Some(1.0), 2, 0, false).unwrap();
+        assert_eq!(node_floor.configured_iterations(), 1);
+        assert_eq!(node_floor.effective_max_iterations(), 10);
+        assert_eq!(node_floor.setup_work_units(), 2);
+        assert_eq!(node_floor.maximum_work_units(), 20);
+
+        for configured in [Some(f64::NAN), Some(f64::INFINITY), Some(0.0), Some(0.9)] {
+            assert_eq!(
+                FcoseIterationSchedule::from_configured_number(configured, 1, 0, false)
+                    .unwrap()
+                    .configured_iterations(),
+                2500,
+            );
+        }
+
+        assert_eq!(
+            FcoseIterationSchedule::from_configured_number(Some(1.49), 0, 0, false)
+                .unwrap()
+                .configured_iterations(),
+            1,
+        );
+        assert_eq!(
+            FcoseIterationSchedule::from_configured_number(Some(1.5), 0, 0, false)
+                .unwrap()
+                .configured_iterations(),
+            2,
+        );
+    }
+
+    #[test]
+    fn iteration_schedule_fails_closed_on_numeric_and_derived_overflow() {
+        assert_eq!(
+            FcoseIterationSchedule::from_configured_number(Some(f64::MAX), 1, 0, false),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+        assert_eq!(
+            FcoseIterationSchedule::from_configured_number(Some(1.0), usize::MAX / 5 + 1, 0, false,),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+        assert_eq!(
+            FcoseIterationSchedule::from_normalized_counts(usize::MAX, 1, 0, true),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+    }
+
+    #[test]
+    fn controlled_layout_charges_each_executed_iteration_once() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            rerun: true,
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RecordingWorkControl::default();
+
+        layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap();
+
+        assert_eq!(control.charges, vec![1; 9]);
+    }
+
+    #[test]
+    fn indexed_graph_schedule_matches_the_kernel_self_edge_filter() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: vec![IndexedEdge {
+                source: 0,
+                target: 0,
+                label_width: None,
+                label_height: None,
+                source_anchor: None,
+                target_anchor: None,
+                curve_style_segments: false,
+                ideal_length: 50.0,
+                elasticity: 0.45,
+            }],
+            compounds: Vec::new(),
+        };
+
+        let schedule = FcoseIterationSchedule::from_indexed_graph(Some(5), &graph, false).unwrap();
+
+        assert_eq!(schedule.iteration_work_units(), 1);
+        assert_eq!(schedule.setup_work_units(), 1);
+        assert_eq!(schedule.maximum_work_units(), 5);
+    }
+
+    #[test]
+    fn controlled_layout_stops_before_a_rejected_iteration_tranche() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RecordingWorkControl {
+            charges: Vec::new(),
+            reject_after: Some(0),
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert!(control.charges.is_empty());
     }
 
     #[test]

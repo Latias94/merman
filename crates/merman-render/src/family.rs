@@ -1125,6 +1125,7 @@ fn prepare_non_class_render(
                     effective_config,
                     execution.text_measurer(),
                     execution.operation_seed(),
+                    execution.work_meter().as_ref(),
                 )
             })?)
         }
