@@ -1948,7 +1948,8 @@ mod tests {
 
     #[test]
     fn binding_metadata_json_dispatches_the_six_public_catalogs() {
-        let cases: [(&str, fn() -> Result<Vec<u8>, BindingError>); 6] = [
+        type MetadataProvider = fn() -> Result<Vec<u8>, BindingError>;
+        let cases: [(&str, MetadataProvider); 6] = [
             ("supported-diagrams", supported_diagrams_json),
             ("ascii-capabilities", ascii_capabilities_json),
             (
