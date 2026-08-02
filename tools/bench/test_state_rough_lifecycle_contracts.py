@@ -34,6 +34,7 @@ CONTRACT_PATH = (
 SHA_A = "sha256:" + "a" * 64
 BASELINE_COMMIT = "a" * 40
 BASELINE_TREE = "b" * 40
+EMPTY_STATUS_SHA256 = lifecycle._sha256_bytes(b"")
 
 
 def footprint(entries: int = 0, owned_bytes: int = 0) -> dict[str, int]:
@@ -292,6 +293,7 @@ def valid_receipt(mode: str) -> dict[str, object]:
             "svg": {"bytes": 500_000, "elements": 50_000, "identity": SHA_A},
             "counters": long_counters,
             "max_operation_peak": footprint(2, 32),
+            "max_post_operation_retained": final_retained,
             "final_retained": final_retained,
         },
         "rollup": {
@@ -315,11 +317,54 @@ def valid_receipt(mode: str) -> dict[str, object]:
     }
 
 
-def success_baseline_report(receipt: dict[str, object]) -> dict[str, object]:
+def valid_controls(mode: str) -> dict[str, object]:
+    shared_svg = {
+        "bytes": 1_024,
+        "elements": 42,
+        "identity": "sha256:" + "c" * 64,
+    }
+
+    def control_operation(outcome: str) -> dict[str, object]:
+        result = operation(
+            1,
+            mode=mode,
+            configured_seed=23.0,
+        )
+        result["outcome"] = outcome
+        return result
+
+    return {
+        "schema": "merman.state_rough_lifecycle_controls.v1",
+        "error": {
+            "sentinel": "State Rough lifecycle control error after root render",
+            "operation": control_operation("error"),
+        },
+        "unwind": {
+            "sentinel": "State Rough lifecycle control unwind after root render",
+            "operation": control_operation("unwind"),
+        },
+        "concurrency": {
+            "workers": 2,
+            "overlap_observed": True,
+            "serial_svg": dict(shared_svg),
+            "worker_svgs": [dict(shared_svg), dict(shared_svg)],
+            "operations": [
+                control_operation("success"),
+                control_operation("success"),
+            ],
+        },
+    }
+
+
+def success_baseline_report(
+    receipt: dict[str, object],
+    controls_receipt: dict[str, object] | None = None,
+) -> dict[str, object]:
     lane = resolve_lane_selector(load_corpus(CORPUS_PATH), lifecycle.DEFAULT_LANE)
     descriptor = lifecycle._describe_file(CONTRACT_PATH, root=ROOT)
     harness = lifecycle._harness_report(ROOT)
     file_descriptor = {"path": "target/debug/test", "bytes": 1, "sha256": "d" * 64}
+    controls_receipt = controls_receipt or valid_controls("baseline")
     return {
         "schema": lifecycle.DRIVER_SCHEMA,
         "generated_at_utc": "2026-08-02T00:00:00Z",
@@ -333,7 +378,7 @@ def success_baseline_report(receipt: dict[str, object]) -> dict[str, object]:
             "first_parent_tree": "8" * 40,
             "parent_count": 1,
             "clean": True,
-            "dirty_status_sha256": "e" * 64,
+            "dirty_status_sha256": EMPTY_STATUS_SHA256,
         },
         "host": {
             "platform": lifecycle.platform.platform(),
@@ -373,6 +418,26 @@ def success_baseline_report(receipt: dict[str, object]) -> dict[str, object]:
             "returncode": 0,
             "stdout_sha256": "1" * 64,
             "stderr_sha256": "2" * 64,
+        },
+        "controls": {
+            "probe": {
+                "command": [
+                    "target/debug/test",
+                    (
+                        "svg::parity::state::rough_lifecycle_probe::"
+                        "state_rough_lifecycle_release_controls"
+                    ),
+                    "--exact",
+                    "--ignored",
+                    "--nocapture",
+                    "--test-threads=1",
+                ],
+                "timeout_seconds": 30,
+                "returncode": 0,
+                "stdout_sha256": "3" * 64,
+                "stderr_sha256": "4" * 64,
+            },
+            "receipt": controls_receipt,
         },
         "baseline_comparison": None,
         "receipt": receipt,
@@ -451,6 +516,17 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             contract["probe"]["test_name"],
             "svg::parity::state::rough_lifecycle_probe::state_rough_lifecycle_probe_receipt",
         )
+        self.assertEqual(
+            contract["controls"]["test_name"],
+            (
+                "svg::parity::state::rough_lifecycle_probe::"
+                "state_rough_lifecycle_release_controls"
+            ),
+        )
+        self.assertEqual(
+            contract["controls"]["scenarios"],
+            ["error", "unwind", "concurrency"],
+        )
 
         damaged = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
         damaged["unknown"] = True
@@ -494,6 +570,23 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
                 ):
                     lifecycle.load_owner_contract(path, lane=self.lane(), root=ROOT)
 
+            controls_mutations = (
+                ("schema", "merman.state_rough_lifecycle_controls.v2", "schema"),
+                ("marker", "MERMAN_STATE_ROUGH_LIFECYCLE_CONTROLS_V2=", "marker"),
+                ("test_name", "drifted", "test name"),
+                ("scenarios", ["error", "concurrency"], "scenarios"),
+                ("configured_seed", 24.0, "configured seed"),
+                ("workers", 3, "workers"),
+            )
+            for field, value, error_pattern in controls_mutations:
+                damaged = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+                damaged["controls"][field] = value
+                path.write_text(json.dumps(damaged), encoding="utf-8")
+                with self.subTest(field=field), self.assertRaisesRegex(
+                    lifecycle.LifecycleContractError, error_pattern
+                ):
+                    lifecycle.load_owner_contract(path, lane=self.lane(), root=ROOT)
+
     def test_baseline_and_candidate_receipts_pass_their_distinct_gates(self) -> None:
         contract = self.contract()
         baseline = lifecycle._validate_receipt(
@@ -511,6 +604,65 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             "zero_post_operation_retained_state",
             lifecycle.validate_mode(candidate, mode="candidate"),
         )
+
+    def test_release_controls_are_strict_and_mode_aware(self) -> None:
+        contract = self.contract()
+        baseline = lifecycle._validate_controls_receipt(
+            valid_controls("baseline"), contract=contract
+        )
+        candidate = lifecycle._validate_controls_receipt(
+            valid_controls("candidate"), contract=contract
+        )
+
+        self.assertIn(
+            "release_control_semantics",
+            lifecycle.validate_controls_mode(baseline, mode="baseline"),
+        )
+        self.assertIn(
+            "release_controls_zero_post_operation_retention",
+            lifecycle.validate_controls_mode(candidate, mode="candidate"),
+        )
+
+        unknown = valid_controls("candidate")
+        unknown["concurrency"]["unexpected"] = True
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "unknown"):
+            lifecycle._validate_controls_receipt(unknown, contract=contract)
+
+        wrong_sentinel = valid_controls("candidate")
+        wrong_sentinel["error"]["sentinel"] = "different"
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "sentinel"):
+            lifecycle._validate_controls_receipt(wrong_sentinel, contract=contract)
+
+        no_peak = valid_controls("candidate")
+        no_peak["unwind"]["operation"]["operation_peak"] = footprint()
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "populate"):
+            lifecycle._validate_controls_receipt(no_peak, contract=contract)
+
+        no_reuse = valid_controls("candidate")
+        no_reuse["error"]["operation"]["counters"] = counters(
+            operation_hits=0,
+            operation_misses=2,
+            operation_builds=2,
+        )
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "reuse"):
+            lifecycle._validate_controls_receipt(no_reuse, contract=contract)
+
+        output_drift = valid_controls("candidate")
+        output_drift["concurrency"]["worker_svgs"][1]["identity"] = (
+            "sha256:" + "d" * 64
+        )
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "serial SVG"):
+            lifecycle._validate_controls_receipt(output_drift, contract=contract)
+
+        retained_candidate = valid_controls("candidate")
+        retained_candidate["concurrency"]["operations"][0][
+            "post_operation_retained"
+        ] = retained(1, 1)
+        parsed = lifecycle._validate_controls_receipt(
+            retained_candidate, contract=contract
+        )
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "retained"):
+            lifecycle.validate_controls_mode(parsed, mode="candidate")
 
     def test_receipt_rejects_unknown_nested_fields_and_nonfinite_numbers(self) -> None:
         contract = self.contract()
@@ -579,11 +731,20 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
 
         retained_candidate = valid_receipt("candidate")
         retained_candidate["long_lived"]["checkpoints"][2]["retained"] = retained(1, 1)
+        retained_candidate["long_lived"]["max_post_operation_retained"] = retained(1, 1)
         parsed_retained = lifecycle._validate_receipt(
             retained_candidate, contract=self.contract()
         )
         with self.assertRaisesRegex(lifecycle.LifecycleContractError, "retained"):
             lifecycle.validate_mode(parsed_retained, mode="candidate")
+
+        hidden_retention = valid_receipt("candidate")
+        hidden_retention["long_lived"]["max_post_operation_retained"] = retained(1, 1)
+        parsed_hidden = lifecycle._validate_receipt(
+            hidden_retention, contract=self.contract()
+        )
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "retained"):
+            lifecycle.validate_mode(parsed_hidden, mode="candidate")
 
     def test_marker_is_unique_and_payload_is_strict_json(self) -> None:
         contract = self.contract()
@@ -611,6 +772,29 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
                 contract=contract,
             )
 
+        controls_marker = contract["controls"]["marker"]
+        controls_payload = json.dumps(
+            valid_controls("candidate"), separators=(",", ":")
+        )
+        parsed_controls = lifecycle.parse_controls_output(
+            f"running 1 test\n{controls_marker}{controls_payload}\ntest result: ok\n",
+            "",
+            contract=contract,
+        )
+        self.assertEqual(
+            parsed_controls["schema"],
+            "merman.state_rough_lifecycle_controls.v1",
+        )
+        with self.assertRaisesRegex(lifecycle.LifecycleContractError, "exactly one"):
+            lifecycle.parse_controls_output(
+                (
+                    f"{controls_marker}{controls_payload}\n"
+                    f"{controls_marker}{controls_payload}\n"
+                ),
+                "",
+                contract=contract,
+            )
+
     def test_candidate_comparison_requires_schedule_and_all_svg_outputs(self) -> None:
         contract = self.contract()
         baseline = valid_receipt("baseline")
@@ -628,6 +812,9 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             )
             result = lifecycle.compare_with_baseline(
                 candidate,
+                lifecycle._validate_controls_receipt(
+                    valid_controls("candidate"), contract=contract
+                ),
                 path,
                 contract=contract,
                 lane=lane,
@@ -639,6 +826,7 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             )
             self.assertTrue(result["schedule_equal"])
             self.assertTrue(result["svg_outputs_equal"])
+            self.assertTrue(result["release_control_semantics_equal"])
             self.assertEqual(
                 result["revision_relation"], "candidate_head_first_parent"
             )
@@ -657,6 +845,44 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             with self.assertRaisesRegex(lifecycle.LifecycleContractError, "SVG"):
                 lifecycle.compare_with_baseline(
                     candidate,
+                    lifecycle._validate_controls_receipt(
+                        valid_controls("candidate"), contract=contract
+                    ),
+                    path,
+                    contract=contract,
+                    lane=lane,
+                    expected_contract=expected_contract,
+                    expected_harness=expected_harness,
+                    expected_host=expected_host,
+                    expected_baseline_commit=BASELINE_COMMIT,
+                    expected_baseline_tree=BASELINE_TREE,
+                )
+
+            drifted_controls = valid_controls("baseline")
+            different_svg = {
+                "bytes": 1_024,
+                "elements": 42,
+                "identity": "sha256:" + "e" * 64,
+            }
+            drifted_controls["concurrency"]["serial_svg"] = dict(different_svg)
+            drifted_controls["concurrency"]["worker_svgs"] = [
+                dict(different_svg),
+                dict(different_svg),
+            ]
+            path.write_text(
+                json.dumps(
+                    success_baseline_report(baseline, drifted_controls)
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                lifecycle.LifecycleContractError, "release-control semantics"
+            ):
+                lifecycle.compare_with_baseline(
+                    candidate,
+                    lifecycle._validate_controls_receipt(
+                        valid_controls("candidate"), contract=contract
+                    ),
                     path,
                     contract=contract,
                     lane=lane,
@@ -673,16 +899,25 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
         candidate = lifecycle._validate_receipt(
             valid_receipt("candidate"), contract=contract
         )
+        candidate_controls = lifecycle._validate_controls_receipt(
+            valid_controls("candidate"), contract=contract
+        )
         expected_contract = lifecycle._describe_file(CONTRACT_PATH, root=ROOT)
         expected_harness = lifecycle._harness_report(ROOT)
         expected_host = success_baseline_report(valid_receipt("baseline"))["host"]
         mutations = (
             lambda report: report["source"].__setitem__("clean", False),
+            lambda report: report["source"].__setitem__(
+                "dirty_status_sha256", "e" * 64
+            ),
             lambda report: report["contract"].__setitem__("sha256", "3" * 64),
             lambda report: report["harness"]["driver"].__setitem__(
                 "sha256", "4" * 64
             ),
             lambda report: report["host"].__setitem__("machine", "different"),
+            lambda report: report["controls"]["probe"]["command"].__setitem__(
+                0, "target/debug/different-test"
+            ),
         )
         with tempfile.TemporaryDirectory() as raw:
             path = Path(raw) / "baseline.json"
@@ -695,6 +930,7 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
                 ):
                     lifecycle.compare_with_baseline(
                         candidate,
+                        candidate_controls,
                         path,
                         contract=contract,
                         lane=lane,
@@ -717,6 +953,7 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
                 ):
                     lifecycle.compare_with_baseline(
                         candidate,
+                        candidate_controls,
                         path,
                         contract=contract,
                         lane=lane,
@@ -737,6 +974,7 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             ):
                 lifecycle.compare_with_baseline(
                     candidate,
+                    candidate_controls,
                     path,
                     contract=contract,
                     lane=lane,
@@ -801,6 +1039,111 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
             command[2:], ["--exact", "--ignored", "--nocapture", "--test-threads=1"]
         )
         self.assertEqual(report["returncode"], 0)
+
+    def test_release_controls_run_before_decision_probe_on_the_same_executable(self) -> None:
+        contract = self.contract()
+        marker = contract["controls"]["marker"]
+        payload = json.dumps(valid_controls("candidate"), separators=(",", ":"))
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout=f"{marker}{payload}\n",
+            stderr="",
+        )
+        executable = Path("/tmp/merman-render-test")
+        with mock.patch.object(subprocess, "run", return_value=completed) as run:
+            receipt, report = lifecycle.run_controls(
+                executable,
+                contract=contract,
+                timeout_seconds=30,
+            )
+
+        self.assertTrue(receipt["concurrency"]["overlap_observed"])
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], str(executable))
+        self.assertEqual(command[1], contract["controls"]["test_name"])
+        self.assertEqual(
+            command[2:], ["--exact", "--ignored", "--nocapture", "--test-threads=1"]
+        )
+        self.assertEqual(report["returncode"], 0)
+
+    def test_execute_runs_controls_before_decision_receipt(self) -> None:
+        args = argparse.Namespace(
+            corpus=str(CORPUS_PATH),
+            lane=lifecycle.DEFAULT_LANE,
+            contract=str(CONTRACT_PATH),
+            target_dir="target",
+            toolchain=None,
+            baseline_json=None,
+            mode="baseline",
+            timeout_seconds=30,
+            allow_dirty=False,
+        )
+        executable = Path("/tmp/merman-render-test")
+        source = {
+            "commit": "a" * 40,
+            "tree": "b" * 40,
+            "first_parent_commit": "9" * 40,
+            "first_parent_tree": "8" * 40,
+            "parent_count": 1,
+            "clean": True,
+            "dirty_status_sha256": EMPTY_STATUS_SHA256,
+        }
+        build_report = {
+            "command": ["cargo", "test"],
+            "environment": {"CARGO_BUILD_JOBS": "1", "CARGO_INCREMENTAL": "0"},
+            "cargo_stdout_sha256": "1" * 64,
+            "cargo_stderr_sha256": "2" * 64,
+            "executable": {
+                "path": str(executable),
+                "bytes": 1,
+                "sha256": "3" * 64,
+            },
+        }
+        controls_report = {
+            "command": [str(executable), "controls"],
+            "timeout_seconds": 30,
+            "returncode": 0,
+            "stdout_sha256": "4" * 64,
+            "stderr_sha256": "5" * 64,
+        }
+        probe_report = {
+            "command": [str(executable), "probe"],
+            "timeout_seconds": 30,
+            "returncode": 0,
+            "stdout_sha256": "6" * 64,
+            "stderr_sha256": "7" * 64,
+        }
+        order: list[str] = []
+
+        def run_controls(*args, **kwargs):
+            order.append("controls")
+            self.assertEqual(args[0], executable)
+            return valid_controls("baseline"), controls_report
+
+        def run_probe(*args, **kwargs):
+            order.append("probe")
+            self.assertEqual(args[0], executable)
+            return valid_receipt("baseline"), probe_report
+
+        with mock.patch.object(
+            lifecycle, "_git_provenance", side_effect=[source, source]
+        ), mock.patch.object(
+            lifecycle,
+            "build_test_executable",
+            return_value=(executable, build_report),
+        ), mock.patch.object(
+            lifecycle, "run_controls", side_effect=run_controls
+        ), mock.patch.object(
+            lifecycle, "run_probe", side_effect=run_probe
+        ):
+            report = lifecycle.execute(args)
+
+        self.assertEqual(order, ["controls", "probe"])
+        self.assertEqual(report["controls"]["probe"], controls_report)
+        self.assertEqual(
+            report["controls"]["receipt"]["schema"],
+            valid_controls("baseline")["schema"],
+        )
 
     def test_candidate_baseline_option_is_mode_scoped(self) -> None:
         args = argparse.Namespace(
@@ -875,6 +1218,36 @@ class StateRoughLifecycleContractsTest(unittest.TestCase):
         ), mock.patch.object(lifecycle, "build_test_executable") as build:
             with self.assertRaisesRegex(
                 lifecycle.LifecycleContractError, "exactly one parent"
+            ):
+                lifecycle.execute(args)
+        build.assert_not_called()
+
+    def test_dirty_candidate_is_rejected_even_with_allow_dirty(self) -> None:
+        args = argparse.Namespace(
+            corpus=str(CORPUS_PATH),
+            lane=lifecycle.DEFAULT_LANE,
+            contract=str(CONTRACT_PATH),
+            target_dir="target",
+            toolchain=None,
+            baseline_json="baseline.json",
+            mode="candidate",
+            timeout_seconds=30,
+            allow_dirty=True,
+        )
+        source = {
+            "commit": "a" * 40,
+            "tree": "b" * 40,
+            "first_parent_commit": "9" * 40,
+            "first_parent_tree": "8" * 40,
+            "parent_count": 1,
+            "clean": False,
+            "dirty_status_sha256": "c" * 64,
+        }
+        with mock.patch.object(
+            lifecycle, "_git_provenance", return_value=source
+        ), mock.patch.object(lifecycle, "build_test_executable") as build:
+            with self.assertRaisesRegex(
+                lifecycle.LifecycleContractError, "dirty-source exploratory"
             ):
                 lifecycle.execute(args)
         build.assert_not_called()

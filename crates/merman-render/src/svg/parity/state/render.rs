@@ -348,6 +348,8 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         timing,
         &mut detail,
     );
+    #[cfg(test)]
+    state_rough_lifecycle_after_root()?;
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");

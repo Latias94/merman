@@ -24,6 +24,16 @@
     "default_features": true,
     "features": []
   },
+  "controls": {
+    "schema": "merman.state_rough_lifecycle_controls.v1",
+    "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_CONTROLS_V1=",
+    "test_name": "svg::parity::state::rough_lifecycle_probe::state_rough_lifecycle_release_controls",
+    "scenarios": ["error", "unwind", "concurrency"],
+    "error_sentinel": "State Rough lifecycle control error after root render",
+    "unwind_sentinel": "State Rough lifecycle control unwind after root render",
+    "configured_seed": 23.0,
+    "workers": 2
+  },
   "schedule": {
     "detailed_requests": 9,
     "detailed_specs": [

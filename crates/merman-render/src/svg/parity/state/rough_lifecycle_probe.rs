@@ -2,23 +2,32 @@ use super::*;
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
 use std::cell::{Cell, RefCell};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock, mpsc};
+use std::time::Duration;
 
 pub(super) const STATE_ROUGH_LIFECYCLE_RECEIPT_MARKER: &str =
     "MERMAN_STATE_ROUGH_LIFECYCLE_RECEIPT_V1=";
+pub(super) const STATE_ROUGH_LIFECYCLE_CONTROLS_MARKER: &str =
+    "MERMAN_STATE_ROUGH_LIFECYCLE_CONTROLS_V1=";
 const STATE_ROUGH_LIFECYCLE_SCHEMA: &str = "merman.state_rough_lifecycle.v1";
+const STATE_ROUGH_LIFECYCLE_CONTROLS_SCHEMA: &str = "merman.state_rough_lifecycle_controls.v1";
 const OWNED_BYTES_DEFINITION: &str = "sum_of_cached_string_capacities";
 const CONFIGURED_ZERO_CONTRACT: &str =
     "configured_hand_drawn_seed_zero_resolves_to_operation_seed_before_cache_bypass";
+const AFTER_ROOT_ERROR_SENTINEL: &str = "State Rough lifecycle control error after root render";
+const AFTER_ROOT_PANIC_SENTINEL: &str = "State Rough lifecycle control unwind after root render";
 const LONG_LIVED_REQUEST_COUNT: usize = 2_048;
 const LONG_LIVED_REQUEST_CHECKPOINTS: [usize; 6] = [1, 16, 64, 256, 1_024, 2_048];
 const LONG_LIVED_GEOMETRY_LABEL_BYTES: [usize; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
+const CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
 
 thread_local! {
     static STATE_ROUGH_LIFECYCLE_CAPTURE_DEPTH: Cell<u32> = const { Cell::new(0) };
     static STATE_ROUGH_LIFECYCLE_SNAPSHOTS: RefCell<Vec<StateRoughLifecycleOperationSnapshot>> =
         const { RefCell::new(Vec::new()) };
-    static STATE_ROUGH_LIFECYCLE_PANIC_AFTER_CACHE_POPULATION: Cell<bool> = const { Cell::new(false) };
+    static STATE_ROUGH_LIFECYCLE_AFTER_ROOT_ACTION: RefCell<Option<(u64, StateRoughLifecycleAfterRootAction)>> =
+        const { RefCell::new(None) };
+    static STATE_ROUGH_LIFECYCLE_AFTER_ROOT_TOKEN: Cell<u64> = const { Cell::new(1) };
 }
 
 fn lifecycle_test_lock() -> MutexGuard<'static, ()> {
@@ -53,25 +62,54 @@ impl Drop for StateRoughLifecycleCaptureGuard {
     }
 }
 
-#[allow(dead_code)]
-pub(super) struct StateRoughLifecyclePanicGuard;
+enum StateRoughLifecycleAfterRootAction {
+    ReturnError,
+    Panic,
+    Rendezvous {
+        worker: usize,
+        reached: mpsc::SyncSender<usize>,
+        release: mpsc::Receiver<()>,
+    },
+}
 
-impl Drop for StateRoughLifecyclePanicGuard {
+struct StateRoughLifecycleAfterRootGuard {
+    token: u64,
+}
+
+impl Drop for StateRoughLifecycleAfterRootGuard {
     fn drop(&mut self) {
-        STATE_ROUGH_LIFECYCLE_PANIC_AFTER_CACHE_POPULATION.with(|enabled| enabled.set(false));
+        STATE_ROUGH_LIFECYCLE_AFTER_ROOT_ACTION.with(|action| {
+            let should_clear = action
+                .borrow()
+                .as_ref()
+                .is_some_and(|(token, _)| *token == self.token);
+            if should_clear {
+                action.borrow_mut().take();
+            }
+        });
     }
 }
 
-#[allow(dead_code)]
-pub(super) fn state_rough_lifecycle_panic_after_cache_population() -> StateRoughLifecyclePanicGuard
-{
-    STATE_ROUGH_LIFECYCLE_PANIC_AFTER_CACHE_POPULATION.with(|enabled| {
-        assert!(
-            !enabled.replace(true),
-            "State Rough panic hook must not nest"
+fn state_rough_lifecycle_install_after_root_action(
+    action: StateRoughLifecycleAfterRootAction,
+) -> StateRoughLifecycleAfterRootGuard {
+    let token = STATE_ROUGH_LIFECYCLE_AFTER_ROOT_TOKEN.with(|next| {
+        let token = next.get();
+        next.set(
+            token
+                .checked_add(1)
+                .expect("State Rough lifecycle action token should remain bounded"),
         );
+        token
     });
-    StateRoughLifecyclePanicGuard
+    STATE_ROUGH_LIFECYCLE_AFTER_ROOT_ACTION.with(|slot| {
+        assert!(
+            slot.borrow().is_none(),
+            "State Rough after-root lifecycle actions must not nest"
+        );
+        *slot.borrow_mut() = Some((token, action));
+    });
+    StateRoughLifecycleAfterRootGuard { token }
 }
 
 pub(super) fn state_rough_lifecycle_capture() -> StateRoughLifecycleCaptureGuard {
@@ -217,6 +255,15 @@ impl StateRoughCacheFootprint {
 pub(super) struct StateRoughRetainedSnapshot {
     pub(super) global: StateRoughCacheFootprint,
     pub(super) tls: StateRoughCacheFootprint,
+}
+
+impl StateRoughRetainedSnapshot {
+    fn observe_peak(&mut self, other: Self) {
+        self.global
+            .observe_peak(other.global.entries, other.global.owned_bytes);
+        self.tls
+            .observe_peak(other.tls.entries, other.tls.owned_bytes);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -450,11 +497,39 @@ pub(super) fn state_rough_lifecycle_observe_operation_cache(ctx: &StateRenderCtx
     let (entries, owned_bytes) = ctx.rough_cache.footprint();
     ctx.rough_lifecycle_probe
         .observe_operation_cache(entries, owned_bytes);
-    STATE_ROUGH_LIFECYCLE_PANIC_AFTER_CACHE_POPULATION.with(|enabled| {
-        if enabled.replace(false) {
-            panic!("State Rough lifecycle probe unwind after cache population");
+}
+
+pub(super) fn state_rough_lifecycle_after_root() -> Result<()> {
+    let action = STATE_ROUGH_LIFECYCLE_AFTER_ROOT_ACTION
+        .with(|slot| slot.borrow_mut().take().map(|(_, action)| action));
+    match action {
+        None => Ok(()),
+        Some(StateRoughLifecycleAfterRootAction::ReturnError) => Err(Error::InvalidModel {
+            message: AFTER_ROOT_ERROR_SENTINEL.to_string(),
+        }),
+        Some(StateRoughLifecycleAfterRootAction::Panic) => {
+            panic!("{AFTER_ROOT_PANIC_SENTINEL}")
         }
-    });
+        Some(StateRoughLifecycleAfterRootAction::Rendezvous {
+            worker,
+            reached,
+            release,
+        }) => {
+            reached.send(worker).map_err(|_| Error::InvalidModel {
+                message: format!(
+                    "State Rough lifecycle worker {worker} could not report after-root arrival"
+                ),
+            })?;
+            release
+                .recv_timeout(CONTROL_TIMEOUT)
+                .map_err(|error| Error::InvalidModel {
+                    message: format!(
+                        "State Rough lifecycle worker {worker} release failed: {error}"
+                    ),
+                })?;
+            Ok(())
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -517,6 +592,7 @@ struct StateRoughLongLivedReceipt {
     svg: StateRoughSvgIdentity,
     counters: StateRoughOperationCounters,
     max_operation_peak: StateRoughCacheFootprint,
+    max_post_operation_retained: StateRoughRetainedSnapshot,
     final_retained: StateRoughRetainedSnapshot,
 }
 
@@ -544,6 +620,29 @@ struct StateRoughLifecycleReceipt {
     checkpoints: Vec<StateRoughRetainedCheckpoint>,
     long_lived: StateRoughLongLivedReceipt,
     rollup: StateRoughLifecycleRollup,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct StateRoughLifecycleFailureControl {
+    sentinel: &'static str,
+    operation: StateRoughLifecycleOperationSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct StateRoughLifecycleConcurrencyControl {
+    workers: usize,
+    overlap_observed: bool,
+    serial_svg: StateRoughSvgIdentity,
+    worker_svgs: Vec<StateRoughSvgIdentity>,
+    operations: Vec<StateRoughLifecycleOperationSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct StateRoughLifecycleControlsReceipt {
+    schema: &'static str,
+    error: StateRoughLifecycleFailureControl,
+    unwind: StateRoughLifecycleFailureControl,
+    concurrency: StateRoughLifecycleConcurrencyControl,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -749,16 +848,20 @@ fn prepare_state_probe_artifact(
     (artifact, expected_resolved_seed)
 }
 
+fn state_probe_svg_options() -> crate::svg::SvgRenderOptions {
+    crate::svg::SvgRenderOptions {
+        diagram_id: Some("state-rough-lifecycle-probe".to_string()),
+        ..crate::svg::SvgRenderOptions::default()
+    }
+}
+
 fn render_state_probe_artifact(
     artifact: crate::family::FamilyRenderArtifact,
 ) -> (String, StateRoughLifecycleOperationSnapshot) {
     let capture = state_rough_lifecycle_capture();
     let rendered = artifact
         .render_svg(
-            &crate::svg::SvgRenderOptions {
-                diagram_id: Some("state-rough-lifecycle-probe".to_string()),
-                ..crate::svg::SvgRenderOptions::default()
-            },
+            &state_probe_svg_options(),
             &crate::svg::SvgDebugOptions::default(),
         )
         .expect("State Rough lifecycle artifact should render")
@@ -862,6 +965,7 @@ fn run_state_rough_long_lived_probe(
     let mut svg_rollup = StateRoughSvgRollupBuilder::default();
     let mut counters = StateRoughOperationCounters::default();
     let mut max_operation_peak = StateRoughCacheFootprint::default();
+    let mut max_post_operation_retained = StateRoughRetainedSnapshot::default();
     let mut checkpoints = Vec::with_capacity(LONG_LIVED_REQUEST_CHECKPOINTS.len());
     let mut final_retained = StateRoughRetainedSnapshot::default();
 
@@ -887,6 +991,7 @@ fn run_state_rough_long_lived_probe(
         svg_rollup.record(ordinal, &svg, request.svg.elements);
         total_svg_rollup.record(ordinal, &svg, request.svg.elements);
         final_retained = request.operation.post_operation_retained;
+        max_post_operation_retained.observe_peak(final_retained);
 
         if LONG_LIVED_REQUEST_CHECKPOINTS.contains(&request_count) {
             checkpoints.push(StateRoughRetainedCheckpoint {
@@ -905,6 +1010,7 @@ fn run_state_rough_long_lived_probe(
         svg: svg_rollup.finish(),
         counters,
         max_operation_peak,
+        max_post_operation_retained,
         final_retained,
     }
 }
@@ -1260,6 +1366,25 @@ fn state_rough_lifecycle_counter_identities_and_peak_tracking_are_exact() {
 }
 
 #[test]
+fn consumed_after_root_guard_cannot_clear_a_new_action() {
+    let _test_lock = lifecycle_test_lock();
+    let first = state_rough_lifecycle_install_after_root_action(
+        StateRoughLifecycleAfterRootAction::ReturnError,
+    );
+    let first_error = state_rough_lifecycle_after_root().expect_err("first action should fire");
+    assert!(first_error.to_string().contains(AFTER_ROOT_ERROR_SENTINEL));
+
+    let second = state_rough_lifecycle_install_after_root_action(
+        StateRoughLifecycleAfterRootAction::ReturnError,
+    );
+    drop(first);
+    let second_error =
+        state_rough_lifecycle_after_root().expect_err("second action should survive");
+    assert!(second_error.to_string().contains(AFTER_ROOT_ERROR_SENTINEL));
+    drop(second);
+}
+
+#[test]
 fn state_rough_lifecycle_marker_wraps_one_strict_json_schema() {
     let _test_lock = lifecycle_test_lock();
     let mut requests = Vec::new();
@@ -1353,6 +1478,7 @@ fn state_rough_lifecycle_marker_wraps_one_strict_json_schema() {
         svg: StateRoughSvgRollupBuilder::default().finish(),
         counters: StateRoughOperationCounters::default(),
         max_operation_peak: StateRoughCacheFootprint::default(),
+        max_post_operation_retained: StateRoughRetainedSnapshot::default(),
         final_retained: StateRoughRetainedSnapshot::default(),
     };
     let receipt = build_state_rough_lifecycle_receipt(
@@ -1395,6 +1521,325 @@ fn state_rough_lifecycle_marker_wraps_one_strict_json_schema() {
     );
     assert_eq!(value["schema"], STATE_ROUGH_LIFECYCLE_SCHEMA);
     assert_eq!(value["contracts"]["owned_bytes"], OWNED_BYTES_DEFINITION);
+}
+
+fn state_rough_lifecycle_control_spec() -> ProbeRequestSpec {
+    ProbeRequestSpec {
+        case: "release-control",
+        configured_seed: 23.0,
+        geometry_label_bytes: 32,
+        ordinary_nodes: 6,
+        render_thread: ProbeRenderThread::Primary,
+    }
+}
+
+fn take_one_control_snapshot(label: &str) -> StateRoughLifecycleOperationSnapshot {
+    let mut snapshots = state_rough_lifecycle_take_snapshots();
+    assert_eq!(
+        snapshots.len(),
+        1,
+        "{label} should produce exactly one lifecycle snapshot"
+    );
+    snapshots.pop().expect("one lifecycle snapshot")
+}
+
+fn validate_control_operation(
+    label: &str,
+    operation: &StateRoughLifecycleOperationSnapshot,
+    expected_outcome: StateRoughLifecycleOutcome,
+) {
+    assert_eq!(operation.outcome, expected_outcome, "{label} outcome");
+    assert!(operation.cache_allowed, "{label} should use seeded caching");
+    operation
+        .counters
+        .validate()
+        .unwrap_or_else(|error| panic!("{label} counters should be exact: {error}"));
+    for (geometry, counters) in [
+        ("circle", operation.counters.circle),
+        ("paths", operation.counters.paths),
+    ] {
+        assert!(
+            counters.draw_requests > 0,
+            "{label} should render {geometry} geometry"
+        );
+        assert!(
+            counters.operation_lookups > 0,
+            "{label} should look up {geometry} geometry"
+        );
+        assert!(
+            counters.operation_hits > 0,
+            "{label} should reuse {geometry} geometry within the operation"
+        );
+        assert_eq!(
+            counters.bypass_builds, 0,
+            "{label} should not bypass seeded {geometry} geometry"
+        );
+    }
+    assert!(
+        operation.operation_peak.entries > 0,
+        "{label} should populate the operation cache"
+    );
+    assert!(
+        operation.operation_peak.owned_bytes > 0,
+        "{label} should retain operation-owned path bytes while rendering"
+    );
+}
+
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> Option<&str> {
+    payload
+        .downcast_ref::<&'static str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+}
+
+fn state_rough_lifecycle_error_control() -> StateRoughLifecycleFailureControl {
+    state_rough_lifecycle_probe_reset();
+    let engine = merman_core::Engine::new();
+    let environment = crate::environment::RenderEnvironment::deterministic();
+    let (artifact, _) =
+        prepare_state_probe_artifact(&engine, &environment, state_rough_lifecycle_control_spec());
+
+    let capture = state_rough_lifecycle_capture();
+    let action = state_rough_lifecycle_install_after_root_action(
+        StateRoughLifecycleAfterRootAction::ReturnError,
+    );
+    let error = match artifact.render_svg(
+        &state_probe_svg_options(),
+        &crate::svg::SvgDebugOptions::default(),
+    ) {
+        Ok(_) => panic!("error control should fail after State root rendering"),
+        Err(error) => error,
+    };
+    drop(action);
+    drop(capture);
+    assert!(
+        error.to_string().contains(AFTER_ROOT_ERROR_SENTINEL),
+        "unexpected error control result: {error}"
+    );
+
+    let operation = take_one_control_snapshot("error control");
+    validate_control_operation(
+        "error control",
+        &operation,
+        StateRoughLifecycleOutcome::Error,
+    );
+    StateRoughLifecycleFailureControl {
+        sentinel: AFTER_ROOT_ERROR_SENTINEL,
+        operation,
+    }
+}
+
+fn state_rough_lifecycle_unwind_control() -> StateRoughLifecycleFailureControl {
+    state_rough_lifecycle_probe_reset();
+    let engine = merman_core::Engine::new();
+    let environment = crate::environment::RenderEnvironment::deterministic();
+    let (artifact, _) =
+        prepare_state_probe_artifact(&engine, &environment, state_rough_lifecycle_control_spec());
+
+    let capture = state_rough_lifecycle_capture();
+    let action =
+        state_rough_lifecycle_install_after_root_action(StateRoughLifecycleAfterRootAction::Panic);
+    let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let _ = artifact.render_svg(
+            &state_probe_svg_options(),
+            &crate::svg::SvgDebugOptions::default(),
+        );
+    }))
+    .expect_err("unwind control should panic after State root rendering");
+    drop(action);
+    drop(capture);
+    assert_eq!(
+        panic_payload_message(unwind.as_ref()),
+        Some(AFTER_ROOT_PANIC_SENTINEL)
+    );
+
+    let operation = take_one_control_snapshot("unwind control");
+    validate_control_operation(
+        "unwind control",
+        &operation,
+        StateRoughLifecycleOutcome::Unwind,
+    );
+    let (recovery_artifact, _) =
+        prepare_state_probe_artifact(&engine, &environment, state_rough_lifecycle_control_spec());
+    let recovery_svg = recovery_artifact
+        .render_svg(
+            &state_probe_svg_options(),
+            &crate::svg::SvgDebugOptions::default(),
+        )
+        .expect("ordinary State render should recover after the unwind control")
+        .svg()
+        .to_owned();
+    assert!(!recovery_svg.is_empty());
+    assert!(
+        state_rough_lifecycle_take_snapshots().is_empty(),
+        "recovery render should not inherit lifecycle capture"
+    );
+    StateRoughLifecycleFailureControl {
+        sentinel: AFTER_ROOT_PANIC_SENTINEL,
+        operation,
+    }
+}
+
+fn state_rough_lifecycle_concurrency_control() -> StateRoughLifecycleConcurrencyControl {
+    state_rough_lifecycle_probe_reset();
+    let spec = state_rough_lifecycle_control_spec();
+
+    let serial_engine = merman_core::Engine::new();
+    let serial_environment = crate::environment::RenderEnvironment::deterministic();
+    let (serial_artifact, _) =
+        prepare_state_probe_artifact(&serial_engine, &serial_environment, spec);
+    let (serial_svg, serial_operation) = render_state_probe_artifact(serial_artifact);
+    validate_control_operation(
+        "concurrency serial control",
+        &serial_operation,
+        StateRoughLifecycleOutcome::Success,
+    );
+    let serial_svg = StateRoughSvgIdentity {
+        bytes: serial_svg.len(),
+        elements: svg_element_count(&serial_svg),
+        identity: svg_identity(&serial_svg),
+    };
+
+    state_rough_lifecycle_probe_reset();
+    let (reached_tx, reached_rx) = mpsc::sync_channel(2);
+    let mut releases = Vec::with_capacity(2);
+    let mut workers = Vec::with_capacity(2);
+    for worker in 0..2 {
+        let reached = reached_tx.clone();
+        let (release_tx, release_rx) = mpsc::sync_channel(1);
+        releases.push(release_tx);
+        workers.push(std::thread::spawn(move || {
+            assert!(
+                state_rough_lifecycle_take_snapshots().is_empty(),
+                "worker lifecycle snapshots should start empty"
+            );
+            let engine = merman_core::Engine::new();
+            let environment = crate::environment::RenderEnvironment::deterministic();
+            let (artifact, _) = prepare_state_probe_artifact(&engine, &environment, spec);
+            let capture = state_rough_lifecycle_capture();
+            let action = state_rough_lifecycle_install_after_root_action(
+                StateRoughLifecycleAfterRootAction::Rendezvous {
+                    worker,
+                    reached,
+                    release: release_rx,
+                },
+            );
+            let svg = artifact
+                .render_svg(
+                    &state_probe_svg_options(),
+                    &crate::svg::SvgDebugOptions::default(),
+                )
+                .expect("concurrent State Rough render should succeed")
+                .svg()
+                .to_owned();
+            drop(action);
+            drop(capture);
+            let operation = take_one_control_snapshot("concurrent worker");
+            (
+                worker,
+                StateRoughSvgIdentity {
+                    bytes: svg.len(),
+                    elements: svg_element_count(&svg),
+                    identity: svg_identity(&svg),
+                },
+                operation,
+            )
+        }));
+    }
+    drop(reached_tx);
+
+    let mut reached_workers = std::collections::BTreeSet::new();
+    let mut coordination_errors = Vec::new();
+    for _ in 0..2 {
+        match reached_rx.recv_timeout(CONTROL_TIMEOUT) {
+            Ok(worker) => {
+                if !reached_workers.insert(worker) {
+                    coordination_errors.push(format!(
+                        "concurrent worker {worker} reported the rendezvous twice"
+                    ));
+                }
+            }
+            Err(error) => {
+                coordination_errors.push(format!(
+                    "concurrent workers did not both reach the rendezvous: {error}"
+                ));
+                break;
+            }
+        }
+    }
+    let expected_workers = [0, 1]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let overlap_observed = reached_workers == expected_workers;
+    if !overlap_observed {
+        coordination_errors.push(format!(
+            "concurrent rendezvous workers drifted: {reached_workers:?}"
+        ));
+    }
+    for (worker, release) in releases.into_iter().enumerate() {
+        if let Err(error) = release.send(()) {
+            coordination_errors.push(format!(
+                "concurrent worker {worker} release channel failed: {error}"
+            ));
+        }
+    }
+
+    let mut results = Vec::with_capacity(workers.len());
+    for (worker, handle) in workers.into_iter().enumerate() {
+        match handle.join() {
+            Ok(result) => results.push(result),
+            Err(payload) => coordination_errors.push(format!(
+                "concurrent State Rough worker {worker} panicked: {}",
+                panic_payload_message(payload.as_ref()).unwrap_or("non-string panic payload")
+            )),
+        }
+    }
+    assert!(
+        coordination_errors.is_empty(),
+        "concurrent State Rough control failed after joining every worker: {}",
+        coordination_errors.join("; ")
+    );
+    results.sort_by_key(|(worker, _, _)| *worker);
+
+    let mut worker_svgs = Vec::with_capacity(results.len());
+    let mut operations = Vec::with_capacity(results.len());
+    for (worker, svg, operation) in results {
+        assert_eq!(svg, serial_svg, "worker {worker} SVG should match serial");
+        validate_control_operation(
+            &format!("concurrent worker {worker}"),
+            &operation,
+            StateRoughLifecycleOutcome::Success,
+        );
+        worker_svgs.push(svg);
+        operations.push(operation);
+    }
+
+    StateRoughLifecycleConcurrencyControl {
+        workers: 2,
+        overlap_observed,
+        serial_svg,
+        worker_svgs,
+        operations,
+    }
+}
+
+#[test]
+#[ignore = "State Rough lifecycle error, unwind, and concurrency controls; run explicitly"]
+fn state_rough_lifecycle_release_controls() {
+    let _test_lock = lifecycle_test_lock();
+    let receipt = StateRoughLifecycleControlsReceipt {
+        schema: STATE_ROUGH_LIFECYCLE_CONTROLS_SCHEMA,
+        error: state_rough_lifecycle_error_control(),
+        unwind: state_rough_lifecycle_unwind_control(),
+        concurrency: state_rough_lifecycle_concurrency_control(),
+    };
+    assert_eq!(receipt.concurrency.worker_svgs.len(), 2);
+    assert_eq!(receipt.concurrency.operations.len(), 2);
+    assert!(receipt.concurrency.overlap_observed);
+    println!(
+        "{STATE_ROUGH_LIFECYCLE_CONTROLS_MARKER}{}",
+        serde_json::to_string(&receipt).expect("lifecycle controls receipt should serialize")
+    );
 }
 
 #[test]

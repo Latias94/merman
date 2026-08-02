@@ -34,6 +34,7 @@ _CONTRACT_FIELDS = frozenset(
         "baseline_provenance",
         "receipt",
         "probe",
+        "controls",
         "schedule",
     }
 )
@@ -57,6 +58,18 @@ _CONTRACT_PROBE_FIELDS = frozenset(
         "test_name",
         "default_features",
         "features",
+    }
+)
+_CONTRACT_CONTROLS_FIELDS = frozenset(
+    {
+        "schema",
+        "marker",
+        "test_name",
+        "scenarios",
+        "error_sentinel",
+        "unwind_sentinel",
+        "configured_seed",
+        "workers",
     }
 )
 _CONTRACT_SCHEDULE_FIELDS = frozenset(
@@ -174,6 +187,7 @@ _LONG_LIVED_FIELDS = frozenset(
         "svg",
         "counters",
         "max_operation_peak",
+        "max_post_operation_retained",
         "final_retained",
     }
 )
@@ -192,6 +206,14 @@ _ROLLUP_FIELDS = frozenset(
     }
 )
 
+_CONTROLS_RECEIPT_FIELDS = frozenset(
+    {"schema", "error", "unwind", "concurrency"}
+)
+_FAILURE_CONTROL_FIELDS = frozenset({"sentinel", "operation"})
+_CONCURRENCY_CONTROL_FIELDS = frozenset(
+    {"workers", "overlap_observed", "serial_svg", "worker_svgs", "operations"}
+)
+
 _REPORT_FIELDS = frozenset(
     {
         "schema",
@@ -204,6 +226,7 @@ _REPORT_FIELDS = frozenset(
         "harness",
         "build",
         "probe",
+        "controls",
         "baseline_comparison",
         "receipt",
         "checks",
@@ -253,6 +276,10 @@ _BUILD_ENVIRONMENT_FIELDS = frozenset({"CARGO_BUILD_JOBS", "CARGO_INCREMENTAL"})
 _PROBE_REPORT_FIELDS = frozenset(
     {"command", "timeout_seconds", "returncode", "stdout_sha256", "stderr_sha256"}
 )
+_CONTROLS_REPORT_FIELDS = frozenset({"probe", "receipt"})
+_EMPTY_GIT_STATUS_SHA256 = hashlib.sha256(b"").hexdigest()
+
+
 class LifecycleContractError(ValueError):
     """The lifecycle evidence cannot satisfy its registered contract."""
 
@@ -606,6 +633,46 @@ def load_owner_contract(
     if features != lane.required_features:
         raise LifecycleContractError("owner contract probe features differ from corpus lane")
 
+    controls = _object(
+        contract["controls"],
+        fields=_CONTRACT_CONTROLS_FIELDS,
+        context="owner contract.controls",
+    )
+    expected_control_strings = {
+        "schema": "merman.state_rough_lifecycle_controls.v1",
+        "marker": "MERMAN_STATE_ROUGH_LIFECYCLE_CONTROLS_V1=",
+        "test_name": (
+            "svg::parity::state::rough_lifecycle_probe::"
+            "state_rough_lifecycle_release_controls"
+        ),
+        "error_sentinel": "State Rough lifecycle control error after root render",
+        "unwind_sentinel": "State Rough lifecycle control unwind after root render",
+    }
+    for field, expected in expected_control_strings.items():
+        if _string(
+            controls[field], context=f"owner contract.controls.{field}"
+        ) != expected:
+            label = "test name" if field == "test_name" else field.replace("_", " ")
+            raise LifecycleContractError(
+                f"owner contract controls {label} drifted"
+            )
+    scenarios = _string_list(
+        controls["scenarios"],
+        context="owner contract.controls.scenarios",
+        allow_empty=False,
+    )
+    if scenarios != ("error", "unwind", "concurrency"):
+        raise LifecycleContractError("owner contract controls scenarios drifted")
+    if _finite_number(
+        controls["configured_seed"],
+        context="owner contract.controls.configured_seed",
+    ) != 23.0:
+        raise LifecycleContractError("owner contract controls configured seed drifted")
+    if _positive_int(
+        controls["workers"], context="owner contract.controls.workers"
+    ) != 2:
+        raise LifecycleContractError("owner contract controls workers drifted")
+
     schedule = _object(
         contract["schedule"],
         fields=_CONTRACT_SCHEDULE_FIELDS,
@@ -862,6 +929,223 @@ def _validate_operation(value: object, *, context: str) -> dict[str, object]:
     return operation
 
 
+def _validate_control_operation(
+    value: object,
+    *,
+    context: str,
+    expected_outcome: str,
+    configured_seed: float,
+) -> dict[str, object]:
+    operation = _validate_operation(value, context=context)
+    if operation["outcome"] != expected_outcome:
+        raise LifecycleContractError(
+            f"{context}.outcome must be {expected_outcome!r}"
+        )
+    if float(operation["configured_seed"]) != configured_seed:
+        raise LifecycleContractError(f"{context}.configured_seed drifted")
+    if float(operation["resolved_seed"]) != configured_seed:
+        raise LifecycleContractError(f"{context}.resolved_seed drifted")
+    if operation["seed_resolution"] != "configured_deterministic":
+        raise LifecycleContractError(f"{context}.seed_resolution drifted")
+    if operation["cache_allowed"] is not True:
+        raise LifecycleContractError(f"{context} must exercise seeded caching")
+    counters = operation["counters"]
+    assert isinstance(counters, Mapping)
+    for kind in _COUNTER_KINDS:
+        kind_counters = counters[kind]
+        assert isinstance(kind_counters, Mapping)
+        if int(kind_counters["operation_lookups"]) <= 0:
+            raise LifecycleContractError(
+                f"{context}.{kind} did not exercise an operation-owned lookup"
+            )
+        if int(kind_counters["operation_hits"]) <= 0:
+            raise LifecycleContractError(
+                f"{context}.{kind} did not exercise operation-owned reuse"
+            )
+        if int(kind_counters["bypass_builds"]) != 0:
+            raise LifecycleContractError(
+                f"{context}.{kind} bypassed deterministic caching"
+            )
+    peak = operation["operation_peak"]
+    assert isinstance(peak, Mapping)
+    if int(peak["entries"]) <= 0 or int(peak["owned_bytes"]) <= 0:
+        raise LifecycleContractError(
+            f"{context} did not populate the operation-owned cache"
+        )
+    return operation
+
+
+def _control_operations(
+    receipt: Mapping[str, object],
+) -> tuple[Mapping[str, object], ...]:
+    error = receipt["error"]
+    unwind = receipt["unwind"]
+    concurrency = receipt["concurrency"]
+    assert isinstance(error, Mapping)
+    assert isinstance(unwind, Mapping)
+    assert isinstance(concurrency, Mapping)
+    operations = concurrency["operations"]
+    assert isinstance(operations, list)
+    return (
+        error["operation"],
+        unwind["operation"],
+        *operations,
+    )
+
+
+def _validate_controls_receipt(
+    value: object,
+    *,
+    contract: Mapping[str, object],
+) -> dict[str, object]:
+    receipt = _object(
+        value,
+        fields=_CONTROLS_RECEIPT_FIELDS,
+        context="controls receipt",
+    )
+    controls_contract = contract["controls"]
+    assert isinstance(controls_contract, Mapping)
+    if receipt["schema"] != controls_contract["schema"]:
+        raise LifecycleContractError(
+            "controls receipt schema differs from owner contract"
+        )
+    configured_seed = float(controls_contract["configured_seed"])
+
+    for scenario, expected_outcome, sentinel_field in (
+        ("error", "error", "error_sentinel"),
+        ("unwind", "unwind", "unwind_sentinel"),
+    ):
+        control = _object(
+            receipt[scenario],
+            fields=_FAILURE_CONTROL_FIELDS,
+            context=f"controls receipt.{scenario}",
+        )
+        sentinel = _string(
+            control["sentinel"],
+            context=f"controls receipt.{scenario}.sentinel",
+        )
+        if sentinel != controls_contract[sentinel_field]:
+            raise LifecycleContractError(
+                f"controls receipt {scenario} sentinel drifted"
+            )
+        _validate_control_operation(
+            control["operation"],
+            context=f"controls receipt.{scenario}.operation",
+            expected_outcome=expected_outcome,
+            configured_seed=configured_seed,
+        )
+
+    concurrency = _object(
+        receipt["concurrency"],
+        fields=_CONCURRENCY_CONTROL_FIELDS,
+        context="controls receipt.concurrency",
+    )
+    workers = _positive_int(
+        concurrency["workers"], context="controls receipt.concurrency.workers"
+    )
+    if workers != controls_contract["workers"]:
+        raise LifecycleContractError("controls receipt concurrency workers drifted")
+    if not _boolean(
+        concurrency["overlap_observed"],
+        context="controls receipt.concurrency.overlap_observed",
+    ):
+        raise LifecycleContractError(
+            "controls receipt did not observe overlapping operations"
+        )
+    serial_svg = _validate_svg(
+        concurrency["serial_svg"], context="controls receipt.concurrency.serial_svg"
+    )
+    worker_svgs = [
+        _validate_svg(
+            svg, context=f"controls receipt.concurrency.worker_svgs[{index}]"
+        )
+        for index, svg in enumerate(
+            _list(
+                concurrency["worker_svgs"],
+                context="controls receipt.concurrency.worker_svgs",
+            )
+        )
+    ]
+    if len(worker_svgs) != workers:
+        raise LifecycleContractError(
+            "controls receipt worker SVG cardinality drifted"
+        )
+    if any(svg != serial_svg for svg in worker_svgs):
+        raise LifecycleContractError(
+            "controls receipt worker output differs from the serial SVG"
+        )
+    operations = [
+        _validate_control_operation(
+            operation,
+            context=f"controls receipt.concurrency.operations[{index}]",
+            expected_outcome="success",
+            configured_seed=configured_seed,
+        )
+        for index, operation in enumerate(
+            _list(
+                concurrency["operations"],
+                context="controls receipt.concurrency.operations",
+            )
+        )
+    ]
+    if len(operations) != workers:
+        raise LifecycleContractError(
+            "controls receipt concurrent operation cardinality drifted"
+        )
+    return receipt
+
+
+def validate_controls_mode(
+    receipt: Mapping[str, object],
+    *,
+    mode: str,
+) -> tuple[str, ...]:
+    operations = _control_operations(receipt)
+    checks = [
+        "strict_release_controls_schema",
+        "release_control_semantics",
+        "release_control_circle_paths_population",
+        "release_control_operation_peak",
+        "concurrent_operation_overlap",
+        "concurrent_serial_svg_identity",
+    ]
+    retained = []
+    for operation in operations:
+        snapshot = operation["post_operation_retained"]
+        assert isinstance(snapshot, Mapping)
+        retained.append(snapshot)
+
+    if mode == "baseline":
+        if not all(_retained_has_state(snapshot) for snapshot in retained):
+            raise LifecycleContractError(
+                "baseline release controls did not retain legacy cache state"
+            )
+        checks.append("release_controls_legacy_retention_observed")
+    elif mode == "candidate":
+        if not all(_retained_is_zero(snapshot) for snapshot in retained):
+            raise LifecycleContractError(
+                "candidate release controls retained State Rough state"
+            )
+        if any(
+            int(operation["counters"][kind][field]) != 0
+            for operation in operations
+            for kind in _COUNTER_KINDS
+            for field in ("tls_hits", "global_hits")
+        ):
+            raise LifecycleContractError(
+                "candidate release controls entered a cross-operation cache"
+            )
+        checks.extend(
+            (
+                "release_controls_zero_cross_operation_hits",
+                "release_controls_zero_post_operation_retention",
+            )
+        )
+    else:
+        raise LifecycleContractError(f"unsupported lifecycle mode: {mode}")
+    return tuple(checks)
+
+
 def _validate_request(value: object, *, context: str) -> dict[str, object]:
     request = _object(value, fields=_REQUEST_FIELDS, context=context)
     _positive_int(request["ordinal"], context=f"{context}.ordinal")
@@ -1098,11 +1382,30 @@ def _validate_receipt(
         long_lived["max_operation_peak"],
         context="receipt.long_lived.max_operation_peak",
     )
+    max_post_operation_retained = _validate_retained(
+        long_lived["max_post_operation_retained"],
+        context="receipt.long_lived.max_post_operation_retained",
+    )
     _validate_retained(
         long_lived["final_retained"], context="receipt.long_lived.final_retained"
     )
     if long_checkpoints[-1]["retained"] != long_lived["final_retained"]:
         raise LifecycleContractError("long-lived final retained snapshot drifted")
+    observed_retained = [
+        checkpoint["retained"] for checkpoint in long_checkpoints
+    ]
+    observed_retained.append(long_lived["final_retained"])
+    for snapshot in observed_retained:
+        for scope in ("global", "tls"):
+            if (
+                int(max_post_operation_retained[scope]["entries"])
+                < int(snapshot[scope]["entries"])
+                or int(max_post_operation_retained[scope]["owned_bytes"])
+                < int(snapshot[scope]["owned_bytes"])
+            ):
+                raise LifecycleContractError(
+                    "long-lived maximum post-operation retention is below an observed snapshot"
+                )
 
     rollup = _object(receipt["rollup"], fields=_ROLLUP_FIELDS, context="receipt.rollup")
     _validate_svg(rollup["svg"], context="receipt.rollup.svg")
@@ -1338,10 +1641,15 @@ def validate_mode(
             raise LifecycleContractError(
                 "baseline long-lived process ended without retained legacy cache state"
             )
+        if not _retained_has_state(long_lived["max_post_operation_retained"]):
+            raise LifecycleContractError(
+                "baseline long-lived operations never observed retained legacy cache state"
+            )
         checks.extend(
             [
                 "legacy_tls_and_global_hits",
                 "legacy_retained_state_growth",
+                "legacy_max_post_operation_retention",
             ]
         )
     elif mode == "candidate":
@@ -1373,6 +1681,7 @@ def validate_mode(
                 rollup["initial_retained"],
                 rollup["final_retained"],
                 rollup["retained_growth"],
+                long_lived["max_post_operation_retained"],
                 long_lived["final_retained"],
             ]
         )
@@ -1384,6 +1693,7 @@ def validate_mode(
             [
                 "zero_cross_operation_hits",
                 "zero_post_operation_retained_state",
+                "zero_max_post_operation_retained_state",
                 "request_count_independent_retention",
             ]
         )
@@ -1409,6 +1719,29 @@ def parse_probe_output(
         raise LifecycleContractError("lifecycle marker has no JSON payload")
     return _validate_receipt(
         strict_json_text(payload, source="State Rough lifecycle marker"),
+        contract=contract,
+    )
+
+
+def parse_controls_output(
+    stdout: str,
+    stderr: str,
+    *,
+    contract: Mapping[str, object],
+) -> dict[str, object]:
+    controls_contract = contract["controls"]
+    assert isinstance(controls_contract, Mapping)
+    marker = str(controls_contract["marker"])
+    combined = f"{stdout}\n{stderr}"
+    if combined.count(marker) != 1:
+        raise LifecycleContractError(
+            "controls output must contain exactly one lifecycle marker"
+        )
+    payload = combined.split(marker, 1)[1].splitlines()[0].strip()
+    if not payload:
+        raise LifecycleContractError("controls lifecycle marker has no JSON payload")
+    return _validate_controls_receipt(
+        strict_json_text(payload, source="State Rough lifecycle controls marker"),
         contract=contract,
     )
 
@@ -1543,6 +1876,51 @@ def run_probe(
     }
 
 
+def run_controls(
+    executable: Path,
+    *,
+    contract: Mapping[str, object],
+    timeout_seconds: int,
+) -> tuple[dict[str, object], dict[str, object]]:
+    controls = contract["controls"]
+    assert isinstance(controls, Mapping)
+    command = [
+        str(executable),
+        str(controls["test_name"]),
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1",
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise LifecycleContractError(
+            f"cannot run lifecycle controls: {error}"
+        ) from error
+    if completed.returncode != 0:
+        raise LifecycleContractError(
+            "lifecycle controls failed: "
+            + (completed.stdout + completed.stderr)[-2_000:]
+        )
+    receipt = parse_controls_output(
+        completed.stdout, completed.stderr, contract=contract
+    )
+    return receipt, {
+        "command": command,
+        "timeout_seconds": timeout_seconds,
+        "returncode": completed.returncode,
+        "stdout_sha256": _sha256_bytes(completed.stdout.encode("utf-8")),
+        "stderr_sha256": _sha256_bytes(completed.stderr.encode("utf-8")),
+    }
+
+
 def _output_projection(receipt: Mapping[str, object]) -> dict[str, object]:
     requests = receipt["requests"]
     long_lived = receipt["long_lived"]
@@ -1594,6 +1972,50 @@ def _schedule_projection(receipt: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _control_operation_semantics(
+    operation: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "configured_seed": operation["configured_seed"],
+        "resolved_seed": operation["resolved_seed"],
+        "seed_resolution": operation["seed_resolution"],
+        "cache_allowed": operation["cache_allowed"],
+        "outcome": operation["outcome"],
+    }
+
+
+def _controls_semantic_projection(
+    receipt: Mapping[str, object],
+) -> dict[str, object]:
+    error = receipt["error"]
+    unwind = receipt["unwind"]
+    concurrency = receipt["concurrency"]
+    assert isinstance(error, Mapping)
+    assert isinstance(unwind, Mapping)
+    assert isinstance(concurrency, Mapping)
+    operations = concurrency["operations"]
+    assert isinstance(operations, list)
+    return {
+        "error": {
+            "sentinel": error["sentinel"],
+            "operation": _control_operation_semantics(error["operation"]),
+        },
+        "unwind": {
+            "sentinel": unwind["sentinel"],
+            "operation": _control_operation_semantics(unwind["operation"]),
+        },
+        "concurrency": {
+            "workers": concurrency["workers"],
+            "overlap_observed": concurrency["overlap_observed"],
+            "serial_svg": concurrency["serial_svg"],
+            "worker_svgs": concurrency["worker_svgs"],
+            "operations": [
+                _control_operation_semantics(operation) for operation in operations
+            ],
+        },
+    }
+
+
 def _validate_success_report(
     value: object,
     *,
@@ -1632,10 +2054,14 @@ def _validate_success_report(
     )
     if _boolean(source["clean"], context="baseline driver report.source.clean") is not True:
         raise LifecycleContractError("baseline lifecycle evidence must come from a clean worktree")
-    _sha256(
+    dirty_status_sha256 = _sha256(
         source["dirty_status_sha256"],
         context="baseline driver report.source.dirty_status_sha256",
     )
+    if dirty_status_sha256 != _EMPTY_GIT_STATUS_SHA256:
+        raise LifecycleContractError(
+            "clean baseline source must hash an empty git-status payload"
+        )
     host = _object(
         report["host"], fields=_HOST_FIELDS, context="baseline driver report.host"
     )
@@ -1693,7 +2119,7 @@ def _validate_success_report(
         build["cargo_stderr_sha256"],
         context="baseline driver report.build.cargo_stderr_sha256",
     )
-    _validate_file_descriptor(
+    build_executable = _validate_file_descriptor(
         build["executable"], context="baseline driver report.build.executable"
     )
     probe = _object(
@@ -1721,6 +2147,65 @@ def _validate_success_report(
         raise LifecycleContractError("baseline lifecycle probe did not exit successfully")
     _sha256(probe["stdout_sha256"], context="baseline driver report.probe.stdout_sha256")
     _sha256(probe["stderr_sha256"], context="baseline driver report.probe.stderr_sha256")
+    controls = _object(
+        report["controls"],
+        fields=_CONTROLS_REPORT_FIELDS,
+        context="baseline driver report.controls",
+    )
+    controls_probe = _object(
+        controls["probe"],
+        fields=_PROBE_REPORT_FIELDS,
+        context="baseline driver report.controls.probe",
+    )
+    controls_command = _string_list(
+        controls_probe["command"],
+        context="baseline driver report.controls.probe.command",
+        allow_empty=False,
+    )
+    controls_contract = owner_contract["controls"]
+    assert isinstance(controls_contract, Mapping)
+    if controls_command[1:] != (
+        str(controls_contract["test_name"]),
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1",
+    ):
+        raise LifecycleContractError(
+            "baseline controls command drifted from the exact ignored test"
+        )
+    if controls_command[0] != probe_command[0]:
+        raise LifecycleContractError(
+            "baseline controls and decision receipt used different test executables"
+        )
+    executable_path = Path(str(build_executable["path"]))
+    if not executable_path.is_absolute():
+        executable_path = repo_root() / executable_path
+    probe_executable_path = Path(probe_command[0])
+    if not probe_executable_path.is_absolute():
+        probe_executable_path = repo_root() / probe_executable_path
+    if probe_executable_path.resolve() != executable_path.resolve():
+        raise LifecycleContractError(
+            "baseline probe command differs from the built test executable"
+        )
+    _positive_int(
+        controls_probe["timeout_seconds"],
+        context="baseline driver report.controls.probe.timeout_seconds",
+    )
+    if controls_probe["returncode"] != 0:
+        raise LifecycleContractError("baseline lifecycle controls did not exit successfully")
+    _sha256(
+        controls_probe["stdout_sha256"],
+        context="baseline driver report.controls.probe.stdout_sha256",
+    )
+    _sha256(
+        controls_probe["stderr_sha256"],
+        context="baseline driver report.controls.probe.stderr_sha256",
+    )
+    controls_receipt = _validate_controls_receipt(
+        controls["receipt"], contract=owner_contract
+    )
+    validate_controls_mode(controls_receipt, mode="baseline")
     if report["baseline_comparison"] is not None:
         raise LifecycleContractError("baseline report cannot contain a baseline comparison")
     _string_list(report["checks"], context="baseline driver report.checks", allow_empty=False)
@@ -1731,6 +2216,7 @@ def _validate_success_report(
 
 def compare_with_baseline(
     candidate: Mapping[str, object],
+    candidate_controls: Mapping[str, object],
     baseline_path: Path,
     *,
     contract: Mapping[str, object],
@@ -1766,15 +2252,28 @@ def compare_with_baseline(
         baseline_report["receipt"], contract=contract
     )
     validate_mode(baseline_receipt, mode="baseline")
+    baseline_controls_report = baseline_report["controls"]
+    assert isinstance(baseline_controls_report, Mapping)
+    baseline_controls = _validate_controls_receipt(
+        baseline_controls_report["receipt"], contract=contract
+    )
+    validate_controls_mode(baseline_controls, mode="baseline")
     schedule_equal = _schedule_projection(candidate) == _schedule_projection(
         baseline_receipt
     )
     output_equal = _output_projection(candidate) == _output_projection(baseline_receipt)
+    release_control_semantics_equal = _controls_semantic_projection(
+        candidate_controls
+    ) == _controls_semantic_projection(baseline_controls)
     if not schedule_equal:
         raise LifecycleContractError("candidate lifecycle schedule differs from baseline")
     if not output_equal:
         raise LifecycleContractError(
             "candidate SVG SHA-256/bytes/elements differ from baseline"
+        )
+    if not release_control_semantics_equal:
+        raise LifecycleContractError(
+            "candidate release-control semantics differ from baseline"
         )
     return {
         "status": "passed",
@@ -1791,6 +2290,7 @@ def compare_with_baseline(
         "revision_equal": True,
         "schedule_equal": True,
         "svg_outputs_equal": True,
+        "release_control_semantics_equal": True,
     }
 
 
@@ -1872,9 +2372,17 @@ def execute(args: argparse.Namespace) -> dict[str, object]:
         raise LifecycleContractError(
             "candidate HEAD must have exactly one parent for adjacent baseline evidence"
         )
-    if not source_before["clean"] and not args.allow_dirty:
+    if not source_before["clean"]:
+        if args.allow_dirty:
+            raise LifecycleContractError(
+                "dirty-source exploratory evidence is non-admissible; commit the source before running this contract"
+            )
         raise LifecycleContractError(
-            "repository is dirty; commit the candidate or pass --allow-dirty for exploratory evidence"
+            "repository is dirty; commit the source before running lifecycle evidence"
+        )
+    if source_before["dirty_status_sha256"] != _EMPTY_GIT_STATUS_SHA256:
+        raise LifecycleContractError(
+            "clean source provenance did not hash an empty git-status payload"
         )
 
     target_dir = Path(args.target_dir)
@@ -1887,17 +2395,24 @@ def execute(args: argparse.Namespace) -> dict[str, object]:
         toolchain=args.toolchain,
         timeout_seconds=args.timeout_seconds,
     )
+    controls_receipt, controls_probe = run_controls(
+        executable,
+        contract=contract,
+        timeout_seconds=args.timeout_seconds,
+    )
+    checks = list(validate_controls_mode(controls_receipt, mode=args.mode))
     receipt, probe = run_probe(
         executable,
         contract=contract,
         timeout_seconds=args.timeout_seconds,
     )
-    checks = list(validate_mode(receipt, mode=args.mode))
+    checks.extend(validate_mode(receipt, mode=args.mode))
 
     baseline_comparison = None
     if args.baseline_json:
         baseline_comparison = compare_with_baseline(
             receipt,
+            controls_receipt,
             Path(args.baseline_json),
             contract=contract,
             lane=lane,
@@ -1912,6 +2427,7 @@ def execute(args: argparse.Namespace) -> dict[str, object]:
                 "baseline_adjacent_first_parent_identity",
                 "baseline_schedule_identity",
                 "baseline_svg_output_identity",
+                "baseline_release_control_semantic_identity",
             )
         )
 
@@ -1931,6 +2447,10 @@ def execute(args: argparse.Namespace) -> dict[str, object]:
         "harness": harness_descriptor,
         "build": build,
         "probe": probe,
+        "controls": {
+            "probe": controls_probe,
+            "receipt": controls_receipt,
+        },
         "baseline_comparison": baseline_comparison,
         "receipt": receipt,
         "checks": checks,
