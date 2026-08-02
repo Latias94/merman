@@ -26,11 +26,11 @@ pub use refresh_transport::{
 };
 pub use server::MermanLanguageServer;
 pub use session::{
-    LSP_CONTROL_HANDLER_CONCURRENCY, LSP_MAX_MESSAGE_BYTES, LSP_ORDINARY_HANDLER_CONCURRENCY,
-    LSP_REQUEST_BYTE_BUDGET, LSP_TOTAL_HANDLER_CONCURRENCY, MermanLspService,
+    LSP_MAX_MESSAGE_BYTES, LSP_ORDINARY_HANDLER_CONCURRENCY, LSP_REQUEST_BYTE_BUDGET,
+    MermanLspService,
 };
 #[cfg(feature = "stdio")]
-pub use transport::{StdioServer, StdioService, StdioTermination, serve_stdio, stdio_server};
+pub use transport::{StdioServer, StdioTermination, serve_stdio, stdio_server};
 
 #[cfg(test)]
 mod completion_tests;

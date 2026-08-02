@@ -311,13 +311,6 @@ tokio::task_local! {
 /// Default maximum number of ordinary data-plane handler futures polled concurrently.
 pub const LSP_ORDINARY_HANDLER_CONCURRENCY: usize = 4;
 
-/// Default maximum number of reserved control-plane handler futures polled concurrently by stdio.
-pub const LSP_CONTROL_HANDLER_CONCURRENCY: usize = 4;
-
-/// Default total handler concurrency across the ordinary and reserved control lanes.
-pub const LSP_TOTAL_HANDLER_CONCURRENCY: usize =
-    LSP_ORDINARY_HANDLER_CONCURRENCY + LSP_CONTROL_HANDLER_CONCURRENCY;
-
 /// Maximum encoded size of one LSP message accepted by the bundled transport.
 pub const LSP_MAX_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
 
@@ -330,6 +323,7 @@ pub(crate) enum ProtocolMessageShape {
     ShutdownRequest,
     ShutdownNotification,
     ExitRequest(Id),
+    InvalidExitNotification,
     ExitNotification,
 }
 
@@ -339,7 +333,10 @@ impl ProtocolMessageShape {
             ("shutdown", Some(_)) => Self::ShutdownRequest,
             ("shutdown", None) => Self::ShutdownNotification,
             ("exit", Some(id)) => Self::ExitRequest(id),
-            ("exit", None) => Self::ExitNotification,
+            ("exit", None) if request.params().is_none_or(|params| params.is_null()) => {
+                Self::ExitNotification
+            }
+            ("exit", None) => Self::InvalidExitNotification,
             _ => Self::Ordinary,
         }
     }
@@ -350,8 +347,7 @@ impl ProtocolMessageShape {
 /// Admission happens synchronously in [`Service::call`], before transport futures may be polled
 /// concurrently. Reads therefore observe every earlier state mutation after it commits or aborts.
 /// The transport owns its request queues and must apply [`LSP_ORDINARY_HANDLER_CONCURRENCY`],
-/// [`LSP_CONTROL_HANDLER_CONCURRENCY`], [`LSP_MAX_MESSAGE_BYTES`], and
-/// [`LSP_REQUEST_BYTE_BUDGET`] before retaining request futures.
+/// [`LSP_MAX_MESSAGE_BYTES`], and [`LSP_REQUEST_BYTE_BUDGET`] before retaining request futures.
 #[derive(Debug)]
 pub struct MermanLspService {
     _endpoint: SessionEndpointGuard,
@@ -541,6 +537,10 @@ impl Service<Request> for MermanLspService {
                     Ok(Some(Response::from_error(id, Error::invalid_request())))
                 });
             }
+            ProtocolMessageShape::InvalidExitNotification => {
+                tracing::warn!("ignoring exit notification with unexpected parameters");
+                return Box::pin(async { Ok(None) });
+            }
             ProtocolMessageShape::ExitNotification => {
                 // The first session terminator owns the one raw `exit` handoff. It synchronously
                 // clears tower-lsp-server's pending registry before the remaining workers are
@@ -553,24 +553,20 @@ impl Service<Request> for MermanLspService {
         if self.session.is_terminated() {
             return Box::pin(async { Ok(None) });
         }
-        if let Some(id) = cancellation_request_id(&request) {
+        if let Some(id) = exact_cancellation_request_id(&request) {
             self.session.inner.admission_cancellations.cancel(&id);
         }
         let cancellation = request
             .id()
             .cloned()
             .and_then(|id| self.session.inner.admission_cancellations.register(id));
-        let admission = self
-            .session
-            .inner
-            .input_order
-            .admit(request.method(), request.id().is_none());
+        let admission = self.session.inner.input_order.admit(&request);
         self.route(request, admission, cancellation)
     }
 }
 
-fn cancellation_request_id(request: &Request) -> Option<Id> {
-    if request.method() != "$/cancelRequest" {
+pub(crate) fn exact_cancellation_request_id(request: &Request) -> Option<Id> {
+    if request.method() != "$/cancelRequest" || request.id().is_some() {
         return None;
     }
     serde_json::from_value::<CancelParams>(request.params()?.clone())
@@ -733,8 +729,8 @@ struct InputOrderState {
 }
 
 impl InputOrder {
-    fn admit(self: &Arc<Self>, method: &str, is_notification: bool) -> Admission {
-        match method_class(method, is_notification) {
+    fn admit(self: &Arc<Self>, request: &Request) -> Admission {
+        match method_class(request) {
             MethodClass::Control => Admission::Immediate,
             MethodClass::Read => Admission::Read {
                 order: Arc::clone(self),
@@ -837,11 +833,19 @@ enum MethodClass {
     Read,
 }
 
-fn method_class(method: &str, is_notification: bool) -> MethodClass {
-    match method {
-        "$/cancelRequest" | "exit" => MethodClass::Control,
+fn method_class(request: &Request) -> MethodClass {
+    if exact_cancellation_request_id(request).is_some()
+        || matches!(
+            ProtocolMessageShape::classify(request),
+            ProtocolMessageShape::ExitNotification
+        )
+    {
+        return MethodClass::Control;
+    }
+
+    match request.method() {
         "initialize" | "shutdown" => MethodClass::Mutation,
-        _ if is_notification => MethodClass::Mutation,
+        _ if request.id().is_none() => MethodClass::Mutation,
         _ => MethodClass::Read,
     }
 }
@@ -907,22 +911,58 @@ mod tests {
             .finish()
     }
 
+    fn id_bearing_cancel_request(request_id: i64, target_id: i64) -> Request {
+        Request::build("$/cancelRequest")
+            .params(serde_json::json!({ "id": target_id }))
+            .id(request_id)
+            .finish()
+    }
+
     #[test]
     fn protocol_methods_have_explicit_ordering_classes() {
-        assert_eq!(method_class("$/cancelRequest", true), MethodClass::Control);
-        assert_eq!(method_class("exit", true), MethodClass::Control);
-        assert_eq!(method_class("initialize", false), MethodClass::Mutation);
-        assert_eq!(method_class("shutdown", false), MethodClass::Mutation);
+        assert_eq!(method_class(&cancel_request(1)), MethodClass::Control);
         assert_eq!(
-            method_class("textDocument/didChange", true),
+            method_class(&Request::build("exit").finish()),
+            MethodClass::Control
+        );
+        assert_eq!(
+            method_class(&id_bearing_cancel_request(9, 1)),
+            MethodClass::Read
+        );
+        assert_eq!(
+            method_class(
+                &Request::build("$/cancelRequest")
+                    .params(serde_json::json!({ "unexpected": true }))
+                    .finish()
+            ),
             MethodClass::Mutation
         );
         assert_eq!(
-            method_class("future/notification", true),
+            method_class(
+                &Request::build("exit")
+                    .params(serde_json::json!({ "unexpected": true }))
+                    .finish()
+            ),
             MethodClass::Mutation
         );
         assert_eq!(
-            method_class("textDocument/completion", false),
+            method_class(&Request::build("initialize").id(1).finish()),
+            MethodClass::Mutation
+        );
+        assert_eq!(
+            method_class(&Request::build("shutdown").id(2).finish()),
+            MethodClass::Mutation
+        );
+        assert_eq!(
+            method_class(&Request::build("textDocument/didChange").finish()),
+            MethodClass::Mutation
+        );
+        assert_eq!(
+            method_class(&Request::build("future/notification").finish()),
+            MethodClass::Mutation
+        );
+        assert_eq!(
+            method_class(&Request::build("textDocument/completion").id(3).finish()),
             MethodClass::Read
         );
     }
@@ -930,9 +970,9 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn dropped_mutations_do_not_leave_admission_gaps() {
         let order = Arc::new(InputOrder::default());
-        let first = order.admit("textDocument/didOpen", true);
-        let second = order.admit("textDocument/didChange", true);
-        let read = order.admit("textDocument/completion", false);
+        let first = order.admit(&Request::build("textDocument/didOpen").finish());
+        let second = order.admit(&Request::build("textDocument/didChange").finish());
+        let read = order.admit(&Request::build("textDocument/completion").id(1).finish());
 
         drop(second);
         drop(first);
@@ -945,7 +985,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn cancellation_before_first_poll_releases_a_waiting_read() {
+    async fn unpolled_cancellation_releases_a_waiting_read() {
         let (mut service, _socket) = MermanLanguageServer::service();
         initialize_service(&mut service).await;
         let uri = "file:///tmp/cancel-before-first-poll.mmd";
@@ -953,7 +993,7 @@ mod tests {
         let open = service.call(did_open_request(uri));
         let hover = service.call(hover_request(uri, 2));
 
-        assert!(service.call(cancel_request(2)).await.unwrap().is_none());
+        drop(service.call(cancel_request(2)));
         let response = hover.await.unwrap().expect("cancelled hover response");
         assert_eq!(
             response.error().expect("request cancellation error").code,
@@ -964,7 +1004,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn cancellation_after_tower_handoff_aborts_the_registered_request() {
+    async fn executed_cancellation_aborts_a_tower_pending_request() {
         let (mut service, _socket) = MermanLanguageServer::service();
         initialize_service(&mut service).await;
         let uri = "file:///tmp/cancel-after-handoff.mmd";
@@ -986,6 +1026,67 @@ mod tests {
         assert_eq!(
             response.error().expect("request cancellation error").code,
             tower_lsp_server::jsonrpc::ErrorCode::RequestCancelled
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn id_bearing_cancel_does_not_cancel_a_request_before_first_poll() {
+        let (mut service, _socket) = MermanLanguageServer::service();
+        initialize_service(&mut service).await;
+        let uri = "file:///tmp/id-bearing-cancel-before-first-poll.mmd";
+
+        let open = service.call(did_open_request(uri));
+        let hover = service.call(hover_request(uri, 2));
+        let rejection = service.call(id_bearing_cancel_request(99, 2));
+        tokio::pin!(rejection);
+
+        assert!(
+            futures::poll!(&mut rejection).is_pending(),
+            "pseudo-control requests must follow ordinary read ordering"
+        );
+        assert!(open.await.unwrap().is_none());
+
+        let rejection = rejection
+            .await
+            .unwrap()
+            .expect("ID-bearing cancel rejection");
+        assert_eq!(
+            rejection.error().expect("invalid request error").code,
+            tower_lsp_server::jsonrpc::ErrorCode::InvalidRequest
+        );
+
+        let response = hover.await.unwrap().expect("hover response");
+        assert!(response.is_ok(), "pseudo-cancel must not cancel the hover");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn id_bearing_cancel_does_not_cancel_a_tower_pending_request() {
+        let (mut service, _socket) = MermanLanguageServer::service();
+        initialize_service(&mut service).await;
+        let uri = "file:///tmp/id-bearing-cancel-after-handoff.mmd";
+        assert!(service.call(did_open_request(uri)).await.unwrap().is_none());
+
+        let state = Arc::clone(&service.session.inner.state);
+        let state = state.lock().await;
+        let completion = service.call(completion_request(uri, 2));
+        tokio::pin!(completion);
+        assert!(futures::poll!(&mut completion).is_pending());
+
+        let rejection = service
+            .call(id_bearing_cancel_request(99, 2))
+            .await
+            .unwrap()
+            .expect("ID-bearing cancel rejection");
+        assert_eq!(
+            rejection.error().expect("invalid request error").code,
+            tower_lsp_server::jsonrpc::ErrorCode::InvalidRequest
+        );
+
+        drop(state);
+        let response = completion.await.unwrap().expect("completion response");
+        assert!(
+            response.is_ok(),
+            "pseudo-cancel must not cancel the Tower pending request"
         );
     }
 
@@ -1025,6 +1126,34 @@ mod tests {
         let request = lock_recovering_poison(&inner)
             .call(Request::build("textDocument/hover").id(2).finish());
         assert!(request.await.is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn exit_notification_with_params_does_not_terminate_the_session() {
+        let (mut service, _socket) = MermanLanguageServer::service();
+        initialize_service(&mut service).await;
+        let session = service.session.clone();
+
+        assert!(
+            service
+                .call(
+                    Request::build("exit")
+                        .params(serde_json::json!({ "unexpected": true }))
+                        .finish()
+                )
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(session.termination_count(), 0);
+        assert!(!session.is_terminated());
+
+        let shutdown = service
+            .call(Request::build("shutdown").id(3).finish())
+            .await
+            .unwrap()
+            .expect("shutdown response after malformed exit notification");
+        assert!(shutdown.error().is_none());
     }
 
     #[tokio::test(flavor = "current_thread")]
