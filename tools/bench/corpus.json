@@ -184,6 +184,37 @@
         "svg_viewbox_width",
         "svg_viewbox_height"
       ]
+    },
+    {
+      "id": "state-rough-retained-lifecycle",
+      "kind": "public",
+      "owner": "merman-render",
+      "public_operation": "render-svg",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "reused-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 2057,
+      "transport": "native-library-test-probe",
+      "required_features": [],
+      "selector": "state_rough_lifecycle/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 16, 64, 256, 1024, 2048],
+      "workload": "state-rough-seeded-long-lived-v1",
+      "evidence_contract": "docs/performance/contracts/state-rough-lifecycle-v1.json",
+      "measurement_metrics": [
+        "operation_cache_hits",
+        "cross_operation_cache_hits",
+        "post_operation_retained_entries",
+        "post_operation_retained_owned_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "svg_sha256",
+        "svg_bytes",
+        "svg_elements",
+        "configured_zero_seed_resolution",
+        "fallback_bypass"
+      ]
     }
   ],
   "fixtures": [

@@ -50,6 +50,12 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         state_render_settings.hand_drawn_seed,
         "render.state.roughjs",
     );
+    #[cfg(test)]
+    let rough_lifecycle_probe = StateRoughLifecycleOperationProbe::new(
+        state_render_settings.hand_drawn_seed,
+        hand_drawn_seed.seed().number(),
+        !hand_drawn_seed.seed().may_use_math_random(),
+    );
 
     let has_acc_title = model
         .acc_title
@@ -123,8 +129,9 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         measurer,
         text_style,
         theme_defaults: StateThemeDefaults::from_config(effective_config),
-        rough_circle_cache: std::cell::RefCell::new(FxHashMap::default()),
-        rough_paths_cache: std::cell::RefCell::new(FxHashMap::default()),
+        rough_cache: StateRoughCache::default(),
+        #[cfg(test)]
+        rough_lifecycle_probe,
     };
 
     fn compute_state_nested_roots(ctx: &StateRenderCtx<'_>) -> std::collections::BTreeSet<String> {
@@ -441,6 +448,15 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
             detail.self_loop_placeholders,
         );
     }
+    #[cfg(test)]
+    {
+        let completed = root_document.complete(out);
+        if completed.is_ok() {
+            ctx.rough_lifecycle_probe.mark_success();
+        }
+        completed
+    }
+    #[cfg(not(test))]
     root_document.complete(out)
 }
 

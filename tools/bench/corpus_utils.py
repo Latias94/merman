@@ -43,6 +43,7 @@ _ENGINE_LIFECYCLES = frozenset(
 _TRANSPORTS = frozenset(
     {
         "native-criterion",
+        "native-library-test-probe",
         "native-system-allocator-subprocess",
         "node-napi",
         "node-wasm",
@@ -294,6 +295,23 @@ def _load_lanes(data: dict[str, object], schema_version: int) -> tuple[LaneMetad
                     raise ValueError(
                         f"memory lane {lane_id} is missing semantic output evidence"
                     )
+        if transport == "native-library-test-probe":
+            if process_lifecycle != "reused-process":
+                raise ValueError(
+                    f"library-test probe lane {lane_id} must use reused-process lifecycle"
+                )
+            if engine_lifecycle != "reused-engine":
+                raise ValueError(
+                    f"library-test probe lane {lane_id} must use reused-engine lifecycle"
+                )
+            if evidence_contract is None:
+                raise ValueError(
+                    f"library-test probe lane {lane_id} requires an owner evidence contract"
+                )
+            if not size_vector:
+                raise ValueError(
+                    f"library-test probe lane {lane_id} requires lifecycle checkpoints"
+                )
         if kind == "public":
             if diagnostic_stage is not None or parent_public_lane is not None:
                 raise ValueError(
