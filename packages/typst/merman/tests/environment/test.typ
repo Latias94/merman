@@ -5,7 +5,7 @@
 )
 
 #let source = "flowchart LR
-  Input[Environment options] --> Output[Options schema 1]
+  Input[Environment options] --> Output[Options schema 2]
 "
 
 #let default-result = mermaid-result(source)
@@ -58,6 +58,7 @@
   text-measurement: "invalid-direct-text",
   math-renderer: "invalid-direct-math",
   options: (
+    version: 2,
     environment: (
       text_measurement: "deterministic",
       math_renderer: "none",
@@ -84,7 +85,7 @@
 
 #let legacy-layout-result = mermaid-result(
   source,
-  options: (layout: (text_measurer: "deterministic")),
+  options: (version: 2, layout: (text_measurer: "deterministic")),
 )
 #assert(not legacy-layout-result.ok, message: "removed layout environment fields must fail closed")
 #assert.eq(legacy-layout-result.code_name, "MERMAN_OPTIONS_JSON_ERROR")
