@@ -3,7 +3,7 @@ import type {
   BindingStatusCodeName,
   DiagramFamilyCapability,
   DiagramType,
-  HostThemePresetName,
+  BundledThemePresetName,
   LintBindingOptions,
   LintRuleCatalogEntry,
   LintRuleCatalogResponse,
@@ -64,6 +64,39 @@ export interface RuntimeCatalog {
     diagram_family_count: number;
   };
   resources: RuntimeResourceContract;
+}
+
+export interface PresentationCatalog {
+  schema_version: 1;
+  theme_presets: PresentationThemePresetCatalogEntry[];
+  profiles: PresentationProfileCatalogEntry[];
+}
+
+export interface PresentationThemePresetCatalogEntry {
+  id: string;
+  appearance: string;
+  fully_available: boolean;
+  missing_capability_ids: string[];
+}
+
+export interface PresentationProfileCatalogEntry {
+  id: string;
+  fully_available: boolean;
+  missing_capability_ids: string[];
+  aspects: PresentationAspectCatalogEntry[];
+}
+
+export interface PresentationAspectCatalogEntry {
+  id: string;
+  applicability: PresentationAspectApplicability;
+  required_capability_id: string | null;
+  available: boolean;
+  missing_capability_ids: string[];
+}
+
+export interface PresentationAspectApplicability {
+  kind: string;
+  family_id: string | null;
 }
 
 export interface RuntimePayloadSchema {
@@ -138,8 +171,12 @@ export interface SvgOptions {
   viewBoxPadding?: number;
 }
 
-export type HostThemeAppearance = "light" | "dark";
+export type PresentationThemeAppearance = "light" | "dark";
 
+/** @deprecated Use PresentationThemeAppearance. */
+export type HostThemeAppearance = PresentationThemeAppearance;
+
+/** @deprecated Use PresentationThemeOptions.roles with kebab-case role IDs. */
 export interface HostThemeRolesOptions {
   canvas?: string;
   surface?: string;
@@ -165,6 +202,7 @@ export interface HostThemeRolesOptions {
   success?: string;
 }
 
+/** @deprecated Configure output with SvgOptions. */
 export interface HostThemeOutputOptions {
   pipeline?: "parity" | "readable" | "resvg-safe";
   css_override_policy?: "preserve" | "strip-existing-important";
@@ -173,8 +211,9 @@ export interface HostThemeOutputOptions {
   scoped_css?: string;
 }
 
+/** @deprecated Use PresentationThemeOptions. This legacy shape is not accepted by Options JSON schema 2. */
 export interface HostThemeOptions {
-  preset?: HostThemePresetName;
+  preset?: BundledThemePresetName;
   appearance?: HostThemeAppearance;
   font_family?: string;
   font_size?: string;
@@ -183,6 +222,20 @@ export interface HostThemeOptions {
   output?: HostThemeOutputOptions;
   theme_variables?: Record<string, unknown>;
   site_config?: MermaidSiteConfig;
+}
+
+export interface PresentationThemeOptions {
+  preset?: string;
+  appearance?: PresentationThemeAppearance;
+  font_family?: string;
+  font_size?: string;
+  roles?: Record<string, string>;
+  series_palette?: string[];
+}
+
+export interface PresentationOptions {
+  profile?: string;
+  theme?: PresentationThemeOptions;
 }
 
 export type MermaidSiteConfig = Record<string, unknown>;
@@ -275,7 +328,7 @@ export interface AsciiBindingOptions extends CommonBindingOptions {
 }
 
 export interface SvgBindingOptions extends CommonBindingOptions {
-  host_theme?: HostThemeOptions;
+  presentation?: PresentationOptions;
   environment?: RenderEnvironmentOptions;
   layout?: LayoutOptions;
   svg?: SvgOptions;
@@ -614,9 +667,17 @@ export interface SvgPlanResult {
   schema_version: 1;
   planned_operation_id: "svg";
   diagram_type: string;
+  presentation_profile_id: string | null;
+  presentation_aspects: SvgPlanPresentationAspect[];
   required_capability_ids: string[];
   missing_capability_ids: string[];
   ready: boolean;
+}
+
+export interface SvgPlanPresentationAspect {
+  id: string;
+  state: string;
+  required_capability_id: string | null;
 }
 
 export interface AvailableDiagramDetectionFacts {
@@ -1021,10 +1082,10 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   asciiSupportedDiagrams: () => string[];
   asciiCapabilities: () => AsciiCapability[];
   runtimeCatalog: () => RuntimeCatalog;
+  presentationCatalog: () => PresentationCatalog;
   diagramFamilyCapabilities: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];
-  supportedHostThemePresets: () => string[];
   supportedThemes: () => string[];
 }
 

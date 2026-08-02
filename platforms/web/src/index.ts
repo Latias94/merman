@@ -1,5 +1,6 @@
 export {
   BINDING_STATUS_CODE_NAMES,
+  BUNDLED_THEME_PRESETS,
   SYSTEM_ADAPTER_IDS,
   TEXT_MEASUREMENT_PROVIDER_IDS,
   WEB_CAPABILITIES,
@@ -13,10 +14,12 @@ export {
   isAsciiDiagramType,
   isBindingErrorPayload,
   isBindingStatusCodeName,
+  isBundledThemePresetName,
   isDiagramType,
   isHostThemePresetName,
   isThemeName,
   normalizeHostThemePresetName,
+  normalizeBundledThemePresetName,
   normalizeThemeName,
 } from "./public-catalog.js";
 export type * from "./public-catalog.js";
@@ -60,6 +63,7 @@ export {
   initMerman,
   isMermanInitialized,
   packageVersion,
+  presentationCatalog,
   runtimeCatalog,
   supportedDiagrams,
   supportedThemes,

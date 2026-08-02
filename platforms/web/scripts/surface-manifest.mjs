@@ -29,6 +29,7 @@ const analysisWasmExportNames = [
 
 const metadataRuntimeExportNames = [
   "runtimeCatalog",
+  "presentationCatalog",
   "supportedDiagrams",
   "diagramFamilyCapabilities",
   "supportedThemes",
@@ -38,6 +39,7 @@ const metadataRuntimeExportNames = [
 
 const metadataWasmExportNames = [
   "runtimeCatalog",
+  "presentationCatalog",
   "supportedDiagrams",
   "diagramFamilyCapabilities",
   "supportedThemes",
@@ -69,7 +71,6 @@ const renderWasmExportNames = [
   "layoutJsonWithTextMeasurer",
   "parseJson",
   "layoutJson",
-  "supportedHostThemePresets",
 ];
 
 const asciiRuntimeExportNames = [
@@ -131,6 +132,7 @@ const editorDescriptorValueExportNames = [
 export const packageStableValueExportNames = [
   "MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION",
   "UNAVAILABLE_DIAGRAM_DETECTION",
+  "BUNDLED_THEME_PRESETS",
   "SUPPORTED_THEMES",
   "SUPPORTED_HOST_THEME_PRESETS",
   "SUPPORTED_DIAGRAMS",
@@ -141,8 +143,10 @@ export const packageStableValueExportNames = [
   "isDiagramType",
   "isAsciiDiagramType",
   "isBindingStatusCodeName",
+  "isBundledThemePresetName",
   "isBindingErrorPayload",
   "normalizeThemeName",
+  "normalizeBundledThemePresetName",
   "normalizeHostThemePresetName",
   "encodeOptions",
 ];
