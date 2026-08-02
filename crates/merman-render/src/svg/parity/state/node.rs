@@ -29,7 +29,7 @@ pub(super) fn render_state_node_svg(
         key: StateRoughCacheKey,
         allow_cache: bool,
         build: impl FnOnce() -> String,
-    ) -> Arc<String> {
+    ) -> Rc<String> {
         #[cfg(test)]
         ctx.rough_lifecycle_probe
             .record_draw_request(StateRoughGeometryKind::Circle);
@@ -37,7 +37,7 @@ pub(super) fn render_state_node_svg(
             #[cfg(test)]
             ctx.rough_lifecycle_probe
                 .record_bypass_build(StateRoughGeometryKind::Circle);
-            return Arc::new(build());
+            return Rc::new(build());
         }
         #[cfg(test)]
         ctx.rough_lifecycle_probe
@@ -52,45 +52,14 @@ pub(super) fn render_state_node_svg(
         #[cfg(test)]
         ctx.rough_lifecycle_probe
             .record_operation_miss(StateRoughGeometryKind::Circle);
-
-        if let Some(v) = state_tls_get_circle(key) {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_tls_hit(StateRoughGeometryKind::Circle);
-            ctx.rough_cache.insert_circle(key, Arc::clone(&v));
-            #[cfg(test)]
-            state_rough_lifecycle_observe_operation_cache(ctx);
-            return v;
-        }
-
-        if let Ok(global) = state_global_rough_circle_cache().lock()
-            && let Some(v) = global.get(&key)
-        {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_global_hit(StateRoughGeometryKind::Circle);
-            let v = Arc::clone(v);
-            state_tls_put_circle(key, Arc::clone(&v));
-            ctx.rough_cache.insert_circle(key, Arc::clone(&v));
-            #[cfg(test)]
-            state_rough_lifecycle_observe_operation_cache(ctx);
-            return v;
-        }
-
         #[cfg(test)]
         ctx.rough_lifecycle_probe
             .record_operation_build(StateRoughGeometryKind::Circle);
-        let built = Arc::new(build());
-        let cached = if let Ok(mut global) = state_global_rough_circle_cache().lock() {
-            Arc::clone(global.entry(key).or_insert_with(|| Arc::clone(&built)))
-        } else {
-            Arc::clone(&built)
-        };
-        state_tls_put_circle(key, Arc::clone(&cached));
-        ctx.rough_cache.insert_circle(key, Arc::clone(&cached));
+        let built = Rc::new(build());
+        ctx.rough_cache.insert_circle(key, Rc::clone(&built));
         #[cfg(test)]
         state_rough_lifecycle_observe_operation_cache(ctx);
-        cached
+        built
     }
 
     #[inline]
@@ -99,7 +68,7 @@ pub(super) fn render_state_node_svg(
         key: StateRoughCacheKey,
         allow_cache: bool,
         build: impl FnOnce() -> (String, String),
-    ) -> (Arc<String>, Arc<String>) {
+    ) -> (Rc<String>, Rc<String>) {
         #[cfg(test)]
         ctx.rough_lifecycle_probe
             .record_draw_request(StateRoughGeometryKind::Paths);
@@ -108,7 +77,7 @@ pub(super) fn render_state_node_svg(
             ctx.rough_lifecycle_probe
                 .record_bypass_build(StateRoughGeometryKind::Paths);
             let (fill_d, stroke_d) = build();
-            return (Arc::new(fill_d), Arc::new(stroke_d));
+            return (Rc::new(fill_d), Rc::new(stroke_d));
         }
         #[cfg(test)]
         ctx.rough_lifecycle_probe
@@ -123,52 +92,16 @@ pub(super) fn render_state_node_svg(
         #[cfg(test)]
         ctx.rough_lifecycle_probe
             .record_operation_miss(StateRoughGeometryKind::Paths);
-
-        if let Some(v) = state_tls_get_paths(key) {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_tls_hit(StateRoughGeometryKind::Paths);
-            ctx.rough_cache
-                .insert_paths(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
-            #[cfg(test)]
-            state_rough_lifecycle_observe_operation_cache(ctx);
-            return v;
-        }
-
-        if let Ok(global) = state_global_rough_paths_cache().lock()
-            && let Some((fill_d, stroke_d)) = global.get(&key)
-        {
-            #[cfg(test)]
-            ctx.rough_lifecycle_probe
-                .record_global_hit(StateRoughGeometryKind::Paths);
-            let v = (Arc::clone(fill_d), Arc::clone(stroke_d));
-            state_tls_put_paths(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
-            ctx.rough_cache
-                .insert_paths(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
-            #[cfg(test)]
-            state_rough_lifecycle_observe_operation_cache(ctx);
-            return v;
-        }
-
         #[cfg(test)]
         ctx.rough_lifecycle_probe
             .record_operation_build(StateRoughGeometryKind::Paths);
         let (fill_d, stroke_d) = build();
-        let built = (Arc::new(fill_d), Arc::new(stroke_d));
-        let cached = if let Ok(mut global) = state_global_rough_paths_cache().lock() {
-            let entry = global
-                .entry(key)
-                .or_insert_with(|| (Arc::clone(&built.0), Arc::clone(&built.1)));
-            (Arc::clone(&entry.0), Arc::clone(&entry.1))
-        } else {
-            (Arc::clone(&built.0), Arc::clone(&built.1))
-        };
-        state_tls_put_paths(key, (Arc::clone(&cached.0), Arc::clone(&cached.1)));
+        let built = (Rc::new(fill_d), Rc::new(stroke_d));
         ctx.rough_cache
-            .insert_paths(key, (Arc::clone(&cached.0), Arc::clone(&cached.1)));
+            .insert_paths(key, (Rc::clone(&built.0), Rc::clone(&built.1)));
         #[cfg(test)]
         state_rough_lifecycle_observe_operation_cache(ctx);
-        cached
+        built
     }
 
     let node_class = if node.css_classes.trim().is_empty() {

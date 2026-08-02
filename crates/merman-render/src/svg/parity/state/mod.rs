@@ -1,6 +1,6 @@
 use super::*;
 use rustc_hash::FxHashMap;
-use std::sync::Arc;
+use std::rc::Rc;
 mod context;
 mod edge;
 mod links;
