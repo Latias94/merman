@@ -1,6 +1,8 @@
 use crate::architecture_metrics::{
     architecture_cytoscape_child_contribution_bounds, architecture_cytoscape_child_label_bounds,
-    architecture_cytoscape_edge_label_metrics, architecture_measure_cytoscape_node_bbox_extras,
+    architecture_cytoscape_edge_label_metrics,
+    architecture_measure_cytoscape_compound_child_bbox_extras,
+    architecture_measure_cytoscape_final_node_bbox_extras,
     architecture_node_bbox_extras_to_manatee,
 };
 use crate::config::{config_f64, json_f64, value_at};
@@ -509,8 +511,9 @@ fn architecture_cytoscape_edge_text_style() -> TextStyle {
 fn architecture_fcose_node_bounds_extras<'a>(
     input: ArchitectureFcoseNodeBoundsExtrasInput<'_, 'a>,
 ) -> FxHashMap<&'a str, manatee::BoundsExtras> {
-    // Capture Cytoscape's leaf body, node label, and final bbox phases without changing the
-    // layout node size. Manatee consumes the resulting extras for compound sizing and relocation.
+    // Capture Cytoscape's custom compound-child bbox for grouped leaves and its final element bbox
+    // for top-level leaves without changing layout node size. Manatee consumes the selected extras
+    // for compound sizing and relocation.
     //
     // Relocation-centering stays inside manatee's indexed graph adapter; keeping it out of this
     // renderer-side helper avoids a second, unused pre-layout bbox model.
@@ -525,13 +528,23 @@ fn architecture_fcose_node_bounds_extras<'a>(
     let mut node_bounds_extras: FxHashMap<&str, manatee::BoundsExtras> = FxHashMap::default();
     node_bounds_extras.reserve(model.nodes.len().saturating_mul(2));
     for n in &model.nodes {
-        let bounds_extras = architecture_measure_cytoscape_node_bbox_extras(
-            n.title,
-            text_measurer,
-            &text_style,
-            icon_size,
-            font_size_px,
-        );
+        let bounds_extras = if n.in_group.is_some() {
+            architecture_measure_cytoscape_compound_child_bbox_extras(
+                n.title,
+                text_measurer,
+                &text_style,
+                icon_size,
+                font_size_px,
+            )
+        } else {
+            architecture_measure_cytoscape_final_node_bbox_extras(
+                n.title,
+                text_measurer,
+                &text_style,
+                icon_size,
+                font_size_px,
+            )
+        };
         node_bounds_extras.insert(
             n.id,
             architecture_node_bbox_extras_to_manatee(bounds_extras),
@@ -1903,12 +1916,20 @@ mod tests {
     #[test]
     fn architecture_fcose_node_bounds_extras_feed_label_bounds() {
         let model = super::ArchitectureModelView {
-            nodes: vec![super::ArchitectureNodeView {
-                id: "api",
-                node_type: super::ArchitectureNodeType::Service,
-                title: Some("API"),
-                in_group: Some("core"),
-            }],
+            nodes: vec![
+                super::ArchitectureNodeView {
+                    id: "api",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: Some("API"),
+                    in_group: Some("core"),
+                },
+                super::ArchitectureNodeView {
+                    id: "external",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: Some("API"),
+                    in_group: None,
+                },
+            ],
             groups: vec![super::ArchitectureGroupView {
                 id: "core",
                 in_group: None,
@@ -1926,12 +1947,19 @@ mod tests {
                 font_size_px: 16.0,
             },
         );
-        let extras = node_bounds_extras.get("api").expect("api node extras");
+        let grouped = node_bounds_extras.get("api").expect("api node extras");
+        let top_level = node_bounds_extras
+            .get("external")
+            .expect("external node extras");
 
-        assert_eq!(extras.top, 1.0);
-        assert_eq!(extras.bottom, 19.0);
-        assert_eq!(extras.left, 1.0);
-        assert_eq!(extras.right, 1.0);
+        assert_eq!(grouped.top, 1.0);
+        assert_eq!(grouped.bottom, 18.0);
+        assert_eq!(grouped.left, 1.0);
+        assert_eq!(grouped.right, 1.0);
+        assert_eq!(top_level.top, 1.0);
+        assert_eq!(top_level.bottom, 19.0);
+        assert_eq!(top_level.left, 1.0);
+        assert_eq!(top_level.right, 1.0);
     }
 
     #[test]
