@@ -111,9 +111,10 @@ stress baselines; the gap is that the parity gate does not consume their label g
 - R15. Remove obsolete compatibility branches, duplicate edge-label geometry, incorrect optimized
   ordering paths, stale coverage claims, and abandoned experimental code once their replacements
   pass parity and performance verification.
-- R16. Re-run relevant performance benchmarks after correctness is restored. A median regression
-  greater than 15 percent across five comparable Windows samples must be corrected or supported by
-  a new source-equivalent optimization before completion.
+- R16. Re-run relevant performance evidence after correctness is restored using
+  `docs/performance/RUNBOOK.md`. Ordinary end-to-end work fails only at the preregistered joint
+  `>10% AND >50us` regression threshold after valid same-machine A/A calibration and fresh AB/BA
+  confirmation; structural changes also require an exact work counter or scale curve.
 
 ### Acceptance Examples
 
@@ -203,8 +204,9 @@ Out of scope:
   Characterize each existing family before deleting its local implementation; family-specific
   translation remains in the adapter, not in the shared geometry kernel.
 - KTD8. Locate Dagre regressions by comparing identical serialized input and the earliest divergent
-  output phase. Recent ordering-workspace and BK-index commits are a bisect range, not proof. Delete
-  or replace an optimization only when it changes pinned iteration or tie-break semantics.
+  output phase. Restore test-only reference oracles from the parents of the ordering-workspace and
+  BK-workspace commits for phase comparison. The recent commits are a bisect range, not proof.
+  Delete or replace an optimization only when it changes pinned iteration or tie-break semantics.
 - KTD9. Fix ELK edge identity at the phase where it first diverges. Never relabel a different route,
   reverse all parallel edges, or sort final SVG labels to hide an importer or ordering defect.
 - KTD10. Residual acceptance is a versioned evidence record, not a family-wide tolerance. A row is
@@ -439,7 +441,8 @@ Approach:
 - Separate path-frame geometry from family translations and label DOM emission.
 - Recheck Requirement after U6 has aligned its raw edge-label dummy. Then compare prepared-label
   association, root translation, and SVG output before applying the shared geometry. Migrate and
-  delete duplicate helpers only where outputs are proven equivalent.
+  delete duplicate helpers only where outputs are proven equivalent. Bind layout edges and prepared
+  label plans structurally instead of relying on parallel-array `zip` association.
 
 Test scenarios:
 
@@ -516,6 +519,10 @@ Approach:
 - Use the phase evidence to audit changes introduced by `4da48915e`, `ef448eaad`, `e6d61eca7`,
   `e995b0b5a`, and transient-node retirement. Restore pinned iteration and tie-break semantics at the
   responsible abstraction.
+- Remove the legacy/monotonic Type-2 dual contract and tests that accept divergent public/reference
+  results. Canonicalize the production layering once, and benchmark reachable compound inputs.
+- Restore directed Graphlib `predecessors` and `successors` as unique adjacent-node queries for
+  multigraphs; callers that need per-edge multiplicity must use edge iteration explicitly.
 - Delete indexed workspaces or retained conflict indexes when they cannot express stable source
   order. Do not retain a fallback implementation.
 - After parity is green, add only measured order-preserving indexes needed to satisfy R16.
@@ -523,6 +530,8 @@ Approach:
 Test scenarios:
 
 - All U5 minimal differentials match the JS reference.
+- Directed parallel edges do not duplicate adjacency-node results, while in/out edge queries retain
+  every named multiedge.
 - Known State concurrency and Class mirror canaries converge without renderer offsets.
 - Requirement, ER, and Dagre Flowchart consumers retain edge and label identities.
 - Benchmarks cover representative small, medium, dense, compound, and multiedge graphs.
@@ -532,7 +541,7 @@ Verification:
 - `dugong` and `dugong-graphlib` tests pass.
 - State, Class, ER, and relevant Flowchart compares pass their semantic label gates. Requirement's
   raw Dagre phases match and its final updated-path label admission remains owned by U4.
-- Five-sample benchmark medians satisfy R16.
+- The repository performance confirmation contract satisfies R16.
 
 ### U7. Flowchart ELK Parallel-Edge Identity
 
@@ -690,10 +699,12 @@ Evidence and consistency:
 
 Performance:
 
-- Capture five comparable Windows benchmark samples before the responsible Dugong edit and after
-  final correctness changes.
+- Preregister the relevant public operations, structural input variables, exact work counter or
+  scale curve, and fixed statistical settings before inspecting results.
+- Run at least eight balanced base A/A pairs, eight balanced head A/A pairs, and the power-derived
+  fresh AB/BA confirmation count through the Windows-compatible repository harness.
 - Compare representative Dugong layout benchmarks and Merman State, Class, Requirement, and
-  Flowchart pipeline fixtures against R16.
+  Flowchart pipeline fixtures against R16; inconclusive evidence is not a pass or a speedup claim.
 
 ## Definition of Done
 
@@ -713,7 +724,7 @@ Performance:
   experiment remains.
 - Signed upstream SVGs remain unchanged except for a separately proven missing pinned evidence case
   generated with the correct toolchain and manifest metadata.
-- All Verification Contract gates pass, and benchmark medians satisfy R16.
+- All Verification Contract gates pass, and performance evidence satisfies R16.
 - Changes are organized into focused Conventional Commit commits. The branch is ready for maintainer
   review without requiring a push or PR.
 
@@ -734,8 +745,11 @@ Performance:
   `crates/xtask/src/cmd/debug/dagre_reference.rs`, and `tools/dagre-harness/run.mjs`.
 - Historical green State verification:
   `docs/knowledge/engineering/verification/2026-07-10-state-1116-svg-dom-layout-parity.md`.
+- Historical green implementation commit: `88ce0cd3a`.
 - Suspect Dugong change window: commits `4da48915e`, `ef448eaad`, `e6d61eca7`, and `e995b0b5a`.
 - Requirement change window: commits `c3130d4dc` and `8d45b8634`.
+- Performance evidence contract: `docs/performance/RUNBOOK.md` and
+  `docs/performance/BENCHMARKING.md`.
 - ELK evidence: `crates/merman-layout-elk/src/lib.rs`, `crates/merman-elk-layered/src/`, and
   `crates/xtask/src/cmd/debug/flowchart.rs`.
 - Architecture signed evidence:
