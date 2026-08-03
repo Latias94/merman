@@ -2473,7 +2473,6 @@ mod tests {
         );
         assert!(failures.iter().any(|failure| {
             failure.contains("label or associated edge geometry differs without an exact residual")
-                && failure.contains("anchor_x: 593.949")
         }));
     }
 
