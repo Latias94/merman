@@ -9,6 +9,13 @@ use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::sync::{Arc, OnceLock};
 
+mod civil;
+
+pub use civil::{
+    CivilDate, CivilDateTime, IsoWeek, OffsetDateTime, ParseCivilDateError, UtcOffset, Weekday,
+    days_in_month, is_leap_year,
+};
+
 /// Stable evidence for the local-time rules used by an engine or render operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalTimeZoneProvenance {
