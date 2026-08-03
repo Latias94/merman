@@ -112,8 +112,14 @@ pub(crate) fn class_member_create_text_input(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClassLayoutEngine {
     Dagre,
+    CaptureDagreInput,
     #[cfg(feature = "layout-elk")]
     Elk(Option<elk::ElkOperationSeed>),
+}
+
+enum ClassLayoutResult {
+    Layout(ClassDiagramLayout),
+    DagreInput(ClassLayoutGraph),
 }
 
 fn normalize_dir(direction: &str) -> String {
@@ -1917,14 +1923,17 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<ClassDiagramLayout> {
-    layout_class_diagram_typed_inner(
+    match layout_class_diagram_typed_inner(
         model,
         effective_config.as_value(),
         effective_config,
         measurer,
         math_renderer,
         ClassLayoutEngine::Dagre,
-    )
+    )? {
+        ClassLayoutResult::Layout(layout) => Ok(layout),
+        ClassLayoutResult::DagreInput(_) => unreachable!("Dagre layout returned its input graph"),
+    }
 }
 
 #[cfg(feature = "layout-elk")]
@@ -1939,14 +1948,17 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
 ) -> Result<ClassDiagramLayout> {
-    layout_class_diagram_typed_inner(
+    match layout_class_diagram_typed_inner(
         model,
         effective_config.as_value(),
         effective_config,
         measurer,
         math_renderer,
         ClassLayoutEngine::Elk(Some(operation_seed)),
-    )
+    )? {
+        ClassLayoutResult::Layout(layout) => Ok(layout),
+        ClassLayoutResult::DagreInput(_) => unreachable!("ELK layout returned a Dagre input graph"),
+    }
 }
 
 fn layout_class_diagram_typed_inner(
@@ -1956,7 +1968,7 @@ fn layout_class_diagram_typed_inner(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     engine: ClassLayoutEngine,
-) -> Result<ClassDiagramLayout> {
+) -> Result<ClassLayoutResult> {
     validate_class_namespace_hierarchy(model)?;
     let diagram_dir = rank_dir_from(&model.direction);
     let ClassLayoutSettings {
@@ -2309,6 +2321,10 @@ fn layout_class_diagram_typed_inner(
         );
     }
 
+    if engine == ClassLayoutEngine::CaptureDagreInput {
+        return Ok(ClassLayoutResult::DagreInput(*g));
+    }
+
     #[cfg(feature = "layout-elk")]
     if let ClassLayoutEngine::Elk(operation_seed) = engine {
         return layout_class_diagram_elk_from_graph(
@@ -2328,7 +2344,8 @@ fn layout_class_diagram_typed_inner(
                 operation_seed,
             },
             measurer,
-        );
+        )
+        .map(ClassLayoutResult::Layout);
     }
 
     let _ = engine;
@@ -2493,7 +2510,7 @@ fn layout_class_diagram_typed_inner(
 
     let bounds = compute_bounds(&nodes, &edges, &clusters);
 
-    Ok(ClassDiagramLayout {
+    Ok(ClassLayoutResult::Layout(ClassDiagramLayout {
         nodes,
         edges,
         clusters,
@@ -2501,7 +2518,30 @@ fn layout_class_diagram_typed_inner(
         uses_elk_adapter_dom: false,
         class_label_plans_by_id,
         render_tree,
-    })
+    }))
+}
+
+/// Debug-only helper: builds the production Class Dagre graph and returns it before layout runs.
+///
+/// The capture mode shares the complete production graph-construction path, including measured
+/// node and edge-label dimensions, declaration order, named multiedges, and namespace parents.
+#[doc(hidden)]
+pub fn debug_build_class_diagram_dagre_graph(
+    model: &ClassDiagramModel,
+    effective_config: &merman_core::MermaidConfig,
+    measurer: &dyn TextMeasurer,
+) -> Result<ClassLayoutGraph> {
+    match layout_class_diagram_typed_inner(
+        model,
+        effective_config.as_value(),
+        effective_config,
+        measurer,
+        None,
+        ClassLayoutEngine::CaptureDagreInput,
+    )? {
+        ClassLayoutResult::DagreInput(graph) => Ok(graph),
+        ClassLayoutResult::Layout(_) => unreachable!("Class Dagre input capture ran layout"),
+    }
 }
 
 fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
@@ -3146,10 +3186,45 @@ mod tests {
     use dugong::graphlib::{Graph, GraphOptions};
     use dugong::{EdgeLabel, GraphLabel, NodeLabel};
     use merman_core::models::class_diagram::Namespace;
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
     use crate::text::{
         TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
     };
+
+    #[test]
+    fn class_dagre_debug_input_uses_the_production_graph_and_source_identity_order() {
+        let source =
+            include_str!("../../../fixtures/class/stress_class_many_relations_labels_020.mmd");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .expect("parse Class fixture")
+            .expect("detect Class fixture");
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class render model");
+        };
+        let graph = super::debug_build_class_diagram_dagre_graph(
+            model,
+            &parsed.metadata().effective_config,
+            &VendoredFontMetricsTextMeasurer::default(),
+        )
+        .expect("build Class Dagre input");
+
+        assert_eq!(graph.node_ids(), ["A", "B", "C", "D", "E"]);
+        assert!(graph.node_ids().into_iter().all(|id| {
+            graph
+                .node(&id)
+                .is_some_and(|node| node.x.is_none() && node.y.is_none())
+        }));
+        assert_eq!(
+            graph
+                .edge_keys()
+                .into_iter()
+                .map(|edge| edge.name.expect("named Class edge"))
+                .collect::<Vec<_>>(),
+            ["0", "1", "2", "3", "4", "5", "6", "7"]
+        );
+    }
 
     #[cfg(feature = "layout-elk")]
     #[test]
