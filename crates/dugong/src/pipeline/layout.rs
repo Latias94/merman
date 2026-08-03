@@ -59,8 +59,6 @@ fn build_layout_graph(
                 ..NodeLabel::default()
             },
         );
-    }
-    for id in input.nodes() {
         if let Some(parent) = input.parent(id) {
             layout.set_parent_ref(id, parent);
         }
@@ -566,4 +564,46 @@ fn fixup_edge_label_coords(graph: &mut graphlib::Graph<NodeLabel, EdgeLabel, Gra
         }
         edge.x = Some(x);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_layout_graph_interleaves_node_and_parent_insertion() {
+        let mut input = graphlib::Graph::new(graphlib::GraphOptions {
+            multigraph: true,
+            compound: true,
+            directed: true,
+        });
+        input.set_graph(GraphLabel::default());
+        input.set_node(
+            "child",
+            NodeLabel {
+                width: 10.0,
+                height: 20.0,
+                ..Default::default()
+            },
+        );
+        input.set_node("sibling", NodeLabel::default());
+        input.set_node(
+            "parent",
+            NodeLabel {
+                width: 30.0,
+                height: 40.0,
+                ..Default::default()
+            },
+        );
+        input.set_parent("child", "parent");
+
+        assert_eq!(input.node_ids(), ["child", "sibling", "parent"]);
+
+        let layout = build_layout_graph(&input);
+
+        assert_eq!(layout.node_ids(), ["child", "parent", "sibling"]);
+        assert_eq!(layout.parent("child"), Some("parent"));
+        let parent = layout.node("parent").expect("parent node");
+        assert_eq!((parent.width, parent.height), (30.0, 40.0));
+    }
 }
