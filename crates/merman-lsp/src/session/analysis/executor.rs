@@ -1965,8 +1965,7 @@ mod tests {
         assert_eq!(executor.execution_count(), 0);
         assert_eq!(executor.reprojection_count(), 0);
         drop(cpu_permits);
-        wait_for_available_cpu_permits(&executor, LSP_ANALYSIS_CONCURRENCY).await;
-        assert_eq!(executor.registry_state(), (0, 0, LSP_ANALYSIS_CONCURRENCY));
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
