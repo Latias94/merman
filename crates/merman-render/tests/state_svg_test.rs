@@ -483,6 +483,31 @@ Active --> Active: LOG
 }
 
 #[test]
+fn state_svg_direct_composite_self_loop_keeps_unclipped_dagre_endpoints() {
+    let svg = render_state_svg_from_text(
+        r#"stateDiagram-v2
+[*] --> Active
+state Active {
+  [*] --> Ready
+  Ready --> Ready : ping
+  Ready --> Working : start
+  Working --> Working : progress
+  Working --> Ready : done
+}
+Active --> Active : re-enter
+Active --> [*] : stop
+"#,
+    );
+
+    let points = state_edge_data_points(&svg, "edge6");
+    assert_eq!(points.len(), 4, "expected one compact composite self-loop");
+    assert!(
+        (points[0].x - points[1].x).abs() <= 1e-9 && (points[2].x - points[3].x).abs() <= 1e-9,
+        "a direct composite endpoint has no node intersect callback, so the Dagre endpoints must remain unclipped: {points:?}"
+    );
+}
+
+#[test]
 fn state_svg_security_level_controls_unsafe_click_href_rendering() {
     let strict = render_state_svg_from_text(
         r#"%%{init: {"securityLevel": "strict"}}%%

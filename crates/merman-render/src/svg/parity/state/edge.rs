@@ -193,6 +193,22 @@ fn state_edge_clip_self_loop_points_to_node(
         return None;
     }
 
+    // Mermaid clips only when insertEdge receives endpoint nodes with an intersect callback.
+    // A direct self-loop on a composite without cluster endpoint metadata receives the cluster
+    // itself, so its Dagre points must remain intact. Explicit cluster endpoints still carry the
+    // helper nodes that own the intersection callbacks.
+    if le.from_cluster.is_none()
+        && le.to_cluster.is_none()
+        && (ctx.layout_clusters_by_id.contains_key(le.from.as_str())
+            || ctx
+                .nodes_by_id
+                .get(le.from.as_str())
+                .copied()
+                .is_some_and(|node| node.is_group && node.shape != "noteGroup"))
+    {
+        return None;
+    }
+
     let boundary = state_edge_boundary_for_layout_node(ctx, le.from.as_str(), origin_x, origin_y)?;
     let center = crate::model::LayoutPoint {
         x: boundary.x,
