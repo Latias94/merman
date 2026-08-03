@@ -14,6 +14,7 @@ planning, or coverage documents.
 | Evidence audit | Inventory and corpus counts checked against the worktree on 2026-07-19 |
 | Admission | 35 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
+| Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |
 | Language catalog | All 35 built-in families are available independently of optional render backends |
 | Editor facts | All 35 built-in families emit parser-owned lexemes through one token planner; facts use schema `1` |
 | Verification boundary | Capability projections and exact artifact recipes are checked in normal CI; a strict result belongs to the exact revision that ran it |
@@ -31,6 +32,7 @@ gate passes after the latest uncommitted changes.
 | Generated admission overview | `docs/alignment/ADMISSION_INVENTORY.md` |
 | Executable SVG compare facts | `crates/xtask/src/cmd/compare/diagrams.rs` |
 | Parity and residual policy | `docs/workstreams/PARITY_BOUNDARY.md` |
+| Semantic edge-label contract | `docs/alignment/SEMANTIC_LABEL_PARITY.md` |
 | Family-specific scope and gaps | `docs/alignment/*_MINIMUM.md` and `*_UPSTREAM_TEST_COVERAGE.md` |
 
 If this dashboard disagrees with executable inventory or capability facts, the executable facts

@@ -67,9 +67,11 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/parser/c4Boundary.spe
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/parser/c4Diagram.jison`
 
 - headers beyond `C4Context`:
-  - `C4Container` + `direction LR`: `fixtures/c4/upstream_c4container_header_and_direction_spec.mmd`
+  - `C4Container`: `fixtures/c4/upstream_c4container_header_and_direction_spec.mmd`
   - `C4Component`: `fixtures/c4/upstream_c4component_header_spec.mmd`
   - `C4Dynamic` + `RelIndex(...)`: `fixtures/c4/upstream_c4dynamic_header_and_relindex_spec.mmd`
+- C4 `direction LR` is a pinned negative render case. The parser rejects it while editor recovery
+  retains the source fact: `c4_direction_after_header_is_rejected_but_kept_in_editor_facts`.
 - component macros: `fixtures/c4/upstream_c4component_header_spec.mmd`
 - relationship direction macros (`Rel_Up/Down/Left/Right/Back`): `fixtures/c4/upstream_rel_direction_macros_spec.mmd`
 - deployment node variants (`Node_L`, `Node_R`, `Deployment_Node`): `fixtures/c4/upstream_deployment_node_lr_spec.mmd`
@@ -77,3 +79,24 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/parser/c4Diagram.jiso
 - `UpdateElementStyle` supports more fields: `fixtures/c4/upstream_update_element_style_all_fields_spec.mmd`
 - `UpdateLayoutConfig` ignores invalid values: `fixtures/c4/upstream_update_layout_config_invalid_values_spec.mmd`
 - relationships are de-duped by `(from,to)` and later statements override earlier ones: `fixtures/c4/upstream_rel_override_and_style_spec.mmd`
+
+## Semantic And Rendering Regressions
+
+- Ordered and sparse `UpdateRelStyle` fields:
+  - `c4_update_rel_style_sparse_named_offsets_follow_their_keys`
+  - `c4_update_rel_style_named_fields_are_order_independent`
+  - `c4_update_rel_style_uses_javascript_parse_int_semantics`
+  - `c4_update_rel_style_preserves_unknown_named_key_side_effects`
+- Redeclarations clear omitted shape, container/component, and relation fields rather than
+  retaining the previous declaration.
+- Boundary parsing is transactional for missing braces, empty bodies, unmatched braces, and EOF;
+  deep nesting is covered without recursive stack growth.
+- `c4_svg_paints_each_boundary_subtree_in_mermaid_order` covers Mermaid's recursive paint order.
+- `c4_relation_keeps_explicit_line_and_text_styles` covers raw SVG relationship presentation.
+- `playground/tests/render.presentation.spec.ts` covers relation label and line computed style in
+  the browser for default and forest themes.
+
+The user-facing C4Dynamic canary is
+`fixtures/c4/upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010.mmd`. Relation `c2 -> c3` must retain
+`offsetX=-40` and `offsetY=60`. Its signed browser residual is approximately `(+0.308px,+5px)`;
+the pre-fix `(+100px,-55px)` displacement is rejected by the semantic-label mutation suite.

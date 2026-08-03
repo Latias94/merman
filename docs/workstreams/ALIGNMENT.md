@@ -27,6 +27,11 @@ We use multiple parity levels depending on risk and cost:
    A stress test that surfaces 1/64px lattice drift and serialization differences. This is
    useful for tightening layout math but is *not* automatically “must-fix” for all fixtures.
 
+4. **Semantic edge-label parity** (`--check-dom` on registered families)
+   Stable model/edge identity, text, world geometry, owning path, presentation, and relevant CSS
+   match independently of DOM mode. Exact reviewed browser residuals are hash-bound and stale on
+   any signature change; see `docs/alignment/SEMANTIC_LABEL_PARITY.md`.
+
 ## How to check whether we have a real gap
 
 Before “fixing”, validate the gap exists and is in-scope:
@@ -85,9 +90,9 @@ Common triggers:
 
 Notes:
 
-- `dom-mode parity` is primarily **structural**. It intentionally does not try to prove geometry
-  parity for all numeric attributes (e.g. `translate(x,y)` payloads). For geometry-sensitive
-  issues (especially text measurement), use `dom-mode parity-root` and/or layout goldens.
+- `dom-mode parity` is primarily **structural**. For registered edge labels, the independent
+  semantic-label gate still compares world geometry and owning routes. Use `parity-root` and layout
+  goldens for the remaining node, cluster, and viewport geometry.
 - Flowchart HTML labels are the highest churn area because small changes in measured line count
   cascade into Dagre node sizes → edge routes → root viewport (`viewBox`/`max-width`) deltas.
 

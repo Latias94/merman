@@ -8,11 +8,16 @@ change production rendering, and every entry is bound to the exact input and ups
 It exists to keep browser-only root differences visible without restoring fixture-keyed production
 overrides or broadening DOM normalization.
 
+This catalog owns only root `style`, `viewBox`, `width`, and `height`. It cannot accept a semantic
+edge-label mismatch. Label residuals use a separate key/text/full-signature contract documented in
+`SEMANTIC_LABEL_PARITY.md`, and the aggregate comparator evaluates that gate before root residual
+policy.
+
 ## Admission Method
 
 The candidate was generated with the canonical typed render operation:
 
-```sh
+```powershell
 cargo run --release -p xtask -- compare-all-svgs \
   --check-dom --dom-mode parity-root --dom-decimals 3 \
   --flowchart-text-measurer vendored \

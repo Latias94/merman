@@ -32,6 +32,12 @@ or Gantt structure/parity comparison is not evidence about computed colors, edge
 overlap in a browser. Those claims belong to browser tests with their build-freshness and viewport
 preconditions; resvg-safe claims belong to output-pipeline and `usvg` / `resvg` gates.
 
+When `--check-dom` is enabled, registered families also run the semantic edge-label gate. Reports
+record expected fixtures, compared fixtures, samples, and accepted exact residuals. Zero samples,
+missing registered fixtures, stale residuals, or a label/path identity mismatch fail the aggregate
+even when the selected DOM profile passes. The contract is documented in
+`docs/alignment/SEMANTIC_LABEL_PARITY.md`.
+
 ## Flowchart-specific options
 
 `compare-all-svgs` forwards these only to the Flowchart compare task:
@@ -63,3 +69,5 @@ Example:
     residual policy.
   - New or changed residuals still fail the gate. Fix source-backed semantics, layout, emitted
     geometry, or measurement rather than adding a root pin.
+- Semantic-label geometry always uses its independent three-decimal contract. Raising DOM
+  precision to six decimals cannot disable or re-quantize signed label evidence.

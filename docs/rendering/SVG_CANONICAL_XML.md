@@ -38,8 +38,9 @@ deterministic.
   - Supported: `strict`, `structure`, `parity`, `parity-root`
   - `strict` keeps geometry and most attributes, so it is expected to be noisy until layout engines
     match upstream closely.
-  - Note: stylesheets (`<style>...</style>`) are treated as non-semantic and their text content is
-    ignored in all modes (CSS parity is tracked separately from SVG DOM parity).
+  - Note: canonical XML signatures do not include stylesheet text. Stylesheets are still semantic:
+    family CSS contracts, semantic-label admission, and browser computed-style tests verify them
+    in dedicated lanes where selector order and the cascade can be evaluated correctly.
   - `--dom-decimals <n>`
   - Rounds numeric tokens to reduce float drift (default: `3`)
   - In `strict` mode this also normalizes `data-points` by decoding the Base64 JSON payload, rounding JSON numbers,

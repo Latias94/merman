@@ -329,11 +329,9 @@ Generate a report comparing upstream C4 SVGs and the current Rust Stage-B C4 out
 
 Notes:
 
-- Mermaid derives C4 type-line `textLength` values from browser font metrics
-  (`calculateTextWidth` + `getBBox`). To make DOM parity reproducible in a headless Rust context,
-  `merman-render` now owns the observed `textLength` values for built-in C4 shape types directly
-  in `crates/merman-render/src/svg/parity/c4.rs`. The current source baseline is Mermaid `11.16.0`;
-  existing measured constants should be refreshed when the C4 SVG corpus is regenerated.
+- C4 type-line `textLength` is produced by the canonical text-measurement path. The semantic label
+  gate separately binds each message/technology label to its ordered relation and owning line; it
+  does not infer correctness from a regenerated corpus.
 
 ## Generate (All supported diagrams)
 
@@ -409,7 +407,7 @@ Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B
 - Use the looser, structure-only mode while iterating on large layout/routing refactors:
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
 - For root `<svg>` viewport parity (`viewBox` / `style="max-width: ..."`), use `parity-root` and the root-delta report:
-  - `cargo run -p xtask -- compare-flowchart-svgs --dom-mode parity-root --dom-decimals 3 --report-root`
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root`
   - See `docs/alignment/FLOWCHART_ROOT_VIEWBOX_PARITY_GAPS.md` for current status.
 
 ## Compare (Block)
@@ -460,14 +458,14 @@ Notes:
 Generate a report comparing upstream stateDiagram SVGs and the current Rust Stage-B stateDiagram
 output (DOM signature comparison; upstream is not byte-stable):
 
-- `cargo run -p xtask -- compare-state-svgs --dom-mode structure --dom-decimals 3`
+- `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode structure --dom-decimals 3`
 
 ## Compare (ClassDiagram)
 
 Generate a report comparing upstream classDiagram SVGs and the current Rust Stage-B classDiagram
 output (DOM signature comparison):
 
-- `cargo run -p xtask -- compare-class-svgs --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - Use the looser, structure-only mode while iterating on DOM shape:
   - `cargo run -p xtask -- compare-class-svgs --dom-mode structure --dom-decimals 3`
 
@@ -481,9 +479,9 @@ Notes:
 
 Notes:
 
-- The flowchart DOM compare is intentionally looser than ER while Stage-B rendering is still being
-  brought up. It ignores `<path d>` and `data-points` geometry payloads and normalizes child order
-  for container groups like `g.root` by using the first descendant cluster id as a sort hint.
+- Flowchart's ordinary DOM profile remains intentionally narrower than raw path-byte equality, but
+  semantic ELK edge labels are admitted through stable shared `data-id`, structured route evidence,
+  and source-phase tests. The path and label for a parallel edge cannot be swapped independently.
 
 ## Compare (Info)
 

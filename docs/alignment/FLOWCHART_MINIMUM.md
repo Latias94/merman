@@ -1,6 +1,7 @@
-# Flowchart Minimum Slice (Phase 1)
+# Flowchart Admission Contract
 
-This document defines the initial, test-driven minimum slice for flowchart parsing in `merman`.
+This document defines the admitted Flowchart parser, Dagre/ELK layout, and SVG contract against
+Mermaid `11.16.0` at `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
 
 ## Supported (current)
 
@@ -19,8 +20,6 @@ This document defines the initial, test-driven minimum slice for flowchart parsi
     - `direction <DIR>` inside subgraph is captured as `dir` on the subgraph
     - `labelType` matches Mermaid (`text`/`string`/`markdown`) for subgraph titles
     - `nodes` membership ordering matches Mermaid FlowDB (chain membership is reverse-ordered, e.g. `a-->b` contributes `["b","a"]`)
-  - Note: this is not yet full Mermaid parity for subgraph semantics; see
-    "Not yet implemented (Mermaid-supported)" below.
 - Nodes:
   - bare IDs (`A`)
   - labeled shapes:
@@ -97,14 +96,17 @@ This document defines the initial, test-driven minimum slice for flowchart parsi
   - link URLs are formatted like Mermaid `utils.formatUrl` (e.g. `javascript:` URLs become `about:blank` when `securityLevel != loose`)
   - tooltips and labels are sanitized like Mermaid `common.sanitizeText` (baseline parity; full DOMPurify parity is tracked as a gap)
 
-## Not yet implemented (Mermaid-supported)
+## Layout And SVG Admission
 
-- Full flowchart class/style/click/linkStyle parity (advanced syntax, and renderer-level semantics).
-- Complex edge routing tokens and multi-edge chains.
-- Unicode escapes, HTML labels, and renderer-level markdown/HTML semantics (beyond baseline sanitization).
-- Full Mermaid flowchart grammar compatibility.
+- Dagre and ELK are separate admitted layout paths. `check-flowchart-elk-parity` owns the ELK
+  source graph, importer, model-order, and deterministic operation-seed contract.
+- Parallel ELK edges preserve their stable source edge id through routing and SVG `data-id`; label
+  identity is never inferred from text or DOM order. The signed canary ending in `_same_cou_034`
+  covers multiple edges to and from the same nodes.
+- Updated-path label projection is shared with other Dagre families. HTML and SVG label branches
+  both use pre-curve, pre-marker points and retain the final rendered path for update detection.
+- Complex chains, multi-edges, HTML labels, Markdown labels, classes, interactions, and shapeData
+  are covered by the primary SVG matrix. Remaining lexical or diagnostic gaps must be recorded as
+  explicit fixtures rather than broad renderer exclusions.
 
-## Alignment goal
-
-This is an incremental slice. The ultimate goal is full Mermaid `flowchart`/`graph` grammar
-compatibility at the pinned baseline tag.
+See `SEMANTIC_LABEL_PARITY.md` for the edge identity and mutation contract.

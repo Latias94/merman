@@ -67,11 +67,15 @@ Minimum fields:
   - text blocks: `label`, optional `ty`, optional `descr`:
     `{ text, y, width, height, line_count }`
 - Relationships (`rels`):
-  - `from`, `to`, `rel_type`
+  - source-order identity, `from`, `to`, `rel_type`
   - `start_point`, `end_point`
-  - optional `offset_x`, `offset_y`
+  - optional `offset_x`, `offset_y`, resolved by their named keys rather than positional sparsity
   - text blocks: `label`, optional `techn`, optional `descr`:
     `{ text, y, width, height, line_count }`
+
+The SVG admission layer keeps relation identity, label role, line geometry, and explicit
+presentation together. A DOM-order or text-only match is insufficient; see
+`SEMANTIC_LABEL_PARITY.md`.
 
 ## Known Mermaid quirks to match
 

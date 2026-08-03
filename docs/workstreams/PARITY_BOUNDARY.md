@@ -84,6 +84,19 @@ Generated data must not encode:
 - hand-curated glyph or icon tables derived from root drift;
 - fixture ids, complete source strings, or complete label strings.
 
+## Exact Verification Catalogs
+
+An admission catalog may use fixture id, semantic key, and exact text only as a verification index
+when every entry is also bound to the baseline version, source commit, comparator revision, input
+hash, signed upstream artifact hash, and complete upstream/local signature. Such a catalog must
+reject stale, missing, changed, or newly observed entries and must never be read by production
+rendering. This narrow exception is what makes a reviewed browser residual auditable; it does not
+permit fixture-keyed layout behavior or broad comparator tolerance.
+
+Root viewport and semantic edge-label catalogs remain separate because they protect different
+contracts. A root residual cannot suppress a label identity, geometry, path, or presentation
+failure.
+
 ## Accepted Drift
 
 Some differences should be accepted instead of modeled, especially when the implementation cost
