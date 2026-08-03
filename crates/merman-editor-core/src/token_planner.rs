@@ -381,7 +381,8 @@ fn token_overlaps_range(token: PlannedToken, range: Range) -> bool {
 struct TokenCandidate {
     span: ByteSpan,
     kind: PlannedTokenKind,
-    modifiers: Vec<PlannedTokenModifier>,
+    // Preserve validation error ordering without retaining one heap vector per candidate.
+    modifier_bits: Result<u32, PlannedTokenModifier>,
     origin: TokenOverlayKind,
 }
 
@@ -432,12 +433,13 @@ fn collect_fence_candidates(
         candidates.push(TokenCandidate {
             span,
             kind: planned_kind_for_lexeme(lexeme.kind),
-            modifiers: lexeme
-                .modifiers
-                .iter()
-                .copied()
-                .map(planned_modifier_for_lexeme)
-                .collect(),
+            modifier_bits: pack_modifier_bits(
+                lexeme
+                    .modifiers
+                    .iter()
+                    .copied()
+                    .map(planned_modifier_for_lexeme),
+            ),
             origin: TokenOverlayKind::Lexeme,
         });
     }
@@ -450,7 +452,7 @@ fn collect_fence_candidates(
         candidates.push(TokenCandidate {
             span,
             kind: planned_kind_for_symbol(item.kind),
-            modifiers: vec![planned_modifier_for_role(item.role)],
+            modifier_bits: Ok(planned_modifier_for_role(item.role).bit()),
             origin: token_overlay_for_role(item.role),
         });
     }
@@ -537,7 +539,7 @@ fn collect_fence_delimiters(
         candidates.push(TokenCandidate {
             span: opening,
             kind: PlannedTokenKind::Delimiter,
-            modifiers: Vec::new(),
+            modifier_bits: Ok(0),
             origin: TokenOverlayKind::Lexeme,
         });
     }
@@ -560,7 +562,7 @@ fn collect_fence_delimiters(
                 candidates.push(TokenCandidate {
                     span: closing,
                     kind: PlannedTokenKind::Delimiter,
-                    modifiers: Vec::new(),
+                    modifier_bits: Ok(0),
                     origin: TokenOverlayKind::Lexeme,
                 });
             }
@@ -614,17 +616,13 @@ fn validate_candidates(
         .into_iter()
         .map(|candidate| {
             validate_span(source, candidate.span)?;
-            let mut modifier_bits = 0u32;
-            for modifier in candidate.modifiers {
-                let bit = modifier.bit();
-                if modifier_bits & bit != 0 {
-                    return Err(TokenPlanError::DuplicateModifier {
+            let modifier_bits =
+                candidate
+                    .modifier_bits
+                    .map_err(|modifier| TokenPlanError::DuplicateModifier {
                         span: candidate.span,
                         modifier,
-                    });
-                }
-                modifier_bits |= bit;
-            }
+                    })?;
             Ok(ValidTokenCandidate {
                 span: candidate.span,
                 kind: candidate.kind,
@@ -633,6 +631,20 @@ fn validate_candidates(
             })
         })
         .collect()
+}
+
+fn pack_modifier_bits(
+    modifiers: impl IntoIterator<Item = PlannedTokenModifier>,
+) -> Result<u32, PlannedTokenModifier> {
+    let mut modifier_bits = 0u32;
+    for modifier in modifiers {
+        let bit = modifier.bit();
+        if modifier_bits & bit != 0 {
+            return Err(modifier);
+        }
+        modifier_bits |= bit;
+    }
+    Ok(modifier_bits)
 }
 
 fn validate_span(source: &str, span: ByteSpan) -> Result<(), TokenPlanError> {
@@ -716,32 +728,42 @@ fn choose_candidate(
     candidates: &[ValidTokenCandidate],
     active: &[usize],
 ) -> Result<(PlannedTokenKind, u32), TokenPlanError> {
-    let top_precedence = active
-        .iter()
-        .map(|index| candidates[*index].origin.precedence())
-        .max()
-        .expect("non-empty active token set");
-    let narrowest = active
-        .iter()
-        .map(|index| candidates[*index])
-        .filter(|candidate| candidate.origin.precedence() == top_precedence)
-        .map(|candidate| candidate.span.end - candidate.span.start)
-        .min()
-        .expect("top-precedence token set");
-    let finalists = active
-        .iter()
-        .map(|index| candidates[*index])
-        .filter(|candidate| {
-            candidate.origin.precedence() == top_precedence
-                && candidate.span.end - candidate.span.start == narrowest
-        })
-        .collect::<Vec<_>>();
-    let first = finalists[0];
-    if let Some(conflict) = finalists
-        .iter()
-        .copied()
-        .find(|candidate| candidate.kind != first.kind)
-    {
+    let mut winner = None;
+    let mut conflict = None;
+    let mut modifier_bits = 0u32;
+
+    for index in active {
+        let candidate = candidates[*index];
+        // Modifiers compose across every active overlay, while kind/conflict selection considers
+        // only the best rank. A strictly better candidate invalidates lower-rank conflicts; equal
+        // finalists preserve the first winner and first differing kind for stable error ordering.
+        modifier_bits |= candidate.modifier_bits;
+
+        let Some(current) = winner else {
+            winner = Some(candidate);
+            continue;
+        };
+        let candidate_precedence = candidate.origin.precedence();
+        let current_precedence = current.origin.precedence();
+        let candidate_width = candidate.span.end - candidate.span.start;
+        let current_width = current.span.end - current.span.start;
+        let outranks_current = candidate_precedence > current_precedence
+            || (candidate_precedence == current_precedence && candidate_width < current_width);
+
+        if outranks_current {
+            winner = Some(candidate);
+            conflict = None;
+        } else if candidate_precedence == current_precedence
+            && candidate_width == current_width
+            && candidate.kind != current.kind
+            && conflict.is_none()
+        {
+            conflict = Some(candidate);
+        }
+    }
+
+    let first = winner.expect("non-empty active token set");
+    if let Some(conflict) = conflict {
         return Err(TokenPlanError::UnresolvedOverlap {
             left: first.span,
             left_kind: first.kind,
@@ -749,9 +771,6 @@ fn choose_candidate(
             right_kind: conflict.kind,
         });
     }
-    let modifier_bits = active
-        .iter()
-        .fold(0u32, |bits, index| bits | candidates[*index].modifier_bits);
     Ok((first.kind, modifier_bits))
 }
 
@@ -940,7 +959,7 @@ mod tests {
     fn candidate(
         span: std::ops::Range<usize>,
         kind: PlannedTokenKind,
-        modifiers: Vec<PlannedTokenModifier>,
+        modifiers: impl IntoIterator<Item = PlannedTokenModifier>,
         origin: TokenOverlayKind,
     ) -> TokenCandidate {
         TokenCandidate {
@@ -949,9 +968,165 @@ mod tests {
                 end: span.end,
             },
             kind,
-            modifiers,
+            modifier_bits: pack_modifier_bits(modifiers),
             origin,
         }
+    }
+
+    fn choose_candidate_reference(
+        candidates: &[ValidTokenCandidate],
+        active: &[usize],
+    ) -> Result<(PlannedTokenKind, u32), TokenPlanError> {
+        let top_precedence = active
+            .iter()
+            .map(|index| candidates[*index].origin.precedence())
+            .max()
+            .expect("non-empty active token set");
+        let narrowest = active
+            .iter()
+            .map(|index| candidates[*index])
+            .filter(|candidate| candidate.origin.precedence() == top_precedence)
+            .map(|candidate| candidate.span.end - candidate.span.start)
+            .min()
+            .expect("top-precedence token set");
+        let mut eligible = active
+            .iter()
+            .map(|index| candidates[*index])
+            .filter(|candidate| {
+                candidate.origin.precedence() == top_precedence
+                    && candidate.span.end - candidate.span.start == narrowest
+            });
+        let first = eligible.next().expect("top-precedence narrowest token set");
+        if let Some(conflict) = eligible.find(|candidate| candidate.kind != first.kind) {
+            return Err(TokenPlanError::UnresolvedOverlap {
+                left: first.span,
+                left_kind: first.kind,
+                right: conflict.span,
+                right_kind: conflict.kind,
+            });
+        }
+        let modifier_bits = active
+            .iter()
+            .fold(0u32, |bits, index| bits | candidates[*index].modifier_bits);
+        Ok((first.kind, modifier_bits))
+    }
+
+    fn valid_candidate(
+        span: std::ops::Range<usize>,
+        kind: PlannedTokenKind,
+        modifier: PlannedTokenModifier,
+        origin: TokenOverlayKind,
+    ) -> ValidTokenCandidate {
+        ValidTokenCandidate {
+            span: ByteSpan {
+                start: span.start,
+                end: span.end,
+            },
+            kind,
+            modifier_bits: modifier.bit(),
+            origin,
+        }
+    }
+
+    #[test]
+    fn one_pass_candidate_reducer_matches_reference_for_rank_conflict_and_modifier_subsets() {
+        let candidates = [
+            (
+                0..12,
+                PlannedTokenKind::Identifier,
+                PlannedTokenModifier::Reference,
+                TokenOverlayKind::Lexeme,
+            ),
+            (
+                0..12,
+                PlannedTokenKind::Variable,
+                PlannedTokenModifier::Entity,
+                TokenOverlayKind::SemanticPayload,
+            ),
+            (
+                2..10,
+                PlannedTokenKind::Variable,
+                PlannedTokenModifier::Outline,
+                TokenOverlayKind::SemanticPayload,
+            ),
+            (
+                2..10,
+                PlannedTokenKind::Class,
+                PlannedTokenModifier::Payload,
+                TokenOverlayKind::SemanticPayload,
+            ),
+            (
+                0..20,
+                PlannedTokenKind::Property,
+                PlannedTokenModifier::Documentation,
+                TokenOverlayKind::SemanticEntity,
+            ),
+            (
+                1..11,
+                PlannedTokenKind::Property,
+                PlannedTokenModifier::Definition,
+                TokenOverlayKind::SemanticEntity,
+            ),
+            (
+                1..11,
+                PlannedTokenKind::Struct,
+                PlannedTokenModifier::Readonly,
+                TokenOverlayKind::SemanticEntity,
+            ),
+        ]
+        .map(|(span, kind, modifier, origin)| valid_candidate(span, kind, modifier, origin));
+
+        for mask in 1usize..(1usize << candidates.len()) {
+            let active = (0..candidates.len())
+                .filter(|index| mask & (1usize << index) != 0)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                choose_candidate(&candidates, &active),
+                choose_candidate_reference(&candidates, &active),
+                "natural active order for subset {mask:#09b}"
+            );
+
+            let reversed = active.iter().rev().copied().collect::<Vec<_>>();
+            assert_eq!(
+                choose_candidate(&candidates, &reversed),
+                choose_candidate_reference(&candidates, &reversed),
+                "reversed active order for subset {mask:#09b}"
+            );
+        }
+    }
+
+    #[test]
+    fn narrower_candidate_discards_a_conflict_from_the_wider_rank() {
+        let candidates = [
+            valid_candidate(
+                0..12,
+                PlannedTokenKind::Variable,
+                PlannedTokenModifier::Reference,
+                TokenOverlayKind::SemanticPayload,
+            ),
+            valid_candidate(
+                0..12,
+                PlannedTokenKind::Class,
+                PlannedTokenModifier::Definition,
+                TokenOverlayKind::SemanticPayload,
+            ),
+            valid_candidate(
+                2..10,
+                PlannedTokenKind::Property,
+                PlannedTokenModifier::Readonly,
+                TokenOverlayKind::SemanticPayload,
+            ),
+        ];
+
+        assert_eq!(
+            choose_candidate(&candidates, &[0, 1, 2]),
+            Ok((
+                PlannedTokenKind::Property,
+                PlannedTokenModifier::Reference.bit()
+                    | PlannedTokenModifier::Definition.bit()
+                    | PlannedTokenModifier::Readonly.bit(),
+            ))
+        );
     }
 
     #[test]
