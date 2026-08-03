@@ -631,7 +631,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let rel_type = prepared_label.relationship_type.as_str();
         debug_assert!(!rel_type.trim().is_empty());
         let label_text = prepared_label.display_text.as_str();
-        let max_width_px = prepared_label.max_width_px;
 
         let (w, h) = e
             .label
@@ -669,7 +668,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 span_style: None,
                 div_class: Some("labelBkg"),
                 div_style_prefix: None,
-                max_width_px,
+                max_width_px: 200,
             },
         );
         out.push_str("</g></g>");
@@ -1421,6 +1420,27 @@ mod tests {
         );
         assert_eq!(svg.matches(r#"marker-start="url(#"#).count(), 1, "{svg}");
         assert_eq!(svg.matches(r#"marker-end="url(#"#).count(), 1, "{svg}");
+
+        let document = roxmltree::Document::parse(&svg).expect("valid Requirement SVG");
+        let edge_label_max_widths = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("div")
+                    && node
+                        .attribute("class")
+                        .unwrap_or_default()
+                        .split_whitespace()
+                        .any(|class| class == "labelBkg")
+            })
+            .map(|node| node.attribute("style").unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(edge_label_max_widths.len(), 2, "{svg}");
+        assert!(
+            edge_label_max_widths
+                .iter()
+                .all(|style| style.contains("max-width: 200px;")),
+            "Requirement edge labels keep Mermaid's fixed 200px wrap cap: {svg}"
+        );
     }
 
     #[test]

@@ -121,7 +121,6 @@ pub(crate) struct RequirementNodeLabelLine {
 pub(crate) struct RequirementEdgeLabelPlan {
     pub(crate) relationship_type: String,
     pub(crate) display_text: String,
-    pub(crate) max_width_px: i64,
     pub(crate) rendered_id: String,
     pub(crate) has_label: bool,
     pub(crate) marker_start: bool,
@@ -622,7 +621,6 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
                 RequirementEdgeLabelPlan {
                     relationship_type: rel.rel_type.clone(),
                     display_text: String::new(),
-                    max_width_px: 200,
                     rendered_id: format!("{}-cyclic-special-1", rel.src),
                     has_label: false,
                     marker_start: is_contains,
@@ -639,7 +637,6 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
                 RequirementEdgeLabelPlan {
                     relationship_type: rel.rel_type.clone(),
                     display_text: label_display,
-                    max_width_px: metrics.max_width_px,
                     rendered_id: format!("{}-cyclic-special-mid", rel.src),
                     has_label: true,
                     marker_start: false,
@@ -656,7 +653,6 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
                 RequirementEdgeLabelPlan {
                     relationship_type: rel.rel_type.clone(),
                     display_text: String::new(),
-                    max_width_px: 200,
                     rendered_id: last_graph_name.clone(),
                     has_label: false,
                     marker_start: false,
@@ -681,7 +677,6 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
                 RequirementEdgeLabelPlan {
                     relationship_type: rel.rel_type.clone(),
                     display_text: label_display,
-                    max_width_px: metrics.max_width_px,
                     rendered_id: rendered_id.clone(),
                     has_label: true,
                     marker_start: is_contains,
