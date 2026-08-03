@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 #[cfg(test)]
 use std::cell::Cell;
-use std::collections::HashMap;
 
 #[cfg(test)]
 thread_local! {
@@ -241,15 +240,9 @@ struct C4Db {
     acc_descr: String,
     wrap_enabled: bool,
 
-    current_boundary: String,
-    parent_boundary: String,
-    boundary_stack: Vec<String>,
-
     boundaries: Vec<Map<String, Value>>,
-    boundary_index: HashMap<String, usize>,
 
     shapes: Vec<Map<String, Value>>,
-    shape_index: HashMap<String, usize>,
 
     rels: Vec<Map<String, Value>>,
 
@@ -269,7 +262,7 @@ struct SpannedAccDescr {
 }
 
 #[derive(Debug, Clone)]
-struct SpannedKvArg {
+struct SpannedNamedArg {
     key: String,
     value: SpannedText,
 }
@@ -277,7 +270,7 @@ struct SpannedKvArg {
 #[derive(Debug, Clone)]
 enum SpannedArgValue {
     Text(SpannedText),
-    KeyValue(SpannedKvArg),
+    Named(SpannedNamedArg),
 }
 
 #[derive(Debug, Clone)]
@@ -289,30 +282,61 @@ impl SpannedArg {
     fn text(&self) -> &str {
         match &self.value {
             SpannedArgValue::Text(value) => value.text.as_str(),
-            SpannedArgValue::KeyValue(value) => value.value.text.as_str(),
+            SpannedArgValue::Named(value) => value.value.text.as_str(),
         }
     }
 
     fn span(&self) -> SourceSpan {
         match &self.value {
             SpannedArgValue::Text(value) => value.span,
-            SpannedArgValue::KeyValue(value) => value.value.span,
+            SpannedArgValue::Named(value) => value.value.span,
         }
     }
 
     fn key(&self) -> Option<&str> {
         match &self.value {
             SpannedArgValue::Text(_) => None,
-            SpannedArgValue::KeyValue(value) => Some(value.key.as_str()),
+            SpannedArgValue::Named(value) => Some(value.key.as_str()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum C4Arg {
+    Text(String),
+    Named { key: String, value: String },
+}
+
+impl C4Arg {
+    fn from_spanned(arg: &SpannedArg) -> Self {
+        match &arg.value {
+            SpannedArgValue::Text(value) => Self::Text(value.text.clone()),
+            SpannedArgValue::Named(named) => Self::Named {
+                key: named.key.clone(),
+                value: named.value.text.clone(),
+            },
+        }
+    }
+
+    fn value(&self) -> &str {
+        match self {
+            Self::Text(value) | Self::Named { value, .. } => value,
+        }
+    }
+
+    fn key_or<'a>(&'a self, positional_key: &'a str) -> &'a str {
+        match self {
+            Self::Text(_) => positional_key,
+            Self::Named { key, .. } => key,
         }
     }
 
     fn to_value(&self) -> Value {
-        match &self.value {
-            SpannedArgValue::Text(value) => json!(value.text),
-            SpannedArgValue::KeyValue(value) => {
+        match self {
+            Self::Text(value) => json!(value),
+            Self::Named { key, value } => {
                 let mut map = Map::new();
-                map.insert(value.key.clone(), json!(value.value.text));
+                map.insert(key.clone(), json!(value));
                 Value::Object(map)
             }
         }
@@ -326,6 +350,76 @@ struct SpannedMacroStmt {
     span: SourceSpan,
     args_span: SourceSpan,
     has_lbrace: bool,
+}
+
+#[derive(Debug)]
+enum C4SemanticStatement {
+    SetTitle(String),
+    SetAccDescription(String),
+    Macro(SpannedMacroStmt),
+    Boundary {
+        declaration: SpannedMacroStmt,
+        statements: Vec<C4SemanticStatement>,
+    },
+}
+
+#[derive(Debug)]
+struct C4BoundaryFrame {
+    declaration: SpannedMacroStmt,
+    statements: Vec<C4SemanticStatement>,
+    has_diagram_statement: bool,
+    is_valid: bool,
+}
+
+impl C4BoundaryFrame {
+    fn new(declaration: SpannedMacroStmt) -> Self {
+        Self {
+            declaration,
+            statements: Vec::new(),
+            has_diagram_statement: false,
+            is_valid: true,
+        }
+    }
+}
+
+fn push_c4_semantic_statement(
+    root: &mut Vec<C4SemanticStatement>,
+    boundaries: &mut [C4BoundaryFrame],
+    statement: C4SemanticStatement,
+    is_diagram_statement: bool,
+) {
+    if let Some(boundary) = boundaries.last_mut() {
+        boundary.has_diagram_statement |= is_diagram_statement;
+        boundary.statements.push(statement);
+    } else {
+        root.push(statement);
+    }
+}
+
+fn c4_other_statement_is_allowed(
+    boundaries: &mut [C4BoundaryFrame],
+    issues: &mut Vec<C4ParseIssue>,
+    meta: &ParseMetadata,
+    span: SourceSpan,
+) -> bool {
+    let Some(boundary) = boundaries.last_mut() else {
+        return true;
+    };
+    if boundary.has_diagram_statement {
+        return true;
+    }
+    if boundary.is_valid {
+        issues.push(c4_parse_issue(
+            Error::diagram_parse_exact(
+                meta.diagram_type.clone(),
+                "C4 boundary must start with a diagram statement".to_string(),
+                span,
+            ),
+            span,
+        ));
+        boundary.is_valid = false;
+    }
+    false
 }
 
 struct C4SemanticSource {
@@ -1043,8 +1137,8 @@ fn parse_macro_stmt_facts_c4(
     }
 }
 
-fn spanned_args_to_values(args: &[SpannedArg]) -> Vec<Value> {
-    args.iter().map(SpannedArg::to_value).collect()
+fn semantic_c4_args(args: &[SpannedArg]) -> Vec<C4Arg> {
+    args.iter().map(C4Arg::from_spanned).collect()
 }
 
 fn c4_missing_arg(stmt: &SpannedMacroStmt, message: &'static str) -> Error {
@@ -1058,6 +1152,9 @@ fn c4_missing_arg(stmt: &SpannedMacroStmt, message: &'static str) -> Error {
 
 fn validate_c4_macro_args(stmt: &SpannedMacroStmt) -> Result<()> {
     match stmt.name.as_str() {
+        name if is_boundary_macro(name) && stmt.args.is_empty() => {
+            return Err(c4_missing_arg(stmt, "missing boundary alias"));
+        }
         "Rel" | "BiRel" | "Rel_U" | "Rel_Up" | "Rel_D" | "Rel_Down" | "Rel_L" | "Rel_Left"
         | "Rel_R" | "Rel_Right" | "Rel_Back" => {
             if stmt.args.is_empty() {
@@ -1353,7 +1450,7 @@ fn try_parse_kv_spanned(
     let (kind, modifiers) = c4_argument_lexeme(macro_kind, index, Some(key));
     let value = parse_quoted_spanned(val_raw, equals + 1 + leading_ws, kind, modifiers, lexemes)?;
     Ok(Some(SpannedArg {
-        value: SpannedArgValue::KeyValue(SpannedKvArg {
+        value: SpannedArgValue::Named(SpannedNamedArg {
             key: key.to_string(),
             value,
         }),
@@ -1425,12 +1522,10 @@ impl C4Db {
         let wrap_enabled = config.get_bool("wrap").unwrap_or(false);
         let mut db = Self {
             wrap_enabled,
-            current_boundary: "global".to_string(),
             c4_shape_in_row: 4,
             c4_boundary_in_row: 2,
             ..Default::default()
         };
-        db.boundary_stack.push(String::new());
         db.add_global_boundary();
         db
     }
@@ -1443,39 +1538,39 @@ impl C4Db {
         obj.insert("tags".to_string(), Value::Null);
         obj.insert("link".to_string(), Value::Null);
         obj.insert("parentBoundary".to_string(), json!(""));
-        self.boundary_index
-            .insert("global".to_string(), self.boundaries.len());
         self.boundaries.push(obj);
     }
 
     fn ensure_shape(&mut self, alias: &str) -> &mut Map<String, Value> {
-        let shapes = &mut self.shapes;
-        let idx = *self
-            .shape_index
-            .entry(alias.to_string())
-            .or_insert_with(|| {
-                let idx = shapes.len();
-                let mut obj = Map::new();
-                obj.insert("alias".to_string(), json!(alias));
-                shapes.push(obj);
-                idx
-            });
-        &mut shapes[idx]
+        if let Some(index) = self
+            .shapes
+            .iter()
+            .position(|shape| shape.get("alias") == Some(&json!(alias)))
+        {
+            return &mut self.shapes[index];
+        }
+
+        let mut obj = Map::new();
+        obj.insert("alias".to_string(), json!(alias));
+        self.shapes.push(obj);
+        self.shapes.last_mut().expect("shape was just inserted")
     }
 
     fn ensure_boundary(&mut self, alias: &str) -> &mut Map<String, Value> {
-        let boundaries = &mut self.boundaries;
-        let idx = *self
-            .boundary_index
-            .entry(alias.to_string())
-            .or_insert_with(|| {
-                let idx = boundaries.len();
-                let mut obj = Map::new();
-                obj.insert("alias".to_string(), json!(alias));
-                boundaries.push(obj);
-                idx
-            });
-        &mut boundaries[idx]
+        if let Some(index) = self
+            .boundaries
+            .iter()
+            .position(|boundary| boundary.get("alias") == Some(&json!(alias)))
+        {
+            return &mut self.boundaries[index];
+        }
+
+        let mut obj = Map::new();
+        obj.insert("alias".to_string(), json!(alias));
+        self.boundaries.push(obj);
+        self.boundaries
+            .last_mut()
+            .expect("boundary was just inserted")
     }
 
     fn ensure_relation(&mut self, from: &str, to: &str) -> &mut Map<String, Value> {
@@ -1503,124 +1598,127 @@ impl C4Db {
         self.acc_descr = raw.to_string();
     }
 
-    fn add_person_or_system(&mut self, type_c4_shape: &str, args: &[Value]) -> Result<()> {
-        let alias = arg_to_string(args.first())?;
-        let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
-        let descr = args.get(2).cloned();
+    fn add_person_or_system(
+        &mut self,
+        type_c4_shape: &str,
+        args: &[C4Arg],
+        parent_boundary: &str,
+    ) -> Result<()> {
+        let alias = positional_arg_to_string(args.first())?;
+        let label = c4_arg_value_or_empty(args.get(1));
 
-        let current_boundary = self.current_boundary.clone();
         let wrap_enabled = self.wrap_enabled;
         let obj = self.ensure_shape(&alias);
         obj.insert("label".to_string(), wrap_text(label));
-        apply_text_field_or_kv(obj, "descr", descr.unwrap_or_else(|| json!("")))?;
+        assign_text_argument(obj, "descr", args.get(2), "");
+        assign_optional_argument(obj, "sprite", args.get(3));
+        assign_optional_argument(obj, "tags", args.get(4));
+        assign_optional_argument(obj, "link", args.get(5));
         obj.insert("typeC4Shape".to_string(), wrap_text(json!(type_c4_shape)));
-        obj.insert("parentBoundary".to_string(), json!(current_boundary));
+        obj.insert("parentBoundary".to_string(), json!(parent_boundary));
         obj.insert("wrap".to_string(), json!(wrap_enabled));
-
-        apply_kv_value(obj, "sprite", args.get(3))?;
-        apply_kv_value(obj, "tags", args.get(4))?;
-        apply_kv_value(obj, "link", args.get(5))?;
         Ok(())
     }
 
-    fn add_container(&mut self, type_c4_shape: &str, args: &[Value]) -> Result<()> {
-        let alias = arg_to_string(args.first())?;
-        let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
-        let techn = args.get(2).cloned();
-        let descr = args.get(3).cloned();
+    fn add_container(
+        &mut self,
+        type_c4_shape: &str,
+        args: &[C4Arg],
+        parent_boundary: &str,
+    ) -> Result<()> {
+        let alias = positional_arg_to_string(args.first())?;
+        let label = c4_arg_value_or_empty(args.get(1));
 
-        let current_boundary = self.current_boundary.clone();
         let wrap_enabled = self.wrap_enabled;
         let obj = self.ensure_shape(&alias);
         obj.insert("label".to_string(), wrap_text(label));
-        apply_text_field_or_kv(obj, "techn", techn.unwrap_or_else(|| json!("")))?;
-        apply_text_field_or_kv(obj, "descr", descr.unwrap_or_else(|| json!("")))?;
+        assign_text_argument(obj, "techn", args.get(2), "");
+        assign_text_argument(obj, "descr", args.get(3), "");
+        assign_optional_argument(obj, "sprite", args.get(4));
+        assign_optional_argument(obj, "tags", args.get(5));
+        assign_optional_argument(obj, "link", args.get(6));
+        obj.insert("wrap".to_string(), json!(wrap_enabled));
         obj.insert("typeC4Shape".to_string(), wrap_text(json!(type_c4_shape)));
-        obj.insert("parentBoundary".to_string(), json!(current_boundary));
-        obj.insert("wrap".to_string(), json!(wrap_enabled));
-
-        apply_kv_value(obj, "sprite", args.get(4))?;
-        apply_kv_value(obj, "tags", args.get(5))?;
-        apply_kv_value(obj, "link", args.get(6))?;
+        obj.insert("parentBoundary".to_string(), json!(parent_boundary));
         Ok(())
     }
 
-    fn add_component(&mut self, type_c4_shape: &str, args: &[Value]) -> Result<()> {
-        self.add_container(type_c4_shape, args)
+    fn add_component(
+        &mut self,
+        type_c4_shape: &str,
+        args: &[C4Arg],
+        parent_boundary: &str,
+    ) -> Result<()> {
+        self.add_container(type_c4_shape, args, parent_boundary)
     }
 
-    fn add_person_or_system_boundary(&mut self, args: Vec<Value>) -> Result<()> {
-        let alias = arg_to_string(args.first())?;
-        let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
-        let boundary_type = args.get(2).cloned();
-        let tags = args.get(3).cloned();
-        let link = args.get(4).cloned();
+    fn add_person_or_system_boundary(
+        &mut self,
+        args: &[C4Arg],
+        parent_boundary: &str,
+    ) -> Result<String> {
+        let alias = positional_arg_to_string(args.first())?;
+        let label = c4_arg_value_or_empty(args.get(1));
 
-        let current_boundary = self.current_boundary.clone();
         let wrap_enabled = self.wrap_enabled;
         let obj = self.ensure_boundary(&alias);
         obj.insert("label".to_string(), wrap_text(label));
-        let ty = boundary_type.unwrap_or_else(|| json!("system"));
-        apply_text_field_or_kv(obj, "type", ty)?;
+        assign_text_argument(obj, "type", args.get(2), "system");
 
-        apply_kv_value(obj, "tags", tags.as_ref())?;
-        apply_kv_value(obj, "link", link.as_ref())?;
+        assign_optional_argument(obj, "tags", args.get(3));
+        assign_optional_argument(obj, "link", args.get(4));
 
-        obj.insert("parentBoundary".to_string(), json!(current_boundary));
+        obj.insert("parentBoundary".to_string(), json!(parent_boundary));
         obj.insert("wrap".to_string(), json!(wrap_enabled));
 
-        self.parent_boundary = self.current_boundary.clone();
-        self.current_boundary = alias;
-        self.boundary_stack.push(self.parent_boundary.clone());
-
-        Ok(())
+        Ok(alias)
     }
 
-    fn add_container_boundary(&mut self, args: Vec<Value>) -> Result<()> {
-        self.add_person_or_system_boundary(args)
+    fn add_container_boundary(&mut self, args: &[C4Arg], parent_boundary: &str) -> Result<String> {
+        let alias = positional_arg_to_string(args.first())?;
+        let label = c4_arg_value_or_empty(args.get(1));
+
+        let wrap_enabled = self.wrap_enabled;
+        let obj = self.ensure_boundary(&alias);
+        obj.insert("label".to_string(), wrap_text(label));
+        assign_text_argument(obj, "type", args.get(2), "container");
+        assign_optional_argument(obj, "tags", args.get(3));
+        assign_optional_argument(obj, "link", args.get(4));
+        obj.insert("parentBoundary".to_string(), json!(parent_boundary));
+        obj.insert("wrap".to_string(), json!(wrap_enabled));
+
+        Ok(alias)
     }
 
-    fn add_deployment_node(&mut self, node_type: &str, args: Vec<Value>) -> Result<()> {
-        let alias = arg_to_string(args.first())?;
-        let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
-        let node_label_type = args.get(2).cloned();
-        let descr = args.get(3).cloned();
-        let tags = args.get(5).cloned();
-        let link = args.get(6).cloned();
+    fn add_deployment_node(
+        &mut self,
+        node_type: &str,
+        args: &[C4Arg],
+        parent_boundary: &str,
+    ) -> Result<String> {
+        let alias = positional_arg_to_string(args.first())?;
+        let label = c4_arg_value_or_empty(args.get(1));
 
-        let current_boundary = self.current_boundary.clone();
         let wrap_enabled = self.wrap_enabled;
         let obj = self.ensure_boundary(&alias);
         obj.insert("label".to_string(), wrap_text(label));
 
-        let ty = node_label_type.unwrap_or_else(|| json!("node"));
-        apply_text_field_or_kv(obj, "type", ty)?;
-        apply_text_field_or_kv(obj, "descr", descr.unwrap_or_else(|| json!("")))?;
-        apply_kv_value(obj, "tags", tags.as_ref())?;
-        apply_kv_value(obj, "link", link.as_ref())?;
+        assign_text_argument(obj, "type", args.get(2), "node");
+        assign_text_argument(obj, "descr", args.get(3), "");
+        assign_optional_argument(obj, "tags", args.get(5));
+        assign_optional_argument(obj, "link", args.get(6));
 
         obj.insert("nodeType".to_string(), json!(node_type));
-        obj.insert("parentBoundary".to_string(), json!(current_boundary));
+        obj.insert("parentBoundary".to_string(), json!(parent_boundary));
         obj.insert("wrap".to_string(), json!(wrap_enabled));
 
-        self.parent_boundary = self.current_boundary.clone();
-        self.current_boundary = alias;
-        self.boundary_stack.push(self.parent_boundary.clone());
-
-        Ok(())
+        Ok(alias)
     }
 
-    fn pop_boundary_parse_stack(&mut self) {
-        self.current_boundary = self.parent_boundary.clone();
-        self.boundary_stack.pop();
-        self.parent_boundary = self.boundary_stack.pop().unwrap_or_default();
-        self.boundary_stack.push(self.parent_boundary.clone());
-    }
-
-    fn add_rel(&mut self, rel_type: &str, args: Vec<Value>) -> Result<()> {
-        let from = arg_to_string(args.first())?;
-        let to = arg_to_string(args.get(1))?;
-        let Some(label) = args.get(2).cloned() else {
+    fn add_rel(&mut self, rel_type: &str, args: &[C4Arg]) -> Result<()> {
+        let from = positional_arg_to_string(args.first())?;
+        let to = positional_arg_to_string(args.get(1))?;
+        let Some(label) = args.get(2).map(C4Arg::to_value) else {
             return Ok(());
         };
 
@@ -1632,48 +1730,46 @@ impl C4Db {
         rel.insert("to".to_string(), json!(to));
         rel.insert("label".to_string(), wrap_text(label));
 
-        let techn = args.get(3).cloned().unwrap_or_else(|| json!(""));
-        apply_text_field_or_kv(rel, "techn", techn)?;
-        let descr = args.get(4).cloned().unwrap_or_else(|| json!(""));
-        apply_text_field_or_kv(rel, "descr", descr)?;
+        assign_text_argument(rel, "techn", args.get(3), "");
+        assign_text_argument(rel, "descr", args.get(4), "");
 
-        apply_kv_value(rel, "sprite", args.get(5))?;
-        apply_kv_value(rel, "tags", args.get(6))?;
-        apply_kv_value(rel, "link", args.get(7))?;
+        assign_optional_argument(rel, "sprite", args.get(5));
+        assign_optional_argument(rel, "tags", args.get(6));
+        assign_optional_argument(rel, "link", args.get(7));
         rel.insert("wrap".to_string(), json!(wrap_enabled));
         Ok(())
     }
 
-    fn update_el_style(&mut self, args: Vec<Value>) -> Result<()> {
-        let element_name = arg_to_string(args.first())?;
+    fn update_el_style(&mut self, args: &[C4Arg]) -> Result<()> {
+        let element_name = positional_arg_to_string(args.first())?;
         let Some(target) = self
-            .shape_index
-            .get(&element_name)
-            .and_then(|idx| self.shapes.get_mut(*idx))
+            .shapes
+            .iter_mut()
+            .find(|element| element.get("alias") == Some(&json!(element_name)))
             .or_else(|| {
-                self.boundary_index
-                    .get(&element_name)
-                    .and_then(|idx| self.boundaries.get_mut(*idx))
+                self.boundaries
+                    .iter_mut()
+                    .find(|element| element.get("alias") == Some(&json!(element_name)))
             })
         else {
             return Ok(());
         };
 
-        apply_kv_value(target, "bgColor", args.get(1))?;
-        apply_kv_value(target, "fontColor", args.get(2))?;
-        apply_kv_value(target, "borderColor", args.get(3))?;
-        apply_kv_value(target, "shadowing", args.get(4))?;
-        apply_kv_value(target, "shape", args.get(5))?;
-        apply_kv_value(target, "sprite", args.get(6))?;
-        apply_kv_value(target, "techn", args.get(7))?;
-        apply_kv_value(target, "legendText", args.get(8))?;
-        apply_kv_value(target, "legendSprite", args.get(9))?;
+        apply_update_argument(target, "bgColor", args.get(1));
+        apply_update_argument(target, "fontColor", args.get(2));
+        apply_update_argument(target, "borderColor", args.get(3));
+        apply_update_argument(target, "shadowing", args.get(4));
+        apply_update_argument(target, "shape", args.get(5));
+        apply_update_argument(target, "sprite", args.get(6));
+        apply_update_argument(target, "techn", args.get(7));
+        apply_update_argument(target, "legendText", args.get(8));
+        apply_update_argument(target, "legendSprite", args.get(9));
         Ok(())
     }
 
-    fn update_rel_style(&mut self, args: Vec<Value>) -> Result<()> {
-        let from = arg_to_string(args.first())?;
-        let to = arg_to_string(args.get(1))?;
+    fn update_rel_style(&mut self, args: &[C4Arg]) -> Result<()> {
+        let from = positional_arg_to_string(args.first())?;
+        let to = positional_arg_to_string(args.get(1))?;
 
         let Some(target) = self
             .rels
@@ -1683,40 +1779,22 @@ impl C4Db {
             return Ok(());
         };
 
-        apply_kv_value(target, "textColor", args.get(2))?;
-        apply_kv_value(target, "lineColor", args.get(3))?;
-        if let Some(v) = args.get(4) {
-            apply_int_kv(target, "offsetX", v)?;
-        }
-        if let Some(v) = args.get(5) {
-            apply_int_kv(target, "offsetY", v)?;
-        }
-
-        // Mermaid C4 macros accept named parameters (e.g. `$offsetY="-40"`) and users commonly
-        // omit earlier optional keys (like `$textColor` / `$lineColor`). Our arg vector is a
-        // heterogeneous list of single-key objects, so the above positional probes can still
-        // insert `offsetX/offsetY` as strings via `apply_kv_value`. Normalize any parsed numeric
-        // strings back to integers to match upstream Mermaid behavior.
-        for key in ["offsetX", "offsetY"] {
-            let Some(v) = target.get(key) else {
-                continue;
-            };
-            if let Some(parsed) = value_as_i64(v) {
-                target.insert(key.to_string(), json!(parsed));
-            }
-        }
+        apply_relation_style_argument(target, "textColor", args.get(2));
+        apply_relation_style_argument(target, "lineColor", args.get(3));
+        apply_relation_style_argument(target, "offsetX", args.get(4));
+        apply_relation_style_argument(target, "offsetY", args.get(5));
         Ok(())
     }
 
-    fn update_layout_config(&mut self, args: Vec<Value>) -> Result<()> {
-        if let Some(v) = args.first()
-            && let Some(parsed) = value_as_i64(v)
+    fn update_layout_config(&mut self, args: &[C4Arg]) -> Result<()> {
+        if let Some(arg) = args.first()
+            && let Some(parsed) = javascript_parse_int(arg.value())
             && parsed >= 1
         {
             self.c4_shape_in_row = parsed;
         }
-        if let Some(v) = args.get(1)
-            && let Some(parsed) = value_as_i64(v)
+        if let Some(arg) = args.get(1)
+            && let Some(parsed) = javascript_parse_int(arg.value())
             && parsed >= 1
         {
             self.c4_boundary_in_row = parsed;
@@ -1792,14 +1870,13 @@ fn c4_optional_string(obj: &Map<String, Value>, key: &str) -> Result<Option<Stri
 }
 
 fn c4_optional_bool(obj: &Map<String, Value>, key: &str) -> Result<Option<bool>> {
-    match obj.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Bool(v)) => Ok(Some(*v)),
-        Some(other) => Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("expected optional bool field `{key}`, got {other:?}"),
-        )),
-    }
+    Ok(obj.get(key).and_then(|value| match value {
+        Value::Null => None,
+        Value::Bool(value) => Some(*value),
+        Value::Number(value) => Some(value.as_f64().is_some_and(|value| value != 0.0)),
+        Value::String(value) => Some(!value.is_empty()),
+        Value::Array(_) | Value::Object(_) => Some(true),
+    }))
 }
 
 fn c4_optional_value(obj: &Map<String, Value>, key: &str) -> Option<Value> {
@@ -1904,90 +1981,118 @@ fn c4_rel_render_model_from_map(obj: &Map<String, Value>) -> Result<C4RelRenderM
     })
 }
 
-fn arg_to_string(v: Option<&Value>) -> Result<String> {
-    match v {
+fn positional_arg_to_string(arg: Option<&C4Arg>) -> Result<String> {
+    match arg {
         None => Ok(String::new()),
-        Some(Value::String(s)) => Ok(s.clone()),
-        Some(other) => Err(Error::diagram_parse_fallback(
+        Some(C4Arg::Text(value)) => Ok(value.clone()),
+        Some(C4Arg::Named { key, .. }) => Err(Error::diagram_parse_fallback(
             "c4".to_string(),
-            format!("expected string argument, got {other:?}"),
+            format!("expected positional string argument, got named argument `${key}`"),
         )),
     }
 }
 
-fn apply_text_field_or_kv(obj: &mut Map<String, Value>, default_key: &str, v: Value) -> Result<()> {
-    match v {
-        Value::Object(map) => {
-            let mut iter = map.into_iter();
-            let Some((k, vv)) = iter.next() else {
-                obj.insert(default_key.to_string(), wrap_text(json!("")));
-                return Ok(());
-            };
-            let s = match vv {
-                Value::String(s) => s,
-                other => {
-                    return Err(Error::diagram_parse_fallback(
-                        "c4".to_string(),
-                        format!("expected string in attribute kv, got {other:?}"),
-                    ));
-                }
-            };
-            obj.insert(k, wrap_text(json!(s)));
-            Ok(())
-        }
-        Value::String(s) => {
-            obj.insert(default_key.to_string(), wrap_text(json!(s)));
-            Ok(())
-        }
-        other => Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("invalid text field value: {other:?}"),
-        )),
-    }
+fn c4_arg_value_or_empty(arg: Option<&C4Arg>) -> Value {
+    arg.map(C4Arg::to_value).unwrap_or_else(|| json!(""))
 }
 
-fn apply_kv_value(
+fn assign_text_argument(
     obj: &mut Map<String, Value>,
-    default_key: &str,
-    v: Option<&Value>,
-) -> Result<()> {
-    let Some(v) = v else {
-        return Ok(());
-    };
-
-    match v {
-        Value::Object(map) => {
-            let mut iter = map.clone().into_iter();
-            let Some((k, vv)) = iter.next() else {
-                return Ok(());
-            };
-            obj.insert(k, vv);
-            Ok(())
+    positional_key: &str,
+    arg: Option<&C4Arg>,
+    missing_value: &str,
+) {
+    match arg {
+        None => {
+            obj.insert(positional_key.to_string(), wrap_text(json!(missing_value)));
         }
-        Value::String(s) => {
-            obj.insert(default_key.to_string(), json!(s));
-            Ok(())
+        Some(C4Arg::Text(value)) => {
+            obj.insert(positional_key.to_string(), wrap_text(json!(value)));
         }
-        other => Err(Error::diagram_parse_fallback(
-            "c4".to_string(),
-            format!("invalid kv value: {other:?}"),
-        )),
+        Some(C4Arg::Named { key, value }) => {
+            obj.insert(key.clone(), wrap_text(json!(value)));
+        }
     }
 }
 
-fn apply_int_kv(obj: &mut Map<String, Value>, key: &str, v: &Value) -> Result<()> {
-    let Some(parsed) = value_as_i64(v) else {
-        return Ok(());
+fn assign_optional_argument(
+    obj: &mut Map<String, Value>,
+    positional_key: &str,
+    arg: Option<&C4Arg>,
+) {
+    match arg {
+        None => {
+            obj.remove(positional_key);
+        }
+        Some(C4Arg::Text(value)) => {
+            obj.insert(positional_key.to_string(), json!(value));
+        }
+        Some(C4Arg::Named { key, value }) => {
+            obj.insert(key.clone(), json!(value));
+        }
+    }
+}
+
+fn apply_update_argument(obj: &mut Map<String, Value>, positional_key: &str, arg: Option<&C4Arg>) {
+    let Some(arg) = arg else {
+        return;
     };
-    obj.insert(key.to_string(), json!(parsed));
-    Ok(())
+
+    obj.insert(arg.key_or(positional_key).to_string(), json!(arg.value()));
+}
+
+fn apply_relation_style_argument(
+    obj: &mut Map<String, Value>,
+    positional_key: &str,
+    arg: Option<&C4Arg>,
+) {
+    let Some(arg) = arg else {
+        return;
+    };
+
+    let key = arg.key_or(positional_key);
+    let value = match key {
+        "offsetX" | "offsetY" => javascript_parse_int(arg.value())
+            .map(Value::from)
+            .unwrap_or(Value::Null),
+        _ => json!(arg.value()),
+    };
+    obj.insert(key.to_string(), value);
+}
+
+fn javascript_parse_int(input: &str) -> Option<i64> {
+    let input = input.trim_start_matches(|ch: char| ch.is_whitespace() || ch == '\u{feff}');
+    let (negative, unsigned) = match input.as_bytes().first() {
+        Some(b'-') => (true, &input[1..]),
+        Some(b'+') => (false, &input[1..]),
+        _ => (false, input),
+    };
+    let (radix, digits) = unsigned
+        .strip_prefix("0x")
+        .or_else(|| unsigned.strip_prefix("0X"))
+        .map_or((10, unsigned), |digits| (16, digits));
+    let digit_count = digits
+        .bytes()
+        .take_while(|byte| match radix {
+            16 => byte.is_ascii_hexdigit(),
+            _ => byte.is_ascii_digit(),
+        })
+        .count();
+    if digit_count == 0 {
+        return None;
+    }
+
+    let magnitude = i128::from_str_radix(&digits[..digit_count], radix).ok()?;
+    let signed = if negative { -magnitude } else { magnitude };
+    i64::try_from(signed).ok()
 }
 
 fn value_as_i64(v: &Value) -> Option<i64> {
     match v {
-        Value::Number(n) => n.as_i64().or_else(|| n.as_u64().map(|v| v as i64)),
-        Value::String(s) => s.trim().parse::<i64>().ok(),
-        Value::Object(map) => map.values().next().and_then(value_as_i64),
+        Value::Number(n) => n
+            .as_i64()
+            .or_else(|| n.as_u64().and_then(|value| i64::try_from(value).ok())),
+        Value::String(s) => javascript_parse_int(s),
         _ => None,
     }
 }
@@ -2026,7 +2131,10 @@ fn parse_c4_semantic_source(
     let mut editor_facts =
         EditorSemanticFacts::new().with_completion_vocabulary(C4_COMPLETION_VOCABULARY);
     let mut issues = Vec::new();
-    let mut pending_boundary_lbrace = None;
+    let mut semantic_statements = Vec::new();
+    let mut boundary_frames = Vec::new();
+    let mut pending_boundary = None;
+    let mut saw_statement_after_header = false;
 
     let mut lines = LineCursor::new(code);
     let mut saw_header_line = false;
@@ -2075,40 +2183,78 @@ fn parse_c4_semantic_source(
         if t.is_empty() {
             continue;
         }
+        saw_statement_after_header = true;
 
         let statement_start = line_start + raw.len() - raw.trim_start().len();
-        if let Some(insertion_offset) = pending_boundary_lbrace.take() {
+        if let Some(declaration) = pending_boundary.take() {
             if t == "{" {
                 push_c4_lexeme(
                     lexemes,
                     EditorLexemeKind::Delimiter,
                     SourceSpan::new(statement_start, statement_start + 1),
                 );
+                boundary_frames.push(C4BoundaryFrame::new(declaration));
                 continue;
             }
-            db.pop_boundary_parse_stack();
             issues.push(c4_parse_issue(
                 Error::diagram_parse_insertion_point(
                     meta.diagram_type.clone(),
                     "expected '{' after boundary",
-                    insertion_offset,
+                    declaration.span.end,
                 ),
-                SourceSpan::new(insertion_offset, insertion_offset),
+                SourceSpan::new(declaration.span.end, declaration.span.end),
             ));
         }
 
         if t == "}" {
-            push_c4_lexeme(
-                lexemes,
-                EditorLexemeKind::Delimiter,
-                SourceSpan::new(statement_start, statement_start + 1),
+            let closing_span = SourceSpan::new(statement_start, statement_start + 1);
+            push_c4_lexeme(lexemes, EditorLexemeKind::Delimiter, closing_span);
+            let Some(frame) = boundary_frames.pop() else {
+                issues.push(c4_parse_issue(
+                    Error::diagram_parse_exact(
+                        meta.diagram_type.clone(),
+                        "unexpected '}' without open C4 boundary".to_string(),
+                        closing_span,
+                    ),
+                    closing_span,
+                ));
+                continue;
+            };
+            if !frame.has_diagram_statement {
+                issues.push(c4_parse_issue(
+                    Error::diagram_parse_exact(
+                        meta.diagram_type.clone(),
+                        "C4 boundary must contain at least one diagram statement".to_string(),
+                        closing_span,
+                    ),
+                    closing_span,
+                ));
+                continue;
+            }
+            if !frame.is_valid {
+                continue;
+            }
+            push_c4_semantic_statement(
+                &mut semantic_statements,
+                &mut boundary_frames,
+                C4SemanticStatement::Boundary {
+                    declaration: frame.declaration,
+                    statements: frame.statements,
+                },
+                true,
             );
-            db.pop_boundary_parse_stack();
             continue;
         }
 
         if let Some(title) = parse_title_spanned_c4(raw, line_start, lexemes) {
-            db.set_title(&title.text, &meta.effective_config);
+            if c4_other_statement_is_allowed(&mut boundary_frames, &mut issues, meta, title.span) {
+                push_c4_semantic_statement(
+                    &mut semantic_statements,
+                    &mut boundary_frames,
+                    C4SemanticStatement::SetTitle(title.text.clone()),
+                    false,
+                );
+            }
             editor_facts.push_directive_prefix("title");
             push_c4_payload_fact(&mut editor_facts, &title, "c4 title");
             continue;
@@ -2116,7 +2262,19 @@ fn parse_c4_semantic_source(
 
         if let Some(acc_title) = parse_acc_title_spanned_c4(raw, line_start, lexemes) {
             // Mermaid's C4 grammar maps accTitle to the diagram title.
-            db.set_title(&acc_title.text, &meta.effective_config);
+            if c4_other_statement_is_allowed(
+                &mut boundary_frames,
+                &mut issues,
+                meta,
+                acc_title.span,
+            ) {
+                push_c4_semantic_statement(
+                    &mut semantic_statements,
+                    &mut boundary_frames,
+                    C4SemanticStatement::SetTitle(acc_title.text.clone()),
+                    false,
+                );
+            }
             editor_facts.push_directive_prefix("accTitle");
             push_c4_payload_fact(&mut editor_facts, &acc_title, "c4 accessibility title");
             continue;
@@ -2125,7 +2283,19 @@ fn parse_c4_semantic_source(
         if let Some(acc_description) =
             parse_acc_description_stmt_spanned_c4(raw, line_start, lexemes)
         {
-            db.set_acc_description(&acc_description.text);
+            if c4_other_statement_is_allowed(
+                &mut boundary_frames,
+                &mut issues,
+                meta,
+                acc_description.span,
+            ) {
+                push_c4_semantic_statement(
+                    &mut semantic_statements,
+                    &mut boundary_frames,
+                    C4SemanticStatement::SetAccDescription(acc_description.text.clone()),
+                    false,
+                );
+            }
             editor_facts.push_directive_prefix("accDescription");
             push_c4_payload_fact(
                 &mut editor_facts,
@@ -2138,7 +2308,19 @@ fn parse_c4_semantic_source(
         if let Some(acc_descr) =
             parse_acc_descr_spanned_c4(&mut lines, raw, line_start, lexemes, control)?
         {
-            db.set_acc_description(&acc_descr.value.text);
+            if c4_other_statement_is_allowed(
+                &mut boundary_frames,
+                &mut issues,
+                meta,
+                acc_descr.value.span,
+            ) {
+                push_c4_semantic_statement(
+                    &mut semantic_statements,
+                    &mut boundary_frames,
+                    C4SemanticStatement::SetAccDescription(acc_descr.value.text.clone()),
+                    false,
+                );
+            }
             editor_facts.push_directive_prefix("accDescr");
             push_c4_payload_fact(
                 &mut editor_facts,
@@ -2158,19 +2340,17 @@ fn parse_c4_semantic_source(
 
         let stmt_start = statement_start;
         let statement_span = SourceSpan::new(stmt_start, stmt_start + t.len());
-        if let Some(valid) =
+        if let Some(_valid) =
             parse_direction_stmt_facts_c4(raw, line_start, &mut editor_facts, lexemes)
         {
-            if !valid {
-                issues.push(c4_parse_issue(
-                    Error::diagram_parse_exact(
-                        meta.diagram_type.clone(),
-                        format!("unsupported C4 statement: {t}"),
-                        statement_span,
-                    ),
+            issues.push(c4_parse_issue(
+                Error::diagram_parse_exact(
+                    meta.diagram_type.clone(),
+                    format!("unsupported C4 statement: {t}"),
                     statement_span,
-                ));
-            }
+                ),
+                statement_span,
+            ));
             continue;
         }
         let stmt = match parse_macro_stmt_spanned(t, stmt_start, lexemes) {
@@ -2200,24 +2380,78 @@ fn parse_c4_semantic_source(
             issues.push(c4_parse_issue(error, stmt.span));
             continue;
         }
-        match apply_c4_macro(&mut db, &stmt, meta) {
-            Ok(true) => pending_boundary_lbrace = Some(stmt.span.end),
-            Ok(false) => {}
-            Err(error) => issues.push(c4_parse_issue(error, stmt.span)),
+        if stmt.has_lbrace && !is_boundary_macro(&stmt.name) {
+            let lbrace = SourceSpan::new(stmt.span.end.saturating_sub(1), stmt.span.end);
+            issues.push(c4_parse_issue(
+                Error::diagram_parse_exact(
+                    meta.diagram_type.clone(),
+                    "unexpected '{' after non-boundary C4 statement".to_string(),
+                    lbrace,
+                ),
+                lbrace,
+            ));
+            continue;
+        }
+        if is_boundary_macro(&stmt.name) {
+            if stmt.has_lbrace {
+                boundary_frames.push(C4BoundaryFrame::new(stmt));
+            } else {
+                pending_boundary = Some(stmt);
+            }
+        } else {
+            push_c4_semantic_statement(
+                &mut semantic_statements,
+                &mut boundary_frames,
+                C4SemanticStatement::Macro(stmt),
+                true,
+            );
         }
     }
 
-    if let Some(insertion_offset) = pending_boundary_lbrace {
-        db.pop_boundary_parse_stack();
+    if let Some(declaration) = pending_boundary {
         issues.push(c4_parse_issue(
             Error::diagram_parse_insertion_point(
                 meta.diagram_type.clone(),
                 "expected '{' after boundary",
-                insertion_offset,
+                declaration.span.end,
             ),
-            SourceSpan::new(insertion_offset, insertion_offset),
+            SourceSpan::new(declaration.span.end, declaration.span.end),
         ));
     }
+
+    while boundary_frames.pop().is_some() {
+        let eof = SourceSpan::new(code.len(), code.len());
+        issues.push(c4_parse_issue(
+            Error::diagram_parse_insertion_point(
+                meta.diagram_type.clone(),
+                "expected '}' before end of C4 diagram",
+                code.len(),
+            ),
+            eof,
+        ));
+    }
+
+    if saw_header_line && !saw_statement_after_header {
+        let eof = SourceSpan::new(code.len(), code.len());
+        issues.push(c4_parse_issue(
+            Error::diagram_parse_insertion_point(
+                meta.diagram_type.clone(),
+                "expected at least one C4 statement",
+                code.len(),
+            ),
+            eof,
+        ));
+    }
+
+    apply_c4_semantic_statements(
+        &mut db,
+        &semantic_statements,
+        "global",
+        meta,
+        &mut issues,
+        control,
+    )?;
+    issues.sort_by_key(|issue| issue.span.start);
 
     control.checkpoint()?;
     Ok(C4ParseOutcome {
@@ -2226,69 +2460,151 @@ fn parse_c4_semantic_source(
     })
 }
 
-fn apply_c4_macro(db: &mut C4Db, stmt: &SpannedMacroStmt, meta: &ParseMetadata) -> Result<bool> {
+fn apply_c4_semantic_statements(
+    db: &mut C4Db,
+    statements: &[C4SemanticStatement],
+    parent_boundary: &str,
+    meta: &ParseMetadata,
+    issues: &mut Vec<C4ParseIssue>,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    struct ReplayFrame<'a> {
+        statements: &'a [C4SemanticStatement],
+        next_statement: usize,
+        parent_boundary: String,
+    }
+
+    let mut frames = vec![ReplayFrame {
+        statements,
+        next_statement: 0,
+        parent_boundary: parent_boundary.to_string(),
+    }];
+    while let Some(frame) = frames.last_mut() {
+        if frame.next_statement == frame.statements.len() {
+            frames.pop();
+            continue;
+        }
+
+        control.checkpoint()?;
+        let statement = &frame.statements[frame.next_statement];
+        frame.next_statement += 1;
+        let parent_boundary = frame.parent_boundary.clone();
+        match statement {
+            C4SemanticStatement::SetTitle(title) => {
+                db.set_title(title, &meta.effective_config);
+            }
+            C4SemanticStatement::SetAccDescription(description) => {
+                db.set_acc_description(description);
+            }
+            C4SemanticStatement::Macro(statement) => {
+                if let Err(error) = apply_c4_macro(db, statement, meta, &parent_boundary) {
+                    issues.push(c4_parse_issue(error, statement.span));
+                }
+            }
+            C4SemanticStatement::Boundary {
+                declaration,
+                statements,
+            } => match apply_c4_macro(db, declaration, meta, &parent_boundary) {
+                Ok(Some(alias)) => {
+                    frames.push(ReplayFrame {
+                        statements,
+                        next_statement: 0,
+                        parent_boundary: alias,
+                    });
+                }
+                Ok(None) => issues.push(c4_parse_issue(
+                    Error::diagram_parse_exact(
+                        meta.diagram_type.clone(),
+                        "expected C4 boundary declaration".to_string(),
+                        declaration.span,
+                    ),
+                    declaration.span,
+                )),
+                Err(error) => issues.push(c4_parse_issue(error, declaration.span)),
+            },
+        }
+    }
+    Ok(())
+}
+
+fn apply_c4_macro(
+    db: &mut C4Db,
+    stmt: &SpannedMacroStmt,
+    meta: &ParseMetadata,
+    parent_boundary: &str,
+) -> Result<Option<String>> {
     let name = stmt.name.as_str();
-    let mut args = spanned_args_to_values(&stmt.args);
+    let mut args = semantic_c4_args(&stmt.args);
 
     if is_boundary_macro(name) {
         match name {
-            "Enterprise_Boundary" => args.insert(2, json!("ENTERPRISE")),
-            "System_Boundary" => args.insert(2, json!("SYSTEM")),
-            "Container_Boundary" => args.insert(2, json!("CONTAINER")),
+            "Enterprise_Boundary" => {
+                args.insert(args.len().min(2), C4Arg::Text("ENTERPRISE".to_string()))
+            }
+            "System_Boundary" => args.insert(args.len().min(2), C4Arg::Text("SYSTEM".to_string())),
+            "Container_Boundary" => {
+                args.insert(args.len().min(2), C4Arg::Text("CONTAINER".to_string()))
+            }
             _ => {}
         }
 
-        match name {
+        let alias = match name {
             "Boundary" | "Enterprise_Boundary" | "System_Boundary" => {
-                db.add_person_or_system_boundary(args)?;
+                db.add_person_or_system_boundary(&args, parent_boundary)?
             }
-            "Container_Boundary" => db.add_container_boundary(args)?,
-            "Node" | "Deployment_Node" => db.add_deployment_node("node", args)?,
-            "Node_L" => db.add_deployment_node("nodeL", args)?,
-            "Node_R" => db.add_deployment_node("nodeR", args)?,
+            "Container_Boundary" => db.add_container_boundary(&args, parent_boundary)?,
+            "Node" | "Deployment_Node" => db.add_deployment_node("node", &args, parent_boundary)?,
+            "Node_L" => db.add_deployment_node("nodeL", &args, parent_boundary)?,
+            "Node_R" => db.add_deployment_node("nodeR", &args, parent_boundary)?,
             other => {
                 return Err(Error::diagram_parse_fallback(
                     meta.diagram_type.clone(),
                     format!("unsupported boundary macro: {other}"),
                 ));
             }
-        }
+        };
 
-        return Ok(!stmt.has_lbrace);
+        return Ok(Some(alias));
     }
 
     match name {
-        "Person" => db.add_person_or_system("person", &args)?,
-        "Person_Ext" => db.add_person_or_system("external_person", &args)?,
-        "System" => db.add_person_or_system("system", &args)?,
-        "SystemDb" => db.add_person_or_system("system_db", &args)?,
-        "SystemQueue" => db.add_person_or_system("system_queue", &args)?,
-        "System_Ext" => db.add_person_or_system("external_system", &args)?,
-        "SystemDb_Ext" => db.add_person_or_system("external_system_db", &args)?,
-        "SystemQueue_Ext" => db.add_person_or_system("external_system_queue", &args)?,
-        "Container" => db.add_container("container", &args)?,
-        "ContainerDb" => db.add_container("container_db", &args)?,
-        "ContainerQueue" => db.add_container("container_queue", &args)?,
-        "Container_Ext" => db.add_container("external_container", &args)?,
-        "ContainerDb_Ext" => db.add_container("external_container_db", &args)?,
-        "ContainerQueue_Ext" => db.add_container("external_container_queue", &args)?,
-        "Component" => db.add_component("component", &args)?,
-        "ComponentDb" => db.add_component("component_db", &args)?,
-        "ComponentQueue" => db.add_component("component_queue", &args)?,
-        "Component_Ext" => db.add_component("external_component", &args)?,
-        "ComponentDb_Ext" => db.add_component("external_component_db", &args)?,
-        "ComponentQueue_Ext" => db.add_component("external_component_queue", &args)?,
-        "Rel" => db.add_rel("rel", args)?,
-        "BiRel" => db.add_rel("birel", args)?,
-        "Rel_U" | "Rel_Up" => db.add_rel("rel_u", args)?,
-        "Rel_D" | "Rel_Down" => db.add_rel("rel_d", args)?,
-        "Rel_L" | "Rel_Left" => db.add_rel("rel_l", args)?,
-        "Rel_R" | "Rel_Right" => db.add_rel("rel_r", args)?,
-        "Rel_Back" => db.add_rel("rel_b", args)?,
-        "RelIndex" => db.add_rel("rel", args.into_iter().skip(1).collect())?,
-        "UpdateElementStyle" => db.update_el_style(args)?,
-        "UpdateRelStyle" => db.update_rel_style(args)?,
-        "UpdateLayoutConfig" => db.update_layout_config(args)?,
+        "Person" => db.add_person_or_system("person", &args, parent_boundary)?,
+        "Person_Ext" => db.add_person_or_system("external_person", &args, parent_boundary)?,
+        "System" => db.add_person_or_system("system", &args, parent_boundary)?,
+        "SystemDb" => db.add_person_or_system("system_db", &args, parent_boundary)?,
+        "SystemQueue" => db.add_person_or_system("system_queue", &args, parent_boundary)?,
+        "System_Ext" => db.add_person_or_system("external_system", &args, parent_boundary)?,
+        "SystemDb_Ext" => db.add_person_or_system("external_system_db", &args, parent_boundary)?,
+        "SystemQueue_Ext" => {
+            db.add_person_or_system("external_system_queue", &args, parent_boundary)?
+        }
+        "Container" => db.add_container("container", &args, parent_boundary)?,
+        "ContainerDb" => db.add_container("container_db", &args, parent_boundary)?,
+        "ContainerQueue" => db.add_container("container_queue", &args, parent_boundary)?,
+        "Container_Ext" => db.add_container("external_container", &args, parent_boundary)?,
+        "ContainerDb_Ext" => db.add_container("external_container_db", &args, parent_boundary)?,
+        "ContainerQueue_Ext" => {
+            db.add_container("external_container_queue", &args, parent_boundary)?
+        }
+        "Component" => db.add_component("component", &args, parent_boundary)?,
+        "ComponentDb" => db.add_component("component_db", &args, parent_boundary)?,
+        "ComponentQueue" => db.add_component("component_queue", &args, parent_boundary)?,
+        "Component_Ext" => db.add_component("external_component", &args, parent_boundary)?,
+        "ComponentDb_Ext" => db.add_component("external_component_db", &args, parent_boundary)?,
+        "ComponentQueue_Ext" => {
+            db.add_component("external_component_queue", &args, parent_boundary)?
+        }
+        "Rel" => db.add_rel("rel", &args)?,
+        "BiRel" => db.add_rel("birel", &args)?,
+        "Rel_U" | "Rel_Up" => db.add_rel("rel_u", &args)?,
+        "Rel_D" | "Rel_Down" => db.add_rel("rel_d", &args)?,
+        "Rel_L" | "Rel_Left" => db.add_rel("rel_l", &args)?,
+        "Rel_R" | "Rel_Right" => db.add_rel("rel_r", &args)?,
+        "Rel_Back" => db.add_rel("rel_b", &args)?,
+        "RelIndex" => db.add_rel("rel", &args[1..])?,
+        "UpdateElementStyle" => db.update_el_style(&args)?,
+        "UpdateRelStyle" => db.update_rel_style(&args)?,
+        "UpdateLayoutConfig" => db.update_layout_config(&args)?,
         other => {
             return Err(Error::diagram_parse_fallback(
                 meta.diagram_type.clone(),
@@ -2296,7 +2612,7 @@ fn apply_c4_macro(db: &mut C4Db, stmt: &SpannedMacroStmt, meta: &ParseMetadata) 
             ));
         }
     }
-    Ok(false)
+    Ok(None)
 }
 
 fn c4_parse_issue(error: Error, fallback: SourceSpan) -> C4ParseIssue {
@@ -2381,6 +2697,17 @@ mod tests {
         }
     }
 
+    fn recovered_model_and_errors(text: &str) -> (Value, Vec<String>) {
+        let outcome = construct_c4_semantic_source(text, &meta());
+        let errors = outcome
+            .issues
+            .iter()
+            .map(|issue| issue.error.to_string())
+            .collect();
+        let model = outcome.source.db.to_model(&meta()).unwrap();
+        (model, errors)
+    }
+
     fn meta() -> ParseMetadata {
         ParseMetadata {
             diagram_type: "c4".to_string(),
@@ -2423,7 +2750,6 @@ mod tests {
             "  System(system, \"Internet Banking\", \"Core system\")\r\n",
             "}\r\n",
             "Rel(customer, system, \"Uses\", \"HTTPS\")\r\n",
-            "direction LR\r\n",
         );
         let expected_json = parse_c4(text, &meta()).unwrap();
         let expected_model = parse_c4_model_for_render(text, &meta()).unwrap();
@@ -2469,7 +2795,6 @@ mod tests {
             ("customer", "Person(customer"),
             ("system", "System(system"),
             ("Banking Context", "Banking Context"),
-            ("LR", "direction LR"),
         ] {
             let marker_start = text.find(marker).unwrap();
             let start = marker_start + marker.find(name).unwrap();
@@ -2701,6 +3026,118 @@ Rel(a, b, "second")
     }
 
     #[test]
+    fn c4_redeclaring_shape_clears_omitted_optional_fields() {
+        let model = parse(
+            r#"C4Context
+Person(customer, "First", "Original description", "users", "retail", "https://example.com")
+Person(customer, "Second")
+"#,
+        );
+        let shape = model["shapes"][0].as_object().unwrap();
+
+        assert_eq!(shape["label"]["text"], json!("Second"));
+        assert_eq!(shape["descr"]["text"], json!(""));
+        assert!(
+            !shape.contains_key("sprite"),
+            "a redeclaration must clear an omitted sprite"
+        );
+        assert!(
+            !shape.contains_key("tags"),
+            "a redeclaration must clear omitted tags"
+        );
+        assert!(
+            !shape.contains_key("link"),
+            "a redeclaration must clear an omitted link"
+        );
+    }
+
+    #[test]
+    fn c4_redeclaring_container_and_component_clears_omitted_optional_fields() {
+        let model = parse(
+            r#"C4Component
+Container(container, "First container", "Rust", "Description", "database", "backend", "https://example.com/container")
+Container(container, "Second container")
+Component(component, "First component", "Rust", "Description", "server", "backend", "https://example.com/component")
+Component(component, "Second component")
+"#,
+        );
+        let shapes = model["shapes"].as_array().unwrap();
+
+        assert_eq!(
+            shapes.len(),
+            2,
+            "redeclaration must preserve insertion order"
+        );
+        for (shape, alias, label) in [
+            (&shapes[0], "container", "Second container"),
+            (&shapes[1], "component", "Second component"),
+        ] {
+            let shape = shape.as_object().unwrap();
+            assert_eq!(shape["alias"], json!(alias));
+            assert_eq!(shape["label"]["text"], json!(label));
+            assert_eq!(shape["techn"]["text"], json!(""));
+            assert_eq!(shape["descr"]["text"], json!(""));
+            assert!(!shape.contains_key("sprite"));
+            assert!(!shape.contains_key("tags"));
+            assert!(!shape.contains_key("link"));
+        }
+    }
+
+    #[test]
+    fn c4_redeclaring_relation_clears_omitted_optional_fields() {
+        let model = parse(
+            r#"C4Dynamic
+Rel(a, b, "First", "HTTPS", "Description", "server", "backend", "https://example.com")
+Rel(a, b, "Second")
+"#,
+        );
+        let rel = model["rels"][0].as_object().unwrap();
+
+        assert_eq!(model["rels"].as_array().unwrap().len(), 1);
+        assert_eq!(rel["label"]["text"], json!("Second"));
+        assert_eq!(rel["techn"]["text"], json!(""));
+        assert_eq!(rel["descr"]["text"], json!(""));
+        assert!(!rel.contains_key("sprite"));
+        assert!(!rel.contains_key("tags"));
+        assert!(!rel.contains_key("link"));
+    }
+
+    #[test]
+    fn c4_declaration_named_arguments_cannot_override_structural_fields() {
+        let model = parse(
+            r#"C4Context
+Boundary(b, "Boundary") {
+  Person(p, "Person", "", $wrap="false", $parentBoundary="outside", $typeC4Shape="wrong")
+}
+"#,
+        );
+        let shape = &model["shapes"][0];
+
+        assert_eq!(shape["alias"], json!("p"));
+        assert_eq!(shape["parentBoundary"], json!("b"));
+        assert_eq!(shape["typeC4Shape"]["text"], json!("person"));
+        assert_eq!(shape["wrap"], json!(false));
+    }
+
+    #[test]
+    fn c4_alias_updates_keep_first_match_lookup_semantics() {
+        let model = parse(
+            r#"C4Context
+Person(a, "A")
+UpdateElementStyle(a, $alias="b")
+UpdateElementStyle(b, $bgColor="red")
+Person(b, "B")
+"#,
+        );
+        let shapes = model["shapes"].as_array().unwrap();
+
+        assert_eq!(shapes.len(), 1);
+        assert_eq!(shapes[0]["alias"], json!("b"));
+        assert_eq!(shapes[0]["label"]["text"], json!("B"));
+        assert_eq!(shapes[0]["bgColor"], json!("red"));
+    }
+
+    #[test]
     fn c4_relindex_ignores_index_arg() {
         let model = parse(
             r#"C4Context
@@ -2742,6 +3179,7 @@ UpdateElementStyle(a, $bgColor="red", $borderColor="blue")
         let model = parse(
             r#"C4Context
 Boundary(b1, "B") {
+  Person(child, "Child")
 }
 UpdateElementStyle(b1, $bgColor="red")
 "#,
@@ -2761,6 +3199,78 @@ UpdateRelStyle(a, b, $textColor="red", $lineColor="blue", $offsetX="10", $offset
         assert_eq!(model["rels"][0]["lineColor"], json!("blue"));
         assert_eq!(model["rels"][0]["offsetX"], json!(10));
         assert_eq!(model["rels"][0]["offsetY"], json!(20));
+    }
+
+    #[test]
+    fn c4_update_rel_style_sparse_named_offsets_follow_their_keys() {
+        let model = parse(
+            r#"C4Dynamic
+Rel(c2, c3, "Calls isAuthenticated() on")
+UpdateRelStyle(c2, c3, $textColor="red", $offsetX="-40", $offsetY="60")
+"#,
+        );
+        let rel = &model["rels"][0];
+
+        assert_eq!(rel["textColor"], json!("red"));
+        assert!(
+            rel.get("lineColor").is_none(),
+            "omitting lineColor must not consume a named offset"
+        );
+        assert_eq!(rel["offsetX"], json!(-40));
+        assert_eq!(rel["offsetY"], json!(60));
+    }
+
+    #[test]
+    fn c4_update_rel_style_named_fields_are_order_independent() {
+        let model = parse(
+            r#"C4Dynamic
+Rel(a, b, "label")
+UpdateRelStyle(a, b, $offsetX="-40", $textColor="red", $offsetY="60")
+"#,
+        );
+        let rel = &model["rels"][0];
+
+        assert_eq!(rel["textColor"], json!("red"));
+        assert_eq!(rel["offsetX"], json!(-40));
+        assert_eq!(rel["offsetY"], json!(60));
+    }
+
+    #[test]
+    fn c4_update_rel_style_uses_javascript_parse_int_semantics() {
+        let model = parse(
+            r#"C4Dynamic
+Rel(a, b, "positional")
+Rel(c, d, "named")
+UpdateRelStyle(a, b, "red", "blue", "   -40px", "+60.75")
+UpdateRelStyle(c, d, $offsetX="not-a-number", $offsetY="0x10tail")
+"#,
+        );
+        let positional = &model["rels"][0];
+        let named = &model["rels"][1];
+
+        assert_eq!(positional["textColor"], json!("red"));
+        assert_eq!(positional["lineColor"], json!("blue"));
+        assert_eq!(positional["offsetX"], json!(-40));
+        assert_eq!(positional["offsetY"], json!(60));
+        assert!(named.get("offsetX").is_none());
+        assert_eq!(named["offsetY"], json!(16));
+    }
+
+    #[test]
+    fn c4_update_rel_style_preserves_unknown_named_key_side_effects() {
+        let model = parse(
+            r#"C4Dynamic
+Rel(a, b, "label")
+UpdateRelStyle(a, b, $wrap="false")
+UpdateRelStyle(a, b, $from="c")
+UpdateRelStyle(c, b, $lineColor="red")
+"#,
+        );
+        let rel = &model["rels"][0];
+
+        assert_eq!(rel["from"], json!("c"));
+        assert_eq!(rel["lineColor"], json!("red"));
+        assert_eq!(rel["wrap"], json!(true));
     }
 
     #[test]
@@ -2787,6 +3297,7 @@ UpdateLayoutConfig(3, 2)
         let model = parse(
             r#"C4Deployment
 Node(n1, "Node", "type", "descr", $sprite="users") {
+  Person(p1, "P1")
 }
 "#,
         );
@@ -2808,6 +3319,166 @@ Boundary(b1, "B")
         assert_eq!(model["boundaries"][1]["alias"], json!("b1"));
         assert_eq!(model["shapes"].as_array().unwrap().len(), 1);
         assert_eq!(model["shapes"][0]["parentBoundary"], json!("b1"));
+    }
+
+    #[test]
+    fn c4_non_boundary_macro_cannot_open_a_boundary_body() {
+        let source = r#"C4Context
+Person(p, "P") {
+"#;
+        let (model, errors) = recovered_model_and_errors(source);
+
+        assert!(model["shapes"].as_array().unwrap().is_empty());
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("unexpected '{' after non-boundary"))
+        );
+        parse_err(source);
+    }
+
+    #[test]
+    fn c4_boundary_must_start_with_a_diagram_statement() {
+        let (model, errors) = recovered_model_and_errors(
+            r#"C4Context
+Boundary(b, "B") {
+  title Invalid inside boundary
+  Person(p, "P")
+}
+"#,
+        );
+
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 1);
+        assert!(model["shapes"].as_array().unwrap().is_empty());
+        assert!(model["title"].is_null());
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("must start with a diagram statement"))
+        );
+    }
+
+    #[test]
+    fn c4_boundary_without_validated_brace_does_not_mutate_db_or_parent() {
+        let (model, errors) = recovered_model_and_errors(
+            r#"C4Context
+Boundary(bank, "Bank")
+Person(after, "After")
+"#,
+        );
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("expected '{' after boundary"))
+        );
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 1);
+        assert_eq!(model["shapes"][0]["alias"], json!("after"));
+        assert_eq!(model["shapes"][0]["parentBoundary"], json!("global"));
+    }
+
+    #[test]
+    fn c4_empty_boundary_is_rejected_and_rolled_back() {
+        let (model, errors) = recovered_model_and_errors(
+            r#"C4Context
+Boundary(empty, "Empty") {
+}
+"#,
+        );
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("boundary must contain"))
+        );
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn c4_unclosed_boundary_is_rejected_and_rolled_back_at_eof() {
+        let source = r#"C4Context
+Boundary(open, "Open") {
+  Person(inside, "Inside")
+"#;
+        let (model, errors) = recovered_model_and_errors(source);
+
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("expected '}' before end"))
+        );
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 1);
+        assert!(model["shapes"].as_array().unwrap().is_empty());
+
+        let facts = crate::family::test_support::editor_facts(
+            parse_c4_json_and_editor_facts,
+            source,
+            &meta(),
+        );
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "inside"));
+    }
+
+    #[test]
+    fn c4_render_model_fails_closed_for_boundary_structure_errors() {
+        for source in [
+            "C4Context\nBoundary(missing, \"Missing\")\nPerson(after, \"After\")\n",
+            "C4Context\nBoundary(empty, \"Empty\") {\n}\n",
+            "C4Context\nBoundary(open, \"Open\") {\nPerson(inside, \"Inside\")\n",
+            "C4Context\nPerson(before, \"Before\")\n}\n",
+        ] {
+            assert!(
+                parse_c4_model_for_render(source, &meta()).is_err(),
+                "render projection accepted structurally invalid C4 source: {source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn c4_unmatched_closing_brace_does_not_change_safe_sibling_parent() {
+        let (model, errors) = recovered_model_and_errors(
+            r#"C4Context
+Boundary(bank, "Bank") {
+  Person(inside, "Inside")
+}
+}
+Person(after, "After")
+"#,
+        );
+
+        assert!(errors.iter().any(|error| error.contains("unexpected '}'")));
+        assert_eq!(model["shapes"][1]["alias"], json!("after"));
+        assert_eq!(model["shapes"][1]["parentBoundary"], json!("global"));
+    }
+
+    #[test]
+    fn c4_direction_after_header_is_rejected_but_kept_in_editor_facts() {
+        let source = "C4Context\nPerson(customer, \"Customer\")\ndirection LR\n";
+        let error = parse_c4(source, &meta()).expect_err("direction is not a C4 statement");
+        assert!(error.to_string().contains("unsupported C4 statement"));
+
+        let facts = crate::family::test_support::editor_facts(
+            parse_c4_json_and_editor_facts,
+            source,
+            &meta(),
+        );
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        let direction = source.find("direction").unwrap();
+        assert_c4_lexeme(
+            &facts,
+            source,
+            EditorLexemeKind::Keyword,
+            SourceSpan::new(direction, direction + "direction".len()),
+            None,
+        );
+        let lr = source.find("LR").unwrap();
+        assert_c4_lexeme(
+            &facts,
+            source,
+            EditorLexemeKind::Literal,
+            SourceSpan::new(lr, lr + "LR".len()),
+            None,
+        );
     }
 
     #[test]
@@ -2853,6 +3524,20 @@ Container_Boundary(cb, "CB") {
         assert_eq!(model["boundaries"][1]["type"]["text"], json!("CONTAINER"));
         assert_eq!(model["shapes"].as_array().unwrap().len(), 1);
         assert_eq!(model["shapes"][0]["parentBoundary"], json!("cb"));
+    }
+
+    #[test]
+    fn c4_container_boundary_with_only_alias_uses_container_default_type() {
+        let model = parse(
+            r#"C4Container
+Container_Boundary("b") {
+  Person(p, "P")
+}
+"#,
+        );
+
+        assert_eq!(model["boundaries"][1]["alias"], json!("b"));
+        assert_eq!(model["boundaries"][1]["type"]["text"], json!("container"));
     }
 
     #[test]
@@ -2921,6 +3606,7 @@ Container(c1, "C1", $techn="Rust", $descr="Fast")
         let model = parse(
             r#"C4Context
 Boundary(b1, "B", $type="company") {
+  Person(p1, "P1")
 }
 "#,
         );
@@ -2938,6 +3624,16 @@ Person(a, , "D")
         assert_eq!(model["shapes"].as_array().unwrap().len(), 1);
         assert_eq!(model["shapes"][0]["label"]["text"], json!(""));
         assert_eq!(model["shapes"][0]["descr"]["text"], json!("D"));
+    }
+
+    #[test]
+    fn c4_header_without_statements_is_rejected() {
+        let diagnostic = parse_err("C4Context\n");
+        assert!(
+            diagnostic
+                .message()
+                .contains("expected at least one C4 statement")
+        );
     }
 
     #[test]
@@ -3270,7 +3966,7 @@ UpdateRelStyle(customer, system, $lineColor="blue")
             "C4Dynamic",
             "C4Deployment",
         ] {
-            let source = format!("{header}\r\n");
+            let source = format!("{header}\r\nPerson(p, \"P\")\r\n");
             let facts = crate::family::test_support::editor_facts(
                 parse_c4_json_and_editor_facts,
                 &source,
@@ -3308,7 +4004,6 @@ UpdateRelStyle(customer, system, $lineColor="blue")
             "UpdateElementStyle(root, $bgColor=\"#ffaa00\", $shadowing=\"true\", $shape=\"rounded\")\r\n",
             "UpdateRelStyle(用户, root, $lineColor=\"blue\", $offsetX=\"12\")\r\n",
             "UpdateLayoutConfig($c4ShapeInRow=\"3\", 2)\r\n",
-            "direction LR\r\n",
         );
         parse_c4(source, &meta()).expect("rich C4 syntax must remain renderable");
         let facts = crate::family::test_support::editor_facts(
@@ -3342,8 +4037,6 @@ UpdateRelStyle(customer, system, $lineColor="blue")
             (EditorLexemeKind::Color, "blue"),
             (EditorLexemeKind::Keyword, "UpdateLayoutConfig"),
             (EditorLexemeKind::Number, "3"),
-            (EditorLexemeKind::Keyword, "direction"),
-            (EditorLexemeKind::Literal, "LR"),
         ] {
             let start = source.find(token).expect("fixture token");
             assert_c4_lexeme(
