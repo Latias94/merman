@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { loadNativeTransport } from "../src/candidates/native.mjs";
 import { loadNodeWasmTransport } from "../src/candidates/wasm.mjs";
 import {
+  assertNativeRuntimePackageVersion,
   loadNativeBinding,
   nativeLoaderPackageVersion,
   nativePackageName,
@@ -17,6 +18,7 @@ import {
   MermanMissingPlatformPackageError,
   MermanOperationError,
   MermanUnsupportedTargetError,
+  NODE_TRANSPORT_LIMITS,
 } from "../src/errors.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -85,6 +87,9 @@ test("the native loader accepts and caches an exact-version runtime catalog", as
   class NativeEngine {
     execute() {}
     executeSync() {}
+    metadataJson(id) {
+      return JSON.stringify({ id });
+    }
     runtimeCatalogJson() {
       catalogReads += 1;
       return JSON.stringify({ package_version: nativeLoaderPackageVersion() });
@@ -103,11 +108,33 @@ test("the native loader accepts and caches an exact-version runtime catalog", as
   await transport.dispose();
 });
 
+test("the native version preflight accepts bounded catalog text only", () => {
+  assert.throws(
+    () => assertNativeRuntimePackageVersion({
+      package_version: nativeLoaderPackageVersion(),
+    }),
+    MermanInvalidTransportError,
+  );
+
+  const catalog = JSON.stringify({ package_version: nativeLoaderPackageVersion() });
+  const exactCatalog = catalog + " ".repeat(
+    NODE_TRANSPORT_LIMITS.runtimeCatalogBytes - Buffer.byteLength(catalog),
+  );
+  assert.equal(assertNativeRuntimePackageVersion(exactCatalog), exactCatalog);
+  assert.throws(
+    () => assertNativeRuntimePackageVersion(`${exactCatalog} `),
+    /wire limit/i,
+  );
+});
+
 test("the native loader rejects a stale binary runtime catalog", async () => {
   let disposed = false;
   class NativeEngine {
     execute() {}
     executeSync() {}
+    metadataJson(id) {
+      return JSON.stringify({ id });
+    }
     runtimeCatalogJson() {
       return JSON.stringify({ package_version: "0.0.0-stale" });
     }
@@ -167,6 +194,7 @@ test("the explicit Node WASM artifact keeps its CommonJS boundary inside the ESM
   WasmEngine: class WasmEngine {
     execute(value) { return value; }
     executeSync(value) { return value; }
+    metadataJson(id) { return JSON.stringify({ id }); }
     runtimeCatalogJson() { return "{}"; }
   },
 };

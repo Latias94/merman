@@ -1,19 +1,28 @@
+use crate::artifact_contract::ValidatedArtifactContract;
+use crate::capability::{OperationKey, operation_is_compiled};
+use crate::payload_contract::BINDING_OPERATION_SCHEMA_VERSION;
 use crate::resource_contract::BindingResourceScope;
 use crate::{BindingEngine, BindingError, BindingStatus};
 use serde::Serialize;
+use serde_json::{Map, Value};
+#[cfg(test)]
+use std::cell::Cell;
+use std::sync::Arc;
 
-#[allow(dead_code)]
-mod capability_operations {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../capabilities/generated/capability_surface.rs"
-    ));
+#[cfg(test)]
+thread_local! {
+    static METADATA_SERIALIZATION_COUNT: Cell<u64> = const { Cell::new(0) };
 }
 
-pub use capability_operations::{OperationKey, OperationSpec};
+#[cfg(test)]
+fn reset_metadata_serialization_count() {
+    METADATA_SERIALIZATION_COUNT.with(|count| count.set(0));
+}
 
-/// Stable schema version for binding operation metadata and per-operation options.
-pub const BINDING_OPERATION_SCHEMA_VERSION: u32 = 1;
+#[cfg(test)]
+fn metadata_serialization_count() -> u64 {
+    METADATA_SERIALIZATION_COUNT.with(Cell::get)
+}
 
 /// A stable, transport-neutral operation selected from the canonical capability descriptor.
 ///
@@ -22,6 +31,19 @@ pub const BINDING_OPERATION_SCHEMA_VERSION: u32 = 1;
 /// outside this type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BindingOperationKind(OperationKey);
+
+/// An operation admitted by one immutable artifact contract.
+///
+/// The private field prevents dispatchers from constructing this token without passing contract
+/// admission first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AdmittedArtifactOperation(BindingOperationKind);
+
+impl AdmittedArtifactOperation {
+    pub(crate) const fn operation(self) -> BindingOperationKind {
+        self.0
+    }
+}
 
 impl BindingOperationKind {
     pub fn all() -> impl Iterator<Item = Self> + 'static {
@@ -49,13 +71,16 @@ impl BindingOperationKind {
         self.0.spec().media_type
     }
 
-    /// Returns the optional feature-surface capability required by this operation.
+    /// Returns the optional public capability that gates this operation's availability.
     ///
     /// Semantic JSON deliberately returns `None`: canonical parsing is a base binding operation,
     /// not a fake `semantic` feature.
     #[must_use]
-    pub const fn required_capability_id(self) -> Option<&'static str> {
-        self.0.spec().capability_id
+    pub const fn availability_capability_id(self) -> Option<&'static str> {
+        match self.0.spec().capability {
+            Some(capability) => Some(capability.id()),
+            None => None,
+        }
     }
 
     #[must_use]
@@ -82,23 +107,149 @@ impl BindingOperationKind {
     }
 }
 
+impl ValidatedArtifactContract {
+    pub(crate) fn admit_operation(
+        &self,
+        operation: BindingOperationKind,
+    ) -> Result<AdmittedArtifactOperation, BindingError> {
+        let id = operation.operation_id();
+        if self.exposes_operation(operation.key()) {
+            return Ok(AdmittedArtifactOperation(operation));
+        }
+        if let Some(capability) = operation.key().spec().capability
+            && !self.exposes_capability(capability)
+        {
+            return Err(BindingError::missing_capability(
+                capability.id(),
+                format!(
+                    "operation `{id}` requires capability `{}`, which is not exposed by target `{}`",
+                    capability.id(),
+                    self.target().id()
+                ),
+            ));
+        }
+        Err(BindingError::unsupported_operation(format!(
+            "operation `{id}` is not exposed by target `{}`",
+            self.target().id()
+        )))
+    }
+}
+
 /// Borrowed request consumed by the shared binding execution path.
 #[derive(Debug, Clone, Copy)]
 pub struct BindingOperationRequest<'a> {
-    pub operation_id: &'a str,
-    pub source: &'a [u8],
-    pub uri: Option<&'a [u8]>,
-    pub options_json: &'a [u8],
+    operation_id: &'a str,
+    source: &'a [u8],
+    uri: Option<&'a [u8]>,
+    options_json: &'a [u8],
+}
+
+impl<'a> BindingOperationRequest<'a> {
+    /// Creates a request with no document URI and no request-local option overlay.
+    ///
+    /// Validation deliberately remains at execution time so operation resolution and URI-shape
+    /// errors keep their documented precedence over malformed option JSON.
+    #[must_use]
+    pub const fn new(operation_id: &'a str, source: &'a [u8]) -> Self {
+        Self {
+            operation_id,
+            source,
+            uri: None,
+            options_json: b"",
+        }
+    }
+
+    #[must_use]
+    pub const fn with_uri(mut self, uri: &'a [u8]) -> Self {
+        self.uri = Some(uri);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_optional_uri(mut self, uri: Option<&'a [u8]>) -> Self {
+        self.uri = uri;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_options_json(mut self, options_json: &'a [u8]) -> Self {
+        self.options_json = options_json;
+        self
+    }
+
+    #[must_use]
+    pub const fn operation_id(&self) -> &'a str {
+        self.operation_id
+    }
+
+    #[must_use]
+    pub const fn source(&self) -> &'a [u8] {
+        self.source
+    }
+
+    #[must_use]
+    pub const fn uri(&self) -> Option<&'a [u8]> {
+        self.uri
+    }
+
+    #[must_use]
+    pub const fn options_json(&self) -> &'a [u8] {
+        self.options_json
+    }
 }
 
 /// Owned result from a binding operation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct BindingOperationResult {
-    pub operation: BindingOperationKind,
-    pub media_type: &'static str,
-    pub data: Vec<u8>,
-    pub metadata_json: Vec<u8>,
+    operation: BindingOperationKind,
+    media_type: &'static str,
+    data: Vec<u8>,
+    metadata: BindingOperationMetadata,
+}
+
+impl BindingOperationResult {
+    #[must_use]
+    pub const fn operation(&self) -> BindingOperationKind {
+        self.operation
+    }
+
+    #[must_use]
+    pub const fn media_type(&self) -> &'static str {
+        self.media_type
+    }
+
+    #[must_use]
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    #[must_use]
+    pub const fn metadata(&self) -> &BindingOperationMetadata {
+        &self.metadata
+    }
+
+    #[must_use]
+    pub fn metadata_json(&self) -> &[u8] {
+        self.metadata.json_bytes()
+    }
+
+    #[must_use]
+    pub fn into_data(self) -> Vec<u8> {
+        self.data
+    }
+
+    #[must_use]
+    pub fn into_parts(
+        self,
+    ) -> (
+        BindingOperationKind,
+        &'static str,
+        Vec<u8>,
+        BindingOperationMetadata,
+    ) {
+        (self.operation, self.media_type, self.data, self.metadata)
+    }
 }
 
 #[derive(Debug)]
@@ -107,28 +258,322 @@ pub(crate) struct BindingOperationOutput {
     output_plan: Option<BindingOutputPlan>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-enum BindingOutputPlan {
-    #[cfg(any(feature = "png", feature = "jpeg"))]
-    Raster {
-        requested_width_px: f64,
-        requested_height_px: f64,
-        width_px: u32,
-        height_px: u32,
-        requested_scale: f64,
-        effective_scale: f64,
-        limited: bool,
-    },
-    #[cfg(feature = "pdf")]
-    PdfFilterImages {
-        filtered_groups: usize,
-        requested_scale: f32,
-        effective_scale: f32,
-        requested_image_pixels: u64,
-        effective_image_pixels: u64,
-        limited: bool,
-    },
+#[derive(Debug)]
+struct BindingOperationExecution {
+    operation: BindingOperationKind,
+    output: BindingOperationOutput,
+}
+
+impl BindingOperationExecution {
+    fn into_data(self) -> Result<Vec<u8>, BindingError> {
+        u64::try_from(self.output.data.len()).map_err(|_| {
+            BindingError::internal("operation result byte length exceeds unsigned 64-bit range")
+        })?;
+        Ok(self.output.data)
+    }
+
+    fn into_result(
+        self,
+        runtime_policy_id: &'static str,
+    ) -> Result<BindingOperationResult, BindingError> {
+        operation_result(self.operation, runtime_policy_id, self.output)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum BindingOutputPlan {
+    Raster(BindingRasterOutputPlan),
+    PdfFilterImages(BindingPdfFilterImageOutputPlan),
+    Unknown(BindingUnknownOutputPlan),
+}
+
+impl BindingOutputPlan {
+    #[must_use]
+    pub fn kind(&self) -> &str {
+        match self {
+            Self::Raster(_) => "raster",
+            Self::PdfFilterImages(_) => "pdf-filter-images",
+            Self::Unknown(plan) => plan.kind(),
+        }
+    }
+}
+
+impl Serialize for BindingOutputPlan {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Raster(plan) => BindingRasterOutputPlanWire {
+                kind: "raster",
+                plan,
+            }
+            .serialize(serializer),
+            Self::PdfFilterImages(plan) => BindingPdfFilterImageOutputPlanWire {
+                kind: "pdf-filter-images",
+                plan,
+            }
+            .serialize(serializer),
+            Self::Unknown(plan) => plan.serialize(serializer),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct BindingRasterOutputPlan {
+    requested_width_px: f64,
+    requested_height_px: f64,
+    width_px: u32,
+    height_px: u32,
+    requested_scale: f64,
+    effective_scale: f64,
+    limited: bool,
+}
+
+#[derive(Serialize)]
+struct BindingRasterOutputPlanWire<'a> {
+    kind: &'static str,
+    #[serde(flatten)]
+    plan: &'a BindingRasterOutputPlan,
+}
+
+impl BindingRasterOutputPlan {
+    #[must_use]
+    pub const fn requested_width_px(&self) -> f64 {
+        self.requested_width_px
+    }
+
+    #[must_use]
+    pub const fn requested_height_px(&self) -> f64 {
+        self.requested_height_px
+    }
+
+    #[must_use]
+    pub const fn width_px(&self) -> u32 {
+        self.width_px
+    }
+
+    #[must_use]
+    pub const fn height_px(&self) -> u32 {
+        self.height_px
+    }
+
+    #[must_use]
+    pub const fn requested_scale(&self) -> f64 {
+        self.requested_scale
+    }
+
+    #[must_use]
+    pub const fn effective_scale(&self) -> f64 {
+        self.effective_scale
+    }
+
+    #[must_use]
+    pub const fn limited(&self) -> bool {
+        self.limited
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct BindingPdfFilterImageOutputPlan {
+    filtered_groups: u64,
+    requested_scale: f32,
+    effective_scale: f32,
+    requested_image_pixels: u64,
+    effective_image_pixels: u64,
+    limited: bool,
+}
+
+#[derive(Serialize)]
+struct BindingPdfFilterImageOutputPlanWire<'a> {
+    kind: &'static str,
+    #[serde(flatten)]
+    plan: &'a BindingPdfFilterImageOutputPlan,
+}
+
+impl BindingPdfFilterImageOutputPlan {
+    #[must_use]
+    pub const fn filtered_groups(&self) -> u64 {
+        self.filtered_groups
+    }
+
+    #[must_use]
+    pub const fn requested_scale(&self) -> f32 {
+        self.requested_scale
+    }
+
+    #[must_use]
+    pub const fn effective_scale(&self) -> f32 {
+        self.effective_scale
+    }
+
+    #[must_use]
+    pub const fn requested_image_pixels(&self) -> u64 {
+        self.requested_image_pixels
+    }
+
+    #[must_use]
+    pub const fn effective_image_pixels(&self) -> u64 {
+        self.effective_image_pixels
+    }
+
+    #[must_use]
+    pub const fn limited(&self) -> bool {
+        self.limited
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct BindingUnknownOutputPlan {
+    kind: String,
+    value: Value,
+}
+
+impl BindingUnknownOutputPlan {
+    #[must_use]
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    #[must_use]
+    pub const fn value(&self) -> &Value {
+        &self.value
+    }
+}
+
+impl Serialize for BindingUnknownOutputPlan {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.value.serialize(serializer)
+    }
+}
+
+/// Typed schema-1 metadata plus the exact JSON bytes received or produced at the boundary.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct BindingOperationMetadata {
+    version: u32,
+    operation_id: String,
+    media_type: String,
+    runtime_policy: String,
+    byte_length: u64,
+    output_plan: Option<BindingOutputPlan>,
+    json: Arc<[u8]>,
+}
+
+impl BindingOperationMetadata {
+    pub fn from_json_bytes(json: &[u8]) -> Result<Self, BindingError> {
+        let value: Value = serde_json::from_slice(json).map_err(|error| {
+            BindingError::invalid_argument(format!("invalid operation metadata JSON: {error}"))
+        })?;
+        let object = value.as_object().ok_or_else(|| {
+            BindingError::invalid_argument(
+                "invalid operation metadata JSON: root must be an object",
+            )
+        })?;
+        let version = required_u32(object, "version")?;
+        if version != BINDING_OPERATION_SCHEMA_VERSION {
+            return Err(BindingError::invalid_argument(format!(
+                "unsupported operation metadata schema version {version}; expected {BINDING_OPERATION_SCHEMA_VERSION}"
+            )));
+        }
+        let operation_id = required_string(object, "operation_id")?.to_owned();
+        let media_type = required_string(object, "media_type")?.to_owned();
+        let runtime_policy = required_string(object, "runtime_policy")?.to_owned();
+        let byte_length = required_u64(object, "byte_length")?;
+        let output_plan = match object.get("output_plan") {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(parse_output_plan(value)?),
+        };
+
+        Ok(Self {
+            version,
+            operation_id,
+            media_type,
+            runtime_policy,
+            byte_length,
+            output_plan,
+            json: Arc::from(json),
+        })
+    }
+
+    fn from_execution(
+        operation: BindingOperationKind,
+        runtime_policy: &str,
+        byte_length: u64,
+        output_plan: Option<BindingOutputPlan>,
+    ) -> Result<Self, BindingError> {
+        #[cfg(test)]
+        METADATA_SERIALIZATION_COUNT.with(|count| count.set(count.get() + 1));
+
+        let json = serde_json::to_vec(&BindingOperationMetadataWire {
+            version: BINDING_OPERATION_SCHEMA_VERSION,
+            operation_id: operation.operation_id(),
+            media_type: operation.media_type(),
+            runtime_policy,
+            byte_length,
+            output_plan: output_plan.as_ref(),
+        })
+        .map_err(|error| {
+            BindingError::internal(format!("failed to serialize operation metadata: {error}"))
+        })?;
+
+        Ok(Self {
+            version: BINDING_OPERATION_SCHEMA_VERSION,
+            operation_id: operation.operation_id().to_owned(),
+            media_type: operation.media_type().to_owned(),
+            runtime_policy: runtime_policy.to_owned(),
+            byte_length,
+            output_plan,
+            json: Arc::from(json),
+        })
+    }
+
+    #[must_use]
+    pub const fn version(&self) -> u32 {
+        self.version
+    }
+
+    #[must_use]
+    pub fn operation_id(&self) -> &str {
+        &self.operation_id
+    }
+
+    #[must_use]
+    pub fn media_type(&self) -> &str {
+        &self.media_type
+    }
+
+    #[must_use]
+    pub fn runtime_policy(&self) -> &str {
+        &self.runtime_policy
+    }
+
+    #[must_use]
+    pub const fn byte_length(&self) -> u64 {
+        self.byte_length
+    }
+
+    #[must_use]
+    pub const fn output_plan(&self) -> Option<&BindingOutputPlan> {
+        self.output_plan.as_ref()
+    }
+
+    #[must_use]
+    pub fn json_bytes(&self) -> &[u8] {
+        &self.json
+    }
+
+    #[must_use]
+    pub fn into_json_bytes(self) -> Vec<u8> {
+        self.json.as_ref().to_vec()
+    }
 }
 
 impl BindingOperationOutput {
@@ -143,7 +588,7 @@ impl BindingOperationOutput {
     pub(crate) fn raster(data: Vec<u8>, plan: merman::svg::export::RasterPlan) -> Self {
         Self {
             data,
-            output_plan: Some(BindingOutputPlan::Raster {
+            output_plan: Some(BindingOutputPlan::Raster(BindingRasterOutputPlan {
                 requested_width_px: plan.requested_width_px,
                 requested_height_px: plan.requested_height_px,
                 width_px: plan.width_px,
@@ -151,7 +596,7 @@ impl BindingOperationOutput {
                 requested_scale: plan.requested_scale,
                 effective_scale: plan.effective_scale,
                 limited: plan.limited,
-            }),
+            })),
         }
     }
 
@@ -159,43 +604,172 @@ impl BindingOperationOutput {
     pub(crate) fn pdf(data: Vec<u8>, plan: merman::svg::export::PdfFilterImagePlan) -> Self {
         Self {
             data,
-            output_plan: Some(BindingOutputPlan::PdfFilterImages {
-                filtered_groups: plan.filtered_groups,
-                requested_scale: plan.requested_scale,
-                effective_scale: plan.effective_scale,
-                requested_image_pixels: plan.requested_image_pixels,
-                effective_image_pixels: plan.effective_image_pixels,
-                limited: plan.limited,
-            }),
+            output_plan: Some(BindingOutputPlan::PdfFilterImages(
+                BindingPdfFilterImageOutputPlan {
+                    filtered_groups: plan.filtered_groups as u64,
+                    requested_scale: plan.requested_scale,
+                    effective_scale: plan.effective_scale,
+                    requested_image_pixels: plan.requested_image_pixels,
+                    effective_image_pixels: plan.effective_image_pixels,
+                    limited: plan.limited,
+                },
+            )),
         }
     }
 }
 
 #[derive(Debug, Serialize)]
-struct BindingOperationMetadata<'a> {
+struct BindingOperationMetadataWire<'a> {
     version: u32,
     operation_id: &'a str,
     media_type: &'a str,
     runtime_policy: &'a str,
-    byte_length: usize,
+    byte_length: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     output_plan: Option<&'a BindingOutputPlan>,
+}
+
+fn parse_output_plan(value: &Value) -> Result<BindingOutputPlan, BindingError> {
+    let object = value.as_object().ok_or_else(|| {
+        BindingError::invalid_argument(
+            "invalid operation metadata JSON: output_plan must be an object",
+        )
+    })?;
+    let kind = required_string(object, "kind")?;
+    match kind {
+        "raster" => Ok(BindingOutputPlan::Raster(BindingRasterOutputPlan {
+            requested_width_px: required_f64(object, "requested_width_px")?,
+            requested_height_px: required_f64(object, "requested_height_px")?,
+            width_px: required_u32(object, "width_px")?,
+            height_px: required_u32(object, "height_px")?,
+            requested_scale: required_f64(object, "requested_scale")?,
+            effective_scale: required_f64(object, "effective_scale")?,
+            limited: required_bool(object, "limited")?,
+        })),
+        "pdf-filter-images" => Ok(BindingOutputPlan::PdfFilterImages(
+            BindingPdfFilterImageOutputPlan {
+                filtered_groups: required_u64(object, "filtered_groups")?,
+                requested_scale: required_f32(object, "requested_scale")?,
+                effective_scale: required_f32(object, "effective_scale")?,
+                requested_image_pixels: required_u64(object, "requested_image_pixels")?,
+                effective_image_pixels: required_u64(object, "effective_image_pixels")?,
+                limited: required_bool(object, "limited")?,
+            },
+        )),
+        _ => Ok(BindingOutputPlan::Unknown(BindingUnknownOutputPlan {
+            kind: kind.to_owned(),
+            value: value.clone(),
+        })),
+    }
+}
+
+fn required_value<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+) -> Result<&'a Value, BindingError> {
+    object.get(field).ok_or_else(|| {
+        BindingError::invalid_argument(format!(
+            "invalid operation metadata JSON: missing required field `{field}`"
+        ))
+    })
+}
+
+fn required_string<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+) -> Result<&'a str, BindingError> {
+    required_value(object, field)?.as_str().ok_or_else(|| {
+        BindingError::invalid_argument(format!(
+            "invalid operation metadata JSON: `{field}` must be a string"
+        ))
+    })
+}
+
+fn required_bool(object: &Map<String, Value>, field: &str) -> Result<bool, BindingError> {
+    required_value(object, field)?.as_bool().ok_or_else(|| {
+        BindingError::invalid_argument(format!(
+            "invalid operation metadata JSON: `{field}` must be a boolean"
+        ))
+    })
+}
+
+fn required_u64(object: &Map<String, Value>, field: &str) -> Result<u64, BindingError> {
+    required_value(object, field)?.as_u64().ok_or_else(|| {
+        BindingError::invalid_argument(format!(
+            "invalid operation metadata JSON: `{field}` must be an unsigned 64-bit integer"
+        ))
+    })
+}
+
+fn required_u32(object: &Map<String, Value>, field: &str) -> Result<u32, BindingError> {
+    let value = required_u64(object, field)?;
+    u32::try_from(value).map_err(|_| {
+        BindingError::invalid_argument(format!(
+            "invalid operation metadata JSON: `{field}` exceeds unsigned 32-bit range"
+        ))
+    })
+}
+
+fn required_f64(object: &Map<String, Value>, field: &str) -> Result<f64, BindingError> {
+    required_value(object, field)?.as_f64().ok_or_else(|| {
+        BindingError::invalid_argument(format!(
+            "invalid operation metadata JSON: `{field}` must be a finite JSON number"
+        ))
+    })
+}
+
+fn required_f32(object: &Map<String, Value>, field: &str) -> Result<f32, BindingError> {
+    let value = required_f64(object, field)?;
+    if !value.is_finite() || value < f64::from(f32::MIN) || value > f64::from(f32::MAX) {
+        return Err(BindingError::invalid_argument(format!(
+            "invalid operation metadata JSON: `{field}` exceeds finite 32-bit float range"
+        )));
+    }
+    Ok(value as f32)
 }
 
 /// Executes one operation through the same transport-neutral semantics as a reusable engine.
 pub fn execute_once(
     request: BindingOperationRequest<'_>,
 ) -> Result<BindingOperationResult, BindingError> {
-    let operation = resolve_operation_request(&request)?;
-    crate::common::validate_one_shot_resource_options(
-        request.options_json,
-        operation.resource_scope(),
-    )?;
-    BindingEngine::from_options(request.options_json)?.execute_resolved(
-        operation,
-        request.source,
-        request.uri,
-    )
+    crate::artifact_contract::default_artifact_contract().execute_once(request)
+}
+
+pub(crate) fn execute_once_data(
+    request: BindingOperationRequest<'_>,
+) -> Result<Vec<u8>, BindingError> {
+    crate::artifact_contract::default_artifact_contract().execute_once_data(request)
+}
+
+impl ValidatedArtifactContract {
+    /// Executes one operation against this exact transport contract without retaining an engine.
+    pub fn execute_once(
+        &self,
+        request: BindingOperationRequest<'_>,
+    ) -> Result<BindingOperationResult, BindingError> {
+        let operation = resolve_operation_request(&request)?;
+        crate::common::validate_one_shot_resource_options(
+            request.options_json,
+            operation.resource_scope(),
+        )?;
+        let engine = self.create_engine(request.options_json)?;
+        let admitted = self.admit_operation(operation)?;
+        engine.execute_admitted(admitted, request.source, request.uri)
+    }
+
+    pub(crate) fn execute_once_data(
+        &self,
+        request: BindingOperationRequest<'_>,
+    ) -> Result<Vec<u8>, BindingError> {
+        let operation = resolve_operation_request(&request)?;
+        crate::common::validate_one_shot_resource_options(
+            request.options_json,
+            operation.resource_scope(),
+        )?;
+        let engine = self.create_engine(request.options_json)?;
+        let admitted = self.admit_operation(operation)?;
+        engine.execute_admitted_data(admitted, request.source, request.uri)
+    }
 }
 
 impl BindingEngine {
@@ -204,62 +778,110 @@ impl BindingEngine {
         &self,
         request: BindingOperationRequest<'_>,
     ) -> Result<BindingOperationResult, BindingError> {
-        let operation = resolve_operation_request(&request)?;
-        if request.options_json.is_empty() {
-            return self.execute_resolved(operation, request.source, request.uri);
-        }
-        let output = self
-            .execute_request_overlay(operation, request.source, request.uri, request.options_json)?
-            .map_or_else(
-                || self.execute_resolved_output(operation, request.source, request.uri),
-                Ok,
-            )?;
-        operation_result(operation, self.runtime_policy_id(), output)
+        self.execute_request(request)
+            .and_then(|execution| execution.into_result(self.runtime_policy_id()))
     }
 
-    fn execute_resolved(
+    pub(crate) fn execute_data(
         &self,
-        operation: BindingOperationKind,
+        request: BindingOperationRequest<'_>,
+    ) -> Result<Vec<u8>, BindingError> {
+        self.execute_request(request)
+            .and_then(BindingOperationExecution::into_data)
+    }
+
+    fn execute_request(
+        &self,
+        request: BindingOperationRequest<'_>,
+    ) -> Result<BindingOperationExecution, BindingError> {
+        let operation = resolve_operation_request(&request)?;
+        let prepared = self.prepare_request_overlay(operation, request.options_json)?;
+        let admitted = self.admit_operation(operation)?;
+        let output = match prepared {
+            crate::engine::PreparedRequestOverlay::Unchanged => {
+                self.execute_admitted_output(admitted, request.source, request.uri)
+            }
+            crate::engine::PreparedRequestOverlay::Override(configs) => {
+                self.execute_request_projection(admitted, configs, request.source, request.uri)
+            }
+        }?;
+        Ok(BindingOperationExecution { operation, output })
+    }
+
+    pub(crate) fn execute_admitted(
+        &self,
+        admitted: AdmittedArtifactOperation,
         source: &[u8],
         uri: Option<&[u8]>,
     ) -> Result<BindingOperationResult, BindingError> {
-        let output = self.execute_resolved_output(operation, source, uri)?;
-        operation_result(operation, self.runtime_policy_id(), output)
+        self.execute_admitted_request(admitted, source, uri)
+            .and_then(|execution| execution.into_result(self.runtime_policy_id()))
     }
 
-    fn execute_resolved_output(
+    pub(crate) fn execute_admitted_data(
         &self,
-        operation: BindingOperationKind,
+        admitted: AdmittedArtifactOperation,
+        source: &[u8],
+        uri: Option<&[u8]>,
+    ) -> Result<Vec<u8>, BindingError> {
+        self.execute_admitted_request(admitted, source, uri)
+            .and_then(BindingOperationExecution::into_data)
+    }
+
+    fn execute_admitted_request(
+        &self,
+        admitted: AdmittedArtifactOperation,
+        source: &[u8],
+        uri: Option<&[u8]>,
+    ) -> Result<BindingOperationExecution, BindingError> {
+        let operation = admitted.operation();
+        let output = self.execute_admitted_output(admitted, source, uri)?;
+        Ok(BindingOperationExecution { operation, output })
+    }
+
+    pub(crate) fn execute_admitted_output(
+        &self,
+        admitted: AdmittedArtifactOperation,
         source: &[u8],
         uri: Option<&[u8]>,
     ) -> Result<BindingOperationOutput, BindingError> {
+        let operation = admitted.operation();
         match operation.key() {
             OperationKey::Png => self.render_png_output(source),
             OperationKey::Jpeg => self.render_jpeg_output(source),
             OperationKey::Pdf => self.render_pdf_output(source),
-            OperationKey::Svg => self.render_svg(source).map(BindingOperationOutput::plain),
-            OperationKey::SvgPlanJson => self
-                .svg_plan_json(source)
+            OperationKey::Svg => self
+                .render_svg_data(source)
                 .map(BindingOperationOutput::plain),
-            OperationKey::Ascii => self.render_ascii(source).map(BindingOperationOutput::plain),
-            OperationKey::SemanticJson => {
-                self.parse_json(source).map(BindingOperationOutput::plain)
-            }
-            OperationKey::LayoutJson => self.layout_json(source).map(BindingOperationOutput::plain),
-            OperationKey::AnalysisJson => {
-                self.analyze_json(source).map(BindingOperationOutput::plain)
-            }
+            OperationKey::SvgPlanJson => self
+                .svg_plan_json_data(source)
+                .map(BindingOperationOutput::plain),
+            OperationKey::Ascii => self
+                .render_ascii_data(source)
+                .map(BindingOperationOutput::plain),
+            OperationKey::SemanticJson => self
+                .parse_json_data(source)
+                .map(BindingOperationOutput::plain),
+            OperationKey::LayoutJson => self
+                .layout_json_data(source)
+                .map(BindingOperationOutput::plain),
+            OperationKey::AnalysisJson => self
+                .analyze_json_data(source)
+                .map(BindingOperationOutput::plain),
             OperationKey::AnalysisFactsJson => self
-                .analysis_facts_json(source)
+                .analysis_facts_json_data(source)
                 .map(BindingOperationOutput::plain),
             OperationKey::ValidationJson => self
-                .validate_json(source)
+                .validate_json_data(source)
                 .map(BindingOperationOutput::plain),
             OperationKey::DocumentAnalysisJson => self
-                .analyze_document_json(source, uri.expect("validated document URI presence"))
+                .analyze_document_json_data(source, uri.expect("validated document URI presence"))
                 .map(BindingOperationOutput::plain),
             OperationKey::DocumentAnalysisFactsJson => self
-                .analyze_document_facts_json(source, uri.expect("validated document URI presence"))
+                .analyze_document_facts_json_data(
+                    source,
+                    uri.expect("validated document URI presence"),
+                )
                 .map(BindingOperationOutput::plain),
         }
     }
@@ -271,26 +893,21 @@ fn operation_result(
     output: BindingOperationOutput,
 ) -> Result<BindingOperationResult, BindingError> {
     let BindingOperationOutput { data, output_plan } = output;
-    let metadata_json = serde_json::to_vec(&BindingOperationMetadata {
-        version: BINDING_OPERATION_SCHEMA_VERSION,
-        operation_id: operation.operation_id(),
-        media_type: operation.media_type(),
-        runtime_policy: runtime_policy_id,
-        byte_length: data.len(),
-        output_plan: output_plan.as_ref(),
-    })
-    .map_err(|error| {
-        BindingError::new(
-            BindingStatus::InternalError,
-            format!("failed to serialize operation metadata: {error}"),
-        )
+    let byte_length = u64::try_from(data.len()).map_err(|_| {
+        BindingError::internal("operation result byte length exceeds unsigned 64-bit range")
     })?;
+    let metadata = BindingOperationMetadata::from_execution(
+        operation,
+        runtime_policy_id,
+        byte_length,
+        output_plan,
+    )?;
 
     Ok(BindingOperationResult {
         operation,
         media_type: operation.media_type(),
         data,
-        metadata_json,
+        metadata,
     })
 }
 
@@ -323,28 +940,97 @@ pub fn compiled_operation_kind_ids() -> Vec<&'static str> {
 }
 
 impl BindingOperationKind {
-    const fn is_compiled(self) -> bool {
-        match self.key() {
-            OperationKey::SemanticJson => true,
-            OperationKey::Svg | OperationKey::LayoutJson | OperationKey::SvgPlanJson => {
-                cfg!(feature = "svg")
-            }
-            OperationKey::Png => cfg!(feature = "png"),
-            OperationKey::Jpeg => cfg!(feature = "jpeg"),
-            OperationKey::Pdf => cfg!(feature = "pdf"),
-            OperationKey::Ascii => cfg!(feature = "ascii"),
-            OperationKey::AnalysisJson
-            | OperationKey::AnalysisFactsJson
-            | OperationKey::ValidationJson
-            | OperationKey::DocumentAnalysisJson
-            | OperationKey::DocumentAnalysisFactsJson => cfg!(feature = "analysis"),
-        }
+    #[must_use]
+    pub fn is_compiled(self) -> bool {
+        operation_is_compiled(self.key())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_builder_preserves_execution_time_validation() {
+        let request = BindingOperationRequest::new("document-analysis-json", b"flowchart TD\nA")
+            .with_uri(b"file:///diagram.mmd")
+            .with_options_json(br#"{"parse":{"suppress_errors":true}}"#);
+
+        assert_eq!(request.operation_id(), "document-analysis-json");
+        assert_eq!(request.source(), b"flowchart TD\nA");
+        assert_eq!(request.uri(), Some(b"file:///diagram.mmd".as_slice()));
+        assert_eq!(
+            request.options_json(),
+            br#"{"parse":{"suppress_errors":true}}"#
+        );
+
+        let defaults = BindingOperationRequest::new("semantic-json", b"flowchart TD\nA");
+        assert_eq!(defaults.uri(), None);
+        assert_eq!(defaults.options_json(), b"");
+    }
+
+    #[test]
+    fn typed_metadata_decodes_known_output_plans() {
+        let json = br#"{
+            "version":1,
+            "operation_id":"png",
+            "media_type":"image/png",
+            "runtime_policy":"custom",
+            "byte_length":42,
+            "future_top_level":{"kept":true},
+            "output_plan":{
+                "kind":"raster",
+                "requested_width_px":320.5,
+                "requested_height_px":200.25,
+                "width_px":320,
+                "height_px":200,
+                "requested_scale":2.0,
+                "effective_scale":1.5,
+                "limited":true,
+                "future_plan_field":"kept"
+            }
+        }"#;
+        let metadata = BindingOperationMetadata::from_json_bytes(json).unwrap();
+
+        assert_eq!(metadata.version(), 1);
+        assert_eq!(metadata.operation_id(), "png");
+        assert_eq!(metadata.media_type(), "image/png");
+        assert_eq!(metadata.runtime_policy(), "custom");
+        assert_eq!(metadata.byte_length(), 42);
+        assert_eq!(metadata.json_bytes(), json);
+        let Some(BindingOutputPlan::Raster(plan)) = metadata.output_plan() else {
+            panic!("expected a raster output plan");
+        };
+        assert_eq!(plan.width_px(), 320);
+        assert_eq!(plan.height_px(), 200);
+        assert_eq!(plan.effective_scale(), 1.5);
+        assert!(plan.limited());
+    }
+
+    #[test]
+    fn typed_metadata_preserves_unknown_plan_and_exact_original_json() {
+        let json = br#"{ "version": 1, "operation_id": "future", "media_type": "application/x-future", "runtime_policy": "future-policy", "byte_length": 7, "output_plan": { "kind": "future-plan", "nested": { "answer": 42 } } }"#;
+        let metadata = BindingOperationMetadata::from_json_bytes(json).unwrap();
+
+        assert_eq!(metadata.json_bytes(), json);
+        assert_eq!(metadata.runtime_policy(), "future-policy");
+        let Some(BindingOutputPlan::Unknown(plan)) = metadata.output_plan() else {
+            panic!("expected an unknown output plan");
+        };
+        assert_eq!(plan.kind(), "future-plan");
+        assert_eq!(plan.value()["nested"]["answer"], 42);
+    }
+
+    #[test]
+    fn known_output_plan_requires_all_schema_one_fields() {
+        let error = BindingOperationMetadata::from_json_bytes(
+            br#"{"version":1,"operation_id":"png","media_type":"image/png","runtime_policy":"deterministic","byte_length":1,"output_plan":{"kind":"raster"}}"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("requested_width_px"));
+    }
 
     #[test]
     fn descriptor_owned_operation_ids_round_trip() {
@@ -364,7 +1050,7 @@ mod tests {
     fn svg_capability_planning_is_a_descriptor_owned_operation() {
         let operation = BindingOperationKind::from_id("svg-plan-json").unwrap();
 
-        assert_eq!(operation.required_capability_id(), Some("svg"));
+        assert_eq!(operation.availability_capability_id(), Some("svg"));
         assert_eq!(operation.media_type(), "application/json");
         assert!(!operation.requires_uri());
     }
@@ -381,7 +1067,7 @@ mod tests {
     #[test]
     fn semantic_parse_is_a_base_operation_not_a_fake_feature_capability() {
         let semantic = BindingOperationKind::from_id("semantic-json").unwrap();
-        assert_eq!(semantic.required_capability_id(), None);
+        assert_eq!(semantic.availability_capability_id(), None);
         assert!(!semantic.requires_uri());
 
         for operation in BindingOperationKind::all() {
@@ -402,7 +1088,7 @@ mod tests {
                 options_json: b"",
             })
             .unwrap();
-        let metadata: serde_json::Value = serde_json::from_slice(&result.metadata_json).unwrap();
+        let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
 
         assert_eq!(metadata["runtime_policy"], "deterministic");
     }
@@ -463,12 +1149,78 @@ mod tests {
         ] {
             let result = execute(unchanged);
             assert_eq!(result.data, empty.data);
-            assert_eq!(result.metadata_json, empty.metadata_json);
+            assert_eq!(result.metadata_json(), empty.metadata_json());
         }
         let real = execute(br#"{"parse":{"suppress_errors":true}}"#);
 
         assert_eq!(real.data, empty.data);
-        assert_eq!(real.metadata_json, empty.metadata_json);
+        assert_eq!(real.metadata_json(), empty.metadata_json());
+    }
+
+    #[test]
+    fn reusable_byte_execution_matches_result_data_and_errors_without_metadata() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        let request = BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B");
+        let result = engine.execute(request).unwrap();
+
+        reset_metadata_serialization_count();
+        assert_eq!(engine.parse_json(request.source()).unwrap(), result.data());
+        assert_eq!(metadata_serialization_count(), 0);
+
+        reset_metadata_serialization_count();
+        assert_eq!(engine.execute_data(request).unwrap(), result.data());
+        assert_eq!(metadata_serialization_count(), 0);
+
+        for request in [
+            BindingOperationRequest::new("unknown-operation", b"flowchart TD\nA --> B")
+                .with_options_json(b"{"),
+            BindingOperationRequest::new("document-analysis-json", b"flowchart TD\nA --> B")
+                .with_options_json(b"{"),
+            BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
+                .with_options_json(b"{"),
+            BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
+                .with_options_json(br#"{"resources":{"limits":{"max_source_bytes":4}}}"#),
+        ] {
+            let expected = engine.execute(request).unwrap_err();
+
+            reset_metadata_serialization_count();
+            assert_eq!(engine.execute_data(request).unwrap_err(), expected);
+            assert_eq!(metadata_serialization_count(), 0);
+        }
+    }
+
+    #[test]
+    fn one_shot_byte_execution_matches_result_data_and_errors_without_metadata() {
+        let request = BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B");
+        let result = execute_once(request).unwrap();
+
+        reset_metadata_serialization_count();
+        assert_eq!(
+            crate::parse_json(request.source(), b"").unwrap(),
+            result.data()
+        );
+        assert_eq!(metadata_serialization_count(), 0);
+
+        reset_metadata_serialization_count();
+        assert_eq!(execute_once_data(request).unwrap(), result.data());
+        assert_eq!(metadata_serialization_count(), 0);
+
+        for request in [
+            BindingOperationRequest::new("unknown-operation", b"flowchart TD\nA --> B")
+                .with_options_json(b"{"),
+            BindingOperationRequest::new("document-analysis-json", b"flowchart TD\nA --> B")
+                .with_options_json(b"{"),
+            BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
+                .with_options_json(b"{"),
+            BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
+                .with_options_json(br#"{"resources":{"limits":{"max_source_bytes":4}}}"#),
+        ] {
+            let expected = execute_once(request).unwrap_err();
+
+            reset_metadata_serialization_count();
+            assert_eq!(execute_once_data(request).unwrap_err(), expected);
+            assert_eq!(metadata_serialization_count(), 0);
+        }
     }
 
     #[test]
@@ -690,7 +1442,7 @@ mod tests {
                 assert_eq!(one_shot.operation, operation);
                 assert_eq!(one_shot.media_type, operation.media_type());
                 let metadata: serde_json::Value =
-                    serde_json::from_slice(&one_shot.metadata_json).unwrap();
+                    serde_json::from_slice(one_shot.metadata_json()).unwrap();
                 assert_eq!(
                     metadata["operation_id"],
                     operation.operation_id(),
@@ -900,7 +1652,7 @@ mod tests {
                     })
                     .unwrap();
                 let metadata: serde_json::Value =
-                    serde_json::from_slice(&result.metadata_json).unwrap();
+                    serde_json::from_slice(result.metadata_json()).unwrap();
 
                 assert_eq!(metadata["runtime_policy"], "native");
             }
@@ -923,7 +1675,7 @@ mod tests {
         assert_eq!(result.operation.operation_id(), "svg");
         assert_eq!(result.media_type, "image/svg+xml");
         assert!(result.data.starts_with(b"<svg"));
-        let metadata: serde_json::Value = serde_json::from_slice(&result.metadata_json).unwrap();
+        let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
         assert_eq!(metadata["version"], BINDING_OPERATION_SCHEMA_VERSION);
         assert_eq!(metadata["operation_id"], "svg");
         assert_eq!(metadata["byte_length"], result.data.len());
@@ -1022,11 +1774,30 @@ mod tests {
 
         assert_eq!(result.media_type, "image/png");
         assert!(result.data.starts_with(b"\x89PNG\r\n\x1a\n"));
-        let metadata: serde_json::Value = serde_json::from_slice(&result.metadata_json).unwrap();
+        let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
         assert_eq!(metadata["output_plan"]["kind"], "raster");
         assert_eq!(metadata["output_plan"]["limited"], false);
         assert_eq!(metadata["output_plan"]["requested_scale"], 1.0);
         assert_eq!(metadata["output_plan"]["effective_scale"], 1.0);
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn png_byte_and_result_convenience_paths_share_one_envelope() {
+        let source = b"flowchart TD\nA --> B";
+        let result = crate::render_png_result(source, b"").unwrap();
+
+        reset_metadata_serialization_count();
+        let bytes = crate::render_png(source, b"").unwrap();
+
+        assert_eq!(metadata_serialization_count(), 0);
+        assert_eq!(result.operation().operation_id(), "png");
+        assert_eq!(result.media_type(), "image/png");
+        assert_eq!(result.data(), bytes);
+        assert!(matches!(
+            result.metadata().output_plan(),
+            Some(BindingOutputPlan::Raster(_))
+        ));
     }
 
     #[cfg(feature = "png")]
@@ -1044,7 +1815,7 @@ mod tests {
         })
         .unwrap();
 
-        let metadata: serde_json::Value = serde_json::from_slice(&result.metadata_json).unwrap();
+        let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
         let plan = &metadata["output_plan"];
         assert_eq!(plan["kind"], "raster");
         assert_eq!(plan["limited"], true);
@@ -1075,7 +1846,7 @@ mod tests {
             })
             .unwrap();
         let limited_metadata: serde_json::Value =
-            serde_json::from_slice(&limited.metadata_json).unwrap();
+            serde_json::from_slice(limited.metadata_json()).unwrap();
         assert_eq!(limited_metadata["output_plan"]["limited"], true);
         assert!(
             limited_metadata["output_plan"]["width_px"]
@@ -1096,7 +1867,7 @@ mod tests {
             })
             .unwrap();
         let baseline_metadata: serde_json::Value =
-            serde_json::from_slice(&baseline.metadata_json).unwrap();
+            serde_json::from_slice(baseline.metadata_json()).unwrap();
         assert_eq!(baseline_metadata["output_plan"]["limited"], false);
         assert_eq!(baseline_metadata["output_plan"]["requested_scale"], 1.0);
     }
@@ -1108,15 +1879,21 @@ mod tests {
             operation_id: "pdf",
             source: b"flowchart TD\nA --> B",
             uri: None,
-            options_json: br#"{"version":2,"pdf":{"filterScale":2.5}}"#,
+            options_json: br#"{"version":2,"pdf":{"filterScale":0.1}}"#,
         })
         .unwrap();
 
-        let metadata: serde_json::Value = serde_json::from_slice(&result.metadata_json).unwrap();
+        let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
         let plan = &metadata["output_plan"];
         assert_eq!(plan["kind"], "pdf-filter-images");
-        assert_eq!(plan["requested_scale"], 2.5);
-        assert_eq!(plan["effective_scale"], 2.5);
+        assert_eq!(plan["requested_scale"], serde_json::json!(0.1));
+        assert_eq!(plan["effective_scale"], serde_json::json!(0.1));
+        assert!(
+            std::str::from_utf8(result.metadata_json())
+                .unwrap()
+                .contains("\"requested_scale\":0.1"),
+            "schema-1 metadata must preserve the historical f32 JSON representation"
+        );
     }
 
     #[cfg(not(feature = "png"))]
@@ -1135,6 +1912,5 @@ mod tests {
         assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
         assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
         assert_eq!(error.capability_id(), Some("png"));
-        assert!(error.message().contains("png feature"));
     }
 }

@@ -22,6 +22,8 @@ def valid_catalog():
             "supported-host-theme-presets",
             "supported-themes",
         ],
+        "option_group_ids": ["ascii", "environment", "host_theme", "lint", "svg"],
+        "constructor_service_ids": ["host-text-measurement"],
         "capabilities": {
             "capability_ids": ["analysis", "ascii", "svg", "system-clock"],
             "output_ids": ["ascii", "svg"],
@@ -124,6 +126,7 @@ class RuntimeCatalogTest(unittest.TestCase):
         catalog["capabilities"]["output_ids"].remove("svg")
         catalog["capabilities"]["operation_ids"].remove("svg")
         catalog["capabilities"]["text_measurement"] = None
+        catalog["constructor_service_ids"] = []
         catalog["output_contracts"] = [
             contract for contract in catalog["output_contracts"] if contract["id"] != "svg"
         ]
@@ -133,6 +136,60 @@ class RuntimeCatalogTest(unittest.TestCase):
 
         self.assertNotIn("svg", parsed["capabilities"]["capability_ids"])
         self.assertIsNone(parsed["capabilities"]["text_measurement"])
+
+    def test_accepts_legacy_catalog_without_additive_discovery_sections(self):
+        catalog = valid_catalog()
+        del catalog["option_group_ids"]
+        del catalog["constructor_service_ids"]
+
+        parsed = merman.get_runtime_catalog(FakeEngine(catalog))
+
+        self.assertEqual(parsed["option_group_ids"], [])
+        self.assertEqual(parsed["constructor_service_ids"], [])
+
+    def test_accepts_output_backed_by_an_internal_svg_pipeline(self):
+        catalog = valid_catalog()
+        catalog["capabilities"] = {
+            "capability_ids": ["png"],
+            "output_ids": ["png"],
+            "operation_ids": ["png", "semantic-json"],
+            "system_adapter_ids": [],
+            "text_measurement": {
+                "protocol_version": merman.TEXT_MEASUREMENT_PROTOCOL_VERSION,
+                "provider_ids": ["vendored"],
+            },
+        }
+        catalog["constructor_service_ids"] = []
+        catalog["output_contracts"] = [
+            {
+                "id": "png",
+                "media_type": "image/png",
+                "system_fonts": None,
+                "embedded_images": None,
+            }
+        ]
+        catalog["resources"]["limits"][0]["operation_ids"] = [
+            "png",
+            "semantic-json",
+        ]
+
+        parsed = merman.get_runtime_catalog(FakeEngine(catalog))
+
+        self.assertEqual(parsed["capabilities"]["capability_ids"], ["png"])
+        self.assertEqual(
+            parsed["capabilities"]["text_measurement"]["provider_ids"],
+            ["vendored"],
+        )
+
+    def test_rejects_constructor_service_without_its_provider(self):
+        catalog = valid_catalog()
+        catalog["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
+
+        with self.assertRaisesRegex(
+            merman.MermanRuntimeCatalogError,
+            "requires the host-callback provider",
+        ):
+            merman.get_runtime_catalog(FakeEngine(catalog))
 
     def test_rejects_catalog_without_current_options_schema(self):
         catalog = valid_catalog()
@@ -144,8 +201,26 @@ class RuntimeCatalogTest(unittest.TestCase):
         ):
             merman.get_runtime_catalog(FakeEngine(catalog))
 
+    def test_rejects_missing_or_wrong_version_known_payload_schema(self):
+        missing = valid_catalog()
+        missing["payload_schemas"] = [{"id": "binding-result", "version": 1}]
+
+        wrong_version = valid_catalog()
+        wrong_version["payload_schemas"][1]["version"] = 2
+
+        for catalog in [missing, wrong_version]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "runtime payload schema",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
     def test_accepts_unknown_future_ids_and_additive_fields(self):
         catalog = valid_catalog()
+        catalog["payload_schemas"].insert(
+            1, {"id": "future-payload", "version": 9}
+        )
         catalog["future_root_metadata"] = {}
         catalog["registry"]["future_registry_metadata"] = True
         catalog["resources"]["future_resource_metadata"] = True
@@ -173,7 +248,6 @@ class RuntimeCatalogTest(unittest.TestCase):
             "analysis-json",
             "ascii",
             "future-operation",
-            "future-output",
             "semantic-json",
             "svg",
         ]

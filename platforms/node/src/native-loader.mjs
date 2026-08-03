@@ -4,6 +4,8 @@ import {
   MermanInvalidTransportError,
   MermanMissingPlatformPackageError,
   MermanUnsupportedTargetError,
+  NODE_TRANSPORT_LIMITS,
+  parseTransportJsonText,
 } from "./errors.mjs";
 
 const TARGET_PACKAGES = Object.freeze({
@@ -27,15 +29,11 @@ export function nativeLoaderPackageVersion() {
 }
 
 export function assertNativeRuntimePackageVersion(value) {
-  let catalog;
-  try {
-    catalog = typeof value === "string" ? JSON.parse(value) : value;
-  } catch (cause) {
-    throw new MermanInvalidTransportError(
-      "The native Merman runtime returned invalid catalog JSON while checking its package version.",
-      cause,
-    );
-  }
+  const catalog = parseTransportJsonText(
+    value,
+    "runtime catalog",
+    NODE_TRANSPORT_LIMITS.runtimeCatalogBytes,
+  );
   if (catalog?.package_version !== loaderPackageVersion) {
     throw new MermanInvalidTransportError(
       `The native runtime package version ${JSON.stringify(catalog?.package_version)} does not match the loader package version ${JSON.stringify(loaderPackageVersion)}.`,

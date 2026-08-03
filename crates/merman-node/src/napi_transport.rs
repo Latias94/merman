@@ -32,6 +32,12 @@ impl NativeEngine {
             .map_err(|error| napi::Error::from_reason(wire::error_envelope(&error)))
     }
 
+    #[napi(js_name = "metadataJson")]
+    pub fn metadata_json(&self, id: String) -> napi::Result<String> {
+        wire::metadata_wire(&id)
+            .map_err(|error| napi::Error::from_reason(wire::error_envelope(&error)))
+    }
+
     #[napi(js_name = "executeSync")]
     pub fn execute_sync(&self, request_json: String) -> String {
         wire::execute_wire(&self.engine, &request_json)

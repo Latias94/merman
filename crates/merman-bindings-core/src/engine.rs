@@ -1,18 +1,19 @@
-use crate::{BindingError, BindingRuntimePolicy, common, operation::BindingOperationOutput};
+use crate::artifact_contract::{ValidatedArtifactContract, default_artifact_contract};
+use crate::operation::{AdmittedArtifactOperation, BindingOperationOutput};
+use crate::{
+    BindingEngineServices, BindingError, BindingRuntimePolicy, RuntimePolicyExposure, common,
+};
 #[cfg(feature = "analysis")]
 use merman_analysis::Analyzer;
-#[cfg(feature = "svg")]
-use std::sync::Arc;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 #[derive(Clone)]
 pub struct BindingEngine {
+    artifact_contract: Arc<ValidatedArtifactContract>,
     runtime_policy_id: &'static str,
     runtime_policy: merman::runtime::RuntimePolicy,
     base_options: common::BaseBindingOptions,
     unchanged_request_validation: OnceLock<Result<(), BindingError>>,
-    #[cfg(feature = "svg")]
-    host_text_measurer: Option<Arc<dyn crate::HostTextMeasurer>>,
     semantic: SemanticOperationEngine,
     #[cfg(feature = "analysis")]
     analyzer: Analyzer,
@@ -20,18 +21,47 @@ pub struct BindingEngine {
     render: crate::render::CachedRenderEngine,
     #[cfg(feature = "ascii")]
     ascii: crate::ascii::CachedAsciiEngine,
+    services: BindingEngineServices,
+}
+
+pub(crate) enum PreparedRequestOverlay {
+    Unchanged,
+    Override(BindingOperationConfigs),
+}
+
+impl ValidatedArtifactContract {
+    /// Creates a reusable engine bound to this exact transport contract.
+    pub fn create_engine(&self, options_json: &[u8]) -> Result<BindingEngine, BindingError> {
+        self.create_engine_with_services(options_json, BindingEngineServices::new())
+    }
+
+    /// Creates a reusable engine with immutable services bound to this exact transport contract.
+    pub fn create_engine_with_services(
+        &self,
+        options_json: &[u8],
+        services: BindingEngineServices,
+    ) -> Result<BindingEngine, BindingError> {
+        BindingEngine::from_options_and_services_for_contract(
+            Arc::new(self.clone()),
+            options_json,
+            services,
+        )
+    }
 }
 
 impl BindingEngine {
     /// Creates a deterministic engine that never consults ambient host state.
     pub fn new(options_json: &[u8]) -> Result<Self, BindingError> {
+        let artifact_contract = default_artifact_contract();
         let (options, base_options) = common::parse_base_options(options_json)?;
         ensure_selected_runtime_policy(&options, BindingRuntimePolicy::Deterministic)?;
-        Self::with_parsed_options(
+        Self::with_parsed_options_and_services(
+            artifact_contract,
             &options,
             merman::runtime::RuntimePolicy::deterministic(),
             BindingRuntimePolicy::Deterministic.id(),
             base_options,
+            BindingEngineServices::new(),
         )
     }
 
@@ -39,22 +69,55 @@ impl BindingEngine {
     ///
     /// An omitted policy selects deterministic behavior even when system adapters are compiled.
     pub fn from_options(options_json: &[u8]) -> Result<Self, BindingError> {
+        Self::from_options_and_services(options_json, BindingEngineServices::new())
+    }
+
+    /// Creates an engine from options and one immutable constructor-owned service bundle.
+    pub fn from_options_and_services(
+        options_json: &[u8],
+        services: BindingEngineServices,
+    ) -> Result<Self, BindingError> {
+        Self::from_options_and_services_for_contract(
+            default_artifact_contract(),
+            options_json,
+            services,
+        )
+    }
+
+    pub(crate) fn from_options_and_services_for_contract(
+        artifact_contract: Arc<ValidatedArtifactContract>,
+        options_json: &[u8],
+        services: BindingEngineServices,
+    ) -> Result<Self, BindingError> {
         let (options, base_options) = common::parse_base_options(options_json)?;
+        artifact_contract.validate_engine_services(&services)?;
+        services.validate_options(&options)?;
+        validate_runtime_policy_exposure(&artifact_contract, &options)?;
         let (selection, runtime_policy) = common::selected_runtime_policy(&options)?;
-        Self::with_parsed_options(&options, runtime_policy, selection.id(), base_options)
+        Self::with_parsed_options_and_services(
+            artifact_contract,
+            &options,
+            runtime_policy,
+            selection.id(),
+            base_options,
+            services,
+        )
     }
 
     /// Creates an engine that explicitly selects the compiled native runtime adapters.
     pub fn try_native(options_json: &[u8]) -> Result<Self, BindingError> {
+        let artifact_contract = default_artifact_contract();
         let (options, base_options) = common::parse_base_options(options_json)?;
         ensure_selected_runtime_policy(&options, BindingRuntimePolicy::Native)?;
         let runtime_policy =
             merman::runtime::RuntimePolicy::try_native().map_err(common::runtime_policy_error)?;
-        Self::with_parsed_options(
+        Self::with_parsed_options_and_services(
+            artifact_contract,
             &options,
             runtime_policy,
             BindingRuntimePolicy::Native.id(),
             base_options,
+            BindingEngineServices::new(),
         )
     }
 
@@ -62,13 +125,16 @@ impl BindingEngine {
         options_json: &[u8],
         context: merman::runtime::OperationContext,
     ) -> Result<Self, BindingError> {
+        let artifact_contract = default_artifact_contract();
         let (options, base_options) = common::parse_base_options(options_json)?;
         common::reject_selected_runtime_policy(&options, "operation-context")?;
-        Self::with_parsed_options(
+        Self::with_parsed_options_and_services(
+            artifact_contract,
             &options,
             merman::runtime::RuntimePolicy::from_operation_context(context),
             "operation-context",
             base_options,
+            BindingEngineServices::new(),
         )
     }
 
@@ -76,67 +142,78 @@ impl BindingEngine {
         options_json: &[u8],
         runtime_policy: merman::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
+        let artifact_contract = default_artifact_contract();
         let (options, base_options) = common::parse_base_options(options_json)?;
         common::reject_selected_runtime_policy(&options, "custom")?;
-        Self::with_parsed_options(&options, runtime_policy, "custom", base_options)
+        Self::with_parsed_options_and_services(
+            artifact_contract,
+            &options,
+            runtime_policy,
+            "custom",
+            base_options,
+            BindingEngineServices::new(),
+        )
     }
 
-    fn with_parsed_options(
+    fn with_parsed_options_and_services(
+        artifact_contract: Arc<ValidatedArtifactContract>,
         options: &common::BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
         runtime_policy_id: &'static str,
         base_options: common::BaseBindingOptions,
+        services: BindingEngineServices,
     ) -> Result<Self, BindingError> {
         let configs = BindingOperationConfigs::compile(options, runtime_policy.clone())?;
+        #[cfg(feature = "svg")]
+        let render = configs.render.materialize(&services);
         Ok(Self {
+            artifact_contract,
             runtime_policy_id,
             runtime_policy,
             base_options,
             unchanged_request_validation: OnceLock::new(),
-            #[cfg(feature = "svg")]
-            host_text_measurer: None,
             semantic: configs.semantic.materialize(),
             #[cfg(feature = "analysis")]
             analyzer: Analyzer::with_options(configs.analysis),
             #[cfg(feature = "svg")]
-            render: configs.render.materialize(),
+            render,
             #[cfg(feature = "ascii")]
             ascii: configs.ascii.materialize(),
+            services,
         })
     }
 
-    pub(crate) fn execute_request_overlay(
+    pub(crate) fn prepare_request_overlay(
         &self,
         operation: crate::BindingOperationKind,
-        source: &[u8],
-        uri: Option<&[u8]>,
         options_json: &[u8],
-    ) -> Result<Option<BindingOperationOutput>, BindingError> {
+    ) -> Result<PreparedRequestOverlay, BindingError> {
         let overlay = common::parse_request_overlay(options_json, operation.resource_scope())?;
         match overlay {
             common::BindingRequestOverlay::Unchanged => {
                 self.unchanged_request_validation
                     .get_or_init(|| self.base_options.validate_unchanged_request())
                     .clone()?;
-                Ok(None)
+                Ok(PreparedRequestOverlay::Unchanged)
             }
             overlay @ common::BindingRequestOverlay::Override { .. } => {
                 let options = self.base_options.apply_overlay(overlay)?;
+                self.services.validate_options(&options)?;
                 let configs =
                     BindingOperationConfigs::compile(&options, self.runtime_policy.clone())?;
-                self.execute_request_projection(operation, configs, source, uri)
-                    .map(Some)
+                Ok(PreparedRequestOverlay::Override(configs))
             }
         }
     }
 
-    fn execute_request_projection(
+    pub(crate) fn execute_request_projection(
         &self,
-        operation: crate::BindingOperationKind,
+        admitted: AdmittedArtifactOperation,
         configs: BindingOperationConfigs,
         source: &[u8],
         _uri: Option<&[u8]>,
     ) -> Result<BindingOperationOutput, BindingError> {
+        let operation = admitted.operation();
         match operation.key() {
             crate::OperationKey::SemanticJson => configs
                 .semantic
@@ -221,11 +298,7 @@ impl BindingEngine {
             | crate::OperationKey::LayoutJson => {
                 #[cfg(feature = "svg")]
                 {
-                    let render = configs.render.materialize();
-                    let render = match &self.host_text_measurer {
-                        Some(measurer) => render.with_host_text_measurer(Arc::clone(measurer)),
-                        None => render,
-                    };
+                    let render = configs.render.materialize(&self.services);
                     match operation.key() {
                         crate::OperationKey::Svg => {
                             render.render_svg(source).map(BindingOperationOutput::plain)
@@ -307,7 +380,18 @@ impl BindingEngine {
         self.runtime_policy_id
     }
 
+    pub(crate) fn admit_operation(
+        &self,
+        operation: crate::BindingOperationKind,
+    ) -> Result<AdmittedArtifactOperation, BindingError> {
+        self.artifact_contract.admit_operation(operation)
+    }
+
     pub fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new("svg", source))
+    }
+
+    pub(crate) fn render_svg_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "svg")]
         {
             self.render.render_svg(source)
@@ -321,16 +405,14 @@ impl BindingEngine {
     }
 
     pub fn render_png(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        #[cfg(feature = "png")]
-        {
-            self.render.render_png(source)
-        }
+        self.execute_data(crate::BindingOperationRequest::new("png", source))
+    }
 
-        #[cfg(not(feature = "png"))]
-        {
-            let _ = source;
-            Err(common::feature_required_error("PNG rendering", "png"))
-        }
+    pub fn render_png_result(
+        &self,
+        source: &[u8],
+    ) -> Result<crate::BindingOperationResult, BindingError> {
+        self.execute(crate::BindingOperationRequest::new("png", source))
     }
 
     pub(crate) fn render_png_output(
@@ -350,16 +432,14 @@ impl BindingEngine {
     }
 
     pub fn render_jpeg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        #[cfg(feature = "jpeg")]
-        {
-            self.render.render_jpeg(source)
-        }
+        self.execute_data(crate::BindingOperationRequest::new("jpeg", source))
+    }
 
-        #[cfg(not(feature = "jpeg"))]
-        {
-            let _ = source;
-            Err(common::feature_required_error("JPEG rendering", "jpeg"))
-        }
+    pub fn render_jpeg_result(
+        &self,
+        source: &[u8],
+    ) -> Result<crate::BindingOperationResult, BindingError> {
+        self.execute(crate::BindingOperationRequest::new("jpeg", source))
     }
 
     pub(crate) fn render_jpeg_output(
@@ -379,16 +459,14 @@ impl BindingEngine {
     }
 
     pub fn render_pdf(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        #[cfg(feature = "pdf")]
-        {
-            self.render.render_pdf(source)
-        }
+        self.execute_data(crate::BindingOperationRequest::new("pdf", source))
+    }
 
-        #[cfg(not(feature = "pdf"))]
-        {
-            let _ = source;
-            Err(common::feature_required_error("PDF rendering", "pdf"))
-        }
+    pub fn render_pdf_result(
+        &self,
+        source: &[u8],
+    ) -> Result<crate::BindingOperationResult, BindingError> {
+        self.execute(crate::BindingOperationRequest::new("pdf", source))
     }
 
     pub(crate) fn render_pdf_output(
@@ -407,15 +485,11 @@ impl BindingEngine {
         }
     }
 
-    #[cfg(feature = "svg")]
-    pub fn with_host_text_measurer(&self, measurer: Arc<dyn crate::HostTextMeasurer>) -> Self {
-        let mut engine = self.clone();
-        engine.host_text_measurer = Some(Arc::clone(&measurer));
-        engine.render = self.render.with_host_text_measurer(measurer);
-        engine
+    pub fn render_ascii(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new("ascii", source))
     }
 
-    pub fn render_ascii(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn render_ascii_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "ascii")]
         {
             self.ascii.render_ascii(source)
@@ -429,10 +503,18 @@ impl BindingEngine {
     }
 
     pub fn parse_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new("semantic-json", source))
+    }
+
+    pub(crate) fn parse_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         self.semantic.parse_json(source)
     }
 
     pub fn layout_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new("layout-json", source))
+    }
+
+    pub(crate) fn layout_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "svg")]
         {
             self.render.layout_json(source)
@@ -446,6 +528,10 @@ impl BindingEngine {
     }
 
     pub fn svg_plan_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new("svg-plan-json", source))
+    }
+
+    pub(crate) fn svg_plan_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "svg")]
         {
             self.render.svg_plan_json(source)
@@ -462,6 +548,10 @@ impl BindingEngine {
     }
 
     pub fn analyze_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new("analysis-json", source))
+    }
+
+    pub(crate) fn analyze_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
             analyze_json_with(&self.analyzer, source)
@@ -474,6 +564,13 @@ impl BindingEngine {
     }
 
     pub fn analysis_facts_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new(
+            "analysis-facts-json",
+            source,
+        ))
+    }
+
+    pub(crate) fn analysis_facts_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
             analyze_facts_json_with(&self.analyzer, source)
@@ -486,6 +583,16 @@ impl BindingEngine {
     }
 
     pub fn analyze_document_json(
+        &self,
+        source: &[u8],
+        uri: &[u8],
+    ) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(
+            crate::BindingOperationRequest::new("document-analysis-json", source).with_uri(uri),
+        )
+    }
+
+    pub(crate) fn analyze_document_json_data(
         &self,
         source: &[u8],
         uri: &[u8],
@@ -509,6 +616,17 @@ impl BindingEngine {
         source: &[u8],
         uri: &[u8],
     ) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(
+            crate::BindingOperationRequest::new("document-analysis-facts-json", source)
+                .with_uri(uri),
+        )
+    }
+
+    pub(crate) fn analyze_document_facts_json_data(
+        &self,
+        source: &[u8],
+        uri: &[u8],
+    ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
             analyze_document_facts_json_with(&self.analyzer, source, uri)
@@ -524,6 +642,13 @@ impl BindingEngine {
     }
 
     pub fn validate_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new(
+            "validation-json",
+            source,
+        ))
+    }
+
+    pub(crate) fn validate_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
             validate_json_with(&self.analyzer, source)
@@ -605,7 +730,22 @@ fn ensure_selected_runtime_policy(
     Ok(())
 }
 
-struct BindingOperationConfigs {
+fn validate_runtime_policy_exposure(
+    artifact_contract: &ValidatedArtifactContract,
+    options: &common::BindingOptions,
+) -> Result<(), BindingError> {
+    if artifact_contract.runtime_policy_exposure() == RuntimePolicyExposure::DeterministicOnly
+        && options.runtime_policy == Some(BindingRuntimePolicy::Native)
+    {
+        return Err(BindingError::invalid_options_json(format!(
+            "runtime_policy `native` is not exposed by target `{}`",
+            artifact_contract.target().id()
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) struct BindingOperationConfigs {
     semantic: SemanticOperationConfig,
     #[cfg(feature = "analysis")]
     analysis: merman_analysis::AnalysisOptions,
@@ -731,6 +871,50 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use std::sync::Arc;
+    #[cfg(feature = "svg")]
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[cfg(feature = "svg")]
+    struct CountingHostTextMeasurer {
+        calls: AtomicUsize,
+    }
+
+    #[cfg(feature = "svg")]
+    impl CountingHostTextMeasurer {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                calls: AtomicUsize::new(0),
+            })
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    impl crate::HostTextMeasurer for CountingHostTextMeasurer {
+        fn measure(
+            &self,
+            _request: crate::HostTextMeasurementRequest<'_>,
+        ) -> crate::HostMeasurementResult {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(None)
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    struct PanicHostTextMeasurer;
+
+    #[cfg(feature = "svg")]
+    impl crate::HostTextMeasurer for PanicHostTextMeasurer {
+        fn measure(
+            &self,
+            _request: crate::HostTextMeasurementRequest<'_>,
+        ) -> crate::HostMeasurementResult {
+            panic!("engine construction must not invoke host text measurement")
+        }
+    }
 
     #[cfg(not(feature = "svg"))]
     #[test]
@@ -749,6 +933,90 @@ mod tests {
     #[test]
     fn semantic_parse_enforces_model_item_budget() {
         assert_semantic_model_limit("max_model_items", b"flowchart TD\nA --> B");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn constructor_owned_text_service_distinguishes_omitted_and_explicit_selectors() {
+        for options in [b"".as_slice(), br#"{"environment":{}}"#.as_slice()] {
+            BindingEngine::from_options_and_services(
+                options,
+                BindingEngineServices::new()
+                    .with_host_text_measurer(Arc::new(PanicHostTextMeasurer)),
+            )
+            .expect("omitted selectors do not conflict or invoke the callback");
+        }
+
+        for selector in ["vendored", "parity", "deterministic"] {
+            let options = format!(r#"{{"environment":{{"text_measurement":"{selector}"}}}}"#);
+            let error = BindingEngine::from_options_and_services(
+                options.as_bytes(),
+                BindingEngineServices::new()
+                    .with_host_text_measurer(Arc::new(PanicHostTextMeasurer)),
+            )
+            .err()
+            .expect("an explicit selector must conflict with the constructor service");
+            assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
+            assert_eq!(
+                error.message(),
+                "constructor service `host-text-measurement` conflicts with explicit option `environment.text_measurement`"
+            );
+        }
+
+        let null_error = BindingEngine::from_options_and_services(
+            br#"{"environment":{"text_measurement":null}}"#,
+            BindingEngineServices::new().with_host_text_measurer(Arc::new(PanicHostTextMeasurer)),
+        )
+        .err()
+        .expect("an explicitly supplied null selector remains explicit provenance");
+        assert_eq!(null_error.status(), crate::BindingStatus::InvalidArgument);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn request_overlay_text_selector_conflicts_before_execution_work() {
+        let counter = CountingHostTextMeasurer::new();
+        let services = BindingEngineServices::new().with_host_text_measurer(counter.clone());
+        let engine = BindingEngine::from_options_and_services(b"", services).unwrap();
+        assert_eq!(counter.calls(), 0, "construction must not call the host");
+
+        for options in [
+            br#"{"environment":{"text_measurement":"vendored"}}"#.as_slice(),
+            br#"{"environment":{"text_measurement":"deterministic"}}"#.as_slice(),
+            br#"{"environment":{"text_measurement":null}}"#.as_slice(),
+        ] {
+            let error = engine
+                .execute(
+                    crate::BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
+                        .with_options_json(options),
+                )
+                .expect_err("request-local selector must conflict before operation work");
+            assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
+            assert_eq!(counter.calls(), 0);
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn cloned_services_share_one_callback_across_immutable_engines() {
+        let counter = CountingHostTextMeasurer::new();
+        let services = BindingEngineServices::new().with_host_text_measurer(counter.clone());
+        let first = BindingEngine::from_options_and_services(b"", services.clone()).unwrap();
+        let second = BindingEngine::from_options_and_services(
+            br#"{"environment":{"math_renderer":"none"}}"#,
+            services,
+        )
+        .unwrap();
+        assert_eq!(counter.calls(), 0, "construction must not call the host");
+
+        first
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA[First]")
+                    .with_options_json(br#"{"svg":{"diagram_id":"first"}}"#),
+            )
+            .unwrap();
+        second.render_svg(b"flowchart TD\nB[Second]").unwrap();
+        assert!(counter.calls() > 0);
     }
 
     #[test]
@@ -960,12 +1228,15 @@ mod tests {
 
         let err = engine.validate_json(b"flowchart TD\nA").unwrap_err();
         assert_eq!(err.status(), crate::BindingStatus::UnsupportedOperation);
-        assert!(err.message().contains("analysis feature"));
+        assert_eq!(err.kind(), crate::BindingErrorKind::MissingCapability);
+        assert_eq!(err.capability_id(), Some("analysis"));
 
         let err = engine
             .analyze_document_json(b"flowchart TD\nA", b"file:///tmp/example.mmd")
             .unwrap_err();
         assert_eq!(err.status(), crate::BindingStatus::UnsupportedOperation);
+        assert_eq!(err.kind(), crate::BindingErrorKind::MissingCapability);
+        assert_eq!(err.capability_id(), Some("analysis"));
     }
 
     #[test]

@@ -258,6 +258,11 @@ fn staged_python_package_imports_and_calls_rust_engine() {
     )
     .expect("copy canonical Python package shim");
     fs::copy(
+        package_source.join("_binding_contract.py"),
+        module_dir.join("_binding_contract.py"),
+    )
+    .expect("copy canonical Python binding contract helper");
+    fs::copy(
         package_source.join("_text_measurement_protocol.py"),
         module_dir.join("_text_measurement_protocol.py"),
     )

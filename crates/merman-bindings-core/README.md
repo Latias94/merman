@@ -30,6 +30,32 @@ The ABI 3 operation catalog exposes real `png`, `jpeg`, and `pdf` byte outputs w
 
 The native policy requires the `system-clock`, `system-timezone`, and `system-random` capabilities; a missing adapter is reported with the `unsupported-operation` status and `missing-capability` kind. Generic operation metadata records the selected policy as `runtime_policy`, so hosts can attest the environment that produced an output. Custom Rust operation contexts remain constructor-owned and cannot be combined with the JSON selector.
 
+## Requests, Results, and Host Services
+
+Generic requests use constructors and fluent setters so future request fields remain additive:
+
+```rust
+use merman_bindings_core::BindingOperationRequest;
+
+let request = BindingOperationRequest::new("document-analysis-json", source)
+    .with_uri(b"file:///diagram.mmd")
+    .with_options_json(options_json);
+```
+
+Operation results expose typed schema-1 metadata and retain the exact original metadata JSON. Known raster and PDF plans are typed, while future output-plan kinds decode as an open `Unknown` variant without discarding their JSON. `operation_metadata_contract()` and `binding_operation_expectations()` are the stable generator inputs for language projections and the descriptor-derived 13-operation test matrix. `xtask gen-binding-contract` materializes both the Node projection and the language-neutral fixture under `fixtures/bindings/generated/`; transports consume those generated values instead of maintaining parallel operation or metadata vocabularies.
+
+Reusable host services are immutable and constructor-owned. A transport wraps its callback and admission policy, then creates the engine through the single service-aware constructor:
+
+```rust
+use merman_bindings_core::{BindingEngine, BindingEngineServices};
+
+let services = BindingEngineServices::new().with_host_text_measurer(measurer);
+let engine = BindingEngine::from_options_and_services(options_json, services)?;
+# Ok::<(), merman_bindings_core::BindingError>(())
+```
+
+This example requires the `svg` feature. An explicit `environment.text_measurement` selector conflicts with the constructor service in both base options and request overlays. Construction only installs the callback; it never invokes it. Foreign callback lifetime, close admission, and out-of-lock destruction remain transport responsibilities.
+
 ## SVG Output Contract
 
 `render_svg` and the cached engine `render_svg` entry point return SVG bytes. With empty options, that SVG is the Mermaid-parity contract. Hosts that pass SVG to strict SVG renderers or rasterizers should request the export contract with:

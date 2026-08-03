@@ -105,13 +105,7 @@ impl SvgPlanPayload {
 /// Builds without the `svg` feature preserve the API shape and return a typed
 /// `missing-capability(svg)` error.
 pub fn svg_plan_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    crate::execute_once(crate::BindingOperationRequest {
-        operation_id: "svg-plan-json",
-        source,
-        uri: None,
-        options_json,
-    })
-    .map(|result| result.data)
+    crate::execute_once_data("svg-plan-json", source, None, options_json)
 }
 
 #[cfg(test)]

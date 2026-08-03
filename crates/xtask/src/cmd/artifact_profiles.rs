@@ -206,22 +206,9 @@ struct CargoMetadataTarget {
     required_features: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct BindingOperationAuthority {
-    binding_operations: Vec<CanonicalBindingOperation>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct CanonicalBindingOperation {
-    id: String,
-    capability: Option<String>,
-    targets: Vec<String>,
-}
-
 struct ValidationContext {
     root: PathBuf,
     capability: CapabilityContractCatalog,
-    binding_operations: Vec<CanonicalBindingOperation>,
     packages: BTreeMap<(String, String), CargoPackage>,
     cargo_profiles: BTreeSet<String>,
     rust_targets: BTreeSet<String>,
@@ -330,12 +317,6 @@ impl ValidationContext {
         })?;
         let capability = super::capability_surface::load_capability_contract_catalog(&root)
             .map_err(|error| format!("capability authority: {error}"))?;
-        let capability_source = fs::read_to_string(root.join(CAPABILITY_DESCRIPTOR_PATH))
-            .map_err(|error| format!("cannot read capability authority: {error}"))?;
-        let binding_operations =
-            serde_json::from_str::<BindingOperationAuthority>(&capability_source)
-                .map_err(|error| format!("cannot decode capability operations: {error}"))?
-                .binding_operations;
         let output = Command::new("cargo")
             .args(["metadata", "--no-deps", "--format-version", "1"])
             .current_dir(&root)
@@ -386,7 +367,6 @@ impl ValidationContext {
         Ok(Self {
             root,
             capability,
-            binding_operations,
             packages,
             cargo_profiles,
             rust_targets,
@@ -493,45 +473,19 @@ fn validate_capability_feature_closure(
     Ok(())
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct DerivedContractSurface {
-    outputs: BTreeSet<String>,
-    operation_ids: BTreeSet<String>,
-}
-
-fn derive_contract_surface(
+fn derive_output_surface(
     catalog: &CapabilityContractCatalog,
-    binding_operations: &[CanonicalBindingOperation],
     target: &str,
     capabilities: &BTreeSet<String>,
-) -> DerivedContractSurface {
-    let outputs = catalog
+) -> BTreeSet<String> {
+    catalog
         .output_capabilities
         .iter()
         .filter(|(output, capability)| {
             capabilities.contains(*capability) && catalog.output_targets[*output].contains(target)
         })
         .map(|(output, _)| output.clone())
-        .collect();
-    let operation_ids = binding_operations
-        .iter()
-        .filter(|operation| {
-            operation
-                .targets
-                .iter()
-                .any(|candidate| candidate == target)
-                && operation
-                    .capability
-                    .as_ref()
-                    .is_none_or(|capability| capabilities.contains(capability))
-        })
-        .map(|operation| operation.id.clone())
-        .collect();
-
-    DerivedContractSurface {
-        outputs,
-        operation_ids,
-    }
+        .collect()
 }
 
 fn validate_cargo_dist_recipe(
@@ -582,7 +536,6 @@ fn validate_cargo_dist_recipe(
 fn validate_expected(
     profile: &ArtifactProfile,
     catalog: &CapabilityContractCatalog,
-    binding_operations: &[CanonicalBindingOperation],
     path: &str,
 ) -> Result<(), String> {
     let target = &profile.semantic_target;
@@ -643,20 +596,10 @@ fn validate_expected(
         }
     }
 
-    let derived = derive_contract_surface(catalog, binding_operations, target, &capabilities);
-    if outputs != derived.outputs {
+    let derived_outputs = derive_output_surface(catalog, target, &capabilities);
+    if outputs != derived_outputs {
         return Err(format!(
-            "{path}.expected.outputs: must equal outputs derived from the canonical operations for target `{target}` and capabilities {capabilities:?}; expected {:?}, found {outputs:?}",
-            derived.outputs
-        ));
-    }
-    let outputs_without_operations = outputs
-        .difference(&derived.operation_ids)
-        .cloned()
-        .collect::<Vec<_>>();
-    if !outputs_without_operations.is_empty() {
-        return Err(format!(
-            "{path}.expected.outputs: canonical outputs lack matching binding operations: {outputs_without_operations:?}"
+            "{path}.expected.outputs: must equal outputs derived from the canonical output catalog for target `{target}` and capabilities {capabilities:?}; expected {derived_outputs:?}, found {outputs:?}"
         ));
     }
     Ok(())
@@ -781,12 +724,7 @@ fn validate_profile(
         }
     }
     validate_cargo_dist_recipe(profile, package, path)?;
-    validate_expected(
-        profile,
-        &context.capability,
-        &context.binding_operations,
-        path,
-    )
+    validate_expected(profile, &context.capability, path)
 }
 
 fn package_requires_artifact_profile(
@@ -1444,27 +1382,22 @@ mod tests {
         value["profiles"][index]["expected"]["outputs"] = json!([]);
         let error = validate_fixture(value).unwrap_err();
         assert!(
-            error.contains("must equal outputs derived from the canonical operations"),
+            error.contains("must equal outputs derived from the canonical output catalog"),
             "{error}"
         );
         assert!(error.contains("\"svg\""), "{error}");
     }
 
     #[test]
-    fn derives_invariant_and_capability_gated_operations_from_one_authority() {
+    fn derives_outputs_without_assuming_a_binding_transport() {
         let catalog = &context().capability;
-        let surface = derive_contract_surface(
+        let outputs = derive_output_surface(
             catalog,
-            &context().binding_operations,
             "native",
             &BTreeSet::from(["analysis".to_string(), "svg".to_string()]),
         );
 
-        assert!(surface.operation_ids.contains("semantic-json"));
-        assert!(surface.operation_ids.contains("svg"));
-        assert!(surface.operation_ids.contains("analysis-json"));
-        assert!(!surface.operation_ids.contains("png"));
-        assert_eq!(surface.outputs, BTreeSet::from(["svg".to_string()]));
+        assert_eq!(outputs, BTreeSet::from(["svg".to_string()]));
     }
 
     #[test]

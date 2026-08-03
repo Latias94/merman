@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -7,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import {
   candidateDependencyClosure,
   candidateBuildInvocation,
+  collectLocalInputEntries,
+  resolveCandidateRuntimeContract,
   resolveCandidateRecipe,
   validateCandidateCargoMetadata,
   validateCandidatePackageVersions,
@@ -63,6 +66,18 @@ test("candidate builds project its private capability recipe plus one transport"
     assert.equal(invocation.args.includes("-j1"), true);
     assert.equal(invocation.args.join(" ").includes("rust-static-svg"), false);
   }
+});
+
+test("candidate runtime outputs follow explicit binding operation ownership", () => {
+  const contract = resolveCandidateRuntimeContract();
+
+  assert.deepEqual(contract.operationIds, [
+    "layout-json",
+    "semantic-json",
+    "svg",
+    "svg-plan-json",
+  ]);
+  assert.deepEqual(contract.outputIds, ["svg"]);
 });
 
 test("merman-node forwards every candidate capability leaf without a private aggregate", async () => {
@@ -143,6 +158,24 @@ test("candidate dependency closures isolate transport-only packages", () => {
       ),
     /napi-build.*napi/i,
   );
+});
+
+test("candidate source receipt covers generated package contracts", async () => {
+  const entries = collectLocalInputEntries({ packages: [] });
+  for (const relativePath of [
+    "platforms/node/src/generated/binding-contract.mjs",
+    "platforms/node/src/generated/capability-surface.mjs",
+  ]) {
+    const entry = entries.find((item) => item.path === relativePath);
+    const contents = await readFile(path.join(repositoryRoot, relativePath));
+
+    assert.ok(entry, `${relativePath} must be a candidate source input`);
+    assert.equal(entry.bytes, contents.byteLength);
+    assert.equal(
+      entry.sha256,
+      `sha256:${createHash("sha256").update(contents).digest("hex")}`,
+    );
+  }
 });
 
 test("candidate Cargo packages stay aligned with the private package surface version", () => {

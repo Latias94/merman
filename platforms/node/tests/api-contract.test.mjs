@@ -5,18 +5,23 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
-  MermanNodeEngine,
+  MermanEngine,
   createNodeEngine,
   normalizeBindingOptions,
 } from "../src/engine.mjs";
+import * as publicApi from "../src/index.mjs";
 import {
   MermanDisposedError,
   MermanInvalidTransportError,
   MermanOperationError,
   MermanQueueSaturatedError,
+  NODE_TRANSPORT_LIMITS,
 } from "../src/errors.mjs";
+import { TEXT_MEASUREMENT_PROTOCOL_VERSION } from "../src/generated/binding-contract.mjs";
+import { NODE_BINDING_OPERATIONS } from "../src/generated/capability-surface.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryRoot = path.resolve(nodeRoot, "..", "..");
 const PACKAGE_VERSION = JSON.parse(
   readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
 ).version;
@@ -118,13 +123,15 @@ function runtimeCatalog(overrides = {}) {
       { id: "operation-metadata", version: 1 },
     ],
     metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
+    option_group_ids: ["environment", "host_theme", "layout", "svg"],
+    constructor_service_ids: [],
     capabilities: {
       capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
       output_ids: ["svg"],
       operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
       system_adapter_ids: [],
       text_measurement: {
-        protocol_version: 3,
+        protocol_version: TEXT_MEASUREMENT_PROTOCOL_VERSION,
         provider_ids: ["vendored"],
       },
     },
@@ -202,6 +209,10 @@ test("runtime catalog validates output contracts and preserves additive nested f
   catalog.capabilities.operation_ids = [
     ...catalog.capabilities.operation_ids,
     "png",
+  ].sort();
+  catalog.option_group_ids = [
+    ...catalog.option_group_ids,
+    "raster",
   ].sort();
   catalog.output_contracts = [
     {
@@ -354,6 +365,9 @@ function transportFactory(overrides = {}) {
     runtimeCatalogJson() {
       return JSON.stringify(runtimeCatalog());
     },
+    metadataJson(id) {
+      return JSON.stringify({ id, future_metadata: true });
+    },
     async dispose() {},
     ...overrides,
   };
@@ -449,6 +463,127 @@ test("generic operations invoke descriptor-owned SVG planning", async () => {
       uri: null,
     },
   ]);
+  await engine.dispose();
+});
+
+test("named metadata and SVG-plan helpers preserve text JSON payloads", async () => {
+  const plan = {
+    schema_version: 1,
+    planned_operation_id: "svg",
+    ready: true,
+    future_plan_metadata: { source: "descriptor" },
+  };
+  const metadataCalls = [];
+  const factory = transportFactory({
+    async execute(requestJson) {
+      const request = JSON.parse(requestJson);
+      factory.calls.push(request);
+      return jsonSuccess(request.operation_id, plan);
+    },
+    executeSync(requestJson) {
+      const request = JSON.parse(requestJson);
+      factory.calls.push(request);
+      return jsonSuccess(request.operation_id, plan);
+    },
+    metadataJson(id) {
+      metadataCalls.push(id);
+      return JSON.stringify({ id, future_metadata: { preserved: true } });
+    },
+  });
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+
+  assert.equal(
+    engine.metadataJson("supported-diagrams"),
+    JSON.stringify({
+      id: "supported-diagrams",
+      future_metadata: { preserved: true },
+    }),
+  );
+  assert.equal(await engine.svgPlanJson("flowchart TD\nA --> B"), JSON.stringify(plan));
+  assert.equal(engine.svgPlanJsonSync("flowchart TD\nA --> B"), JSON.stringify(plan));
+  assert.deepEqual(metadataCalls, ["supported-diagrams"]);
+  assert.deepEqual(factory.calls.map(({ operation_id }) => operation_id), [
+    "svg-plan-json",
+    "svg-plan-json",
+  ]);
+  await engine.dispose();
+  assert.throws(
+    () => engine.metadataJson("supported-diagrams"),
+    MermanDisposedError,
+  );
+});
+
+test("metadata helper rejects non-text, oversized, unadvertised, and typed-error responses", async () => {
+  const directObjectFactory = transportFactory({
+    metadataJson(id) {
+      return { id };
+    },
+  });
+  const directObjectEngine = await createNodeEngine(
+    {},
+    { loadTransport: directObjectFactory.loadTransport },
+  );
+  assert.throws(
+    () => directObjectEngine.metadataJson("supported-diagrams"),
+    MermanInvalidTransportError,
+  );
+  assert.throws(
+    () => directObjectEngine.metadataJson("future-metadata"),
+    /not advertised/i,
+  );
+  await directObjectEngine.dispose();
+
+  const exactMetadata = "{}" + " ".repeat(NODE_TRANSPORT_LIMITS.metadataBytes - 2);
+  const boundaryFactory = transportFactory({
+    metadataJson() {
+      return exactMetadata;
+    },
+  });
+  const boundaryEngine = await createNodeEngine(
+    {},
+    { loadTransport: boundaryFactory.loadTransport },
+  );
+  assert.equal(boundaryEngine.metadataJson("supported-diagrams"), exactMetadata);
+  boundaryFactory.transport.metadataJson = () => `${exactMetadata} `;
+  assert.throws(
+    () => boundaryEngine.metadataJson("supported-diagrams"),
+    /wire limit/i,
+  );
+  await boundaryEngine.dispose();
+
+  const typedErrorFactory = transportFactory({
+    metadataJson() {
+      throw new Error(failure({ kind: "unknown-operation" }));
+    },
+  });
+  const typedErrorEngine = await createNodeEngine(
+    {},
+    { loadTransport: typedErrorFactory.loadTransport },
+  );
+  assert.throws(
+    () => typedErrorEngine.metadataJson("supported-diagrams"),
+    MermanOperationError,
+  );
+  await typedErrorEngine.dispose();
+});
+
+test("generic results preserve the candidate operation metadata JSON", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+
+  const result = await engine.executeOperation({
+    operationId: "svg",
+    source: "flowchart TD\nA --> B",
+  });
+
+  assert.equal(typeof result.metadata_json, "string");
+  assert.deepEqual(JSON.parse(result.metadata_json), {
+    version: 1,
+    operation_id: "svg",
+    media_type: "image/svg+xml",
+    runtime_policy: "deterministic",
+    byte_length: 7,
+  });
   await engine.dispose();
 });
 
@@ -575,15 +710,6 @@ test("runtime catalog validates text measurement and resource local relations", 
   ];
   invalidCatalogs.push(uncallableHostCallback);
 
-  const measurementWithoutSvg = runtimeCatalog();
-  measurementWithoutSvg.capabilities.capability_ids =
-    measurementWithoutSvg.capabilities.capability_ids.filter((id) => id !== "svg");
-  measurementWithoutSvg.capabilities.output_ids = [];
-  measurementWithoutSvg.capabilities.operation_ids = [
-    "semantic-json",
-  ];
-  invalidCatalogs.push(measurementWithoutSvg);
-
   const malformedLimit = runtimeCatalog();
   malformedLimit.resources.limits = [{ id: "max-source-bytes" }];
   invalidCatalogs.push(malformedLimit);
@@ -656,22 +782,253 @@ test("runtime catalog validates text measurement and resource local relations", 
   }
 });
 
+test("runtime catalog follows descriptor-owned SVG compiled prerequisites", async () => {
+  const descriptor = JSON.parse(
+    readFileSync(
+      path.join(repositoryRoot, "capabilities", "feature-surface-v1.json"),
+      "utf8",
+    ),
+  );
+  const pipelineOperations = descriptor.binding_operations.filter((operation) =>
+    operation.compiled_prerequisites.includes("svg")
+  );
+  assert.deepEqual(
+    NODE_BINDING_OPERATIONS,
+    descriptor.binding_operations
+      .map(({ id, compiled_prerequisites }) => ({ id, compiled_prerequisites }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  );
+  assert.notEqual(pipelineOperations.length, 0);
+
+  for (const operation of pipelineOperations) {
+    const catalog = runtimeCatalog();
+    catalog.capabilities.capability_ids = [operation.capability];
+    catalog.capabilities.output_ids = [operation.output];
+    catalog.capabilities.operation_ids = [operation.id, "semantic-json"].sort();
+    catalog.option_group_ids = ["environment", "host_theme", "layout", "svg"];
+    if (operation.id === "jpeg") catalog.option_group_ids.push("jpeg", "raster");
+    if (operation.id === "pdf") catalog.option_group_ids.push("pdf");
+    if (operation.id === "png") catalog.option_group_ids.push("raster");
+    catalog.option_group_ids.sort();
+    catalog.output_contracts = [{
+      id: operation.output,
+      media_type: operation.media_type,
+      system_fonts: {
+        source_id: "host-system",
+        discovery: "first-use",
+        cache_scope: "process-global",
+        host_dependent: true,
+        caller_configurable: false,
+        resource_bounded: false,
+      },
+      embedded_images: {
+        source_ids: ["data-url"],
+        filesystem_access: false,
+        network_access: false,
+        caller_configurable: true,
+        limits: {
+          max_bytes_per_image: 16 * 1024 * 1024,
+          max_total_bytes: 32 * 1024 * 1024,
+          max_pixels_per_image: 16 * 1024 * 1024,
+          max_total_pixels: 32 * 1024 * 1024,
+        },
+      },
+    }];
+    catalog.resources.limits[0].operation_ids = [operation.id, "semantic-json"].sort();
+
+    const factory = transportFactory({
+      runtimeCatalogJson() {
+        return JSON.stringify(catalog);
+      },
+    });
+    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+    assert.deepEqual(engine.runtimeCatalog.capabilities.capability_ids, [
+      operation.capability,
+    ]);
+    assert.deepEqual(engine.runtimeCatalog.capabilities.text_measurement.provider_ids, [
+      "vendored",
+    ]);
+    await engine.dispose();
+
+    catalog.capabilities.text_measurement = null;
+    const missingProviderFactory = transportFactory({
+      runtimeCatalogJson() {
+        return JSON.stringify(catalog);
+      },
+    });
+    await assert.rejects(
+      createNodeEngine({}, { loadTransport: missingProviderFactory.loadTransport }),
+      MermanInvalidTransportError,
+    );
+  }
+});
+
+test("schema-1 catalog extensions validate strictly and preserve open discovery", async () => {
+  const additive = runtimeCatalog();
+  additive.payload_schemas.splice(1, 0, { id: "future-payload", version: 9 });
+  additive.metadata_ids.splice(1, 0, "future-metadata");
+  additive.option_group_ids.splice(1, 0, "future-option-group");
+  additive.constructor_service_ids = ["future-constructor-service"];
+  additive.capabilities.text_measurement.provider_ids = ["future-provider", "vendored"];
+  additive.future_root = { preserved: true };
+  const additiveFactory = transportFactory({
+    runtimeCatalogJson() {
+      return JSON.stringify(additive);
+    },
+  });
+  const additiveEngine = await createNodeEngine(
+    {},
+    { loadTransport: additiveFactory.loadTransport },
+  );
+  assert.deepEqual(additiveEngine.runtimeCatalog.payload_schemas, additive.payload_schemas);
+  assert.deepEqual(additiveEngine.runtimeCatalog.option_group_ids, additive.option_group_ids);
+  assert.deepEqual(
+    additiveEngine.runtimeCatalog.capabilities.text_measurement.provider_ids,
+    additive.capabilities.text_measurement.provider_ids,
+  );
+  assert.deepEqual(
+    additiveEngine.runtimeCatalog.constructor_service_ids,
+    additive.constructor_service_ids,
+  );
+  assert.deepEqual(additiveEngine.runtimeCatalog.future_root, { preserved: true });
+  await additiveEngine.dispose();
+
+  const futureOutput = runtimeCatalog();
+  futureOutput.capabilities.capability_ids = ["future-image"];
+  futureOutput.capabilities.output_ids = ["future-image"];
+  futureOutput.capabilities.operation_ids = ["future-render", "semantic-json"];
+  futureOutput.option_group_ids = ["environment", "host_theme", "layout", "svg"];
+  futureOutput.output_contracts = [{
+    id: "future-image",
+    media_type: "image/future",
+    system_fonts: null,
+    embedded_images: null,
+    future_output_contract: true,
+  }];
+  futureOutput.resources.limits[0].operation_ids = ["future-render", "semantic-json"];
+  const futureOutputFactory = transportFactory({
+    runtimeCatalogJson() {
+      return JSON.stringify(futureOutput);
+    },
+  });
+  const futureOutputEngine = await createNodeEngine(
+    {},
+    { loadTransport: futureOutputFactory.loadTransport },
+  );
+  assert.deepEqual(futureOutputEngine.runtimeCatalog.capabilities.output_ids, [
+    "future-image",
+  ]);
+  assert.equal(
+    futureOutputEngine.runtimeCatalog.output_contracts[0].future_output_contract,
+    true,
+  );
+  await futureOutputEngine.dispose();
+
+  const legacy = runtimeCatalog();
+  delete legacy.option_group_ids;
+  delete legacy.constructor_service_ids;
+  const legacyFactory = transportFactory({
+    runtimeCatalogJson() {
+      return JSON.stringify(legacy);
+    },
+  });
+  const legacyEngine = await createNodeEngine({}, { loadTransport: legacyFactory.loadTransport });
+  assert.deepEqual(legacyEngine.runtimeCatalog.option_group_ids, []);
+  assert.deepEqual(legacyEngine.runtimeCatalog.constructor_service_ids, []);
+  await legacyEngine.dispose();
+
+  const invalidCatalogs = [];
+  const missingRequiredPayload = runtimeCatalog();
+  missingRequiredPayload.payload_schemas = [{ id: "binding-result", version: 1 }];
+  invalidCatalogs.push(missingRequiredPayload);
+
+  const wrongRequiredPayloadVersion = runtimeCatalog();
+  wrongRequiredPayloadVersion.payload_schemas[1].version = 2;
+  invalidCatalogs.push(wrongRequiredPayloadVersion);
+
+  const missingKnownOptionGroup = runtimeCatalog();
+  missingKnownOptionGroup.option_group_ids = ["environment", "host_theme", "layout"];
+  invalidCatalogs.push(missingKnownOptionGroup);
+
+  const unavailableKnownOptionGroup = runtimeCatalog();
+  unavailableKnownOptionGroup.option_group_ids.splice(3, 0, "lint");
+  invalidCatalogs.push(unavailableKnownOptionGroup);
+
+  const unsupportedKnownService = runtimeCatalog();
+  unsupportedKnownService.constructor_service_ids = ["host-text-measurement"];
+  invalidCatalogs.push(unsupportedKnownService);
+
+  for (const catalog of invalidCatalogs) {
+    const factory = transportFactory({
+      runtimeCatalogJson() {
+        return JSON.stringify(catalog);
+      },
+    });
+    await assert.rejects(
+      createNodeEngine({}, { loadTransport: factory.loadTransport }),
+      MermanInvalidTransportError,
+    );
+  }
+});
+
+test("runtime catalog transport boundary accepts JSON text only", async () => {
+  const factory = transportFactory({
+    runtimeCatalogJson() {
+      return runtimeCatalog();
+    },
+  });
+
+  await assert.rejects(
+    createNodeEngine({}, { loadTransport: factory.loadTransport }),
+    MermanInvalidTransportError,
+  );
+
+  const catalogJson = JSON.stringify(runtimeCatalog());
+  const exactCatalog = catalogJson + " ".repeat(
+    NODE_TRANSPORT_LIMITS.runtimeCatalogBytes - Buffer.byteLength(catalogJson),
+  );
+  const boundaryFactory = transportFactory({
+    runtimeCatalogJson() {
+      return exactCatalog;
+    },
+  });
+  const engine = await createNodeEngine({}, { loadTransport: boundaryFactory.loadTransport });
+  await engine.dispose();
+
+  boundaryFactory.transport.runtimeCatalogJson = () => `${exactCatalog} `;
+  await assert.rejects(
+    createNodeEngine({}, { loadTransport: boundaryFactory.loadTransport }),
+    /wire limit/i,
+  );
+});
+
 test("public TypeScript declarations cover the generic operation API", () => {
   const declarations = readFileSync(path.join(nodeRoot, "src", "index.d.ts"), "utf8");
   for (const method of [
     "dispose",
     "executeOperation",
     "executeOperationSync",
+    "metadataJson",
     "renderSvg",
     "renderSvgSync",
+    "svgPlanJson",
+    "svgPlanJsonSync",
   ]) {
-    assert.equal(typeof MermanNodeEngine.prototype[method], "function", method);
+    assert.equal(typeof MermanEngine.prototype[method], "function", method);
     assert.match(declarations, new RegExp(`\\b${method}\\s*\\(`));
   }
+  assert.equal(publicApi.MermanEngine, MermanEngine);
+  assert.equal(publicApi.MermanInvalidTransportError, MermanInvalidTransportError);
+  assert.equal("MermanNodeEngine" in publicApi, false);
+  assert.doesNotMatch(declarations, /\bMermanNodeEngine\b/);
+  assert.doesNotMatch(declarations, /"deterministic"\s*\|\s*"native"/);
+  assert.match(declarations, /class MermanInvalidTransportError extends MermanError/);
   assert.match(declarations, /\breadonly runtimeCatalog:/);
   assert.match(declarations, /\boptionsJson\?: string;/);
-  assert.match(declarations, /provider_ids:\s*\["vendored"\]/);
+  assert.match(declarations, /provider_ids:\s*string\[\]/);
   assert.match(declarations, /options_schema_versions:\s*number\[\]/);
+  assert.match(declarations, /option_group_ids:\s*string\[\]/);
+  assert.match(declarations, /constructor_service_ids:\s*string\[\]/);
   assert.match(declarations, /operation_ids:\s*string\[\]/);
   assert.match(declarations, /output_contracts:\s*MermanRuntimeOutputContract\[\]/);
   assert.match(declarations, /system_fonts:\s*MermanRuntimeSystemFontContract\s*\|\s*null/);
@@ -702,6 +1059,10 @@ test("binding options preserve the shared profile vocabulary and reject host mea
   assert.throws(
     () => normalizeBindingOptions({ version: 1 }),
     /unsupported binding options schema version `1`; expected 2/i,
+  );
+  assert.throws(
+    () => normalizeBindingOptions({ runtime_policy: "native" }),
+    /runtime_policy.*deterministic/i,
   );
   assert.throws(
     () => normalizeBindingOptions({ textMeasurer: () => ({ width: 1 }) }),
@@ -739,6 +1100,57 @@ test("typed unknown-operation and missing-capability errors survive the JS bound
     );
     await engine.dispose();
   }
+});
+
+test("direct transport execution failures normalize across async and sync calls", async () => {
+  const typedFactory = transportFactory({
+    async execute() {
+      throw new Error(failure({ kind: "unknown-operation" }));
+    },
+    executeSync() {
+      throw new Error(failure({ kind: "unknown-operation" }));
+    },
+  });
+  const typedEngine = await createNodeEngine(
+    {},
+    { loadTransport: typedFactory.loadTransport },
+  );
+  const request = {
+    operationId: "not-an-operation",
+    source: "flowchart TD\nA",
+  };
+  const assertTypedError = (error) => {
+    assert.ok(error instanceof MermanOperationError);
+    assert.equal(error.kind, "unknown-operation");
+    assert.equal(error.codeName, "MERMAN_UNSUPPORTED_OPERATION");
+    return true;
+  };
+  await assert.rejects(typedEngine.executeOperation(request), assertTypedError);
+  assert.throws(() => typedEngine.executeOperationSync(request), assertTypedError);
+  await typedEngine.dispose();
+
+  const transportFailure = new Error("transport failed before returning a wire envelope");
+  const plainFactory = transportFactory({
+    async execute() {
+      throw transportFailure;
+    },
+    executeSync() {
+      throw transportFailure;
+    },
+  });
+  const plainEngine = await createNodeEngine(
+    {},
+    { loadTransport: plainFactory.loadTransport },
+  );
+  const assertTransportError = (error) => {
+    assert.ok(error instanceof MermanInvalidTransportError);
+    assert.equal(error.message, "Merman operation failed.");
+    assert.equal(error.cause, transportFailure);
+    return true;
+  };
+  await assert.rejects(plainEngine.executeOperation(request), assertTransportError);
+  assert.throws(() => plainEngine.executeOperationSync(request), assertTransportError);
+  await plainEngine.dispose();
 });
 
 test("queue admission is bounded and dispose drains only executing work", async () => {

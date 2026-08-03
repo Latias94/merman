@@ -67,6 +67,31 @@ export class MermanInvalidTransportError extends MermanError {
   }
 }
 
+export const NODE_TRANSPORT_LIMITS = Object.freeze({
+  metadataBytes: 8 * 1024 * 1024,
+  runtimeCatalogBytes: 1024 * 1024,
+});
+
+export function parseTransportJsonText(value, label, maxUtf8Bytes) {
+  if (typeof value !== "string") {
+    throw new MermanInvalidTransportError(`Merman transport ${label} must be JSON text.`);
+  }
+  const byteLength = Buffer.byteLength(value, "utf8");
+  if (byteLength > maxUtf8Bytes) {
+    throw new MermanInvalidTransportError(
+      `Merman transport ${label} exceeds the ${maxUtf8Bytes}-byte wire limit.`,
+    );
+  }
+  try {
+    return JSON.parse(value);
+  } catch (cause) {
+    throw new MermanInvalidTransportError(
+      `Merman transport returned invalid ${label} JSON.`,
+      cause,
+    );
+  }
+}
+
 export function abortError() {
   if (typeof DOMException === "function") {
     return new DOMException("The queued Merman operation was aborted.", "AbortError");
@@ -77,9 +102,12 @@ export function abortError() {
 }
 
 export function decodeWireResponse(value) {
+  if (typeof value !== "string") {
+    throw new MermanInvalidTransportError("Merman transport response must be JSON text.");
+  }
   let envelope;
   try {
-    envelope = typeof value === "string" ? JSON.parse(value) : value;
+    envelope = JSON.parse(value);
   } catch (cause) {
     throw new MermanInvalidTransportError("Merman transport returned invalid JSON.", cause);
   }
@@ -91,13 +119,31 @@ export function decodeWireResponse(value) {
   if (envelope.ok === false && envelope.error && typeof envelope.error === "object") {
     throw new MermanOperationError(envelope.error);
   }
-  if (envelope.ok !== true || !envelope.result || typeof envelope.result.data !== "string") {
+  if (
+    envelope.ok !== true ||
+    !envelope.result ||
+    typeof envelope.result.operation_id !== "string" ||
+    envelope.result.operation_id.length === 0 ||
+    typeof envelope.result.media_type !== "string" ||
+    envelope.result.media_type.length === 0 ||
+    typeof envelope.result.data !== "string" ||
+    typeof envelope.result.metadata_json !== "string"
+  ) {
     throw new MermanInvalidTransportError("Merman transport returned an invalid result envelope.");
   }
   return envelope.result;
 }
 
 export function decodeWireCreationError(cause, label) {
+  return decodeWireFailure(cause, `${label} failed to initialize.`);
+}
+
+export function decodeWireInvocationError(cause, label) {
+  return decodeWireFailure(cause, `${label} failed.`);
+}
+
+function decodeWireFailure(cause, fallbackMessage) {
+  if (cause instanceof MermanError) return cause;
   const value = cause instanceof Error ? cause.message : cause;
   try {
     const envelope = typeof value === "string" ? JSON.parse(value) : value;
@@ -114,5 +160,5 @@ export function decodeWireCreationError(cause, label) {
   } catch {
     // Fall through to the transport-level error below.
   }
-  return new MermanInvalidTransportError(`${label} failed to initialize.`, cause);
+  return new MermanInvalidTransportError(fallbackMessage, cause);
 }

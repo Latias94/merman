@@ -675,12 +675,15 @@ impl FeatureGraph {
             }
             let closure = self.local_closure(&package.name, [capability.id])?;
             for implication in capability.implications {
-                if package.features.contains_key(*implication) && !closure.contains(*implication) {
+                let implication_id = implication.id();
+                if package.features.contains_key(implication_id)
+                    && !closure.contains(implication_id)
+                {
                     return Err(matrix_error(format!(
                         "{}: feature `{}` must imply this crate's `{}` feature",
                         package.manifest_path.display(),
                         capability.id,
-                        implication
+                        implication_id
                     )));
                 }
             }
@@ -711,9 +714,11 @@ impl FeatureGraph {
                     package.manifest_path.display()
                 )));
             }
+            let target_key = capability_contract::TargetKey::from_id(target)
+                .expect("transport target IDs must be owned by the capability descriptor");
             for capability in capability_contract::CAPABILITIES {
                 if package.features.contains_key(capability.id)
-                    && !capability.targets.contains(&target)
+                    && !capability.targets.contains(&target_key)
                 {
                     return Err(matrix_error(format!(
                         "{}: transport target `{target}` cannot expose capability `{}`",

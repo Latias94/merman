@@ -17,9 +17,10 @@ use jni::{
 #[cfg(feature = "svg")]
 use jni::{errors::Error as JniError, objects::Global};
 use merman_bindings_core::{
-    ArtifactCapabilitySurface, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode,
-    BindingError, BindingOperationRequest, BindingOperationResult, BindingStatus,
-    TextMeasurementProviderProjection, execute_once,
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
+    BindingError, BindingOperationRequest, BindingOperationResult, BindingPayloadSchemaKey,
+    BindingStatus, CompiledBindingSurface, ConstructorServiceKey, RuntimePolicyExposure, TargetKey,
+    TextMeasurementProviderKey, TransportExposure, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use std::cell::Cell;
@@ -32,17 +33,6 @@ use std::{
 };
 
 const ANDROID_TRANSPORT_API_VERSION: u32 = 1;
-
-fn android_transport_capability_surface() -> ArtifactCapabilitySurface {
-    #[cfg(feature = "svg")]
-    let text_measurement = TextMeasurementProviderProjection::PreserveCompiled;
-    #[cfg(not(feature = "svg"))]
-    let text_measurement = TextMeasurementProviderProjection::VendoredOnly;
-
-    merman_bindings_core::binding_transport_capability_surface()
-        .project_to_descriptor_target("native", text_measurement)
-        .expect("the Android transport exposes a valid native capability surface")
-}
 
 struct JniReusableEngine {
     engine: BindingEngine,
@@ -83,6 +73,32 @@ impl JniEngineRegistry {
 }
 
 static ENGINE_REGISTRY: OnceLock<Mutex<JniEngineRegistry>> = OnceLock::new();
+static ARTIFACT_CONTRACT: OnceLock<ValidatedArtifactContract> = OnceLock::new();
+
+fn android_artifact_contract() -> &'static ValidatedArtifactContract {
+    ARTIFACT_CONTRACT.get_or_init(|| {
+        let exposure = TransportExposure::for_target(TargetKey::Native)
+            .with_all_compiled_operations()
+            .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
+            .and_then(TransportExposure::with_all_available_metadata)
+            .and_then(|exposure| {
+                exposure.with_payload_schemas(BindingPayloadSchemaKey::ALL.iter().copied())
+            })
+            .expect("the Android transport declares each compiled endpoint set once")
+            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
+        #[cfg(feature = "svg")]
+        let exposure = exposure
+            .with_text_measurement_providers([TextMeasurementProviderKey::HostCallback])
+            .and_then(|exposure| {
+                exposure.with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
+            })
+            .expect("the Android SVG transport exposes its compiled constructor service");
+
+        CompiledBindingSurface::current()
+            .validate(exposure)
+            .expect("the Android transport exposure must match its compiled native surface")
+    })
+}
 
 #[cfg(feature = "svg")]
 struct JniHostTextMeasurer {
@@ -397,10 +413,7 @@ pub extern "system" fn native_runtime_catalog_json(
     with_env_resolved(&mut unowned_env, |env| {
         Ok(result_to_java_string(
             env,
-            merman_bindings_core::runtime_catalog_json_for(
-                ANDROID_TRANSPORT_API_VERSION,
-                android_transport_capability_surface(),
-            ),
+            android_artifact_contract().runtime_catalog_json(ANDROID_TRANSPORT_API_VERSION),
         ))
     })
 }
@@ -426,12 +439,11 @@ pub extern "system" fn native_execute(
         let Some(uri) = nullable_java_string(env, uri, "uri") else {
             return Ok(ptr::null_mut());
         };
-        let result = execute_once(BindingOperationRequest {
-            operation_id: &operation_id,
-            source: source.as_bytes(),
-            uri: uri.as_deref().map(str::as_bytes),
-            options_json: options_json.as_bytes(),
-        });
+        let result = android_artifact_contract().execute_once(
+            BindingOperationRequest::new(&operation_id, source.as_bytes())
+                .with_optional_uri(uri.as_deref().map(str::as_bytes))
+                .with_options_json(options_json.as_bytes()),
+        );
         Ok(result_to_java_operation_result(env, result))
     })
 }
@@ -447,7 +459,7 @@ pub extern "system" fn native_metadata_json(
         };
         Ok(result_to_java_string(
             env,
-            merman_bindings_core::binding_metadata_json(&id),
+            android_artifact_contract().metadata_json(&id),
         ))
     })
 }
@@ -462,29 +474,27 @@ pub extern "system" fn native_engine_new(
         let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
             return Ok(0);
         };
-        let result = BindingEngine::from_options(options_json.as_bytes()).and_then(|engine| {
-            let admission = BindingEngineAdmission::new(if measurer.is_null() {
-                BindingEngineAdmissionMode::Concurrent
-            } else {
-                BindingEngineAdmissionMode::HostCallback
-            });
+        let admission = BindingEngineAdmission::new(if measurer.is_null() {
+            BindingEngineAdmissionMode::Concurrent
+        } else {
+            BindingEngineAdmissionMode::HostCallback
+        });
 
+        let result = (|| {
             #[cfg(feature = "svg")]
-            let engine = if measurer.is_null() {
-                engine
+            let services = if measurer.is_null() {
+                BindingEngineServices::new()
             } else {
                 let callback = env.new_global_ref(&measurer).map_err(jni_binding_error)?;
                 let vm = env.get_java_vm().map_err(jni_binding_error)?;
-                engine.with_host_text_measurer(Arc::new(JniHostTextMeasurer::new(
-                    vm,
-                    callback,
-                    Arc::clone(&admission),
-                )))
+                BindingEngineServices::new().with_host_text_measurer(Arc::new(
+                    JniHostTextMeasurer::new(vm, callback, Arc::clone(&admission)),
+                ))
             };
 
             #[cfg(not(feature = "svg"))]
-            let engine = if measurer.is_null() {
-                engine
+            let services = if measurer.is_null() {
+                BindingEngineServices::new()
             } else {
                 return Err(BindingError::missing_capability(
                     "svg",
@@ -492,12 +502,14 @@ pub extern "system" fn native_engine_new(
                 ));
             };
 
+            let engine = android_artifact_contract()
+                .create_engine_with_services(options_json.as_bytes(), services)?;
             let state = Arc::new(JniReusableEngine { engine, admission });
             engine_registry()
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .register(state)
-        });
+        })();
         match result {
             Ok(handle) => Ok(handle),
             Err(error) => {
@@ -569,12 +581,11 @@ pub extern "system" fn native_engine_execute(
             .enter_operation()
             .map_err(BindingError::from)
             .and_then(|_operation| {
-                state.engine.execute(BindingOperationRequest {
-                    operation_id: &operation_id,
-                    source: source.as_bytes(),
-                    uri: uri.as_deref().map(str::as_bytes),
-                    options_json: options_json.as_bytes(),
-                })
+                state.engine.execute(
+                    BindingOperationRequest::new(&operation_id, source.as_bytes())
+                        .with_optional_uri(uri.as_deref().map(str::as_bytes))
+                        .with_options_json(options_json.as_bytes()),
+                )
             });
         Ok(result_to_java_operation_result(env, result))
     })
@@ -681,16 +692,17 @@ fn new_operation_result<'local>(
     env: &mut Env<'local>,
     result: BindingOperationResult,
 ) -> Result<JObject<'local>, String> {
+    let (operation, media_type, data, metadata) = result.into_parts();
     let operation_id = env
-        .new_string(result.operation.operation_id())
+        .new_string(operation.operation_id())
         .map_err(|error| error.to_string())?;
     let media_type = env
-        .new_string(result.media_type)
+        .new_string(media_type)
         .map_err(|error| error.to_string())?;
     let data = env
-        .byte_array_from_slice(&result.data)
+        .byte_array_from_slice(&data)
         .map_err(|error| error.to_string())?;
-    let metadata_json = std::str::from_utf8(&result.metadata_json)
+    let metadata_json = std::str::from_utf8(metadata.json_bytes())
         .map_err(|error| format!("native operation metadata was not UTF-8: {error}"))?;
     let metadata_json = env
         .new_string(metadata_json)

@@ -2582,19 +2582,19 @@ fn render_rust_operation_catalog(out: &mut String, values: &[ResolvedOperation])
          }\n\n\
          pub const fn merman_native_operation_code(\n\
          \x20   key: merman_bindings_core::OperationKey,\n\
-         ) -> MermanNativeOperationCode {\n\
+         ) -> Option<MermanNativeOperationCode> {\n\
          \x20   match key {\n",
     );
     for value in values.iter().filter(|value| value.id != "none") {
         writeln!(
             out,
-            "        merman_bindings_core::OperationKey::{} => {},",
+            "        merman_bindings_core::OperationKey::{} => Some({}),",
             upper_camel(&value.id),
             value.c_name
         )
         .unwrap();
     }
-    out.push_str("    }\n}\n\n");
+    out.push_str("        _ => None,\n    }\n}\n\n");
 }
 
 fn render_rust_slot_type(out: &mut String, values: &[&CallableDescriptor]) {

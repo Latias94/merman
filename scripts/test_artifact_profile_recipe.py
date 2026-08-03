@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+import copy
 from dataclasses import replace
 import importlib.util
 import json
@@ -40,6 +41,31 @@ WHEEL_BUILDER_SPEC.loader.exec_module(wheel_builder)
 
 
 class ArtifactProfileRecipeTests(unittest.TestCase):
+    def assert_python_wheel_contract_rejected(
+        self,
+        profiles: dict[str, object],
+        capability_descriptor: dict[str, object],
+        pattern: str,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            capabilities = root / "capabilities"
+            capabilities.mkdir()
+            profiles_path = capabilities / "artifact-profiles-v1.json"
+            capability_path = capabilities / "feature-surface-v1.json"
+            profiles_path.write_text(json.dumps(profiles), encoding="utf-8")
+            capability_path.write_text(
+                json.dumps(capability_descriptor),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(wheel_builder, "REPO_ROOT", root),
+                mock.patch.object(wheel_builder, "DEFAULT_DESCRIPTOR", profiles_path),
+                mock.patch.object(wheel_builder, "CAPABILITY_DESCRIPTOR", capability_path),
+                self.assertRaisesRegex(RuntimeError, pattern),
+            ):
+                wheel_builder.python_wheel_smoke_script("python-uniffi-native")
+
     def test_python_wheel_smoke_uses_exact_profile_capabilities_and_outputs(self) -> None:
         script = wheel_builder.python_wheel_smoke_script("python-uniffi-native")
 
@@ -64,8 +90,116 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             "'svg-plan-json', 'validation-json']",
             script,
         )
-        self.assertNotIn("required_capabilities", script)
+        self.assertNotIn("compiled_prerequisites", script)
+        self.assertNotIn("output_ids\"]).issubset", script)
         self.assertIn("assert_shared_semantic_operation_fixtures(engine)", script)
+
+    def test_python_wheel_smoke_keeps_operation_and_output_ids_independent(self) -> None:
+        profiles = json.loads(
+            wheel_builder.DEFAULT_DESCRIPTOR.read_text(encoding="utf-8")
+        )
+        descriptor = json.loads(
+            wheel_builder.CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8")
+        )
+        png = next(
+            operation
+            for operation in descriptor["binding_operations"]
+            if operation["id"] == "png"
+        )
+        png["id"] = "render-png"
+        canonical_descriptor = wheel_builder._canonical_capability_descriptor(
+            descriptor
+        )
+        profiles["capability_authority"]["digest"] = (
+            wheel_builder._capability_descriptor_digest(canonical_descriptor)
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            capabilities = root / "capabilities"
+            capabilities.mkdir()
+            profiles_path = capabilities / "artifact-profiles-v1.json"
+            capability_path = capabilities / "feature-surface-v1.json"
+            profiles_path.write_text(json.dumps(profiles), encoding="utf-8")
+            capability_path.write_text(json.dumps(descriptor), encoding="utf-8")
+            with (
+                mock.patch.object(wheel_builder, "REPO_ROOT", root),
+                mock.patch.object(wheel_builder, "DEFAULT_DESCRIPTOR", profiles_path),
+                mock.patch.object(wheel_builder, "CAPABILITY_DESCRIPTOR", capability_path),
+            ):
+                script = wheel_builder.python_wheel_smoke_script(
+                    "python-uniffi-native"
+                )
+
+        self.assertIn("'render-png'", script)
+        self.assertIn("'png'", script)
+        self.assertNotIn("output_ids\"]).issubset", script)
+
+    def test_python_wheel_smoke_strictly_consumes_operation_relationship_fields(self) -> None:
+        profiles = json.loads(
+            wheel_builder.DEFAULT_DESCRIPTOR.read_text(encoding="utf-8")
+        )
+        descriptor = json.loads(
+            wheel_builder.CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8")
+        )
+        png = next(
+            operation
+            for operation in descriptor["binding_operations"]
+            if operation["id"] == "png"
+        )
+        del png["compiled_prerequisites"]
+
+        self.assert_python_wheel_contract_rejected(
+            profiles,
+            descriptor,
+            "compiled_prerequisites",
+        )
+
+    def test_python_wheel_smoke_rejects_mismatched_capability_authority(self) -> None:
+        original_profiles = json.loads(
+            wheel_builder.DEFAULT_DESCRIPTOR.read_text(encoding="utf-8")
+        )
+        original_capability = json.loads(
+            wheel_builder.CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8")
+        )
+
+        profiles = copy.deepcopy(original_profiles)
+        profiles["capability_authority"]["path"] = "capabilities/other.json"
+        self.assert_python_wheel_contract_rejected(
+            profiles,
+            original_capability,
+            r"capability_authority\.path",
+        )
+
+        profiles = copy.deepcopy(original_profiles)
+        profiles["capability_authority"]["schema_version"] = 2
+        self.assert_python_wheel_contract_rejected(
+            profiles,
+            original_capability,
+            r"capability_authority\.schema_version",
+        )
+
+        capability = copy.deepcopy(original_capability)
+        capability["descriptor_id"] = "mutated-capability-surface"
+        self.assert_python_wheel_contract_rejected(
+            original_profiles,
+            capability,
+            r"capability_authority\.digest",
+        )
+
+    def test_python_wheel_operation_selection_does_not_advertise_internal_prerequisites(self) -> None:
+        descriptor = json.loads(
+            wheel_builder.CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8")
+        )
+
+        selected = wheel_builder._native_binding_operation_ids(
+            wheel_builder._canonical_capability_descriptor(descriptor),
+            {"png"},
+        )
+
+        self.assertIn("png", selected)
+        self.assertIn("semantic-json", selected)
+        self.assertNotIn("svg", selected)
 
     def test_python_wheel_smoke_receives_the_shared_fixture_path(self) -> None:
         environment = wheel_builder.wheel_smoke_environment()

@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use crate::option_contract::BindingOptionGroupKey;
 use crate::resource_contract::{
     BindingResourceScope, binding_resource_contract, resource_limit_descriptor,
     resource_profile_value,
@@ -140,6 +141,21 @@ impl BindingError {
         }
     }
 
+    /// Creates a caller-owned invalid-argument failure without requiring status reconstruction.
+    pub fn invalid_argument(message: impl Into<String>) -> Self {
+        Self::new(BindingStatus::InvalidArgument, message)
+    }
+
+    /// Creates a caller-owned options-JSON failure without requiring status reconstruction.
+    pub fn invalid_options_json(message: impl Into<String>) -> Self {
+        Self::new(BindingStatus::OptionsJsonError, message)
+    }
+
+    /// Creates an internal implementation failure without requiring status reconstruction.
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::new(BindingStatus::InternalError, message)
+    }
+
     pub fn unknown_operation(message: impl Into<String>) -> Self {
         Self {
             status: BindingStatus::UnsupportedOperation,
@@ -158,6 +174,12 @@ impl BindingError {
             resource: None,
             message: message.into(),
         }
+    }
+
+    /// Creates a caller-owned failure for a known operation or metadata endpoint that this
+    /// transport intentionally does not expose.
+    pub fn unsupported_operation(message: impl Into<String>) -> Self {
+        Self::new(BindingStatus::UnsupportedOperation, message)
     }
 
     pub fn reentrant_call(message: impl Into<String>) -> Self {
@@ -282,6 +304,9 @@ pub(crate) struct BindingOptions {
     pub(crate) layout: Option<LayoutOptionsJson>,
     #[cfg(feature = "svg")]
     pub(crate) environment: Option<RenderEnvironmentOptionsJson>,
+    #[cfg(feature = "svg")]
+    #[serde(skip)]
+    pub(crate) text_measurement_selector_explicit: bool,
     #[cfg(feature = "svg")]
     pub(crate) svg: Option<SvgOptionsJson>,
     #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -659,6 +684,14 @@ fn parse_options_value(value: &Value) -> Result<BindingOptions, BindingError> {
             format!("invalid options_json: {err}"),
         )
     })?;
+    #[cfg(feature = "svg")]
+    {
+        options.text_measurement_selector_explicit = value
+            .as_object()
+            .and_then(|root| root.get("environment"))
+            .and_then(Value::as_object)
+            .is_some_and(|environment| environment.contains_key("text_measurement"));
+    }
     reject_unknown_options_json_fields(value)?;
     options.analysis = binding_analysis_options_json_from_json_value(value)?;
     validate_resource_contract_ids(options.analysis.resources.as_ref())?;
@@ -830,17 +863,8 @@ fn reject_uncompiled_option_groups(value: &Value) -> Result<(), BindingError> {
     let Some(options) = value.as_object() else {
         return Ok(());
     };
-    for (group, compiled) in [
-        ("lint", cfg!(feature = "analysis")),
-        ("ascii", cfg!(feature = "ascii")),
-        ("host_theme", cfg!(feature = "svg")),
-        ("layout", cfg!(feature = "svg")),
-        ("environment", cfg!(feature = "svg")),
-        ("svg", cfg!(feature = "svg")),
-        ("raster", cfg!(any(feature = "png", feature = "jpeg"))),
-        ("jpeg", cfg!(feature = "jpeg")),
-        ("pdf", cfg!(feature = "pdf")),
-    ] {
+    for key in BindingOptionGroupKey::ALL {
+        let group = key.id();
         let present = options.contains_key(group)
             || (group == "lint"
                 && ["analysis", "merman"].iter().any(|wrapper| {
@@ -849,7 +873,7 @@ fn reject_uncompiled_option_groups(value: &Value) -> Result<(), BindingError> {
                         .and_then(Value::as_object)
                         .is_some_and(|nested| nested.contains_key(group))
                 }));
-        if present && !compiled {
+        if present && !key.is_compiled() {
             return Err(BindingError::new(
                 BindingStatus::OptionsJsonError,
                 format!("options group `{group}` is not available in this artifact"),
@@ -2325,17 +2349,25 @@ mod tests {
     #[cfg(any(feature = "svg", feature = "ascii"))]
     #[test]
     fn parse_options_accepts_analysis_wrapper_without_dropping_binding_options() {
-        let options = parse_options(
-            br#"{
+        #[cfg(feature = "svg")]
+        let input = br#"{
                 "parse": { "suppress_errors": true },
                 "analysis": {
                     "resources": { "limits": { "max_source_bytes": 4 } }
                 },
                 "version": 2,
                 "svg": { "pipeline": "resvg-safe" }
-            }"#,
-        )
-        .unwrap();
+            }"#;
+        #[cfg(all(not(feature = "svg"), feature = "ascii"))]
+        let input = br#"{
+                "parse": { "suppress_errors": true },
+                "analysis": {
+                    "resources": { "limits": { "max_source_bytes": 4 } }
+                },
+                "version": 2,
+                "ascii": { "color_mode": "none" }
+            }"#;
+        let options = parse_options(input).unwrap();
 
         assert_eq!(options.version, Some(2));
         assert_eq!(
@@ -2364,6 +2396,14 @@ mod tests {
         assert_eq!(
             options.svg.as_ref().and_then(|svg| svg.pipeline.as_deref()),
             Some("resvg-safe")
+        );
+        #[cfg(all(not(feature = "svg"), feature = "ascii"))]
+        assert_eq!(
+            options
+                .ascii
+                .as_ref()
+                .and_then(|ascii| ascii.color_mode.as_deref()),
+            Some("none")
         );
     }
 

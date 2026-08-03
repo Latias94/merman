@@ -6,9 +6,8 @@
 
 use crate::XtaskError;
 use merman_bindings_core::{
-    BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract, RuntimeResourceContract,
-    TextMeasurementProviderProjection, binding_resource_contract,
-    compiled_runtime_capability_surface, runtime_catalog_for,
+    BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract, CompiledBindingSurface,
+    RuntimeResourceContract, TargetKey, TransportExposure, binding_resource_contract,
 };
 use std::fmt::Write as _;
 use std::fs;
@@ -75,10 +74,15 @@ fn generated_preamble(comment: &str) -> String {
 }
 
 fn web_resource_contract() -> RuntimeResourceContract {
-    let surface = compiled_runtime_capability_surface()
-        .project_to_descriptor_target("web", TextMeasurementProviderProjection::VendoredOnly)
+    let exposure = TransportExposure::for_target(TargetKey::Web)
+        .with_all_compiled_operations()
+        .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
         .expect("the compiled binding surface projects to the Web target");
-    runtime_catalog_for(0, surface).resources
+    CompiledBindingSurface::current()
+        .validate(exposure)
+        .expect("the Web resource contract must be internally coherent")
+        .runtime_catalog(0)
+        .resources
 }
 
 fn render_c_header(contract: &BindingResourceContract) -> String {

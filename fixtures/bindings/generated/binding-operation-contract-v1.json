@@ -1,0 +1,369 @@
+{
+  "schema_version": 1,
+  "operation_metadata_contract": {
+    "contract_schema_version": 1,
+    "metadata_schema_version": 1,
+    "fields": [
+      {
+        "name": "version",
+        "json_type": "unsigned-integer",
+        "required": true,
+        "integer_width_bits": 32,
+        "open_value": false
+      },
+      {
+        "name": "operation_id",
+        "json_type": "string",
+        "required": true,
+        "integer_width_bits": null,
+        "open_value": true
+      },
+      {
+        "name": "media_type",
+        "json_type": "string",
+        "required": true,
+        "integer_width_bits": null,
+        "open_value": true
+      },
+      {
+        "name": "runtime_policy",
+        "json_type": "string",
+        "required": true,
+        "integer_width_bits": null,
+        "open_value": true
+      },
+      {
+        "name": "byte_length",
+        "json_type": "unsigned-integer",
+        "required": true,
+        "integer_width_bits": 64,
+        "open_value": false
+      },
+      {
+        "name": "output_plan",
+        "json_type": "object",
+        "required": false,
+        "integer_width_bits": null,
+        "open_value": true
+      }
+    ],
+    "output_plans": [
+      {
+        "kind": "raster",
+        "fields": [
+          {
+            "name": "kind",
+            "json_type": "string",
+            "required": true,
+            "integer_width_bits": null,
+            "open_value": false
+          },
+          {
+            "name": "requested_width_px",
+            "json_type": "number",
+            "required": true,
+            "integer_width_bits": null,
+            "open_value": false
+          },
+          {
+            "name": "requested_height_px",
+            "json_type": "number",
+            "required": true,
+            "integer_width_bits": null,
+            "open_value": false
+          },
+          {
+            "name": "width_px",
+            "json_type": "unsigned-integer",
+            "required": true,
+            "integer_width_bits": 32,
+            "open_value": false
+          },
+          {
+            "name": "height_px",
+            "json_type": "unsigned-integer",
+            "required": true,
+            "integer_width_bits": 32,
+            "open_value": false
+          },
+          {
+            "name": "requested_scale",
+            "json_type": "number",
+            "required": true,
+            "integer_width_bits": null,
+            "open_value": false
+          },
+          {
+            "name": "effective_scale",
+            "json_type": "number",
+            "required": true,
+            "integer_width_bits": null,
+            "open_value": false
+          },
+          {
+            "name": "limited",
+            "json_type": "boolean",
+            "required": true,
+            "integer_width_bits": null,
+            "open_value": false
+          }
+        ]
+      },
+      {
+        "kind": "pdf-filter-images",
+        "fields": [
+          {
+            "name": "kind",
+            "json_type": "string",
+            "required": true,
+            "integer_width_bits": null,
+            "open_value": false
+          },
+          {
+            "name": "filtered_groups",
+            "json_type": "unsigned-integer",
+            "required": true,
+            "integer_width_bits": 64,
+            "open_value": false
+          },
+          {
+            "name": "requested_scale",
+            "json_type": "number",
+            "required": true,
+            "integer_width_bits": null,
+            "open_value": false
+          },
+          {
+            "name": "effective_scale",
+            "json_type": "number",
+            "required": true,
+            "integer_width_bits": null,
+            "open_value": false
+          },
+          {
+            "name": "requested_image_pixels",
+            "json_type": "unsigned-integer",
+            "required": true,
+            "integer_width_bits": 64,
+            "open_value": false
+          },
+          {
+            "name": "effective_image_pixels",
+            "json_type": "unsigned-integer",
+            "required": true,
+            "integer_width_bits": 64,
+            "open_value": false
+          },
+          {
+            "name": "limited",
+            "json_type": "boolean",
+            "required": true,
+            "integer_width_bits": null,
+            "open_value": false
+          }
+        ]
+      }
+    ],
+    "additional_fields_policy": "preserve",
+    "unknown_output_plan_policy": "preserve",
+    "original_json_policy": "preserve-exact-bytes"
+  },
+  "operation_expectations": [
+    {
+      "operation_id": "analysis-facts-json",
+      "output_id": null,
+      "media_type": "application/json",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": "analysis",
+      "compiled_prerequisite_ids": [],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "analysis"
+      }
+    },
+    {
+      "operation_id": "analysis-json",
+      "output_id": null,
+      "media_type": "application/json",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": "analysis",
+      "compiled_prerequisite_ids": [],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "analysis"
+      }
+    },
+    {
+      "operation_id": "ascii",
+      "output_id": "ascii",
+      "media_type": "text/plain; charset=utf-8",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": "ascii",
+      "compiled_prerequisite_ids": [],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "ascii"
+      }
+    },
+    {
+      "operation_id": "document-analysis-facts-json",
+      "output_id": null,
+      "media_type": "application/json",
+      "metadata_schema_version": 1,
+      "requires_uri": true,
+      "availability_capability_id": "analysis",
+      "compiled_prerequisite_ids": [],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "analysis"
+      }
+    },
+    {
+      "operation_id": "document-analysis-json",
+      "output_id": null,
+      "media_type": "application/json",
+      "metadata_schema_version": 1,
+      "requires_uri": true,
+      "availability_capability_id": "analysis",
+      "compiled_prerequisite_ids": [],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "analysis"
+      }
+    },
+    {
+      "operation_id": "jpeg",
+      "output_id": "jpeg",
+      "media_type": "image/jpeg",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": "jpeg",
+      "compiled_prerequisite_ids": [
+        "svg"
+      ],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "jpeg"
+      }
+    },
+    {
+      "operation_id": "layout-json",
+      "output_id": null,
+      "media_type": "application/json",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": "svg",
+      "compiled_prerequisite_ids": [],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "svg"
+      }
+    },
+    {
+      "operation_id": "pdf",
+      "output_id": "pdf",
+      "media_type": "application/pdf",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": "pdf",
+      "compiled_prerequisite_ids": [
+        "svg"
+      ],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "pdf"
+      }
+    },
+    {
+      "operation_id": "png",
+      "output_id": "png",
+      "media_type": "image/png",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": "png",
+      "compiled_prerequisite_ids": [
+        "svg"
+      ],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "png"
+      }
+    },
+    {
+      "operation_id": "semantic-json",
+      "output_id": null,
+      "media_type": "application/json",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": null,
+      "compiled_prerequisite_ids": [],
+      "unavailable": null
+    },
+    {
+      "operation_id": "svg",
+      "output_id": "svg",
+      "media_type": "image/svg+xml",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": "svg",
+      "compiled_prerequisite_ids": [],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "svg"
+      }
+    },
+    {
+      "operation_id": "svg-plan-json",
+      "output_id": null,
+      "media_type": "application/json",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": "svg",
+      "compiled_prerequisite_ids": [],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "svg"
+      }
+    },
+    {
+      "operation_id": "validation-json",
+      "output_id": null,
+      "media_type": "application/json",
+      "metadata_schema_version": 1,
+      "requires_uri": false,
+      "availability_capability_id": "analysis",
+      "compiled_prerequisite_ids": [],
+      "unavailable": {
+        "status_code": 7,
+        "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+        "error_kind": "missing-capability",
+        "capability_id": "analysis"
+      }
+    }
+  ]
+}

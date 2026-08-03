@@ -9,9 +9,11 @@
 #[cfg(feature = "svg")]
 use merman_bindings_core::HostMeasurementResult;
 use merman_bindings_core::{
-    ArtifactCapabilitySurface, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError,
-    BindingEngineAdmissionMode, BindingError, BindingErrorKind, BindingOperationRequest,
-    BindingResourceErrorDetails, BindingStatus, TextMeasurementProviderProjection,
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
+    BindingEngineServices, BindingError, BindingErrorKind, BindingOperationRequest,
+    BindingPayloadSchemaKey, BindingResourceErrorDetails, BindingStatus, CompiledBindingSurface,
+    ConstructorServiceKey, RuntimePolicyExposure, TargetKey, TextMeasurementProviderKey,
+    TransportExposure, ValidatedArtifactContract,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -196,6 +198,7 @@ fn token_has_domain(token: u64, domain_tag: u64) -> bool {
 
 static ENGINE_REGISTRY: OnceLock<Mutex<NativeEngineRegistry>> = OnceLock::new();
 static ALLOCATION_REGISTRY: OnceLock<Mutex<NativeAllocationRegistry>> = OnceLock::new();
+static ARTIFACT_CONTRACT: OnceLock<ValidatedArtifactContract> = OnceLock::new();
 static RUNTIME_CATALOG: OnceLock<Box<[u8]>> = OnceLock::new();
 static RUNTIME_CATALOG_DIGEST: OnceLock<Box<[u8]>> = OnceLock::new();
 
@@ -329,19 +332,29 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
     )
 }
 
-fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, BindingError> {
-    BindingEngine::from_options(options_json)
-}
+fn native_artifact_contract() -> &'static ValidatedArtifactContract {
+    ARTIFACT_CONTRACT.get_or_init(|| {
+        let exposure = TransportExposure::for_target(TargetKey::Native)
+            .with_all_compiled_operations()
+            .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
+            .and_then(TransportExposure::with_all_available_metadata)
+            .and_then(|exposure| {
+                exposure.with_payload_schemas(BindingPayloadSchemaKey::ALL.iter().copied())
+            })
+            .expect("the C transport declares each compiled endpoint set once")
+            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
+        #[cfg(feature = "svg")]
+        let exposure = exposure
+            .with_text_measurement_providers([TextMeasurementProviderKey::HostCallback])
+            .and_then(|exposure| {
+                exposure.with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
+            })
+            .expect("the C SVG transport exposes its compiled constructor service");
 
-fn native_transport_capability_surface() -> ArtifactCapabilitySurface {
-    #[cfg(feature = "svg")]
-    let text_measurement = TextMeasurementProviderProjection::PreserveCompiled;
-    #[cfg(not(feature = "svg"))]
-    let text_measurement = TextMeasurementProviderProjection::VendoredOnly;
-
-    merman_bindings_core::binding_transport_capability_surface()
-        .project_to_descriptor_target("native", text_measurement)
-        .expect("the C transport exposes a valid native capability surface")
+        CompiledBindingSurface::current()
+            .validate(exposure)
+            .expect("the C transport exposure must match its compiled native surface")
+    })
 }
 
 fn engine_registry() -> &'static Mutex<NativeEngineRegistry> {
@@ -357,12 +370,10 @@ fn runtime_catalog_bytes() -> Result<&'static [u8], NativeFailure> {
         return Ok(bytes);
     }
 
-    let candidate = merman_bindings_core::runtime_catalog_json_for(
-        MERMAN_NATIVE_ABI_VERSION,
-        native_transport_capability_surface(),
-    )
-    .map_err(native_failure_from_binding)?
-    .into_boxed_slice();
+    let candidate = native_artifact_contract()
+        .runtime_catalog_json(MERMAN_NATIVE_ABI_VERSION)
+        .map_err(native_failure_from_binding)?
+        .into_boxed_slice();
     let _ = RUNTIME_CATALOG.set(candidate);
     Ok(RUNTIME_CATALOG
         .get()
@@ -853,19 +864,20 @@ fn execute_with_engine<T>(
         .expect("validated executable native operations map to binding operation keys");
     let result = state
         .engine
-        .execute(BindingOperationRequest {
-            operation_id: operation.spec().id,
-            source: request.source,
-            uri: request.uri,
-            options_json: request.options_json,
-        })
+        .execute(
+            BindingOperationRequest::new(operation.spec().id, request.source)
+                .with_optional_uri(request.uri)
+                .with_options_json(request.options_json),
+        )
         .map_err(native_failure_from_binding)?;
+    let (operation, media_type, data, metadata) = result.into_parts();
 
     consume(NativeExecution {
-        operation: merman_native_operation_code(result.operation.key()),
-        media_type: result.media_type,
-        data: result.data,
-        metadata_json: result.metadata_json,
+        operation: merman_native_operation_code(operation.key())
+            .expect("every C ABI 3 operation must retain its frozen numeric code"),
+        media_type,
+        data,
+        metadata_json: metadata.into_json_bytes(),
     })
 }
 
@@ -1231,7 +1243,8 @@ fn metadata_collect_impl(
                 format!("metadata_id must be valid UTF-8: {error}"),
             )
         })?;
-        merman_bindings_core::binding_metadata_json(metadata_id)
+        native_artifact_contract()
+            .metadata_json(metadata_id)
             .map_err(native_failure_from_binding)
     })();
 
@@ -1367,31 +1380,31 @@ unsafe fn engine_new_impl(
         } else {
             BindingEngineAdmissionMode::Concurrent
         });
-        let engine =
-            binding_engine_for_transport(options_json).map_err(native_failure_from_binding)?;
-
         #[cfg(feature = "svg")]
-        let engine = if let Some(callback) = config.text_measure {
+        let services = if let Some(callback) = config.text_measure {
             let measurer = NativeHostTextMeasurer::new(
                 callback,
                 config.text_measure_user_data,
                 Arc::clone(&admission),
             );
-            engine.with_host_text_measurer(Arc::new(measurer))
+            BindingEngineServices::new().with_host_text_measurer(Arc::new(measurer))
         } else {
-            engine
+            BindingEngineServices::new()
         };
 
         #[cfg(not(feature = "svg"))]
-        let engine = {
+        let services = {
             if config.text_measure.is_some() {
                 return Err(NativeFailure::missing_capability(
                     "svg",
                     "host text measurement requires an artifact with the svg capability",
                 ));
             }
-            engine
+            BindingEngineServices::new()
         };
+        let engine = native_artifact_contract()
+            .create_engine_with_services(options_json, services)
+            .map_err(native_failure_from_binding)?;
 
         let state = Arc::new(NativeEngineState { engine, admission });
         let token = {
@@ -2355,7 +2368,9 @@ mod tests {
             root.keys().map(String::as_str).collect::<BTreeSet<_>>(),
             [
                 "capabilities",
+                "constructor_service_ids",
                 "metadata_ids",
+                "option_group_ids",
                 "options_schema_versions",
                 "output_contracts",
                 "package_version",
@@ -2388,12 +2403,29 @@ mod tests {
                 .iter()
                 .any(|id| id == "diagram-family-capabilities")
         );
+        assert_eq!(
+            catalog["option_group_ids"],
+            serde_json::json!(
+                native_artifact_contract()
+                    .option_group_keys()
+                    .map(merman_bindings_core::BindingOptionGroupKey::id)
+                    .collect::<Vec<_>>()
+            )
+        );
+        assert_eq!(
+            catalog["constructor_service_ids"],
+            serde_json::json!(
+                native_artifact_contract()
+                    .constructor_service_keys()
+                    .map(merman_bindings_core::ConstructorServiceKey::id)
+                    .collect::<Vec<_>>()
+            )
+        );
         assert!(catalog.get("runtime_contract").is_none());
         assert!(catalog.get("capability_vocabulary").is_none());
         assert_eq!(
             catalog["capabilities"],
-            serde_json::to_value(native_transport_capability_surface().runtime_capabilities())
-                .unwrap()
+            serde_json::to_value(native_artifact_contract().runtime_capabilities()).unwrap()
         );
         assert!(
             !catalog["capabilities"]["system_adapter_ids"]
@@ -2498,10 +2530,13 @@ mod tests {
         assert_eq!(result.allocation_token, 0);
         assert!(result.metadata_or_error_json.data.is_null());
 
-        for metadata_id in merman_bindings_core::BINDING_METADATA_IDS {
+        for metadata_id in native_artifact_contract()
+            .metadata_keys()
+            .map(merman_bindings_core::MetadataKey::id)
+        {
             let mut result = native_result();
             let status = unsafe { collect(borrowed_slice(metadata_id.as_bytes()), &mut result) };
-            match merman_bindings_core::binding_metadata_json(metadata_id) {
+            match native_artifact_contract().metadata_json(metadata_id) {
                 Ok(expected) => {
                     assert_eq!(status, MERMAN_NATIVE_STATUS_OK, "{metadata_id}");
                     let actual = unsafe {
@@ -2855,7 +2890,9 @@ mod tests {
     #[test]
     fn result_token_exhaustion_does_not_retire_or_poison_an_engine() {
         let state = Arc::new(NativeEngineState {
-            engine: binding_engine_for_transport(&[]).expect("test engine"),
+            engine: native_artifact_contract()
+                .create_engine(&[])
+                .expect("test engine"),
             admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
         });
         let mut engines = NativeEngineRegistry::default();
@@ -3087,7 +3124,7 @@ mod tests {
         let mut result = native_result();
         let status = unsafe { api.execute_collect.unwrap()(token, &request, &mut result) };
         assert_ne!(result.allocation_token, 0);
-        if native_transport_capability_surface()
+        if native_artifact_contract()
             .runtime_capabilities()
             .has_operation("svg")
         {
@@ -3221,7 +3258,9 @@ mod tests {
         config.options_json = borrowed_slice(br#"{"runtime_policy":"native"}"#);
         let mut result = native_result();
         let mut token = 0;
-        let compiled = merman_bindings_core::compiled_runtime_capabilities().system_adapter_ids;
+        let compiled = native_artifact_contract()
+            .runtime_capabilities()
+            .system_adapter_ids;
         let missing = ["system-clock", "system-timezone", "system-random"]
             .into_iter()
             .find(|capability| !compiled.contains(capability));

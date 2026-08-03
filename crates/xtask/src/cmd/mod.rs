@@ -1,6 +1,7 @@
 pub(crate) mod admission;
 pub(crate) mod artifact_profiles;
 pub(crate) mod audit;
+pub(crate) mod binding_contract;
 pub(crate) mod capability_surface;
 pub(crate) mod compare;
 pub(crate) mod cypress_corpus;
@@ -40,6 +41,7 @@ pub(crate) use crate::generated::mermaid_reference::*;
 pub(crate) use admission::*;
 pub(crate) use artifact_profiles::*;
 pub(crate) use audit::*;
+pub(crate) use binding_contract::*;
 pub(crate) use capability_surface::*;
 pub(crate) use compare::*;
 pub(crate) use cypress_corpus::*;

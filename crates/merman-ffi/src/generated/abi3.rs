@@ -324,21 +324,22 @@ pub fn merman_native_operation_key(
 
 pub const fn merman_native_operation_code(
     key: merman_bindings_core::OperationKey,
-) -> MermanNativeOperationCode {
+) -> Option<MermanNativeOperationCode> {
     match key {
-        merman_bindings_core::OperationKey::Svg => MERMAN_NATIVE_OPERATION_SVG,
-        merman_bindings_core::OperationKey::Png => MERMAN_NATIVE_OPERATION_PNG,
-        merman_bindings_core::OperationKey::Jpeg => MERMAN_NATIVE_OPERATION_JPEG,
-        merman_bindings_core::OperationKey::Pdf => MERMAN_NATIVE_OPERATION_PDF,
-        merman_bindings_core::OperationKey::Ascii => MERMAN_NATIVE_OPERATION_ASCII,
-        merman_bindings_core::OperationKey::SemanticJson => MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
-        merman_bindings_core::OperationKey::LayoutJson => MERMAN_NATIVE_OPERATION_LAYOUT_JSON,
-        merman_bindings_core::OperationKey::AnalysisJson => MERMAN_NATIVE_OPERATION_ANALYSIS_JSON,
-        merman_bindings_core::OperationKey::AnalysisFactsJson => MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON,
-        merman_bindings_core::OperationKey::ValidationJson => MERMAN_NATIVE_OPERATION_VALIDATION_JSON,
-        merman_bindings_core::OperationKey::DocumentAnalysisJson => MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON,
-        merman_bindings_core::OperationKey::DocumentAnalysisFactsJson => MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON,
-        merman_bindings_core::OperationKey::SvgPlanJson => MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON,
+        merman_bindings_core::OperationKey::Svg => Some(MERMAN_NATIVE_OPERATION_SVG),
+        merman_bindings_core::OperationKey::Png => Some(MERMAN_NATIVE_OPERATION_PNG),
+        merman_bindings_core::OperationKey::Jpeg => Some(MERMAN_NATIVE_OPERATION_JPEG),
+        merman_bindings_core::OperationKey::Pdf => Some(MERMAN_NATIVE_OPERATION_PDF),
+        merman_bindings_core::OperationKey::Ascii => Some(MERMAN_NATIVE_OPERATION_ASCII),
+        merman_bindings_core::OperationKey::SemanticJson => Some(MERMAN_NATIVE_OPERATION_SEMANTIC_JSON),
+        merman_bindings_core::OperationKey::LayoutJson => Some(MERMAN_NATIVE_OPERATION_LAYOUT_JSON),
+        merman_bindings_core::OperationKey::AnalysisJson => Some(MERMAN_NATIVE_OPERATION_ANALYSIS_JSON),
+        merman_bindings_core::OperationKey::AnalysisFactsJson => Some(MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON),
+        merman_bindings_core::OperationKey::ValidationJson => Some(MERMAN_NATIVE_OPERATION_VALIDATION_JSON),
+        merman_bindings_core::OperationKey::DocumentAnalysisJson => Some(MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON),
+        merman_bindings_core::OperationKey::DocumentAnalysisFactsJson => Some(MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON),
+        merman_bindings_core::OperationKey::SvgPlanJson => Some(MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON),
+        _ => None,
     }
 }
 

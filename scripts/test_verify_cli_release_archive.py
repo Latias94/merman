@@ -133,6 +133,10 @@ def semantic_surface_digest(surface: dict[str, object]) -> str:
                 {
                     "id": operation["id"],
                     "capability": operation["capability"],
+                    "output": operation["output"],
+                    "compiled_prerequisites": sorted(
+                        operation["compiled_prerequisites"]
+                    ),
                     "description": operation["description"],
                     "media_type": operation["media_type"],
                     "requires_uri": operation["requires_uri"],

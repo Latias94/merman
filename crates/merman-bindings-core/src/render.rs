@@ -4,7 +4,6 @@ mod request;
 use crate::common::parse_options;
 use crate::common::{BindingError, BindingOptions, source_text};
 use request::RenderRequestPlan;
-use std::sync::Arc;
 
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     execute_once_data("svg", source, options_json)
@@ -29,15 +28,6 @@ impl CachedRenderEngine {
         self.plan.render_svg(source)
     }
 
-    pub(crate) fn with_host_text_measurer(
-        &self,
-        measurer: Arc<dyn crate::HostTextMeasurer>,
-    ) -> Self {
-        Self {
-            plan: self.plan.with_host_text_measurer(measurer),
-        }
-    }
-
     pub(crate) fn layout_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.layout_json(source)
@@ -46,12 +36,6 @@ impl CachedRenderEngine {
     pub(crate) fn svg_plan_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.svg_plan_json(source)
-    }
-
-    #[cfg(feature = "png")]
-    pub(crate) fn render_png(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        let source = source_text(source)?;
-        self.plan.render_png(source)
     }
 
     #[cfg(feature = "png")]
@@ -64,24 +48,12 @@ impl CachedRenderEngine {
     }
 
     #[cfg(feature = "jpeg")]
-    pub(crate) fn render_jpeg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        let source = source_text(source)?;
-        self.plan.render_jpeg(source)
-    }
-
-    #[cfg(feature = "jpeg")]
     pub(crate) fn render_jpeg_output(
         &self,
         source: &[u8],
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
         self.plan.render_jpeg_output(source)
-    }
-
-    #[cfg(feature = "pdf")]
-    pub(crate) fn render_pdf(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        let source = source_text(source)?;
-        self.plan.render_pdf(source)
     }
 
     #[cfg(feature = "pdf")]
@@ -104,9 +76,9 @@ impl RenderOperationConfig {
         })
     }
 
-    pub(crate) fn materialize(self) -> CachedRenderEngine {
+    pub(crate) fn materialize(self, services: &crate::BindingEngineServices) -> CachedRenderEngine {
         CachedRenderEngine {
-            plan: self.plan.materialize(),
+            plan: self.plan.materialize(services),
         }
     }
 }
@@ -131,13 +103,7 @@ fn execute_once_data(
     source: &[u8],
     options_json: &[u8],
 ) -> Result<Vec<u8>, BindingError> {
-    crate::execute_once(crate::BindingOperationRequest {
-        operation_id,
-        source,
-        uri: None,
-        options_json,
-    })
-    .map(|result| result.data)
+    crate::execute_once_data(operation_id, source, None, options_json)
 }
 
 #[cfg(test)]

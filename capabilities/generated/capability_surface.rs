@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:02e572e1010d2a3d440b69eef260cdf3b2d7f5a88f8c28ebe9fa486e184e722e";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -57,6 +57,190 @@ pub const BINDING_OPERATION_IDS: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum TargetKey {
+    Native,
+    Typst,
+    Web,
+}
+
+impl TargetKey {
+    pub const ALL: &'static [Self] = &[
+        Self::Native,
+        Self::Typst,
+        Self::Web,
+    ];
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "native" => Some(Self::Native),
+            "typst" => Some(Self::Typst),
+            "web" => Some(Self::Web),
+            _ => None,
+        }
+    }
+
+    pub const fn id(self) -> &'static str {
+        self.spec().id
+    }
+
+    pub const fn spec(self) -> &'static TargetDescriptor {
+        match self {
+            Self::Native => &TARGETS[0],
+            Self::Typst => &TARGETS[1],
+            Self::Web => &TARGETS[2],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum CapabilityKey {
+    Analysis,
+    Ascii,
+    Editor,
+    Icons,
+    Jpeg,
+    LayoutCytoscape,
+    LayoutElk,
+    Markdown,
+    Math,
+    NetworkIcons,
+    ParallelMarkdown,
+    Pdf,
+    Png,
+    ShellCompletions,
+    Svg,
+    SystemClock,
+    SystemRandom,
+    SystemTimezone,
+    SystemTiming,
+}
+
+impl CapabilityKey {
+    pub const ALL: &'static [Self] = &[
+        Self::Analysis,
+        Self::Ascii,
+        Self::Editor,
+        Self::Icons,
+        Self::Jpeg,
+        Self::LayoutCytoscape,
+        Self::LayoutElk,
+        Self::Markdown,
+        Self::Math,
+        Self::NetworkIcons,
+        Self::ParallelMarkdown,
+        Self::Pdf,
+        Self::Png,
+        Self::ShellCompletions,
+        Self::Svg,
+        Self::SystemClock,
+        Self::SystemRandom,
+        Self::SystemTimezone,
+        Self::SystemTiming,
+    ];
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "analysis" => Some(Self::Analysis),
+            "ascii" => Some(Self::Ascii),
+            "editor" => Some(Self::Editor),
+            "icons" => Some(Self::Icons),
+            "jpeg" => Some(Self::Jpeg),
+            "layout-cytoscape" => Some(Self::LayoutCytoscape),
+            "layout-elk" => Some(Self::LayoutElk),
+            "markdown" => Some(Self::Markdown),
+            "math" => Some(Self::Math),
+            "network-icons" => Some(Self::NetworkIcons),
+            "parallel-markdown" => Some(Self::ParallelMarkdown),
+            "pdf" => Some(Self::Pdf),
+            "png" => Some(Self::Png),
+            "shell-completions" => Some(Self::ShellCompletions),
+            "svg" => Some(Self::Svg),
+            "system-clock" => Some(Self::SystemClock),
+            "system-random" => Some(Self::SystemRandom),
+            "system-timezone" => Some(Self::SystemTimezone),
+            "system-timing" => Some(Self::SystemTiming),
+            _ => None,
+        }
+    }
+
+    pub const fn id(self) -> &'static str {
+        self.spec().id
+    }
+
+    pub const fn spec(self) -> &'static CapabilityDescriptor {
+        match self {
+            Self::Analysis => &CAPABILITIES[0],
+            Self::Ascii => &CAPABILITIES[1],
+            Self::Editor => &CAPABILITIES[2],
+            Self::Icons => &CAPABILITIES[3],
+            Self::Jpeg => &CAPABILITIES[4],
+            Self::LayoutCytoscape => &CAPABILITIES[5],
+            Self::LayoutElk => &CAPABILITIES[6],
+            Self::Markdown => &CAPABILITIES[7],
+            Self::Math => &CAPABILITIES[8],
+            Self::NetworkIcons => &CAPABILITIES[9],
+            Self::ParallelMarkdown => &CAPABILITIES[10],
+            Self::Pdf => &CAPABILITIES[11],
+            Self::Png => &CAPABILITIES[12],
+            Self::ShellCompletions => &CAPABILITIES[13],
+            Self::Svg => &CAPABILITIES[14],
+            Self::SystemClock => &CAPABILITIES[15],
+            Self::SystemRandom => &CAPABILITIES[16],
+            Self::SystemTimezone => &CAPABILITIES[17],
+            Self::SystemTiming => &CAPABILITIES[18],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum OutputKey {
+    Ascii,
+    Jpeg,
+    Pdf,
+    Png,
+    Svg,
+}
+
+impl OutputKey {
+    pub const ALL: &'static [Self] = &[
+        Self::Ascii,
+        Self::Jpeg,
+        Self::Pdf,
+        Self::Png,
+        Self::Svg,
+    ];
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "ascii" => Some(Self::Ascii),
+            "jpeg" => Some(Self::Jpeg),
+            "pdf" => Some(Self::Pdf),
+            "png" => Some(Self::Png),
+            "svg" => Some(Self::Svg),
+            _ => None,
+        }
+    }
+
+    pub const fn id(self) -> &'static str {
+        self.spec().id
+    }
+
+    pub const fn spec(self) -> &'static OutputDescriptor {
+        match self {
+            Self::Ascii => &OUTPUTS[0],
+            Self::Jpeg => &OUTPUTS[1],
+            Self::Pdf => &OUTPUTS[2],
+            Self::Png => &OUTPUTS[3],
+            Self::Svg => &OUTPUTS[4],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
 pub enum OperationKey {
     AnalysisFactsJson,
     AnalysisJson,
@@ -71,17 +255,6 @@ pub enum OperationKey {
     Svg,
     SvgPlanJson,
     ValidationJson,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OperationSpec {
-    pub key: OperationKey,
-    pub id: &'static str,
-    pub capability_id: Option<&'static str>,
-    pub description: &'static str,
-    pub media_type: &'static str,
-    pub requires_uri: bool,
-    pub targets: &'static [&'static str],
 }
 
 impl OperationKey {
@@ -120,6 +293,10 @@ impl OperationKey {
         }
     }
 
+    pub const fn id(self) -> &'static str {
+        self.spec().id
+    }
+
     pub const fn spec(self) -> &'static OperationSpec {
         match self {
             Self::AnalysisFactsJson => &OPERATION_SPECS[0],
@@ -139,327 +316,397 @@ impl OperationKey {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct OperationSpec {
+    pub key: OperationKey,
+    pub id: &'static str,
+    pub capability: Option<CapabilityKey>,
+    pub output: Option<OutputKey>,
+    pub compiled_prerequisites: &'static [CapabilityKey],
+    pub description: &'static str,
+    pub media_type: &'static str,
+    pub requires_uri: bool,
+    pub targets: &'static [TargetKey],
+}
+
 pub const OPERATION_SPECS: &[OperationSpec] = &[
     OperationSpec {
         key: OperationKey::AnalysisFactsJson,
         id: "analysis-facts-json",
-        capability_id: Some("analysis"),
+        capability: Some(CapabilityKey::Analysis),
+        output: None,
+        compiled_prerequisites: &[],
         description: "Analyze Mermaid input and return semantic facts JSON.",
         media_type: "application/json",
         requires_uri: false,
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::AnalysisJson,
         id: "analysis-json",
-        capability_id: Some("analysis"),
+        capability: Some(CapabilityKey::Analysis),
+        output: None,
+        compiled_prerequisites: &[],
         description: "Analyze Mermaid input and return diagnostics JSON.",
         media_type: "application/json",
         requires_uri: false,
-        targets: &["native", "typst", "web"],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::Ascii,
         id: "ascii",
-        capability_id: Some("ascii"),
+        capability: Some(CapabilityKey::Ascii),
+        output: Some(OutputKey::Ascii),
+        compiled_prerequisites: &[],
         description: "Render Mermaid input as terminal text.",
         media_type: "text/plain; charset=utf-8",
         requires_uri: false,
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::DocumentAnalysisFactsJson,
         id: "document-analysis-facts-json",
-        capability_id: Some("analysis"),
+        capability: Some(CapabilityKey::Analysis),
+        output: None,
+        compiled_prerequisites: &[],
         description: "Analyze a URI-backed Mermaid document and return semantic facts JSON.",
         media_type: "application/json",
         requires_uri: true,
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::DocumentAnalysisJson,
         id: "document-analysis-json",
-        capability_id: Some("analysis"),
+        capability: Some(CapabilityKey::Analysis),
+        output: None,
+        compiled_prerequisites: &[],
         description: "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
         media_type: "application/json",
         requires_uri: true,
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::Jpeg,
         id: "jpeg",
-        capability_id: Some("jpeg"),
+        capability: Some(CapabilityKey::Jpeg),
+        output: Some(OutputKey::Jpeg),
+        compiled_prerequisites: &[CapabilityKey::Svg, ],
         description: "Render Mermaid input as JPEG.",
         media_type: "image/jpeg",
         requires_uri: false,
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
     },
     OperationSpec {
         key: OperationKey::LayoutJson,
         id: "layout-json",
-        capability_id: Some("svg"),
+        capability: Some(CapabilityKey::Svg),
+        output: None,
+        compiled_prerequisites: &[],
         description: "Render Mermaid input into layout model JSON.",
         media_type: "application/json",
         requires_uri: false,
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::Pdf,
         id: "pdf",
-        capability_id: Some("pdf"),
+        capability: Some(CapabilityKey::Pdf),
+        output: Some(OutputKey::Pdf),
+        compiled_prerequisites: &[CapabilityKey::Svg, ],
         description: "Render Mermaid input as PDF.",
         media_type: "application/pdf",
         requires_uri: false,
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
     },
     OperationSpec {
         key: OperationKey::Png,
         id: "png",
-        capability_id: Some("png"),
+        capability: Some(CapabilityKey::Png),
+        output: Some(OutputKey::Png),
+        compiled_prerequisites: &[CapabilityKey::Svg, ],
         description: "Render Mermaid input as PNG.",
         media_type: "image/png",
         requires_uri: false,
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
     },
     OperationSpec {
         key: OperationKey::SemanticJson,
         id: "semantic-json",
-        capability_id: None,
+        capability: None,
+        output: None,
+        compiled_prerequisites: &[],
         description: "Parse Mermaid input into canonical semantic JSON.",
         media_type: "application/json",
         requires_uri: false,
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::Svg,
         id: "svg",
-        capability_id: Some("svg"),
+        capability: Some(CapabilityKey::Svg),
+        output: Some(OutputKey::Svg),
+        compiled_prerequisites: &[],
         description: "Render Mermaid input as SVG.",
         media_type: "image/svg+xml",
         requires_uri: false,
-        targets: &["native", "typst", "web"],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::SvgPlanJson,
         id: "svg-plan-json",
-        capability_id: Some("svg"),
+        capability: Some(CapabilityKey::Svg),
+        output: None,
+        compiled_prerequisites: &[],
         description: "Plan the capabilities required to render Mermaid input as SVG.",
         media_type: "application/json",
         requires_uri: false,
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OperationSpec {
         key: OperationKey::ValidationJson,
         id: "validation-json",
-        capability_id: Some("analysis"),
+        capability: Some(CapabilityKey::Analysis),
+        output: None,
+        compiled_prerequisites: &[],
         description: "Validate Mermaid input and return validation JSON.",
         media_type: "application/json",
         requires_uri: false,
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
     },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TargetDescriptor {
+    pub key: TargetKey,
     pub id: &'static str,
     pub description: &'static str,
 }
 
 pub const TARGETS: &[TargetDescriptor] = &[
-    TargetDescriptor { id: "native", description: "Native Rust, CLI, and native binding artifacts." },
-    TargetDescriptor { id: "typst", description: "Pure-WASM Typst plugin artifacts." },
-    TargetDescriptor { id: "web", description: "Browser wasm-bindgen artifacts." },
+    TargetDescriptor { key: TargetKey::Native, id: "native", description: "Native Rust, CLI, and native binding artifacts." },
+    TargetDescriptor { key: TargetKey::Typst, id: "typst", description: "Pure-WASM Typst plugin artifacts." },
+    TargetDescriptor { key: TargetKey::Web, id: "web", description: "Browser wasm-bindgen artifacts." },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct CapabilityDescriptor {
+    pub key: CapabilityKey,
     pub id: &'static str,
     pub kind: &'static str,
     pub description: &'static str,
-    pub targets: &'static [&'static str],
-    pub implications: &'static [&'static str],
+    pub targets: &'static [TargetKey],
+    pub implications: &'static [CapabilityKey],
 }
 
 pub const CAPABILITIES: &[CapabilityDescriptor] = &[
     CapabilityDescriptor {
+        key: CapabilityKey::Analysis,
         id: "analysis",
         kind: "api",
         description: "Expose diagnostics and semantic analysis APIs.",
-        targets: &["native", "typst", "web"],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::Ascii,
         id: "ascii",
         kind: "output",
         description: "Render supported Mermaid semantics as terminal text.",
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::Editor,
         id: "editor",
         kind: "api",
         description: "Expose parser-backed editor intelligence APIs.",
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::Icons,
         id: "icons",
         kind: "tool",
         description: "Compile CLI local Iconify pack loading.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::Jpeg,
         id: "jpeg",
         kind: "output",
         description: "Export rendered diagrams as JPEG.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::LayoutCytoscape,
         id: "layout-cytoscape",
         kind: "engine",
         description: "Enable Mermaid Cytoscape-backed layout behavior.",
-        targets: &["native", "typst", "web"],
-        implications: &["svg"],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
+        implications: &[CapabilityKey::Svg, ],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::LayoutElk,
         id: "layout-elk",
         kind: "engine",
         description: "Enable Mermaid ELK-backed layout behavior.",
-        targets: &["native", "typst", "web"],
-        implications: &["svg"],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
+        implications: &[CapabilityKey::Svg, ],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::Markdown,
         id: "markdown",
         kind: "tool",
         description: "Compile CLI Markdown batch conversion.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::Math,
         id: "math",
         kind: "engine",
         description: "Render Mermaid math labels with the selected math engine.",
-        targets: &["native", "web"],
-        implications: &["svg"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
+        implications: &[CapabilityKey::Svg, ],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::NetworkIcons,
         id: "network-icons",
         kind: "tool",
         description: "Compile CLI network icon loading commands.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::ParallelMarkdown,
         id: "parallel-markdown",
         kind: "tool",
         description: "Compile parallel CLI Markdown batch processing.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::Pdf,
         id: "pdf",
         kind: "output",
         description: "Export rendered diagrams as PDF.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::Png,
         id: "png",
         kind: "output",
         description: "Export rendered diagrams as PNG.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::ShellCompletions,
         id: "shell-completions",
         kind: "tool",
         description: "Compile CLI shell completion generation.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::Svg,
         id: "svg",
         kind: "output",
         description: "Render Mermaid input as SVG.",
-        targets: &["native", "typst", "web"],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::SystemClock,
         id: "system-clock",
         kind: "adapter",
         description: "Compile the native system clock adapter.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::SystemRandom,
         id: "system-random",
         kind: "adapter",
         description: "Compile the native system randomness adapter.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::SystemTimezone,
         id: "system-timezone",
         kind: "adapter",
         description: "Compile the native system time-zone adapter.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
     CapabilityDescriptor {
+        key: CapabilityKey::SystemTiming,
         id: "system-timing",
         kind: "adapter",
         description: "Compile the native monotonic timing adapter.",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
         implications: &[],
     },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct OutputDescriptor {
+    pub key: OutputKey,
     pub id: &'static str,
-    pub capability: &'static str,
+    pub capability: CapabilityKey,
     pub description: &'static str,
     pub media_type: &'static str,
-    pub targets: &'static [&'static str],
+    pub targets: &'static [TargetKey],
 }
 
 pub const OUTPUTS: &[OutputDescriptor] = &[
     OutputDescriptor {
+        key: OutputKey::Ascii,
         id: "ascii",
-        capability: "ascii",
+        capability: CapabilityKey::Ascii,
         description: "Plain terminal text output.",
         media_type: "text/plain; charset=utf-8",
-        targets: &["native", "web"],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OutputDescriptor {
+        key: OutputKey::Jpeg,
         id: "jpeg",
-        capability: "jpeg",
+        capability: CapabilityKey::Jpeg,
         description: "JPEG image output.",
         media_type: "image/jpeg",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
     },
     OutputDescriptor {
+        key: OutputKey::Pdf,
         id: "pdf",
-        capability: "pdf",
+        capability: CapabilityKey::Pdf,
         description: "Portable Document Format output.",
         media_type: "application/pdf",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
     },
     OutputDescriptor {
+        key: OutputKey::Png,
         id: "png",
-        capability: "png",
+        capability: CapabilityKey::Png,
         description: "Portable Network Graphics output.",
         media_type: "image/png",
-        targets: &["native"],
+        targets: &[TargetKey::Native, ],
     },
     OutputDescriptor {
+        key: OutputKey::Svg,
         id: "svg",
-        capability: "svg",
+        capability: CapabilityKey::Svg,
         description: "Scalable Vector Graphics output.",
         media_type: "image/svg+xml",
-        targets: &["native", "typst", "web"],
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
     },
 ];
 

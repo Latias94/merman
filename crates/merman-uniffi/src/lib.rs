@@ -6,8 +6,10 @@
 //! not replace the canonical C ABI in `merman-ffi`.
 
 use merman_bindings_core::{
-    ArtifactCapabilitySurface, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode,
-    BindingError, BindingErrorKind, BindingStatus, TextMeasurementProviderProjection,
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
+    BindingError, BindingErrorKind, BindingPayloadSchemaKey, BindingStatus, CompiledBindingSurface,
+    ConstructorServiceKey, RuntimePolicyExposure, TargetKey, TextMeasurementProviderKey,
+    TransportExposure, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{HostTextMeasurementError, HostTextMeasurer};
@@ -25,6 +27,7 @@ static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
 static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
 static SUPPORTED_HOST_THEME_PRESETS: OnceLock<Vec<String>> = OnceLock::new();
+static ARTIFACT_CONTRACT: OnceLock<ValidatedArtifactContract> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MermanErrorKind {
@@ -395,10 +398,12 @@ impl MermanEngine {
     /// descriptor-owned vocabulary required to validate it. Foreign bindings
     /// must consume this endpoint instead of composing separate metadata reads.
     pub fn runtime_catalog_json(&self) -> Result<String, MermanError> {
-        string_output(merman_bindings_core::runtime_catalog_json_for(
-            UNIFFI_BINDING_API_VERSION,
-            native_transport_capability_surface(),
-        ))
+        string_output(native_artifact_contract().runtime_catalog_json(UNIFFI_BINDING_API_VERSION))
+    }
+
+    /// Returns one catalog selected by this exact transport contract.
+    pub fn metadata_json(&self, id: String) -> Result<String, MermanError> {
+        string_output(native_artifact_contract().metadata_json(&id))
     }
 
     /// Executes a descriptor-owned output operation with a fresh engine configuration.
@@ -788,14 +793,15 @@ impl MermanReusableEngine {
     ) -> Result<Arc<Self>, MermanError> {
         #[cfg(feature = "svg")]
         {
-            let engine = binding_engine_for_transport(options_bytes(options_json.as_deref()))
-                .map_err(MermanError::from_binding)?;
             let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::HostCallback);
             let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(
                 measurer,
                 Arc::clone(&admission),
             ));
-            let engine = engine.with_host_text_measurer(host_text_measurer);
+            let services = BindingEngineServices::new().with_host_text_measurer(host_text_measurer);
+            let engine = native_artifact_contract()
+                .create_engine_with_services(options_bytes(options_json.as_deref()), services)
+                .map_err(MermanError::from_binding)?;
             Ok(Arc::new(Self { engine, admission }))
         }
         #[cfg(not(feature = "svg"))]
@@ -827,28 +833,43 @@ fn options_bytes(options_json: Option<&str>) -> &[u8] {
 }
 
 fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, BindingError> {
-    BindingEngine::from_options(options_json)
+    native_artifact_contract().create_engine(options_json)
 }
 
-fn native_transport_capability_surface() -> ArtifactCapabilitySurface {
-    #[cfg(feature = "svg")]
-    let text_measurement = TextMeasurementProviderProjection::PreserveCompiled;
-    #[cfg(not(feature = "svg"))]
-    let text_measurement = TextMeasurementProviderProjection::VendoredOnly;
+fn native_artifact_contract() -> &'static ValidatedArtifactContract {
+    ARTIFACT_CONTRACT.get_or_init(|| {
+        let exposure = TransportExposure::for_target(TargetKey::Native)
+            .with_all_compiled_operations()
+            .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
+            .and_then(TransportExposure::with_all_available_metadata)
+            .and_then(|exposure| {
+                exposure.with_payload_schemas(BindingPayloadSchemaKey::ALL.iter().copied())
+            })
+            .expect("the UniFFI transport declares each compiled endpoint set once")
+            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
+        #[cfg(feature = "svg")]
+        let exposure = exposure
+            .with_text_measurement_providers([TextMeasurementProviderKey::HostCallback])
+            .and_then(|exposure| {
+                exposure.with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
+            })
+            .expect("the UniFFI SVG transport exposes its compiled constructor service");
 
-    merman_bindings_core::binding_transport_capability_surface()
-        .project_to_descriptor_target("native", text_measurement)
-        .expect("the UniFFI transport exposes a valid native capability surface")
+        CompiledBindingSurface::current()
+            .validate(exposure)
+            .expect("the UniFFI transport exposure must match its compiled native surface")
+    })
 }
 
 fn execute_once_operation(
     request: &MermanOperationRequest,
 ) -> Result<MermanOperationResult, MermanError> {
-    let result = merman_bindings_core::execute_once(binding_operation_request(
-        request,
-        options_bytes(request.options_json.as_deref()),
-    ))
-    .map_err(MermanError::from_binding)?;
+    let result = native_artifact_contract()
+        .execute_once(binding_operation_request(
+            request,
+            options_bytes(request.options_json.as_deref()),
+        ))
+        .map_err(MermanError::from_binding)?;
     operation_result(result)
 }
 
@@ -894,25 +915,26 @@ fn binding_operation_request<'a>(
     request: &'a MermanOperationRequest,
     options_json: &'a [u8],
 ) -> merman_bindings_core::BindingOperationRequest<'a> {
-    merman_bindings_core::BindingOperationRequest {
-        operation_id: &request.operation_id,
-        source: request.source.as_bytes(),
-        uri: request.uri.as_deref().map(str::as_bytes),
-        options_json,
-    }
+    merman_bindings_core::BindingOperationRequest::new(
+        &request.operation_id,
+        request.source.as_bytes(),
+    )
+    .with_optional_uri(request.uri.as_deref().map(str::as_bytes))
+    .with_options_json(options_json)
 }
 
 fn operation_result(
     result: merman_bindings_core::BindingOperationResult,
 ) -> Result<MermanOperationResult, MermanError> {
-    let metadata_json = String::from_utf8(result.metadata_json).map_err(|error| {
+    let (operation, media_type, data, metadata) = result.into_parts();
+    let metadata_json = String::from_utf8(metadata.into_json_bytes()).map_err(|error| {
         MermanError::internal(format!("operation metadata was not UTF-8: {error}"))
     })?;
 
     Ok(MermanOperationResult {
-        operation_id: result.operation.operation_id().to_string(),
-        media_type: result.media_type.to_string(),
-        data: result.data,
+        operation_id: operation.operation_id().to_string(),
+        media_type: media_type.to_string(),
+        data,
         metadata_json,
     })
 }
@@ -1412,7 +1434,7 @@ mod tests {
     fn engine_render_svg_matches_the_resolved_transport_surface() {
         let result = engine().render_svg("flowchart TD\nA[Hello] --> B[World]".to_string(), None);
 
-        if native_transport_capability_surface()
+        if native_artifact_contract()
             .runtime_capabilities()
             .has_operation("svg")
         {
@@ -1523,7 +1545,9 @@ mod tests {
             uri: None,
             options_json: Some(r#"{"runtime_policy":"native"}"#.to_string()),
         };
-        let compiled = merman_bindings_core::compiled_runtime_capabilities().system_adapter_ids;
+        let compiled = native_artifact_contract()
+            .runtime_capabilities()
+            .system_adapter_ids;
         let missing = ["system-clock", "system-timezone", "system-random"]
             .into_iter()
             .find(|capability| !compiled.contains(capability));
@@ -2019,7 +2043,9 @@ mod tests {
                 .collect::<std::collections::BTreeSet<_>>(),
             std::collections::BTreeSet::from([
                 "capabilities",
+                "constructor_service_ids",
                 "metadata_ids",
+                "option_group_ids",
                 "options_schema_versions",
                 "output_contracts",
                 "package_version",
@@ -2040,8 +2066,7 @@ mod tests {
         );
         assert_eq!(
             runtime_catalog["capabilities"],
-            serde_json::to_value(native_transport_capability_surface().runtime_capabilities())
-                .unwrap()
+            serde_json::to_value(native_artifact_contract().runtime_capabilities()).unwrap()
         );
         assert!(
             !runtime_catalog["capabilities"]["system_adapter_ids"]
@@ -2060,6 +2085,24 @@ mod tests {
         assert_eq!(
             runtime_catalog["options_schema_versions"],
             serde_json::json!([merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION])
+        );
+        assert_eq!(
+            runtime_catalog["option_group_ids"],
+            serde_json::json!(
+                native_artifact_contract()
+                    .option_group_keys()
+                    .map(merman_bindings_core::BindingOptionGroupKey::id)
+                    .collect::<Vec<_>>()
+            )
+        );
+        assert_eq!(
+            runtime_catalog["constructor_service_ids"],
+            serde_json::json!(
+                native_artifact_contract()
+                    .constructor_service_keys()
+                    .map(merman_bindings_core::ConstructorServiceKey::id)
+                    .collect::<Vec<_>>()
+            )
         );
         assert!(
             runtime_catalog["payload_schemas"]

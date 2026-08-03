@@ -16,21 +16,19 @@ const RESOURCE_OVERRIDE_OPTIONS: &[u8] =
 
 fn execute(engine: &BindingEngine, options_json: &'static [u8]) -> BindingOperationResult {
     engine
-        .execute(BindingOperationRequest {
-            operation_id: "semantic-json",
-            source: SOURCE,
-            uri: None,
-            options_json,
-        })
+        .execute(
+            BindingOperationRequest::new("semantic-json", SOURCE).with_options_json(options_json),
+        )
         .expect("semantic operation")
 }
 
 fn assert_result_contract(result: &BindingOperationResult) {
     assert_eq!(
-        result.data, br#"{"type":"info","showInfo":true}"#,
+        result.data(),
+        br#"{"type":"info","showInfo":true}"#,
         "fixed semantic JSON bytes"
     );
-    let metadata: Value = serde_json::from_slice(&result.metadata_json).expect("metadata JSON");
+    let metadata: Value = serde_json::from_slice(result.metadata_json()).expect("metadata JSON");
     assert_eq!(
         metadata,
         serde_json::json!({
@@ -38,7 +36,7 @@ fn assert_result_contract(result: &BindingOperationResult) {
             "operation_id": "semantic-json",
             "media_type": "application/json",
             "runtime_policy": "deterministic",
-            "byte_length": result.data.len(),
+            "byte_length": result.data().len(),
         })
     );
 }
@@ -49,12 +47,8 @@ fn bench_request_options(
     group_name: &str,
     request_options: &'static [u8],
 ) {
-    let request = BindingOperationRequest {
-        operation_id: "semantic-json",
-        source: SOURCE,
-        uri: None,
-        options_json: request_options,
-    };
+    let request =
+        BindingOperationRequest::new("semantic-json", SOURCE).with_options_json(request_options);
 
     let mut group = criterion.benchmark_group(group_name);
     group.bench_with_input(

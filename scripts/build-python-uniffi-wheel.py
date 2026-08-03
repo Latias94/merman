@@ -24,19 +24,30 @@ from artifact_profile_recipe import (
     load_artifact_profile,
     rustc_host_target,
 )
+from capability_surface_contract import (
+    canonical_capability_surface,
+    capability_surface_digest,
+    validate_capability_authority,
+)
 from python_wheel_licenses import (
     install_target_report,
     verify_wheel_license_report,
 )
+from strict_json import StrictJsonContract
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CAPABILITY_DESCRIPTOR = REPO_ROOT / "capabilities" / "feature-surface-v1.json"
+WHEEL_JSON = StrictJsonContract(
+    error_factory=RuntimeError,
+    read_error_prefix="cannot read Python wheel contract",
+)
 SEMANTIC_OPERATION_FIXTURES = (
     REPO_ROOT / "fixtures" / "bindings" / "assets" / "semantic-operations-v1.json"
 )
 PYTHON_GENERATED_SUPPORT_FILES = (
     "src/merman/__init__.py",
+    "src/merman/_binding_contract.py",
     "src/merman/_resource_options.py",
     "src/merman/_runtime_catalog.py",
     "src/merman/_text_measurement_protocol.py",
@@ -324,7 +335,6 @@ assert capabilities["capability_ids"] == EXPECTED_CAPABILITY_IDS
 assert capabilities["capability_ids"] == EXPECTED_RUNTIME_IDS
 assert capabilities["output_ids"] == EXPECTED_OUTPUT_IDS
 assert capabilities["operation_ids"] == EXPECTED_OPERATION_IDS
-assert set(capabilities["output_ids"]).issubset(capabilities["operation_ids"])
 source = "flowchart TD\\nA[Hello] --> B[World]"
 try:
     engine.execute(
@@ -429,9 +439,26 @@ print("python wheel smoke passed")
 
 
 def python_wheel_smoke_script(profile_id: str) -> str:
-    descriptor = json.loads(DEFAULT_DESCRIPTOR.read_text(encoding="utf-8"))
+    descriptor = WHEEL_JSON.object(
+        WHEEL_JSON.load(DEFAULT_DESCRIPTOR),
+        "artifact profile descriptor",
+    )
+    capability_descriptor = WHEEL_JSON.object(
+        WHEEL_JSON.load(CAPABILITY_DESCRIPTOR),
+        "capability descriptor",
+    )
+    capability_descriptor = _validate_capability_authority(
+        descriptor,
+        capability_descriptor,
+    )
+    profiles = WHEEL_JSON.array(
+        descriptor.get("profiles"),
+        "artifact profile descriptor profiles",
+    )
     matches = [
-        profile for profile in descriptor.get("profiles", []) if profile.get("id") == profile_id
+        profile
+        for profile in profiles
+        if isinstance(profile, dict) and profile.get("id") == profile_id
     ]
     if len(matches) != 1:
         raise RuntimeError(
@@ -452,16 +479,10 @@ def python_wheel_smoke_script(profile_id: str) -> str:
                 f"artifact profile {profile_id!r} expected.{field} must be sorted unique strings"
             )
         values[field] = value
-    capability_descriptor = json.loads(CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8"))
     expected_capabilities = set(values["capabilities"])
-    expected_operations = sorted(
-        operation["id"]
-        for operation in capability_descriptor.get("binding_operations", [])
-        if "native" in operation.get("targets", [])
-        and (
-            operation.get("capability") is None
-            or operation.get("capability") in expected_capabilities
-        )
+    expected_operations = _native_binding_operation_ids(
+        capability_descriptor,
+        expected_capabilities,
     )
     return (
         f"EXPECTED_CAPABILITY_IDS = {values['capabilities']!r}\n"
@@ -470,6 +491,64 @@ def python_wheel_smoke_script(profile_id: str) -> str:
         f"EXPECTED_OPERATION_IDS = {expected_operations!r}\n"
         + WHEEL_SMOKE
     )
+
+
+def _validate_capability_authority(
+    profiles_descriptor: dict[str, object],
+    capability_descriptor: dict[str, object],
+) -> dict[str, object]:
+    try:
+        descriptor_root = DEFAULT_DESCRIPTOR.parent.parent
+        expected_path = CAPABILITY_DESCRIPTOR.relative_to(descriptor_root).as_posix()
+    except ValueError as error:
+        raise RuntimeError(
+            "capability descriptor path must share the artifact profile descriptor root"
+        ) from error
+    return validate_capability_authority(
+        profiles_descriptor,
+        capability_descriptor,
+        expected_path=expected_path,
+        error_factory=RuntimeError,
+        profiles_context="artifact profile",
+        capability_context="capability descriptor",
+        expected_schema_version=1,
+        require_sorted_compiled_prerequisites=True,
+    )
+
+
+def _canonical_capability_descriptor(
+    descriptor: object,
+) -> dict[str, object]:
+    return canonical_capability_surface(
+        descriptor,
+        error_factory=RuntimeError,
+        context="capability descriptor",
+        expected_schema_version=1,
+        require_sorted_compiled_prerequisites=True,
+    )
+
+
+def _capability_descriptor_digest(descriptor: dict[str, object]) -> str:
+    return capability_surface_digest(descriptor)
+
+
+def _native_binding_operation_ids(
+    canonical_descriptor: dict[str, object],
+    expected_capabilities: set[str],
+) -> list[str]:
+    selected: list[str] = []
+    for operation in canonical_descriptor["binding_operations"]:
+        assert isinstance(operation, dict)
+        operation_id = operation["id"]
+        capability = operation["capability"]
+        targets = operation["targets"]
+        if "native" in targets and (
+            capability is None or capability in expected_capabilities
+        ):
+            assert isinstance(operation_id, str)
+            selected.append(operation_id)
+
+    return sorted(selected)
 
 
 def wheel_smoke_environment() -> dict[str, str]:

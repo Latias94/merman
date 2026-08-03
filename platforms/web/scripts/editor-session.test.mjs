@@ -300,6 +300,8 @@ function runtimeCatalogFixture({
       { id: "operation-metadata", version: 1 },
     ],
     metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
+    option_group_ids: ["lint"],
+    constructor_service_ids: [],
     capabilities,
     output_contracts: outputContracts,
     registry: { diagram_family_count: 0 },
@@ -392,19 +394,6 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
         runtimeCatalogFixture({
           capabilities: {
             capability_ids: ["analysis", "editor"],
-            output_ids: ["svg"],
-            operation_ids: ["analysis-json", "semantic-json"],
-            system_adapter_ids: [],
-            text_measurement: null,
-          },
-        }),
-      /runtime output svg is absent from runtime binding operation IDs/,
-    ],
-    [
-      () =>
-        runtimeCatalogFixture({
-          capabilities: {
-            capability_ids: ["analysis", "editor"],
             output_ids: [],
             operation_ids: ["analysis-json", "semantic-json"],
             system_adapter_ids: ["system-clock"],
@@ -412,6 +401,25 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
           },
         }),
       /system adapter system-clock is absent from runtime capability IDs/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture({
+          capabilities: {
+            capability_ids: ["svg"],
+            output_ids: ["svg"],
+            operation_ids: ["semantic-json", "svg"],
+            system_adapter_ids: [],
+            text_measurement: {
+              protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+              provider_ids: ["vendored"],
+            },
+          },
+        });
+        catalog.constructor_service_ids = ["host-text-measurement"];
+        return catalog;
+      },
+      /requires the host-callback provider/,
     ],
     [
       () => runtimeCatalogFixture({
@@ -518,7 +526,6 @@ test("runtime catalog accepts unknown future IDs", async () => {
       operation_ids: [
         "analysis-json",
         "future-operation",
-        "future-output",
         "semantic-json",
       ],
       system_adapter_ids: [],
@@ -574,10 +581,67 @@ test("runtime catalog accepts unknown future IDs", async () => {
     "diagram-family-capabilities",
     "supported-diagrams",
   ]);
+  assert.deepEqual(catalog.option_group_ids, ["lint"]);
+  assert.deepEqual(catalog.constructor_service_ids, []);
+  assert.equal(catalog.future_root_metadata, true);
+  assert.equal(catalog.capabilities.future_capability_metadata.version, 1);
+  assert.equal(catalog.registry.future_registry_metadata, true);
+  assert.equal(catalog.resources.future_resource_metadata, true);
+  assert.equal(catalog.resources.limits[0].future_limit_metadata, true);
+  assert.equal(catalog.resources.profiles[0].future_profile_metadata, true);
   assert.equal(catalog.capabilities.capability_ids.at(-1), "future-capability");
   assert.deepEqual(catalog.resources.limits[0].operation_ids, ["future-operation"]);
   assert.equal(catalog.resources.limits[0].id, "future-limit");
   assert.equal(catalog.resources.profiles[0].id, "future-profile");
+});
+
+test("runtime catalog defaults additive discovery sections for legacy producers", async () => {
+  const legacyCatalog = runtimeCatalogFixture();
+  delete legacyCatalog.option_group_ids;
+  delete legacyCatalog.constructor_service_ids;
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      packageVersion: () => "0.8.0-alpha.4",
+      transportApiVersion: () => 3,
+      runtimeCatalog: () => legacyCatalog,
+    }),
+    coreTestImplementation,
+  );
+  await runtime.initMerman();
+
+  const catalog = runtime.runtimeCatalog();
+  assert.deepEqual(catalog.option_group_ids, []);
+  assert.deepEqual(catalog.constructor_service_ids, []);
+});
+
+test("runtime catalog accepts text measurement for an internal rendering pipeline", async () => {
+  const pipelineCatalog = runtimeCatalogFixture({
+    capabilities: {
+      capability_ids: ["future-output"],
+      output_ids: ["future-output"],
+      operation_ids: ["future-render", "semantic-json"],
+      system_adapter_ids: [],
+      text_measurement: {
+        protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+        provider_ids: ["vendored"],
+      },
+    },
+  });
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      packageVersion: () => "0.8.0-alpha.4",
+      transportApiVersion: () => 3,
+      runtimeCatalog: () => pipelineCatalog,
+    }),
+    coreTestImplementation,
+  );
+  await runtime.initMerman();
+
+  const catalog = runtime.runtimeCatalog();
+  assert.deepEqual(catalog.capabilities.capability_ids, ["future-output"]);
+  assert.deepEqual(catalog.capabilities.text_measurement.provider_ids, ["vendored"]);
 });
 
 test("runtime catalog preserves wasm-bindgen optional and map projections", async () => {

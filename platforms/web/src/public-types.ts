@@ -52,12 +52,15 @@ export interface RenderEnvironmentOptions {
  * artifacts and should make decisions only from the relations present in this catalog.
  */
 export interface RuntimeCatalog {
+  [key: string]: unknown;
   schema_version: number;
   transport_api_version: number;
   package_version: string;
   options_schema_versions: number[];
   payload_schemas: RuntimePayloadSchema[];
   metadata_ids: string[];
+  option_group_ids: string[];
+  constructor_service_ids: string[];
   capabilities: RuntimeCapabilities;
   output_contracts: RuntimeOutputContract[];
   registry: {

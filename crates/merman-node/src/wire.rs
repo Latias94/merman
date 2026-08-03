@@ -1,14 +1,30 @@
 use merman_bindings_core::{
-    ArtifactCapabilitySurface, BindingEngine, BindingError, BindingOperationRequest, BindingStatus,
-    TextMeasurementProviderProjection,
+    BindingEngine, BindingError, BindingOperationRequest, BindingPayloadSchemaKey, BindingStatus,
+    CapabilityKey, CompiledBindingSurface, OperationKey, RuntimePolicyExposure, TargetKey,
+    TransportExposure, ValidatedArtifactContract,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 const NODE_WIRE_VERSION: u32 = 1;
-const NODE_STATIC_SVG_CAPABILITY_IDS: &[&str] = &["layout-cytoscape", "layout-elk", "math", "svg"];
-const NODE_STATIC_SVG_OUTPUT_IDS: &[&str] = &["svg"];
-const NODE_STATIC_SVG_OPERATION_IDS: &[&str] =
-    &["layout-json", "semantic-json", "svg", "svg-plan-json"];
+static ARTIFACT_CONTRACT: OnceLock<ValidatedArtifactContract> = OnceLock::new();
+const NODE_STATIC_SVG_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
+const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+];
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -59,59 +75,46 @@ struct ErrorDetails {
 }
 
 pub(crate) fn create_engine(options_json: &str) -> Result<BindingEngine, BindingError> {
-    if serde_json::from_str::<serde_json::Value>(options_json)
-        .ok()
-        .and_then(|value| value.get("runtime_policy").cloned())
-        .is_some_and(|policy| policy == "native")
-    {
-        return Err(BindingError::missing_capability(
-            "system-clock",
-            "runtime_policy=native is not available in the Node static-SVG transport",
-        ));
-    }
-    BindingEngine::from_options(options_json.as_bytes())
+    node_artifact_contract().create_engine(options_json.as_bytes())
 }
 
-fn node_static_svg_capability_surface() -> Result<ArtifactCapabilitySurface, BindingError> {
-    let resolved = merman_bindings_core::binding_transport_capability_surface()
-        .project_to_descriptor_target("native", TextMeasurementProviderProjection::VendoredOnly)?
-        .runtime_capabilities();
-    let capability_ids = resolved
-        .capability_ids
-        .into_iter()
-        .filter(|id| NODE_STATIC_SVG_CAPABILITY_IDS.contains(id))
-        .collect();
-    let output_ids = resolved
-        .output_ids
-        .into_iter()
-        .filter(|id| NODE_STATIC_SVG_OUTPUT_IDS.contains(id))
-        .collect();
-    let operation_ids = resolved
-        .operation_ids
-        .into_iter()
-        .filter(|id| NODE_STATIC_SVG_OPERATION_IDS.contains(id))
-        .collect();
+fn node_artifact_contract() -> &'static ValidatedArtifactContract {
+    ARTIFACT_CONTRACT.get_or_init(|| {
+        let target = if cfg!(target_arch = "wasm32") {
+            TargetKey::Web
+        } else {
+            TargetKey::Native
+        };
+        let exposure = TransportExposure::for_target(target)
+            .with_operations(NODE_STATIC_SVG_OPERATIONS.iter().copied())
+            .and_then(|exposure| {
+                exposure
+                    .with_supplemental_capabilities(NODE_STATIC_SVG_CAPABILITIES.iter().copied())
+            })
+            .and_then(TransportExposure::with_all_available_metadata)
+            .and_then(|exposure| {
+                exposure.with_payload_schemas(BindingPayloadSchemaKey::ALL.iter().copied())
+            })
+            .expect("the Node transport declares each endpoint set once")
+            .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly);
 
-    ArtifactCapabilitySurface::new_with_operation_ids(
-        capability_ids,
-        output_ids,
-        operation_ids,
-        Vec::new(),
-        resolved.text_measurement,
-    )
+        CompiledBindingSurface::current()
+            .validate(exposure)
+            .expect("the Node transport exposure must match its compiled surface")
+    })
 }
 
 pub(crate) fn runtime_catalog_wire() -> Result<String, BindingError> {
-    serde_json::to_string(&merman_bindings_core::runtime_catalog_for(
-        NODE_WIRE_VERSION,
-        node_static_svg_capability_surface()?,
-    ))
-    .map_err(|error| {
-        BindingError::new(
-            BindingStatus::InternalError,
-            format!("failed to serialize the Node runtime catalog: {error}"),
-        )
+    let bytes = node_artifact_contract().runtime_catalog_json(NODE_WIRE_VERSION)?;
+    String::from_utf8(bytes).map_err(|error| {
+        BindingError::internal(format!("Node runtime catalog was not UTF-8: {error}"))
     })
+}
+
+pub(crate) fn metadata_wire(id: &str) -> Result<String, BindingError> {
+    let bytes = node_artifact_contract().metadata_json(id)?;
+    String::from_utf8(bytes)
+        .map_err(|error| BindingError::internal(format!("Node metadata was not UTF-8: {error}")))
 }
 
 pub(crate) fn execute_wire(engine: &BindingEngine, request_json: &str) -> String {
@@ -125,53 +128,28 @@ pub(crate) fn execute_wire(engine: &BindingEngine, request_json: &str) -> String
         }
     };
 
-    if !NODE_STATIC_SVG_OPERATION_IDS.contains(&request.operation_id.as_str()) {
-        let error = match merman_bindings_core::BindingOperationKind::from_id(&request.operation_id)
-        {
-            Ok(operation) => operation.required_capability_id().map_or_else(
-                || {
-                    BindingError::unknown_operation(format!(
-                        "operation `{}` is not exposed by the Node static-SVG transport",
-                        request.operation_id
-                    ))
-                },
-                |capability_id| {
-                    BindingError::missing_capability(
-                        capability_id,
-                        format!(
-                            "operation `{}` requires capability `{capability_id}`, which is not available in the Node static-SVG transport",
-                            request.operation_id
-                        ),
-                    )
-                },
-            ),
-            Err(error) => error,
-        };
-        return error_envelope(&error);
-    }
-
-    let result = engine.execute(BindingOperationRequest {
-        operation_id: &request.operation_id,
-        source: request.source.as_bytes(),
-        uri: request.uri.as_deref().map(str::as_bytes),
-        options_json: request.options_json.as_deref().map_or(b"", str::as_bytes),
-    });
+    let result = engine.execute(
+        BindingOperationRequest::new(&request.operation_id, request.source.as_bytes())
+            .with_optional_uri(request.uri.as_deref().map(str::as_bytes))
+            .with_options_json(request.options_json.as_deref().map_or(b"", str::as_bytes)),
+    );
 
     match result {
         Ok(result) => {
-            let data = match String::from_utf8(result.data) {
+            let (operation, media_type, data, metadata) = result.into_parts();
+            let data = match String::from_utf8(data) {
                 Ok(data) => data,
                 Err(error) => {
                     return error_envelope(&BindingError::new(
                         BindingStatus::InternalError,
                         format!(
                             "Node static-SVG candidate received non-UTF-8 output for `{}`: {error}",
-                            result.operation.operation_id()
+                            operation.operation_id()
                         ),
                     ));
                 }
             };
-            let metadata_json = match String::from_utf8(result.metadata_json) {
+            let metadata_json = match String::from_utf8(metadata.into_json_bytes()) {
                 Ok(metadata_json) => metadata_json,
                 Err(error) => {
                     return error_envelope(&BindingError::new(
@@ -184,8 +162,8 @@ pub(crate) fn execute_wire(engine: &BindingEngine, request_json: &str) -> String
                 version: NODE_WIRE_VERSION,
                 ok: true,
                 result: SuccessResult {
-                    operation_id: result.operation.operation_id().to_owned(),
-                    media_type: result.media_type.to_owned(),
+                    operation_id: operation.operation_id().to_owned(),
+                    media_type: media_type.to_owned(),
                     data,
                     metadata_json,
                 },
@@ -242,8 +220,8 @@ fn serialize_envelope(value: &impl Serialize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        NODE_STATIC_SVG_CAPABILITY_IDS, NODE_STATIC_SVG_OPERATION_IDS, NODE_STATIC_SVG_OUTPUT_IDS,
-        create_engine, error_envelope, execute_wire, runtime_catalog_wire,
+        NODE_STATIC_SVG_CAPABILITIES, NODE_STATIC_SVG_OPERATIONS, create_engine, error_envelope,
+        execute_wire, runtime_catalog_wire,
     };
 
     #[test]
@@ -251,52 +229,30 @@ mod tests {
         let catalog: serde_json::Value =
             serde_json::from_str(&runtime_catalog_wire().unwrap()).unwrap();
         let capabilities = &catalog["capabilities"];
-        let resolved = merman_bindings_core::binding_transport_capability_surface()
-            .project_to_descriptor_target(
-                "native",
-                merman_bindings_core::TextMeasurementProviderProjection::VendoredOnly,
-            )
-            .unwrap()
-            .runtime_capabilities();
-        let expected_capability_ids = resolved
-            .capability_ids
+        let mut expected_capability_ids = NODE_STATIC_SVG_CAPABILITIES
             .iter()
-            .copied()
-            .filter(|id| NODE_STATIC_SVG_CAPABILITY_IDS.contains(id))
+            .map(|key| key.id())
+            .chain(["svg"])
             .collect::<Vec<_>>();
-        let expected_output_ids = resolved
-            .output_ids
+        expected_capability_ids.sort_unstable();
+        let expected_operation_ids = NODE_STATIC_SVG_OPERATIONS
             .iter()
-            .copied()
-            .filter(|id| NODE_STATIC_SVG_OUTPUT_IDS.contains(id))
-            .collect::<Vec<_>>();
-        let expected_operation_ids = resolved
-            .operation_ids
-            .iter()
-            .copied()
-            .filter(|id| NODE_STATIC_SVG_OPERATION_IDS.contains(id))
+            .map(|key| key.id())
             .collect::<Vec<_>>();
         assert_eq!(
             capabilities["capability_ids"],
             serde_json::json!(expected_capability_ids)
         );
-        assert_eq!(
-            capabilities["output_ids"],
-            serde_json::json!(expected_output_ids)
-        );
+        assert_eq!(capabilities["output_ids"], serde_json::json!(["svg"]));
         assert_eq!(
             capabilities["operation_ids"],
             serde_json::json!(expected_operation_ids)
         );
         assert_eq!(capabilities["system_adapter_ids"], serde_json::json!([]));
-        if expected_capability_ids.contains(&"svg") {
-            assert_eq!(
-                capabilities["text_measurement"]["provider_ids"],
-                serde_json::json!(["vendored"])
-            );
-        } else {
-            assert!(capabilities["text_measurement"].is_null());
-        }
+        assert_eq!(
+            capabilities["text_measurement"]["provider_ids"],
+            serde_json::json!(["vendored"])
+        );
     }
 
     #[test]
@@ -307,13 +263,14 @@ mod tests {
         };
         assert_eq!(
             native.status(),
-            merman_bindings_core::BindingStatus::UnsupportedOperation
+            merman_bindings_core::BindingStatus::OptionsJsonError
         );
         assert_eq!(
             native.kind(),
-            merman_bindings_core::BindingErrorKind::MissingCapability
+            merman_bindings_core::BindingErrorKind::Generic
         );
-        assert_eq!(native.capability_id(), Some("system-clock"));
+        assert_eq!(native.capability_id(), None);
+        assert!(native.message().contains("not exposed by target"));
 
         let engine = create_engine("").unwrap();
         let missing: serde_json::Value = serde_json::from_str(&execute_wire(
@@ -330,7 +287,7 @@ mod tests {
         assert!(
             missing["error"]["message"]
                 .as_str()
-                .is_some_and(|message| message.contains("Node static-SVG transport"))
+                .is_some_and(|message| message.contains("not exposed by target"))
         );
 
         let unknown: serde_json::Value = serde_json::from_str(&execute_wire(

@@ -131,6 +131,7 @@ export const TEXT_MEASUREMENT_PROVIDER_IDS = [
 export type TextMeasurementProviderId = string;
 
 export interface RuntimeCapabilities {
+  [key: string]: unknown;
   capability_ids: RuntimeCapabilityId[];
   output_ids: RuntimeOutputId[];
   operation_ids: RuntimeOperationId[];

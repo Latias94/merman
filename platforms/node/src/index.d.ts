@@ -6,7 +6,7 @@ export type MermanResourceProfile =
 
 export interface MermanBindingOptions {
   version?: 2;
-  runtime_policy?: "deterministic" | "native";
+  runtime_policy?: "deterministic";
   resources?: {
     profile?: MermanResourceProfile;
     limits?: Record<string, number>;
@@ -47,7 +47,7 @@ export interface MermanOperationResult {
 
 export interface MermanTextMeasurementCatalog {
   protocol_version: number;
-  provider_ids: ["vendored"];
+  provider_ids: string[];
   [key: string]: unknown;
 }
 
@@ -119,6 +119,8 @@ export interface MermanRuntimeCatalog {
   options_schema_versions: number[];
   payload_schemas: MermanRuntimePayloadSchema[];
   metadata_ids: string[];
+  option_group_ids: string[];
+  constructor_service_ids: string[];
   capabilities: {
     capability_ids: string[];
     output_ids: string[];
@@ -150,12 +152,18 @@ export interface MermanQueueState {
   readonly state: "open" | "disposing" | "disposed";
 }
 
-export declare class MermanNodeEngine {
+export declare class MermanEngine {
   readonly queueState: MermanQueueState;
   readonly runtimeCatalog: MermanRuntimeCatalog;
   renderSvg(source: string, options?: RenderSvgOptions): Promise<string>;
   /** Synchronous rendering is intended only for explicit SSG build paths. */
   renderSvgSync(source: string, options?: Omit<RenderSvgOptions, "signal">): string;
+  svgPlanJson(source: string, options?: RenderSvgOptions): Promise<string>;
+  svgPlanJsonSync(
+    source: string,
+    options?: Omit<RenderSvgOptions, "signal">,
+  ): string;
+  metadataJson(id: string): string;
   executeOperation(
     request: MermanOperationRequest,
     options?: Pick<RenderSvgOptions, "signal">,
@@ -166,7 +174,7 @@ export declare class MermanNodeEngine {
 
 export declare function createNodeEngine(
   options?: CreateNodeEngineOptions,
-): Promise<MermanNodeEngine>;
+): Promise<MermanEngine>;
 
 export declare class MermanError extends Error {
   readonly code: string;
@@ -193,6 +201,7 @@ export declare class MermanQueueSaturatedError extends MermanError {
 }
 
 export declare class MermanDisposedError extends MermanError {}
+export declare class MermanInvalidTransportError extends MermanError {}
 export declare class MermanLifecycleError extends MermanError {}
 export declare class MermanMissingPlatformPackageError extends MermanError {
   readonly packageName: string;

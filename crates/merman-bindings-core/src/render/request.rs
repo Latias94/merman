@@ -12,7 +12,6 @@ use merman::svg::{
     HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions, MeasurementProfileId,
     RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub(super) struct RenderRequestPlan {
@@ -55,29 +54,6 @@ impl RenderRequestPlan {
         }
     }
 
-    pub(super) fn with_host_text_measurer(
-        &self,
-        measurer: Arc<dyn merman::svg::HostTextMeasurer>,
-    ) -> Self {
-        let identity = TextMeasurementProfileIdentity::new(
-            MeasurementProfileId::new("merman.binding-host").expect("static profile id"),
-            concat!("merman-bindings-core@", env!("CARGO_PKG_VERSION")),
-        )
-        .expect("static profile identity");
-        let policy =
-            TextMeasurementPolicy::host_display(identity, measurer, TextMeasurementPhase::ALL);
-        Self {
-            renderer: self.renderer.clone().with_text_measurement_policy(policy),
-            pipeline: self.pipeline.clone(),
-            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-            export_resource_profile: self.export_resource_profile,
-            #[cfg(any(feature = "png", feature = "jpeg"))]
-            raster_options: self.raster_options.clone(),
-            #[cfg(feature = "pdf")]
-            pdf_options: self.pdf_options.clone(),
-        }
-    }
-
     pub(super) fn layout_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
         let layout_json = self
             .renderer
@@ -99,14 +75,6 @@ impl RenderRequestPlan {
     }
 
     #[cfg(feature = "png")]
-    pub(super) fn render_png(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        self.renderer
-            .render_png_sync(source, &self.raster_options)
-            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
-            .ok_or_else(no_diagram_error)
-    }
-
-    #[cfg(feature = "png")]
     pub(super) fn render_png_output(
         &self,
         source: &str,
@@ -120,14 +88,6 @@ impl RenderRequestPlan {
     }
 
     #[cfg(feature = "jpeg")]
-    pub(super) fn render_jpeg(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        self.renderer
-            .render_jpeg_sync(source, &self.raster_options)
-            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
-            .ok_or_else(no_diagram_error)
-    }
-
-    #[cfg(feature = "jpeg")]
     pub(super) fn render_jpeg_output(
         &self,
         source: &str,
@@ -138,14 +98,6 @@ impl RenderRequestPlan {
             .map_err(|error| classify_output_error(error, self.export_resource_profile))?
             .ok_or_else(no_diagram_error)?;
         Ok(crate::operation::BindingOperationOutput::raster(data, plan))
-    }
-
-    #[cfg(feature = "pdf")]
-    pub(super) fn render_pdf(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        self.renderer
-            .render_pdf_with_options_sync(source, &self.pdf_options)
-            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
-            .ok_or_else(no_diagram_error)
     }
 
     #[cfg(feature = "pdf")]
@@ -319,8 +271,18 @@ impl RenderOperationConfig {
         })
     }
 
-    pub(super) fn materialize(self) -> RenderRequestPlan {
+    pub(super) fn materialize(self, services: &crate::BindingEngineServices) -> RenderRequestPlan {
         let mut renderer = HeadlessRenderer::new().with_environment(self.environment);
+        if let Some(measurer) = services.host_text_measurer() {
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("merman.binding-host").expect("static profile id"),
+                concat!("merman-bindings-core@", env!("CARGO_PKG_VERSION")),
+            )
+            .expect("static profile identity");
+            let policy =
+                TextMeasurementPolicy::host_display(identity, measurer, TextMeasurementPhase::ALL);
+            renderer = renderer.with_text_measurement_policy(policy);
+        }
         renderer = if self.lenient_parsing {
             renderer.with_lenient_parsing()
         } else {

@@ -448,7 +448,7 @@ function cargoMetadata(recipe) {
   return JSON.parse(runCapture("cargo", args));
 }
 
-function collectLocalInputEntries(metadata) {
+export function collectLocalInputEntries(metadata) {
   const roots = new Set();
   for (const item of metadata.packages) {
     if (item.source !== null) continue;
@@ -471,6 +471,8 @@ function collectLocalInputEntries(metadata) {
     path.join(nodeRoot, "src", "bounded-executor.mjs"),
     path.join(nodeRoot, "src", "engine.mjs"),
     path.join(nodeRoot, "src", "errors.mjs"),
+    path.join(nodeRoot, "src", "generated", "binding-contract.mjs"),
+    path.join(nodeRoot, "src", "generated", "capability-surface.mjs"),
     path.join(nodeRoot, "src", "native-loader.mjs"),
   ]);
   for (const root of roots) {
@@ -600,21 +602,38 @@ export function resolveCandidateRuntimeContract() {
   const capabilityById = new Map(
     capabilitySurface.capabilities.map((capability) => [capability?.id, capability]),
   );
-  const outputIds = capabilitySurface.outputs
-    .filter(
-      (output) =>
-        output?.targets?.includes(target) &&
-        capabilityIds.includes(output.capability),
-    )
-    .map((output) => output.id)
-    .sort();
-  const operationIds = capabilitySurface.binding_operations
+  const outputById = new Map(
+    capabilitySurface.outputs.map((output) => [output?.id, output]),
+  );
+  const operations = capabilitySurface.binding_operations
     .filter(
       (operation) =>
         operation?.targets?.includes(target) &&
         (operation.capability === null || capabilityIds.includes(operation.capability)),
-    )
-    .map((operation) => operation.id)
+    );
+  for (const operation of operations) {
+    if (
+      !Object.hasOwn(operation, "output") ||
+      !(operation.output === null || typeof operation.output === "string") ||
+      !Array.isArray(operation.compiled_prerequisites) ||
+      operation.compiled_prerequisites.some(
+        (capability) => typeof capability !== "string" || capability.length === 0,
+      ) ||
+      stableJson(operation.compiled_prerequisites) !==
+        stableJson([...new Set(operation.compiled_prerequisites)].sort())
+    ) {
+      throw new Error(`Candidate binding operation ${operation?.id ?? "<unknown>"} is invalid.`);
+    }
+    if (operation.output !== null && !outputById.has(operation.output)) {
+      throw new Error(
+        `Candidate binding operation ${operation.id} references unknown output ${operation.output}.`,
+      );
+    }
+  }
+  const operationIds = operations.map((operation) => operation.id).sort();
+  const outputIds = operations
+    .map((operation) => operation.output)
+    .filter((output) => output !== null)
     .sort();
   const systemAdapterIds = capabilityIds
     .filter((capabilityId) => capabilityById.get(capabilityId)?.kind === "adapter")

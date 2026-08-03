@@ -4,6 +4,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Protocol, TypedDict, cast
 
+from ._binding_contract import REQUIRED_PAYLOAD_SCHEMA_VERSIONS
 from ._resource_options import BINDING_OPTIONS_SCHEMA_VERSION
 
 try:
@@ -100,7 +101,7 @@ class MermanRuntimeResources(TypedDict):
     profiles: List[MermanRuntimeResourceProfile]
 
 
-class MermanRuntimeCatalog(TypedDict):
+class _MermanRuntimeCatalogRequired(TypedDict):
     schema_version: int
     transport_api_version: int
     package_version: str
@@ -111,6 +112,11 @@ class MermanRuntimeCatalog(TypedDict):
     output_contracts: List[MermanOutputContract]
     registry: MermanRuntimeRegistry
     resources: MermanRuntimeResources
+
+
+class MermanRuntimeCatalog(_MermanRuntimeCatalogRequired, total=False):
+    option_group_ids: List[str]
+    constructor_service_ids: List[str]
 
 
 class _RuntimeCatalogEngine(Protocol):
@@ -172,7 +178,9 @@ def get_runtime_catalog(engine: _RuntimeCatalogEngine) -> MermanRuntimeCatalog:
             "runtime catalog package_version does not match the loaded library"
         )
 
-    output_ids, operation_ids = _validate_capabilities(catalog["capabilities"])
+    output_ids, operation_ids, provider_ids = _validate_capabilities(
+        catalog["capabilities"]
+    )
     options_schema_versions = _validate_options_schema_versions(
         catalog["options_schema_versions"]
     )
@@ -185,13 +193,27 @@ def get_runtime_catalog(engine: _RuntimeCatalogEngine) -> MermanRuntimeCatalog:
         catalog["metadata_ids"],
         "runtime metadata IDs",
     )
+    option_group_ids = catalog.setdefault("option_group_ids", [])
+    _validate_option_group_ids(option_group_ids)
+    constructor_service_ids = catalog.setdefault("constructor_service_ids", [])
+    _validate_identifier_list(
+        constructor_service_ids,
+        "runtime constructor service IDs",
+    )
+    if (
+        "host-text-measurement" in constructor_service_ids
+        and "host-callback" not in provider_ids
+    ):
+        raise MermanRuntimeCatalogError(
+            "runtime host text-measurement service requires the host-callback provider"
+        )
     _validate_output_contracts(catalog["output_contracts"], output_ids)
     _validate_registry(catalog["registry"])
     _validate_resources(catalog["resources"], operation_ids)
     return cast(MermanRuntimeCatalog, catalog)
 
 
-def _validate_capabilities(value: Any) -> tuple[List[str], List[str]]:
+def _validate_capabilities(value: Any) -> tuple[List[str], List[str], List[str]]:
     capabilities = _expect_object(value, "runtime catalog capabilities")
     _require_required_keys(
         capabilities,
@@ -216,10 +238,6 @@ def _validate_capabilities(value: Any) -> tuple[List[str], List[str]]:
     system_adapter_ids = _validate_identifier_list(
         capabilities["system_adapter_ids"], "runtime system adapter IDs"
     )
-    if not set(output_ids).issubset(operation_ids):
-        raise MermanRuntimeCatalogError(
-            "runtime output IDs must also be runtime operation IDs"
-        )
     if not set(system_adapter_ids).issubset(capability_ids):
         raise MermanRuntimeCatalogError(
             "runtime system adapter IDs must also be runtime capability IDs"
@@ -231,11 +249,7 @@ def _validate_capabilities(value: Any) -> tuple[List[str], List[str]]:
             raise MermanRuntimeCatalogError(
                 "runtime SVG capability requires text measurement metadata"
             )
-        return output_ids, operation_ids
-    if "svg" not in capability_ids:
-        raise MermanRuntimeCatalogError(
-            "runtime text measurement metadata requires the SVG capability"
-        )
+        return output_ids, operation_ids, []
     measurement = _expect_object(text_measurement, "runtime text measurement")
     _require_required_keys(
         measurement,
@@ -259,7 +273,16 @@ def _validate_capabilities(value: Any) -> tuple[List[str], List[str]]:
         raise MermanRuntimeCatalogError(
             "runtime text measurement providers must include vendored"
         )
-    return output_ids, operation_ids
+    return output_ids, operation_ids, provider_ids
+
+
+def _validate_option_group_ids(value: Any) -> List[str]:
+    ids = _validate_sorted_string_list(value, "runtime option group IDs")
+    if any(re.fullmatch(r"[a-z][a-z0-9_]*", item) is None for item in ids):
+        raise MermanRuntimeCatalogError(
+            "runtime option group IDs contain an invalid field identifier"
+        )
+    return ids
 
 
 def _validate_output_contracts(value: Any, output_ids: List[str]) -> None:
@@ -494,12 +517,20 @@ def _validate_resources(value: Any, operation_ids: List[str]) -> None:
 
 
 def _validate_identifier_list(value: Any, label: str) -> List[str]:
+    identifiers = _validate_sorted_string_list(value, label)
+    for identifier in identifiers:
+        _expect_identifier(identifier, label)
+    return identifiers
+
+
+def _validate_sorted_string_list(value: Any, label: str) -> List[str]:
     if not isinstance(value, list):
         raise MermanRuntimeCatalogError(f"{label} must be a string array")
-    identifiers = [_expect_identifier(item, label) for item in value]
-    if identifiers != sorted(set(identifiers)):
+    if any(not isinstance(item, str) for item in value):
+        raise MermanRuntimeCatalogError(f"{label} must be a string array")
+    if value != sorted(set(value)):
         raise MermanRuntimeCatalogError(f"{label} must be sorted and unique")
-    return identifiers
+    return value
 
 
 def _validate_options_schema_versions(value: Any) -> List[int]:
@@ -537,6 +568,12 @@ def _validate_payload_schemas(value: Any) -> List[MermanRuntimePayloadSchema]:
             )
         previous = identifier
         schemas.append(cast(MermanRuntimePayloadSchema, schema))
+    versions_by_id = {schema["id"]: schema["version"] for schema in schemas}
+    for identifier, version in REQUIRED_PAYLOAD_SCHEMA_VERSIONS.items():
+        if versions_by_id.get(identifier) != version:
+            raise MermanRuntimeCatalogError(
+                f"runtime payload schema {identifier} must have version {version}"
+            )
     return schemas
 
 

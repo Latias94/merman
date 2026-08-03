@@ -171,6 +171,14 @@ test("assembled native packages pass real npm pack ownership inspection", async 
       role: "platform",
       files: targetPack.files,
     });
+    assert.equal(
+      rootPack.files.some((item) => item.path === "dist/generated/capability-surface.mjs"),
+      true,
+    );
+    assert.equal(
+      rootPack.files.some((item) => item.path === "dist/generated/binding-contract.mjs"),
+      true,
+    );
     assert.equal(targetPack.files.some((item) => item.path === "build-receipt.json"), false);
 
     const assembledLoader = await import(

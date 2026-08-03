@@ -333,6 +333,26 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
     throw new Error("Merman WASM returned an invalid runtime resource contract.");
   }
   const capabilities = normalizeRuntimeCapabilities(value.capabilities);
+  const optionGroupIds = Object.prototype.hasOwnProperty.call(value, "option_group_ids")
+    ? normalizeSortedOptionGroupIds(value.option_group_ids)
+    : [];
+  const constructorServiceIds = Object.prototype.hasOwnProperty.call(
+    value,
+    "constructor_service_ids"
+  )
+    ? normalizeSortedIdentifierIds(
+        value.constructor_service_ids,
+        "runtime constructor service IDs"
+      )
+    : [];
+  if (
+    constructorServiceIds.includes("host-text-measurement") &&
+    !capabilities.text_measurement?.provider_ids.includes("host-callback")
+  ) {
+    throw new Error(
+      "Merman WASM host text-measurement service requires the host-callback provider."
+    );
+  }
   const optionsSchemaVersions = normalizeSortedPositiveIntegers(
     value.options_schema_versions,
     "runtime options schema versions"
@@ -343,18 +363,24 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
     );
   }
   return {
+    ...structuredCloneValue(value),
     schema_version: 1,
     transport_api_version: catalogTransportApiVersion,
     package_version: value.package_version,
     options_schema_versions: optionsSchemaVersions,
     payload_schemas: normalizeRuntimePayloadSchemas(value.payload_schemas),
     metadata_ids: normalizeSortedIdentifierIds(value.metadata_ids, "runtime metadata IDs"),
+    option_group_ids: optionGroupIds,
+    constructor_service_ids: constructorServiceIds,
     capabilities,
     output_contracts: normalizeRuntimeOutputContracts(
       value.output_contracts,
       capabilities.output_ids
     ),
-    registry: { diagram_family_count: diagramFamilyCount },
+    registry: {
+      ...structuredCloneValue(value.registry),
+      diagram_family_count: diagramFamilyCount,
+    },
     resources: normalizeRuntimeResourceContract(
       value.resources,
       new Set(capabilities.operation_ids)
@@ -372,6 +398,7 @@ function normalizeRuntimePayloadSchemas(value: unknown): RuntimeCatalog["payload
     }
     assertRequiredRecordKeys(entry, ["id", "version"], "Merman WASM runtime payload schema");
     return {
+      ...structuredCloneValue(entry),
       id: assertRuntimeIdentifier(entry.id, "runtime payload schema IDs"),
       version: assertSafeIntegerField(entry.version, "runtime payload schema version", 1),
     };
@@ -406,6 +433,7 @@ function normalizeRuntimeOutputContracts(
       throw new Error("Merman WASM returned an empty runtime output media type.");
     }
     return {
+      ...structuredCloneValue(entry),
       id,
       media_type: mediaType,
       system_fonts: normalizeRuntimeSystemFonts(entry.system_fonts),
@@ -449,6 +477,7 @@ function normalizeRuntimeSystemFonts(
     "Merman WASM runtime system-font contract"
   );
   return {
+    ...structuredCloneValue(value),
     source_id: assertRuntimeIdentifier(value.source_id, "runtime font source ID"),
     discovery: assertRuntimeIdentifier(value.discovery, "runtime font discovery ID"),
     cache_scope: assertRuntimeIdentifier(value.cache_scope, "runtime font cache-scope ID"),
@@ -503,6 +532,7 @@ function normalizeRuntimeEmbeddedImages(
     max_total_pixels: readLimit("max_total_pixels"),
   };
   return {
+    ...structuredCloneValue(value),
     source_ids: normalizeSortedIdentifierIds(value.source_ids, "runtime embedded-image source IDs"),
     filesystem_access: assertBooleanField(
       value.filesystem_access,
@@ -516,7 +546,10 @@ function normalizeRuntimeEmbeddedImages(
       value.caller_configurable,
       "runtime embedded-image configurability"
     ),
-    limits,
+    limits: {
+      ...structuredCloneValue(limitValues),
+      ...limits,
+    },
   };
 }
 
@@ -538,15 +571,7 @@ function normalizeRuntimeCapabilities(value: unknown): RuntimeCapabilities {
     value.operation_ids,
     "runtime binding operation IDs"
   );
-  const operationSet = new Set(operationIds);
   const outputIds = normalizeSortedIdentifierIds(value.output_ids, "runtime output IDs");
-  for (const outputId of outputIds) {
-    if (!operationSet.has(outputId)) {
-      throw new Error(
-        `Merman WASM runtime output ${outputId} is absent from runtime binding operation IDs.`
-      );
-    }
-  }
 
   const systemAdapterIds = normalizeSortedIdentifierIds(
     value.system_adapter_ids,
@@ -565,13 +590,14 @@ function normalizeRuntimeCapabilities(value: unknown): RuntimeCapabilities {
 
   const textMeasurement = normalizeTextMeasurementCapabilities(value.text_measurement);
   const svgAvailable = capabilitySet.has("svg");
-  if (svgAvailable !== (textMeasurement !== null)) {
+  if (svgAvailable && textMeasurement === null) {
     throw new Error(
-      "Merman WASM text measurement must be present exactly when SVG is available."
+      "Merman WASM text measurement must be present when SVG is available."
     );
   }
 
   return {
+    ...structuredCloneValue(value),
     capability_ids: capabilityIds,
     output_ids: outputIds,
     operation_ids: operationIds,
@@ -643,6 +669,7 @@ function normalizeRuntimeResourceContract(
       throw new Error("Merman WASM runtime resource limit names an unavailable operation.");
     }
     return {
+      ...structuredCloneValue(limit),
       id: limit.id,
       phase: limit.phase,
       description: limit.description,
@@ -696,6 +723,7 @@ function normalizeRuntimeResourceContract(
       }
     }
     return {
+      ...structuredCloneValue(profile),
       id: profile.id,
       purpose: profile.purpose,
       trust_assumption: profile.trust_assumption,
@@ -726,6 +754,7 @@ function normalizeRuntimeResourceContract(
     );
   }
   return {
+    ...structuredCloneValue(value),
     general_binding_default_profile: value.general_binding_default_profile,
     cli_default_profile: value.cli_default_profile,
     limits,
@@ -763,6 +792,7 @@ function normalizeTextMeasurementCapabilities(value: unknown): TextMeasurementCa
     throw new Error("Merman WASM text measurement must include vendored support.");
   }
   return {
+    ...structuredCloneValue(value),
     protocol_version: value.protocol_version,
     provider_ids: providerIds,
   };
@@ -791,6 +821,24 @@ function normalizeSortedIdentifierIds(value: unknown, label: string): string[] {
   for (let index = 1; index < identifiers.length; index += 1) {
     if (identifiers[index - 1] >= identifiers[index]) {
       throw new Error(`Merman WASM ${label} must be sorted and unique.`);
+    }
+  }
+  return identifiers;
+}
+
+function normalizeSortedOptionGroupIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Merman WASM returned invalid runtime option group IDs.");
+  }
+  const identifiers = value.map((entry) => {
+    if (typeof entry === "string" && /^[a-z][a-z0-9_]*$/.test(entry)) {
+      return entry;
+    }
+    throw new Error("Merman WASM returned an invalid runtime option group ID.");
+  });
+  for (let index = 1; index < identifiers.length; index += 1) {
+    if (identifiers[index - 1] >= identifiers[index]) {
+      throw new Error("Merman WASM runtime option group IDs must be sorted and unique.");
     }
   }
   return identifiers;
