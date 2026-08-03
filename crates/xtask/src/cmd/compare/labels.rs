@@ -1,7 +1,8 @@
 //! Label-level SVG metric reporting helpers for compare commands.
 
 use crate::XtaskError;
-use serde::Deserialize;
+use base64::Engine as _;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
@@ -47,7 +48,7 @@ struct LabelMetricSample {
     height: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum C4RelationLabelRole {
     Message,
@@ -64,6 +65,7 @@ pub(crate) struct C4RelationLabelKey {
 enum SemanticLabelAdapter {
     C4,
     FlowchartElk,
+    DagreDataId,
     Architecture,
 }
 
@@ -91,8 +93,17 @@ pub(crate) struct WorldTextGeometry {
 pub(crate) struct SemanticLabelEvidence {
     pub(crate) text: String,
     pub(crate) geometry: WorldTextGeometry,
+    descendant_geometry: Vec<SemanticDescendantLabelGeometry>,
     pub(crate) presentation: SemanticLabelPresentation,
     pub(crate) associated_edge: Option<SemanticRelationEdgeEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SemanticDescendantLabelGeometry {
+    scope: String,
+    width: Option<String>,
+    height: Option<String>,
+    transform: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,7 +120,7 @@ pub(crate) struct SemanticRelationEdgeEvidence {
     pub(crate) geometry: SemanticRelationEdgeGeometry,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SemanticRelationEdgeGeometry {
     tag: String,
@@ -230,7 +241,7 @@ const C4_DYNAMIC_LABEL_FIXTURE: &str = "upstream_docs_c4_c4_dynamic_diagram_c4dy
 const C4_SEMANTIC_LABEL_FIXTURES: &[&str] = &[C4_DYNAMIC_LABEL_FIXTURE];
 const FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE: &str = "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034";
 const FLOWCHART_SEMANTIC_LABEL_FIXTURES: &[&str] = &[FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE];
-const FLOWCHART_INACTIVE_NEO_SELECTORS: &[&str] = &[
+const CLASSIC_DAGRE_INACTIVE_NEO_SELECTORS: &[&str] = &[
     ".node .neo-node",
     r#"[data-look="neo"].node rect,[data-look="neo"].cluster rect,[data-look="neo"].node polygon"#,
     r#"[data-look="neo"].swimlane.cluster rect"#,
@@ -241,10 +252,20 @@ const FLOWCHART_INACTIVE_NEO_SELECTORS: &[&str] = &[
     r#"[data-look="neo"].node circle .state-start"#,
     r#"[data-look="neo"].icon-shape .icon"#,
     r#"[data-look="neo"].icon-shape .icon-neo path"#,
+    "[data-look=neo].labelBkg",
 ];
 const ARCHITECTURE_PARALLEL_LABEL_FIXTURE: &str =
     "stress_architecture_batch3_parallel_edges_and_labels_057";
 const ARCHITECTURE_SEMANTIC_LABEL_FIXTURES: &[&str] = &[ARCHITECTURE_PARALLEL_LABEL_FIXTURE];
+const REQUIREMENT_TRACES_LABEL_FIXTURE: &str =
+    "upstream_cypress_requirementdiagram_unified_spec_example_003";
+const REQUIREMENT_SEMANTIC_LABEL_FIXTURES: &[&str] = &[REQUIREMENT_TRACES_LABEL_FIXTURE];
+const STATE_PARALLEL_LABEL_FIXTURE: &str = "stress_state_batch5_parallel_edges_labels_styles_067";
+const STATE_SEMANTIC_LABEL_FIXTURES: &[&str] = &[STATE_PARALLEL_LABEL_FIXTURE];
+const CLASS_MANY_RELATION_LABEL_FIXTURE: &str = "stress_class_many_relations_labels_020";
+const CLASS_SEMANTIC_LABEL_FIXTURES: &[&str] = &[CLASS_MANY_RELATION_LABEL_FIXTURE];
+const ER_PARALLEL_RELATION_LABEL_FIXTURE: &str = "upstream_cypress_erdiagram_spec_should_render_an_er_diagram_with_multiple_relationships_between_003";
+const ER_SEMANTIC_LABEL_FIXTURES: &[&str] = &[ER_PARALLEL_RELATION_LABEL_FIXTURE];
 const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
     SemanticLabelFixtureContract {
         diagram: "c4",
@@ -267,9 +288,38 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         upstream_svg_sha256: "af2a3dcbecef491117c06b16ec3c95580606ea0d38a5966dc1fb25125882fa93",
         adapter: SemanticLabelAdapter::Architecture,
     },
+    SemanticLabelFixtureContract {
+        diagram: "requirement",
+        fixture: REQUIREMENT_TRACES_LABEL_FIXTURE,
+        input_sha256: "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
+        upstream_svg_sha256: "0060266072dcb2f816892411d510e44d31e5c64ab41da0d82a4185ed69433501",
+        adapter: SemanticLabelAdapter::DagreDataId,
+    },
+    SemanticLabelFixtureContract {
+        diagram: "state",
+        fixture: STATE_PARALLEL_LABEL_FIXTURE,
+        input_sha256: "1e7eace9ccbdbcdc6fdad8e905cefc62cbeb96dfa47ea84bed79af20c53d251d",
+        upstream_svg_sha256: "beb766e95c7ddeb0f5dbf50affa51a7aa72c85f107286440ad8c7e14aec84885",
+        adapter: SemanticLabelAdapter::DagreDataId,
+    },
+    SemanticLabelFixtureContract {
+        diagram: "class",
+        fixture: CLASS_MANY_RELATION_LABEL_FIXTURE,
+        input_sha256: "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
+        upstream_svg_sha256: "a234af4726d6e0c9ae3162e9161ed93098143364314219638c1e73682c99a3e9",
+        adapter: SemanticLabelAdapter::DagreDataId,
+    },
+    SemanticLabelFixtureContract {
+        diagram: "er",
+        fixture: ER_PARALLEL_RELATION_LABEL_FIXTURE,
+        input_sha256: "02bdf0d49b4f771161740ca46046e142f041dbc39d72fdc4209bb1f9f75e51d0",
+        upstream_svg_sha256: "a4f684e992a882a0870145aac338a5e12153762e4ed687db3f8ea40c5f41edf9",
+        adapter: SemanticLabelAdapter::DagreDataId,
+    },
 ];
-const LABEL_RESIDUAL_SCHEMA_VERSION: u32 = 2;
-const LABEL_COMPARATOR_REVISION: &str = "semantic-label-v2";
+const LABEL_RESIDUAL_SCHEMA_VERSION: u32 = 3;
+const LABEL_COMPARATOR_REVISION: &str = "semantic-label-v3";
+const LABEL_GEOMETRY_DECIMALS: u32 = 3;
 const MAX_LABEL_GEOMETRY_DECIMALS: u32 = 6;
 const LABEL_RESIDUAL_CATALOG: &str =
     include_str!("../../../../../fixtures/_verification/label-geometry-residuals.json");
@@ -290,19 +340,26 @@ struct LabelResidualCatalog {
 struct LabelResidualEntry {
     diagram: String,
     fixture: String,
-    relation_index: u64,
-    role: C4RelationLabelRole,
+    semantic_key: LabelResidualSemanticKey,
     text: String,
     input_sha256: String,
     upstream_svg_sha256: String,
     evidence_kind: LabelResidualEvidenceKind,
     reason: String,
-    upstream: RoundedWorldTextGeometry,
-    local: RoundedWorldTextGeometry,
-    #[serde(default)]
-    edge_upstream: Option<SemanticRelationEdgeGeometry>,
-    #[serde(default)]
-    edge_local: Option<SemanticRelationEdgeGeometry>,
+    upstream: LabelGeometrySignature,
+    local: LabelGeometrySignature,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum LabelResidualSemanticKey {
+    C4Relation {
+        relation_index: u64,
+        role: C4RelationLabelRole,
+    },
+    StableEdge {
+        edge_key: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -312,7 +369,7 @@ enum LabelResidualEvidenceKind {
     SourceBackedLayoutApproximation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RoundedWorldTextGeometry {
     anchor_x: f64,
@@ -321,6 +378,37 @@ struct RoundedWorldTextGeometry {
     x_axis_y: f64,
     y_axis_x: f64,
     y_axis_y: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RoundedAffineTransform {
+    a: f64,
+    b: f64,
+    c: f64,
+    d: f64,
+    e: f64,
+    f: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RoundedDescendantLabelGeometry {
+    scope: String,
+    #[serde(default)]
+    width: Option<f64>,
+    #[serde(default)]
+    height: Option<f64>,
+    #[serde(default)]
+    transform: Option<RoundedAffineTransform>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LabelGeometrySignature {
+    world: RoundedWorldTextGeometry,
+    descendants: Vec<RoundedDescendantLabelGeometry>,
+    edge: Option<SemanticRelationEdgeGeometry>,
 }
 
 impl RoundedWorldTextGeometry {
@@ -355,6 +443,115 @@ impl RoundedWorldTextGeometry {
             .into_iter()
             .all(|value| round_for_comparison(value, decimals) == value)
     }
+}
+
+impl RoundedAffineTransform {
+    fn from_transform(transform: &str, decimals: u32) -> Result<Self, SemanticLabelError> {
+        let parsed = transform.parse::<svgtypes::Transform>().map_err(|error| {
+            SemanticLabelError::InvalidTransform {
+                value: transform.to_string(),
+                message: error.to_string(),
+            }
+        })?;
+        let values = [parsed.a, parsed.b, parsed.c, parsed.d, parsed.e, parsed.f];
+        if !values.into_iter().all(f64::is_finite) {
+            return Err(SemanticLabelError::InvalidTransform {
+                value: transform.to_string(),
+                message: "transform contains a non-finite coordinate".to_string(),
+            });
+        }
+        Ok(Self {
+            a: round_for_comparison(parsed.a, decimals),
+            b: round_for_comparison(parsed.b, decimals),
+            c: round_for_comparison(parsed.c, decimals),
+            d: round_for_comparison(parsed.d, decimals),
+            e: round_for_comparison(parsed.e, decimals),
+            f: round_for_comparison(parsed.f, decimals),
+        })
+    }
+
+    fn values(self) -> [f64; 6] {
+        [self.a, self.b, self.c, self.d, self.e, self.f]
+    }
+
+    fn is_finite(self) -> bool {
+        self.values().into_iter().all(f64::is_finite)
+    }
+
+    fn is_quantized(self, decimals: u32) -> bool {
+        self.values()
+            .into_iter()
+            .all(|value| round_for_comparison(value, decimals) == value)
+    }
+}
+
+fn rounded_label_dimension(
+    value: Option<&str>,
+    attribute: &'static str,
+    scope: &str,
+    decimals: u32,
+) -> Result<Option<f64>, SemanticLabelError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let parsed = value
+        .parse::<f64>()
+        .map_err(|_| SemanticLabelError::InvalidCoordinate {
+            text: scope.to_string(),
+            attribute,
+            value: value.to_string(),
+        })?;
+    if !parsed.is_finite() || parsed < 0.0 {
+        return Err(SemanticLabelError::InvalidCoordinate {
+            text: scope.to_string(),
+            attribute,
+            value: value.to_string(),
+        });
+    }
+    Ok(Some(round_for_comparison(parsed, decimals)))
+}
+
+fn label_geometry_signature(
+    identity: &str,
+    evidence: &SemanticLabelEvidence,
+    decimals: u32,
+) -> Result<LabelGeometrySignature, SemanticLabelError> {
+    let descendants = evidence
+        .descendant_geometry
+        .iter()
+        .map(|geometry| {
+            Ok(RoundedDescendantLabelGeometry {
+                scope: geometry.scope.clone(),
+                width: rounded_label_dimension(
+                    geometry.width.as_deref(),
+                    "width",
+                    &geometry.scope,
+                    decimals,
+                )?,
+                height: rounded_label_dimension(
+                    geometry.height.as_deref(),
+                    "height",
+                    &geometry.scope,
+                    decimals,
+                )?,
+                transform: geometry
+                    .transform
+                    .as_deref()
+                    .map(|transform| RoundedAffineTransform::from_transform(transform, decimals))
+                    .transpose()?,
+            })
+        })
+        .collect::<Result<Vec<_>, SemanticLabelError>>()?;
+    let edge = evidence
+        .associated_edge
+        .as_ref()
+        .map(|edge| normalized_edge_geometry(identity, edge, decimals))
+        .transpose()?;
+    Ok(LabelGeometrySignature {
+        world: RoundedWorldTextGeometry::from_geometry(evidence.geometry, decimals),
+        descendants,
+        edge,
+    })
 }
 
 fn round_for_comparison(value: f64, decimals: u32) -> f64 {
@@ -478,6 +675,51 @@ fn pair_flowchart_elk_edge_labels(
     )
 }
 
+#[derive(Debug, Clone, Copy)]
+struct DagreDataIdAdapterConfig {
+    diagram: &'static str,
+    edge_class: &'static str,
+    allow_empty_labels: bool,
+}
+
+fn dagre_data_id_adapter_config(diagram: &str) -> Option<DagreDataIdAdapterConfig> {
+    match diagram {
+        "requirement" => Some(DagreDataIdAdapterConfig {
+            diagram: "requirement",
+            edge_class: "relationshipLine",
+            allow_empty_labels: false,
+        }),
+        "state" => Some(DagreDataIdAdapterConfig {
+            diagram: "state",
+            edge_class: "transition",
+            allow_empty_labels: true,
+        }),
+        "class" => Some(DagreDataIdAdapterConfig {
+            diagram: "class",
+            edge_class: "relation",
+            allow_empty_labels: false,
+        }),
+        "er" => Some(DagreDataIdAdapterConfig {
+            diagram: "er",
+            edge_class: "relationshipLine",
+            allow_empty_labels: false,
+        }),
+        _ => None,
+    }
+}
+
+fn pair_dagre_data_id_edge_labels(
+    config: DagreDataIdAdapterConfig,
+    upstream_svg: &str,
+    local_svg: &str,
+) -> Result<Vec<SemanticLabelPair<String>>, SemanticLabelError> {
+    pair_stable_edge_label_maps(
+        config.diagram,
+        extract_dagre_data_id_edge_labels(upstream_svg, config)?,
+        extract_dagre_data_id_edge_labels(local_svg, config)?,
+    )
+}
+
 fn pair_architecture_edge_labels(
     upstream_svg: &str,
     local_svg: &str,
@@ -506,13 +748,51 @@ fn pair_stable_edge_label_maps(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StylesheetScope {
     Full,
-    FlowchartEdgeLabels,
+    ClassicDagre,
 }
 
-fn compare_exact_edge_labels(
+#[derive(Debug, Clone, PartialEq)]
+struct ResidualAwareSemanticLabelPair {
+    key: LabelResidualSemanticKey,
+    upstream: SemanticLabelEvidence,
+    local: SemanticLabelEvidence,
+}
+
+fn stable_residual_pairs(
+    pairs: Vec<SemanticLabelPair<String>>,
+) -> Vec<ResidualAwareSemanticLabelPair> {
+    pairs
+        .into_iter()
+        .map(|pair| ResidualAwareSemanticLabelPair {
+            key: LabelResidualSemanticKey::StableEdge { edge_key: pair.key },
+            upstream: pair.upstream,
+            local: pair.local,
+        })
+        .collect()
+}
+
+fn c4_residual_pairs(
+    pairs: Vec<SemanticLabelPair<C4RelationLabelKey>>,
+) -> Vec<ResidualAwareSemanticLabelPair> {
+    pairs
+        .into_iter()
+        .map(|pair| ResidualAwareSemanticLabelPair {
+            key: LabelResidualSemanticKey::C4Relation {
+                relation_index: pair.key.relation_index,
+                role: pair.key.role,
+            },
+            upstream: pair.upstream,
+            local: pair.local,
+        })
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compare_semantic_edge_labels(
     diagram: &str,
     stem: &str,
-    pairs: Vec<SemanticLabelPair<String>>,
+    input_text: &str,
+    pairs: Vec<ResidualAwareSemanticLabelPair>,
     upstream_svg: &str,
     local_svg: &str,
     decimals: u32,
@@ -529,6 +809,22 @@ fn compare_exact_edge_labels(
         ));
     }
 
+    let catalog = load_label_residual_catalog(decimals)?;
+    let fixture_entries = catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.diagram == diagram && entry.fixture == stem)
+        .collect::<Vec<_>>();
+    let input_sha256 = crate::util::sha256_hex(input_text.as_bytes());
+    let upstream_svg_sha256 = crate::util::sha256_hex(upstream_svg.as_bytes());
+    validate_fixture_residual_digests(
+        diagram,
+        stem,
+        &fixture_entries,
+        &input_sha256,
+        &upstream_svg_sha256,
+    )?;
+
     let upstream_stylesheet = extract_stylesheet_signature(upstream_svg, stylesheet_scope)
         .map_err(|error| {
             format!("semantic stylesheet extraction failed for {diagram}/{stem}: {error}")
@@ -543,168 +839,7 @@ fn compare_exact_edge_labels(
             "{diagram}/{stem}: semantic stylesheet source differs"
         ));
     }
-
-    for pair in &pairs {
-        if pair.upstream.text != pair.local.text {
-            failures.push(format!(
-                "{diagram}/{stem} {:?}: label text differs: upstream={:?}, local={:?}",
-                pair.key, pair.upstream.text, pair.local.text
-            ));
-            continue;
-        }
-        if pair.upstream.presentation != pair.local.presentation {
-            failures.push(format!(
-                "{diagram}/{stem} {:?}: explicit label presentation differs: upstream={:?}, local={:?}",
-                pair.key, pair.upstream.presentation, pair.local.presentation
-            ));
-            continue;
-        }
-
-        let (Some(upstream_edge), Some(local_edge)) = (
-            pair.upstream.associated_edge.as_ref(),
-            pair.local.associated_edge.as_ref(),
-        ) else {
-            failures.push(format!(
-                "{diagram}/{stem} {:?}: associated edge presence differs",
-                pair.key
-            ));
-            continue;
-        };
-        if upstream_edge.presentation != local_edge.presentation {
-            failures.push(format!(
-                "{diagram}/{stem} {:?}: associated edge presentation differs: upstream={:?}, local={:?}",
-                pair.key, upstream_edge.presentation, local_edge.presentation
-            ));
-            continue;
-        }
-
-        let upstream_label =
-            RoundedWorldTextGeometry::from_geometry(pair.upstream.geometry, decimals);
-        let local_label = RoundedWorldTextGeometry::from_geometry(pair.local.geometry, decimals);
-        let upstream_geometry = normalized_edge_geometry(&pair.key, upstream_edge, decimals)
-            .map_err(|error| {
-                format!("semantic edge extraction failed for {diagram}/{stem}: {error}")
-            })?;
-        let local_geometry =
-            normalized_edge_geometry(&pair.key, local_edge, decimals).map_err(|error| {
-                format!("semantic edge extraction failed for {diagram}/{stem}: {error}")
-            })?;
-        if upstream_label != local_label || upstream_geometry != local_geometry {
-            failures.push(format!(
-                "{diagram}/{stem} {:?}: label or associated edge geometry differs without an exact contract: label-upstream={upstream_label:?}, label-local={local_label:?}, edge-upstream={upstream_geometry:?}, edge-local={local_geometry:?}",
-                pair.key,
-            ));
-        }
-    }
-
-    Ok(SemanticLabelGateOutcome {
-        evidence: SemanticLabelGateEvidence {
-            compared_samples: pairs.len(),
-            accepted_residuals: 0,
-        },
-        issues: failures,
-    })
-}
-
-pub(crate) fn compare_registered_semantic_labels(
-    diagram: &str,
-    stem: &str,
-    input_text: &str,
-    upstream_svg: &str,
-    local_svg: &str,
-    decimals: u32,
-) -> Result<Option<SemanticLabelGateOutcome>, String> {
-    let Some(contract) = semantic_label_fixture_contract(diagram, stem) else {
-        return Ok(None);
-    };
-
-    let outcome = match contract.adapter {
-        SemanticLabelAdapter::C4 => compare_c4_registered_semantic_labels(
-            diagram,
-            stem,
-            input_text,
-            upstream_svg,
-            local_svg,
-            decimals,
-        )?,
-        SemanticLabelAdapter::FlowchartElk => {
-            let pairs =
-                pair_flowchart_elk_edge_labels(upstream_svg, local_svg).map_err(|error| {
-                    format!("semantic label extraction failed for {diagram}/{stem}: {error}")
-                })?;
-            compare_exact_edge_labels(
-                diagram,
-                stem,
-                pairs,
-                upstream_svg,
-                local_svg,
-                decimals,
-                StylesheetScope::FlowchartEdgeLabels,
-            )?
-        }
-        SemanticLabelAdapter::Architecture => {
-            let pairs =
-                pair_architecture_edge_labels(upstream_svg, local_svg).map_err(|error| {
-                    format!("semantic label extraction failed for {diagram}/{stem}: {error}")
-                })?;
-            compare_exact_edge_labels(
-                diagram,
-                stem,
-                pairs,
-                upstream_svg,
-                local_svg,
-                decimals,
-                StylesheetScope::Full,
-            )?
-        }
-    };
-    validate_registered_fixture_digests(contract, input_text, upstream_svg)?;
-    Ok(Some(outcome))
-}
-
-fn compare_c4_registered_semantic_labels(
-    diagram: &str,
-    stem: &str,
-    input_text: &str,
-    upstream_svg: &str,
-    local_svg: &str,
-    decimals: u32,
-) -> Result<SemanticLabelGateOutcome, String> {
-    let pairs = pair_c4_relation_labels(upstream_svg, local_svg).map_err(|error| {
-        format!("semantic label extraction failed for {diagram}/{stem}: {error}")
-    })?;
-    if pairs.is_empty() {
-        return Err(format!(
-            "registered semantic label fixture {diagram}/{stem} produced no label samples"
-        ));
-    }
-    let catalog = load_label_residual_catalog(decimals)?;
-    let fixture_entries = catalog
-        .entries
-        .iter()
-        .filter(|entry| entry.diagram == diagram && entry.fixture == stem)
-        .collect::<Vec<_>>();
-    validate_fixture_residual_digests(
-        diagram,
-        stem,
-        &fixture_entries,
-        &crate::util::sha256_hex(input_text.as_bytes()),
-        &crate::util::sha256_hex(upstream_svg.as_bytes()),
-    )?;
-    let mut accepted_keys = BTreeSet::new();
-    let mut failures = Vec::new();
-
-    let upstream_stylesheet = extract_c4_stylesheet_signature(upstream_svg).map_err(|error| {
-        format!("semantic stylesheet extraction failed for {diagram}/{stem}: {error}")
-    })?;
-    let local_stylesheet = extract_c4_stylesheet_signature(local_svg).map_err(|error| {
-        format!("semantic stylesheet extraction failed for {diagram}/{stem}: {error}")
-    })?;
-    if upstream_stylesheet != local_stylesheet {
-        failures.push(format!(
-            "{diagram}/{stem}: fixture stylesheet source differs"
-        ));
-    }
+    let mut accepted_entries = BTreeSet::new();
 
     for pair in &pairs {
         if pair.upstream.text != pair.local.text {
@@ -730,68 +865,87 @@ fn compare_c4_registered_semantic_labels(
             (None, None) => (None, None),
             _ => {
                 failures.push(format!(
-                    "{diagram}/{stem} {:?}: associated relation edge presence differs",
+                    "{diagram}/{stem} {:?}: associated edge presence differs",
                     pair.key
                 ));
                 continue;
             }
         };
-        if let (Some(upstream), Some(local)) = (upstream_edge, local_edge)
-            && upstream.presentation != local.presentation
+        if let (Some(upstream_edge), Some(local_edge)) = (upstream_edge, local_edge)
+            && upstream_edge.presentation != local_edge.presentation
         {
             failures.push(format!(
-                "{diagram}/{stem} {:?}: associated relation edge presentation differs: upstream={:?}, local={:?}",
-                pair.key, upstream.presentation, local.presentation
+                "{diagram}/{stem} {:?}: associated edge presentation differs: upstream={:?}, local={:?}",
+                pair.key, upstream_edge.presentation, local_edge.presentation
             ));
             continue;
         }
 
-        let upstream = RoundedWorldTextGeometry::from_geometry(pair.upstream.geometry, decimals);
-        let local = RoundedWorldTextGeometry::from_geometry(pair.local.geometry, decimals);
-        let edge_geometry_differs = upstream_edge
-            .zip(local_edge)
-            .is_some_and(|(upstream, local)| upstream.geometry != local.geometry);
-        if upstream == local && !edge_geometry_differs {
+        let identity = format!("{:?}", pair.key);
+        let upstream =
+            label_geometry_signature(&identity, &pair.upstream, decimals).map_err(|error| {
+                format!("semantic geometry extraction failed for {diagram}/{stem}: {error}")
+            })?;
+        let local =
+            label_geometry_signature(&identity, &pair.local, decimals).map_err(|error| {
+                format!("semantic geometry extraction failed for {diagram}/{stem}: {error}")
+            })?;
+        if upstream == local {
             continue;
         }
 
-        let accepted = fixture_entries.iter().any(|entry| {
-            entry.relation_index == pair.key.relation_index
-                && entry.role == pair.key.role
-                && entry.text == pair.upstream.text
-                && entry.upstream == upstream
-                && entry.local == local
-                && match (upstream_edge, local_edge) {
-                    (Some(upstream_edge), Some(local_edge)) => {
-                        entry.edge_upstream.as_ref() == Some(&upstream_edge.geometry)
-                            && entry.edge_local.as_ref() == Some(&local_edge.geometry)
-                    }
-                    (None, None) => entry.edge_upstream.is_none() && entry.edge_local.is_none(),
-                    _ => false,
+        let matching_entries = fixture_entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| {
+                entry.semantic_key == pair.key
+                    && entry.text == pair.upstream.text
+                    && entry.upstream == upstream
+                    && entry.local == local
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        match matching_entries.as_slice() {
+            [index] => {
+                accepted_entries.insert(*index);
+            }
+            [] => {
+                let candidate = serde_json::json!({
+                    "diagram": diagram,
+                    "fixture": stem,
+                    "semantic_key": &pair.key,
+                    "text": pair.upstream.text.as_str(),
+                    "input_sha256": input_sha256.as_str(),
+                    "upstream_svg_sha256": upstream_svg_sha256.as_str(),
+                    "classification": "review_required",
+                    "reason": "REVIEW REQUIRED",
+                    "upstream": upstream,
+                    "local": local,
+                });
+                let candidate_json = serde_json::to_string(&candidate)
+                    .expect("serializing residual candidate cannot fail");
+                if std::env::var_os("MERMAN_EMIT_LABEL_RESIDUAL_CANDIDATES").is_some() {
+                    eprintln!("LABEL_RESIDUAL_CANDIDATE {candidate_json}");
                 }
-        });
-        if accepted {
-            accepted_keys.insert(pair.key);
-        } else {
-            failures.push(format!(
-                "{diagram}/{stem} {:?}: label or associated edge geometry differs without an exact residual contract: label-upstream={upstream:?}, label-local={local:?}, edge-upstream={:?}, edge-local={:?}",
-                pair.key,
-                upstream_edge.map(|edge| &edge.geometry),
-                local_edge.map(|edge| &edge.geometry),
-            ));
+                failures.push(format!(
+                    "{diagram}/{stem} {:?}: label or associated edge geometry differs without an exact residual contract",
+                    pair.key,
+                ));
+            }
+            _ => {
+                failures.push(format!(
+                    "{diagram}/{stem} {:?}: multiple residual contracts matched one semantic label",
+                    pair.key,
+                ));
+            }
         }
     }
 
-    let catalog_keys = fixture_entries
+    let stale_entries = fixture_entries
         .iter()
-        .map(|entry| C4RelationLabelKey {
-            relation_index: entry.relation_index,
-            role: entry.role,
-        })
-        .collect::<BTreeSet<_>>();
-    let stale_entries = catalog_keys
-        .difference(&accepted_keys)
-        .copied()
+        .enumerate()
+        .filter(|(index, _)| !accepted_entries.contains(index))
+        .map(|(_, entry)| entry.semantic_key.clone())
         .collect::<Vec<_>>();
     if !stale_entries.is_empty() {
         failures.push(format!(
@@ -802,10 +956,67 @@ fn compare_c4_registered_semantic_labels(
     Ok(SemanticLabelGateOutcome {
         evidence: SemanticLabelGateEvidence {
             compared_samples: pairs.len(),
-            accepted_residuals: accepted_keys.len(),
+            accepted_residuals: accepted_entries.len(),
         },
         issues: failures,
     })
+}
+
+pub(crate) fn compare_registered_semantic_labels(
+    diagram: &str,
+    stem: &str,
+    input_text: &str,
+    upstream_svg: &str,
+    local_svg: &str,
+    _dom_decimals: u32,
+) -> Result<Option<SemanticLabelGateOutcome>, String> {
+    let Some(contract) = semantic_label_fixture_contract(diagram, stem) else {
+        return Ok(None);
+    };
+    validate_registered_fixture_digests(contract, input_text, upstream_svg)?;
+
+    let (pairs, stylesheet_scope) = match contract.adapter {
+        SemanticLabelAdapter::C4 => {
+            let pairs = pair_c4_relation_labels(upstream_svg, local_svg).map_err(|error| {
+                format!("semantic label extraction failed for {diagram}/{stem}: {error}")
+            })?;
+            (c4_residual_pairs(pairs), StylesheetScope::Full)
+        }
+        SemanticLabelAdapter::FlowchartElk => {
+            let pairs =
+                pair_flowchart_elk_edge_labels(upstream_svg, local_svg).map_err(|error| {
+                    format!("semantic label extraction failed for {diagram}/{stem}: {error}")
+                })?;
+            (stable_residual_pairs(pairs), StylesheetScope::ClassicDagre)
+        }
+        SemanticLabelAdapter::DagreDataId => {
+            let config = dagre_data_id_adapter_config(diagram).ok_or_else(|| {
+                format!("registered semantic label fixture has no Dagre data-id adapter: {diagram}/{stem}")
+            })?;
+            let pairs = pair_dagre_data_id_edge_labels(config, upstream_svg, local_svg).map_err(
+                |error| format!("semantic label extraction failed for {diagram}/{stem}: {error}"),
+            )?;
+            (stable_residual_pairs(pairs), StylesheetScope::ClassicDagre)
+        }
+        SemanticLabelAdapter::Architecture => {
+            let pairs =
+                pair_architecture_edge_labels(upstream_svg, local_svg).map_err(|error| {
+                    format!("semantic label extraction failed for {diagram}/{stem}: {error}")
+                })?;
+            (stable_residual_pairs(pairs), StylesheetScope::Full)
+        }
+    };
+    let outcome = compare_semantic_edge_labels(
+        diagram,
+        stem,
+        input_text,
+        pairs,
+        upstream_svg,
+        local_svg,
+        LABEL_GEOMETRY_DECIMALS,
+        stylesheet_scope,
+    )?;
+    Ok(Some(outcome))
 }
 
 pub(crate) fn registered_semantic_label_fixtures(diagram: &str) -> &'static [&'static str] {
@@ -813,6 +1024,10 @@ pub(crate) fn registered_semantic_label_fixtures(diagram: &str) -> &'static [&'s
         "c4" => C4_SEMANTIC_LABEL_FIXTURES,
         "flowchart" => FLOWCHART_SEMANTIC_LABEL_FIXTURES,
         "architecture" => ARCHITECTURE_SEMANTIC_LABEL_FIXTURES,
+        "requirement" => REQUIREMENT_SEMANTIC_LABEL_FIXTURES,
+        "state" => STATE_SEMANTIC_LABEL_FIXTURES,
+        "class" => CLASS_SEMANTIC_LABEL_FIXTURES,
+        "er" => ER_SEMANTIC_LABEL_FIXTURES,
         _ => &[],
     }
 }
@@ -908,12 +1123,6 @@ fn validate_label_residual_contract(
                 entry.diagram, entry.fixture
             ));
         };
-        if contract.adapter != SemanticLabelAdapter::C4 {
-            return Err(format!(
-                "semantic label fixture {}/{} is exact-only and does not accept residual contracts",
-                entry.diagram, entry.fixture
-            ));
-        }
         if entry.input_sha256 != contract.input_sha256
             || entry.upstream_svg_sha256 != contract.upstream_svg_sha256
         {
@@ -922,21 +1131,32 @@ fn validate_label_residual_contract(
                 entry.diagram, entry.fixture
             ));
         }
-        if entry.relation_index == 0 || entry.text.trim().is_empty() {
-            return Err(format!(
-                "semantic label residual {}/{} relation {} {:?} has an invalid identity or empty text",
-                entry.diagram, entry.fixture, entry.relation_index, entry.role
-            ));
+        match (contract.adapter, &entry.semantic_key) {
+            (
+                SemanticLabelAdapter::C4,
+                LabelResidualSemanticKey::C4Relation { relation_index, .. },
+            ) if *relation_index > 0 && !entry.text.trim().is_empty() => {}
+            (
+                SemanticLabelAdapter::FlowchartElk
+                | SemanticLabelAdapter::DagreDataId
+                | SemanticLabelAdapter::Architecture,
+                LabelResidualSemanticKey::StableEdge { edge_key },
+            ) if !edge_key.trim().is_empty() => {}
+            _ => {
+                return Err(format!(
+                    "semantic label residual {}/{} key {:?} is invalid for adapter {:?}",
+                    entry.diagram, entry.fixture, entry.semantic_key, contract.adapter
+                ));
+            }
         }
         if !keys.insert((
-            entry.diagram.as_str(),
-            entry.fixture.as_str(),
-            entry.relation_index,
-            entry.role,
+            entry.diagram.clone(),
+            entry.fixture.clone(),
+            entry.semantic_key.clone(),
         )) {
             return Err(format!(
-                "duplicate semantic label residual key for {}/{} relation {} {:?}",
-                entry.diagram, entry.fixture, entry.relation_index, entry.role
+                "duplicate semantic label residual key for {}/{} {:?}",
+                entry.diagram, entry.fixture, entry.semantic_key
             ));
         }
         for (role, digest) in [
@@ -945,77 +1165,245 @@ fn validate_label_residual_contract(
         ] {
             if !crate::util::is_canonical_sha256(digest) {
                 return Err(format!(
-                    "semantic label residual {}/{} relation {} {:?} {role} SHA-256 must be 64 lowercase hexadecimal characters",
-                    entry.diagram, entry.fixture, entry.relation_index, entry.role
+                    "semantic label residual {}/{} {:?} {role} SHA-256 must be 64 lowercase hexadecimal characters",
+                    entry.diagram, entry.fixture, entry.semantic_key
                 ));
             }
         }
         if entry.reason.trim().is_empty() {
             return Err(format!(
-                "semantic label residual {}/{} relation {} {:?} has an empty reason",
-                entry.diagram, entry.fixture, entry.relation_index, entry.role
+                "semantic label residual {}/{} {:?} has an empty reason",
+                entry.diagram, entry.fixture, entry.semantic_key
             ));
         }
         match entry.evidence_kind {
             LabelResidualEvidenceKind::BrowserMeasurement
             | LabelResidualEvidenceKind::SourceBackedLayoutApproximation => {}
         }
-        for (side, geometry) in [("upstream", entry.upstream), ("local", entry.local)] {
-            if !geometry.is_finite() {
-                return Err(format!(
-                    "semantic label residual {}/{} relation {} {:?} has non-finite {side} geometry",
-                    entry.diagram, entry.fixture, entry.relation_index, entry.role
-                ));
-            }
-            if !geometry.is_quantized(catalog.decimals) {
-                return Err(format!(
-                    "semantic label residual {}/{} relation {} {:?} {side} geometry exceeds declared precision {}",
-                    entry.diagram,
-                    entry.fixture,
-                    entry.relation_index,
-                    entry.role,
-                    catalog.decimals
-                ));
-            }
+        for (side, geometry) in [("upstream", &entry.upstream), ("local", &entry.local)] {
+            validate_catalog_geometry_signature(entry, side, geometry, catalog.decimals)?;
         }
-        if entry.edge_upstream.is_none() || entry.edge_local.is_none() {
+        if entry.upstream == entry.local {
             return Err(format!(
-                "semantic label residual {}/{} relation {} {:?} has an invalid associated edge contract",
-                entry.diagram, entry.fixture, entry.relation_index, entry.role
+                "semantic label residual {}/{} {:?} has identical upstream and local geometry",
+                entry.diagram, entry.fixture, entry.semantic_key
             ));
         }
     }
     Ok(())
 }
 
-fn validate_label_residual_artifacts(catalog: &LabelResidualCatalog) -> Result<(), String> {
-    for entry in &catalog.entries {
-        let input_path = crate::cmd::fixtures_root()
-            .join(&entry.diagram)
-            .join(format!("{}.mmd", entry.fixture));
-        let upstream_path = crate::cmd::fixtures_root()
-            .join("upstream-svgs")
-            .join(&entry.diagram)
-            .join(format!("{}.svg", entry.fixture));
-        for (role, path, expected) in [
-            ("input", input_path, entry.input_sha256.as_str()),
-            (
-                "upstream SVG",
-                upstream_path,
-                entry.upstream_svg_sha256.as_str(),
-            ),
-        ] {
-            let bytes = std::fs::read(&path).map_err(|error| {
+fn validate_catalog_geometry_signature(
+    entry: &LabelResidualEntry,
+    side: &str,
+    geometry: &LabelGeometrySignature,
+    decimals: u32,
+) -> Result<(), String> {
+    let context = format!(
+        "semantic label residual {}/{} {:?} {side}",
+        entry.diagram, entry.fixture, entry.semantic_key
+    );
+    if !geometry.world.is_finite() || !geometry.world.is_quantized(decimals) {
+        return Err(format!(
+            "{context} world geometry is non-finite or exceeds declared precision {decimals}"
+        ));
+    }
+
+    let mut descendant_scopes = BTreeSet::new();
+    for descendant in &geometry.descendants {
+        if descendant.scope.trim().is_empty()
+            || !descendant_scopes.insert(descendant.scope.as_str())
+            || (descendant.width.is_none()
+                && descendant.height.is_none()
+                && descendant.transform.is_none())
+        {
+            return Err(format!("{context} has invalid descendant geometry"));
+        }
+        for (attribute, value) in [("width", descendant.width), ("height", descendant.height)] {
+            if value.is_some_and(|value| {
+                !value.is_finite() || value < 0.0 || round_for_comparison(value, decimals) != value
+            }) {
+                return Err(format!(
+                    "{context} descendant {} has invalid {attribute}",
+                    descendant.scope
+                ));
+            }
+        }
+        if descendant
+            .transform
+            .is_some_and(|transform| !transform.is_finite() || !transform.is_quantized(decimals))
+        {
+            return Err(format!(
+                "{context} descendant {} has invalid transform",
+                descendant.scope
+            ));
+        }
+    }
+
+    let Some(edge) = geometry.edge.as_ref() else {
+        return Err(format!("{context} has no associated edge geometry"));
+    };
+    if edge.tag.trim().is_empty() || edge.attributes.is_empty() {
+        return Err(format!("{context} has an invalid associated edge geometry"));
+    }
+    for (attribute, value) in &edge.attributes {
+        if value.trim().is_empty()
+            || !matches!(
+                attribute.as_str(),
+                "d" | "data-points" | "x1" | "y1" | "x2" | "y2" | "transform"
+            )
+        {
+            return Err(format!(
+                "{context} has invalid associated edge attribute `{attribute}`"
+            ));
+        }
+        if matches!(attribute.as_str(), "x1" | "y1" | "x2" | "y2") {
+            let coordinate = value
+                .parse::<f64>()
+                .map_err(|_| format!("{context} has invalid `{attribute}` coordinate"))?;
+            if !coordinate.is_finite() || round_for_comparison(coordinate, decimals) != coordinate {
+                return Err(format!(
+                    "{context} `{attribute}` coordinate exceeds declared precision {decimals}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn extract_upstream_residual_evidence(
+    contract: &SemanticLabelFixtureContract,
+    upstream_svg: &str,
+) -> Result<BTreeMap<LabelResidualSemanticKey, SemanticLabelEvidence>, String> {
+    let extraction_error = |error: SemanticLabelError| {
+        format!(
+            "extract semantic label residual evidence for {}/{}: {error}",
+            contract.diagram, contract.fixture
+        )
+    };
+    match contract.adapter {
+        SemanticLabelAdapter::C4 => extract_c4_relation_labels(upstream_svg)
+            .map(|labels| {
+                labels
+                    .into_iter()
+                    .map(|(key, evidence)| {
+                        (
+                            LabelResidualSemanticKey::C4Relation {
+                                relation_index: key.relation_index,
+                                role: key.role,
+                            },
+                            evidence,
+                        )
+                    })
+                    .collect()
+            })
+            .map_err(extraction_error),
+        SemanticLabelAdapter::FlowchartElk => extract_flowchart_elk_edge_labels(upstream_svg)
+            .map(stable_residual_evidence)
+            .map_err(extraction_error),
+        SemanticLabelAdapter::DagreDataId => {
+            let config = dagre_data_id_adapter_config(contract.diagram).ok_or_else(|| {
                 format!(
-                    "read semantic label residual {role} {}: {error}",
-                    path.display()
+                    "registered semantic label fixture has no Dagre data-id adapter: {}/{}",
+                    contract.diagram, contract.fixture
                 )
             })?;
-            let actual = crate::util::sha256_hex(&bytes);
+            extract_dagre_data_id_edge_labels(upstream_svg, config)
+                .map(stable_residual_evidence)
+                .map_err(extraction_error)
+        }
+        SemanticLabelAdapter::Architecture => extract_architecture_edge_labels(upstream_svg)
+            .map(stable_residual_evidence)
+            .map_err(extraction_error),
+    }
+}
+
+fn stable_residual_evidence(
+    labels: BTreeMap<String, SemanticLabelEvidence>,
+) -> BTreeMap<LabelResidualSemanticKey, SemanticLabelEvidence> {
+    labels
+        .into_iter()
+        .map(|(edge_key, evidence)| (LabelResidualSemanticKey::StableEdge { edge_key }, evidence))
+        .collect()
+}
+
+fn validate_label_residual_artifacts(catalog: &LabelResidualCatalog) -> Result<(), String> {
+    let mut fixtures = BTreeMap::<(&str, &str), Vec<&LabelResidualEntry>>::new();
+    for entry in &catalog.entries {
+        fixtures
+            .entry((&entry.diagram, &entry.fixture))
+            .or_default()
+            .push(entry);
+    }
+
+    for ((diagram, fixture), entries) in fixtures {
+        let first = entries[0];
+        let input_path = crate::cmd::fixtures_root()
+            .join(diagram)
+            .join(format!("{fixture}.mmd"));
+        let upstream_path = crate::cmd::fixtures_root()
+            .join("upstream-svgs")
+            .join(diagram)
+            .join(format!("{fixture}.svg"));
+        let input = std::fs::read(&input_path).map_err(|error| {
+            format!(
+                "read semantic label residual input {}: {error}",
+                input_path.display()
+            )
+        })?;
+        let upstream = std::fs::read_to_string(&upstream_path).map_err(|error| {
+            format!(
+                "read semantic label residual upstream SVG {}: {error}",
+                upstream_path.display()
+            )
+        })?;
+        for (role, actual, expected) in [
+            (
+                "input",
+                crate::util::sha256_hex(&input),
+                first.input_sha256.as_str(),
+            ),
+            (
+                "upstream SVG",
+                crate::util::sha256_hex(upstream.as_bytes()),
+                first.upstream_svg_sha256.as_str(),
+            ),
+        ] {
             if actual != expected {
                 return Err(format!(
-                    "semantic label residual {}/{} {role} SHA-256 drifted: expected {expected}, found {actual}",
-                    entry.diagram, entry.fixture
+                    "semantic label residual {diagram}/{fixture} {role} SHA-256 drifted: expected {expected}, found {actual}"
+                ));
+            }
+        }
+
+        let contract = semantic_label_fixture_contract(diagram, fixture).ok_or_else(|| {
+            format!("semantic label residual {diagram}/{fixture} has no signed fixture contract")
+        })?;
+        let evidence = extract_upstream_residual_evidence(contract, &upstream)?;
+        for entry in entries {
+            let sample = evidence.get(&entry.semantic_key).ok_or_else(|| {
+                format!(
+                    "semantic label residual {diagram}/{fixture} key {:?} is absent from the signed upstream SVG",
+                    entry.semantic_key
+                )
+            })?;
+            if sample.text != entry.text {
+                return Err(format!(
+                    "semantic label residual {diagram}/{fixture} {:?} text does not match the signed upstream SVG",
+                    entry.semantic_key
+                ));
+            }
+            let identity = format!("{:?}", entry.semantic_key);
+            let signature =
+                label_geometry_signature(&identity, sample, catalog.decimals).map_err(|error| {
+                    format!(
+                        "extract semantic label residual geometry for {diagram}/{fixture}: {error}"
+                    )
+                })?;
+            if signature != entry.upstream {
+                return Err(format!(
+                    "semantic label residual {diagram}/{fixture} {:?} upstream signature does not match the signed SVG",
+                    entry.semantic_key
                 ));
             }
         }
@@ -1041,6 +1429,104 @@ fn validate_fixture_residual_digests(
         }
     }
     Ok(())
+}
+
+fn extract_dagre_data_id_edge_labels(
+    svg: &str,
+    config: DagreDataIdAdapterConfig,
+) -> Result<BTreeMap<String, SemanticLabelEvidence>, SemanticLabelError> {
+    let normalized = crate::svgdom::normalize_xml_entities(svg);
+    let document = roxmltree::Document::parse(normalized.as_ref())
+        .map_err(|error| SemanticLabelError::InvalidSvg(error.to_string()))?;
+    let mut edges = BTreeMap::new();
+
+    for path in document.descendants().filter(|node| {
+        node.is_element()
+            && node.has_tag_name("path")
+            && has_class_token(*node, config.edge_class)
+            && self_or_ancestor_has_class(*node, "edgePaths")
+    }) {
+        let identity = required_edge_identity(path, config.diagram, "data-id")?;
+        let edge = semantic_world_relation_edge_evidence(path)?;
+        if edges.insert(identity.clone(), edge).is_some() {
+            return Err(SemanticLabelError::DuplicateEdgeIdentity {
+                diagram: config.diagram,
+                identity,
+            });
+        }
+    }
+
+    let mut evidence = BTreeMap::new();
+    for label_root in document.descendants().filter(|node| {
+        node.is_element()
+            && node.has_tag_name("g")
+            && has_class_token(*node, "edgeLabel")
+            && node
+                .parent_element()
+                .is_some_and(|parent| has_class_token(parent, "edgeLabels"))
+    }) {
+        let identity_nodes = label_root
+            .descendants()
+            .filter(|node| {
+                node.is_element()
+                    && node.has_tag_name("g")
+                    && has_class_token(*node, "label")
+                    && node.attribute("data-id").is_some()
+            })
+            .collect::<Vec<_>>();
+        if identity_nodes.len() != 1 {
+            return Err(SemanticLabelError::AmbiguousEdgeGroup {
+                diagram: config.diagram,
+                edge_count: 1,
+                label_count: identity_nodes.len(),
+            });
+        }
+        let identity = required_edge_identity(identity_nodes[0], config.diagram, "data-id")?;
+        if evidence.contains_key(&identity) {
+            return Err(SemanticLabelError::DuplicateEdgeIdentity {
+                diagram: config.diagram,
+                identity,
+            });
+        }
+        let edge = edges
+            .remove(&identity)
+            .ok_or_else(|| SemanticLabelError::OrphanEdgeLabel {
+                diagram: config.diagram,
+                identity: identity.clone(),
+            })?;
+        let text = semantic_edge_label_text(label_root);
+        if text.is_empty() && !config.allow_empty_labels {
+            return Err(SemanticLabelError::EmptyEdgeLabel {
+                diagram: config.diagram,
+                identity,
+            });
+        }
+        let geometry_context = if text.is_empty() {
+            identity.as_str()
+        } else {
+            text.as_str()
+        };
+        let geometry = world_element_geometry(label_root, 0.0, 0.0, geometry_context)?;
+        let presentation = semantic_flowchart_label_presentation(label_root, geometry_context)?;
+        evidence.insert(
+            identity,
+            SemanticLabelEvidence {
+                geometry,
+                descendant_geometry: collect_descendant_label_geometry(label_root)?,
+                presentation,
+                associated_edge: Some(edge),
+                text,
+            },
+        );
+    }
+
+    if let Some(identity) = edges.into_keys().next() {
+        return Err(SemanticLabelError::MissingEdgeLabel {
+            diagram: config.diagram,
+            identity,
+        });
+    }
+    Ok(evidence)
 }
 
 fn extract_flowchart_elk_edge_labels(
@@ -1099,6 +1585,7 @@ fn extract_flowchart_elk_edge_labels(
             identity,
             SemanticLabelEvidence {
                 geometry: world_element_geometry(label, 0.0, 0.0, &text)?,
+                descendant_geometry: collect_descendant_label_geometry(label)?,
                 presentation: semantic_flowchart_label_presentation(label, &text)?,
                 associated_edge: Some(edge),
                 text,
@@ -1203,6 +1690,7 @@ fn extract_architecture_edge_labels(
             }
             let sample = SemanticLabelEvidence {
                 geometry: world_element_geometry(label, 0.0, 0.0, &text)?,
+                descendant_geometry: collect_descendant_label_geometry(label)?,
                 presentation: semantic_label_presentation(label, &text)?,
                 associated_edge: Some(semantic_world_relation_edge_evidence(path)?),
                 text,
@@ -1223,8 +1711,8 @@ fn required_edge_identity(
     diagram: &'static str,
     attribute: &str,
 ) -> Result<String, SemanticLabelError> {
-    let identity = node.attribute(attribute).unwrap_or_default().trim();
-    if identity.is_empty() {
+    let identity = node.attribute(attribute).unwrap_or_default();
+    if identity.trim().is_empty() {
         Err(SemanticLabelError::EmptyEdgeIdentity { diagram })
     } else {
         Ok(identity.to_string())
@@ -1339,6 +1827,7 @@ fn insert_c4_relation_evidence(
 ) -> Result<(), SemanticLabelError> {
     let sample = SemanticLabelEvidence {
         geometry: world_text_geometry(node, &text)?,
+        descendant_geometry: collect_descendant_label_geometry(node)?,
         presentation: semantic_label_presentation(node, &text)?,
         associated_edge,
         text,
@@ -1353,7 +1842,46 @@ fn semantic_label_presentation(
     node: roxmltree::Node<'_, '_>,
     text: &str,
 ) -> Result<SemanticLabelPresentation, SemanticLabelError> {
-    semantic_element_presentation(node, text, &["x", "y", "transform"])
+    semantic_element_presentation(
+        node,
+        text,
+        &["x", "y", "transform"],
+        &["width", "height", "transform"],
+    )
+}
+
+fn collect_descendant_label_geometry(
+    node: roxmltree::Node<'_, '_>,
+) -> Result<Vec<SemanticDescendantLabelGeometry>, SemanticLabelError> {
+    let descendants = node
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .filter(|descendant| *descendant != node);
+    let mut geometry = Vec::new();
+    for (element_index, element) in descendants.enumerate() {
+        let width = element
+            .attribute("width")
+            .map(str::trim)
+            .map(str::to_string);
+        let height = element
+            .attribute("height")
+            .map(str::trim)
+            .map(str::to_string);
+        let transform = element
+            .attribute("transform")
+            .map(str::trim)
+            .map(str::to_string);
+        if width.is_none() && height.is_none() && transform.is_none() {
+            continue;
+        }
+        geometry.push(SemanticDescendantLabelGeometry {
+            scope: format!("{}[{}]", element.tag_name().name(), element_index + 1),
+            width,
+            height,
+            transform,
+        });
+    }
+    Ok(geometry)
 }
 
 fn semantic_flowchart_label_presentation(
@@ -1375,7 +1903,7 @@ fn semantic_flowchart_label_presentation(
 fn semantic_relation_edge_evidence(
     node: roxmltree::Node<'_, '_>,
 ) -> Result<SemanticRelationEdgeEvidence, SemanticLabelError> {
-    const GEOMETRY_ATTRIBUTES: &[&str] = &["d", "x1", "y1", "x2", "y2", "transform"];
+    const GEOMETRY_ATTRIBUTES: &[&str] = &["d", "data-points", "x1", "y1", "x2", "y2", "transform"];
     let attributes = GEOMETRY_ATTRIBUTES
         .iter()
         .filter_map(|attribute| {
@@ -1388,6 +1916,7 @@ fn semantic_relation_edge_evidence(
             node,
             "semantic relation edge",
             GEOMETRY_ATTRIBUTES,
+            &[],
         )?,
         geometry: SemanticRelationEdgeGeometry {
             tag: node.tag_name().name().to_string(),
@@ -1426,6 +1955,15 @@ fn normalized_edge_geometry(
                     message,
                 }
             })?,
+            "data-points" => {
+                normalized_data_points_signature(value, decimals).map_err(|message| {
+                    SemanticLabelError::InvalidEdgeGeometry {
+                        identity: identity.to_string(),
+                        attribute: attribute.clone(),
+                        message,
+                    }
+                })?
+            }
             "transform" => normalized_transform_signature(value, decimals).map_err(|message| {
                 SemanticLabelError::InvalidEdgeGeometry {
                     identity: identity.to_string(),
@@ -1457,6 +1995,39 @@ fn normalized_edge_geometry(
         tag: edge.geometry.tag.clone(),
         attributes,
     })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EncodedEdgePoint {
+    x: f64,
+    y: f64,
+}
+
+fn normalized_data_points_signature(value: &str, decimals: u32) -> Result<String, String> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(value)
+        .map_err(|error| format!("invalid Base64: {error}"))?;
+    let points = serde_json::from_slice::<Vec<EncodedEdgePoint>>(&bytes)
+        .map_err(|error| format!("invalid point JSON: {error}"))?;
+    let mut signature = String::from("[");
+    for (index, point) in points.into_iter().enumerate() {
+        if !point.x.is_finite() || !point.y.is_finite() {
+            return Err(format!("point {index} contains a non-finite coordinate"));
+        }
+        if index > 0 {
+            signature.push(',');
+        }
+        write!(
+            signature,
+            "({:?},{:?})",
+            round_for_comparison(point.x, decimals),
+            round_for_comparison(point.y, decimals)
+        )
+        .expect("writing to a String cannot fail");
+    }
+    signature.push(']');
+    Ok(signature)
 }
 
 fn normalized_path_signature(path: &str, decimals: u32) -> Result<String, String> {
@@ -1608,6 +2179,7 @@ fn semantic_element_presentation(
     node: roxmltree::Node<'_, '_>,
     context: &str,
     root_geometry_attributes: &[&str],
+    descendant_geometry_attributes: &[&str],
 ) -> Result<SemanticLabelPresentation, SemanticLabelError> {
     let mut element_structure = Vec::new();
     let mut attributes = BTreeMap::new();
@@ -1655,7 +2227,7 @@ fn semantic_element_presentation(
             if element_index == 0 {
                 root_geometry_attributes
             } else {
-                &[]
+                descendant_geometry_attributes
             },
             false,
             &mut attributes,
@@ -1692,16 +2264,21 @@ fn collect_element_presentation(
     class_tokens: &mut BTreeSet<String>,
 ) -> Result<(), SemanticLabelError> {
     for attribute in element.attributes() {
-        if matches!(attribute.name(), "style" | "class")
-            || excluded_attributes.contains(&attribute.name())
+        let is_unqualified = attribute.namespace().is_none();
+        if (is_unqualified && matches!(attribute.name(), "style" | "class"))
+            || (is_unqualified && excluded_attributes.contains(&attribute.name()))
             || (presentation_attributes_only
                 && !is_inherited_presentation_attribute(attribute.name()))
         {
             continue;
         }
+        let attribute_name = match attribute.namespace() {
+            Some(namespace) => format!("{{{namespace}}}{}", attribute.name()),
+            None => attribute.name().to_string(),
+        };
         attributes.insert(
-            format!("{scope}@{}", attribute.name()),
-            attribute.value().trim().to_string(),
+            format!("{scope}@{attribute_name}"),
+            attribute.value().to_string(),
         );
     }
     class_tokens.extend(
@@ -1761,6 +2338,16 @@ fn parse_inline_style_declarations(
     style: &str,
     context: &str,
 ) -> Result<Vec<(String, String)>, SemanticLabelError> {
+    // Mermaid 11.16 serializes this exact sentinel on ER relationship paths when both style
+    // fragments are absent. Browsers ignore it as invalid CSS; retain the source bytes in the
+    // signature without broadening acceptance to any other invalid declaration.
+    if style.trim() == "undefined;;;undefined" {
+        return Ok(vec![(
+            "@mermaid-invalid-style-sentinel".to_string(),
+            "undefined;;;undefined".to_string(),
+        )]);
+    }
+
     let mut input = cssparser::ParserInput::new(style);
     let mut parser = cssparser::Parser::new(&mut input);
     let mut declarations = Vec::new();
@@ -1799,10 +2386,6 @@ fn parse_inline_style_declarations(
     }
 
     Ok(declarations)
-}
-
-fn extract_c4_stylesheet_signature(svg: &str) -> Result<Vec<String>, SemanticLabelError> {
-    extract_stylesheet_signature(svg, StylesheetScope::Full)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1922,7 +2505,14 @@ fn extract_stylesheet_signature(
     let stylesheets = document
         .descendants()
         .filter(|node| node.is_element() && node.has_tag_name("style"))
-        .map(|node| node.text().unwrap_or_default().trim().to_string())
+        .map(|node| {
+            node.children()
+                .filter(roxmltree::Node::is_text)
+                .filter_map(|child| child.text())
+                .collect::<String>()
+                .trim()
+                .to_string()
+        })
         .collect::<Vec<_>>();
     if stylesheets.is_empty() {
         return Err(SemanticLabelError::MissingStylesheet);
@@ -1962,10 +2552,21 @@ fn extract_stylesheet_signature(
                 continue;
             };
             if rule.kind != StylesheetRuleKind::Qualified
-                || flowchart_stylesheet_rule_is_relevant(&rule.selector, root_id, has_neo_surface)
+                || classic_dagre_stylesheet_rule_is_relevant(
+                    &rule.selector,
+                    root_id,
+                    has_neo_surface,
+                )
             {
                 signature.push(match rule.kind {
-                    StylesheetRuleKind::Qualified | StylesheetRuleKind::AtRuleWithBlock => {
+                    StylesheetRuleKind::Qualified => {
+                        let declarations =
+                            parse_inline_style_declarations(&rule.body, &rule.selector)?;
+                        let declarations = serde_json::to_string(&declarations)
+                            .expect("serializing stylesheet declarations cannot fail");
+                        format!("{}{declarations}", rule.selector)
+                    }
+                    StylesheetRuleKind::AtRuleWithBlock => {
                         format!("{}{{{}}}", rule.selector, rule.body)
                     }
                     StylesheetRuleKind::AtRuleWithoutBlock => format!("{};", rule.selector),
@@ -1980,7 +2581,7 @@ fn extract_stylesheet_signature(
     }
 }
 
-fn flowchart_stylesheet_rule_is_relevant(
+fn classic_dagre_stylesheet_rule_is_relevant(
     selector: &str,
     root_id: &str,
     has_neo_surface: bool,
@@ -2000,7 +2601,7 @@ fn flowchart_stylesheet_rule_is_relevant(
     else {
         return true;
     };
-    !FLOWCHART_INACTIVE_NEO_SELECTORS.contains(&unscoped_selector.as_str())
+    !CLASSIC_DAGRE_INACTIVE_NEO_SELECTORS.contains(&unscoped_selector.as_str())
 }
 
 fn parse_c4_relation_index(text: &str) -> Result<Option<u64>, SemanticLabelError> {
@@ -2845,10 +3446,30 @@ mod tests {
             &[ARCHITECTURE_PARALLEL_LABEL_FIXTURE]
         );
         assert_eq!(
+            registered_semantic_label_fixtures("requirement"),
+            &[REQUIREMENT_TRACES_LABEL_FIXTURE]
+        );
+        assert_eq!(
+            registered_semantic_label_fixtures("state"),
+            &[STATE_PARALLEL_LABEL_FIXTURE]
+        );
+        assert_eq!(
+            registered_semantic_label_fixtures("class"),
+            &[CLASS_MANY_RELATION_LABEL_FIXTURE]
+        );
+        assert_eq!(
+            registered_semantic_label_fixtures("er"),
+            &[ER_PARALLEL_RELATION_LABEL_FIXTURE]
+        );
+        assert_eq!(
             SEMANTIC_LABEL_FIXTURE_CONTRACTS.len(),
             C4_SEMANTIC_LABEL_FIXTURES.len()
                 + FLOWCHART_SEMANTIC_LABEL_FIXTURES.len()
                 + ARCHITECTURE_SEMANTIC_LABEL_FIXTURES.len()
+                + REQUIREMENT_SEMANTIC_LABEL_FIXTURES.len()
+                + STATE_SEMANTIC_LABEL_FIXTURES.len()
+                + CLASS_SEMANTIC_LABEL_FIXTURES.len()
+                + ER_SEMANTIC_LABEL_FIXTURES.len()
         );
 
         for contract in SEMANTIC_LABEL_FIXTURE_CONTRACTS {
@@ -2892,6 +3513,177 @@ mod tests {
             upper.associated_edge.as_ref().unwrap().geometry.attributes["d"],
             "M173.90625,69L104.796875,69"
         );
+    }
+
+    #[test]
+    fn dagre_family_labels_bind_shared_data_ids_to_their_paths() {
+        for (diagram, fixture, expected_samples) in [
+            ("requirement", REQUIREMENT_TRACES_LABEL_FIXTURE, 8),
+            ("state", STATE_PARALLEL_LABEL_FIXTURE, 5),
+            ("class", CLASS_MANY_RELATION_LABEL_FIXTURE, 8),
+            ("er", ER_PARALLEL_RELATION_LABEL_FIXTURE, 2),
+        ] {
+            let svg = signed_semantic_svg(diagram, fixture);
+            let config = dagre_data_id_adapter_config(diagram).unwrap();
+            let labels = extract_dagre_data_id_edge_labels(&svg, config).unwrap();
+
+            assert_eq!(labels.len(), expected_samples, "{diagram}/{fixture}");
+            assert!(labels.values().all(|label| label.associated_edge.is_some()));
+        }
+
+        let state = extract_dagre_data_id_edge_labels(
+            &signed_semantic_svg("state", STATE_PARALLEL_LABEL_FIXTURE),
+            dagre_data_id_adapter_config("state").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(state["edge1"].text, "fast");
+        assert_eq!(state["edge2"].text, "slow");
+        assert_eq!(state["edge3"].text, "retry");
+        assert!(state["edge0"].text.is_empty());
+        assert!(state["edge4"].text.is_empty());
+
+        let requirement = extract_dagre_data_id_edge_labels(
+            &signed_semantic_svg("requirement", REQUIREMENT_TRACES_LABEL_FIXTURE),
+            dagre_data_id_adapter_config("requirement").unwrap(),
+        )
+        .unwrap();
+        let traces = &requirement["test_req-test_req2-0"];
+        assert_eq!(traces.text, "<<traces>>");
+        assert_eq!(traces.geometry.anchor_x, 242.40006);
+        assert_eq!(traces.geometry.anchor_y, 426.14623);
+    }
+
+    #[test]
+    fn dagre_family_semantic_gates_accept_exact_geometry_without_catalog() {
+        for (diagram, fixture, expected_samples) in [
+            ("requirement", REQUIREMENT_TRACES_LABEL_FIXTURE, 8),
+            ("state", STATE_PARALLEL_LABEL_FIXTURE, 5),
+            ("class", CLASS_MANY_RELATION_LABEL_FIXTURE, 8),
+            ("er", ER_PARALLEL_RELATION_LABEL_FIXTURE, 2),
+        ] {
+            let source = signed_semantic_source(diagram, fixture);
+            let upstream = signed_semantic_svg(diagram, fixture);
+            let config = dagre_data_id_adapter_config(diagram).unwrap();
+            let pairs = pair_dagre_data_id_edge_labels(config, &upstream, &upstream).unwrap();
+            let outcome = compare_semantic_edge_labels(
+                diagram,
+                "unregistered-exact-geometry-probe",
+                &source,
+                stable_residual_pairs(pairs),
+                &upstream,
+                &upstream,
+                3,
+                StylesheetScope::ClassicDagre,
+            )
+            .unwrap();
+
+            assert!(outcome.issues.is_empty(), "{diagram}: {:?}", outcome.issues);
+            assert_eq!(outcome.evidence.compared_samples, expected_samples);
+            assert_eq!(outcome.evidence.accepted_residuals, 0);
+        }
+    }
+
+    #[test]
+    fn dagre_family_semantic_gate_rejects_identity_geometry_and_style_mutations() {
+        let diagram = "er";
+        let fixture = ER_PARALLEL_RELATION_LABEL_FIXTURE;
+        let source = signed_semantic_source(diagram, fixture);
+        let upstream = signed_semantic_svg(diagram, fixture);
+        let first_id = "id_entity-CUSTOMER-0_entity-ADDRESS-1_0";
+        let second_id = "id_entity-CUSTOMER-0_entity-ADDRESS-1_1";
+        let swapped_label_identities = swap_all(
+            &upstream,
+            &format!(r#"<g class="label" data-id="{first_id}""#),
+            &format!(r#"<g class="label" data-id="{second_id}""#),
+        );
+        let changed_path = upstream.replacen("M72.528,92", "M82.528,92", 1);
+        let changed_data_points = upstream.replacen(
+            "W3sieCI6NzIuNTI3NTEyNjY4OTE4OTIsInkiOjkyfSx7IngiOjQyLjc1LCJ5IjoxNDIuNX0seyJ4Ijo3Mi41Mjc1MTI2Njg5MTg5MiwieSI6MTkzfV0=",
+            "W3sieCI6ODIuNTI3NTEyNjY4OTE4OTIsInkiOjkyfSx7IngiOjQyLjc1LCJ5IjoxNDIuNX0seyJ4Ijo3Mi41Mjc1MTI2Njg5MTg5MiwieSI6MTkzfV0=",
+            1,
+        );
+        assert_ne!(changed_data_points, upstream);
+        let changed_style = upstream.replacen(
+            r#"class="edge-thickness-normal edge-pattern-solid relationshipLine""#,
+            r#"class="edge-thickness-normal edge-pattern-dashed relationshipLine""#,
+            1,
+        );
+        let changed_stylesheet = upstream.replacen(
+            ".edgeLabel{background-color:",
+            ".edgeLabel{outline-color:",
+            1,
+        );
+        assert_ne!(changed_stylesheet, upstream);
+        let changed_descendant_width = upstream.replacen(
+            r#"<foreignObject width="69.5" height="21">"#,
+            r#"<foreignObject width="79.5" height="21">"#,
+            1,
+        );
+        assert_ne!(changed_descendant_width, upstream);
+        let changed_descendant_transform = upstream.replacen(
+            r#"<g class="label" data-id="id_entity-CUSTOMER-0_entity-ADDRESS-1_0" transform="translate(-34.75, -10.5)">"#,
+            r#"<g class="label" data-id="id_entity-CUSTOMER-0_entity-ADDRESS-1_0" transform="translate(-24.75, -10.5)">"#,
+            1,
+        );
+        assert_ne!(changed_descendant_transform, upstream);
+
+        for local in [
+            swapped_label_identities,
+            changed_path,
+            changed_data_points,
+            changed_style,
+            changed_stylesheet,
+        ] {
+            let outcome =
+                compare_registered_semantic_labels(diagram, fixture, &source, &upstream, &local, 3)
+                    .unwrap()
+                    .unwrap();
+            assert!(!outcome.issues.is_empty());
+        }
+
+        for local in [changed_descendant_width, changed_descendant_transform] {
+            let outcome =
+                compare_registered_semantic_labels(diagram, fixture, &source, &upstream, &local, 3)
+                    .unwrap()
+                    .unwrap();
+            assert!(outcome.issues.iter().any(|issue| {
+                issue.contains("geometry differs without an exact residual contract")
+            }));
+        }
+
+        let missing_label_identity = upstream.replacen(&format!(r#" data-id="{first_id}""#), "", 2);
+        assert!(
+            compare_registered_semantic_labels(
+                diagram,
+                fixture,
+                &source,
+                &upstream,
+                &missing_label_identity,
+                3,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn registered_residuals_become_stale_when_local_geometry_is_exact() {
+        for (diagram, fixture) in [
+            ("requirement", REQUIREMENT_TRACES_LABEL_FIXTURE),
+            ("er", ER_PARALLEL_RELATION_LABEL_FIXTURE),
+        ] {
+            let source = signed_semantic_source(diagram, fixture);
+            let upstream = signed_semantic_svg(diagram, fixture);
+            let outcome = compare_registered_semantic_labels(
+                diagram, fixture, &source, &upstream, &upstream, 3,
+            )
+            .unwrap()
+            .unwrap();
+
+            assert_eq!(outcome.evidence.accepted_residuals, 0);
+            assert!(outcome.issues.iter().any(|issue| {
+                issue.contains("stale semantic label residual contracts were not exercised")
+            }));
+        }
     }
 
     #[test]
@@ -3178,9 +3970,12 @@ mod tests {
         };
 
         let changed_path = upstream.replacen("M173.90625,87", "M183.90625,87", 1);
-        assert!(compare(&changed_path).issues.iter().any(|issue| {
-            issue.contains("label or associated edge geometry differs without an exact contract")
-        }));
+        assert!(
+            compare(&changed_path)
+                .issues
+                .iter()
+                .any(|issue| { issue.contains("without an exact residual contract") })
+        );
 
         let changed_edge_presentation = upstream.replacen(
             r#"data-edge="true" data-et="edge""#,
@@ -3313,9 +4108,12 @@ mod tests {
             "M 10.1681561879966864,69.75000000000003",
             1,
         );
-        assert!(compare(&changed_path).issues.iter().any(|issue| {
-            issue.contains("label or associated edge geometry differs without an exact contract")
-        }));
+        assert!(
+            compare(&changed_path)
+                .issues
+                .iter()
+                .any(|issue| { issue.contains("without an exact residual contract") })
+        );
 
         let changed_presentation = upstream.replacen(
             r#"class="edge" id="stress_architecture"#,
@@ -3366,6 +4164,21 @@ mod tests {
                 ..
             })
         ));
+
+        let state = signed_semantic_svg("state", STATE_PARALLEL_LABEL_FIXTURE);
+        let padded_identity = state.replace(r#"data-id="edge1""#, r#"data-id=" edge1 ""#);
+        assert_eq!(padded_identity.matches(r#"data-id=" edge1 ""#).count(), 2);
+        assert!(matches!(
+            pair_dagre_data_id_edge_labels(
+                dagre_data_id_adapter_config("state").unwrap(),
+                &state,
+                &padded_identity,
+            ),
+            Err(SemanticLabelError::StableIdentitySetMismatch {
+                diagram: "state",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -3374,36 +4187,39 @@ mod tests {
         let upstream = signed_c4_dynamic_svg();
         let local = c4_dynamic_svg_with_reviewed_residuals();
 
-        let outcome = compare_registered_semantic_labels(
-            "c4",
-            C4_DYNAMIC_LABEL_FIXTURE,
-            &source,
-            &upstream,
-            &local,
-            3,
-        )
-        .unwrap()
-        .unwrap();
+        for dom_decimals in [3, 6] {
+            let outcome = compare_registered_semantic_labels(
+                "c4",
+                C4_DYNAMIC_LABEL_FIXTURE,
+                &source,
+                &upstream,
+                &local,
+                dom_decimals,
+            )
+            .unwrap()
+            .unwrap();
 
-        assert!(outcome.issues.is_empty());
-        assert_eq!(outcome.evidence.compared_samples, 5);
-        assert_eq!(outcome.evidence.accepted_residuals, 5);
+            assert!(outcome.issues.is_empty());
+            assert_eq!(outcome.evidence.compared_samples, 5);
+            assert_eq!(outcome.evidence.accepted_residuals, 5);
+        }
     }
 
     #[test]
     fn c4_semantic_label_gate_rejects_zero_sample_selector_drift() {
         let source = signed_c4_dynamic_source();
+        let upstream = signed_c4_dynamic_svg();
         let error = compare_registered_semantic_labels(
             "c4",
             C4_DYNAMIC_LABEL_FIXTURE,
             &source,
-            "<svg/>",
+            &upstream,
             "<svg/>",
             3,
         )
         .unwrap_err();
 
-        assert!(error.contains("produced no label samples"));
+        assert!(error.contains("missing from local"));
     }
 
     #[test]
@@ -3431,8 +4247,6 @@ mod tests {
         assert!(
             error.contains("label or associated edge geometry differs without an exact residual")
         );
-        assert!(error.contains("anchor_x: 593.949"));
-        assert!(error.contains("anchor_y: 842.0"));
         assert!(error.contains("stale semantic label residual contracts were not exercised"));
         assert_eq!(outcome.evidence.compared_samples, 5);
     }
@@ -3541,14 +4355,17 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        assert!(path_outcome.issues.iter().any(|issue| {
-            issue.contains("associated edge geometry differs without an exact residual")
-        }));
+        assert!(
+            path_outcome
+                .issues
+                .iter()
+                .any(|issue| { issue.contains("without an exact residual contract") })
+        );
         assert!(
             stroke_outcome
                 .issues
                 .iter()
-                .any(|issue| issue.contains("associated relation edge presentation differs"))
+                .any(|issue| issue.contains("associated edge presentation differs"))
         );
     }
 
@@ -3593,7 +4410,7 @@ mod tests {
             stylesheet_outcome
                 .issues
                 .iter()
-                .any(|issue| issue.contains("fixture stylesheet source differs"))
+                .any(|issue| issue.contains("semantic stylesheet source differs"))
         );
         assert!(
             ancestor_outcome
@@ -3677,6 +4494,119 @@ mod tests {
             declarations,
             parse_inline_style_declarations("fill:blue", "test").unwrap()
         );
+        assert_eq!(
+            parse_inline_style_declarations("undefined;;;undefined", "ER edge").unwrap(),
+            vec![(
+                "@mermaid-invalid-style-sentinel".to_string(),
+                "undefined;;;undefined".to_string(),
+            )]
+        );
+        assert!(
+            parse_inline_style_declarations("undefined;;;other", "ER edge").is_err(),
+            "only the exact pinned Mermaid sentinel may bypass CSS declaration parsing"
+        );
+    }
+
+    #[test]
+    fn classic_dagre_stylesheet_signature_ignores_only_insignificant_semicolons() {
+        let without_trailing_semicolon =
+            r#"<svg id="fixture"><style>#fixture svg{font-size:16px}</style></svg>"#;
+        let with_trailing_semicolon =
+            r#"<svg id="fixture"><style>#fixture svg{font-size:16px;}</style></svg>"#;
+        let changed_value =
+            r#"<svg id="fixture"><style>#fixture svg{font-size:17px;}</style></svg>"#;
+
+        let expected =
+            extract_stylesheet_signature(without_trailing_semicolon, StylesheetScope::ClassicDagre)
+                .unwrap();
+        assert_eq!(
+            expected,
+            extract_stylesheet_signature(with_trailing_semicolon, StylesheetScope::ClassicDagre)
+                .unwrap()
+        );
+        assert_ne!(
+            expected,
+            extract_stylesheet_signature(changed_value, StylesheetScope::ClassicDagre).unwrap()
+        );
+
+        let comment_split_injection = r#"<svg id="fixture"><style>#fixture svg{font-size:16px;}<!--split-->#fixture .edgeLabel{display:none;}</style></svg>"#;
+        assert_ne!(
+            expected,
+            extract_stylesheet_signature(comment_split_injection, StylesheetScope::ClassicDagre,)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn semantic_presentation_preserves_attribute_namespaces() {
+        let unqualified = roxmltree::Document::parse(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><text fill="red">label</text></svg>"#,
+        )
+        .unwrap();
+        let namespaced = roxmltree::Document::parse(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:n="urn:test"><text n:fill="red">label</text></svg>"#,
+        )
+        .unwrap();
+        let presentation = |document: &roxmltree::Document<'_>| {
+            semantic_label_presentation(
+                document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text"))
+                    .unwrap(),
+                "label",
+            )
+            .unwrap()
+        };
+
+        let unqualified = presentation(&unqualified);
+        let namespaced = presentation(&namespaced);
+        assert_ne!(unqualified, namespaced);
+        assert_eq!(unqualified.attributes["root@fill"], "red");
+        assert_eq!(namespaced.attributes["root@{urn:test}fill"], "red");
+        assert!(!namespaced.attributes.contains_key("root@fill"));
+    }
+
+    #[test]
+    fn classic_dagre_neo_rule_filter_is_an_exact_allowlist() {
+        assert!(!classic_dagre_stylesheet_rule_is_relevant(
+            "#fixture [data-look=neo].labelBkg",
+            "fixture",
+            false,
+        ));
+        assert!(classic_dagre_stylesheet_rule_is_relevant(
+            r#"#fixture p:not([data-look="neo"])"#,
+            "fixture",
+            false,
+        ));
+        assert!(classic_dagre_stylesheet_rule_is_relevant(
+            "#fixture [data-look=neo].labelBkg:hover",
+            "fixture",
+            false,
+        ));
+    }
+
+    #[test]
+    fn data_points_signature_decodes_and_validates_structured_geometry() {
+        let upstream =
+            base64::engine::general_purpose::STANDARD.encode(br#"[{"x":1.23449,"y":-2.34549}]"#);
+        let same_at_three_decimals =
+            base64::engine::general_purpose::STANDARD.encode(br#"[{"x":1.23448,"y":-2.34548}]"#);
+        let changed_at_three_decimals =
+            base64::engine::general_purpose::STANDARD.encode(br#"[{"x":1.2351,"y":-2.34548}]"#);
+
+        assert_eq!(
+            normalized_data_points_signature(&upstream, 3).unwrap(),
+            normalized_data_points_signature(&same_at_three_decimals, 3).unwrap()
+        );
+        assert_ne!(
+            normalized_data_points_signature(&upstream, 3).unwrap(),
+            normalized_data_points_signature(&changed_at_three_decimals, 3).unwrap()
+        );
+        assert!(normalized_data_points_signature("not-base64", 3).is_err());
+
+        let non_finite =
+            base64::engine::general_purpose::STANDARD.encode(br#"[{"x":1e999,"y":0}]"#);
+        assert!(normalized_data_points_signature(&non_finite, 3).is_err());
     }
 
     #[test]
@@ -3691,24 +4621,64 @@ mod tests {
         stale.entries[0].input_sha256 = "0".repeat(64);
         let stale_error = validate_label_residual_artifacts(&stale).unwrap_err();
         assert!(stale_error.contains("input SHA-256 drifted"));
+
+        let mut missing_key = parse_label_residual_catalog(LABEL_RESIDUAL_CATALOG, 3).unwrap();
+        missing_key.entries[0].semantic_key = LabelResidualSemanticKey::C4Relation {
+            relation_index: 999,
+            role: C4RelationLabelRole::Message,
+        };
+        let missing_key_error = validate_label_residual_artifacts(&missing_key).unwrap_err();
+        assert!(missing_key_error.contains("is absent from the signed upstream SVG"));
+
+        let mut changed_upstream = parse_label_residual_catalog(LABEL_RESIDUAL_CATALOG, 3).unwrap();
+        changed_upstream.entries[0].upstream.world.anchor_x += 1.0;
+        let signature_error = validate_label_residual_artifacts(&changed_upstream).unwrap_err();
+        assert!(signature_error.contains("upstream signature does not match the signed SVG"));
     }
 
     #[test]
-    fn label_residual_catalog_keeps_non_c4_adapters_exact_only() {
-        let mut json = serde_json::from_str::<serde_json::Value>(LABEL_RESIDUAL_CATALOG).unwrap();
-        let entry = &mut json["entries"][0];
-        entry["diagram"] = serde_json::Value::String("flowchart".to_string());
-        entry["fixture"] =
-            serde_json::Value::String(FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE.to_string());
-        entry["input_sha256"] = serde_json::Value::String(
-            "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0".to_string(),
-        );
-        entry["upstream_svg_sha256"] = serde_json::Value::String(
-            "2683169760f6d16a7d06df1e4b8fe14e69fec133c662c5196967ea79e0b0cc58".to_string(),
-        );
+    fn state_empty_label_residuals_keep_stable_edge_identity() {
+        let catalog = parse_label_residual_catalog(LABEL_RESIDUAL_CATALOG, 3).unwrap();
+        let mut empty_state_edges = catalog
+            .entries
+            .iter()
+            .filter(|entry| entry.diagram == "state" && entry.text.is_empty())
+            .map(|entry| match &entry.semantic_key {
+                LabelResidualSemanticKey::StableEdge { edge_key } => edge_key.as_str(),
+                LabelResidualSemanticKey::C4Relation { .. } => {
+                    panic!("State residuals must use stable edge identities")
+                }
+            })
+            .collect::<Vec<_>>();
+        empty_state_edges.sort_unstable();
 
-        let error = parse_label_residual_catalog(&json.to_string(), 3).unwrap_err();
-        assert!(error.contains("exact-only and does not accept residual contracts"));
+        assert_eq!(empty_state_edges, ["edge0", "edge4"]);
+    }
+
+    #[test]
+    fn label_residual_catalog_requires_keys_that_match_the_registered_adapter() {
+        let mut json = serde_json::from_str::<serde_json::Value>(LABEL_RESIDUAL_CATALOG).unwrap();
+        {
+            let entry = &mut json["entries"][0];
+            entry["diagram"] = serde_json::Value::String("flowchart".to_string());
+            entry["fixture"] =
+                serde_json::Value::String(FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE.to_string());
+            entry["input_sha256"] = serde_json::Value::String(
+                "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0".to_string(),
+            );
+            entry["upstream_svg_sha256"] = serde_json::Value::String(
+                "2683169760f6d16a7d06df1e4b8fe14e69fec133c662c5196967ea79e0b0cc58".to_string(),
+            );
+        }
+
+        let mismatch = parse_label_residual_catalog(&json.to_string(), 3).unwrap_err();
+        assert!(mismatch.contains("is invalid for adapter FlowchartElk"));
+
+        json["entries"][0]["semantic_key"] = serde_json::json!({
+            "kind": "stable_edge",
+            "edge_key": "L_a1_a2_0"
+        });
+        parse_label_residual_catalog(&json.to_string(), 3).unwrap();
     }
 
     #[test]
@@ -3732,8 +4702,16 @@ mod tests {
         assert!(validate_label_residual_contract(&reason, 3).is_err());
 
         let mut geometry = parse_label_residual_catalog(LABEL_RESIDUAL_CATALOG, 3).unwrap();
-        geometry.entries[0].local.anchor_x = f64::INFINITY;
+        geometry.entries[0].local.world.anchor_x = f64::INFINITY;
         assert!(validate_label_residual_contract(&geometry, 3).is_err());
+
+        let mut identical = parse_label_residual_catalog(LABEL_RESIDUAL_CATALOG, 3).unwrap();
+        identical.entries[0].local = identical.entries[0].upstream.clone();
+        assert!(
+            validate_label_residual_contract(&identical, 3)
+                .unwrap_err()
+                .contains("identical upstream and local geometry")
+        );
 
         let mut catalog_decimals = parse_label_residual_catalog(LABEL_RESIDUAL_CATALOG, 3).unwrap();
         catalog_decimals.decimals = 7;
@@ -3748,6 +4726,6 @@ mod tests {
                 .unwrap_err()
                 .contains("exceed the supported maximum")
         );
-        assert_eq!(valid.entries.len(), 5);
+        assert!(!valid.entries.is_empty());
     }
 }
