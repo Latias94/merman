@@ -79,6 +79,54 @@ fn canonicalize_generated_parser_bytes(bytes: Vec<u8>) -> Vec<u8> {
     canonical
 }
 
+fn normalize_grammar_source_bytes(bytes: &[u8]) -> Vec<u8> {
+    let mut normalized = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'\r' {
+            normalized.push(b'\n');
+            index += usize::from(bytes.get(index + 1) == Some(&b'\n')) + 1;
+        } else {
+            normalized.push(bytes[index]);
+            index += 1;
+        }
+    }
+    normalized
+}
+
+fn stage_normalized_grammar_sources(source_root: &Path) -> Result<tempfile::TempDir, XtaskError> {
+    let staged = tempfile::tempdir().map_err(|source| XtaskError::WriteFile {
+        path: std::env::temp_dir().display().to_string(),
+        source,
+    })?;
+    for artifact in GRAMMAR_ARTIFACTS {
+        let relative_path = PathBuf::from(artifact.source);
+        let source_path = source_root.join(&relative_path);
+        let destination_path = staged.path().join(&relative_path);
+        let bytes = fs::read(&source_path).map_err(|source| XtaskError::ReadFile {
+            path: source_path.display().to_string(),
+            source,
+        })?;
+        let parent = destination_path.parent().ok_or_else(|| {
+            parser_error(format!(
+                "grammar destination has no parent: {}",
+                destination_path.display()
+            ))
+        })?;
+        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+            path: parent.display().to_string(),
+            source,
+        })?;
+        fs::write(&destination_path, normalize_grammar_source_bytes(&bytes)).map_err(|source| {
+            XtaskError::WriteFile {
+                path: destination_path.display().to_string(),
+                source,
+            }
+        })?;
+    }
+    Ok(staged)
+}
+
 fn read_directory_files(root: &Path, extension: &str) -> Result<BTreeSet<PathBuf>, XtaskError> {
     fn visit(
         root: &Path,
@@ -158,13 +206,14 @@ fn display_paths(paths: &BTreeSet<PathBuf>) -> String {
 fn generate_parser_set(root: &Path) -> Result<GeneratedParserSet, XtaskError> {
     let source_root = root.join(CORE_SOURCE_DIR);
     validate_grammar_source_set(&source_root)?;
+    let normalized_sources = stage_normalized_grammar_sources(&source_root)?;
 
     let generated = tempfile::tempdir().map_err(|source| XtaskError::WriteFile {
         path: std::env::temp_dir().display().to_string(),
         source,
     })?;
     lalrpop::Configuration::new()
-        .set_in_dir(&source_root)
+        .set_in_dir(normalized_sources.path())
         .set_out_dir(generated.path())
         .set_features(std::iter::empty::<String>())
         .force_build(true)
@@ -500,6 +549,14 @@ mod tests {
         assert_eq!(
             canonicalize_generated_parser_bytes(b"where \n\t\r\nkeep  spaces\nlast\t".to_vec()),
             b"where\n\r\nkeep  spaces\nlast".to_vec()
+        );
+    }
+
+    #[test]
+    fn grammar_source_normalization_is_platform_independent() {
+        assert_eq!(
+            normalize_grammar_source_bytes(b"unix\nwindows\r\nlegacy\rend"),
+            b"unix\nwindows\nlegacy\nend"
         );
     }
 
