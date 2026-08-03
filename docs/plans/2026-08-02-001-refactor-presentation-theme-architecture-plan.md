@@ -487,8 +487,8 @@ Run commands sequentially and reuse the worktree target directory. Use `cargo cl
 | Playground consumer | `npm test --prefix playground` | Independent theme/profile/output state and Options JSON request construction. |
 | Typst plugin | `cargo nextest run --locked -p merman-typst-plugin --no-default-features` | Rust-side Typst request handling without broad optional capabilities. |
 | Typst package | `cargo run --locked -p xtask -- build-typst-package --profile publish` | Published Typst source serializes the new presentation contract; the existing CI smoke supplies the external Typst binary. |
-| Python projection | `python3 -m pytest platforms/python/merman/tests/test_runtime_catalog.py` | Python runtime catalog and legacy metadata compatibility. |
-| Flutter projection | `dart test` from `platforms/flutter` | Dart catalog parsing and cached metadata behavior. |
+| Python projection | `python3 scripts/build-python-uniffi-wheel.py --run-smoke` | Built-wheel import, runtime catalog, generic operations, and callback behavior. |
+| Flutter projection | `dart run tool/abi3_contract_test.dart` from `platforms/flutter` | Dart catalog parsing and cached metadata behavior. |
 | Android projection | `platforms/android/gradlew -p platforms/android testDebugUnitTest --stacktrace` | Kotlin catalog API and Android metadata smoke behavior when the native test artifact is available. |
 | Relevant broad Rust gate | `cargo nextest run --locked -p merman-render -p merman -p merman-bindings-core -p merman-wasm -p merman-ffi -p merman-uniffi` | Cross-crate regressions across the complete touched Rust surface. |
 | Diff hygiene | `git diff --check` | Whitespace errors and accidental manual-wrap damage. |

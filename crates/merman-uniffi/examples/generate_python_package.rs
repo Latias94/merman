@@ -132,7 +132,6 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         "self.options_json = options_json",
         "UNKNOWN_OPERATION",
         "def execute(self, request: MermanOperationRequest) -> MermanOperationResult:",
-        "def presentation_catalog_json(self) -> str:",
         "def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:",
         "def reusable_engine_with_text_measurer(",
     ] {
@@ -142,6 +141,17 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
                 format!("generated Python UniFFI binding is missing stable API `{required}`"),
             ));
         }
+    }
+    if !bindings.lines().any(|line| {
+        line.trim()
+            .strip_prefix("def presentation_catalog_json(")
+            .and_then(|signature| signature.strip_suffix(") -> str:"))
+            .is_some_and(|parameters| matches!(parameters.trim(), "self" | "self,"))
+    }) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "generated Python UniFFI binding is missing stable API `presentation_catalog_json(self) -> str`",
+        ));
     }
     for removed in [
         "request: MermanOperationRequest,options_json",
@@ -455,37 +465,48 @@ mod tests {
     }
 
     #[test]
-    fn generated_binding_surface_requires_stable_text_measurement_api() {
+    fn generated_binding_surface_requires_stable_api() {
         let incomplete = validate_stable_python_surface("class MermanEngine:\n    pass\n")
             .expect_err("feature-slim bindings must not omit the stable callback API");
         assert!(incomplete.to_string().contains("MermanTextMeasurer"));
 
-        validate_stable_python_surface(
-            "class MermanTextMeasurer(abc.ABC):\n\
+        let stable_surface = "class MermanTextMeasurer(abc.ABC):\n\
              class MermanOperationRequest:\n    pass\n\
+             class MermanResourceErrorDetails:\n    pass\n\
+             class MermanResourceOverrideId(enum.Enum):\n    pass\n\
+             id:MermanResourceOverrideId\n\
              self.operation_id = operation_id\n\
              self.options_json = options_json\n\
              UNKNOWN_OPERATION\n\
              def execute(self, request: MermanOperationRequest) -> MermanOperationResult:\n    pass\n\
-             def presentation_catalog_json(self) -> str:\n    pass\n\
+             def presentation_catalog_json(self, ) -> str:\n    pass\n\
              def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
-             def reusable_engine_with_text_measurer(self):\n    pass\n",
-        )
-        .expect("stable callback API");
+             def reusable_engine_with_text_measurer(self):\n    pass\n";
+        validate_stable_python_surface(stable_surface).expect("stable callback API");
+        validate_stable_python_surface(&stable_surface.replace(
+            "def presentation_catalog_json(self, ) -> str:",
+            "def presentation_catalog_json(self) -> str:",
+        ))
+        .expect("formatted zero-argument presentation API");
 
-        let obsolete = validate_stable_python_surface(
-            "class MermanTextMeasurer(abc.ABC):\n\
-             class MermanOperationRequest:\n    pass\n\
-             self.operation_id = operation_id\n\
-             self.options_json = options_json\n\
-             UNKNOWN_OPERATION\n\
-             def execute(self, request: MermanOperationRequest) -> MermanOperationResult:\n    pass\n\
-             def presentation_catalog_json(self) -> str:\n    pass\n\
-             def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
-             def reusable_engine_with_text_measurer(self):\n    pass\n\
-             def execute(self, request: MermanOperationRequest,options_json: typing.Optional[str]):\n    pass\n",
-        )
-        .expect_err("generic options must not remain a parallel execute argument");
+        for invalid_signature in [
+            "def presentation_catalog_json(self, options_json: str) -> str:",
+            "def presentation_catalog_json(self, ) -> bytes:",
+        ] {
+            let invalid = stable_surface.replace(
+                "def presentation_catalog_json(self, ) -> str:",
+                invalid_signature,
+            );
+            let error = validate_stable_python_surface(&invalid)
+                .expect_err("presentation catalog signature drift must fail closed");
+            assert!(error.to_string().contains("presentation_catalog_json"));
+        }
+
+        let obsolete_surface = format!(
+            "{stable_surface}def execute(self, request: MermanOperationRequest,options_json: typing.Optional[str]):\n    pass\n"
+        );
+        let obsolete = validate_stable_python_surface(&obsolete_surface)
+            .expect_err("generic options must not remain a parallel execute argument");
         assert!(obsolete.to_string().contains("obsolete API"));
     }
 
