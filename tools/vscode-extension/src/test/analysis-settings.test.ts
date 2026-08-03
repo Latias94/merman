@@ -68,7 +68,17 @@ describe("analysis settings normalization", () => {
   });
 
   it("drops invalid fixed_today strings before sending LSP settings", () => {
-    for (const fixedToday of ["2026-02-29", "2026-13-01", "20260705"]) {
+    for (const fixedToday of [
+      "2026-02-29",
+      "2026-13-01",
+      "20260705",
+      "+2026-08-03",
+      "+010000-01-01",
+      "-0000-01-01",
+      "-010000-01-01",
+      "+2147483648-01-01",
+      "-2147483649-01-01",
+    ]) {
       assert.deepEqual(normalizeAnalysisSettings({
         ...defaultRawAnalysisSettings(),
         fixedToday,
@@ -77,6 +87,20 @@ describe("analysis settings normalization", () => {
           profile: "core",
         },
       });
+    }
+  });
+
+  it("keeps canonical signed 32-bit civil-year boundaries", () => {
+    for (const fixedToday of [
+      "+10000-01-01",
+      "-10000-01-01",
+      "+2147483647-12-31",
+      "-2147483648-01-01",
+    ]) {
+      assert.equal(normalizeAnalysisSettings({
+        ...defaultRawAnalysisSettings(),
+        fixedToday,
+      }).fixed_today, fixedToday);
     }
   });
 

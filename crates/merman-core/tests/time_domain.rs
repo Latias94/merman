@@ -36,7 +36,16 @@ fn civil_date_parsing_is_strict_and_round_trips() {
         assert_eq!(parsed.to_string(), value);
     }
 
-    for invalid in ["2026-8-03", "2026-02-30", "10000-01-01", "2026/08/03"] {
+    for invalid in [
+        "2026-8-03",
+        "2026-02-30",
+        "10000-01-01",
+        "+2026-08-03",
+        "+010000-01-01",
+        "-0000-01-01",
+        "-010000-01-01",
+        "2026/08/03",
+    ] {
         assert!(invalid.parse::<CivilDate>().is_err(), "{invalid}");
     }
 }
@@ -59,7 +68,7 @@ fn offset_datetimes_round_trip_wide_years_and_negative_instants() {
         "1969-12-31T23:59:59.999"
     );
     assert_eq!(before_epoch.timestamp_seconds(), -1);
-    assert_eq!(before_epoch.timestamp_subsec_millis(), 999);
+    assert_eq!(before_epoch.local_datetime().millisecond(), 999);
 }
 
 #[test]
@@ -79,4 +88,31 @@ fn calendar_arithmetic_clamps_months_and_preserves_clock_fields() {
         leap_day.checked_add_days(1).unwrap().to_string(),
         "2024-03-01T12:34:56.789"
     );
+}
+
+#[test]
+fn full_i64_instant_range_round_trips_without_panicking() {
+    for unix_millis in [i64::MIN, i64::MAX] {
+        let datetime = OffsetDateTime::from_unix_millis(unix_millis, UtcOffset::UTC);
+        let utc = datetime.utc_datetime();
+
+        assert_eq!(
+            OffsetDateTime::from_local(utc, UtcOffset::UTC)
+                .expect("an i64 instant must round trip")
+                .timestamp_millis(),
+            unix_millis
+        );
+    }
+}
+
+#[test]
+fn iso_week_is_total_at_signed_year_boundaries() {
+    for date in [
+        CivilDate::new(i32::MIN, 1, 1).unwrap(),
+        CivilDate::new(i32::MAX, 12, 31).unwrap(),
+    ] {
+        let week = date.iso_week();
+        assert!((1..=53).contains(&week.week()));
+        assert!((i64::from(i32::MIN) - 1..=i64::from(i32::MAX) + 1).contains(&week.year()));
+    }
 }

@@ -1599,7 +1599,7 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
             serde_json::json!({ "handDrawnSeed": 1 }),
         ))
         .with_fixed_today(Some(
-            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+            merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),
@@ -1832,7 +1832,7 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
             serde_json::json!({ "handDrawnSeed": 1 }),
         ))
         .with_fixed_today(Some(
-            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+            merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),

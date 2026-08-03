@@ -5,8 +5,9 @@ use crate::model::{
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
 };
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
-use chrono::{Datelike, FixedOffset, Timelike};
+use merman_core::time::{CivilDate, CivilDateTime, LocalTimeZone, OffsetDateTime, Weekday};
 use std::collections::{HashMap, hash_map::Entry};
+use std::fmt::Write as _;
 
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
@@ -14,12 +15,8 @@ use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 const DEFAULT_CONTAINER_WIDTH: f64 = 1200.0;
 const MS_PER_DAY: i64 = 86_400_000;
 
-fn dt_utc_to_local_fixed(
-    dt_utc: chrono::DateTime<chrono::Utc>,
-    local_time_zone: &merman_core::time::LocalTimeZone,
-) -> Option<chrono::DateTime<FixedOffset>> {
-    local_time_zone
-        .datetime_to_local_fixed(dt_utc.with_timezone(&merman_core::time::utc_fixed_offset()))
+fn instant_to_local(ms: i64, local_time_zone: &LocalTimeZone) -> Option<OffsetDateTime> {
+    local_time_zone.at_instant(ms)
 }
 
 fn cfg_i64(cfg: &serde_json::Value, path: &[&str]) -> Option<i64> {
@@ -66,30 +63,6 @@ fn month_name_long(m: u32) -> &'static str {
     }
 }
 
-fn weekday_name_short(w: chrono::Weekday) -> &'static str {
-    match w {
-        chrono::Weekday::Mon => "Mon",
-        chrono::Weekday::Tue => "Tue",
-        chrono::Weekday::Wed => "Wed",
-        chrono::Weekday::Thu => "Thu",
-        chrono::Weekday::Fri => "Fri",
-        chrono::Weekday::Sat => "Sat",
-        chrono::Weekday::Sun => "Sun",
-    }
-}
-
-fn weekday_name_long(w: chrono::Weekday) -> &'static str {
-    match w {
-        chrono::Weekday::Mon => "Monday",
-        chrono::Weekday::Tue => "Tuesday",
-        chrono::Weekday::Wed => "Wednesday",
-        chrono::Weekday::Thu => "Thursday",
-        chrono::Weekday::Fri => "Friday",
-        chrono::Weekday::Sat => "Saturday",
-        chrono::Weekday::Sun => "Sunday",
-    }
-}
-
 fn ordinal_suffix(n: u32) -> &'static str {
     let nn = n % 100;
     if (11..=13).contains(&nn) {
@@ -103,13 +76,9 @@ fn ordinal_suffix(n: u32) -> &'static str {
     }
 }
 
-fn format_dayjs_like(
-    ms: i64,
-    fmt: &str,
-    local_time_zone: &merman_core::time::LocalTimeZone,
-) -> Option<String> {
-    let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
+fn format_dayjs_like(ms: i64, fmt: &str, local_time_zone: &LocalTimeZone) -> Option<String> {
+    let dt = instant_to_local(ms, local_time_zone)?;
+    let civil = dt.local_datetime();
     let fmt = fmt.trim();
 
     let mut out = String::new();
@@ -139,38 +108,38 @@ fn format_dayjs_like(
 
         if let Some(t) = token {
             match t {
-                "YYYY" => out.push_str(&format!("{:04}", dt.year())),
-                "YY" => out.push_str(&format!("{:02}", (dt.year() % 100).abs())),
-                "MMMM" => out.push_str(month_name_long(dt.month())),
-                "MMM" => out.push_str(month_name_short(dt.month())),
-                "MM" => out.push_str(&format!("{:02}", dt.month())),
-                "M" => out.push_str(&format!("{}", dt.month())),
-                "DD" => out.push_str(&format!("{:02}", dt.day())),
-                "D" => out.push_str(&format!("{}", dt.day())),
-                "Do" => out.push_str(&format!("{}{}", dt.day(), ordinal_suffix(dt.day()))),
-                "dddd" => out.push_str(weekday_name_long(dt.weekday())),
-                "ddd" => out.push_str(weekday_name_short(dt.weekday())),
-                "HH" => out.push_str(&format!("{:02}", dt.hour())),
-                "H" => out.push_str(&format!("{}", dt.hour())),
+                "YYYY" => out.push_str(&format!("{:04}", civil.year())),
+                "YY" => out.push_str(&format!("{:02}", (civil.year() % 100).abs())),
+                "MMMM" => out.push_str(month_name_long(civil.month())),
+                "MMM" => out.push_str(month_name_short(civil.month())),
+                "MM" => out.push_str(&format!("{:02}", civil.month())),
+                "M" => out.push_str(&format!("{}", civil.month())),
+                "DD" => out.push_str(&format!("{:02}", civil.day())),
+                "D" => out.push_str(&format!("{}", civil.day())),
+                "Do" => out.push_str(&format!("{}{}", civil.day(), ordinal_suffix(civil.day()))),
+                "dddd" => out.push_str(civil.weekday().full_name()),
+                "ddd" => out.push_str(civil.weekday().short_name()),
+                "HH" => out.push_str(&format!("{:02}", civil.hour())),
+                "H" => out.push_str(&format!("{}", civil.hour())),
                 "hh" => {
-                    let h = dt.hour() % 12;
+                    let h = civil.hour() % 12;
                     let h = if h == 0 { 12 } else { h };
                     out.push_str(&format!("{:02}", h));
                 }
                 "h" => {
-                    let h = dt.hour() % 12;
+                    let h = civil.hour() % 12;
                     let h = if h == 0 { 12 } else { h };
                     out.push_str(&format!("{}", h));
                 }
-                "mm" => out.push_str(&format!("{:02}", dt.minute())),
-                "m" => out.push_str(&format!("{}", dt.minute())),
-                "ss" => out.push_str(&format!("{:02}", dt.second())),
-                "s" => out.push_str(&format!("{}", dt.second())),
-                "SSS" => out.push_str(&format!("{:03}", dt.timestamp_subsec_millis())),
-                "A" => out.push_str(if dt.hour() < 12 { "AM" } else { "PM" }),
-                "a" => out.push_str(if dt.hour() < 12 { "am" } else { "pm" }),
+                "mm" => out.push_str(&format!("{:02}", civil.minute())),
+                "m" => out.push_str(&format!("{}", civil.minute())),
+                "ss" => out.push_str(&format!("{:02}", civil.second())),
+                "s" => out.push_str(&format!("{}", civil.second())),
+                "SSS" => out.push_str(&format!("{:03}", civil.millisecond())),
+                "A" => out.push_str(if civil.hour() < 12 { "AM" } else { "PM" }),
+                "a" => out.push_str(if civil.hour() < 12 { "am" } else { "pm" }),
                 "Z" => {
-                    let off = dt.offset().local_minus_utc();
+                    let off = dt.offset().seconds();
                     let sign = if off >= 0 { '+' } else { '-' };
                     let off = off.abs();
                     let hh = off / 3600;
@@ -178,7 +147,7 @@ fn format_dayjs_like(
                     out.push_str(&format!("{sign}{:02}:{:02}", hh, mm));
                 }
                 "ZZ" => {
-                    let off = dt.offset().local_minus_utc();
+                    let off = dt.offset().seconds();
                     let sign = if off >= 0 { '+' } else { '-' };
                     let off = off.abs();
                     let hh = off / 3600;
@@ -186,7 +155,7 @@ fn format_dayjs_like(
                     out.push_str(&format!("{sign}{:02}{:02}", hh, mm));
                 }
                 "x" => out.push_str(&format!("{ms}")),
-                "X" => out.push_str(&format!("{}", ms / 1000)),
+                "X" => out.push_str(&format!("{}", dt.timestamp_seconds())),
                 _ => {}
             }
             i += t.len();
@@ -200,10 +169,7 @@ fn format_dayjs_like(
     Some(out)
 }
 
-fn format_yyyy_mm_dd(
-    ms: i64,
-    local_time_zone: &merman_core::time::LocalTimeZone,
-) -> Option<String> {
+fn format_yyyy_mm_dd(ms: i64, local_time_zone: &LocalTimeZone) -> Option<String> {
     format_dayjs_like(ms, "YYYY-MM-DD", local_time_zone)
 }
 
@@ -220,7 +186,7 @@ fn is_invalid_date(
     excludes: &[String],
     includes: &[String],
     weekend: &str,
-    local_time_zone: &merman_core::time::LocalTimeZone,
+    local_time_zone: &LocalTimeZone,
 ) -> bool {
     let Some(formatted_date) = format_dayjs_like(ms, date_format, local_time_zone) else {
         return false;
@@ -236,10 +202,7 @@ fn is_invalid_date(
         return false;
     }
 
-    let Some(dt_utc) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms) else {
-        return false;
-    };
-    let Some(dt) = dt_utc_to_local_fixed(dt_utc, local_time_zone) else {
+    let Some(dt) = instant_to_local(ms, local_time_zone) else {
         return false;
     };
     let iso_weekday = dt.weekday().number_from_monday();
@@ -251,7 +214,7 @@ fn is_invalid_date(
         }
     }
 
-    let weekday_lower = weekday_name_long(dt.weekday()).to_lowercase();
+    let weekday_lower = dt.weekday().full_name().to_lowercase();
     if excludes.iter().any(|t| t == &weekday_lower) {
         return true;
     }
@@ -261,17 +224,27 @@ fn is_invalid_date(
         .any(|t| t == &formatted_date || t == &date_only)
 }
 
-fn start_of_day_ms(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> Option<i64> {
-    let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
-    let d = dt.date_naive();
-    let local_midnight = local_time_zone.datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);
-    Some(local_midnight?.timestamp_millis())
+pub(crate) fn start_of_day_ms(ms: i64, local_time_zone: &LocalTimeZone) -> Option<i64> {
+    let date = instant_to_local(ms, local_time_zone)?.date();
+    Some(
+        local_time_zone
+            .resolve_local(date.at_midnight())?
+            .timestamp_millis(),
+    )
 }
 
-fn end_of_day_ms(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> Option<i64> {
+fn add_local_days_ms(ms: i64, days: i64, local_time_zone: &LocalTimeZone) -> Option<i64> {
+    let local = instant_to_local(ms, local_time_zone)?.local_datetime();
+    Some(
+        local_time_zone
+            .resolve_local(local.checked_add_days(days)?)?
+            .timestamp_millis(),
+    )
+}
+
+fn end_of_day_ms(ms: i64, local_time_zone: &LocalTimeZone) -> Option<i64> {
     let start = start_of_day_ms(ms, local_time_zone)?;
-    start.checked_add(MS_PER_DAY)?.checked_sub(1)
+    add_local_days_ms(start, 1, local_time_zone)?.checked_sub(1)
 }
 
 fn absolute_millis_between(a: i64, b: i64) -> i128 {
@@ -455,68 +428,101 @@ fn parse_tick_interval(s: &str) -> Option<(i64, &str)> {
     }
 }
 
-fn add_interval(
-    ms: i64,
-    every: i64,
-    unit: &str,
-    local_time_zone: &merman_core::time::LocalTimeZone,
-) -> Option<i64> {
-    let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
-    let naive = dt.naive_local();
+fn add_interval(ms: i64, every: i64, unit: &str, local_time_zone: &LocalTimeZone) -> Option<i64> {
+    let elapsed_millis = match unit {
+        "millisecond" => Some(every),
+        "second" => every.checked_mul(1_000),
+        "minute" => every.checked_mul(60_000),
+        "hour" => every.checked_mul(3_600_000),
+        _ => None,
+    };
+    if let Some(elapsed_millis) = elapsed_millis {
+        return ms.checked_add(elapsed_millis);
+    }
 
+    let local = instant_to_local(ms, local_time_zone)?.local_datetime();
     let next = match unit {
-        "millisecond" => naive.checked_add_signed(chrono::Duration::try_milliseconds(every)?)?,
-        "second" => naive.checked_add_signed(chrono::Duration::try_seconds(every)?)?,
-        "minute" => naive.checked_add_signed(chrono::Duration::try_minutes(every)?)?,
-        "hour" => naive.checked_add_signed(chrono::Duration::try_hours(every)?)?,
-        "day" => naive.checked_add_signed(chrono::Duration::try_days(every)?)?,
-        "week" => naive.checked_add_signed(chrono::Duration::try_weeks(every)?)?,
-        "month" => {
-            let month_index = i64::from(naive.date().year())
-                .checked_mul(12)?
-                .checked_add(i64::from(naive.date().month0()))?
-                .checked_add(every)?;
-            let y: i32 = month_index.div_euclid(12).try_into().ok()?;
-            let m = u32::try_from(month_index.rem_euclid(12))
-                .ok()?
-                .checked_add(1)?;
-            let d = naive.date().day().min(28);
-            let date = chrono::NaiveDate::from_ymd_opt(y, m, d)?;
-            date.and_hms_opt(
-                naive.time().hour(),
-                naive.time().minute(),
-                naive.time().second(),
-            )?
-        }
-        "year" => {
-            let every: i32 = every.try_into().ok()?;
-            let y = naive.date().year().checked_add(every)?;
-            let m = naive.date().month();
-            let d = naive.date().day().min(28);
-            let date = chrono::NaiveDate::from_ymd_opt(y, m, d)?;
-            date.and_hms_opt(
-                naive.time().hour(),
-                naive.time().minute(),
-                naive.time().second(),
-            )?
-        }
+        "day" => local.checked_add_days(every)?,
+        "week" => local.checked_add_days(every.checked_mul(7)?)?,
+        "month" => local.checked_add_months(every)?,
+        "year" => local.checked_add_years(every)?,
         _ => return None,
     };
-
-    let out = local_time_zone.datetime_from_naive_local(next);
-    Some(out?.timestamp_millis())
+    Some(local_time_zone.resolve_local(next)?.timestamp_millis())
 }
 
-fn weekday_from_str(s: &str) -> Option<chrono::Weekday> {
+fn weekday_from_str(s: &str) -> Option<Weekday> {
     match s.trim().to_ascii_lowercase().as_str() {
-        "monday" => Some(chrono::Weekday::Mon),
-        "tuesday" => Some(chrono::Weekday::Tue),
-        "wednesday" => Some(chrono::Weekday::Wed),
-        "thursday" => Some(chrono::Weekday::Thu),
-        "friday" => Some(chrono::Weekday::Fri),
-        "saturday" => Some(chrono::Weekday::Sat),
-        "sunday" => Some(chrono::Weekday::Sun),
+        "monday" => Some(Weekday::Monday),
+        "tuesday" => Some(Weekday::Tuesday),
+        "wednesday" => Some(Weekday::Wednesday),
+        "thursday" => Some(Weekday::Thursday),
+        "friday" => Some(Weekday::Friday),
+        "saturday" => Some(Weekday::Saturday),
+        "sunday" => Some(Weekday::Sunday),
+        _ => None,
+    }
+}
+
+fn civil_with_time(date: CivilDate, time: CivilDateTime) -> Option<CivilDateTime> {
+    date.at_hms_milli(
+        time.hour(),
+        time.minute(),
+        time.second(),
+        time.millisecond(),
+    )
+}
+
+#[derive(Clone, Copy)]
+struct ElapsedTickState {
+    lower_millis: i64,
+    field: i64,
+}
+
+fn ceil_elapsed_tick_start_with(
+    min_ms: i64,
+    every: i64,
+    unit_millis: i64,
+    mut state_at: impl FnMut(i64) -> Option<ElapsedTickState>,
+) -> Option<i64> {
+    let initial = state_at(min_ms)?;
+    let floor = min_ms.checked_sub(initial.lower_millis)?;
+    let mut candidate = if floor < min_ms {
+        floor.checked_add(unit_millis)?
+    } else {
+        floor
+    };
+    let every = every.max(1);
+
+    loop {
+        if state_at(candidate)?.field.rem_euclid(every) == 0 {
+            return Some(candidate);
+        }
+        candidate = candidate.checked_add(unit_millis)?;
+    }
+}
+
+fn elapsed_tick_state(
+    ms: i64,
+    unit: &str,
+    local_time_zone: &LocalTimeZone,
+) -> Option<ElapsedTickState> {
+    let local = instant_to_local(ms, local_time_zone)?.local_datetime();
+    match unit {
+        "second" => Some(ElapsedTickState {
+            lower_millis: i64::from(local.millisecond()),
+            field: i64::from(local.second()),
+        }),
+        "minute" => Some(ElapsedTickState {
+            lower_millis: i64::from(local.second()) * 1_000 + i64::from(local.millisecond()),
+            field: i64::from(local.minute()),
+        }),
+        "hour" => Some(ElapsedTickState {
+            lower_millis: i64::from(local.minute()) * 60_000
+                + i64::from(local.second()) * 1_000
+                + i64::from(local.millisecond()),
+            field: i64::from(local.hour()),
+        }),
         _ => None,
     }
 }
@@ -526,11 +532,18 @@ fn ceil_tick_start(
     every: i64,
     unit: &str,
     week_start: Option<&str>,
-    local_time_zone: &merman_core::time::LocalTimeZone,
+    local_time_zone: &LocalTimeZone,
 ) -> Option<i64> {
-    let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(min_ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
-    let naive = dt.naive_local();
+    if let Some(unit_millis) = match unit {
+        "second" => Some(1_000),
+        "minute" => Some(60_000),
+        "hour" => Some(3_600_000),
+        _ => None,
+    } {
+        return ceil_elapsed_tick_start_with(min_ms, every, unit_millis, |ms| {
+            elapsed_tick_state(ms, unit, local_time_zone)
+        });
+    }
 
     let start = match unit {
         "millisecond" => {
@@ -545,125 +558,63 @@ fn ceil_tick_start(
             };
             return Some(aligned);
         }
-        "second" => {
-            let base = naive.date().and_hms_opt(
-                naive.time().hour(),
-                naive.time().minute(),
-                naive.time().second(),
-            )?;
-            let mut cur = base;
-            if cur < naive {
-                cur = cur.checked_add_signed(chrono::Duration::try_seconds(1)?)?;
-            }
-            let e = every.max(1);
-            loop {
-                let sec = cur.time().second() as i64;
-                let rem = sec.rem_euclid(e);
-                if rem == 0 {
-                    break;
-                }
-                cur = cur.checked_add_signed(chrono::Duration::try_seconds(1)?)?;
-            }
-            cur
-        }
-        "minute" => {
-            let base = naive
-                .date()
-                .and_hms_opt(naive.time().hour(), naive.time().minute(), 0)?;
-            let mut cur = base;
-            if cur < naive {
-                cur = cur.checked_add_signed(chrono::Duration::try_minutes(1)?)?;
-            }
-            let e = every.max(1);
-            loop {
-                let min = cur.time().minute() as i64;
-                let rem = min.rem_euclid(e);
-                if rem == 0 {
-                    break;
-                }
-                cur = cur.checked_add_signed(chrono::Duration::try_minutes(1)?)?;
-            }
-            cur
-        }
-        "hour" => {
-            let base = naive.date().and_hms_opt(naive.time().hour(), 0, 0)?;
-            let mut cur = base;
-            if cur < naive {
-                cur = cur.checked_add_signed(chrono::Duration::try_hours(1)?)?;
-            }
-            let e = every.max(1);
-            loop {
-                let hour = cur.time().hour() as i64;
-                let rem = hour.rem_euclid(e);
-                if rem == 0 {
-                    break;
-                }
-                cur = cur.checked_add_signed(chrono::Duration::try_hours(1)?)?;
-            }
-            cur
-        }
         "day" => {
-            let mut cur = naive.date().and_hms_opt(0, 0, 0)?;
-            if cur < naive {
-                cur = cur.checked_add_signed(chrono::Duration::try_days(1)?)?;
+            let local = instant_to_local(min_ms, local_time_zone)?.local_datetime();
+            let mut cur = local.date().at_midnight();
+            if cur < local {
+                cur = cur.checked_add_days(1)?;
             }
             let e = every.max(1);
-            if e > 1 {
-                // D3's `timeDay.every(e)` uses `date.getDate() - 1` as the interval field, so the
-                // modulus resets at each month boundary (days 1, 1+e, 1+2e, ... within a month).
-                let mut d = cur.date();
-                let day0 = d.day0() as i64;
-                let rem = day0.rem_euclid(e);
-                if rem != 0 {
-                    d = d.checked_add_signed(chrono::Duration::try_days(e.checked_sub(rem)?)?)?;
-                }
-                cur = d.and_hms_opt(0, 0, 0)?;
+            while i64::from(cur.day0()).rem_euclid(e) != 0 {
+                cur = cur.checked_add_days(1)?;
             }
             cur
         }
         "week" => {
-            let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 4)?; // Sunday
+            let local = instant_to_local(min_ms, local_time_zone)?.local_datetime();
+            let epoch = CivilDate::new(1970, 1, 4)?; // Sunday
             let start = week_start
                 .and_then(weekday_from_str)
-                .unwrap_or(chrono::Weekday::Sun);
+                .unwrap_or(Weekday::Sunday);
 
-            let mut d = naive.date();
-            let cur_wd = d.weekday().num_days_from_sunday() as i64;
-            let start_wd = start.num_days_from_sunday() as i64;
+            let mut d = local.date();
+            let cur_wd = i64::from(d.weekday().number_from_sunday() - 1);
+            let start_wd = i64::from(start.number_from_sunday() - 1);
             let delta = (cur_wd - start_wd).rem_euclid(7);
-            d = d.checked_sub_signed(chrono::Duration::try_days(delta)?)?;
-            let mut cur = d.and_hms_opt(0, 0, 0)?;
-            if cur < naive {
-                cur = cur.checked_add_signed(chrono::Duration::try_days(7)?)?;
+            d = d.checked_sub_days(delta)?;
+            let mut cur = d.at_midnight();
+            if cur < local {
+                cur = cur.checked_add_days(7)?;
             }
 
             let e = every.max(1);
             if e > 1 {
                 let mut ws = cur.date();
-                let weeks = ws.signed_duration_since(epoch).num_days() / 7;
+                let weeks = ws.days_since(epoch).div_euclid(7);
                 let rem = weeks.rem_euclid(e);
                 if rem != 0 {
                     let delta_days = e.checked_sub(rem)?.checked_mul(7)?;
-                    ws = ws.checked_add_signed(chrono::Duration::try_days(delta_days)?)?;
+                    ws = ws.checked_add_days(delta_days)?;
                 }
-                cur = ws.and_hms_opt(0, 0, 0)?;
+                cur = ws.at_midnight();
             }
             cur
         }
         "month" => {
+            let local = instant_to_local(min_ms, local_time_zone)?.local_datetime();
             let month_index = |y: i32, m: u32| (y as i64) * 12 + (m as i64 - 1);
 
-            let mut y = naive.date().year();
-            let mut m = naive.date().month();
-            let mut cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
-            if cur < naive {
+            let mut y = local.year();
+            let mut m = local.month();
+            let mut cur = CivilDate::new(y, m, 1)?.at_midnight();
+            if cur < local {
                 if m == 12 {
                     m = 1;
                     y = y.checked_add(1)?;
                 } else {
                     m = m.checked_add(1)?;
                 }
-                cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
+                cur = CivilDate::new(y, m, 1)?.at_midnight();
             }
 
             let e = every.max(1);
@@ -674,20 +625,20 @@ fn ceil_tick_start(
                     idx = idx.checked_add(e.checked_sub(rem)?)?;
                     y = idx.div_euclid(12).try_into().ok()?;
                     m = u32::try_from(idx.rem_euclid(12)).ok()?.checked_add(1)?;
-                    cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
+                    cur = CivilDate::new(y, m, 1)?.at_midnight();
                 }
             }
             cur
         }
         "year" => {
-            let mut y = i64::from(naive.date().year());
+            let local = instant_to_local(min_ms, local_time_zone)?.local_datetime();
+            let mut y = i64::from(local.year());
             let initial_year: i32 = y.try_into().ok()?;
-            let mut cur =
-                chrono::NaiveDate::from_ymd_opt(initial_year, 1, 1)?.and_hms_opt(0, 0, 0)?;
-            if cur < naive {
+            let mut cur = CivilDate::new(initial_year, 1, 1)?.at_midnight();
+            if cur < local {
                 y = y.checked_add(1)?;
                 let year: i32 = y.try_into().ok()?;
-                cur = chrono::NaiveDate::from_ymd_opt(year, 1, 1)?.and_hms_opt(0, 0, 0)?;
+                cur = CivilDate::new(year, 1, 1)?.at_midnight();
             }
             let e = every.max(1);
             if e > 1 {
@@ -695,7 +646,7 @@ fn ceil_tick_start(
                 if rem != 0 {
                     y = y.checked_add(e.checked_sub(rem)?)?;
                     let year: i32 = y.try_into().ok()?;
-                    cur = chrono::NaiveDate::from_ymd_opt(year, 1, 1)?.and_hms_opt(0, 0, 0)?;
+                    cur = CivilDate::new(year, 1, 1)?.at_midnight();
                 }
             }
             cur
@@ -703,18 +654,11 @@ fn ceil_tick_start(
         _ => return None,
     };
 
-    let out = local_time_zone.datetime_from_naive_local(start);
-    Some(out?.timestamp_millis())
+    Some(local_time_zone.resolve_local(start)?.timestamp_millis())
 }
 
-fn add_d3_time_day_every(
-    ms: i64,
-    every: i64,
-    local_time_zone: &merman_core::time::LocalTimeZone,
-) -> Option<i64> {
-    let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
-    let naive = dt.naive_local();
+fn add_d3_time_day_every(ms: i64, every: i64, local_time_zone: &LocalTimeZone) -> Option<i64> {
+    let local = instant_to_local(ms, local_time_zone)?.local_datetime();
 
     let e = every.max(1);
     if e <= 1 {
@@ -724,39 +668,12 @@ fn add_d3_time_day_every(
     // D3's `timeDay.every(e)` uses a filtered interval based on `(date.getDate() - 1) % e`.
     // This means the modulus resets at month boundaries, and the "next tick" is not simply
     // `+e days` for months with non-multiple-of-e lengths.
-    let cur_date = naive.date();
-    let day0 = cur_date.day0() as i64;
-    let next_day0 = day0.checked_add(1)?;
-    let rem = next_day0.rem_euclid(e);
-    let delta = if rem == 0 { 0 } else { e - rem };
-    let cand_day0 = next_day0.checked_add(delta)?;
-
-    let (y, m) = (cur_date.year(), cur_date.month());
-    let first_this_month = chrono::NaiveDate::from_ymd_opt(y, m, 1)?;
-    let (ny, nm) = if m == 12 {
-        (y.checked_add(1)?, 1)
-    } else {
-        (y, m.checked_add(1)?)
-    };
-    let first_next_month = chrono::NaiveDate::from_ymd_opt(ny, nm, 1)?;
-    let days_in_month = first_next_month
-        .signed_duration_since(first_this_month)
-        .num_days();
-
-    let next_date = if cand_day0 < days_in_month {
-        chrono::NaiveDate::from_ymd_opt(y, m, (cand_day0 + 1) as u32)?
-    } else {
-        first_next_month
-    };
-
-    let next = next_date.and_hms_opt(
-        naive.time().hour(),
-        naive.time().minute(),
-        naive.time().second(),
-    )?;
-
-    let out = local_time_zone.datetime_from_naive_local(next);
-    Some(out?.timestamp_millis())
+    let mut next_date = local.date().checked_add_days(1)?;
+    while i64::from(next_date.day0()).rem_euclid(e) != 0 {
+        next_date = next_date.checked_add_days(1)?;
+    }
+    let next = civil_with_time(next_date, local)?;
+    Some(local_time_zone.resolve_local(next)?.timestamp_millis())
 }
 
 fn axis_format_to_strftime(axis_format: &str, date_format: &str, cfg_axis_format: &str) -> String {
@@ -774,165 +691,145 @@ fn axis_format_to_strftime(axis_format: &str, date_format: &str, cfg_axis_format
     "%Y-%m-%d".to_string()
 }
 
-fn is_chrono_strftime_directive(directive: char) -> bool {
-    matches!(
-        directive,
-        'a' | 'A'
-            | 'b'
-            | 'B'
-            | 'c'
-            | 'C'
-            | 'd'
-            | 'D'
-            | 'e'
-            | 'F'
-            | 'g'
-            | 'G'
-            | 'H'
-            | 'I'
-            | 'j'
-            | 'k'
-            | 'l'
-            | 'm'
-            | 'M'
-            | 'n'
-            | 'p'
-            | 'P'
-            | 'r'
-            | 'R'
-            | 'S'
-            | 't'
-            | 'T'
-            | 'u'
-            | 'U'
-            | 'V'
-            | 'w'
-            | 'W'
-            | 'x'
-            | 'X'
-            | 'y'
-            | 'Y'
-            | 'z'
-            | 'Z'
-            | '+'
-            | '%'
-            | 'f'
-    )
+fn write_d3_padded(out: &mut String, value: i64, fill: Option<char>, width: usize) {
+    if value < 0 {
+        out.push('-');
+    }
+    let absolute = value.unsigned_abs();
+    let digits = if absolute == 0 {
+        1
+    } else {
+        absolute.ilog10() as usize + 1
+    };
+    if let Some(fill) = fill {
+        for _ in 0..width.saturating_sub(digits) {
+            out.push(fill);
+        }
+    }
+    let _ = write!(out, "{absolute}");
 }
 
-fn format_axis_tick_label(d: chrono::DateTime<FixedOffset>, axis_format: &str) -> String {
-    fn flush(out: &mut String, buf: &mut String, d: chrono::DateTime<FixedOffset>) {
-        if buf.is_empty() {
-            return;
-        }
-        out.push_str(&d.format(buf.as_str()).to_string());
-        buf.clear();
+fn d3_week_number(date: CivilDate, week_start: Weekday) -> u32 {
+    let january_first = CivilDate::new(date.year(), 1, 1).expect("January 1 is always valid");
+    let january_index = january_first.weekday().number_from_sunday() - 1;
+    let start_index = week_start.number_from_sunday() - 1;
+    let first_start = (i64::from(start_index) - i64::from(january_index)).rem_euclid(7) as u32;
+    let ordinal0 = date.ordinal() - 1;
+    if ordinal0 < first_start {
+        0
+    } else {
+        1 + (ordinal0 - first_start) / 7
     }
+}
 
+fn format_axis_tick_label(datetime: OffsetDateTime, axis_format: &str) -> String {
     let mut out = String::new();
-    let mut buf = String::new();
+    format_axis_tick_label_into(datetime, datetime.local_datetime(), axis_format, &mut out);
+    out
+}
+
+fn format_axis_tick_label_into(
+    datetime: OffsetDateTime,
+    local: CivilDateTime,
+    axis_format: &str,
+    out: &mut String,
+) {
     let mut it = axis_format.chars().peekable();
 
     while let Some(ch) = it.next() {
         if ch != '%' {
-            buf.push(ch);
+            out.push(ch);
             continue;
         }
 
         let Some(next) = it.next() else {
-            // Trailing `%` in the format string: treat it as a literal percent.
-            buf.push_str("%%");
+            // d3-time-format drops an incomplete trailing directive.
             break;
         };
 
-        if next == '%' {
-            buf.push_str("%%");
-            continue;
-        }
-
-        // Mermaid uses d3-time-format directives for gantt `axisFormat`. Most overlap with
-        // chrono's strftime, except for a few extras (e.g. `%L`).
-        let (modifier, directive) = if matches!(next, '-' | '_' | '0') {
-            let Some(dir) = it.next() else {
-                flush(&mut out, &mut buf, d);
-                out.push('%');
-                out.push(next);
+        let (fill, directive) = if matches!(next, '-' | '_' | '0') {
+            let Some(directive) = it.next() else {
                 break;
             };
-            (Some(next), dir)
+            (
+                match next {
+                    '-' => None,
+                    '_' => Some(' '),
+                    _ => Some('0'),
+                },
+                directive,
+            )
         } else {
-            (None, next)
+            (Some(if next == 'e' { ' ' } else { '0' }), next)
         };
 
-        match (modifier, directive) {
-            (None, 'L') => {
-                // d3: milliseconds (000-999)
-                flush(&mut out, &mut buf, d);
-                out.push_str(&format!("{:03}", d.timestamp_subsec_millis()));
+        match directive {
+            'a' => out.push_str(local.weekday().short_name()),
+            'A' => out.push_str(local.weekday().full_name()),
+            'b' => out.push_str(month_name_short(local.month())),
+            'B' => out.push_str(month_name_long(local.month())),
+            'c' => format_axis_tick_label_into(datetime, local, "%x, %X", out),
+            'd' | 'e' => write_d3_padded(out, i64::from(local.day()), fill, 2),
+            'f' => {
+                write_d3_padded(out, i64::from(local.millisecond()), fill, 3);
+                out.push_str("000");
             }
-            (None, 'Q') => {
-                // d3: milliseconds since UNIX epoch
-                flush(&mut out, &mut buf, d);
-                out.push_str(&d.with_timezone(&chrono::Utc).timestamp_millis().to_string());
+            'g' => write_d3_padded(out, local.date().iso_week().year() % 100, fill, 2),
+            'G' => write_d3_padded(out, local.date().iso_week().year() % 10_000, fill, 4),
+            'H' => write_d3_padded(out, i64::from(local.hour()), fill, 2),
+            'I' => {
+                let hour = local.hour() % 12;
+                write_d3_padded(out, i64::from(if hour == 0 { 12 } else { hour }), fill, 2);
             }
-            (None, 's') => {
-                // d3: seconds since UNIX epoch
-                flush(&mut out, &mut buf, d);
-                out.push_str(&d.with_timezone(&chrono::Utc).timestamp().to_string());
+            'j' => write_d3_padded(out, i64::from(local.date().ordinal()), fill, 3),
+            'L' => write_d3_padded(out, i64::from(local.millisecond()), fill, 3),
+            'm' => write_d3_padded(out, i64::from(local.month()), fill, 2),
+            'M' => write_d3_padded(out, i64::from(local.minute()), fill, 2),
+            'p' => out.push_str(if local.hour() >= 12 { "PM" } else { "AM" }),
+            'q' => {
+                let _ = write!(out, "{}", (local.month0() / 3) + 1);
             }
-            (None, 'q') => {
-                // d3: quarter of the year [1, 4]
-                flush(&mut out, &mut buf, d);
-                let q = (d.month0() / 3) + 1;
-                out.push_str(&q.to_string());
+            'Q' => {
+                let _ = write!(out, "{}", datetime.timestamp_millis());
             }
-            _ => {
-                // Special case: chrono supports `%.<digits>f` subseconds precision. Keep it in
-                // the buffered chrono format to preserve existing behavior.
-                if modifier.is_none() && directive == '.' {
-                    let mut tmp = String::new();
-                    tmp.push('%');
-                    tmp.push('.');
-                    while let Some(peek) = it.peek().copied() {
-                        if peek.is_ascii_digit() {
-                            tmp.push(peek);
-                            it.next();
-                        } else {
-                            break;
-                        }
-                    }
-                    if let Some('f') = it.peek().copied() {
-                        tmp.push('f');
-                        let _ = it.next();
-                        buf.push_str(&tmp);
-                        continue;
-                    }
-                    flush(&mut out, &mut buf, d);
-                    out.push_str(&tmp);
-                    continue;
-                }
-
-                if is_chrono_strftime_directive(directive) {
-                    buf.push('%');
-                    if let Some(m) = modifier {
-                        buf.push(m);
-                    }
-                    buf.push(directive);
-                } else {
-                    // Avoid panics from chrono by treating unknown directives as literals.
-                    flush(&mut out, &mut buf, d);
-                    out.push('%');
-                    if let Some(m) = modifier {
-                        out.push(m);
-                    }
-                    out.push(directive);
-                }
+            's' => {
+                let _ = write!(out, "{}", datetime.timestamp_seconds());
             }
+            'S' => write_d3_padded(out, i64::from(local.second()), fill, 2),
+            'u' => {
+                let _ = write!(out, "{}", local.weekday().number_from_monday());
+            }
+            'U' => write_d3_padded(
+                out,
+                i64::from(d3_week_number(local.date(), Weekday::Sunday)),
+                fill,
+                2,
+            ),
+            'V' => write_d3_padded(out, i64::from(local.date().iso_week().week()), fill, 2),
+            'w' => {
+                let _ = write!(out, "{}", local.weekday().number_from_sunday() - 1);
+            }
+            'W' => write_d3_padded(
+                out,
+                i64::from(d3_week_number(local.date(), Weekday::Monday)),
+                fill,
+                2,
+            ),
+            'x' => format_axis_tick_label_into(datetime, local, "%-m/%-d/%Y", out),
+            'X' => format_axis_tick_label_into(datetime, local, "%-I:%M:%S %p", out),
+            'y' => write_d3_padded(out, i64::from(local.year()) % 100, fill, 2),
+            'Y' => write_d3_padded(out, i64::from(local.year()) % 10_000, fill, 4),
+            'Z' => {
+                let seconds = datetime.offset().seconds();
+                let sign = if seconds < 0 { '-' } else { '+' };
+                let minutes = seconds.unsigned_abs() / 60;
+                let _ = write!(out, "{sign}{:02}{:02}", minutes / 60, minutes % 60);
+            }
+            '%' => out.push('%'),
+            // d3-time-format emits the unknown directive character without the leading `%`.
+            unknown => out.push(unknown),
         }
     }
-
-    flush(&mut out, &mut buf, d);
-    out
 }
 
 struct GanttTickRequest<'a> {
@@ -943,7 +840,7 @@ struct GanttTickRequest<'a> {
     axis_format: &'a str,
     tick_interval: Option<&'a str>,
     week_start: Option<&'a str>,
-    local_time_zone: &'a merman_core::time::LocalTimeZone,
+    local_time_zone: &'a LocalTimeZone,
 }
 
 fn build_ticks(request: GanttTickRequest<'_>) -> Vec<GanttAxisTickLayout> {
@@ -1004,9 +901,8 @@ fn build_ticks(request: GanttTickRequest<'_>) -> Vec<GanttAxisTickLayout> {
             break;
         }
         let x = scale_time(cur, min_ms, max_ms, range) + left_padding;
-        let label = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(cur)
-            .and_then(|d| dt_utc_to_local_fixed(d, local_time_zone))
-            .map(|d| format_axis_tick_label(d, axis_format))
+        let label = instant_to_local(cur, local_time_zone)
+            .map(|datetime| format_axis_tick_label(datetime, axis_format))
             .unwrap_or_default();
         ticks.push(GanttAxisTickLayout {
             time_ms: cur,
@@ -1172,6 +1068,25 @@ pub(crate) fn layout_gantt_diagram_typed(
         let max_day = start_of_day_ms(max_ms, local_time_zone).unwrap_or(max_ms);
         let mut range_start: Option<i64> = None;
         let mut range_end: Option<i64> = None;
+        let mut append_range = |start_ms: i64, last_day_ms: i64| {
+            let id = format!(
+                "exclude-{}",
+                format_yyyy_mm_dd(start_ms, local_time_zone)
+                    .unwrap_or_else(|| "invalid".to_string())
+            );
+            let x0 = scale_time(start_ms, min_ms, max_ms, range) + left_padding;
+            let end_ms = end_of_day_ms(last_day_ms, local_time_zone).unwrap_or(last_day_ms);
+            let x1 = scale_time(end_ms, min_ms, max_ms, range) + left_padding;
+            excludes_layout.push(GanttExcludeRangeLayout {
+                id,
+                start_ms,
+                end_ms,
+                x: x0,
+                y: grid_line_start_padding,
+                width: (x1 - x0).max(0.0),
+                height: (height - top_padding - grid_line_start_padding).max(0.0),
+            });
+        };
 
         while cur <= max_day {
             let invalid = is_invalid_date(
@@ -1189,25 +1104,12 @@ pub(crate) fn layout_gantt_diagram_typed(
                 } else {
                     range_end = Some(cur);
                 }
-            } else if let (Some(s), Some(e)) = (range_start.take(), range_end.take()) {
-                let id = format!(
-                    "exclude-{}",
-                    format_yyyy_mm_dd(s, local_time_zone).unwrap_or_else(|| "invalid".to_string())
-                );
-                let x0 = scale_time(s, min_ms, max_ms, range) + left_padding;
-                let eod = end_of_day_ms(e, local_time_zone).unwrap_or(e);
-                let x1 = scale_time(eod, min_ms, max_ms, range) + left_padding;
-                excludes_layout.push(GanttExcludeRangeLayout {
-                    id,
-                    start_ms: s,
-                    end_ms: eod,
-                    x: x0,
-                    y: grid_line_start_padding,
-                    width: (x1 - x0).max(0.0),
-                    height: (height - top_padding - grid_line_start_padding).max(0.0),
-                });
+            } else if let (Some(start_ms), Some(last_day_ms)) =
+                (range_start.take(), range_end.take())
+            {
+                append_range(start_ms, last_day_ms);
             }
-            let Some(next) = cur.checked_add(MS_PER_DAY) else {
+            let Some(next) = add_local_days_ms(cur, 1, local_time_zone) else {
                 break;
             };
             if next <= cur {
@@ -1215,6 +1117,8 @@ pub(crate) fn layout_gantt_diagram_typed(
             }
             cur = next;
         }
+        // Mermaid only materializes a range when a later valid day closes it.
+        // A trailing invalid range therefore remains absent from the SVG.
     }
 
     // Background rows.
@@ -1544,9 +1448,13 @@ pub(crate) fn layout_gantt_diagram_typed(
 
 #[cfg(test)]
 mod tests {
-    use super::layout_gantt_diagram_typed;
+    use super::{
+        ElapsedTickState, ceil_elapsed_tick_start_with, ceil_tick_start, format_axis_tick_label,
+        format_dayjs_like, layout_gantt_diagram_typed,
+    };
     use crate::text::DeterministicTextMeasurer;
     use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+    use merman_core::time::{CivilDate, OffsetDateTime, UtcOffset};
 
     #[test]
     fn zero_section_styles_preserves_javascript_nan_class_suffix() {
@@ -1564,10 +1472,7 @@ mod tests {
 
     #[test]
     fn maximum_utc_date_layout_terminates_without_panicking() {
-        let max_midnight = chrono::NaiveDate::MAX.and_hms_opt(0, 0, 0).unwrap();
-        let max_ms =
-            chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(max_midnight, chrono::Utc)
-                .timestamp_millis();
+        let max_ms = i64::MAX;
         let mut model = GanttDiagramRenderModel::default();
         model.date_format = "x".to_string();
         model.axis_format = "%Y-%m-%d".to_string();
@@ -1598,5 +1503,98 @@ mod tests {
         assert_eq!(layout.tasks.len(), 1);
         assert_eq!(layout.tasks[0].start_ms, max_ms);
         assert_eq!(layout.bottom_ticks.len(), 1);
+    }
+
+    #[test]
+    fn axis_formatter_uses_d3_time_format_semantics() {
+        let local = CivilDate::new(2026, 8, 3)
+            .unwrap()
+            .at_hms_milli(14, 5, 6, 7)
+            .unwrap();
+        let datetime = OffsetDateTime::from_local(
+            local,
+            UtcOffset::from_minutes(8 * 60).expect("valid offset"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            format_axis_tick_label(
+                datetime,
+                "%a %A %b %B %d %e %f %H %I %j %L %m %M %p %q %S %u %U %V %w %W %x %X %y %Y %Z %%",
+            ),
+            "Mon Monday Aug August 03  3 007000 14 02 215 007 08 05 PM 3 06 1 31 32 1 31 8/3/2026 2:05:06 PM 26 2026 +0800 %"
+        );
+    }
+
+    #[test]
+    fn axis_formatter_preserves_d3_epoch_and_unknown_directive_rules() {
+        let before_epoch = OffsetDateTime::from_unix_millis(-1, UtcOffset::UTC);
+        assert_eq!(
+            format_axis_tick_label(before_epoch, "%Q|%s|%L|%K|tail%"),
+            "-1|-1|999|K|tail"
+        );
+
+        let wide = OffsetDateTime::from_local(
+            CivilDate::new(10_000, 1, 1).unwrap().at_midnight(),
+            UtcOffset::UTC,
+        )
+        .unwrap();
+        assert_eq!(format_axis_tick_label(wide, "%Y"), "0000");
+    }
+
+    #[test]
+    fn dayjs_unix_seconds_floor_negative_milliseconds() {
+        let utc = merman_core::time::LocalTimeZone::utc();
+        for (milliseconds, expected) in [
+            (-1_001, "-2"),
+            (-1_000, "-1"),
+            (-999, "-1"),
+            (-1, "-1"),
+            (0, "0"),
+            (999, "0"),
+            (1_000, "1"),
+        ] {
+            assert_eq!(
+                format_dayjs_like(milliseconds, "X", &utc).as_deref(),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn millisecond_tick_ceil_uses_euclidean_alignment_before_epoch() {
+        let utc = merman_core::time::LocalTimeZone::utc();
+
+        assert_eq!(ceil_tick_start(-1, 250, "millisecond", None, &utc), Some(0));
+        assert_eq!(
+            ceil_tick_start(-251, 250, "millisecond", None, &utc),
+            Some(-250)
+        );
+        assert_eq!(
+            ceil_tick_start(-250, 250, "millisecond", None, &utc),
+            Some(-250)
+        );
+    }
+
+    #[test]
+    fn elapsed_hour_ceil_preserves_the_second_tick_in_a_fall_back_fold() {
+        const FIRST_ONE_OCLOCK: i64 = 3_600_000;
+        const FIRST_ONE_THIRTY: i64 = FIRST_ONE_OCLOCK + 1_800_000;
+        const SECOND_ONE_OCLOCK: i64 = 7_200_000;
+
+        let next =
+            ceil_elapsed_tick_start_with(FIRST_ONE_THIRTY, 1, 3_600_000, |instant| match instant {
+                FIRST_ONE_THIRTY => Some(ElapsedTickState {
+                    lower_millis: 1_800_000,
+                    field: 1,
+                }),
+                SECOND_ONE_OCLOCK => Some(ElapsedTickState {
+                    lower_millis: 0,
+                    field: 1,
+                }),
+                _ => None,
+            });
+
+        assert_eq!(next, Some(SECOND_ONE_OCLOCK));
     }
 }

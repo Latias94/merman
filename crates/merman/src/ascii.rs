@@ -241,7 +241,7 @@ mod headless_ascii_renderer_tests {
 
     #[test]
     fn headless_ascii_renderer_fixed_time_controls_semantic_parse() {
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed today");
+        let today = merman_core::time::CivilDate::new(2026, 2, 15).expect("valid fixed today");
         let policy = merman_core::runtime::RuntimePolicy::deterministic()
             .try_with_fixed_local_offset_minutes(0)
             .expect("valid UTC offset")

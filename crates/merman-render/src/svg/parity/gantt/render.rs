@@ -12,18 +12,6 @@ fn gantt_scale_time_round(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 
     (t * range).round()
 }
 
-fn gantt_start_of_day_ms(
-    ms: i64,
-    local_time_zone: &merman_core::time::LocalTimeZone,
-) -> Option<i64> {
-    let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt_fixed_utc = dt_utc.with_timezone(&merman_core::time::utc_fixed_offset());
-    let dt = local_time_zone.datetime_to_local_fixed(dt_fixed_utc)?;
-    let d = dt.date_naive();
-    let local_midnight = local_time_zone.datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);
-    Some(local_midnight?.timestamp_millis())
-}
-
 fn fmt_allow_nan(v: f64) -> String {
     if v.is_nan() {
         return "NaN".to_string();
@@ -198,7 +186,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let range = (w - layout.left_padding - layout.right_padding).max(1.0);
     let gap = layout.bar_height + layout.bar_gap;
     let local_time_zone = options.local_time_zone();
-    let min_day_start_ms = gantt_start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
+    let min_day_start_ms = crate::gantt::start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
     let min_in_day_offset_ms = (min_ms - min_day_start_ms).max(0);
 
     // Exclude layer (drawn before the grid in Mermaid).
@@ -216,10 +204,10 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 //
                 // This matters when date-only inputs are parsed with a timezone-derived offset
                 // (e.g. `YYYY-MM-DD` treated as UTC midnight and shifted when rendered locally).
-                let start_day_start_ms =
-                    gantt_start_of_day_ms(r.start_ms, local_time_zone).unwrap_or(r.start_ms);
+                let start_day_start_ms = crate::gantt::start_of_day_ms(r.start_ms, local_time_zone)
+                    .unwrap_or(r.start_ms);
                 let end_day_start_ms =
-                    gantt_start_of_day_ms(r.end_ms, local_time_zone).unwrap_or(r.end_ms);
+                    crate::gantt::start_of_day_ms(r.end_ms, local_time_zone).unwrap_or(r.end_ms);
                 let start_raw_ms = start_day_start_ms.saturating_add(min_in_day_offset_ms);
                 let end_raw_ms = end_day_start_ms.saturating_add(min_in_day_offset_ms);
 

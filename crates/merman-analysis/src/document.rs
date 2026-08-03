@@ -1413,7 +1413,7 @@ mod tests {
     }
 
     #[test]
-    fn markdown_runtime_failure_is_reported_once_for_the_document_operation() {
+    fn markdown_analysis_supports_the_full_i64_runtime_instant_domain() {
         let analyzer = Analyzer::with_options(AnalysisOptions::default().with_runtime_policy(
             merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(i64::MAX),
         ));
@@ -1423,17 +1423,13 @@ mod tests {
         let diagnostics_only = analyze_document(text, &analyzer, source.clone());
         let result = analyze_document_generation(text, &analyzer, source)
             .into_ready()
-            .expect("runtime failure is still a complete analysis generation");
+            .expect("the maximum i64 instant remains representable");
 
-        assert!(result.diagrams().is_empty());
+        assert_eq!(result.diagrams().len(), 2);
         let payload = result.project(analyzer.options().diagnostic_policy());
         assert_eq!(diagnostics_only, payload);
-        assert_eq!(payload.diagnostics.len(), 1);
-        assert!(
-            payload.diagnostics[0]
-                .message
-                .contains("outside the supported")
-        );
+        assert!(payload.valid);
+        assert!(payload.diagnostics.is_empty());
     }
 
     #[test]

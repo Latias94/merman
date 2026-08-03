@@ -61,19 +61,20 @@ impl CivilDate {
     }
 
     pub fn iso_week(self) -> IsoWeek {
+        let year = i64::from(self.year);
         let weekday = i64::from(self.weekday().number_from_monday());
-        let thursday = self
-            .checked_add_days(4 - weekday)
-            .expect("moving within one week cannot exceed the i32 year range");
-        let week_year = thursday.year;
-        let january_fourth = Self::new(week_year, 1, 4).expect("January 4 is always a valid date");
-        let week_one_monday = january_fourth
-            .checked_add_days(1 - i64::from(january_fourth.weekday().number_from_monday()))
-            .expect("moving within one week cannot exceed the i32 year range");
-        let week = ((self.days_since(week_one_monday)).div_euclid(7) + 1) as u32;
+        let mut week = (i64::from(self.ordinal()) - weekday + 10).div_euclid(7);
+        let mut week_year = year;
+        if week < 1 {
+            week_year -= 1;
+            week = i64::from(iso_weeks_in_year(week_year));
+        } else if week > i64::from(iso_weeks_in_year(year)) {
+            week_year += 1;
+            week = 1;
+        }
         IsoWeek {
             year: week_year,
-            week,
+            week: week as u32,
         }
     }
 
@@ -160,7 +161,12 @@ impl FromStr for CivilDate {
         let year = year.parse().map_err(|_| ParseCivilDateError)?;
         let month = month.parse().map_err(|_| ParseCivilDateError)?;
         let day = day.parse().map_err(|_| ParseCivilDateError)?;
-        Self::new(year, month, day).ok_or(ParseCivilDateError)
+        let date = Self::new(year, month, day).ok_or(ParseCivilDateError)?;
+        if date.to_string() == value {
+            Ok(date)
+        } else {
+            Err(ParseCivilDateError)
+        }
     }
 }
 
@@ -169,7 +175,7 @@ pub struct ParseCivilDateError;
 
 impl fmt::Display for ParseCivilDateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("expected a valid ISO civil date")
+        f.write_str("expected a canonical civil date")
     }
 }
 
@@ -249,7 +255,10 @@ impl CivilDateTime {
     }
 
     pub fn checked_add_millis(self, milliseconds: i64) -> Option<Self> {
-        Self::from_naive_unix_millis(self.naive_unix_millis()?.checked_add(milliseconds)?)
+        Self::from_wide_naive_unix_millis(
+            self.wide_naive_unix_millis()
+                .checked_add(i128::from(milliseconds))?,
+        )
     }
 
     pub fn checked_add_days(self, days: i64) -> Option<Self> {
@@ -284,18 +293,23 @@ impl CivilDateTime {
     }
 
     pub fn signed_duration_millis_since(self, earlier: Self) -> Option<i64> {
-        self.naive_unix_millis()?
-            .checked_sub(earlier.naive_unix_millis()?)
+        self.wide_naive_unix_millis()
+            .checked_sub(earlier.wide_naive_unix_millis())?
+            .try_into()
+            .ok()
     }
 
+    #[cfg(feature = "system-timezone")]
     pub(crate) fn naive_unix_millis(self) -> Option<i64> {
-        self.date
-            .days_since_unix_epoch()
-            .checked_mul(MILLIS_PER_DAY)?
-            .checked_add(i64::from(self.hour) * MILLIS_PER_HOUR)?
-            .checked_add(i64::from(self.minute) * MILLIS_PER_MINUTE)?
-            .checked_add(i64::from(self.second) * MILLIS_PER_SECOND)?
-            .checked_add(i64::from(self.millisecond))
+        self.wide_naive_unix_millis().try_into().ok()
+    }
+
+    fn wide_naive_unix_millis(self) -> i128 {
+        i128::from(self.date.days_since_unix_epoch()) * i128::from(MILLIS_PER_DAY)
+            + i128::from(self.hour) * i128::from(MILLIS_PER_HOUR)
+            + i128::from(self.minute) * i128::from(MILLIS_PER_MINUTE)
+            + i128::from(self.second) * i128::from(MILLIS_PER_SECOND)
+            + i128::from(self.millisecond)
     }
 
     pub(crate) fn from_naive_unix_millis(milliseconds: i64) -> Option<Self> {
@@ -394,8 +408,10 @@ impl OffsetDateTime {
 
     pub fn from_local(local: CivilDateTime, offset: UtcOffset) -> Option<Self> {
         let unix_millis = local
-            .naive_unix_millis()?
-            .checked_sub(i64::from(offset.seconds) * MILLIS_PER_SECOND)?;
+            .wide_naive_unix_millis()
+            .checked_sub(i128::from(offset.seconds) * i128::from(MILLIS_PER_SECOND))?
+            .try_into()
+            .ok()?;
         Some(Self {
             unix_millis,
             offset,
@@ -410,12 +426,60 @@ impl OffsetDateTime {
         self.unix_millis.div_euclid(MILLIS_PER_SECOND)
     }
 
-    pub const fn timestamp_subsec_millis(self) -> u32 {
-        self.unix_millis.rem_euclid(MILLIS_PER_SECOND) as u32
-    }
-
     pub const fn offset(self) -> UtcOffset {
         self.offset
+    }
+
+    pub fn date(self) -> CivilDate {
+        self.local_datetime().date()
+    }
+
+    pub fn year(self) -> i32 {
+        self.local_datetime().year()
+    }
+
+    pub fn month(self) -> u32 {
+        self.local_datetime().month()
+    }
+
+    pub fn month0(self) -> u32 {
+        self.local_datetime().month0()
+    }
+
+    pub fn day(self) -> u32 {
+        self.local_datetime().day()
+    }
+
+    pub fn day0(self) -> u32 {
+        self.local_datetime().day0()
+    }
+
+    pub fn ordinal(self) -> u32 {
+        self.date().ordinal()
+    }
+
+    pub fn iso_week(self) -> IsoWeek {
+        self.date().iso_week()
+    }
+
+    pub fn weekday(self) -> Weekday {
+        self.date().weekday()
+    }
+
+    pub fn hour(self) -> u32 {
+        self.local_datetime().hour()
+    }
+
+    pub fn minute(self) -> u32 {
+        self.local_datetime().minute()
+    }
+
+    pub fn second(self) -> u32 {
+        self.local_datetime().second()
+    }
+
+    pub fn millisecond(self) -> u32 {
+        self.local_datetime().millisecond()
     }
 
     pub fn local_datetime(self) -> CivilDateTime {
@@ -537,12 +601,12 @@ impl Weekday {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IsoWeek {
-    year: i32,
+    year: i64,
     week: u32,
 }
 
 impl IsoWeek {
-    pub const fn year(self) -> i32 {
+    pub const fn year(self) -> i64 {
         self.year
     }
 
@@ -551,8 +615,12 @@ impl IsoWeek {
     }
 }
 
-pub const fn is_leap_year(year: i32) -> bool {
+const fn is_leap_year_i64(year: i64) -> bool {
     year.rem_euclid(4) == 0 && (year.rem_euclid(100) != 0 || year.rem_euclid(400) == 0)
+}
+
+pub const fn is_leap_year(year: i32) -> bool {
+    is_leap_year_i64(year as i64)
 }
 
 pub const fn days_in_month(year: i32, month: u32) -> u32 {
@@ -565,8 +633,26 @@ pub const fn days_in_month(year: i32, month: u32) -> u32 {
     }
 }
 
+fn iso_weeks_in_year(year: i64) -> u32 {
+    let january_first = weekday_for_wide_year(year, 1, 1);
+    if january_first == Weekday::Thursday
+        || (january_first == Weekday::Wednesday && is_leap_year_i64(year))
+    {
+        53
+    } else {
+        52
+    }
+}
+
+fn weekday_for_wide_year(year: i64, month: u32, day: u32) -> Weekday {
+    Weekday::from_monday_index((days_from_civil_wide(year, month, day) + 3).rem_euclid(7) as u8)
+}
+
 fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
-    let mut year = i64::from(year);
+    days_from_civil_wide(i64::from(year), month, day)
+}
+
+fn days_from_civil_wide(mut year: i64, month: u32, day: u32) -> i64 {
     if month <= 2 {
         year -= 1;
     }

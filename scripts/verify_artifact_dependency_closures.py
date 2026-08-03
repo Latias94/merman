@@ -124,6 +124,7 @@ SEMANTIC_CLAIMS = (
         profile_id="rust-static-svg",
         required_packages=("merman", "merman-core", "merman-render"),
         forbidden_packages=(
+            "chrono",
             "getrandom",
             "image",
             "jiff",
@@ -170,6 +171,7 @@ SEMANTIC_CLAIMS = (
         profile_id="rust-svg-basic",
         required_packages=("merman", "merman-core", "merman-render"),
         forbidden_packages=(
+            "chrono",
             "getrandom",
             "image",
             "jiff",
@@ -237,6 +239,7 @@ SEMANTIC_CLAIMS = (
         profile_id="cli-analysis",
         required_packages=("merman-analysis", "merman-cli", "merman-core"),
         forbidden_packages=(
+            "chrono",
             "clap_complete",
             "krilla",
             "krilla-svg",
@@ -277,7 +280,7 @@ SEMANTIC_CLAIMS = (
             "tiny-skia",
             "usvg",
         ),
-        forbidden_packages=("krilla", "krilla-svg"),
+        forbidden_packages=("chrono", "krilla", "krilla-svg"),
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("pdf", "png")),
         ),
@@ -293,7 +296,7 @@ SEMANTIC_CLAIMS = (
             "tiny-skia",
             "usvg",
         ),
-        forbidden_packages=("krilla", "krilla-svg"),
+        forbidden_packages=("chrono", "krilla", "krilla-svg"),
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("jpeg", "pdf")),
         ),
@@ -302,7 +305,7 @@ SEMANTIC_CLAIMS = (
         claim_id="pdf-records-krilla-svg-residual",
         profile_id="rust-export-pdf",
         required_packages=("krilla", "merman-export", "merman-render"),
-        forbidden_packages=(),
+        forbidden_packages=("chrono",),
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("jpeg", "png")),
         ),

@@ -1,8 +1,3 @@
-use chrono::{DateTime, FixedOffset, NaiveDateTime, Offset, TimeZone};
-
-#[cfg(feature = "system-timezone")]
-use chrono::{Datelike, Timelike};
-
 #[cfg(feature = "system-timezone")]
 use sha2::{Digest, Sha256};
 #[cfg(feature = "system-timezone")]
@@ -50,6 +45,10 @@ pub enum LocalTimeZoneSource {
 /// Materialized system resolvers own the complete time-zone rule set rather than the offset sampled
 /// at "now": another target date may be on the other side of a daylight-saving transition. The
 /// captured rules and their lazily computed provenance are shared by every clone of a resolver.
+///
+/// Wide civil dates remain project-owned. Jiff is used only as the system time-zone rule engine;
+/// dates outside Jiff's civil range are projected onto a Gregorian-equivalent year before rules
+/// are queried and are then mapped back without narrowing the represented instant.
 #[derive(Debug, Clone)]
 pub struct LocalTimeZone {
     data: Arc<LocalTimeZoneData>,
@@ -63,19 +62,14 @@ struct LocalTimeZoneData {
 
 #[derive(Debug)]
 enum LocalTimeZoneInner {
-    Fixed(FixedOffset),
+    Fixed(UtcOffset),
     #[cfg(feature = "system-timezone")]
     System(jiff::tz::TimeZone),
 }
 
 impl LocalTimeZone {
     pub fn fixed(offset_minutes: i32) -> Result<Self, crate::runtime::RuntimePolicyError> {
-        if !(-1439..=1439).contains(&offset_minutes) {
-            return Err(crate::runtime::RuntimePolicyError::InvalidFixedOffset(
-                offset_minutes,
-            ));
-        }
-        let offset = FixedOffset::east_opt(offset_minutes * 60).ok_or(
+        let offset = UtcOffset::from_minutes(offset_minutes).ok_or(
             crate::runtime::RuntimePolicyError::InvalidFixedOffset(offset_minutes),
         )?;
         Ok(Self {
@@ -83,7 +77,7 @@ impl LocalTimeZone {
                 inner: LocalTimeZoneInner::Fixed(offset),
                 provenance: OnceLock::from(LocalTimeZoneProvenance {
                     source: LocalTimeZoneSource::FixedOffset,
-                    identifier: format_fixed_offset(offset_minutes),
+                    identifier: offset.to_string(),
                     rules_sha256: None,
                 }),
             }),
@@ -134,7 +128,7 @@ impl LocalTimeZone {
         self.data.provenance.get_or_init(|| match &self.data.inner {
             LocalTimeZoneInner::Fixed(offset) => LocalTimeZoneProvenance {
                 source: LocalTimeZoneSource::FixedOffset,
-                identifier: format_fixed_offset(offset.local_minus_utc() / 60),
+                identifier: offset.to_string(),
                 rules_sha256: None,
             },
             #[cfg(feature = "system-timezone")]
@@ -155,32 +149,34 @@ impl LocalTimeZone {
 
     pub fn fixed_offset_minutes(&self) -> Option<i32> {
         match &self.data.inner {
-            LocalTimeZoneInner::Fixed(offset) => Some(offset.local_minus_utc() / 60),
+            LocalTimeZoneInner::Fixed(offset) => Some(offset.minutes()),
             #[cfg(feature = "system-timezone")]
             LocalTimeZoneInner::System(_) => None,
         }
     }
 
-    pub fn datetime_from_naive_local(&self, naive: NaiveDateTime) -> Option<DateTime<FixedOffset>> {
+    /// Resolves a local civil date-time using this resolver's compatible DST policy.
+    ///
+    /// Gaps move forward by the gap duration and folds select the earlier instant, matching
+    /// Mermaid's JavaScript date behavior and Jiff's compatible disambiguation.
+    pub fn resolve_local(&self, local: CivilDateTime) -> Option<OffsetDateTime> {
         match &self.data.inner {
-            LocalTimeZoneInner::Fixed(offset) => offset.from_local_datetime(&naive).single(),
+            LocalTimeZoneInner::Fixed(offset) => OffsetDateTime::from_local(local, *offset),
             #[cfg(feature = "system-timezone")]
-            LocalTimeZoneInner::System(time_zone) => datetime_from_naive_system(time_zone, naive),
+            LocalTimeZoneInner::System(time_zone) => resolve_local_system(time_zone, local),
         }
     }
 
-    pub fn datetime_to_local_fixed(
-        &self,
-        datetime: DateTime<FixedOffset>,
-    ) -> Option<DateTime<FixedOffset>> {
+    /// Applies this resolver's offset rules to an absolute millisecond instant.
+    pub fn at_instant(&self, unix_millis: i64) -> Option<OffsetDateTime> {
+        let instant = OffsetDateTime::from_unix_millis(unix_millis, UtcOffset::UTC);
         match &self.data.inner {
-            LocalTimeZoneInner::Fixed(offset) => Some(datetime.with_timezone(offset)),
+            LocalTimeZoneInner::Fixed(offset) => Some(instant.to_offset(*offset)),
             #[cfg(feature = "system-timezone")]
             LocalTimeZoneInner::System(time_zone) => {
-                let utc = datetime.naive_utc();
-                let timestamp = utc_timestamp_candidates(utc).next()?;
-                let offset = FixedOffset::east_opt(time_zone.to_offset(timestamp).seconds())?;
-                Some(datetime.with_timezone(&offset))
+                let timestamp = utc_timestamp_candidates(instant.utc_datetime()).next()?;
+                let offset = UtcOffset::from_seconds(time_zone.to_offset(timestamp).seconds())?;
+                Some(instant.to_offset(offset))
             }
         }
     }
@@ -208,12 +204,6 @@ impl PartialEq for LocalTimeZone {
 
 impl Eq for LocalTimeZone {}
 
-fn format_fixed_offset(offset_minutes: i32) -> String {
-    let sign = if offset_minutes < 0 { '-' } else { '+' };
-    let absolute = offset_minutes.unsigned_abs();
-    format!("{sign}{:02}:{:02}", absolute / 60, absolute % 60)
-}
-
 #[cfg(feature = "system-timezone")]
 const JIFF_MIN_YEAR: i32 = -9999;
 
@@ -222,19 +212,6 @@ const JIFF_MAX_YEAR: i32 = 9999;
 
 #[cfg(feature = "system-timezone")]
 const GREGORIAN_CYCLE_YEARS: i32 = 400;
-
-#[cfg(feature = "system-timezone")]
-fn datetime_from_jiff_timestamp(
-    timestamp: jiff::Timestamp,
-    offset_seconds: i32,
-) -> Option<DateTime<FixedOffset>> {
-    let total_nanos = timestamp.as_nanosecond();
-    let seconds: i64 = total_nanos.div_euclid(1_000_000_000).try_into().ok()?;
-    let nanoseconds: u32 = total_nanos.rem_euclid(1_000_000_000).try_into().ok()?;
-    let utc = DateTime::from_timestamp(seconds, nanoseconds)?;
-    let offset = FixedOffset::east_opt(offset_seconds)?;
-    Some(utc.with_timezone(&offset))
-}
 
 #[cfg(feature = "system-timezone")]
 fn jiff_year_candidates(year: i32) -> [Option<i32>; 2] {
@@ -250,12 +227,12 @@ fn jiff_year_candidates(year: i32) -> [Option<i32>; 2] {
     }
 
     let projected = if year > JIFF_MAX_YEAR {
-        // TZif's POSIX tail repeats on the proleptic Gregorian 400-year cycle.
-        // Keep the projected year in the final supported cycle so it uses that tail.
+        // TZif's POSIX tail repeats on the proleptic Gregorian 400-year cycle. Keep the
+        // projected year in the final supported cycle so the query uses that tail.
         JIFF_MAX_YEAR - GREGORIAN_CYCLE_YEARS + 1 + year.rem_euclid(GREGORIAN_CYCLE_YEARS)
     } else {
-        // Before the first TZif transition the initial offset is constant. Keep the
-        // projected year in the first supported cycle so that rule is preserved.
+        // Before the first TZif transition the initial offset is constant. Keep the projected
+        // year in the first supported cycle so that historical rule remains stable.
         let distance = i64::from(year) - i64::from(JIFF_MIN_YEAR);
         JIFF_MIN_YEAR + distance.rem_euclid(i64::from(GREGORIAN_CYCLE_YEARS)) as i32
     };
@@ -263,64 +240,65 @@ fn jiff_year_candidates(year: i32) -> [Option<i32>; 2] {
 }
 
 #[cfg(feature = "system-timezone")]
-fn jiff_civil_datetime(naive: NaiveDateTime, year: i32) -> Option<jiff::civil::DateTime> {
+fn jiff_civil_datetime(local: CivilDateTime, year: i32) -> Option<jiff::civil::DateTime> {
     jiff::civil::DateTime::new(
         year.try_into().ok()?,
-        naive.month().try_into().ok()?,
-        naive.day().try_into().ok()?,
-        naive.hour().try_into().ok()?,
-        naive.minute().try_into().ok()?,
-        naive.second().try_into().ok()?,
-        naive.nanosecond().try_into().ok()?,
+        local.month().try_into().ok()?,
+        local.day().try_into().ok()?,
+        local.hour().try_into().ok()?,
+        local.minute().try_into().ok()?,
+        local.second().try_into().ok()?,
+        (local.millisecond() * 1_000_000).try_into().ok()?,
     )
     .ok()
 }
 
 #[cfg(feature = "system-timezone")]
-fn datetime_from_naive_system(
+fn resolve_local_system(
     time_zone: &jiff::tz::TimeZone,
-    naive: NaiveDateTime,
-) -> Option<DateTime<FixedOffset>> {
-    for year in jiff_year_candidates(naive.year()).into_iter().flatten() {
-        let Some(civil) = jiff_civil_datetime(naive, year) else {
+    local: CivilDateTime,
+) -> Option<OffsetDateTime> {
+    for year in jiff_year_candidates(local.year()).into_iter().flatten() {
+        let Some(civil) = jiff_civil_datetime(local, year) else {
             continue;
         };
         let Ok(timestamp) = time_zone.to_timestamp(civil) else {
             continue;
         };
-        let resolved =
-            datetime_from_jiff_timestamp(timestamp, time_zone.to_offset(timestamp).seconds())?;
-        if year == naive.year() {
+        let offset = UtcOffset::from_seconds(time_zone.to_offset(timestamp).seconds())?;
+        let resolved = OffsetDateTime::from_unix_millis(timestamp.as_millisecond(), offset);
+        if year == local.year() {
             return Some(resolved);
         }
 
-        let projected = chrono::NaiveDate::from_ymd_opt(year, naive.month(), naive.day())?
-            .and_time(naive.time());
-        let compatible_shift = resolved.naive_local().signed_duration_since(projected);
-        let original_resolved = naive.checked_add_signed(compatible_shift)?;
-        return resolved
-            .offset()
-            .from_local_datetime(&original_resolved)
-            .single();
+        let projected = CivilDate::new(year, local.month(), local.day())?.at_hms_milli(
+            local.hour(),
+            local.minute(),
+            local.second(),
+            local.millisecond(),
+        )?;
+        let compatible_shift = resolved
+            .local_datetime()
+            .signed_duration_millis_since(projected)?;
+        let original_resolved = local.checked_add_millis(compatible_shift)?;
+        return OffsetDateTime::from_local(original_resolved, offset);
     }
     None
 }
 
 #[cfg(feature = "system-timezone")]
-fn utc_timestamp_candidates(naive: NaiveDateTime) -> impl Iterator<Item = jiff::Timestamp> {
-    jiff_year_candidates(naive.year())
+fn utc_timestamp_candidates(utc: CivilDateTime) -> impl Iterator<Item = jiff::Timestamp> {
+    jiff_year_candidates(utc.year())
         .into_iter()
         .flatten()
         .filter_map(move |year| {
-            let date = chrono::NaiveDate::from_ymd_opt(year, naive.month(), naive.day())?;
-            let mapped = NaiveDateTime::new(date, naive.time());
-            let utc =
-                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(mapped, chrono::Utc);
-            jiff::Timestamp::new(
-                utc.timestamp(),
-                utc.timestamp_subsec_nanos().try_into().ok()?,
-            )
-            .ok()
+            let mapped = CivilDate::new(year, utc.month(), utc.day())?.at_hms_milli(
+                utc.hour(),
+                utc.minute(),
+                utc.second(),
+                utc.millisecond(),
+            )?;
+            jiff::Timestamp::from_millisecond(mapped.naive_unix_millis()?).ok()
         })
 }
 
@@ -358,14 +336,16 @@ fn system_provenance(time_zone: &jiff::tz::TimeZone) -> LocalTimeZoneProvenance 
     }
 }
 
-/// Returns the UTC fixed offset without fallible construction.
-pub fn utc_fixed_offset() -> FixedOffset {
-    chrono::Utc.fix()
-}
-
 #[cfg(all(test, feature = "system-timezone"))]
 mod system_timezone_tests {
     use super::*;
+
+    fn date_time(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> CivilDateTime {
+        CivilDate::new(year, month, day)
+            .expect("valid date")
+            .at_hms(hour, minute, 0)
+            .expect("valid time")
+    }
 
     #[test]
     fn deterministic_resolver_construction_uses_bounded_stack() {
@@ -384,30 +364,21 @@ mod system_timezone_tests {
     fn system_resolver_supports_mermaid_year_boundary_beyond_jiff_civil_range() {
         let resolver = LocalTimeZone::try_system().expect("system time-zone adapter");
         for year in [-10000, 10000] {
-            let naive = chrono::NaiveDate::from_ymd_opt(year, 1, 1)
-                .expect("boundary year should be representable by chrono")
-                .and_hms_opt(0, 0, 0)
-                .expect("midnight should be representable");
-            let local = resolver
-                .datetime_from_naive_local(naive)
+            let local = date_time(year, 1, 1, 0, 0);
+            let resolved = resolver
+                .resolve_local(local)
                 .expect("system TZif rules should project the boundary year");
-            assert_eq!(local.naive_local(), naive);
+            assert_eq!(resolved.local_datetime(), local);
         }
     }
 
     #[test]
     fn system_resolver_maps_out_of_range_utc_instants_without_losing_the_instant() {
         let resolver = LocalTimeZone::try_system().expect("system time-zone adapter");
-        let naive = chrono::NaiveDate::from_ymd_opt(10000, 1, 1)
-            .expect("boundary year should be representable by chrono")
-            .and_hms_opt(0, 0, 0)
-            .expect("midnight should be representable");
-        let utc = DateTime::<FixedOffset>::from_naive_utc_and_offset(
-            naive,
-            FixedOffset::east_opt(0).expect("UTC offset is valid"),
-        );
+        let utc = OffsetDateTime::from_local(date_time(10000, 1, 1, 0, 0), UtcOffset::UTC)
+            .expect("boundary UTC instant");
         let local = resolver
-            .datetime_to_local_fixed(utc)
+            .at_instant(utc.timestamp_millis())
             .expect("system TZif rules should resolve the boundary instant");
         assert_eq!(local.timestamp_millis(), utc.timestamp_millis());
     }
@@ -422,15 +393,11 @@ mod system_timezone_tests {
                 provenance: OnceLock::new(),
             }),
         };
-        let nonexistent = chrono::NaiveDate::from_ymd_opt(2026, 3, 8)
-            .expect("valid date")
-            .and_hms_opt(2, 30, 0)
-            .expect("valid civil time");
         let resolved = resolver
-            .datetime_from_naive_local(nonexistent)
+            .resolve_local(date_time(2026, 3, 8, 2, 30))
             .expect("compatible DST gap resolution should succeed");
-        assert_eq!(resolved.naive_local().hour(), 3);
-        assert_eq!(resolved.naive_local().minute(), 30);
+        assert_eq!(resolved.local_datetime().hour(), 3);
+        assert_eq!(resolved.local_datetime().minute(), 30);
     }
 
     #[test]
@@ -443,16 +410,13 @@ mod system_timezone_tests {
                 provenance: OnceLock::new(),
             }),
         };
-        let repeated = chrono::NaiveDate::from_ymd_opt(2026, 11, 1)
-            .expect("valid date")
-            .and_hms_opt(1, 30, 0)
-            .expect("valid civil time");
+        let repeated = date_time(2026, 11, 1, 1, 30);
 
         let resolved = resolver
-            .datetime_from_naive_local(repeated)
+            .resolve_local(repeated)
             .expect("compatible DST fold resolution should succeed");
 
-        assert_eq!(resolved.naive_local(), repeated);
-        assert_eq!(resolved.offset().local_minus_utc(), -4 * 60 * 60);
+        assert_eq!(resolved.local_datetime(), repeated);
+        assert_eq!(resolved.offset().seconds(), -4 * 60 * 60);
     }
 }
