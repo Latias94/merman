@@ -161,26 +161,35 @@ a second SKU and a stable budget.
 Use the xtask size matrix before changing an artifact profile:
 
 ```bash
-cargo run -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo run -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo run -p xtask -- wasm-size-matrix --surface all --budget-file docs/release/WASM_SIZE_BUDGETS.json
+npm ci --prefix platforms/web
+npm run build --prefix platforms/web
+npm run smoke --prefix platforms/web
+cargo run -p xtask -- wasm-size-matrix --surface web \
+  --web-package-root platforms/web/packages \
+  --budget-file docs/release/WASM_SIZE_BUDGETS.json
+cargo run -p xtask -- wasm-size-matrix --surface typst \
+  --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
-The command builds declared `wasm-size` artifacts and reports raw, stripped, gzip, and brotli
-bytes together with the exact Cargo profile, target, feature set, runtime IDs, capabilities, and
-output IDs. The schema-2 budget file must cover every exact Web and Typst artifact profile once,
-with no legacy feature-profile entries or stale profiles. Compare only artifacts with the same profile and
-target; browser and Typst transports deliberately have different closures.
+The Web command measures the wasm-bindgen artifacts inside the assembled npm package directories;
+the preceding smoke proves their provenance and package closure. It must not rebuild an alternate
+Cargo-only size artifact. The Typst
+command builds its descriptor-owned `wasm-size` artifact because that transport has a separate
+package producer. Both report raw, stripped, gzip, and Brotli bytes together with the exact Cargo
+profile, target, feature set, runtime IDs, capabilities, and output IDs. The schema-2 budget file
+must cover every exact Web and Typst artifact profile once, with no legacy feature-profile entries
+or stale profiles. Compare only artifacts with the same profile and target; browser and Typst
+transports deliberately have different closures.
 
-The 2026-07-26 complete-SVG admission run measured `web-render` against the capability-superset
-`web-full` on the same `wasm32-unknown-unknown` `wasm-size` profile:
+The 2026-08-03 complete-SVG admission refresh measured the final `web-render` npm WASM against the
+capability-superset `web-full` artifact produced by the same wasm-pack toolchain:
 
 | Artifact profile | Raw | Stripped | Gzip | Brotli |
 | --- | ---: | ---: | ---: | ---: |
-| `web-full` | 18,284,917 | 14,392,820 | 4,646,814 | 3,215,042 |
-| `web-render` | 17,023,368 | 13,543,476 | 4,379,667 | 3,043,714 |
+| `web-full` | 12,584,849 | 12,584,626 | 4,787,991 | 3,406,733 |
+| `web-render` | 11,844,334 | 11,844,111 | 4,500,248 | 3,195,427 |
 
-Removing analysis, ASCII, and editor saves 5.90% by stripped bytes and 5.33% by Brotli. The package
+Removing analysis, ASCII, and editor saves 5.88% by stripped bytes and 6.20% by Brotli. The package
 is admitted because it establishes the complete SVG-only capability contract, not because it meets
 the 15% threshold used for workflow-specific slim packages. Do not weaken `web-render` to basic SVG
 under the same package identity: it would no longer be capability-equivalent. A future basic-SVG

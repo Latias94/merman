@@ -100,6 +100,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-linux-android,wasm32-unknown-unknown
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -124,6 +126,9 @@ jobs:
 
       - name: Verify target-scoped artifact dependency closures
         run: python3 scripts/verify_artifact_dependency_closures.py
+
+      - name: Verify exhaustive Cargo feature and artifact recipes
+        run: cargo run --locked -p xtask -- verify-feature-matrix --strict
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
@@ -407,10 +412,8 @@ jobs:
       - name: Install wasm-tools
         uses: taiki-e/install-action@wasm-tools
 
-      - name: Install WASM tools
-        run: |
-          cargo install wasm-bindgen-cli --version 0.2.108 --locked
-          cargo install wasm-pack --version 0.15.0 --locked
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Verify generated Web contracts
         run: |
@@ -418,9 +421,6 @@ jobs:
           cargo run --locked -p xtask -- verify-editor-token-descriptor
           cargo run --locked -p xtask -- verify-text-measurement-protocol
           cargo run --locked -p xtask -- verify-web-diagram-catalog
-
-      - name: Check exact Web WASM size budgets
-        run: cargo run --locked -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web
@@ -430,6 +430,13 @@ jobs:
 
       - name: Verify and smoke web package
         run: npm run smoke --prefix platforms/web
+
+      - name: Check final Web package WASM size budgets
+        run: |
+          cargo run --locked -p xtask -- wasm-size-matrix \
+            --surface web \
+            --web-package-root platforms/web/packages \
+            --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Pack and verify Web package group dry-run
         shell: bash

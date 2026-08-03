@@ -338,12 +338,11 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
         run: npm ci
 
-      - name: Verify generated architecture contracts
+      - name: Verify pull-request architecture contracts
         if: matrix.parity
         run: |
           cargo run --locked -p xtask -- verify-generated
-          python3 scripts/verify_artifact_dependency_closures.py
-          cargo run --locked -p xtask -- verify-feature-matrix --strict
+          cargo run --locked -p xtask -- verify-feature-matrix
           python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
 
       - name: Test (nextest)

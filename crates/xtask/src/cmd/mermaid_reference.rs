@@ -11,7 +11,8 @@ use std::process::Command;
 
 const BUNDLE_RELATIVE_PATH: &str = "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json";
 const REPOS_LOCK_RELATIVE_PATH: &str = "tools/upstreams/REPOS.lock.json";
-const EXPECTED_SCHEMA_VERSION: u32 = 3;
+const EXPECTED_BUNDLE_SCHEMA_VERSION: u32 = 4;
+const EXPECTED_PROJECTION_SCHEMA_VERSION: u32 = 3;
 const CORE_PROJECTION_RELATIVE_PATH: &str = "crates/merman-core/src/generated/mermaid_reference.rs";
 const XTASK_PROJECTION_RELATIVE_PATH: &str = "crates/xtask/src/generated/mermaid_reference.rs";
 const TYPESCRIPT_PROJECTION_RELATIVE_PATH: &str = "playground/src/generated/mermaid-reference.ts";
@@ -54,7 +55,7 @@ struct MermaidReferenceBundle {
     builtin_registry: BuiltinRegistryInventory,
     external_diagrams: Vec<ExternalDiagramReference>,
     external_layouts: Vec<PackageReference>,
-    playground: WorkspaceGraph,
+    playground: WorkspaceLocation,
     reference_cli: ReferenceCli,
     install_policy: InstallPolicy,
     feature_decision: FeatureDecision,
@@ -210,10 +211,8 @@ struct ReferenceCli {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WorkspaceGraph {
+struct WorkspaceLocation {
     workspace: String,
-    package_json_sha256: String,
-    package_lock_sha256: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -309,15 +308,15 @@ fn materialized_runtime_references(
 
 fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
     let mut failures = Vec::new();
-    if bundle.schema_version != EXPECTED_SCHEMA_VERSION {
+    if bundle.schema_version != EXPECTED_BUNDLE_SCHEMA_VERSION {
         failures.push(format!(
-            "schemaVersion must be {EXPECTED_SCHEMA_VERSION}, found {}",
+            "schemaVersion must be {EXPECTED_BUNDLE_SCHEMA_VERSION}, found {}",
             bundle.schema_version
         ));
     }
-    if bundle.projection_schema_version != EXPECTED_SCHEMA_VERSION {
+    if bundle.projection_schema_version != EXPECTED_PROJECTION_SCHEMA_VERSION {
         failures.push(format!(
-            "projectionSchemaVersion must be {EXPECTED_SCHEMA_VERSION}, found {}",
+            "projectionSchemaVersion must be {EXPECTED_PROJECTION_SCHEMA_VERSION}, found {}",
             bundle.projection_schema_version
         ));
     }
@@ -552,8 +551,6 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
         );
     }
     for digest in [
-        &bundle.playground.package_json_sha256,
-        &bundle.playground.package_lock_sha256,
         &bundle.reference_cli.package_json_sha256,
         &bundle.reference_cli.package_lock_sha256,
         &bundle.reference_cli.config_sha256,
@@ -971,33 +968,6 @@ fn verify_reference_cli_files(
         ),
     ] {
         let path = root.join(&bundle.reference_cli.workspace).join(relative);
-        let actual = file_sha256(&path)?;
-        if actual != expected {
-            failures.push(format!(
-                "{} digest drift: expected {expected}, found {actual}",
-                path.display()
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn verify_playground_files(
-    root: &Path,
-    bundle: &MermaidReferenceBundle,
-    failures: &mut Vec<String>,
-) -> Result<(), XtaskError> {
-    for (relative, expected) in [
-        (
-            "package.json",
-            bundle.playground.package_json_sha256.as_str(),
-        ),
-        (
-            "package-lock.json",
-            bundle.playground.package_lock_sha256.as_str(),
-        ),
-    ] {
-        let path = root.join(&bundle.playground.workspace).join(relative);
         let actual = file_sha256(&path)?;
         if actual != expected {
             failures.push(format!(
@@ -3229,7 +3199,6 @@ fn verify_repository_state(
     materialized: bool,
 ) -> Result<(), XtaskError> {
     let mut failures = Vec::new();
-    verify_playground_files(root, bundle, &mut failures)?;
     verify_reference_cli_files(root, bundle, &mut failures)?;
     verify_upstream_provenance_sources(root, bundle, &mut failures)?;
     verify_source_checkouts(root, bundle, materialized, &mut failures)?;
