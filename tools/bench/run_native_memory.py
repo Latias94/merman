@@ -291,6 +291,18 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
         raise DriverContractError(
             "owner contract evidence class and candidate-admission flag disagree"
         )
+    if (
+        schema_version == 2
+        and contract["workload"] == "flowchart-elk-separate-children-depth-v2"
+        and (
+            evidence_class != "infrastructure-smoke"
+            or candidate_admission is not False
+        )
+    ):
+        raise DriverContractError(
+            "flowchart ELK hierarchy memory v2 is permanently non-admission; "
+            "use a calibrated candidate schema with platform scope"
+        )
 
     if schema_version == 1:
         generator = contract["generator"]
@@ -530,6 +542,16 @@ def _validate_driver_parameters(args: argparse.Namespace) -> None:
         raise DriverContractError("timeout seconds must be positive")
 
 
+def _validate_executable_admission(
+    args: argparse.Namespace, contract: Mapping[str, object]
+) -> None:
+    if args.executable and not args.smoke and contract["candidate_admission"] is True:
+        raise DriverContractError(
+            "candidate-bound native-memory evidence cannot use --executable; "
+            "build the contract-owned probe or use --smoke for non-admission diagnostics"
+        )
+
+
 def _expected_echo(
     request: Mapping[str, object],
     *,
@@ -760,6 +782,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
         if not contract_path.is_absolute():
             contract_path = root / contract_path
         contract = load_owner_contract(contract_path, lane=lane)
+        _validate_executable_admission(args, contract)
         if contract["schema_version"] == 1:
             if (
                 lane.id != DEFAULT_LANE

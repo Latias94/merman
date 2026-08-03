@@ -186,6 +186,45 @@
       ]
     },
     {
+      "id": "flowchart-elk-separate-children-memory",
+      "kind": "public",
+      "owner": "merman",
+      "public_operation": "render-flowchart-elk-hierarchy-svg",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "fresh-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-system-allocator-subprocess",
+      "required_features": ["layout-elk"],
+      "selector": "memory/flowchart_elk_separate_children/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 2, 4, 10, 32, 100],
+      "workload": "flowchart-elk-separate-children-depth-v2",
+      "evidence_contract": "docs/performance/contracts/flowchart-elk-separate-children-memory-v2.json",
+      "measurement_metrics": [
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "kind",
+        "metadata_diagram_type_matches",
+        "metadata_layout_elk",
+        "semantic_kind_flowchart",
+        "prepared_family_flowchart",
+        "svg_role_matches",
+        "svg_contains_no_nan",
+        "terminal_node_count",
+        "scope_cluster_ids_unique",
+        "scope_cluster_ids_complete",
+        "view_box_finite_positive",
+        "strict_nested_geometry",
+        "rendered_edge_count",
+        "scope_cluster_count"
+      ]
+    },
+    {
       "id": "state-rough-retained-lifecycle",
       "kind": "public",
       "owner": "merman-render",

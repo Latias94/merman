@@ -13,6 +13,7 @@ import tempfile
 import unittest
 from collections.abc import Mapping
 from contextlib import redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -43,11 +44,28 @@ BINDING_CONTRACT_PATH = (
     / "contracts"
     / "binding-request-version-only-memory-v2.json"
 )
+BINDING_CANDIDATE_CONTRACT_PATH = (
+    ROOT
+    / "docs"
+    / "performance"
+    / "contracts"
+    / "binding-request-version-only-memory-v3.json"
+)
+ELK_HIERARCHY_CONTRACT_PATH = (
+    ROOT
+    / "docs"
+    / "performance"
+    / "contracts"
+    / "flowchart-elk-separate-children-memory-v2.json"
+)
 EXECUTABLE_SHA256 = "a" * 64
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 BINDING_DATA_SHA256 = "471b942eb8877b2ee7c38b86567b13f79fba101df1e5b4767b3421a200e0ad3f"
 BINDING_METADATA_SHA256 = "5662eba44530c1a9bf01f352dd84496fb368c9522757c479f735526d200a9e29"
 BINDING_OUTPUT_SHA256 = "5c5a3cdbe1f692c630006b4c365f348d93d8afd6ea99ecf45d8d2e10524acf53"
+ELK_HIERARCHY_OUTPUT_SHA256 = (
+    "30d91e9ca3384155ebe26a4b4315d740c9746cb899a77eb513b1f966d6adb901"
+)
 
 
 def response_for(request: dict[str, object]) -> dict[str, object]:
@@ -129,6 +147,54 @@ def binding_response_for(request: dict[str, object]) -> dict[str, object]:
     }
 
 
+def elk_hierarchy_response_for(request: dict[str, object]) -> dict[str, object]:
+    scale = int(request["scale"])
+    depth = scale * 2
+    zero = request["mode"] == "zero"
+    return {
+        "schema_version": 2,
+        "lane_id": request["lane_id"],
+        "public_operation": "render-flowchart-elk-hierarchy-svg",
+        "process_lifecycle": "fresh-process",
+        "engine_lifecycle": "reused-engine",
+        "logical_operations_per_estimate": 1,
+        "mode": request["mode"],
+        "scale": scale,
+        "seed": request["seed"],
+        "repeat": request["repeat"],
+        "pid": 1234,
+        "executable_sha256": EXECUTABLE_SHA256,
+        "invocation_id": request["invocation_id"],
+        "nonce": request["nonce"],
+        "output_sha256": EMPTY_SHA256 if zero else ELK_HIERARCHY_OUTPUT_SHA256,
+        "workload_units": depth,
+        "semantic_output": {
+            "kind": "flowchart-elk-hierarchy-render-v2",
+            "metadata_diagram_type_matches": not zero,
+            "metadata_layout_elk": not zero,
+            "semantic_kind_flowchart": not zero,
+            "prepared_family_flowchart": not zero,
+            "svg_role_matches": not zero,
+            "svg_contains_no_nan": not zero,
+            "terminal_node_count": 0 if zero else 1,
+            "scope_cluster_ids_unique": not zero,
+            "scope_cluster_ids_complete": not zero,
+            "view_box_finite_positive": not zero,
+            "strict_nested_geometry": not zero,
+            "rendered_edge_count": 0,
+            "scope_cluster_count": 0 if zero else depth,
+        },
+        "snapshot_live_bytes": 100,
+        "allocation_count": 0 if zero else depth * 10,
+        "allocated_bytes": 0 if zero else depth * 1_000,
+        "live_bytes_after": 100,
+        "peak_live_bytes": 100 if zero else 100 + depth * 100,
+        "peak_growth_bytes": 0 if zero else depth * 100,
+        "counter_overflowed": False,
+        "counter_underflowed": False,
+    }
+
+
 def validate_zero_work_smoke_report(report: Mapping[str, object]) -> None:
     if report.get("outcome") != "protocol_smoke_pass" or report.get("exit_code") != 0:
         raise ValueError("native-memory smoke report did not pass its protocol contract")
@@ -194,6 +260,13 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         return resolve_lane_selector(
             load_corpus(BINDING_CORPUS_PATH),
             "binding-request-version-only-memory",
+        )
+
+    @staticmethod
+    def elk_hierarchy_lane():
+        return resolve_lane_selector(
+            load_corpus(CORPUS_PATH),
+            "flowchart-elk-separate-children-memory",
         )
 
     @staticmethod
@@ -275,6 +348,208 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         self.assertEqual(recipe.bench, "request_overlay_memory")
         self.assertEqual(recipe.features, ("analysis", "ascii", "svg"))
         self.assertEqual(recipe.corpus, BINDING_CORPUS_PATH)
+
+    def test_elk_hierarchy_contract_registers_linear_depth_memory_probe(self) -> None:
+        lane = self.elk_hierarchy_lane()
+        contract = run_native_memory.load_owner_contract(
+            ELK_HIERARCHY_CONTRACT_PATH,
+            lane=lane,
+        )
+        recipe = run_native_memory.memory_recipe(
+            ROOT,
+            target_dir=ROOT / "target",
+            toolchain=None,
+            corpus=CORPUS_PATH,
+            contract=contract,
+        )
+
+        self.assertEqual(contract["schema_version"], 2)
+        self.assertEqual(contract["evidence_class"], "infrastructure-smoke")
+        self.assertIs(contract["candidate_admission"], False)
+        self.assertEqual(contract["scale"]["dimension"], "scope_cluster_count")
+        self.assertEqual(contract["scale"]["units_per_scale"], 2)
+        self.assertEqual(
+            [scale * contract["scale"]["units_per_scale"] for scale in lane.size_vector],
+            [2, 4, 8, 20, 64, 200],
+        )
+        self.assertEqual(recipe.package, "merman")
+        self.assertEqual(recipe.bench, "elk_hierarchy_memory")
+        self.assertEqual(recipe.features, ("layout-elk",))
+        projection = json.dumps(
+            contract["semantic_response"]["operation"],
+            separators=(",", ":"),
+        ).encode("utf-8")
+        self.assertEqual(
+            hashlib.sha256(projection).hexdigest(),
+            contract["semantic_response"]["operation_output_sha256"],
+        )
+
+    def test_elk_hierarchy_v2_cannot_be_promoted_by_renaming_the_lane(
+        self,
+    ) -> None:
+        lane = self.elk_hierarchy_lane()
+        renamed_lane = replace(lane, id="renamed-elk-hierarchy-memory")
+        promoted = json.loads(
+            ELK_HIERARCHY_CONTRACT_PATH.read_text(encoding="utf-8")
+        )
+        promoted["lane_id"] = renamed_lane.id
+        promoted["evidence_class"] = "candidate-bound"
+        promoted["candidate_admission"] = True
+
+        with tempfile.TemporaryDirectory() as raw:
+            contract_path = Path(raw) / "elk-hierarchy-promoted-v2.json"
+            contract_path.write_text(json.dumps(promoted), encoding="utf-8")
+            with self.assertRaisesRegex(
+                run_native_memory.DriverContractError,
+                "v2 is permanently non-admission",
+            ):
+                run_native_memory.load_owner_contract(
+                    contract_path,
+                    lane=renamed_lane,
+                )
+
+    def test_candidate_contract_rejects_explicit_executable_without_blocking_diagnostics(
+        self,
+    ) -> None:
+        candidate_report, candidate_exit = run_native_memory.execute(
+            self.args(
+                corpus=str(BINDING_CORPUS_PATH),
+                lane="binding-request-version-only-memory",
+                contract=str(BINDING_CANDIDATE_CONTRACT_PATH),
+                executable="/tmp/prebuilt-native-memory",
+                dry_run=True,
+            )
+        )
+        self.assertEqual(candidate_exit, 2)
+        self.assertTrue(
+            any(
+                "candidate-bound native-memory evidence cannot use --executable"
+                in error
+                for error in candidate_report["contract_errors"]
+            )
+        )
+
+        diagnostic_report, diagnostic_exit = run_native_memory.execute(
+            self.args(
+                corpus=str(BINDING_CORPUS_PATH),
+                lane="binding-request-version-only-memory",
+                contract=str(BINDING_CONTRACT_PATH),
+                executable="/tmp/prebuilt-native-memory",
+                dry_run=True,
+            )
+        )
+        self.assertEqual(diagnostic_exit, 0)
+        self.assertIs(diagnostic_report["candidate_admission"], False)
+
+    def test_elk_hierarchy_dry_run_verifies_probe_source_provenance(self) -> None:
+        report, exit_code = run_native_memory.execute(
+            self.args(
+                lane="flowchart-elk-separate-children-memory",
+                contract=str(ELK_HIERARCHY_CONTRACT_PATH),
+                dry_run=True,
+            )
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["recipe"]["bench"], "elk_hierarchy_memory")
+        self.assertEqual(report["recipe"]["features"], ["layout-elk"])
+        self.assertEqual(len(report["inputs"]["probe_inputs"]), 2)
+
+        damaged = json.loads(ELK_HIERARCHY_CONTRACT_PATH.read_text(encoding="utf-8"))
+        damaged["probe"]["inputs"][0]["sha256"] = "b" * 64
+        with tempfile.TemporaryDirectory() as raw:
+            contract_path = Path(raw) / "elk-hierarchy-damaged.json"
+            contract_path.write_text(json.dumps(damaged), encoding="utf-8")
+            failed, failed_exit = run_native_memory.execute(
+                self.args(
+                    lane="flowchart-elk-separate-children-memory",
+                    contract=str(contract_path),
+                    dry_run=True,
+                )
+            )
+        self.assertEqual(failed_exit, 2)
+        self.assertIn(
+            "owner contract probe input digest differs at index 0",
+            failed["contract_errors"],
+        )
+
+    def test_elk_hierarchy_probe_rejects_semantic_and_workload_drift(self) -> None:
+        lane = self.elk_hierarchy_lane()
+        contract = run_native_memory.load_owner_contract(
+            ELK_HIERARCHY_CONTRACT_PATH,
+            lane=lane,
+        )
+        nonces = (f"{index:032x}" for index in range(60))
+        schedule = run_native_memory.build_schedule(
+            lane_id=lane.id,
+            repeats=5,
+            seed=1,
+            run_id="elk-hierarchy-probe",
+            nonce_factory=lambda: next(nonces),
+        )
+        request = next(
+            entry["request"]
+            for entry in schedule
+            if entry["request"]["mode"] == "operation"
+            and entry["request"]["scale"] == 2
+        )
+
+        valid = elk_hierarchy_response_for(request)
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(valid) + "\n",
+            stderr="",
+        )
+        with mock.patch.object(subprocess, "run", return_value=completed):
+            response = run_native_memory.run_probe(
+                Path("/tmp/elk-hierarchy-memory"),
+                request,
+                executable_sha256=EXECUTABLE_SHA256,
+                lane=lane,
+                contract=contract,
+                timeout_seconds=30,
+            )
+        self.assertEqual(response["workload_units"], int(request["scale"]) * 2)
+        self.assertEqual(
+            response["semantic_output"]["scope_cluster_count"],
+            int(request["scale"]) * 2,
+        )
+
+        mutations = (
+            (
+                lambda payload: payload["semantic_output"].__setitem__(
+                    "terminal_node_count", 0
+                ),
+                "semantic output",
+            ),
+            (
+                lambda payload: payload.__setitem__(
+                    "workload_units", int(payload["workload_units"]) + 1
+                ),
+                "workload_units",
+            ),
+            (
+                lambda payload: payload["semantic_output"].__setitem__(
+                    "scope_cluster_count", 0
+                ),
+                "semantic output",
+            ),
+        )
+        for mutate, message in mutations:
+            payload = elk_hierarchy_response_for(request)
+            mutate(payload)
+            completed.stdout = json.dumps(payload) + "\n"
+            with self.subTest(message=message), mock.patch.object(
+                subprocess, "run", return_value=completed
+            ), self.assertRaisesRegex(run_native_memory.DriverContractError, message):
+                run_native_memory.run_probe(
+                    Path("/tmp/elk-hierarchy-memory"),
+                    request,
+                    executable_sha256=EXECUTABLE_SHA256,
+                    lane=lane,
+                    contract=contract,
+                    timeout_seconds=30,
+                )
 
     def test_binding_probe_is_locked_to_owner_semantics_and_call_scale(self) -> None:
         lane = self.binding_lane()
