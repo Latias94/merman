@@ -294,8 +294,8 @@
             "x": 442.938,
             "y": 784.0
           },
-          "offset_x": 60.0,
-          "offset_y": null,
+          "offset_x": -40.0,
+          "offset_y": 60.0,
           "label": {
             "text": "2: Calls isAuthenticated() on",
             "y": 0.0,
