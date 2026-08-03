@@ -1,6 +1,8 @@
 use crate::{MermaidConfig, ParseControl, ParseControlResult, Result};
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+
+static PINNED_MERMAID_BASELINE: OnceLock<DetectorRegistry> = OnceLock::new();
 
 #[derive(Debug, thiserror::Error)]
 #[error("No diagram type detected matching given configuration for text: {text}")]
@@ -122,21 +124,41 @@ impl DetectorRegistry {
         .into()))
     }
 
-    /// Builds the detector registry for the pinned Mermaid baseline.
+    /// Returns the detector registry for the pinned Mermaid baseline.
+    ///
+    /// The immutable baseline is initialized once per process. Each returned registry shares its
+    /// backing storage until a caller customizes it through [`Self::add`] or [`Self::add_fn`].
     pub fn pinned_mermaid_baseline() -> Self {
-        let mut reg = Self::new();
+        Self::clone_or_init_pinned_baseline(&PINNED_MERMAID_BASELINE, Self::build_pinned_baseline)
+    }
+
+    fn clone_or_init_pinned_baseline(
+        baseline: &OnceLock<Self>,
+        initialize: impl FnOnce() -> Self,
+    ) -> Self {
+        baseline.get_or_init(initialize).clone()
+    }
+
+    fn build_pinned_baseline() -> Self {
+        let mut registry = Self::new();
         for fact in crate::family::detector_facts() {
-            reg.add_fn(fact.id, fact.detector);
+            registry.add_fn(fact.id, fact.detector);
             if fact.id == "error" {
-                reg.add_fn("---", detector_frontmatter_unparsed);
+                registry.add_fn("---", detector_frontmatter_unparsed);
             }
         }
 
-        reg
+        registry
     }
+
     #[cfg(test)]
     pub(crate) fn detector_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.detectors.iter().map(|detector| detector.id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.detectors, &other.detectors)
     }
 }
 
@@ -473,23 +495,97 @@ mod remove_directives_tests {
 #[cfg(test)]
 mod registry_clone_tests {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::{
+        Arc, Barrier, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     fn always_detects(_text: &str, _config: &mut MermaidConfig) -> bool {
         true
     }
 
     #[test]
-    fn detector_registry_clone_uses_copy_on_write_storage() {
+    fn detector_registry_initializer_builds_the_complete_baseline_once() {
+        let baseline = OnceLock::new();
+        let build_count = AtomicUsize::new(0);
+        let initialize = || {
+            build_count.fetch_add(1, Ordering::Relaxed);
+            DetectorRegistry::build_pinned_baseline()
+        };
+
+        assert!(baseline.get().is_none());
+        let first = DetectorRegistry::clone_or_init_pinned_baseline(&baseline, initialize);
+        let second = DetectorRegistry::clone_or_init_pinned_baseline(&baseline, || {
+            build_count.fetch_add(1, Ordering::Relaxed);
+            DetectorRegistry::build_pinned_baseline()
+        });
+
+        let mut expected_ids = Vec::new();
+        for fact in crate::family::detector_facts() {
+            expected_ids.push(fact.id);
+            if fact.id == "error" {
+                expected_ids.push("---");
+            }
+        }
+        assert_eq!(first.detector_ids().collect::<Vec<_>>(), expected_ids);
+        assert!(first.shares_storage_with(&second));
+        assert_eq!(build_count.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn detector_registry_baselines_share_copy_on_write_storage() {
         let original = DetectorRegistry::pinned_mermaid_baseline();
-        let mut cloned = original.clone();
+        let mut customized = DetectorRegistry::pinned_mermaid_baseline();
 
-        assert!(Arc::ptr_eq(&original.detectors, &cloned.detectors));
+        assert!(Arc::ptr_eq(&original.detectors, &customized.detectors));
 
-        cloned.add_fn("copy-on-write-test", always_detects);
+        customized.add_fn("copy-on-write-test", always_detects);
 
-        assert!(!Arc::ptr_eq(&original.detectors, &cloned.detectors));
+        assert!(!Arc::ptr_eq(&original.detectors, &customized.detectors));
         assert!(!original.detector_ids().any(|id| id == "copy-on-write-test"));
-        assert!(cloned.detector_ids().any(|id| id == "copy-on-write-test"));
+        assert!(
+            customized
+                .detector_ids()
+                .any(|id| id == "copy-on-write-test")
+        );
+        assert!(
+            !DetectorRegistry::pinned_mermaid_baseline()
+                .detector_ids()
+                .any(|id| id == "copy-on-write-test")
+        );
+    }
+
+    #[test]
+    fn detector_registry_initializes_once_under_concurrent_first_access() {
+        const THREADS: usize = 8;
+
+        let baseline = OnceLock::new();
+        let barrier = Barrier::new(THREADS);
+        let build_count = AtomicUsize::new(0);
+        let registries = std::thread::scope(|scope| {
+            let handles = (0..THREADS)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        DetectorRegistry::clone_or_init_pinned_baseline(&baseline, || {
+                            build_count.fetch_add(1, Ordering::Relaxed);
+                            DetectorRegistry::build_pinned_baseline()
+                        })
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("registry initializer thread panicked"))
+                .collect::<Vec<_>>()
+        });
+
+        assert_eq!(build_count.load(Ordering::Relaxed), 1);
+        assert!(
+            registries[1..]
+                .iter()
+                .all(|registry| registries[0].shares_storage_with(registry))
+        );
     }
 }
