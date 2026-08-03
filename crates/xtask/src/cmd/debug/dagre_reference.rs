@@ -249,33 +249,38 @@ fn snapshot_dagre_graph_json(
     graph: &DagreLayoutGraph,
     phase: DagreSnapshotPhase,
 ) -> Result<graphlib_json::GraphJson, serde_json::Error> {
-    let mut snapshot: Graph<Option<JsonValue>, Option<JsonValue>, Option<JsonValue>> =
-        Graph::new(graph.options());
-    snapshot.set_graph(Some(graph_label_to_json(graph.graph(), phase)));
+    let nodes = graph
+        .node_ids()
+        .into_iter()
+        .filter_map(|id| {
+            graph.node(&id).map(|label| graphlib_json::GraphJsonNode {
+                v: id.clone(),
+                value: Some(node_label_to_json(label, phase)),
+                parent: graph.parent(&id).map(str::to_string),
+            })
+        })
+        .collect();
+    let edges = graph
+        .edge_keys()
+        .into_iter()
+        .filter_map(|key| {
+            graph
+                .edge_by_key(&key)
+                .map(|label| graphlib_json::GraphJsonEdge {
+                    v: key.v,
+                    w: key.w,
+                    name: key.name,
+                    value: Some(edge_label_to_json(label, phase)),
+                })
+        })
+        .collect();
 
-    for id in graph.node_ids() {
-        let Some(label) = graph.node(&id) else {
-            continue;
-        };
-        snapshot.set_node(id.clone(), Some(node_label_to_json(label, phase)));
-        if let Some(parent) = graph.parent(&id) {
-            snapshot.set_parent(id, parent.to_string());
-        }
-    }
-
-    for key in graph.edge_keys() {
-        let Some(label) = graph.edge_by_key(&key) else {
-            continue;
-        };
-        snapshot.set_edge_named(
-            key.v,
-            key.w,
-            key.name,
-            Some(Some(edge_label_to_json(label, phase))),
-        );
-    }
-
-    graphlib_json::write(&snapshot)
+    Ok(graphlib_json::GraphJson {
+        options: graph.options(),
+        value: Some(graph_label_to_json(graph.graph(), phase)),
+        nodes,
+        edges,
+    })
 }
 
 fn graph_label_to_json(graph_label: &GraphLabel, phase: DagreSnapshotPhase) -> JsonValue {
@@ -696,6 +701,26 @@ mod tests {
         assert_eq!(edge["name"], JsonValue::from("named"));
         assert_eq!(edge["value"]["minlen"], JsonValue::from(2));
         assert!(edge.get("label").is_none());
+    }
+
+    #[test]
+    fn dagre_reference_snapshot_preserves_child_before_parent_node_order() {
+        let mut graph = DagreLayoutGraph::new(GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: true,
+        });
+        graph.set_node("child", NodeLabel::default());
+        graph.set_node("sibling", NodeLabel::default());
+        graph.set_node("parent", NodeLabel::default());
+        graph.set_parent("child", "parent");
+
+        assert_eq!(graph.node_ids(), vec!["child", "sibling", "parent"]);
+
+        let snapshot = snapshot_dagre_input(&graph).expect("snapshot graph");
+        let node_ids: Vec<&str> = snapshot.nodes.iter().map(|node| node.v.as_str()).collect();
+        assert_eq!(node_ids, vec!["child", "sibling", "parent"]);
+        assert_eq!(snapshot.nodes[0].parent.as_deref(), Some("parent"));
     }
 
     #[test]
