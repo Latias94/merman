@@ -1,7 +1,9 @@
 use crate::{
     XtaskError,
     cmd::{
-        artifact_profiles::load_wasm_size_artifact_profiles, paths,
+        artifact_profiles::load_wasm_size_artifact_profiles,
+        paths,
+        typst_artifact::{optimize_typst_wasm, verify_typst_wasm_optimizer},
         wasm_build_lock::WorkspaceWasmBuildLock,
     },
 };
@@ -704,10 +706,19 @@ fn strip_copy(
     wasm_path: &Path,
     strip_dir: &Path,
 ) -> Result<PathBuf, XtaskError> {
+    let optimized_path = if artifact.surface == Surface::Typst {
+        verify_typst_wasm_optimizer()?;
+        let path = strip_dir.join(format!("{}.optimized.wasm", artifact.id));
+        optimize_typst_wasm(wasm_path, &path)?;
+        Some(path)
+    } else {
+        None
+    };
+    let strip_input = optimized_path.as_deref().unwrap_or(wasm_path);
     let stripped_path = strip_dir.join(format!("{}.stripped.wasm", artifact.id));
     let status = Command::new("wasm-tools")
         .args(["strip", "--all"])
-        .arg(wasm_path)
+        .arg(strip_input)
         .arg("-o")
         .arg(&stripped_path)
         .current_dir(paths::workspace_root())
