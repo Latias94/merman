@@ -18,11 +18,21 @@ use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-const MANIFEST_SCHEMA_VERSION: u32 = 2;
+const MANIFEST_SCHEMA_VERSION: u32 = 3;
 const ARTIFACT_ROOT_NAME: &str = "typst-wasm-artifacts";
 const MANIFEST_FILE_NAME: &str = "manifest.json";
 const TARGET_TRIPLE: &str = "wasm32-unknown-unknown";
 const CARGO_PROFILE: &str = "wasm-size";
+const WASM_OPT_VERSION: &str = "wasm-opt version 131";
+const WASM_OPT_FEATURES: [&str; 7] = [
+    "--enable-bulk-memory",
+    "--enable-bulk-memory-opt",
+    "--enable-multivalue",
+    "--enable-mutable-globals",
+    "--enable-nontrapping-float-to-int",
+    "--enable-reference-types",
+    "--enable-sign-ext",
+];
 
 #[derive(Debug, Clone)]
 pub(crate) struct TypstArtifactSpec {
@@ -124,6 +134,7 @@ struct ToolFingerprint {
     sha256: String,
     cargo_version: String,
     rustc_version: String,
+    wasm_opt_version: String,
     wasm_tools_version: String,
     rustflags: Option<String>,
     cargo_encoded_rustflags: Option<String>,
@@ -133,6 +144,7 @@ struct ToolFingerprint {
 struct ToolIdentity {
     cargo_version: String,
     rustc_version: String,
+    wasm_opt_version: String,
     wasm_tools_version: String,
     rustflags: Option<String>,
     cargo_encoded_rustflags: Option<String>,
@@ -202,6 +214,7 @@ trait ArtifactRuntime {
         spec: &TypstArtifactSpec,
     ) -> Result<CargoMetadataOutput, XtaskError>;
     fn tool_identity(&mut self) -> Result<ToolIdentity, XtaskError>;
+    fn optimize_wasm(&mut self, input: &Path, output: &Path) -> Result<(), XtaskError>;
     fn strip_wasm(&mut self, input: &Path, output: &Path) -> Result<(), XtaskError>;
     fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()>;
 }
@@ -360,9 +373,10 @@ impl VerifiedTypstArtifact {
 impl ToolIdentity {
     fn fingerprint(self) -> ToolFingerprint {
         let mut hasher = Sha256::new();
-        hash_framed(&mut hasher, b"merman-typst-tool-fingerprint-v1");
+        hash_framed(&mut hasher, b"merman-typst-tool-fingerprint-v2");
         hash_framed(&mut hasher, self.cargo_version.as_bytes());
         hash_framed(&mut hasher, self.rustc_version.as_bytes());
+        hash_framed(&mut hasher, self.wasm_opt_version.as_bytes());
         hash_framed(&mut hasher, self.wasm_tools_version.as_bytes());
         hash_optional(&mut hasher, self.rustflags.as_deref());
         hash_optional(&mut hasher, self.cargo_encoded_rustflags.as_deref());
@@ -370,6 +384,7 @@ impl ToolIdentity {
             sha256: format!("{:x}", hasher.finalize()),
             cargo_version: self.cargo_version,
             rustc_version: self.rustc_version,
+            wasm_opt_version: self.wasm_opt_version,
             wasm_tools_version: self.wasm_tools_version,
             rustflags: self.rustflags,
             cargo_encoded_rustflags: self.cargo_encoded_rustflags,
@@ -424,13 +439,19 @@ impl ArtifactRuntime for SystemArtifactRuntime {
     }
 
     fn tool_identity(&mut self) -> Result<ToolIdentity, XtaskError> {
+        let wasm_opt_version = verify_typst_wasm_optimizer()?;
         Ok(ToolIdentity {
             cargo_version: command_version("cargo", &["--version", "--verbose"])?,
             rustc_version: command_version("rustc", &["-vV"])?,
+            wasm_opt_version,
             wasm_tools_version: command_version("wasm-tools", &["--version"])?,
             rustflags: unicode_environment_variable("RUSTFLAGS")?,
             cargo_encoded_rustflags: unicode_environment_variable("CARGO_ENCODED_RUSTFLAGS")?,
         })
+    }
+
+    fn optimize_wasm(&mut self, input: &Path, output: &Path) -> Result<(), XtaskError> {
+        optimize_typst_wasm(input, output)
     }
 
     fn strip_wasm(&mut self, input: &Path, output: &Path) -> Result<(), XtaskError> {
@@ -454,6 +475,50 @@ impl ArtifactRuntime for SystemArtifactRuntime {
     fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()> {
         fs::rename(from, to)
     }
+}
+
+pub(crate) fn verify_typst_wasm_optimizer() -> Result<String, XtaskError> {
+    let version = command_version("wasm-opt", &["--version"])?;
+    validate_typst_wasm_optimizer_version(&version)?;
+    Ok(version)
+}
+
+fn validate_typst_wasm_optimizer_version(version: &str) -> Result<(), XtaskError> {
+    let compatible = match version.strip_prefix(WASM_OPT_VERSION) {
+        Some("") => true,
+        Some(suffix) => suffix
+            .strip_prefix(" (")
+            .and_then(|metadata| metadata.strip_suffix(')'))
+            .is_some_and(|metadata| {
+                !metadata.is_empty() && !metadata.chars().any(char::is_whitespace)
+            }),
+        None => false,
+    };
+    if !compatible {
+        return Err(artifact_error(format!(
+            "Typst packaging requires Binaryen 131 (`{WASM_OPT_VERSION}`), found `{version}`"
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) fn optimize_typst_wasm(input: &Path, output: &Path) -> Result<(), XtaskError> {
+    let command_output = Command::new("wasm-opt")
+        .arg("-Oz")
+        .args(WASM_OPT_FEATURES)
+        .arg(input)
+        .arg("-o")
+        .arg(output)
+        .output()
+        .map_err(|source| artifact_io_error("run wasm-opt", input, source))?;
+    if !command_output.status.success() {
+        return Err(artifact_error(format!(
+            "wasm-opt failed with status {}: {}",
+            command_output.status,
+            String::from_utf8_lossy(&command_output.stderr).trim()
+        )));
+    }
+    Ok(())
 }
 
 pub(crate) fn install_typst_artifact(
@@ -493,11 +558,21 @@ fn install_with_runtime<R: ArtifactRuntime>(
     let private_raw = staging.path().join(".raw.wasm");
     fs::copy(raw_wasm, &private_raw)
         .map_err(|source| artifact_io_error("copy raw WASM into staging", raw_wasm, source))?;
+    let optimized_wasm = staging.path().join(".optimized.wasm");
+    runtime.optimize_wasm(&private_raw, &optimized_wasm)?;
+    validate_regular_file(&optimized_wasm, "optimized WASM artifact")?;
     let staged_wasm = staging.path().join(&spec.artifact_name);
-    runtime.strip_wasm(&private_raw, &staged_wasm)?;
+    runtime.strip_wasm(&optimized_wasm, &staged_wasm)?;
     validate_regular_file(&staged_wasm, "stripped WASM artifact")?;
     fs::remove_file(&private_raw).map_err(|source| {
         artifact_io_error("remove private raw WASM copy", &private_raw, source)
+    })?;
+    fs::remove_file(&optimized_wasm).map_err(|source| {
+        artifact_io_error(
+            "remove private optimized WASM copy",
+            &optimized_wasm,
+            source,
+        )
     })?;
 
     let current_metadata = runtime.cargo_metadata(spec)?;
@@ -1510,6 +1585,16 @@ fn artifact_error(message: impl Into<String>) -> XtaskError {
 mod tests {
     use super::*;
 
+    #[test]
+    fn wasm_optimizer_version_accepts_release_build_suffix() {
+        assert!(validate_typst_wasm_optimizer_version(WASM_OPT_VERSION).is_ok());
+        assert!(
+            validate_typst_wasm_optimizer_version("wasm-opt version 131 (version_131)").is_ok()
+        );
+        assert!(validate_typst_wasm_optimizer_version("wasm-opt version 130").is_err());
+        assert!(validate_typst_wasm_optimizer_version("wasm-opt version 1310").is_err());
+    }
+
     struct Fixture {
         _temporary: tempfile::TempDir,
         workspace: PathBuf,
@@ -1553,6 +1638,18 @@ mod tests {
 
         fn tool_identity(&mut self) -> Result<ToolIdentity, XtaskError> {
             Ok(self.identity.clone())
+        }
+
+        fn optimize_wasm(&mut self, input: &Path, output: &Path) -> Result<(), XtaskError> {
+            let bytes = fs::read(input)
+                .map_err(|source| artifact_io_error("read fake optimize input", input, source))?;
+            let mut optimized = b"optimized:".to_vec();
+            optimized.extend_from_slice(&bytes);
+            fs::write(output, optimized).map_err(|source| {
+                artifact_io_error("write fake optimize output", output, source)
+            })?;
+            fs::write(input, b"mutated private raw copy")
+                .map_err(|source| artifact_io_error("mutate fake optimize input", input, source))
         }
 
         fn strip_wasm(&mut self, input: &Path, output: &Path) -> Result<(), XtaskError> {
@@ -1679,6 +1776,7 @@ mod tests {
                 identity: ToolIdentity {
                     cargo_version: "cargo 1.90.0".to_string(),
                     rustc_version: "rustc 1.90.0\nhost: test".to_string(),
+                    wasm_opt_version: WASM_OPT_VERSION.to_string(),
                     wasm_tools_version: "wasm-tools 1.240.0".to_string(),
                     rustflags: Some("-C target-feature=+bulk-memory".to_string()),
                     cargo_encoded_rustflags: None,
@@ -1832,13 +1930,13 @@ mod tests {
         assert_eq!(fs::read(&raw_wasm).unwrap(), b"raw-wasm");
         assert_eq!(
             fs::read(installed.wasm_path()).unwrap(),
-            b"stripped:raw-wasm".as_slice()
+            b"stripped:optimized:raw-wasm".as_slice()
         );
         let manifest: ArtifactManifest = serde_json::from_slice(
             &fs::read(spec.output_directory().join(MANIFEST_FILE_NAME)).unwrap(),
         )
         .unwrap();
-        assert_eq!(manifest.schema_version, 2);
+        assert_eq!(manifest.schema_version, 3);
         assert_eq!(manifest.artifact_profile, "typst-wasm");
         assert_eq!(manifest.profile, "publish");
         assert!(!manifest.default_features);

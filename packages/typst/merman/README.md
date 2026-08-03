@@ -24,7 +24,7 @@ flowchart TD
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| `0.2.0` | `0.8.0-alpha.3` | `2` | Uses the structured Typst result envelope and descriptor-owned capability catalog. |
+| `0.2.0` | `0.8.0-alpha.4` | `2` | Uses the structured Typst result envelope and descriptor-owned capability catalog. |
 | `0.1.0` | `0.8.0-alpha.1` | `1` | Initial published Typst wrapper. |
 
 The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `2`, including `presentation` for first-party profiles and host themes, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
@@ -292,6 +292,8 @@ Build the publish Typst package locally:
 cargo run --locked -p xtask -- build-typst-package --profile publish
 ```
 
+The release build requires `wasm-tools` and Binaryen `wasm-opt version 131`. The package builder applies a pinned `wasm-opt -Oz` pass before stripping custom sections and records both tool versions in the artifact manifest.
+
 The package is written to:
 
 ```sh
@@ -327,4 +329,4 @@ The sole package profile, `publish`, enables SVG rendering, analysis, the comple
 
 ## License
 
-Merman is available under either MIT or Apache-2.0. The package includes the complete project license in `LICENSE`, source and embedded-resource attribution in `THIRD_PARTY_NOTICES.md`, and the corresponding third-party terms in `THIRD_PARTY_LICENSES/`.
+Merman is available under either MIT or Apache-2.0. The package includes the complete project license in `LICENSE`, source and embedded-resource attribution in `THIRD_PARTY_NOTICES.md`, and the corresponding third-party terms in `THIRD_PARTY_LICENSES/`. The machine-readable Cargo dependency report remains in the [source repository's release evidence](https://github.com/Latias94/merman/tree/main/docs/release) instead of being duplicated in the downloaded Typst package.
