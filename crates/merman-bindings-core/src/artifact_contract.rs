@@ -53,7 +53,7 @@ impl CompiledBindingSurface {
         let text_measurement_providers = TextMeasurementProviderKey::ALL
             .iter()
             .copied()
-            .filter(|provider| provider.spec().is_compiled(&capabilities))
+            .filter(|provider| provider.is_compiled(&capabilities))
             .collect();
 
         let constructor_services = ConstructorServiceKey::ALL
@@ -97,7 +97,6 @@ impl CompiledBindingSurface {
             operations: requested_operations,
             metadata: requested_metadata,
             payload_schemas,
-            text_measurement_providers: requested_providers,
             constructor_services,
             runtime_policy,
         } = exposure;
@@ -138,14 +137,13 @@ impl CompiledBindingSurface {
             .collect::<BTreeSet<_>>();
 
         let metadata = resolve_metadata(requested_metadata, &capabilities, &self.metadata)?;
-        let text_measurement_providers =
-            self.resolve_providers(requested_providers, uses_svg_pipeline)?;
         validate_services(
             &constructor_services,
             &self.constructor_services,
             uses_svg_pipeline,
-            &text_measurement_providers,
         )?;
+        let text_measurement_providers =
+            self.resolve_providers(&constructor_services, uses_svg_pipeline)?;
         let option_groups = self.option_groups.clone();
 
         Ok(ValidatedArtifactContract {
@@ -225,40 +223,15 @@ impl CompiledBindingSurface {
 
     fn resolve_providers(
         &self,
-        mut providers: BTreeSet<TextMeasurementProviderKey>,
+        constructor_services: &BTreeSet<ConstructorServiceKey>,
         uses_svg_pipeline: bool,
     ) -> Result<BTreeSet<TextMeasurementProviderKey>, BindingError> {
-        for provider in &providers {
-            if !self.text_measurement_providers.contains(provider) {
-                return Err(invalid_artifact_contract(format!(
-                    "text-measurement provider `{}` is not compiled",
-                    provider.id()
-                )));
-            }
-            let spec = provider.spec();
-            if spec.derived_from_svg_pipeline() {
-                return Err(invalid_artifact_contract(format!(
-                    "text-measurement provider `{}` is derived automatically from SVG exposure",
-                    provider.id()
-                )));
-            }
-            if spec.requires_svg_pipeline() && !uses_svg_pipeline {
-                return Err(invalid_artifact_contract(format!(
-                    "text-measurement provider `{}` requires an exposed operation backed by the SVG rendering pipeline",
-                    provider.id()
-                )));
-            }
-        }
-
-        if uses_svg_pipeline {
-            for provider in TextMeasurementProviderKey::ALL
-                .iter()
-                .copied()
-                .filter(|provider| provider.spec().derived_from_svg_pipeline())
-            {
+        let mut providers = BTreeSet::new();
+        for provider in TextMeasurementProviderKey::ALL.iter().copied() {
+            if provider.is_exposed(uses_svg_pipeline, constructor_services) {
                 if !self.text_measurement_providers.contains(&provider) {
                     return Err(invalid_artifact_contract(format!(
-                        "SVG is compiled without the required `{}` text-measurement provider",
+                        "artifact facts expose the uncompiled `{}` text-measurement provider",
                         provider.id()
                     )));
                 }
@@ -386,10 +359,10 @@ pub(crate) fn default_artifact_contract() -> Arc<ValidatedArtifactContract> {
             .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
         #[cfg(feature = "svg")]
         let exposure = exposure
-            .with_text_measurement_providers([TextMeasurementProviderKey::HostCallback])
-            .and_then(|exposure| {
-                exposure.with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
-            })
+            .with_constructor_services([
+                ConstructorServiceKey::HostTextMeasurement,
+                ConstructorServiceKey::IconRegistry,
+            ])
             .expect("the default Rust SVG service surface is coherent");
 
         Arc::new(

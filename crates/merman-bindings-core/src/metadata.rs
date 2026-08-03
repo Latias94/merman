@@ -90,6 +90,8 @@ pub struct RuntimeCatalog {
     pub option_group_ids: Vec<&'static str>,
     /// Immutable host services accepted while constructing a reusable engine.
     pub constructor_service_ids: Vec<&'static str>,
+    /// Structured contracts for the immutable constructor services exposed by this artifact.
+    pub constructor_service_contracts: Vec<RuntimeConstructorServiceContract>,
     pub capabilities: RuntimeCapabilities,
     pub output_contracts: Vec<RuntimeOutputContract>,
     pub registry: RuntimeRegistryContract,
@@ -102,6 +104,26 @@ pub struct RuntimeCatalog {
 pub struct RuntimePayloadSchema {
     pub id: &'static str,
     pub version: u32,
+}
+
+/// Runtime contract for one immutable service accepted during reusable-engine construction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct RuntimeConstructorServiceContract {
+    pub id: &'static str,
+    pub provided_text_measurement_provider_ids: Vec<&'static str>,
+    pub resource_limits: Vec<RuntimeConstructorResourceLimit>,
+}
+
+/// One compiled, caller-immutable resource ceiling owned by a constructor service.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct RuntimeConstructorResourceLimit {
+    pub id: &'static str,
+    pub phase: &'static str,
+    pub unit: &'static str,
+    pub description: &'static str,
+    pub value: u64,
 }
 
 /// Runtime behavior of one output exposed by the concrete artifact.
@@ -292,6 +314,7 @@ impl ValidatedArtifactContract {
     #[must_use]
     pub fn runtime_catalog(&self, transport_api_version: u32) -> RuntimeCatalog {
         let capabilities = self.runtime_capabilities();
+        let constructor_service_contracts = runtime_constructor_service_contracts_for(self);
         let mut payload_schemas = self
             .payload_schema_keys()
             .map(|schema| RuntimePayloadSchema {
@@ -316,6 +339,7 @@ impl ValidatedArtifactContract {
                 self.constructor_service_keys(),
                 crate::ConstructorServiceKey::id,
             ),
+            constructor_service_contracts,
             output_contracts: runtime_output_contracts_for(&capabilities),
             registry: RuntimeRegistryContract {
                 diagram_family_count: diagram_family_capabilities().len(),
@@ -355,6 +379,63 @@ fn sorted_stable_ids<T>(
     let mut ids = values.into_iter().map(id).collect::<Vec<_>>();
     ids.sort_unstable();
     ids
+}
+
+fn runtime_constructor_service_contracts_for(
+    artifact_contract: &ValidatedArtifactContract,
+) -> Vec<RuntimeConstructorServiceContract> {
+    let mut contracts = artifact_contract
+        .constructor_service_keys()
+        .map(|service| {
+            let spec = service.spec();
+            RuntimeConstructorServiceContract {
+                id: service.id(),
+                provided_text_measurement_provider_ids: sorted_stable_ids(
+                    crate::TextMeasurementProviderKey::ALL
+                        .iter()
+                        .copied()
+                        .filter(|provider| {
+                            matches!(
+                                provider.source(),
+                                crate::TextMeasurementProviderSource::ConstructorService(owner)
+                                    if owner == service
+                            )
+                        }),
+                    crate::TextMeasurementProviderKey::id,
+                ),
+                resource_limits: runtime_constructor_resource_limits(spec.resource_catalog()),
+            }
+        })
+        .collect::<Vec<_>>();
+    contracts.sort_unstable_by_key(|contract| contract.id);
+    contracts
+}
+
+fn runtime_constructor_resource_limits(
+    resource_catalog: Option<crate::service_contract::ConstructorServiceResourceCatalog>,
+) -> Vec<RuntimeConstructorResourceLimit> {
+    match resource_catalog {
+        None => Vec::new(),
+        Some(crate::service_contract::ConstructorServiceResourceCatalog::IconRegistry) => {
+            #[cfg(feature = "svg")]
+            {
+                let mut limits = merman::svg::icon_registry_resource_limit_descriptors()
+                    .iter()
+                    .map(|descriptor| RuntimeConstructorResourceLimit {
+                        id: descriptor.stable_id,
+                        phase: descriptor.phase,
+                        unit: descriptor.unit,
+                        description: descriptor.description,
+                        value: descriptor.hard_maximum,
+                    })
+                    .collect::<Vec<_>>();
+                limits.sort_unstable_by_key(|limit| limit.id);
+                limits
+            }
+            #[cfg(not(feature = "svg"))]
+            unreachable!("validated no-SVG artifacts cannot expose the icon registry service")
+        }
+    }
 }
 
 fn runtime_output_contracts_for(capabilities: &RuntimeCapabilities) -> Vec<RuntimeOutputContract> {
@@ -792,10 +873,10 @@ mod tests {
 
         #[cfg(feature = "svg")]
         let exposure = exposure
-            .with_text_measurement_providers([crate::TextMeasurementProviderKey::HostCallback])
-            .and_then(|exposure| {
-                exposure.with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
-            })
+            .with_constructor_services([
+                ConstructorServiceKey::HostTextMeasurement,
+                ConstructorServiceKey::IconRegistry,
+            ])
             .expect("the complete SVG service surface must be declarable");
 
         CompiledBindingSurface::current()
@@ -968,6 +1049,14 @@ mod tests {
         assert_eq!(catalog.package_version, env!("CARGO_PKG_VERSION"));
         assert_eq!(catalog.capabilities, contract.runtime_capabilities());
         assert_eq!(
+            catalog.constructor_service_ids,
+            catalog
+                .constructor_service_contracts
+                .iter()
+                .map(|service| service.id)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
             catalog
                 .output_contracts
                 .iter()
@@ -1133,6 +1222,105 @@ mod tests {
             serde_json::to_value(&catalog.output_contracts).unwrap()
         );
         assert_eq!(json, serde_json::to_value(catalog).unwrap());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_catalog_projects_fixed_icon_registry_resources_without_cli_acquisition_ids() {
+        const CLI_ICON_ACQUISITION_AND_NETWORK_RESOURCE_IDS: &[&str] = &[
+            "connect_timeout_seconds",
+            "max_aggregate_icon_bytes",
+            "max_icon_packs",
+            "max_local_icon_body_bytes",
+            "max_redirects",
+            "max_remote_icon_body_bytes",
+            "per_hop_timeout_seconds",
+            "workflow_timeout_seconds",
+        ];
+
+        let catalog = full_native_contract().runtime_catalog(2);
+        assert!(
+            catalog
+                .constructor_service_contracts
+                .windows(2)
+                .all(|services| services[0].id < services[1].id)
+        );
+
+        let host_text_measurement = catalog
+            .constructor_service_contracts
+            .iter()
+            .find(|service| service.id == "host-text-measurement")
+            .expect("host text measurement constructor service");
+        assert_eq!(
+            host_text_measurement.provided_text_measurement_provider_ids,
+            ["host-callback"]
+        );
+        assert!(host_text_measurement.resource_limits.is_empty());
+
+        let icon_registry = catalog
+            .constructor_service_contracts
+            .iter()
+            .find(|service| service.id == "icon-registry")
+            .expect("icon registry constructor service");
+        assert!(
+            icon_registry
+                .provided_text_measurement_provider_ids
+                .is_empty()
+        );
+        let descriptors = merman::svg::icon_registry_resource_limit_descriptors();
+        assert!(!icon_registry.resource_limits.is_empty());
+        assert_eq!(icon_registry.resource_limits.len(), descriptors.len());
+        assert!(
+            icon_registry
+                .resource_limits
+                .windows(2)
+                .all(|resources| resources[0].id < resources[1].id)
+        );
+        for resource in &icon_registry.resource_limits {
+            let descriptor = descriptors
+                .iter()
+                .find(|descriptor| descriptor.stable_id == resource.id)
+                .expect("resource descriptor");
+            assert_eq!(resource.id, descriptor.stable_id);
+            assert_eq!(resource.phase, descriptor.phase);
+            assert_eq!(resource.unit, descriptor.unit);
+            assert_eq!(resource.description, descriptor.description);
+            assert_eq!(resource.value, descriptor.hard_maximum);
+        }
+        assert!(icon_registry.resource_limits.iter().all(|resource| {
+            !CLI_ICON_ACQUISITION_AND_NETWORK_RESOURCE_IDS.contains(&resource.id)
+        }));
+
+        let json = serde_json::to_value(&catalog).expect("runtime catalog serializes");
+        let service_contracts = json["constructor_service_contracts"]
+            .as_array()
+            .expect("constructor service contracts array");
+        for service in service_contracts {
+            assert!(service.get("required_provider_ids").is_none());
+            assert!(service.get("requires_svg_pipeline").is_none());
+            assert!(service.get("fixed_resources").is_none());
+            assert!(service.get("caller_configurable").is_none());
+        }
+    }
+
+    #[test]
+    fn catalog_without_svg_exposure_omits_icon_registry_service_contract() {
+        let exposure = TransportExposure::for_target(TargetKey::Native)
+            .with_operations([crate::OperationKey::SemanticJson])
+            .expect("semantic operation must be declarable");
+        let catalog = CompiledBindingSurface::current()
+            .validate(exposure)
+            .expect("semantic-only artifact contract must be coherent")
+            .runtime_catalog(2);
+
+        assert!(!catalog.capabilities.has_capability("svg"));
+        assert!(!catalog.constructor_service_ids.contains(&"icon-registry"));
+        assert!(
+            catalog
+                .constructor_service_contracts
+                .iter()
+                .all(|service| service.id != "icon-registry")
+        );
     }
 
     #[test]

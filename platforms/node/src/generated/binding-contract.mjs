@@ -446,13 +446,13 @@ export const BINDING_OPTION_GROUP_SPECS = [
 export const TEXT_MEASUREMENT_PROVIDER_SPECS = [
   {
     "id": "host-callback",
-    "requires_svg_pipeline": true,
-    "derived_from_svg_pipeline": false
+    "source": "constructor-service",
+    "constructor_service_id": "host-text-measurement"
   },
   {
     "id": "vendored",
-    "requires_svg_pipeline": true,
-    "derived_from_svg_pipeline": true
+    "source": "svg-pipeline",
+    "constructor_service_id": null
   }
 ];
 
@@ -466,9 +466,12 @@ export const HOST_CALLBACK_TEXT_MEASUREMENT_PROVIDER_ID = "host-callback";
 export const CONSTRUCTOR_SERVICE_SPECS = [
   {
     "id": "host-text-measurement",
-    "required_provider_ids": [
+    "provided_text_measurement_provider_ids": [
       "host-callback"
-    ],
-    "requires_svg_pipeline": true
+    ]
+  },
+  {
+    "id": "icon-registry",
+    "provided_text_measurement_provider_ids": []
   }
 ];

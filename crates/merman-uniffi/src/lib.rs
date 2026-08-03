@@ -6,13 +6,14 @@
 //! not replace the canonical C ABI in `merman-ffi`.
 
 use merman_bindings_core::{
-    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
-    BindingError, BindingErrorKind, BindingPayloadSchemaKey, BindingStatus, CompiledBindingSurface,
-    ConstructorServiceKey, RuntimePolicyExposure, TargetKey, TextMeasurementProviderKey,
-    TransportExposure, ValidatedArtifactContract,
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingError,
+    BindingErrorKind, BindingPayloadSchemaKey, BindingStatus, CompiledBindingSurface,
+    RuntimePolicyExposure, TargetKey, TransportExposure, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
-use merman_bindings_core::{HostTextMeasurementError, HostTextMeasurer};
+use merman_bindings_core::{
+    BindingEngineServices, ConstructorServiceKey, HostTextMeasurementError, HostTextMeasurer,
+};
 use serde_json::Value;
 use std::sync::{Arc, OnceLock};
 
@@ -846,10 +847,7 @@ fn native_artifact_contract() -> &'static ValidatedArtifactContract {
             .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
         #[cfg(feature = "svg")]
         let exposure = exposure
-            .with_text_measurement_providers([TextMeasurementProviderKey::HostCallback])
-            .and_then(|exposure| {
-                exposure.with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
-            })
+            .with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
             .expect("the UniFFI SVG transport exposes its compiled constructor service");
 
         CompiledBindingSurface::current()

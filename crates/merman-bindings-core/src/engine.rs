@@ -1019,6 +1019,35 @@ mod tests {
         assert!(counter.calls() > 0);
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn cloned_services_share_one_immutable_icon_registry_across_engines() {
+        let pack = br#"{
+            "prefix":"test",
+            "icons":{
+                "rocket":{
+                    "body":"<path data-icon=\"binding-registry\" d=\"M0 0H16V16H0z\"/>"
+                }
+            }
+        }"#;
+        let registry = crate::build_icon_registry([crate::IconPack::new(pack)])
+            .expect("valid Iconify pack through the binding admission seam");
+        let services = BindingEngineServices::new().with_icon_registry(registry.clone());
+        let first = BindingEngine::from_options_and_services(b"", services.clone()).unwrap();
+        let second = BindingEngine::from_options_and_services(b"", services).unwrap();
+
+        for engine in [&first, &second] {
+            let svg = String::from_utf8(
+                engine
+                    .render_svg(b"flowchart TD\nA@{ icon: \"test:rocket\", label: \"A\" }")
+                    .unwrap(),
+            )
+            .unwrap();
+            assert!(svg.contains(r#"data-icon="binding-registry""#), "{svg}");
+        }
+        assert_eq!(registry.len(), 1);
+    }
+
     #[test]
     fn semantic_parse_accepts_exact_semantic_model_item_budget() {
         let engine = BindingEngine::new(

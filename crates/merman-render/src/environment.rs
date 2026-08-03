@@ -1061,7 +1061,7 @@ fn default_math_renderer() -> Option<Arc<dyn MathRenderer + Send + Sync>> {
 pub struct RenderEnvironment {
     text_measurement: TextMeasurementPolicy,
     math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
-    icon_registry: Option<Arc<IconRegistry>>,
+    icon_registry: Option<IconRegistry>,
     runtime_policy: RuntimePolicy,
     resource_policy: RenderResourcePolicy,
 }
@@ -1125,7 +1125,7 @@ impl RenderEnvironment {
         self
     }
 
-    pub fn with_icon_registry(mut self, registry: Arc<IconRegistry>) -> Self {
+    pub fn with_icon_registry(mut self, registry: IconRegistry) -> Self {
         self.icon_registry = Some(registry);
         self
     }
@@ -1171,7 +1171,7 @@ pub struct RenderSession {
     // Keep movable family artifacts compact for bounded worker stacks.
     measurement_recorder: Box<TextMeasurementRecorder>,
     math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
-    icon_registry: Option<Arc<IconRegistry>>,
+    icon_registry: Option<IconRegistry>,
     operation_context: OperationContext,
     resource_policy: RenderResourcePolicy,
     work_meter: Arc<OperationWorkMeter>,
@@ -1231,7 +1231,7 @@ impl RenderSession {
     }
 
     pub fn icon_registry(&self) -> Option<&IconRegistry> {
-        self.icon_registry.as_deref()
+        self.icon_registry.as_ref()
     }
 
     /// Freezes the observable policy and provenance accumulated so far.
@@ -2273,7 +2273,7 @@ mod tests {
         let environment = RenderEnvironment::deterministic()
             .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(0))
             .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
-            .with_icon_registry(Arc::new(IconRegistry::new()))
+            .with_icon_registry(crate::svg::IconRegistryBuilder::new().build().unwrap())
             .with_resource_policy(limits);
 
         let session = environment.begin_session().expect("begin render session");

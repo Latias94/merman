@@ -2,9 +2,7 @@ use super::surface::MetadataSelection;
 use crate::BindingError;
 use crate::capability::{CapabilityKey, OperationKey, TargetKey};
 use crate::metadata_registry::{MetadataKey, metadata_spec};
-use crate::service_contract::{
-    ConstructorServiceKey, RuntimePolicyExposure, TextMeasurementProviderKey,
-};
+use crate::service_contract::{ConstructorServiceKey, RuntimePolicyExposure};
 use std::collections::BTreeSet;
 
 pub(super) fn close_capability_implications(capabilities: &mut BTreeSet<CapabilityKey>) {
@@ -147,7 +145,6 @@ pub(super) fn validate_services(
     selected: &BTreeSet<ConstructorServiceKey>,
     compiled: &BTreeSet<ConstructorServiceKey>,
     uses_svg_pipeline: bool,
-    providers: &BTreeSet<TextMeasurementProviderKey>,
 ) -> Result<(), BindingError> {
     for service in selected {
         if !compiled.contains(service) {
@@ -157,33 +154,10 @@ pub(super) fn validate_services(
             )));
         }
         let spec = service.spec();
-        if spec.requires_svg_pipeline() && !uses_svg_pipeline {
+        if !spec.is_available(uses_svg_pipeline) {
             return Err(invalid_artifact_contract(format!(
                 "constructor service `{}` requires an exposed operation backed by the SVG rendering pipeline",
                 service.id()
-            )));
-        }
-        for provider in spec.required_providers() {
-            if !providers.contains(provider) {
-                return Err(invalid_artifact_contract(format!(
-                    "constructor service `{}` requires provider `{}`",
-                    service.id(),
-                    provider.id()
-                )));
-            }
-        }
-    }
-    for provider in providers {
-        if provider.spec().derived_from_svg_pipeline() {
-            continue;
-        }
-        if !selected
-            .iter()
-            .any(|service| service.spec().required_providers().contains(provider))
-        {
-            return Err(invalid_artifact_contract(format!(
-                "text-measurement provider `{}` requires a matching constructor service",
-                provider.id()
             )));
         }
     }

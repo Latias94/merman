@@ -192,3 +192,7 @@ required-features = ["svg"]
 [[example]]
 name = "profile_render"
 required-features = ["svg"]
+
+[[example]]
+name = "icon_registry_calibration"
+required-features = ["svg"]

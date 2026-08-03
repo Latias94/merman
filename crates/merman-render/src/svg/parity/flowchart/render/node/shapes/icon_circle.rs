@@ -138,7 +138,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
             common.node_id,
             icon_name,
             icon_size,
-        );
+        )?;
         let _ = write!(
             out,
             r#"<g transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,

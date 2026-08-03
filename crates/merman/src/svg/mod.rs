@@ -76,12 +76,14 @@ pub use merman_render::resources::{
     resource_profile_descriptors,
 };
 pub use merman_render::svg::{
-    CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor, IconRegistry,
-    IconRegistryError, IconSvg, ResvgCompatibleSvg, RootBackgroundPostprocessor,
-    SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor,
-    StripForeignObjectPostprocessor, SvgDebugOptions, SvgOutputPolicy, SvgPipeline,
-    SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata, SvgPostprocessor,
-    SvgRenderOptions, finalize_resvg_svg, foreign_object_label_fallback_svg_text,
+    CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor, IconPack,
+    IconRegistry, IconRegistryBuildError, IconRegistryBuildErrorKind, IconRegistryBuilder,
+    IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId, ResvgCompatibleSvg,
+    RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
+    ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgDebugOptions, SvgOutputPolicy,
+    SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
+    SvgPostprocessor, SvgRenderOptions, finalize_resvg_svg, foreign_object_label_fallback_svg_text,
+    icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
@@ -105,6 +107,7 @@ pub mod export {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum HeadlessError {
     #[error(transparent)]
     Parse(#[from] merman_core::Error),
@@ -123,6 +126,7 @@ pub type Result<T> = std::result::Result<T, HeadlessError>;
 /// failure is input/layout-related or backend-related.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum OutputError {
     #[error(transparent)]
     Headless(#[from] HeadlessError),

@@ -276,7 +276,12 @@ impl RenderOperationConfig {
     }
 
     pub(super) fn materialize(self, services: &crate::BindingEngineServices) -> RenderRequestPlan {
-        let mut renderer = HeadlessRenderer::new().with_environment(self.environment);
+        let environment = if let Some(registry) = services.icon_registry() {
+            self.environment.with_icon_registry(registry)
+        } else {
+            self.environment
+        };
+        let mut renderer = HeadlessRenderer::new().with_environment(environment);
         if let Some(measurer) = services.host_text_measurer() {
             let identity = TextMeasurementProfileIdentity::new(
                 MeasurementProfileId::new("merman.binding-host").expect("static profile id"),
@@ -549,10 +554,17 @@ fn classify_render_error(err: merman::svg::HeadlessError) -> BindingError {
                 .id(),
             err.to_string(),
         ),
+        merman::svg::HeadlessError::Render(
+            err @ merman::svg::RenderError::InvalidIconOutput { .. },
+        ) => BindingError::new(BindingStatus::InvalidArgument, err.to_string()),
+        merman::svg::HeadlessError::Render(
+            err @ merman::svg::RenderError::IconProcessing { .. },
+        ) => BindingError::internal(err.to_string()),
         merman::svg::HeadlessError::Render(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
         merman::svg::HeadlessError::RuntimePolicy(err) => runtime_policy_error(err),
+        _ => BindingError::internal("unknown headless renderer failure"),
     }
 }
 
@@ -574,6 +586,7 @@ fn classify_output_error(
             ),
             None => BindingError::new(BindingStatus::RenderError, err.to_string()),
         },
+        _ => BindingError::internal("unknown SVG output failure"),
     }
 }
 

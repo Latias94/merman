@@ -116,6 +116,7 @@ pub struct BindingError {
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
     resource: Option<BindingResourceErrorDetails>,
+    icon_registry: Option<BindingIconRegistryErrorDetails>,
     message: String,
 }
 
@@ -130,6 +131,15 @@ pub struct BindingResourceErrorDetails {
     pub profile: &'static str,
 }
 
+/// Structured failure details for transactional Iconify registry construction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BindingIconRegistryErrorDetails {
+    pub kind_id: &'static str,
+    pub pack_index: Option<u64>,
+    pub registration_name: Option<String>,
+}
+
 impl BindingError {
     pub fn new(status: BindingStatus, message: impl Into<String>) -> Self {
         Self {
@@ -137,6 +147,7 @@ impl BindingError {
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource: None,
+            icon_registry: None,
             message: message.into(),
         }
     }
@@ -162,6 +173,7 @@ impl BindingError {
             kind: BindingErrorKind::UnknownOperation,
             capability_id: None,
             resource: None,
+            icon_registry: None,
             message: message.into(),
         }
     }
@@ -172,6 +184,7 @@ impl BindingError {
             kind: BindingErrorKind::MissingCapability,
             capability_id: Some(capability_id),
             resource: None,
+            icon_registry: None,
             message: message.into(),
         }
     }
@@ -188,6 +201,7 @@ impl BindingError {
             kind: BindingErrorKind::ReentrantCall,
             capability_id: None,
             resource: None,
+            icon_registry: None,
             message: message.into(),
         }
     }
@@ -198,6 +212,7 @@ impl BindingError {
             kind: BindingErrorKind::Busy,
             capability_id: None,
             resource: None,
+            icon_registry: None,
             message: message.into(),
         }
     }
@@ -221,6 +236,7 @@ impl BindingError {
                 max,
                 profile,
             }),
+            icon_registry: None,
             message: message.into(),
         }
     }
@@ -239,6 +255,10 @@ impl BindingError {
 
     pub const fn resource_details(&self) -> Option<BindingResourceErrorDetails> {
         self.resource
+    }
+
+    pub fn icon_registry_details(&self) -> Option<&BindingIconRegistryErrorDetails> {
+        self.icon_registry.as_ref()
     }
 
     pub fn message(&self) -> &str {
@@ -260,6 +280,60 @@ pub(crate) fn input_resource_limit_error(
     )
 }
 
+#[cfg(feature = "svg")]
+impl From<merman::svg::IconRegistryBuildError> for BindingError {
+    fn from(error: merman::svg::IconRegistryBuildError) -> Self {
+        let error_kind = error.kind();
+        let limit = error.limit();
+        let message = error.to_string();
+        let details = BindingIconRegistryErrorDetails {
+            kind_id: error.kind().stable_id(),
+            pack_index: error
+                .pack_index()
+                .and_then(|index| u64::try_from(index).ok()),
+            registration_name: error.registration_name().map(str::to_owned),
+        };
+        let resource = match (limit, error.actual(), error.maximum()) {
+            (Some(limit), Some(actual), Some(max)) => {
+                let descriptor = limit.descriptor();
+                Some(BindingResourceErrorDetails {
+                    limit_id: descriptor.stable_id,
+                    phase: descriptor.phase,
+                    actual,
+                    max,
+                    profile: "constructor-fixed",
+                })
+            }
+            _ => None,
+        };
+        Self {
+            status: icon_registry_error_status(error_kind),
+            kind: BindingErrorKind::Generic,
+            capability_id: None,
+            resource,
+            icon_registry: Some(details),
+            message,
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
+pub(crate) fn icon_registry_error_status(
+    kind: merman::svg::IconRegistryBuildErrorKind,
+) -> BindingStatus {
+    match kind {
+        merman::svg::IconRegistryBuildErrorKind::AllocationFailed
+        | merman::svg::IconRegistryBuildErrorKind::ArithmeticOverflow => {
+            BindingStatus::InternalError
+        }
+        merman::svg::IconRegistryBuildErrorKind::InvalidUtf8 => BindingStatus::Utf8Error,
+        merman::svg::IconRegistryBuildErrorKind::ResourceLimitExceeded => {
+            BindingStatus::ResourceLimitExceeded
+        }
+        _ => BindingStatus::InvalidArgument,
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct ErrorPayload<'a> {
     version: u32,
@@ -275,7 +349,10 @@ struct ErrorPayload<'a> {
 
 #[derive(Debug, Serialize)]
 struct ErrorDetails<'a> {
-    resource: &'a BindingResourceErrorDetails,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resource: Option<&'a BindingResourceErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
 }
 
 #[derive(Debug, Serialize)]
@@ -503,7 +580,14 @@ pub(crate) struct PresentationThemeOptionsJson {
 }
 
 pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8> {
-    error_payload_json_bytes_with_details(status, BindingErrorKind::Generic, None, None, message)
+    error_payload_json_bytes_with_details(
+        status,
+        BindingErrorKind::Generic,
+        None,
+        None,
+        None,
+        message,
+    )
 }
 
 pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
@@ -512,6 +596,7 @@ pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
         error.kind(),
         error.capability_id(),
         error.resource.as_ref(),
+        error.icon_registry.as_ref(),
         error.message(),
     )
 }
@@ -521,6 +606,7 @@ fn error_payload_json_bytes_with_details(
     kind: BindingErrorKind,
     capability_id: Option<&str>,
     resource: Option<&BindingResourceErrorDetails>,
+    icon_registry: Option<&BindingIconRegistryErrorDetails>,
     message: &str,
 ) -> Vec<u8> {
     let payload = ErrorPayload {
@@ -530,7 +616,10 @@ fn error_payload_json_bytes_with_details(
         code_name: status.code_name(),
         kind: kind.id(),
         capability_id,
-        details: resource.map(|resource| ErrorDetails { resource }),
+        details: (resource.is_some() || icon_registry.is_some()).then_some(ErrorDetails {
+            resource,
+            icon_registry,
+        }),
         message,
     };
     serde_json::to_vec(&payload).unwrap_or_else(|_| {

@@ -3,7 +3,7 @@ use merman::resources::{InputResourceLimitId, InputResourceLimitOverrideError};
 use merman::resources::{InputResourcePolicy, ResourceProfile};
 #[cfg(feature = "svg")]
 use merman::svg::{
-    RenderResourcePolicy, ResourceLimitId as RenderResourceLimitId,
+    IconRegistryResourceLimitId, RenderResourcePolicy, ResourceLimitId as RenderResourceLimitId,
     ResourceLimitOverrideError as RenderResourceLimitOverrideError,
 };
 use std::num::NonZeroUsize;
@@ -13,7 +13,18 @@ const KIB: u64 = 1024;
 const MIB: u64 = 1024 * KIB;
 const GIB: u64 = 1024 * MIB;
 
-pub(crate) const HARD_MAX_ICON_PACKS: u64 = 256;
+#[cfg(feature = "svg")]
+pub(crate) const HARD_MAX_ICON_PACKS: u64 = IconRegistryResourceLimitId::MaxPacks.fixed_value();
+#[cfg(not(feature = "svg"))]
+pub(crate) const HARD_MAX_ICON_PACKS: u64 = 16;
+#[cfg(feature = "svg")]
+const HARD_MAX_ICON_PACK_BYTES: u64 = IconRegistryResourceLimitId::MaxPackBytes.fixed_value();
+#[cfg(not(feature = "svg"))]
+const HARD_MAX_ICON_PACK_BYTES: u64 = 16 * MIB;
+#[cfg(feature = "svg")]
+const HARD_MAX_AGGREGATE_ICON_BYTES: u64 = IconRegistryResourceLimitId::MaxInputBytes.fixed_value();
+#[cfg(not(feature = "svg"))]
+const HARD_MAX_AGGREGATE_ICON_BYTES: u64 = 32 * MIB;
 pub(crate) const HARD_MAX_JOBS: u64 = 64;
 pub(crate) const HARD_MAX_REDIRECTS: u64 = 20;
 pub(crate) const HARD_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -146,19 +157,19 @@ cli_limit_descriptors! {
         "max_local_icon_body_bytes",
         AcquisitionBytes,
         "Maximum bytes in one local icon-pack body",
-        None
+        Some(HARD_MAX_ICON_PACK_BYTES)
     ),
     MaxRemoteIconBodyBytes => (
         "max_remote_icon_body_bytes",
         AcquisitionBytes,
         "Maximum bytes in one remote icon-pack response body",
-        None
+        Some(HARD_MAX_ICON_PACK_BYTES)
     ),
     MaxAggregateIconBytes => (
         "max_aggregate_icon_bytes",
         AcquisitionBytes,
         "Maximum aggregate bytes acquired for icon packs",
-        None
+        Some(HARD_MAX_AGGREGATE_ICON_BYTES)
     ),
     MaxIconPacks => (
         "max_icon_packs",
@@ -219,18 +230,37 @@ cli_limit_descriptors! {
 // Profile order follows ResourceProfile's stable repr:
 // interactive, constrained, trusted-native, unbounded-for-trusted-input.
 //
-// CSS, Puppeteer compatibility, icon, staging, and scheduling values are initial
-// engineering ceilings. They must be recalibrated against representative corpus
-// receipts before they are advertised as stable operational guarantees.
+// CSS, Puppeteer compatibility, staging, and scheduling values are initial engineering ceilings.
+// Icon acquisition values are capped by the calibrated renderer-owned constructor capabilities.
 const CLI_PROFILE_VALUES: [[Option<u64>; 4]; CLI_RESOURCE_LIMIT_COUNT] = [
     [Some(8 * MIB), Some(4 * MIB), Some(64 * MIB), None],
     [Some(512 * KIB), Some(256 * KIB), Some(4 * MIB), None],
     [Some(MIB), Some(512 * KIB), Some(8 * MIB), None],
     [Some(512 * KIB), Some(256 * KIB), Some(2 * MIB), None],
-    [Some(16 * MIB), Some(8 * MIB), Some(64 * MIB), None],
-    [Some(16 * MIB), Some(8 * MIB), Some(64 * MIB), None],
-    [Some(32 * MIB), Some(16 * MIB), Some(256 * MIB), None],
-    [Some(16), Some(8), Some(64), Some(HARD_MAX_ICON_PACKS)],
+    [
+        Some(16 * MIB),
+        Some(8 * MIB),
+        Some(HARD_MAX_ICON_PACK_BYTES),
+        Some(HARD_MAX_ICON_PACK_BYTES),
+    ],
+    [
+        Some(16 * MIB),
+        Some(8 * MIB),
+        Some(HARD_MAX_ICON_PACK_BYTES),
+        Some(HARD_MAX_ICON_PACK_BYTES),
+    ],
+    [
+        Some(32 * MIB),
+        Some(16 * MIB),
+        Some(HARD_MAX_AGGREGATE_ICON_BYTES),
+        Some(HARD_MAX_AGGREGATE_ICON_BYTES),
+    ],
+    [
+        Some(16),
+        Some(8),
+        Some(HARD_MAX_ICON_PACKS),
+        Some(HARD_MAX_ICON_PACKS),
+    ],
     [Some(1_024), Some(256), Some(8_192), None],
     [Some(GIB), Some(512 * MIB), Some(8 * GIB), None],
     [Some(640 * MIB), Some(576 * MIB), Some(2 * GIB), None],
@@ -913,14 +943,21 @@ mod tests {
     }
 
     #[test]
-    fn unbounded_profile_retains_protocol_and_execution_hard_guards() {
+    fn unbounded_profile_retains_protocol_renderer_and_execution_hard_guards() {
         let policy = ResolvedResourcePolicy::for_profile_with_parallelism(
             ResourceProfile::UnboundedForTrustedInput,
             CPU_64,
         );
 
         assert_eq!(policy.files().markdown_document_bytes, None);
-        assert_eq!(policy.icons().aggregate_bytes, None);
+        assert_eq!(
+            policy.icons().local_body_bytes,
+            usize::try_from(HARD_MAX_ICON_PACK_BYTES).ok()
+        );
+        assert_eq!(
+            policy.icons().aggregate_bytes,
+            usize::try_from(HARD_MAX_AGGREGATE_ICON_BYTES).ok()
+        );
         assert_eq!(policy.batch().markdown_charts, None);
         assert_eq!(policy.batch().staged_bytes, None);
         assert_eq!(policy.batch().scheduling_weight_bytes, None);
@@ -985,6 +1022,33 @@ mod tests {
                 limit: "max_jobs",
                 requested: 65,
                 max: HARD_MAX_JOBS,
+            })
+        );
+        assert_eq!(
+            policy.apply_override("max_local_icon_body_bytes", HARD_MAX_ICON_PACK_BYTES + 1),
+            Err(ResourcePolicyOverrideError::HardCap {
+                limit: "max_local_icon_body_bytes",
+                requested: HARD_MAX_ICON_PACK_BYTES + 1,
+                max: HARD_MAX_ICON_PACK_BYTES,
+            })
+        );
+        assert_eq!(
+            policy.apply_override(
+                "max_aggregate_icon_bytes",
+                HARD_MAX_AGGREGATE_ICON_BYTES + 1,
+            ),
+            Err(ResourcePolicyOverrideError::HardCap {
+                limit: "max_aggregate_icon_bytes",
+                requested: HARD_MAX_AGGREGATE_ICON_BYTES + 1,
+                max: HARD_MAX_AGGREGATE_ICON_BYTES,
+            })
+        );
+        assert_eq!(
+            policy.apply_override("max_icon_packs", HARD_MAX_ICON_PACKS + 1),
+            Err(ResourcePolicyOverrideError::HardCap {
+                limit: "max_icon_packs",
+                requested: HARD_MAX_ICON_PACKS + 1,
+                max: HARD_MAX_ICON_PACKS,
             })
         );
     }

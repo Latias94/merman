@@ -6,15 +6,14 @@
 //! function table and execute every operation through the shared binding operation path. No raw Rust
 //! allocation or Rust object pointer crosses this boundary.
 
-#[cfg(feature = "svg")]
-use merman_bindings_core::HostMeasurementResult;
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
     BindingEngineServices, BindingError, BindingErrorKind, BindingOperationRequest,
     BindingPayloadSchemaKey, BindingResourceErrorDetails, BindingStatus, CompiledBindingSurface,
-    ConstructorServiceKey, RuntimePolicyExposure, TargetKey, TextMeasurementProviderKey,
-    TransportExposure, ValidatedArtifactContract,
+    RuntimePolicyExposure, TargetKey, TransportExposure, ValidatedArtifactContract,
 };
+#[cfg(feature = "svg")]
+use merman_bindings_core::{ConstructorServiceKey, HostMeasurementResult};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::mem::{align_of, size_of};
@@ -345,10 +344,7 @@ fn native_artifact_contract() -> &'static ValidatedArtifactContract {
             .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
         #[cfg(feature = "svg")]
         let exposure = exposure
-            .with_text_measurement_providers([TextMeasurementProviderKey::HostCallback])
-            .and_then(|exposure| {
-                exposure.with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
-            })
+            .with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
             .expect("the C SVG transport exposes its compiled constructor service");
 
         CompiledBindingSurface::current()

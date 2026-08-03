@@ -227,38 +227,54 @@ fn unadvertised_constructor_service_is_rejected() {
 
 #[cfg(feature = "svg")]
 #[test]
-fn host_service_requires_the_matching_provider() {
-    let exposure = TransportExposure::for_target(TargetKey::Native)
-        .with_operations([OperationKey::Svg])
-        .unwrap()
-        .with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
+fn operations_and_services_derive_text_measurement_providers() {
+    let vendored_only = CompiledBindingSurface::current()
+        .validate(
+            TransportExposure::for_target(TargetKey::Native)
+                .with_operations([OperationKey::Svg])
+                .unwrap(),
+        )
         .unwrap();
-    let error = CompiledBindingSurface::current()
-        .validate(exposure)
-        .unwrap_err();
-    assert!(
-        error
-            .message()
-            .contains("requires provider `host-callback`")
+    assert_eq!(
+        vendored_only
+            .text_measurement_provider_keys()
+            .collect::<Vec<_>>(),
+        [TextMeasurementProviderKey::Vendored]
     );
-}
 
-#[cfg(feature = "svg")]
-#[test]
-fn host_provider_requires_the_matching_service() {
-    let exposure = TransportExposure::for_target(TargetKey::Native)
-        .with_operations([OperationKey::Svg])
-        .unwrap()
-        .with_text_measurement_providers([TextMeasurementProviderKey::HostCallback])
+    let with_host = CompiledBindingSurface::current()
+        .validate(
+            TransportExposure::for_target(TargetKey::Native)
+                .with_operations([OperationKey::Svg])
+                .unwrap()
+                .with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
+                .unwrap(),
+        )
         .unwrap();
-    let error = CompiledBindingSurface::current()
-        .validate(exposure)
-        .unwrap_err();
+    assert_eq!(
+        with_host
+            .text_measurement_provider_keys()
+            .collect::<Vec<_>>(),
+        [
+            TextMeasurementProviderKey::HostCallback,
+            TextMeasurementProviderKey::Vendored,
+        ]
+    );
 
-    assert!(
-        error
-            .message()
-            .contains("requires a matching constructor service")
+    let with_icons = CompiledBindingSurface::current()
+        .validate(
+            TransportExposure::for_target(TargetKey::Native)
+                .with_operations([OperationKey::Svg])
+                .unwrap()
+                .with_constructor_services([ConstructorServiceKey::IconRegistry])
+                .unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        with_icons
+            .text_measurement_provider_keys()
+            .collect::<Vec<_>>(),
+        [TextMeasurementProviderKey::Vendored]
     );
 }
 

@@ -60,14 +60,9 @@ fn wasm_artifact_contract() -> &'static ValidatedArtifactContract {
             .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly);
         #[cfg(all(feature = "svg", target_arch = "wasm32"))]
         let exposure = exposure
-            .with_text_measurement_providers([
-                merman_bindings_core::TextMeasurementProviderKey::HostCallback,
+            .with_constructor_services([
+                merman_bindings_core::ConstructorServiceKey::HostTextMeasurement,
             ])
-            .and_then(|exposure| {
-                exposure.with_constructor_services([
-                    merman_bindings_core::ConstructorServiceKey::HostTextMeasurement,
-                ])
-            })
             .expect("the Web transport declares its host text-measurement service once");
 
         compiled

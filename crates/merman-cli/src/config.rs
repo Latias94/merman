@@ -7,6 +7,8 @@ use merman::runtime::RuntimePolicy;
 use merman::{Engine, MermaidConfig, ParseOptions};
 use serde_json::Value;
 use std::path::Path;
+#[cfg(feature = "svg")]
+use std::sync::Arc;
 
 #[cfg(feature = "svg")]
 use crate::cli::{MathRendererKind, RenderCliArgs, TextMeasurerKind};
@@ -19,8 +21,6 @@ use merman::svg::{
     HeadlessRenderer, IconRegistry, LayoutOptions, MathRenderer, Presentation, PresentationProfile,
     RenderEnvironment, SvgRenderOptions, TextMeasurementPolicy,
 };
-#[cfg(feature = "svg")]
-use std::sync::Arc;
 
 pub(crate) fn engine_for(
     parse: &ParseCliArgs,
@@ -203,7 +203,7 @@ fn parse_options_from_suppress_errors(suppress_errors: bool) -> ParseOptions {
 pub(crate) fn renderer_for(
     parse: &ParseCliArgs,
     render: &RenderCliArgs,
-    icon_registry: Option<Arc<IconRegistry>>,
+    icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
 ) -> Result<HeadlessRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_cli(&parse.runtime)?;
@@ -222,7 +222,7 @@ pub(crate) fn renderer_for(
 pub(crate) fn renderer_for_resolved(
     parse: &ResolvedParseOptions,
     render: &ResolvedRenderOptions,
-    icon_registry: Option<Arc<IconRegistry>>,
+    icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
 ) -> Result<HeadlessRenderer, CliError> {
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
@@ -282,7 +282,7 @@ fn renderer_from_config(
     mut site_config: MermaidConfig,
     parse_options: ParseOptions,
     render: RendererInputs<'_>,
-    icon_registry: Option<Arc<IconRegistry>>,
+    icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
 ) -> Result<HeadlessRenderer, CliError> {
     let mut environment = RenderEnvironment::deterministic()

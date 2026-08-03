@@ -11,13 +11,24 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
     node_id: &str,
     icon_name: &str,
     icon_size: f64,
-) -> String {
+) -> crate::Result<String> {
     let id_scope = format!("{}-flowchart-icon-{node_id}", ctx.diagram_id);
-    ctx.icon_registry
-        .and_then(|registry| {
-            registry.svg_for_scoped(icon_name, icon_size, icon_size, None, None, &id_scope)
-        })
-        .unwrap_or_else(|| mermaid_unknown_icon_svg(fmt_display(icon_size), fmt_display(icon_size)))
+    let icon = match ctx.icon_registry {
+        Some(registry) => registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
+            icon_name,
+            width_px: icon_size,
+            height_px: icon_size,
+            fallback_prefix: None,
+            extra_class: None,
+            id_scope: &id_scope,
+            effective_config: ctx.config,
+            work_meter: ctx.work_meter,
+        })?,
+        None => None,
+    };
+    Ok(icon.unwrap_or_else(|| {
+        mermaid_unknown_icon_svg(fmt_display(icon_size), fmt_display(icon_size))
+    }))
 }
 
 fn is_self_loop_label_node_id(id: &str) -> bool {

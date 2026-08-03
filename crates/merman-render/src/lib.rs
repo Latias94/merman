@@ -114,6 +114,7 @@ pub use resources::{
 };
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error("unsupported diagram type for layout: {diagram_type}")]
     UnsupportedDiagram { diagram_type: String },
@@ -136,6 +137,10 @@ pub enum Error {
     },
     #[error("SVG postprocessor `{pass}` failed: {message}")]
     SvgPostprocess { pass: String, message: String },
+    #[error("external icon output is invalid: {message}")]
+    InvalidIconOutput { message: String },
+    #[error("icon rendering failed internally: {message}")]
+    IconProcessing { message: String },
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[error(transparent)]
@@ -152,6 +157,18 @@ impl Error {
     pub fn svg_postprocess(pass: impl Into<String>, message: impl Into<String>) -> Self {
         Self::SvgPostprocess {
             pass: pass.into(),
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn invalid_icon_output(message: impl Into<String>) -> Self {
+        Self::InvalidIconOutput {
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn icon_processing(message: impl Into<String>) -> Self {
+        Self::IconProcessing {
             message: message.into(),
         }
     }

@@ -19,7 +19,11 @@ pub(crate) use parity::render_builtin_family_artifact;
 pub(crate) use parity::theme as render_theme;
 
 pub use fallback::foreign_object_label_fallback_svg_text;
-pub use icon_registry::{IconRegistry, IconRegistryError, IconSvg};
+pub use icon_registry::{
+    IconPack, IconRegistry, IconRegistryBuildError, IconRegistryBuildErrorKind,
+    IconRegistryBuilder, IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId,
+    icon_registry_resource_limit_descriptors,
+};
 pub use parity::*;
 pub use pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,

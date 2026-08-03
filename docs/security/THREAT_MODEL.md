@@ -1,8 +1,8 @@
 # Security Threat Model
 
 **Status**: Living document  
-**Last updated**: 2026-07-20
-**Scope**: `merman-core`, `merman-render`, `merman`, and `merman-cli`
+**Last updated**: 2026-08-03
+**Scope**: `merman-core`, `merman-render`, `merman`, `merman-bindings-core`, and `merman-cli`
 
 ## Problem
 
@@ -23,7 +23,9 @@ flowchart LR
     Core --> Model[Semantic model]
     Model --> LayoutBudget[Layout model budget]
     LayoutBudget --> Render[merman-render SVG renderer]
-    Icons[Trusted icon registry] --> Render
+    IconBytes[Untrusted IconifyJSON bytes] --> IconAdmission[Bounded transactional admission]
+    IconAdmission --> Icons[Immutable icon registry]
+    Icons --> Render
     Render --> Parity[Parity SVG]
     Parity --> SvgBudget[SVG byte budget]
     SvgBudget --> Pipeline[Optional SVG pipeline]
@@ -42,7 +44,8 @@ flowchart LR
 | Diagram-level config | Untrusted by default | Generated Mermaid config shape rejects unknown, null, and prototype-pollution directive keys. Merman's typed hardened `secure` policy prevents diagrams from changing high-risk config such as `securityLevel`, `fontFamily`, `themeCSS`, and `themeVariables`. |
 | Site config | Trusted | Supplied by the embedding application. Use it for host policy, theme, and trusted CSS only. |
 | Host theme and custom SVG pipeline | Trusted input to a bounded output contract | Custom postprocessors can inject arbitrary draft SVG/CSS. A `resvg_safe` terminal preset runs after every custom pass; parity/readable output may preserve host content. |
-| Icon registry | Trusted | `IconSvg` bodies are injected as SVG fragments after ID scoping. `resvg_safe` cleans active output content, but parity/custom pipelines can preserve arbitrary icon SVG. Do not register user-supplied SVG without a trusted output path or external sanitizer. |
+| Iconify pack bytes | Untrusted | The host chooses the source, but Merman treats encoded bytes, JSON structure, identifiers, geometry, aliases, and SVG bodies as untrusted. Fixed renderer-owned limits apply before an immutable registry is published. |
+| Immutable icon registry | Validated reusable state, not browser-safe output evidence | Construction performs bounded schema-aware JSON admission, strict XML validation, and deterministic ID-plan creation. Rendering scopes IDs, assembles the icon SVG, sanitizes under the effective Mermaid configuration, and validates the sanitizer result. The resulting parity/readable SVG still needs a browser insertion policy. |
 | Parity SVG output | Not a browser sanitizer | It preserves Mermaid-like DOM shape and may contain CSS or `<foreignObject>` needed for parity. |
 | `ResvgCompatibleSvg` / `resvg_safe` output | Sealed, rendering-resource-closed cleanup | The terminal finalizer removes known non-browser SVG consumer hazards, active SVG constructs, and external non-navigation rendering resources, then parses and validates the residual contract. Anchor navigation remains metadata outside the raster-resource contract. This is not a complete browser XSS sanitizer. |
 
@@ -63,6 +66,8 @@ flowchart LR
 | Expensive vector PDF internals | `PdfOptions` is independent of the PNG/JPG pixel limit. Page geometry remains vector, while localized filter bitmaps have an aggregate 33,554,432-pixel default budget and embedded raster images have separate per-image and aggregate budgets. | PDF planning tests, public API regression tests, and CLI behavior. |
 | Parser/layout denial of service | Shared render budgets plus diagram-specific guards such as nesting and Gantt exclude expansion limits. Parser nesting limits remain separate because they protect recursive parse/config surfaces before layout budgets exist. | Core/render unit tests. |
 | Raw style declaration breakouts | SVG style declaration helpers reject or escape known declaration and selector breakouts. | Render CSS tests. |
+| Malicious or oversized Iconify packs | The consuming builder checks pack and aggregate bytes before decoding; bounds JSON depth, members, and keys; validates ASCII identifiers and finite geometry; accounts icons, aliases, retained bodies, XML plans, and build work with checked arithmetic; resolves aliases iteratively; rejects DTDs, entities, processing instructions, malformed XML, duplicate JSON keys, duplicate IDs, and graph collisions; and publishes no partial mutable registry. | Renderer unit and public contract tests, binding service tests, complete-collection calibration, curated-subset calibration, and synthetic exact-boundary fixtures. |
+| Active content in admitted icon bodies | Every insertion uses XML-aware deterministic ID scoping, SVG assembly, effective-config sanitization, and post-sanitizer XML validation. Script, event attributes, style elements, `foreignObject`, and dangerous SVG/XLink URLs are removed under both strict and loose configurations; ambiguous sanitizer output fails closed. | Icon threat-matrix tests and SVG/export security regressions. |
 
 ## Known Residual Risks
 
@@ -70,7 +75,7 @@ flowchart LR
 | --- | --- | --- |
 | Inline parity SVG in a browser with untrusted source | Browser SVG/HTML/CSS interpretation may create XSS or UI-redress risk if a future renderer path leaks active content. | Prefer `render_svg_resvg_safe_sync` for untrusted inline previews, enforce CSP, and run a browser-grade SVG sanitizer when the SVG crosses a web trust boundary. |
 | Trusted site CSS is malicious or compromised | Host CSS can affect rendered output and may include browser-sensitive CSS. | Treat site config and host themes as code. Do not accept them from untrusted users. |
-| Custom icon SVG is untrusted | Icon bodies are inserted as SVG fragments. `resvg_safe` strips common active content at the final output boundary, but parity SVG and custom host pipelines may preserve it. | Only load curated icon packs, force a trusted cleanup pipeline, or sanitize icons before registration. |
+| Policy-allowed references remain loadable downstream | Merman performs no filesystem, package, environment, or network acquisition while constructing or rendering an SDK icon registry. A downstream browser or custom SVG consumer can still resolve a reference that the selected Mermaid/output policy intentionally permits. | Use `SafeInlineSvg`/`assertSafeSvgForDom()`, CSP, a sandboxed iframe, or the `resvg_safe` export path according to the destination. Do not equate “Merman made no acquisition I/O” with “no later consumer can perform I/O.” |
 | `securityLevel = loose` in site config | Loose mode intentionally preserves more Mermaid behavior, including custom links. | Do not enable loose mode for untrusted diagrams unless the embedding context is already sandboxed. |
 | `resvg_safe` is mistaken for a complete sanitizer | It targets renderer compatibility, not every browser XSS vector. | Use defense in depth for web embedding: CSP, sandboxing, and a dedicated sanitizer. |
 | A host rasterizes sealed SVG without inline-image decode budgets | `resvg_safe` closes resource locations but intentionally allows approved inline raster data URLs; a compact image can still declare expensive dimensions. | Use Merman's PNG/JPG/PDF APIs or apply equivalent encoded-byte, header, frame, per-image pixel, and aggregate pixel limits before the host rasterizer. |
@@ -86,7 +91,7 @@ flowchart LR
 | Server-side PNG/JPG | Raster APIs, which apply the resvg-safe pipeline and `RasterOptions` pixmap budgets | Keep budgets enabled for untrusted input; use `with_fit_to` for previews and `with_unbounded_size` only for trusted oversized exports. Embedded-image budgets remain independent. |
 | Server-side vector PDF | PDF APIs with `PdfOptions` | Select an explicit page policy. Keep filter-rasterization and embedded-image budgets enabled for untrusted input; do not use PNG/JPG unbounded settings as a PDF policy. |
 | Trusted internal design system diagrams | `render_svg_sync` or host theme pipeline | Keep trusted theme/icon sources reviewable. |
-| User-uploaded custom icon packs | Not directly supported as safe input | Sanitize externally before `IconRegistry` registration. |
+| User-uploaded Iconify packs | Construct a bounded immutable registry, then render with strict/default configuration | Keep the fixed constructor limits, use a DOM insertion policy plus CSP/sandbox for browser output, or prefer `resvg_safe`/raster export. |
 
 ## Alternatives Considered
 
@@ -152,7 +157,8 @@ without consumer demand and sanitizer validation.
 
 - Add a stricter browser-embedding SVG preset if consumers need inline SVG without an external
   sanitizer.
-- Add optional icon SVG sanitization helpers for hosts that cannot fully trust icon packs.
+- Add a dedicated browser-inline SVG result type if future hosts need a Rust-side DOM insertion
+  contract rather than the existing Web/VS Code policy.
 - Expand layout-model budgets beyond Flowchart and add optional cooperative layout deadlines for
   hosts that need hard CPU preemption.
 - Add a broader dependency policy gate, such as license and duplicate-version checks, if release

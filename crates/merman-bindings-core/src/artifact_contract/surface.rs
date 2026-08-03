@@ -3,9 +3,7 @@ use crate::BindingError;
 use crate::capability::{CapabilityKey, OperationKey, TargetKey};
 use crate::metadata_registry::MetadataKey;
 use crate::payload_contract::BindingPayloadSchemaKey;
-use crate::service_contract::{
-    ConstructorServiceKey, RuntimePolicyExposure, TextMeasurementProviderKey,
-};
+use crate::service_contract::{ConstructorServiceKey, RuntimePolicyExposure};
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +38,6 @@ pub struct TransportExposure {
     pub(super) operations: CompiledSelection<OperationKey>,
     pub(super) metadata: MetadataSelection,
     pub(super) payload_schemas: BTreeSet<BindingPayloadSchemaKey>,
-    pub(super) text_measurement_providers: BTreeSet<TextMeasurementProviderKey>,
     pub(super) constructor_services: BTreeSet<ConstructorServiceKey>,
     pub(super) runtime_policy: RuntimePolicyExposure,
 }
@@ -54,7 +51,6 @@ impl TransportExposure {
             operations: CompiledSelection::default(),
             metadata: MetadataSelection::default(),
             payload_schemas: BTreeSet::new(),
-            text_measurement_providers: BTreeSet::new(),
             constructor_services: BTreeSet::new(),
             runtime_policy: RuntimePolicyExposure::default(),
         }
@@ -134,21 +130,6 @@ impl TransportExposure {
                 return Err(invalid_artifact_contract(format!(
                     "payload schema `{}` was declared more than once",
                     schema.id()
-                )));
-            }
-        }
-        Ok(self)
-    }
-
-    pub fn with_text_measurement_providers(
-        mut self,
-        providers: impl IntoIterator<Item = TextMeasurementProviderKey>,
-    ) -> Result<Self, BindingError> {
-        for provider in providers {
-            if !self.text_measurement_providers.insert(provider) {
-                return Err(invalid_artifact_contract(format!(
-                    "text-measurement provider `{}` was declared more than once",
-                    provider.id()
                 )));
             }
         }

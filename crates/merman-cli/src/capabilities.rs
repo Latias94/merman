@@ -49,7 +49,7 @@ struct CapabilityView<'a> {
     id: &'a str,
     kind: &'a str,
     description: &'a str,
-    implications: &'a [&'a str],
+    implications: Vec<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -116,12 +116,12 @@ pub(crate) fn write_compiled_capabilities(
                 id: capability.id,
                 kind: capability.kind,
                 description: capability.description,
-                implications: capability.implications,
+                implications: capability.implications.iter().map(|key| key.id()).collect(),
             })
             .collect(),
         outputs: descriptor::OUTPUTS
             .iter()
-            .filter(|output| capability_ids.contains(&output.capability))
+            .filter(|output| capability_ids.contains(&output.capability.id()))
             .map(output_view)
             .collect(),
     };

@@ -37,9 +37,10 @@ pub use capability::{
 };
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError, BindingErrorKind,
-    BindingResourceErrorDetails, BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
-    binding_error_payload_json_bytes, error_payload_json_bytes, render_payload_json_bytes,
-    render_resource_options_unavailable, resource_options_json,
+    BindingIconRegistryErrorDetails, BindingResourceErrorDetails, BindingRuntimePolicy,
+    BindingStatus, apply_resource_ceiling_json, binding_error_payload_json_bytes,
+    error_payload_json_bytes, render_payload_json_bytes, render_resource_options_unavailable,
+    resource_options_json,
 };
 pub use engine::BindingEngine;
 pub use lifecycle::{
@@ -49,7 +50,8 @@ pub use lifecycle::{
 pub use metadata::{
     BindingAsciiCapability, BindingAsciiCapabilityEvidence, BindingDiagramFamilyCapability,
     PRESENTATION_CATALOG_SCHEMA_VERSION, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,
-    RuntimeCapabilities, RuntimeCatalog, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
+    RuntimeCapabilities, RuntimeCatalog, RuntimeConstructorResourceLimit,
+    RuntimeConstructorServiceContract, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
     RuntimeOutputContract, RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract,
     RuntimeResourceLimit, RuntimeResourceProfile, RuntimeSystemFontContract,
     TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK, TEXT_MEASUREMENT_PROVIDER_VENDORED,
@@ -79,10 +81,12 @@ pub use resource_contract::{
     binding_resource_contract,
 };
 pub use service_contract::{
-    ConstructorServiceKey, ConstructorServiceSpec, RuntimePolicyExposure,
-    TextMeasurementProviderKey, TextMeasurementProviderSpec,
+    ConstructorServiceKey, RuntimePolicyExposure, TextMeasurementProviderKey,
+    TextMeasurementProviderSource,
 };
 pub use services::BindingEngineServices;
+#[cfg(feature = "svg")]
+pub use services::{BindingIconRegistry, build_icon_registry};
 pub use svg_plan::{
     SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, SvgPlanPresentationAspect, svg_plan_json,
 };
@@ -100,9 +104,10 @@ pub use ascii::render_ascii;
 #[cfg(feature = "svg")]
 pub use merman::svg::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
-    HostTextMeasurementRequest, HostTextMeasurer, TEXT_MEASUREMENT_PROTOCOL_VERSION,
-    TextMeasurementOperation, TextMeasurementPhase, TextMetrics, TextStyle, WrapMode,
-    validate_host_text_measurement,
+    HostTextMeasurementRequest, HostTextMeasurer, IconPack, IconRegistryResourceLimitDescriptor,
+    IconRegistryResourceLimitId, TEXT_MEASUREMENT_PROTOCOL_VERSION, TextMeasurementOperation,
+    TextMeasurementPhase, TextMetrics, TextStyle, WrapMode,
+    icon_registry_resource_limit_descriptors, validate_host_text_measurement,
 };
 #[cfg(feature = "jpeg")]
 pub use render::render_jpeg;

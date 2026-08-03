@@ -20,7 +20,7 @@ use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
     BindingError, BindingOperationRequest, BindingOperationResult, BindingPayloadSchemaKey,
     BindingStatus, CompiledBindingSurface, ConstructorServiceKey, RuntimePolicyExposure, TargetKey,
-    TextMeasurementProviderKey, TransportExposure, ValidatedArtifactContract,
+    TransportExposure, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use std::cell::Cell;
@@ -88,10 +88,7 @@ fn android_artifact_contract() -> &'static ValidatedArtifactContract {
             .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
         #[cfg(feature = "svg")]
         let exposure = exposure
-            .with_text_measurement_providers([TextMeasurementProviderKey::HostCallback])
-            .and_then(|exposure| {
-                exposure.with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
-            })
+            .with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
             .expect("the Android SVG transport exposes its compiled constructor service");
 
         CompiledBindingSurface::current()

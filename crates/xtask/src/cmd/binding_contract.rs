@@ -5,8 +5,8 @@ use merman_bindings_core::{
     BINDING_OPERATION_METADATA_CONTRACT_SCHEMA_VERSION, BINDING_OPTIONS_SCHEMA_VERSION,
     BindingOperationMetadataContract, BindingOptionGroupKey, BindingPayloadSchemaKey,
     BindingUnavailableOperationExpectation, ConstructorServiceKey, RUNTIME_CATALOG_SCHEMA_VERSION,
-    TEXT_MEASUREMENT_PROTOCOL_VERSION, TextMeasurementProviderKey, binding_operation_expectations,
-    operation_metadata_contract,
+    TEXT_MEASUREMENT_PROTOCOL_VERSION, TextMeasurementProviderKey, TextMeasurementProviderSource,
+    binding_operation_expectations, operation_metadata_contract,
 };
 use serde::Serialize;
 use std::fmt::Write as _;
@@ -35,15 +35,14 @@ struct PayloadSchemaProjection {
 #[derive(Serialize)]
 struct ConstructorServiceProjection {
     id: &'static str,
-    required_provider_ids: Vec<&'static str>,
-    requires_svg_pipeline: bool,
+    provided_text_measurement_provider_ids: Vec<&'static str>,
 }
 
 #[derive(Serialize)]
 struct TextMeasurementProviderProjection {
     id: &'static str,
-    requires_svg_pipeline: bool,
-    derived_from_svg_pipeline: bool,
+    source: &'static str,
+    constructor_service_id: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -122,11 +121,17 @@ fn render_node_javascript() -> String {
         .iter()
         .copied()
         .map(|key| {
-            let spec = key.spec();
+            let (source, constructor_service_id) = match key.source() {
+                TextMeasurementProviderSource::SvgPipeline => ("svg-pipeline", None),
+                TextMeasurementProviderSource::ConstructorService(service) => {
+                    ("constructor-service", Some(service.id()))
+                }
+                _ => unreachable!("the generator must handle every provider source"),
+            };
             TextMeasurementProviderProjection {
                 id: key.id(),
-                requires_svg_pipeline: spec.requires_svg_pipeline(),
-                derived_from_svg_pipeline: spec.derived_from_svg_pipeline(),
+                source,
+                constructor_service_id,
             }
         })
         .collect::<Vec<_>>();
@@ -137,18 +142,13 @@ fn render_node_javascript() -> String {
     let constructor_services = ConstructorServiceKey::ALL
         .iter()
         .copied()
-        .map(|key| {
-            let spec = key.spec();
-            ConstructorServiceProjection {
-                id: key.id(),
-                required_provider_ids: spec
-                    .required_providers()
-                    .iter()
-                    .copied()
-                    .map(TextMeasurementProviderKey::id)
-                    .collect(),
-                requires_svg_pipeline: spec.requires_svg_pipeline(),
-            }
+        .map(|key| ConstructorServiceProjection {
+            id: key.id(),
+            provided_text_measurement_provider_ids: providers
+                .iter()
+                .filter(|provider| provider.constructor_service_id == Some(key.id()))
+                .map(|provider| provider.id)
+                .collect(),
         })
         .collect::<Vec<_>>();
     let operation_expectations = operation_expectation_projections();
@@ -328,9 +328,9 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(option_ids.windows(2).all(|pair| pair[0] < pair[1]));
 
-        for service in ConstructorServiceKey::ALL {
-            for provider in service.spec().required_providers() {
-                assert!(TextMeasurementProviderKey::ALL.contains(provider));
+        for provider in TextMeasurementProviderKey::ALL {
+            if let TextMeasurementProviderSource::ConstructorService(service) = provider.source() {
+                assert!(ConstructorServiceKey::ALL.contains(&service));
             }
         }
 
