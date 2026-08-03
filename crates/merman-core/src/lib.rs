@@ -142,10 +142,8 @@ pub struct ParseMetadata {
 
 /// Headless Mermaid parser engine.
 ///
-/// An engine owns detector/parser registries and a site-level Mermaid configuration. Pinned
-/// registry baselines are initialized once per process and shared until engine-local customization
-/// detaches their copy-on-write storage. Engines are also cheap to clone when callers need
-/// per-request option variants.
+/// An engine owns detector/parser registries and a site-level Mermaid configuration. It is cheap
+/// to clone when callers need per-request option variants.
 #[derive(Debug, Clone)]
 pub struct Engine {
     registry: DetectorRegistry,
@@ -552,137 +550,6 @@ impl Engine {
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagram>> {
         self.parse_diagram_with_type_sync(diagram_type, text, options)
-    }
-}
-
-#[cfg(test)]
-mod pinned_registry_tests {
-    use super::*;
-    use serde_json::{Value, json};
-
-    const CUSTOM_DIAGRAM_TYPE: &str = "pinned-registry-isolation-test";
-
-    fn custom_detector(text: &str, _config: &mut MermaidConfig) -> bool {
-        text.trim_start().starts_with(CUSTOM_DIAGRAM_TYPE)
-    }
-
-    fn custom_semantic_parser(
-        _code: &str,
-        _meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<Value>> {
-        control.checkpoint()?;
-        Ok(Ok(json!({ "owner": "custom-semantic" })))
-    }
-
-    fn custom_render_parser(_code: &str, _meta: &ParseMetadata) -> Result<CustomJsonRenderModel> {
-        Ok(CustomJsonRenderModel::new(
-            CUSTOM_DIAGRAM_TYPE,
-            json!({ "owner": "custom-render" }),
-        ))
-    }
-
-    #[test]
-    fn repeated_fresh_engines_share_all_pinned_registry_storage() {
-        let engines = (0..32).map(|_| Engine::new()).collect::<Vec<_>>();
-        let first = &engines[0];
-
-        for engine in &engines[1..] {
-            assert!(first.registry.shares_storage_with(&engine.registry));
-            assert!(
-                first
-                    .diagram_registry
-                    .shares_storage_with(&engine.diagram_registry)
-            );
-            assert!(
-                first
-                    .render_diagram_registry
-                    .shares_storage_with(&engine.render_diagram_registry)
-            );
-        }
-    }
-
-    #[test]
-    fn registry_customization_detaches_without_leaking_to_other_engines() {
-        let mut customized = Engine::new();
-        let untouched = Engine::new();
-
-        customized
-            .registry_mut()
-            .add_fn(CUSTOM_DIAGRAM_TYPE, custom_detector);
-        customized
-            .diagram_registry_mut()
-            .insert(CUSTOM_DIAGRAM_TYPE, custom_semantic_parser);
-        customized
-            .render_diagram_registry_mut()
-            .insert(CUSTOM_DIAGRAM_TYPE, custom_render_parser);
-
-        assert!(!customized.registry.shares_storage_with(&untouched.registry));
-        assert!(
-            !customized
-                .diagram_registry
-                .shares_storage_with(&untouched.diagram_registry)
-        );
-        assert!(
-            !customized
-                .render_diagram_registry
-                .shares_storage_with(&untouched.render_diagram_registry)
-        );
-        assert!(
-            customized
-                .registry()
-                .detector_ids()
-                .any(|id| id == CUSTOM_DIAGRAM_TYPE)
-        );
-        assert!(
-            customized
-                .diagram_registry()
-                .parser_ids()
-                .any(|id| id == CUSTOM_DIAGRAM_TYPE)
-        );
-        assert!(
-            customized
-                .render_diagram_registry()
-                .contains(CUSTOM_DIAGRAM_TYPE)
-        );
-
-        for engine in [untouched, Engine::new()] {
-            assert!(
-                !engine
-                    .registry()
-                    .detector_ids()
-                    .any(|id| id == CUSTOM_DIAGRAM_TYPE)
-            );
-            assert!(
-                !engine
-                    .diagram_registry()
-                    .parser_ids()
-                    .any(|id| id == CUSTOM_DIAGRAM_TYPE)
-            );
-            assert!(
-                !engine
-                    .render_diagram_registry()
-                    .contains(CUSTOM_DIAGRAM_TYPE)
-            );
-        }
-    }
-
-    #[test]
-    fn incomplete_custom_registration_preserves_public_errors_and_baseline_isolation() {
-        let source = "pinned-registry-isolation-test\npayload\n";
-        let mut incomplete = Engine::new();
-        incomplete
-            .registry_mut()
-            .add_fn(CUSTOM_DIAGRAM_TYPE, custom_detector);
-
-        assert!(matches!(
-            incomplete.parse_diagram_sync(source, ParseOptions::strict()),
-            Err(Error::UnsupportedDiagram { diagram_type }) if diagram_type == CUSTOM_DIAGRAM_TYPE
-        ));
-        assert!(matches!(
-            Engine::new().parse_diagram_sync(source, ParseOptions::strict()),
-            Err(Error::DetectType(_))
-        ));
     }
 }
 

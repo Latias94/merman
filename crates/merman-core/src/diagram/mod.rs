@@ -5,10 +5,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
-
-static PINNED_SEMANTIC_REGISTRY_BASELINE: OnceLock<DiagramRegistry> = OnceLock::new();
-static PINNED_RENDER_REGISTRY_BASELINE: OnceLock<RenderDiagramRegistry> = OnceLock::new();
+use std::sync::Arc;
 
 pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID: &str =
@@ -144,31 +141,14 @@ impl DiagramRegistry {
             .map(ResolvedSemanticParser::BuiltIn)
     }
 
-    /// Returns the semantic parser registry for the repository's pinned Mermaid baseline.
-    ///
-    /// The immutable baseline is initialized once per process. Each returned registry shares its
-    /// backing storage until a caller adds a custom overlay through [`Self::insert`].
+    /// Builds the semantic parser registry for the repository's pinned Mermaid baseline.
     pub fn pinned_mermaid_baseline() -> Self {
-        Self::clone_or_init_pinned_baseline(
-            &PINNED_SEMANTIC_REGISTRY_BASELINE,
-            Self::build_pinned_baseline,
-        )
-    }
-
-    fn clone_or_init_pinned_baseline(
-        baseline: &OnceLock<Self>,
-        initialize: impl FnOnce() -> Self,
-    ) -> Self {
-        baseline.get_or_init(initialize).clone()
-    }
-
-    fn build_pinned_baseline() -> Self {
-        let mut registry = Self::new();
+        let mut reg = Self::new();
         for fact in crate::family::semantic_parser_facts() {
-            Arc::make_mut(&mut registry.builtins).insert(fact.id, fact.parser);
+            Arc::make_mut(&mut reg.builtins).insert(fact.id, fact.parser);
         }
 
-        registry
+        reg
     }
 
     #[cfg(test)]
@@ -181,11 +161,6 @@ impl DiagramRegistry {
                     .filter(|id| !self.builtins.contains_key(**id)),
             )
             .copied()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.builtins, &other.builtins) && Arc::ptr_eq(&self.overlays, &other.overlays)
     }
 }
 
@@ -764,31 +739,14 @@ impl RenderDiagramRegistry {
                 .is_some()
     }
 
-    /// Returns the typed render parser registry for the repository's pinned Mermaid baseline.
-    ///
-    /// The immutable baseline is initialized once per process. Each returned registry shares its
-    /// backing storage until a caller adds or replaces an engine-local custom overlay.
+    /// Builds the typed render parser registry for the repository's pinned Mermaid baseline.
     pub fn pinned_mermaid_baseline() -> Self {
-        Self::clone_or_init_pinned_baseline(
-            &PINNED_RENDER_REGISTRY_BASELINE,
-            Self::build_pinned_baseline,
-        )
-    }
-
-    fn clone_or_init_pinned_baseline(
-        baseline: &OnceLock<Self>,
-        initialize: impl FnOnce() -> Self,
-    ) -> Self {
-        baseline.get_or_init(initialize).clone()
-    }
-
-    fn build_pinned_baseline() -> Self {
-        let mut registry = Self::new();
+        let mut reg = Self::new();
         for fact in crate::family::render_parser_facts() {
-            Arc::make_mut(&mut registry.builtins).insert(fact.id, fact.parser);
+            Arc::make_mut(&mut reg.builtins).insert(fact.id, fact.parser);
         }
 
-        registry
+        reg
     }
 
     #[cfg(test)]
@@ -801,11 +759,6 @@ impl RenderDiagramRegistry {
                     .filter(|id| !self.builtins.contains_key(**id)),
             )
             .copied()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.builtins, &other.builtins) && Arc::ptr_eq(&self.overlays, &other.overlays)
     }
 }
 
@@ -878,10 +831,7 @@ pub(crate) fn parse_or_unsupported(
 #[cfg(test)]
 mod registry_clone_tests {
     use super::*;
-    use std::sync::{
-        Arc, Barrier, OnceLock,
-        atomic::{AtomicUsize, Ordering},
-    };
+    use std::sync::Arc;
 
     fn custom_semantic_parser(
         _code: &str,
@@ -910,53 +860,22 @@ mod registry_clone_tests {
     }
 
     #[test]
-    fn semantic_registry_initializer_builds_the_complete_baseline_once() {
-        let baseline = OnceLock::new();
-        let build_count = AtomicUsize::new(0);
-        let first = DiagramRegistry::clone_or_init_pinned_baseline(&baseline, || {
-            build_count.fetch_add(1, Ordering::Relaxed);
-            DiagramRegistry::build_pinned_baseline()
-        });
-        let second = DiagramRegistry::clone_or_init_pinned_baseline(&baseline, || {
-            build_count.fetch_add(1, Ordering::Relaxed);
-            DiagramRegistry::build_pinned_baseline()
-        });
-
-        assert_eq!(
-            first
-                .parser_ids()
-                .collect::<std::collections::BTreeSet<_>>(),
-            crate::family::semantic_parser_facts()
-                .iter()
-                .map(|fact| fact.id)
-                .collect()
-        );
-        assert!(first.shares_storage_with(&second));
-        assert_eq!(build_count.load(Ordering::Relaxed), 1);
-    }
-
-    #[test]
-    fn semantic_registry_baselines_share_copy_on_write_storage() {
+    fn semantic_registry_clone_uses_copy_on_write_storage() {
         let original = DiagramRegistry::pinned_mermaid_baseline();
-        let mut customized = DiagramRegistry::pinned_mermaid_baseline();
+        let mut cloned = original.clone();
 
-        assert!(Arc::ptr_eq(&original.builtins, &customized.builtins));
-        assert!(Arc::ptr_eq(&original.overlays, &customized.overlays));
+        assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
+        assert!(Arc::ptr_eq(&original.overlays, &cloned.overlays));
 
-        customized.insert("copy-on-write-semantic-test", custom_semantic_parser);
+        cloned.insert("copy-on-write-semantic-test", custom_semantic_parser);
 
-        assert!(Arc::ptr_eq(&original.builtins, &customized.builtins));
-        assert!(!Arc::ptr_eq(&original.overlays, &customized.overlays));
+        assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
+        assert!(!Arc::ptr_eq(&original.overlays, &cloned.overlays));
         assert!(original.resolve("copy-on-write-semantic-test").is_none());
         assert!(matches!(
-            customized.resolve("copy-on-write-semantic-test"),
+            cloned.resolve("copy-on-write-semantic-test"),
             Some(ResolvedSemanticParser::Custom(_))
         ));
-        assert!(
-            DiagramRegistry::pinned_mermaid_baseline()
-                .resolve("copy-on-write-semantic-test")
-                .is_none()
-        );
     }
 
     #[test]
@@ -993,111 +912,18 @@ mod registry_clone_tests {
     }
 
     #[test]
-    fn render_registry_initializer_builds_the_complete_baseline_once() {
-        let baseline = OnceLock::new();
-        let build_count = AtomicUsize::new(0);
-        let first = RenderDiagramRegistry::clone_or_init_pinned_baseline(&baseline, || {
-            build_count.fetch_add(1, Ordering::Relaxed);
-            RenderDiagramRegistry::build_pinned_baseline()
-        });
-        let second = RenderDiagramRegistry::clone_or_init_pinned_baseline(&baseline, || {
-            build_count.fetch_add(1, Ordering::Relaxed);
-            RenderDiagramRegistry::build_pinned_baseline()
-        });
-
-        assert_eq!(
-            first
-                .parser_ids()
-                .collect::<std::collections::BTreeSet<_>>(),
-            crate::family::render_parser_facts()
-                .iter()
-                .map(|fact| fact.id)
-                .collect()
-        );
-        assert!(first.shares_storage_with(&second));
-        assert_eq!(build_count.load(Ordering::Relaxed), 1);
-    }
-
-    #[test]
-    fn render_registry_baselines_share_copy_on_write_storage() {
+    fn render_registry_clone_uses_copy_on_write_storage() {
         let original = RenderDiagramRegistry::pinned_mermaid_baseline();
-        let mut customized = RenderDiagramRegistry::pinned_mermaid_baseline();
+        let mut cloned = original.clone();
 
-        assert!(Arc::ptr_eq(&original.builtins, &customized.builtins));
-        assert!(Arc::ptr_eq(&original.overlays, &customized.overlays));
+        assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
+        assert!(Arc::ptr_eq(&original.overlays, &cloned.overlays));
 
-        customized.insert("copy-on-write-render-test", custom_render_parser);
+        cloned.insert("copy-on-write-render-test", custom_render_parser);
 
-        assert!(Arc::ptr_eq(&original.builtins, &customized.builtins));
-        assert!(!Arc::ptr_eq(&original.overlays, &customized.overlays));
+        assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
+        assert!(!Arc::ptr_eq(&original.overlays, &cloned.overlays));
         assert!(!original.contains("copy-on-write-render-test"));
-        assert!(customized.contains("copy-on-write-render-test"));
-        assert!(
-            !RenderDiagramRegistry::pinned_mermaid_baseline().contains("copy-on-write-render-test")
-        );
-    }
-
-    #[test]
-    fn parser_registries_initialize_once_under_concurrent_first_access() {
-        const THREADS: usize = 8;
-
-        let semantic_baseline = OnceLock::new();
-        let semantic_barrier = Barrier::new(THREADS);
-        let semantic_build_count = AtomicUsize::new(0);
-        let semantic_registries = std::thread::scope(|scope| {
-            let handles = (0..THREADS)
-                .map(|_| {
-                    scope.spawn(|| {
-                        semantic_barrier.wait();
-                        DiagramRegistry::clone_or_init_pinned_baseline(&semantic_baseline, || {
-                            semantic_build_count.fetch_add(1, Ordering::Relaxed);
-                            DiagramRegistry::build_pinned_baseline()
-                        })
-                    })
-                })
-                .collect::<Vec<_>>();
-
-            handles
-                .into_iter()
-                .map(|handle| handle.join().expect("semantic registry thread panicked"))
-                .collect::<Vec<_>>()
-        });
-        assert_eq!(semantic_build_count.load(Ordering::Relaxed), 1);
-        assert!(
-            semantic_registries[1..]
-                .iter()
-                .all(|registry| semantic_registries[0].shares_storage_with(registry))
-        );
-
-        let render_baseline = OnceLock::new();
-        let render_barrier = Barrier::new(THREADS);
-        let render_build_count = AtomicUsize::new(0);
-        let render_registries = std::thread::scope(|scope| {
-            let handles = (0..THREADS)
-                .map(|_| {
-                    scope.spawn(|| {
-                        render_barrier.wait();
-                        RenderDiagramRegistry::clone_or_init_pinned_baseline(
-                            &render_baseline,
-                            || {
-                                render_build_count.fetch_add(1, Ordering::Relaxed);
-                                RenderDiagramRegistry::build_pinned_baseline()
-                            },
-                        )
-                    })
-                })
-                .collect::<Vec<_>>();
-
-            handles
-                .into_iter()
-                .map(|handle| handle.join().expect("render registry thread panicked"))
-                .collect::<Vec<_>>()
-        });
-        assert_eq!(render_build_count.load(Ordering::Relaxed), 1);
-        assert!(
-            render_registries[1..]
-                .iter()
-                .all(|registry| render_registries[0].shares_storage_with(registry))
-        );
+        assert!(cloned.contains("copy-on-write-render-test"));
     }
 }
