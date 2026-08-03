@@ -147,24 +147,26 @@ where
             .expect("replacement weight must match retained entries")
             .checked_add(weight as u128)
             .expect("replacement cache weight must not overflow u128");
-        let mut candidates = self
-            .entries
-            .iter()
-            .map(|(candidate, entry)| (entry.last_access, candidate.clone(), entry.weight))
-            .collect::<Vec<_>>();
-        candidates.sort_unstable_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
         let mut victims = Vec::new();
-        for (_, victim, victim_weight) in candidates {
-            if projected_retained <= self.budget as u128 {
-                break;
+        if projected_retained > self.budget as u128 {
+            let mut candidates = self
+                .entries
+                .iter()
+                .map(|(candidate, entry)| (entry.last_access, candidate.clone(), entry.weight))
+                .collect::<Vec<_>>();
+            candidates.sort_unstable_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
+            for (_, victim, victim_weight) in candidates {
+                if projected_retained <= self.budget as u128 {
+                    break;
+                }
+                if victim == *key {
+                    return WeightedReplaceOutcome::ReplacementWouldBeEvicted;
+                }
+                victims.push(victim);
+                projected_retained = projected_retained
+                    .checked_sub(victim_weight as u128)
+                    .expect("replacement victim weight must be retained");
             }
-            if victim == *key {
-                return WeightedReplaceOutcome::ReplacementWouldBeEvicted;
-            }
-            victims.push(victim);
-            projected_retained = projected_retained
-                .checked_sub(victim_weight as u128)
-                .expect("replacement victim weight must be retained");
         }
         debug_assert!(projected_retained <= self.budget as u128);
 
@@ -357,6 +359,28 @@ mod tests {
         assert!(cache.contains_key(&"b"));
         assert_eq!(cache.statistics().evictions, evictions);
         assert_eq!(cache.statistics().oversized_entries, 1);
+    }
+
+    #[test]
+    fn oversized_same_key_insert_preserves_the_resident_entry() {
+        let mut cache = WeightedLru::new(10);
+        assert!(cache.insert("a", 1, 10));
+        let before = cache.statistics();
+
+        assert!(!cache.insert("a", 2, 11));
+
+        assert_eq!(cache.peek(&"a"), Some(&1));
+        assert_eq!(cache.total_weight(), 10);
+        assert_eq!(cache.statistics().evictions, before.evictions);
+        assert_eq!(cache.statistics().current_weight, before.current_weight);
+        assert_eq!(
+            cache.statistics().high_water_weight,
+            before.high_water_weight
+        );
+        assert_eq!(
+            cache.statistics().oversized_entries,
+            before.oversized_entries + 1
+        );
     }
 
     #[test]
