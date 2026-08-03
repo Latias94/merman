@@ -281,9 +281,8 @@ class DescriptorTests(unittest.TestCase):
                 self.assertFalse(loaded.default_features)
                 self.assertEqual((loaded.package, loaded.features), (package, features))
 
-    def test_ci_and_release_preflights_execute_the_closure_gate(self) -> None:
+    def test_release_and_security_workflows_execute_the_closure_gate(self) -> None:
         workflows = (
-            (".github/workflows/ci.yml", "build-test", "Verify generated architecture contracts"),
             (
                 ".github/workflows/release-crates.yml",
                 "preflight",
@@ -293,6 +292,11 @@ class DescriptorTests(unittest.TestCase):
                 ".github/workflows/release-preflight.yml",
                 "versions-and-packages",
                 "Verify target-scoped artifact dependency closures",
+            ),
+            (
+                ".github/workflows/security-audit.yml",
+                "cargo-dependency-policy",
+                "Verify target-scoped advisory artifact-profile coverage",
             ),
         )
         for path, job, step_name in workflows:

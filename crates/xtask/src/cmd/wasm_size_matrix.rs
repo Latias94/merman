@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const WASM_SIZE_BUDGET_SCHEMA_VERSION: u32 = 2;
+const WEB_PACKAGE_PROFILE_MANIFEST: &str = "merman_wasm_artifact_profile.json";
+const WEB_PACKAGE_WASM_FILE: &str = "merman_wasm_bg.wasm";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Surface {
@@ -44,6 +46,7 @@ struct Options {
     artifact_profile: Option<String>,
     no_strip: bool,
     budget_file: Option<PathBuf>,
+    web_package_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +109,12 @@ struct WasmArtifactBudget {
     max_brotli_bytes: u64,
 }
 
+#[derive(Debug, Deserialize)]
+struct WebPackageArtifactProfile {
+    schema_version: u32,
+    artifact_profile: String,
+}
+
 fn all_artifacts() -> Result<Vec<WasmArtifact>, XtaskError> {
     let artifacts = load_wasm_size_artifact_profiles()
         .map_err(|error| {
@@ -165,7 +174,16 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
         .as_deref()
         .map(|path| load_budget_file(path, &all_artifacts))
         .transpose()?;
-    let _build_lock = WorkspaceWasmBuildLock::acquire()?;
+    let package_artifacts = options
+        .web_package_root
+        .as_deref()
+        .map(|root| load_web_package_artifacts(root, &artifacts))
+        .transpose()?;
+    let _build_lock = if package_artifacts.is_none() {
+        Some(WorkspaceWasmBuildLock::acquire()?)
+    } else {
+        None
+    };
     let strip_dir = paths::target_root().join("wasm-size-matrix");
     if !options.no_strip {
         fs::create_dir_all(&strip_dir).map_err(|source| XtaskError::WriteFile {
@@ -181,7 +199,15 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
     let mut budget_failures = Vec::new();
 
     for artifact in artifacts {
-        let measurement = measure_artifact(artifact, &strip_dir, options.no_strip)?;
+        let package_path = package_artifacts
+            .as_ref()
+            .and_then(|paths| paths.get(&artifact.id));
+        let measurement = measure_artifact(
+            artifact,
+            &strip_dir,
+            options.no_strip,
+            package_path.map(PathBuf::as_path),
+        )?;
         let display_artifact = measurement
             .artifact_path
             .canonicalize()
@@ -259,6 +285,10 @@ fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Option
             "--budget-file" => {
                 options.budget_file = Some(PathBuf::from(iter.next().ok_or(XtaskError::Usage)?));
             }
+            "--web-package-root" => {
+                options.web_package_root =
+                    Some(PathBuf::from(iter.next().ok_or(XtaskError::Usage)?));
+            }
             _ => {
                 print_usage(artifacts);
                 return Err(XtaskError::Usage);
@@ -278,7 +308,7 @@ fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Option
 
 fn print_usage(artifacts: &[WasmArtifact]) {
     println!(
-        "usage: xtask wasm-size-matrix [--surface web|typst|all] [--artifact-profile <id>] [--no-strip] [--budget-file <path>]"
+        "usage: xtask wasm-size-matrix [--surface web|typst|all] [--artifact-profile <id>] [--web-package-root <path>] [--no-strip] [--budget-file <path>]"
     );
     println!();
     println!("Artifact profiles:");
@@ -303,9 +333,14 @@ fn measure_artifact(
     artifact: &WasmArtifact,
     strip_dir: &Path,
     no_strip: bool,
+    package_path: Option<&Path>,
 ) -> Result<WasmMeasurement, XtaskError> {
-    build_artifact(artifact)?;
-    let artifact_path = artifact_path(artifact);
+    let artifact_path = if let Some(path) = package_path {
+        path.to_path_buf()
+    } else {
+        build_artifact(artifact)?;
+        artifact_path(artifact)
+    };
     let raw_bytes = file_size(&artifact_path)?;
 
     let (compressed_path, stripped_bytes, compressed_source) = if no_strip {
@@ -327,6 +362,84 @@ fn measure_artifact(
         artifact_path,
         compressed_source,
     })
+}
+
+fn load_web_package_artifacts(
+    root: &Path,
+    artifacts: &[&WasmArtifact],
+) -> Result<BTreeMap<String, PathBuf>, XtaskError> {
+    if artifacts
+        .iter()
+        .any(|artifact| artifact.surface != Surface::Web)
+    {
+        return Err(XtaskError::WasmSizeMatrixFailed(
+            "--web-package-root only accepts Web package artifacts; select --surface web or a Web artifact profile"
+                .to_string(),
+        ));
+    }
+
+    let root = resolve_repo_path(root);
+    let entries = fs::read_dir(&root).map_err(|source| XtaskError::ReadFile {
+        path: root.display().to_string(),
+        source,
+    })?;
+    let mut discovered = BTreeMap::new();
+    for entry in entries {
+        let entry = entry.map_err(|source| XtaskError::ReadFile {
+            path: root.display().to_string(),
+            source,
+        })?;
+        let package_root = entry.path();
+        if !package_root.is_dir() {
+            continue;
+        }
+        let manifest_path = package_root.join(WEB_PACKAGE_PROFILE_MANIFEST);
+        if !manifest_path.is_file() {
+            continue;
+        }
+        let manifest = serde_json::from_str::<WebPackageArtifactProfile>(&crate::util::read_text(
+            &manifest_path,
+        )?)
+        .map_err(XtaskError::Json)?;
+        if manifest.schema_version != 1 {
+            return Err(XtaskError::WasmSizeMatrixFailed(format!(
+                "{} must use Web package artifact profile schema 1, found {}",
+                manifest_path.display(),
+                manifest.schema_version
+            )));
+        }
+        let wasm_path = package_root.join(WEB_PACKAGE_WASM_FILE);
+        if !wasm_path.is_file() {
+            return Err(XtaskError::WasmSizeMatrixFailed(format!(
+                "Web package artifact profile {} is missing {}",
+                manifest.artifact_profile,
+                wasm_path.display()
+            )));
+        }
+        if discovered
+            .insert(manifest.artifact_profile.clone(), wasm_path)
+            .is_some()
+        {
+            return Err(XtaskError::WasmSizeMatrixFailed(format!(
+                "duplicate Web package artifact profile {} under {}",
+                manifest.artifact_profile,
+                root.display()
+            )));
+        }
+    }
+
+    let mut selected = BTreeMap::new();
+    for artifact in artifacts {
+        let path = discovered.get(&artifact.id).ok_or_else(|| {
+            XtaskError::WasmSizeMatrixFailed(format!(
+                "Web package artifact root {} is missing artifact profile {}",
+                root.display(),
+                artifact.id
+            ))
+        })?;
+        selected.insert(artifact.id.clone(), path.clone());
+    }
+    Ok(selected)
 }
 
 fn load_budget_file(
@@ -658,9 +771,7 @@ mod tests {
         let all_artifacts = artifacts();
         let options = Options {
             surface: Some(Surface::Typst),
-            artifact_profile: None,
-            no_strip: false,
-            budget_file: None,
+            ..Options::default()
         };
         let selected = selected_artifacts(&options, all_artifacts).unwrap();
 
@@ -676,10 +787,8 @@ mod tests {
     fn artifact_profile_filter_selects_one_exact_recipe() {
         let all_artifacts = artifacts();
         let options = Options {
-            surface: None,
             artifact_profile: Some("web-render".to_string()),
-            no_strip: false,
-            budget_file: None,
+            ..Options::default()
         };
         let selected = selected_artifacts(&options, all_artifacts).unwrap();
 
@@ -796,8 +905,7 @@ mod tests {
         let options = Options {
             surface: Some(Surface::Typst),
             artifact_profile: Some("web-render".to_string()),
-            no_strip: false,
-            budget_file: None,
+            ..Options::default()
         };
 
         assert!(selected_artifacts(&options, all_artifacts).is_err());
@@ -814,6 +922,8 @@ mod tests {
                 "web-analysis".to_string(),
                 "--budget-file".to_string(),
                 "docs/release/WASM_SIZE_BUDGETS.json".to_string(),
+                "--web-package-root".to_string(),
+                "platforms/web/pkg".to_string(),
             ],
             all_artifacts,
         )
@@ -826,6 +936,45 @@ mod tests {
             options.budget_file.as_deref(),
             Some(Path::new("docs/release/WASM_SIZE_BUDGETS.json"))
         );
+        assert_eq!(
+            options.web_package_root.as_deref(),
+            Some(Path::new("platforms/web/pkg"))
+        );
+    }
+
+    #[test]
+    fn web_package_artifacts_are_selected_by_their_profile_manifest() {
+        let temporary = tempfile::tempdir().unwrap();
+        write_web_package_artifact(temporary.path(), "slim", "web-analysis");
+        write_web_package_artifact(temporary.path(), "viewer", "web-render");
+        let selected = artifacts()
+            .iter()
+            .filter(|artifact| matches!(artifact.id.as_str(), "web-analysis" | "web-render"))
+            .collect::<Vec<_>>();
+
+        let paths = load_web_package_artifacts(temporary.path(), &selected).unwrap();
+        let root = temporary.path().canonicalize().unwrap();
+
+        assert_eq!(
+            paths["web-analysis"],
+            root.join("slim").join(WEB_PACKAGE_WASM_FILE)
+        );
+        assert_eq!(
+            paths["web-render"],
+            root.join("viewer").join(WEB_PACKAGE_WASM_FILE)
+        );
+    }
+
+    #[test]
+    fn web_package_artifacts_reject_non_web_profiles() {
+        let typst = artifacts()
+            .iter()
+            .find(|artifact| artifact.id == "typst-wasm")
+            .unwrap();
+        let error =
+            load_web_package_artifacts(Path::new("platforms/web/pkg"), &[typst]).unwrap_err();
+
+        assert!(error.to_string().contains("only accepts Web"), "{error}");
     }
 
     #[test]
@@ -978,6 +1127,17 @@ mod tests {
 
     fn string_values(values: &[String]) -> Vec<&str> {
         values.iter().map(String::as_str).collect()
+    }
+
+    fn write_web_package_artifact(root: &Path, directory: &str, profile: &str) {
+        let package_root = root.join(directory);
+        fs::create_dir_all(&package_root).unwrap();
+        fs::write(
+            package_root.join(WEB_PACKAGE_PROFILE_MANIFEST),
+            format!("{{\"schema_version\":1,\"artifact_profile\":\"{profile}\"}}\n"),
+        )
+        .unwrap();
+        fs::write(package_root.join(WEB_PACKAGE_WASM_FILE), b"wasm").unwrap();
     }
 
     fn measurement_for_test() -> WasmMeasurement {

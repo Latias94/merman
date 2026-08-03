@@ -130,10 +130,8 @@ jobs:
       - name: Install wasm-tools
         uses: taiki-e/install-action@wasm-tools
 
-      - name: Install WASM tools
-        run: |
-          cargo install wasm-bindgen-cli --version 0.2.108 --locked
-          cargo install wasm-pack --version 0.15.0 --locked
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Verify generated Web contracts
         run: |
@@ -145,14 +143,18 @@ jobs:
           cargo run --locked -p xtask -- verify-artifact-profiles
           cargo run --locked -p xtask -- verify-capability-surface
 
-      - name: Check exact Web WASM size budgets
-        run: cargo run --locked -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
-
       - name: Install Web workspace dependencies
         run: npm ci --prefix platforms/web
 
       - name: Build Web package group
         run: npm run build --prefix platforms/web
+
+      - name: Check final Web package WASM size budgets
+        run: |
+          cargo run --locked -p xtask -- wasm-size-matrix \
+            --surface web \
+            --web-package-root platforms/web/pkg \
+            --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Verify and smoke Web package group
         run: npm run smoke --prefix platforms/web

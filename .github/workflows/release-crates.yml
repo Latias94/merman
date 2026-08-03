@@ -213,10 +213,8 @@ jobs:
           node-version: "24"
           package-manager-cache: false
 
-      - name: Install WASM tools
-        run: |
-          cargo install wasm-bindgen-cli --version 0.2.108 --locked
-          cargo install wasm-pack --version 0.15.0 --locked
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Verify generated Web contracts
         run: |

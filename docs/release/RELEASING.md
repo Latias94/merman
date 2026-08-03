@@ -238,9 +238,12 @@ Before changing Web or Typst artifact profiles, also run the surface-specific
 gates:
 
 ```bash
-cargo run -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
+npm ci --prefix platforms/web
+npm run build --prefix platforms/web
+cargo run -p xtask -- wasm-size-matrix --surface web \
+  --web-package-root platforms/web/pkg \
+  --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo run -p xtask -- wasm-size-matrix --surface all --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run --locked -p xtask -- verify-typst-profile-constants
 cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
 cargo run --locked -p xtask -- build-typst-package --profile publish
