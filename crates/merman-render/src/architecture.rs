@@ -1,6 +1,7 @@
 use crate::architecture_metrics::{
     architecture_cytoscape_child_contribution_bounds, architecture_cytoscape_child_label_bounds,
-    architecture_measure_cytoscape_node_bbox_extras, architecture_node_bbox_extras_to_manatee,
+    architecture_cytoscape_edge_label_metrics, architecture_measure_cytoscape_node_bbox_extras,
+    architecture_node_bbox_extras_to_manatee,
 };
 use crate::config::{config_f64, json_f64, value_at};
 use crate::model::{
@@ -500,9 +501,7 @@ fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
 
 fn architecture_cytoscape_edge_text_style() -> TextStyle {
     TextStyle {
-        // Mermaid's Architecture Cytoscape stylesheet sets `font-size` only on `node[label]`;
-        // `edge[label]` keeps Cytoscape's default 16px sans-serif label style.
-        font_family: Some("sans-serif".to_string()),
+        font_family: Some(CYTOSCAPE_DEFAULT_FONT_FAMILY.to_string()),
         ..TextStyle::default()
     }
 }
@@ -510,9 +509,8 @@ fn architecture_cytoscape_edge_text_style() -> TextStyle {
 fn architecture_fcose_node_bounds_extras<'a>(
     input: ArchitectureFcoseNodeBoundsExtrasInput<'_, 'a>,
 ) -> FxHashMap<&'a str, manatee::BoundsExtras> {
-    // Capture per-node service label extents for the FCoSE port. These extras do not change
-    // layout node size, but they let manatee approximate Cytoscape's
-    // `compound-sizing-wrt-labels: include` behavior when computing compound and element bboxes.
+    // Capture Cytoscape's leaf body, node label, and final bbox phases without changing the
+    // layout node size. Manatee consumes the resulting extras for compound sizing and relocation.
     //
     // Relocation-centering stays inside manatee's indexed graph adapter; keeping it out of this
     // renderer-side helper avoids a second, unused pre-layout bbox model.
@@ -949,12 +947,12 @@ fn build_architecture_fcose_input_plan<'a>(
 
         let (label_width, label_height) = match e.title.map(str::trim).filter(|t| !t.is_empty()) {
             Some(label) => {
-                let m = text_measurer.measure(label, &edge_text_style);
-                let w = m.width.max(0.0);
-                // Cytoscape edge label bounding boxes are slightly taller than the measured
-                // font metrics height (roughly `fontSize + 1px` at Mermaid defaults).
-                let h = (m.height + 1.0).max(0.0);
-                (Some(w), Some(h))
+                let metrics = architecture_cytoscape_edge_label_metrics(
+                    label,
+                    text_measurer,
+                    &edge_text_style,
+                );
+                (Some(metrics.width), Some(metrics.height))
             }
             None => (None, None),
         };
@@ -1930,10 +1928,10 @@ mod tests {
         );
         let extras = node_bounds_extras.get("api").expect("api node extras");
 
-        assert_eq!(extras.top, 2.0);
+        assert_eq!(extras.top, 1.0);
         assert_eq!(extras.bottom, 19.0);
-        assert_eq!(extras.left, 2.0);
-        assert_eq!(extras.right, 2.0);
+        assert_eq!(extras.left, 1.0);
+        assert_eq!(extras.right, 1.0);
     }
 
     #[test]
@@ -1947,7 +1945,10 @@ mod tests {
             Some(super::CYTOSCAPE_DEFAULT_FONT_FAMILY)
         );
         assert_eq!(edge_style.font_size, 16.0);
-        assert_eq!(edge_style.font_family.as_deref(), Some("sans-serif"));
+        assert_eq!(
+            edge_style.font_family.as_deref(),
+            Some(super::CYTOSCAPE_DEFAULT_FONT_FAMILY)
+        );
     }
 
     #[test]

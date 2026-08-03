@@ -446,8 +446,8 @@ fn architecture_vertical_edge_label_bounds_use_create_text_y_offsets() {
         group.2
     );
     assert!(
-        group.3 > 171.5 && group.3 < 171.6,
-        "compound label bottom should follow architecture.fontSize + 1px for custom font sizes, got group height {}",
+        group.3 > 172.5 && group.3 < 172.6,
+        "compound label bottom should include Cytoscape's 2px node-label margin of error, got group height {}",
         group.3
     );
 

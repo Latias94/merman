@@ -76,21 +76,16 @@ impl Mat2 {
     }
 }
 
-// Mermaid 11.16 does not override these Cytoscape 3.33.3 default stylesheet values. Cytoscape's
-// `boundingBoxImpl(...)` starts edge body bounds at half the styled width and parent body bounds at
-// half the centered border width, then expands the completed element bbox by one pixel per side.
-const CYTOSCAPE_DEFAULT_EDGE_WIDTH_PX: f64 = 3.0;
-const CYTOSCAPE_DEFAULT_PARENT_BORDER_WIDTH_PX: f64 = 1.0;
-const CYTOSCAPE_FINAL_BBOX_EXPANSION_PX: f64 = 1.0;
+// Mermaid 11.16 leaves these Cytoscape 3.33.3 bbox phases at their defaults. Keep body, label,
+// parent, and final antialiasing expansion separate because they do not share the same outset.
+const CYTOSCAPE_EDGE_BODY_WIDTH_PX: f64 = 3.0;
+const CYTOSCAPE_EDGE_LABEL_MARGIN_OF_ERROR_PX: f64 = 2.0;
+const CYTOSCAPE_PARENT_BODY_BORDER_WIDTH_PX: f64 = 1.0;
+const CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX: f64 = 1.0;
 const CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX: f64 =
-    CYTOSCAPE_DEFAULT_EDGE_WIDTH_PX / 2.0 + CYTOSCAPE_FINAL_BBOX_EXPANSION_PX;
-const CYTOSCAPE_PARENT_NON_PADDING_BBOX_OUTSET_PX: f64 =
-    CYTOSCAPE_DEFAULT_PARENT_BORDER_WIDTH_PX / 2.0 + CYTOSCAPE_FINAL_BBOX_EXPANSION_PX;
-
-// Native Cytoscape label bounds have a separate `marginOfError` phase. `IndexedEdge` currently
-// carries adapter-provided label dimensions rather than renderer `labelBounds`, so preserve the
-// established relocation contract until that boundary represents the native label phase.
-const FCOSE_RELOCATION_EDGE_LABEL_OUTSET_PX: f64 = CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX;
+    CYTOSCAPE_EDGE_BODY_WIDTH_PX / 2.0 + CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX;
+const CYTOSCAPE_PARENT_BODY_NON_PADDING_BBOX_OUTSET_PX: f64 =
+    CYTOSCAPE_PARENT_BODY_BORDER_WIDTH_PX / 2.0 + CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FcoseRandomSource {
@@ -1785,7 +1780,7 @@ impl SimGraph {
                 bb = Some(bb.map(|b| b.union(ch_bb)).unwrap_or(ch_bb));
             }
             let compound_bbox_outset =
-                n.padding.max(0.0) + CYTOSCAPE_PARENT_NON_PADDING_BBOX_OUTSET_PX;
+                n.padding.max(0.0) + CYTOSCAPE_PARENT_BODY_NON_PADDING_BBOX_OUTSET_PX;
             bbs[cidx] = bb.map(|b| b.inflate(compound_bbox_outset));
         }
 
@@ -2014,16 +2009,16 @@ impl SimGraph {
                             &mut min_y,
                             &mut max_x,
                             &mut max_y,
-                            mx - hw - FCOSE_RELOCATION_EDGE_LABEL_OUTSET_PX,
-                            my - hh - FCOSE_RELOCATION_EDGE_LABEL_OUTSET_PX,
+                            mx - hw - CYTOSCAPE_EDGE_LABEL_MARGIN_OF_ERROR_PX,
+                            my - hh - CYTOSCAPE_EDGE_LABEL_MARGIN_OF_ERROR_PX,
                         );
                         include_point(
                             &mut min_x,
                             &mut min_y,
                             &mut max_x,
                             &mut max_y,
-                            mx + hw + FCOSE_RELOCATION_EDGE_LABEL_OUTSET_PX,
-                            my + hh + FCOSE_RELOCATION_EDGE_LABEL_OUTSET_PX,
+                            mx + hw + CYTOSCAPE_EDGE_LABEL_MARGIN_OF_ERROR_PX,
+                            my + hh + CYTOSCAPE_EDGE_LABEL_MARGIN_OF_ERROR_PX,
                         );
                     }
                 }
@@ -4460,9 +4455,54 @@ mod tests {
             .bounding_box_center_eles(1)
             .expect("segments bbox center");
         assert!(
-            (segments_center_x - 91.25).abs() < 1e-9,
+            (segments_center_x - 91.0).abs() < 1e-9,
             "segments edge label should use the post-run bend contribution, got {segments_center_x}"
         );
+    }
+
+    #[test]
+    fn cytoscape_relocation_bbox_keeps_body_parent_and_label_outsets_separate() {
+        assert_eq!(super::CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX, 2.5);
+        assert_eq!(super::CYTOSCAPE_EDGE_LABEL_MARGIN_OF_ERROR_PX, 2.0);
+        assert_eq!(super::CYTOSCAPE_PARENT_BODY_NON_PADDING_BBOX_OUTSET_PX, 1.5);
+
+        let leaf_extras = BoundsExtras {
+            left: 1.0,
+            right: 1.0,
+            top: 1.0,
+            bottom: 19.0,
+        };
+        let graph = IndexedGraph {
+            nodes: vec![
+                IndexedNode {
+                    parent: Some(0),
+                    width: 80.0,
+                    height: 80.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: leaf_extras,
+                },
+                IndexedNode {
+                    parent: None,
+                    width: 80.0,
+                    height: 80.0,
+                    x: 200.0,
+                    y: 0.0,
+                    bounds_extras: leaf_extras,
+                },
+            ],
+            edges: Vec::new(),
+            compounds: vec![IndexedCompound { parent: None }],
+        };
+
+        let mut sim = SimGraph::from_indexed(&graph);
+        let compound_idx = graph.nodes.len();
+        sim.nodes[compound_idx].padding = 10.0;
+        let center = sim
+            .bounding_box_center_eles(1)
+            .expect("compound relocation bbox center");
+
+        assert_eq!(center, (94.25, 9.0));
     }
 
     #[test]
