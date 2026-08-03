@@ -1604,7 +1604,7 @@ class CiWorkflowSecurityTests(unittest.TestCase):
             if isinstance(step, dict) and isinstance(step.get("name"), str)
         ]
 
-        verification_index = step_names.index("Verify generated architecture contracts")
+        verification_index = step_names.index("Verify pull-request architecture contracts")
         reference_index = step_names.index(
             "Verify pinned Mermaid reference before runtime install"
         )
