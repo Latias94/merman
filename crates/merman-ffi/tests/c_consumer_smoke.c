@@ -171,7 +171,7 @@ int merman_c_consumer_smoke(
         "diagram-family-capabilities",
         "lint-rule-catalog",
         "supported-themes",
-        "supported-host-theme-presets"
+        "presentation-catalog"
     };
     static const uint8_t unknown_metadata_id[] = "unknown-catalog";
     MermanNativeApiRequest discovery;
@@ -258,6 +258,24 @@ int merman_c_consumer_smoke(
         ) {
             api.result_free(&result);
             return 31;
+        }
+        if (
+            strcmp(metadata_id, "presentation-catalog") == 0 &&
+            (
+                !bytes_contain(
+                    result.metadata_or_error_json.data,
+                    result.metadata_or_error_json.len,
+                    "\"schema_version\":1"
+                ) ||
+                !bytes_contain(
+                    result.metadata_or_error_json.data,
+                    result.metadata_or_error_json.len,
+                    "\"profiles\""
+                )
+            )
+        ) {
+            api.result_free(&result);
+            return 34;
         }
         api.result_free(&result);
         if (result.allocation_token != 0) {

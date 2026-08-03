@@ -97,6 +97,7 @@ fn measure_content_node(node: &FlowNode, ctx: &MeasureContext<'_>) -> WorkingNod
         layout_direction: ctx.direction.as_str(),
         metrics,
         padding: ctx.settings.node_padding,
+        look_is_neo: crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
         state_padding: ctx.settings.state_padding,
         node_icon: node.icon.as_deref(),
         node_img: node.img.as_deref(),

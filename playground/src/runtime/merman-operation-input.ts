@@ -1,12 +1,11 @@
 import type { SvgBindingOptions } from "@mermanjs/web";
 
-import { diagramFontStack } from "../lib/diagram-font.ts";
 import { sourceWithConfig } from "../lib/mermaid-config.ts";
 import type { MermanRenderOptions } from "./merman-core.ts";
 
 export interface ConfiguredMermanOperationInput {
   readonly source: string;
-  readonly bindingOptions: SvgBindingOptions | undefined;
+  readonly bindingOptions: SvgBindingOptions;
 }
 
 export function configuredMermanOperationInput(
@@ -16,39 +15,43 @@ export function configuredMermanOperationInput(
   options: MermanRenderOptions | undefined,
 ): ConfiguredMermanOperationInput {
   return Object.freeze({
-    source: sourceWithConfig(
-      code,
-      options?.hostThemePreset ? "default" : theme,
-      configJson,
-    ),
+    source: sourceWithConfig(code, theme, configJson, {
+      diagramFont: options?.diagramFont,
+    }),
     bindingOptions: bindingOptionsForRender(options),
   });
 }
 
 function bindingOptionsForRender(
   options: MermanRenderOptions | undefined,
-): SvgBindingOptions | undefined {
-  const fontFamily = options?.diagramFont
-    ? diagramFontStack(options.diagramFont)
-    : undefined;
-  if (!options?.pipeline && !options?.hostThemePreset && !fontFamily) {
-    return undefined;
-  }
-
-  const bindingOptions: SvgBindingOptions = {};
-  if (options?.hostThemePreset) {
-    bindingOptions.host_theme = {
-      preset: options.hostThemePreset,
-      ...(fontFamily ? { font_family: fontFamily } : {}),
-    };
-  } else if (fontFamily) {
-    bindingOptions.site_config = {
-      fontFamily,
-      themeVariables: { fontFamily },
+): SvgBindingOptions {
+  const presentationProfileId = options?.presentationProfileId;
+  const bindingOptions: SvgBindingOptions = { version: 2 };
+  const presentationThemePresetId = options?.presentationThemePresetId;
+  if (presentationProfileId || presentationThemePresetId) {
+    bindingOptions.presentation = {
+      ...(presentationProfileId
+        ? { profile: presentationProfileId }
+        : {}),
+      ...(presentationThemePresetId
+        ? { theme: { preset: presentationThemePresetId } }
+        : {}),
     };
   }
-  if (options?.pipeline) {
-    bindingOptions.svg = { pipeline: options.pipeline };
+  if (options?.svgPipeline) {
+    bindingOptions.svg = { pipeline: options.svgPipeline };
+  }
+  if (options?.layoutEnvironment) {
+    bindingOptions.layout = {
+      container_width: options.layoutEnvironment.containerWidth,
+      container_height: options.layoutEnvironment.containerHeight,
+      ...(options.layoutEnvironment.screenAvailableWidth === undefined
+        ? {}
+        : {
+            screen_available_width:
+              options.layoutEnvironment.screenAvailableWidth,
+          }),
+    };
   }
   return bindingOptions;
 }

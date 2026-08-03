@@ -8,8 +8,8 @@ pub enum MetadataKey {
     AsciiCapabilities,
     DiagramFamilyCapabilities,
     LintRuleCatalog,
+    PresentationCatalog,
     SupportedDiagrams,
-    SupportedHostThemePresets,
     SupportedThemes,
 }
 
@@ -18,8 +18,8 @@ impl MetadataKey {
         Self::AsciiCapabilities,
         Self::DiagramFamilyCapabilities,
         Self::LintRuleCatalog,
+        Self::PresentationCatalog,
         Self::SupportedDiagrams,
-        Self::SupportedHostThemePresets,
         Self::SupportedThemes,
     ];
 
@@ -39,8 +39,8 @@ impl MetadataKey {
             Self::AsciiCapabilities => &METADATA_SPECS[0],
             Self::DiagramFamilyCapabilities => &METADATA_SPECS[1],
             Self::LintRuleCatalog => &METADATA_SPECS[2],
-            Self::SupportedDiagrams => &METADATA_SPECS[3],
-            Self::SupportedHostThemePresets => &METADATA_SPECS[4],
+            Self::PresentationCatalog => &METADATA_SPECS[3],
+            Self::SupportedDiagrams => &METADATA_SPECS[4],
             Self::SupportedThemes => &METADATA_SPECS[5],
         }
     }
@@ -87,8 +87,8 @@ pub(crate) enum MetadataHandlerKey {
     AsciiCapabilities,
     DiagramFamilyCapabilities,
     LintRuleCatalog,
+    PresentationCatalog,
     SupportedDiagrams,
-    SupportedHostThemePresets,
     SupportedThemes,
 }
 
@@ -112,16 +112,16 @@ const METADATA_SPECS: &[MetadataSpec] = &[
         handler: MetadataHandlerKey::LintRuleCatalog,
     },
     MetadataSpec {
+        key: MetadataKey::PresentationCatalog,
+        id: "presentation-catalog",
+        required_capability: None,
+        handler: MetadataHandlerKey::PresentationCatalog,
+    },
+    MetadataSpec {
         key: MetadataKey::SupportedDiagrams,
         id: "supported-diagrams",
         required_capability: None,
         handler: MetadataHandlerKey::SupportedDiagrams,
-    },
-    MetadataSpec {
-        key: MetadataKey::SupportedHostThemePresets,
-        id: "supported-host-theme-presets",
-        required_capability: Some(CapabilityKey::Svg),
-        handler: MetadataHandlerKey::SupportedHostThemePresets,
     },
     MetadataSpec {
         key: MetadataKey::SupportedThemes,

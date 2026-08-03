@@ -27,11 +27,6 @@ from artifact_profile_recipe import (  # noqa: E402
     CargoArtifactRecipe,
     load_artifact_profile,
 )
-from github_workflow_contract import (  # noqa: E402
-    load_workflow_contract,
-    workflow_job,
-    workflow_step,
-)
 from verify_artifact_dependency_closures import (  # noqa: E402
     AttributionClosure,
     AttributionPackage,
@@ -305,30 +300,6 @@ class DescriptorTests(unittest.TestCase):
                 loaded = load_artifact_profile(profile_id)
                 self.assertFalse(loaded.default_features)
                 self.assertEqual((loaded.package, loaded.features), (package, features))
-
-    def test_ci_and_release_preflights_execute_the_closure_gate(self) -> None:
-        workflows = (
-            (".github/workflows/ci.yml", "build-test", "Verify generated architecture contracts"),
-            (
-                ".github/workflows/release-crates.yml",
-                "preflight",
-                "Verify target-scoped artifact dependency closures",
-            ),
-            (
-                ".github/workflows/release-preflight.yml",
-                "versions-and-packages",
-                "Verify target-scoped artifact dependency closures",
-            ),
-        )
-        for path, job, step_name in workflows:
-            with self.subTest(workflow=path):
-                workflow = load_workflow_contract(SCRIPT_DIR.parent / path)
-                step = workflow_step(workflow_job(workflow, job), name=step_name)
-                self.assertIn(
-                    "python3 scripts/verify_artifact_dependency_closures.py",
-                    step["run"],
-                )
-
 
 class CargoTreeCommandTests(unittest.TestCase):
     def test_command_uses_exact_recipe_target_and_runtime_edges(self) -> None:

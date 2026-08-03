@@ -48,17 +48,16 @@ pub use lifecycle::{
 };
 pub use metadata::{
     BindingAsciiCapability, BindingAsciiCapabilityEvidence, BindingDiagramFamilyCapability,
-    RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry, RuntimeCapabilities, RuntimeCatalog,
-    RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits, RuntimeOutputContract,
-    RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract, RuntimeResourceLimit,
-    RuntimeResourceProfile, RuntimeSystemFontContract, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
-    TEXT_MEASUREMENT_PROVIDER_VENDORED, TextMeasurementCapabilities, ascii_capabilities,
-    ascii_capabilities_json, ascii_supported_diagrams, ascii_supported_diagrams_json,
-    configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,
-    diagram_family_capabilities, diagram_family_capabilities_json, lint_rule_catalog,
-    lint_rule_catalog_json, supported_diagrams, supported_diagrams_json,
-    supported_host_theme_presets, supported_host_theme_presets_json, supported_themes,
-    supported_themes_json,
+    PRESENTATION_CATALOG_SCHEMA_VERSION, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,
+    RuntimeCapabilities, RuntimeCatalog, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
+    RuntimeOutputContract, RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract,
+    RuntimeResourceLimit, RuntimeResourceProfile, RuntimeSystemFontContract,
+    TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK, TEXT_MEASUREMENT_PROVIDER_VENDORED,
+    TextMeasurementCapabilities, ascii_capabilities, ascii_capabilities_json,
+    ascii_supported_diagrams, ascii_supported_diagrams_json, configurable_lint_rule_catalog,
+    configurable_lint_rule_catalog_json, diagram_family_capabilities,
+    diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
+    supported_diagrams, supported_diagrams_json, supported_themes, supported_themes_json,
 };
 pub use metadata_registry::{MetadataKey, MetadataSpec};
 pub use operation::{
@@ -84,7 +83,9 @@ pub use service_contract::{
     TextMeasurementProviderKey, TextMeasurementProviderSpec,
 };
 pub use services::BindingEngineServices;
-pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
+pub use svg_plan::{
+    SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, SvgPlanPresentationAspect, svg_plan_json,
+};
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {

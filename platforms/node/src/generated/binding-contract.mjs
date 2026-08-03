@@ -398,11 +398,6 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "requires_svg_pipeline": true
   },
   {
-    "id": "host_theme",
-    "any_capability_ids": [],
-    "requires_svg_pipeline": true
-  },
-  {
     "id": "jpeg",
     "any_capability_ids": [
       "jpeg"
@@ -427,6 +422,11 @@ export const BINDING_OPTION_GROUP_SPECS = [
       "pdf"
     ],
     "requires_svg_pipeline": false
+  },
+  {
+    "id": "presentation",
+    "any_capability_ids": [],
+    "requires_svg_pipeline": true
   },
   {
     "id": "raster",

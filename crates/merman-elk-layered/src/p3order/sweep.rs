@@ -3,6 +3,8 @@
 //! Source references:
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/LayerSweepCrossingMinimizer.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/BarycenterHeuristic.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/ModelOrderBarycenterHeuristic.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/GraphInfoHolder.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/AbstractBarycenterPortDistributor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/NodeRelativePortDistributor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/LayerTotalPortDistributor.java
@@ -25,6 +27,7 @@ use crate::random::JavaRandom;
 use super::{
     GraphInfoHolder, SweepCopy, count_model_order_node_changes, count_model_order_port_changes,
     initialize_crossing_minimization_port_ids, initialize_crossing_minimization_port_ids_hierarchy,
+    update_bigger_and_smaller_associations,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1631,6 +1634,9 @@ struct BarycenterHeuristic {
     states: HashMap<usize, BarycenterState>,
     random: JavaRandom,
     port_distributor: BarycenterPortDistributor,
+    force_node_model_order: bool,
+    bigger_than: HashMap<usize, HashSet<usize>>,
+    smaller_than: HashMap<usize, HashSet<usize>>,
 }
 
 impl BarycenterHeuristic {
@@ -1651,6 +1657,9 @@ impl BarycenterHeuristic {
             states,
             random,
             port_distributor,
+            force_node_model_order: graph.options.force_node_model_order,
+            bigger_than: HashMap::new(),
+            smaller_than: HashMap::new(),
         }
     }
 
@@ -1709,17 +1718,100 @@ impl BarycenterHeuristic {
         }
 
         if layer.len() > 1 {
-            layer.sort_by(|left, right| {
-                let left = self.states.get(left).and_then(|state| state.barycenter);
-                let right = self.states.get(right).and_then(|state| state.barycenter);
-                match (left, right) {
-                    (Some(left), Some(right)) => left.total_cmp(&right),
-                    (Some(_), None) => std::cmp::Ordering::Less,
-                    (None, Some(_)) => std::cmp::Ordering::Greater,
-                    (None, None) => std::cmp::Ordering::Equal,
-                }
-            });
-            resolve_forster_constraints(graph, layer, &mut self.states);
+            if self.force_node_model_order {
+                self.insertion_sort_by_model_order(graph, layer);
+            } else {
+                layer.sort_by(|left, right| {
+                    let left = self.states.get(left).and_then(|state| state.barycenter);
+                    let right = self.states.get(right).and_then(|state| state.barycenter);
+                    compare_barycenters(left, right)
+                });
+                resolve_forster_constraints(graph, layer, &mut self.states);
+            }
+        }
+    }
+
+    fn insertion_sort_by_model_order(&mut self, graph: &LGraph, layer: &mut [usize]) {
+        for index in 1..layer.len() {
+            let node = layer[index];
+            let mut insert_at = index;
+            while insert_at > 0
+                && self.compare_model_order_nodes(graph, layer[insert_at - 1], node)
+                    == std::cmp::Ordering::Greater
+            {
+                layer[insert_at] = layer[insert_at - 1];
+                insert_at -= 1;
+            }
+            layer[insert_at] = node;
+        }
+        self.bigger_than.clear();
+        self.smaller_than.clear();
+    }
+
+    fn compare_model_order_nodes(
+        &mut self,
+        graph: &LGraph,
+        first: usize,
+        second: usize,
+    ) -> std::cmp::Ordering {
+        if let Some(ordering) = self.transitive_ordering(first, second) {
+            return ordering;
+        }
+
+        if let (Some(first_order), Some(second_order)) = (
+            graph.layerless_nodes[first].model_order,
+            graph.layerless_nodes[second].model_order,
+        ) {
+            let ordering = first_order.cmp(&second_order);
+            self.update_model_order_associations(first, second, ordering);
+            return ordering;
+        }
+
+        let first_barycenter = self.states.get(&first).and_then(|state| state.barycenter);
+        let second_barycenter = self.states.get(&second).and_then(|state| state.barycenter);
+        let ordering = compare_barycenters(first_barycenter, second_barycenter);
+        self.update_model_order_associations(first, second, ordering);
+        ordering
+    }
+
+    fn transitive_ordering(&mut self, first: usize, second: usize) -> Option<std::cmp::Ordering> {
+        self.bigger_than.entry(first).or_default();
+        self.bigger_than.entry(second).or_default();
+        self.smaller_than.entry(first).or_default();
+        self.smaller_than.entry(second).or_default();
+
+        if self.bigger_than[&first].contains(&second) || self.smaller_than[&second].contains(&first)
+        {
+            Some(std::cmp::Ordering::Greater)
+        } else if self.bigger_than[&second].contains(&first)
+            || self.smaller_than[&first].contains(&second)
+        {
+            Some(std::cmp::Ordering::Less)
+        } else {
+            None
+        }
+    }
+
+    fn update_model_order_associations(
+        &mut self,
+        first: usize,
+        second: usize,
+        ordering: std::cmp::Ordering,
+    ) {
+        match ordering {
+            std::cmp::Ordering::Less => update_bigger_and_smaller_associations(
+                first,
+                second,
+                &mut self.bigger_than,
+                &mut self.smaller_than,
+            ),
+            std::cmp::Ordering::Greater => update_bigger_and_smaller_associations(
+                second,
+                first,
+                &mut self.bigger_than,
+                &mut self.smaller_than,
+            ),
+            std::cmp::Ordering::Equal => {}
         }
     }
 
@@ -1848,6 +1940,15 @@ impl BarycenterHeuristic {
 
     fn state_mut(&mut self, node: usize) -> &mut BarycenterState {
         self.states.entry(node).or_default()
+    }
+}
+
+fn compare_barycenters(first: Option<f64>, second: Option<f64>) -> std::cmp::Ordering {
+    match (first, second) {
+        (Some(first), Some(second)) => first.total_cmp(&second),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
     }
 }
 
@@ -4190,6 +4291,87 @@ mod tests {
         heuristic.minimize_crossings(&graph, &mut order, 1, true, false);
 
         assert_eq!(order[1], vec![right, left]);
+    }
+
+    #[test]
+    fn forced_model_order_keeps_real_nodes_in_input_order() {
+        let mut graph = prepared_graph(
+            vec![node("Top"), node("Bottom"), node("Left"), node("Right")],
+            vec![
+                edge("Top-Right", "Top", "Right"),
+                edge("Bottom-Left", "Bottom", "Left"),
+            ],
+        );
+        graph.options.force_node_model_order = true;
+        let top = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Top")
+            .unwrap();
+        let bottom = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Bottom")
+            .unwrap();
+        let left = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Left")
+            .unwrap();
+        let right = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Right")
+            .unwrap();
+        graph.layers[0].nodes = vec![top, bottom];
+        graph.layers[1].nodes = vec![left, right];
+        initialize_crossing_minimization_port_ids(&mut graph);
+
+        let mut order = graph
+            .layers
+            .iter()
+            .map(|layer| layer.nodes.clone())
+            .collect::<Vec<_>>();
+        let port_distributor =
+            BarycenterPortDistributor::new(PortDistributorKind::NodeRelative, &order);
+        let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
+
+        heuristic.minimize_crossings(&graph, &mut order, 1, true, false);
+
+        assert_eq!(order[1], vec![left, right]);
+    }
+
+    #[test]
+    fn forced_model_order_still_places_dummy_nodes_by_barycenter() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions {
+                force_node_model_order: true,
+                ..LayeredOptions::default()
+            },
+        );
+        let mut first = LNode::new("first", 10.0, 10.0, None);
+        first.model_order = Some(0);
+        let mut dummy = LNode::new("dummy", 0.0, 0.0, None);
+        dummy.kind = LNodeKind::LongEdge;
+        let mut second = LNode::new("second", 10.0, 10.0, None);
+        second.model_order = Some(1);
+        graph.layerless_nodes = vec![first, dummy, second];
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 0);
+        graph.set_node_layer(2, 0);
+        let order = vec![vec![0, 1, 2]];
+        let port_distributor =
+            BarycenterPortDistributor::new(PortDistributorKind::NodeRelative, &order);
+        let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
+        heuristic.state_mut(0).barycenter = Some(2.0);
+        heuristic.state_mut(1).barycenter = Some(0.0);
+        heuristic.state_mut(2).barycenter = Some(1.0);
+        let mut layer = order[0].clone();
+
+        heuristic.insertion_sort_by_model_order(&graph, &mut layer);
+
+        assert_eq!(layer, vec![1, 0, 2]);
     }
 
     #[test]

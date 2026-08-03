@@ -68,8 +68,11 @@
   profile: svg-profile,
   id: "api-direct",
   options: (
+    version: 2,
+    presentation: (
+      theme: (font_family: "API Options Sans", font_size: "17px"),
+    ),
     svg: (diagram_id: "api-options", pipeline: "readable"),
-    host_theme: (font_family: "API Options Sans", font_size: "17px"),
   ),
 )
 #assert(options-svg.contains("api-options"), message: "options should override direct and profile id")

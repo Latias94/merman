@@ -12,6 +12,7 @@ use tokio::sync::mpsc;
 
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
 /// Maximum number of response-bearing refresh requests that can be active at once.
+#[cfg(feature = "stdio")]
 pub(crate) const MAX_CONCURRENT_REFRESH_REQUESTS: usize = 2;
 
 #[derive(Clone)]

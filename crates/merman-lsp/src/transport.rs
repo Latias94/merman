@@ -9,68 +9,127 @@ use self::framing::{
 use self::lifecycle::{ProtocolLifecycleService, ProtocolLifecycleState};
 use crate::refresh_coordinator::MAX_CONCURRENT_REFRESH_REQUESTS;
 use crate::session::{
-    LSP_CONTROL_HANDLER_CONCURRENCY, LSP_ORDINARY_HANDLER_CONCURRENCY, LSP_REQUEST_BYTE_BUDGET,
-    MermanLspService, ProtocolMessageShape,
+    LSP_ORDINARY_HANDLER_CONCURRENCY, LSP_REQUEST_BYTE_BUDGET, MermanLspService,
+    ProtocolMessageShape, exact_cancellation_request_id,
 };
 use futures::channel::mpsc;
 use futures::future;
 use futures::stream;
 use futures::{Sink, SinkExt, StreamExt};
+use std::borrow::Cow;
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
-use tokio::sync::{Semaphore, oneshot, watch};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::time::Instant;
 use tower::{BoxError, Service};
 use tower_lsp_server::Loopback;
-use tower_lsp_server::jsonrpc::{Id, Request, Response};
+use tower_lsp_server::jsonrpc::{Error, ErrorCode, Id, Request, Response};
 
-const MESSAGE_QUEUE_SIZE: usize = 100;
 // futures::mpsc reserves one slot for its sole sender in addition to this shared buffer. One
 // response may therefore be held by the sink while every response-bearing refresh lane still has
 // a bounded place to wait. Adding another concurrent client-request lane must update the owner
 // constant rather than silently turning a valid response burst into transport failure.
 const CLIENT_RESPONSE_QUEUE_SIZE: usize = MAX_CONCURRENT_REFRESH_REQUESTS - 1;
-const CONTROL_HANDLER_CAPACITY: usize = LSP_CONTROL_HANDLER_CONCURRENCY;
-const ORDINARY_HANDLER_CAPACITY: usize = MESSAGE_QUEUE_SIZE - CONTROL_HANDLER_CAPACITY;
-// Cancellation carries only a JSON-RPC envelope and request id. Keep enough room for string ids
-// without allowing method-name spoofing to reserve an ordinary source-sized request.
+const ORDINARY_HANDLER_CAPACITY: usize = 96;
 const MAX_CONTROL_MESSAGE_BYTES: usize = 4 * 1024;
-const CONTROL_REQUEST_BYTE_BUDGET: usize =
-    MAX_CONTROL_MESSAGE_BYTES * LSP_CONTROL_HANDLER_CONCURRENCY;
+const OVERLOAD_RESPONSE_CAPACITY: usize = 4;
+const OVERLOAD_RESPONSE_BYTE_BUDGET: usize = 64 * 1024;
+const OVERLOAD_ERROR_CODE: i64 = -32099;
+const OVERLOAD_ERROR_MESSAGE: &str = "Server overloaded";
 const CLIENT_RESPONSE_DISPATCH_TIMEOUT: Duration = Duration::from_secs(30);
 const OUTPUT_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 const OUTPUT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 type HandlerTask = future::BoxFuture<'static, Option<Response>>;
 
-/// Synchronously admits requests into a service used by the bundled stdio transport.
-///
-/// Admission must synchronously reserve the message's ordering slot, register request-id
-/// cancellation, and perform lifecycle effects that cannot depend on future polling, including a
-/// valid `exit`. The returned future waits for predecessors and either completes or abandons its
-/// reserved slot, so dropping it must release that slot safely. Stdio does not poll Tower readiness.
-pub trait StdioService {
-    /// Error returned by an admitted handler future.
-    type Error;
-    /// Handler future returned after synchronous registration completes.
-    type Future: std::future::Future<Output = Result<Option<Response>, Self::Error>>;
-
-    /// Admits one message and returns its independently pollable handler future.
-    fn admit(&mut self, request: Request) -> Self::Future;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdmissionClass {
+    ImmediateControl,
+    Deferred,
 }
 
-impl StdioService for MermanLspService {
+enum ServiceAdmission<F> {
+    Immediate(F),
+    Exit(F),
+    Deferred(F),
+}
+
+fn admission_class(
+    request: &Request,
+    body_length: usize,
+    max_control_message_bytes: usize,
+) -> AdmissionClass {
+    if body_length <= max_control_message_bytes
+        && (exact_cancellation_request_id(request).is_some()
+            || matches!(
+                ProtocolMessageShape::classify(request),
+                ProtocolMessageShape::ExitNotification
+            ))
+    {
+        AdmissionClass::ImmediateControl
+    } else {
+        AdmissionClass::Deferred
+    }
+}
+
+trait StdioAdmissionService {
+    type Error;
+    type Future: std::future::Future<Output = Result<Option<Response>, Self::Error>>;
+
+    fn admit(&mut self, request: Request, class: AdmissionClass) -> ServiceAdmission<Self::Future>;
+}
+
+impl StdioAdmissionService for MermanLspService {
     type Error = <Self as Service<Request>>::Error;
     type Future = <Self as Service<Request>>::Future;
 
-    fn admit(&mut self, request: Request) -> Self::Future {
-        Service::call(self, request)
+    fn admit(&mut self, request: Request, class: AdmissionClass) -> ServiceAdmission<Self::Future> {
+        let exits = matches!(
+            ProtocolMessageShape::classify(&request),
+            ProtocolMessageShape::ExitNotification
+        );
+        let future = Service::call(self, request);
+        if exits {
+            ServiceAdmission::Exit(future)
+        } else if class == AdmissionClass::ImmediateControl {
+            ServiceAdmission::Immediate(future)
+        } else {
+            ServiceAdmission::Deferred(future)
+        }
+    }
+}
+
+async fn complete_immediate_control<F, E>(future: F) -> bool
+where
+    F: std::future::Future<Output = Result<Option<Response>, E>>,
+    E: Into<BoxError>,
+{
+    match future.await {
+        Ok(None) => true,
+        Ok(Some(response)) => {
+            tracing::error!(
+                response_id = ?response.id(),
+                "response-less immediate LSP control produced a response"
+            );
+            false
+        }
+        Err(error) => {
+            let error: BoxError = error.into();
+            tracing::error!(
+                error = %display_sources(error.as_ref()),
+                "immediate LSP control failed"
+            );
+            false
+        }
     }
 }
 
 /// Describes why a stdio language-server session stopped.
+///
+/// `OutputClosed` is dominant when output failure races another stop reason because required
+/// responses can no longer be delivered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StdioTermination {
     /// The client closed the input stream without sending `exit`.
@@ -81,6 +140,37 @@ pub enum StdioTermination {
     ExitAfterShutdown,
     /// The client sent `exit` without a preceding `shutdown` request.
     ExitWithoutShutdown,
+    /// The transport could not retain an ordinary message without losing input integrity.
+    ///
+    /// This includes an overloaded notification, or a request whose complete overload response
+    /// cannot enter the bounded output lane.
+    InputOverloaded,
+}
+
+struct OverloadResponseBudget {
+    _count: OwnedSemaphorePermit,
+    _bytes: OwnedSemaphorePermit,
+}
+
+struct QueuedOutput {
+    message: OutgoingMessage,
+    _overload_budget: Option<OverloadResponseBudget>,
+}
+
+impl QueuedOutput {
+    fn normal(message: OutgoingMessage) -> Self {
+        Self {
+            message,
+            _overload_budget: None,
+        }
+    }
+
+    fn overload(message: OutgoingMessage, budget: OverloadResponseBudget) -> Self {
+        Self {
+            message,
+            _overload_budget: Some(budget),
+        }
+    }
 }
 
 async fn output_drain_deadline(
@@ -94,9 +184,9 @@ async fn output_drain_deadline(
 }
 
 async fn process_handler_tasks(
-    tasks: mpsc::Receiver<HandlerTask>,
+    tasks: mpsc::UnboundedReceiver<HandlerTask>,
     concurrency: usize,
-    mut responses: mpsc::Sender<OutgoingMessage>,
+    mut responses: mpsc::Sender<QueuedOutput>,
     mut drain_deadline: watch::Receiver<Option<Instant>>,
 ) {
     let mut tasks = tasks.buffer_unordered(concurrency.max(1));
@@ -127,7 +217,7 @@ async fn process_handler_tasks(
             continue;
         };
         if responses
-            .send(OutgoingMessage::Response(response))
+            .send(QueuedOutput::normal(OutgoingMessage::Response(response)))
             .await
             .is_err()
         {
@@ -232,23 +322,97 @@ fn display_sources(error: &dyn std::error::Error) -> String {
     )
 }
 
+fn framed_message_len(message: &OutgoingMessage) -> usize {
+    let body_len = serde_json::to_vec(message)
+        .expect("JSON-RPC responses always serialize")
+        .len();
+    let digits = body_len
+        .checked_ilog10()
+        .map_or(1, |value| value as usize + 1);
+    "Content-Length: ".len() + digits + "\r\n\r\n".len() + body_len
+}
+
+fn queue_overload_response(
+    request_id: Id,
+    count_budget: &Arc<Semaphore>,
+    byte_budget: &Arc<Semaphore>,
+    byte_budget_limit: usize,
+    responses: &mpsc::UnboundedSender<QueuedOutput>,
+) -> Result<(), ()> {
+    let error = Error {
+        code: ErrorCode::ServerError(OVERLOAD_ERROR_CODE),
+        message: Cow::Borrowed(OVERLOAD_ERROR_MESSAGE),
+        data: None,
+    };
+    let message = OutgoingMessage::Response(Response::from_error(request_id, error));
+    let retained_bytes = framed_message_len(&message);
+    if retained_bytes > byte_budget_limit {
+        return Err(());
+    }
+    let count = Arc::clone(count_budget)
+        .try_acquire_owned()
+        .map_err(|_| ())?;
+    let bytes = Arc::clone(byte_budget)
+        .try_acquire_many_owned(
+            u32::try_from(retained_bytes).expect("overload response budget fits in u32"),
+        )
+        .map_err(|_| ())?;
+    responses
+        .unbounded_send(QueuedOutput::overload(
+            message,
+            OverloadResponseBudget {
+                _count: count,
+                _bytes: bytes,
+            },
+        ))
+        .map_err(|_| ())
+}
+
+fn reject_overloaded_message(
+    request_id: Option<Id>,
+    count_budget: &Arc<Semaphore>,
+    byte_budget: &Arc<Semaphore>,
+    byte_budget_limit: usize,
+    responses: &mpsc::UnboundedSender<QueuedOutput>,
+) -> Result<(), TransportStop> {
+    let Some(request_id) = request_id else {
+        return Err(TransportStop::InputOverloaded);
+    };
+    queue_overload_response(
+        request_id,
+        count_budget,
+        byte_budget,
+        byte_budget_limit,
+        responses,
+    )
+    .map_err(|()| TransportStop::InputOverloaded)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TransportStop {
     InputClosed,
+    InputOverloaded,
     OutputClosed,
     ExitNotification,
 }
 
 /// Merman's bounded, frame-preserving stdio transport.
+///
+/// The transport privately executes exact, valid, ID-less cancel and exit notifications inline
+/// when their encoded JSON body is small enough. Ordinary messages share one retained body-byte
+/// admission budget and a separate consumer concurrency limit. Request overload is reported with
+/// a bounded framed JSON-RPC error when possible; notification overload terminates input integrity.
 #[derive(Debug)]
 pub struct StdioServer<I, O, L> {
     stdin: I,
     stdout: O,
     loopback: L,
     ordinary_concurrency: usize,
+    retained_deferred_capacity: usize,
     request_byte_budget: usize,
     max_control_message_bytes: usize,
-    control_request_byte_budget: usize,
+    overload_response_capacity: usize,
+    overload_response_byte_budget: usize,
 }
 
 impl<I, O, L> StdioServer<I, O, L>
@@ -259,8 +423,6 @@ where
     <L::ResponseSink as Sink<Response>>::Error: std::error::Error,
 {
     /// Sets the maximum number of ordinary data-plane handlers polled concurrently.
-    ///
-    /// The reserved control lane retains its fixed [`LSP_CONTROL_HANDLER_CONCURRENCY`] limit.
     #[must_use]
     pub const fn ordinary_concurrency_level(mut self, max: usize) -> Self {
         self.ordinary_concurrency = max;
@@ -275,37 +437,48 @@ where
     }
 
     #[cfg(test)]
-    fn control_request_byte_budget(
-        mut self,
-        max_message_bytes: usize,
-        max_total_bytes: usize,
-    ) -> Self {
+    fn retained_deferred_capacity(mut self, capacity: usize) -> Self {
+        assert!(capacity > 0, "retained deferred capacity must be positive");
+        self.retained_deferred_capacity = capacity;
+        self
+    }
+
+    #[cfg(test)]
+    fn control_message_byte_limit(mut self, max_message_bytes: usize) -> Self {
         assert!(
             max_message_bytes > 0,
             "control message byte limit must be positive"
         );
-        assert!(
-            max_total_bytes > 0,
-            "control request byte budget must be positive"
-        );
         self.max_control_message_bytes = max_message_bytes;
-        self.control_request_byte_budget = max_total_bytes;
         self
     }
 
-    /// Serves messages until an input/output stream closes or a valid `exit` is dispatched.
-    pub async fn serve<S>(self, service: S)
-    where
-        S: StdioService + Send + 'static,
-        S::Error: Into<BoxError>,
-        S::Future: Send + 'static,
-    {
+    #[cfg(test)]
+    fn overload_response_budget(mut self, max_responses: usize, max_total_bytes: usize) -> Self {
+        assert!(
+            max_responses > 0,
+            "overload response capacity must be positive"
+        );
+        assert!(
+            max_total_bytes > 0,
+            "overload response byte budget must be positive"
+        );
+        self.overload_response_capacity = max_responses;
+        self.overload_response_byte_budget = max_total_bytes;
+        self
+    }
+
+    /// Serves messages until the session terminates, discarding the detailed stop reason.
+    ///
+    /// Use [`serve_stdio`] when the host needs to distinguish clean input close, protocol exit,
+    /// overload, and output failure.
+    pub async fn serve(self, service: MermanLspService) {
         let _ = self.serve_inner(service).await;
     }
 
     async fn serve_inner<S>(self, mut service: S) -> TransportStop
     where
-        S: StdioService + Send + 'static,
+        S: StdioAdmissionService + Send + 'static,
         S::Error: Into<BoxError>,
         S::Future: Send + 'static,
     {
@@ -315,22 +488,20 @@ where
             mpsc::channel::<Response>(CLIENT_RESPONSE_QUEUE_SIZE);
         let (client_response_routing_failed_tx, mut client_response_routing_failed_rx) =
             oneshot::channel();
-        let (mut responses_tx, responses_rx) = mpsc::channel::<OutgoingMessage>(0);
-        let (mut server_tasks_tx, server_tasks_rx) =
-            mpsc::channel::<HandlerTask>(ORDINARY_HANDLER_CAPACITY);
-        let (mut control_tasks_tx, control_tasks_rx) =
-            mpsc::channel::<HandlerTask>(CONTROL_HANDLER_CAPACITY);
+        let (mut responses_tx, responses_rx) = mpsc::channel::<QueuedOutput>(0);
+        let (mut server_tasks_tx, server_tasks_rx) = mpsc::unbounded::<HandlerTask>();
+        let (mut overload_responses_tx, overload_responses_rx) = mpsc::unbounded::<QueuedOutput>();
         let ordinary_concurrency = self.ordinary_concurrency.max(1);
+        let retained_deferred_capacity = self.retained_deferred_capacity;
+        let retained_deferred_budget = Arc::new(Semaphore::new(retained_deferred_capacity));
         let request_byte_budget = self.request_byte_budget;
         let request_budget = Arc::new(Semaphore::new(request_byte_budget));
         let max_control_message_bytes = self.max_control_message_bytes;
-        let control_request_byte_budget = self.control_request_byte_budget;
-        let control_request_budget = Arc::new(Semaphore::new(control_request_byte_budget));
-        let ordinary_handler_budget = Arc::new(Semaphore::new(ORDINARY_HANDLER_CAPACITY));
-        let control_handler_budget = Arc::new(Semaphore::new(CONTROL_HANDLER_CAPACITY));
+        let overload_response_byte_budget = self.overload_response_byte_budget;
+        let overload_count_budget = Arc::new(Semaphore::new(self.overload_response_capacity));
+        let overload_byte_budget = Arc::new(Semaphore::new(overload_response_byte_budget));
         let (output_drain_tx, mut output_drain_rx) = watch::channel(None::<Instant>);
         let task_drain_rx = output_drain_rx.clone();
-        let control_drain_rx = output_drain_rx.clone();
         let client_response_drain_rx = output_drain_rx.clone();
 
         let (server_tasks_abort, server_tasks_registration) = future::AbortHandle::new_pair();
@@ -343,17 +514,6 @@ where
                 task_drain_rx,
             ),
             server_tasks_registration,
-        );
-        let (control_tasks_abort, control_tasks_registration) = future::AbortHandle::new_pair();
-        let input_control_tasks_abort = control_tasks_abort.clone();
-        let process_control_tasks = future::Abortable::new(
-            process_handler_tasks(
-                control_tasks_rx,
-                LSP_CONTROL_HANDLER_CONCURRENCY,
-                responses_tx.clone(),
-                control_drain_rx,
-            ),
-            control_tasks_registration,
         );
 
         let (client_response_tasks_abort, client_response_tasks_registration) =
@@ -409,96 +569,108 @@ where
                             message: IncomingMessage::Request(request),
                             body_length,
                         } => {
-                            let will_exit = matches!(
-                                ProtocolMessageShape::classify(&request),
-                                ProtocolMessageShape::ExitNotification
-                            );
-                            let bounded_exit =
-                                will_exit && body_length <= max_control_message_bytes;
-                            let bounded_cancel = request.method() == "$/cancelRequest"
-                                && body_length <= max_control_message_bytes;
-                            let request_budget_permit = if bounded_exit {
-                                // Protocol lifecycle routing must observe exit even when active
-                                // handlers consume both request budgets. The byte cap prevents a
-                                // forged oversized control frame from bypassing both.
-                                None
-                            } else {
-                                let permits = u32::try_from(body_length)
-                                    .expect("validated LSP body length fits in u32");
-                                let (budget, budget_limit, budget_name) = if bounded_cancel {
-                                    (
-                                        Arc::clone(&control_request_budget),
-                                        control_request_byte_budget,
-                                        "control",
-                                    )
-                                } else {
-                                    (Arc::clone(&request_budget), request_byte_budget, "request")
-                                };
-                                match budget.try_acquire_many_owned(permits) {
-                                    Ok(permit) => Some(permit),
-                                    Err(error) => {
-                                        tracing::error!(
-                                            %error,
-                                            body_length,
-                                            budget_limit,
-                                            budget_name,
-                                            "LSP message byte budget exhausted"
-                                        );
-                                        input_server_tasks_abort.abort();
-                                        input_control_tasks_abort.abort();
-                                        break TransportStop::InputClosed;
-                                    }
-                                }
-                            };
-
-                            let ordinary_handler_permit = if bounded_cancel || bounded_exit {
-                                None
-                            } else {
-                                match Arc::clone(&ordinary_handler_budget).try_acquire_owned() {
-                                    Ok(permit) => Some(permit),
-                                    Err(error) => {
-                                        tracing::error!(
-                                            %error,
-                                            handler_limit = ORDINARY_HANDLER_CAPACITY,
-                                            "LSP ordinary handler admission exhausted"
-                                        );
-                                        break TransportStop::InputClosed;
-                                    }
-                                }
-                            };
-                            let control_handler_permit = if bounded_cancel {
-                                match Arc::clone(&control_handler_budget).try_acquire_owned() {
-                                    Ok(permit) => Some(permit),
-                                    Err(error) => {
-                                        tracing::error!(
-                                            %error,
-                                            handler_limit = CONTROL_HANDLER_CAPACITY,
-                                            "LSP control handler admission exhausted"
-                                        );
-                                        break TransportStop::InputClosed;
-                                    }
-                                }
-                            } else {
-                                None
-                            };
-
-                            let control_message = bounded_cancel || bounded_exit;
                             let request_id = request.id().cloned();
-                            let handler = service.admit(request);
-                            if will_exit {
-                                // Valid exit admission has already performed all protocol and
-                                // session termination side effects. Exit has no response, so its
-                                // handler future is intentionally never polled.
-                                drop(handler);
-                                drop(request_budget_permit);
-                                drop(ordinary_handler_permit);
-                                drop(control_handler_permit);
-                                break TransportStop::ExitNotification;
+                            let class =
+                                admission_class(&request, body_length, max_control_message_bytes);
+                            if class == AdmissionClass::ImmediateControl {
+                                match service.admit(request, AdmissionClass::ImmediateControl) {
+                                    ServiceAdmission::Immediate(handler) => {
+                                        if complete_immediate_control(handler).await {
+                                            continue;
+                                        }
+                                        break TransportStop::InputClosed;
+                                    }
+                                    ServiceAdmission::Exit(handler) => {
+                                        if !complete_immediate_control(handler).await {
+                                            break TransportStop::InputClosed;
+                                        }
+                                        break TransportStop::ExitNotification;
+                                    }
+                                    ServiceAdmission::Deferred(handler) => {
+                                        drop(handler);
+                                        tracing::error!(
+                                            "immediate LSP control admission returned deferred work"
+                                        );
+                                        break TransportStop::InputClosed;
+                                    }
+                                }
                             }
+
+                            let retained_deferred_permit =
+                                match Arc::clone(&retained_deferred_budget).try_acquire_owned() {
+                                    Ok(permit) => permit,
+                                    Err(error) => {
+                                        tracing::warn!(
+                                            %error,
+                                            retained_deferred_capacity,
+                                            request_id = ?request_id,
+                                            "LSP retained deferred admission exhausted"
+                                        );
+                                        if let Err(stop) = reject_overloaded_message(
+                                            request_id,
+                                            &overload_count_budget,
+                                            &overload_byte_budget,
+                                            overload_response_byte_budget,
+                                            &overload_responses_tx,
+                                        ) {
+                                            input_server_tasks_abort.abort();
+                                            break stop;
+                                        }
+                                        continue;
+                                    }
+                                };
+                            let request_byte_permit = match Arc::clone(&request_budget)
+                                .try_acquire_many_owned(
+                                    u32::try_from(body_length)
+                                        .expect("validated LSP body length fits in u32"),
+                                ) {
+                                Ok(permit) => permit,
+                                Err(error) => {
+                                    drop(retained_deferred_permit);
+                                    tracing::warn!(
+                                        %error,
+                                        body_length,
+                                        request_byte_budget,
+                                        request_id = ?request_id,
+                                        "LSP ordinary message byte budget exhausted"
+                                    );
+                                    if let Err(stop) = reject_overloaded_message(
+                                        request_id,
+                                        &overload_count_budget,
+                                        &overload_byte_budget,
+                                        overload_response_byte_budget,
+                                        &overload_responses_tx,
+                                    ) {
+                                        input_server_tasks_abort.abort();
+                                        break stop;
+                                    }
+                                    continue;
+                                }
+                            };
+
+                            let handler = match service.admit(request, AdmissionClass::Deferred) {
+                                ServiceAdmission::Deferred(handler) => handler,
+                                ServiceAdmission::Immediate(handler) => {
+                                    drop(request_byte_permit);
+                                    drop(retained_deferred_permit);
+                                    if !complete_immediate_control(handler).await {
+                                        break TransportStop::InputClosed;
+                                    }
+                                    continue;
+                                }
+                                ServiceAdmission::Exit(handler) => {
+                                    drop(request_byte_permit);
+                                    drop(retained_deferred_permit);
+                                    if !complete_immediate_control(handler).await {
+                                        break TransportStop::InputClosed;
+                                    }
+                                    break TransportStop::ExitNotification;
+                                }
+                            };
                             let task: HandlerTask = Box::pin(async move {
-                                let _ordinary_handler_permit = ordinary_handler_permit;
-                                let _control_handler_permit = control_handler_permit;
-                                let response = match handler.await {
+                                let _retained_deferred_permit = retained_deferred_permit;
+                                let _request_byte_permit = request_byte_permit;
+                                match handler.await {
                                     Ok(response) => response,
                                     Err(error) => {
                                         let error: BoxError = error.into();
@@ -508,33 +680,23 @@ where
                                         );
                                         None
                                     }
-                                };
-                                drop(request_budget_permit);
-                                response
-                            });
-                            let tasks = if control_message {
-                                &mut control_tasks_tx
-                            } else {
-                                &mut server_tasks_tx
-                            };
-                            match tasks.try_send(task) {
-                                Ok(()) => {}
-                                Err(error) => {
-                                    tracing::error!(
-                                        %error,
-                                        request_id = ?request_id,
-                                        control_message,
-                                        "LSP handler lane rejected an admitted task"
-                                    );
-                                    drop(error);
-                                    break TransportStop::InputClosed;
                                 }
+                            });
+                            if let Err(error) = server_tasks_tx.unbounded_send(task) {
+                                tracing::error!(
+                                    request_id = ?request_id,
+                                    "LSP task handoff closed after service admission"
+                                );
+                                drop(error);
+                                break TransportStop::InputClosed;
                             }
                         }
                         FrameRead::Error(error, recovery) => {
                             tracing::error!(%error, "failed to decode LSP message");
                             let response = Response::from_error(Id::Null, error.jsonrpc_error());
-                            match responses_tx.try_send(OutgoingMessage::Response(response)) {
+                            match responses_tx
+                                .try_send(QueuedOutput::normal(OutgoingMessage::Response(response)))
+                            {
                                 Ok(()) => {}
                                 Err(error) if error.is_full() => {
                                     // Output backpressure must not prevent the reader from
@@ -558,16 +720,18 @@ where
                 output_drain_tx.send_replace(Some(Instant::now() + OUTPUT_WRITE_TIMEOUT));
                 client_response_tasks_tx.disconnect();
                 server_tasks_tx.disconnect();
-                control_tasks_tx.disconnect();
+                overload_responses_tx.disconnect();
                 responses_tx.disconnect();
                 if stop == TransportStop::ExitNotification {
                     // Exit must not wait for an unrelated response sink that is still Pending.
                     input_client_response_tasks_abort.abort();
                 }
                 client_abort.abort();
-                if stop == TransportStop::InputClosed {
+                if matches!(
+                    stop,
+                    TransportStop::InputClosed | TransportStop::InputOverloaded
+                ) {
                     input_server_tasks_abort.abort();
-                    input_control_tasks_abort.abort();
                 }
                 stop
             },
@@ -576,11 +740,16 @@ where
 
         let print_output = async move {
             let mut stdout = std::pin::pin!(self.stdout);
-            let mut messages =
-                stream::select(responses_rx, client_requests.map(OutgoingMessage::Request));
+            let responses = stream::select(responses_rx, overload_responses_rx);
+            let client_requests = client_requests
+                .map(OutgoingMessage::Request)
+                .map(QueuedOutput::normal);
+            let mut messages = stream::select(responses, client_requests);
             let mut output_failed = false;
             while let Some(message) = messages.next().await {
-                match write_message_bounded(&mut stdout, &message, &mut output_drain_rx).await {
+                match write_message_bounded(&mut stdout, &message.message, &mut output_drain_rx)
+                    .await
+                {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {
                         tracing::error!(%error, "failed to write LSP message");
@@ -617,14 +786,12 @@ where
                 output_client_response_tasks_abort.abort();
             }
             server_tasks_abort.abort();
-            control_tasks_abort.abort();
             output_client_abort.abort();
             output_failed
         };
 
-        let (_, _, _, output_failed, stop) = future::join5(
+        let (_, _, output_failed, stop) = future::join4(
             process_server_tasks,
-            process_control_tasks,
             process_client_responses,
             print_output,
             read_input,
@@ -651,24 +818,49 @@ where
         stdout,
         loopback: socket,
         ordinary_concurrency: LSP_ORDINARY_HANDLER_CONCURRENCY,
+        retained_deferred_capacity: ORDINARY_HANDLER_CAPACITY,
         request_byte_budget: LSP_REQUEST_BYTE_BUDGET,
         max_control_message_bytes: MAX_CONTROL_MESSAGE_BYTES,
-        control_request_byte_budget: CONTROL_REQUEST_BYTE_BUDGET,
+        overload_response_capacity: OVERLOAD_RESPONSE_CAPACITY,
+        overload_response_byte_budget: OVERLOAD_RESPONSE_BYTE_BUDGET,
     }
 }
 
-/// Serves an LSP session until an input/output stream closes or the client sends `exit`.
+/// Serves an LSP session until input closes, output fails, overload loses input integrity, or the
+/// client sends a valid `exit` notification.
 ///
 /// Framing is owned here so a rejected `exit` request cannot make an upstream buffered reader
 /// discard later frames from the same client write. A valid notification cancels in-flight handlers
-/// through the lifecycle wrapper before the transport drains its task queue.
-pub async fn serve_stdio<I, O, L, S>(stdin: I, stdout: O, socket: L, service: S) -> StdioTermination
+/// through the lifecycle wrapper before the transport drains its task queue. Exact small controls
+/// bypass ordinary capacity only while input remains synchronized. `OutputClosed` dominates a
+/// concurrent protocol or overload stop.
+pub async fn serve_stdio<I, O, L>(
+    stdin: I,
+    stdout: O,
+    socket: L,
+    service: MermanLspService,
+) -> StdioTermination
 where
     I: AsyncRead + Unpin,
     O: AsyncWrite,
     L: Loopback,
     <L::ResponseSink as Sink<Response>>::Error: std::error::Error,
-    S: StdioService + Send + 'static,
+{
+    serve_stdio_inner(stdin, stdout, socket, service).await
+}
+
+async fn serve_stdio_inner<I, O, L, S>(
+    stdin: I,
+    stdout: O,
+    socket: L,
+    service: S,
+) -> StdioTermination
+where
+    I: AsyncRead + Unpin,
+    O: AsyncWrite,
+    L: Loopback,
+    <L::ResponseSink as Sink<Response>>::Error: std::error::Error,
+    S: StdioAdmissionService + Send + 'static,
     S::Error: Into<BoxError> + Send + 'static,
     S::Future: Send + 'static,
 {
@@ -682,6 +874,7 @@ where
         .await;
     match stop {
         TransportStop::OutputClosed => StdioTermination::OutputClosed,
+        TransportStop::InputOverloaded => StdioTermination::InputOverloaded,
         TransportStop::InputClosed | TransportStop::ExitNotification => lifecycle.termination(),
     }
 }

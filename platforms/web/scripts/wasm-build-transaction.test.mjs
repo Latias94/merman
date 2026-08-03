@@ -134,7 +134,6 @@ describe("WASM output transaction", () => {
     const lock = outputLockDirectory(output);
     writeOwner(lock, {
       pid: 2_147_483_647,
-      started_at_ms: 0,
       token: "dead",
     });
 
@@ -173,7 +172,6 @@ describe("WASM output transaction", () => {
     const lock = outputLockDirectory(output);
     const successor = {
       pid: process.pid,
-      started_at_ms: Date.now(),
       token: "successor",
     };
     const release = acquireOutputLock(output);
@@ -218,10 +216,8 @@ describe("WASM output transaction", () => {
     const release = acquireWorkspaceWasmBuildLock(root);
     const owner = JSON.parse(readFileSync(path.join(lock, "owner.json"), "utf8"));
 
-    assert.deepEqual(Object.keys(owner), ["pid", "started_at_ms", "token"]);
+    assert.deepEqual(Object.keys(owner), ["pid", "token"]);
     assert.equal(owner.pid, process.pid);
-    assert.equal(Number.isSafeInteger(owner.started_at_ms), true);
-    assert.equal(owner.started_at_ms >= 0, true);
     assert.equal(typeof owner.token, "string");
     assert.notEqual(owner.token, "");
 

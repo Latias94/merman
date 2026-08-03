@@ -1705,6 +1705,39 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
+    fn empty_request_presentation_inherits_the_reusable_engine_profile() {
+        let engine = BindingEngine::new(
+            br#"{
+                "presentation": { "profile": "merman-modern" },
+                "site_config": { "flowchart": { "defaultRenderer": "dagre-wrapper" } }
+            }"#,
+        )
+        .unwrap();
+        let execute = |options_json: &[u8]| {
+            engine
+                .execute(BindingOperationRequest {
+                    operation_id: "svg-plan-json",
+                    source: b"flowchart TD\nA --> B",
+                    uri: None,
+                    options_json,
+                })
+                .unwrap()
+                .data
+        };
+
+        let baseline = execute(b"");
+        let empty_overlay = execute(br#"{"presentation":{}}"#);
+        assert_eq!(empty_overlay, baseline);
+
+        let plan: serde_json::Value = serde_json::from_slice(&baseline).unwrap();
+        assert_eq!(plan["presentation_profile_id"], "merman-modern");
+        assert_eq!(plan["presentation_aspects"][1]["state"], "active");
+        assert_eq!(plan["presentation_aspects"][2]["state"], "inactive");
+        assert_eq!(plan["ready"], true);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
     fn request_options_override_nested_engine_options_without_mutating_the_baseline() {
         let engine = BindingEngine::new(
             br#"{

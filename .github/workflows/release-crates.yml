@@ -121,6 +121,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-linux-android,wasm32-unknown-unknown
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -130,6 +132,9 @@ jobs:
 
       - name: Verify target-scoped artifact dependency closures
         run: python3 scripts/verify_artifact_dependency_closures.py --baseline abi/ffi-contract-baseline/dependency-closures.json
+
+      - name: Verify exhaustive Cargo feature and artifact recipes
+        run: cargo run --locked -p xtask -- verify-feature-matrix --strict
 
       - name: Preflight crates in dependency order
         id: crates
@@ -213,10 +218,8 @@ jobs:
           node-version: "24"
           package-manager-cache: false
 
-      - name: Install WASM tools
-        run: |
-          cargo install wasm-bindgen-cli --version 0.2.108 --locked
-          cargo install wasm-pack --version 0.15.0 --locked
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Verify generated Web contracts
         run: |
@@ -227,11 +230,10 @@ jobs:
           cargo run --locked -p xtask -- verify-artifact-profiles
           cargo run --locked -p xtask -- verify-web-diagram-catalog
 
-      - name: Build and smoke Web package group
+      - name: Build, verify, and smoke Web package group
         run: |
           npm ci --prefix platforms/web
           npm run build --prefix platforms/web
-          npm run verify:packages --prefix platforms/web
           npm run smoke --prefix platforms/web
 
   typst-owner-preflight:

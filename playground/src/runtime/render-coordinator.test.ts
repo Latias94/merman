@@ -3,7 +3,10 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 import { projectSafeInlineSvg } from "./render-artifact.ts";
 
-import type { MermanDomainFacade } from "./merman-core.ts";
+import type {
+  MermanDomainFacade,
+  MermanRenderOptions,
+} from "./merman-core.ts";
 import {
   createRenderCoordinator,
   type RenderCoordinatorInput,
@@ -129,6 +132,153 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
     assert.match(state.mermaid.artifact.svg, /second/);
   }
   assert.equal(state.snapshot.source, "second");
+});
+
+test("request identity includes all presentation axes and stores the same-snapshot SVG plan", async () => {
+  const planCalls: {
+    options: Readonly<MermanRenderOptions>;
+    result: ReturnType<MermanDomainFacade["svgPlan"]>;
+  }[] = [];
+  const domainFacade: MermanDomainFacade = {
+    ...facade(),
+    svgPlan(source, _theme, _configJson, options = {}) {
+      const result = svgPlan({
+        diagramType: source,
+        profileId: options.presentationProfileId ?? null,
+      });
+      planCalls.push({ options, result });
+      return result;
+    },
+  };
+  const optionCases: MermanRenderOptions[] = [
+    {
+      diagramFont: "trebuchet",
+      presentationProfileId: null,
+      presentationThemePresetId: null,
+      svgPipeline: "parity",
+      textMeasurementMode: "browser",
+    },
+    {
+      diagramFont: "trebuchet",
+      presentationProfileId: null,
+      presentationThemePresetId: "future-theme",
+      svgPipeline: "parity",
+      textMeasurementMode: "browser",
+    },
+    {
+      diagramFont: "trebuchet",
+      presentationProfileId: "future-profile",
+      presentationThemePresetId: "future-theme",
+      svgPipeline: "parity",
+      textMeasurementMode: "browser",
+    },
+    {
+      diagramFont: "trebuchet",
+      presentationProfileId: "future-profile",
+      presentationThemePresetId: "future-theme",
+      svgPipeline: "readable",
+      textMeasurementMode: "browser",
+    },
+  ];
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+
+  for (const options of optionCases) {
+    const previousPlanCallCount = planCalls.length;
+    coordinator.setInput({ ...input("identity", domainFacade), options });
+    await waitFor(() => coordinator.store.getState().status === "success");
+    const state = coordinator.store.getState();
+    assert.equal(state.status, "success");
+    if (state.status !== "success") continue;
+    assert.equal(Object.isFrozen(state.snapshot.options), true);
+
+    if (!options.presentationProfileId) {
+      assert.equal(planCalls.length, previousPlanCallCount);
+      assert.equal(state.svgPlan, null);
+      continue;
+    }
+
+    assert.equal(planCalls.length, previousPlanCallCount + 1);
+    const planCall = planCalls.at(-1);
+    assert.ok(planCall);
+    assert.equal(planCall.options, state.snapshot.options);
+    assert.equal(state.svgPlan, planCall.result);
+  }
+
+  assert.equal(planCalls.length, 2);
+});
+
+test("freezes browser layout geometry into each render snapshot", async () => {
+  let screenAvailableWidth = 1280;
+  const renderOptions: Array<Readonly<MermanRenderOptions>> = [];
+  const domainFacade: MermanDomainFacade = {
+    ...facade(),
+    render(source, _theme, _configJson, options = {}) {
+      renderOptions.push(options);
+      return {
+        artifact: projectSafeInlineSvg(
+          `<svg xmlns="http://www.w3.org/2000/svg"><text>${source}</text></svg>`
+        ),
+        error: null,
+        renderTime: 2,
+        status: "success",
+      };
+    },
+  };
+  const coordinator = createRenderCoordinator({
+    captureLayoutEnvironment: () => ({
+      containerWidth: VIEWPORT.width,
+      containerHeight: VIEWPORT.height,
+      screenAvailableWidth,
+    }),
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+
+  coordinator.setInput(input("layout-environment", domainFacade));
+  await waitFor(() => renderOptions.length === 1);
+  assert.deepEqual(renderOptions[0].layoutEnvironment, {
+    containerWidth: 800,
+    containerHeight: 600,
+    screenAvailableWidth: 1280,
+  });
+  assert.equal(Object.isFrozen(renderOptions[0].layoutEnvironment), true);
+
+  screenAvailableWidth = 1440;
+  coordinator.setInput(input("layout-environment", domainFacade));
+  await waitFor(() => renderOptions.length === 2);
+  assert.equal(renderOptions[1].layoutEnvironment?.screenAvailableWidth, 1440);
+});
+
+test("keeps a successful render when SVG plan collection fails", async () => {
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setInput({
+    ...input("plan-failure", {
+      ...facade(),
+      svgPlan() {
+        throw new Error("SVG plan unavailable.");
+      },
+    }),
+    options: {
+      diagramFont: "trebuchet",
+      presentationProfileId: "future-profile",
+      textMeasurementMode: "browser",
+    },
+  });
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  if (state.status !== "success") return;
+  assert.equal(state.svgPlan, null);
 });
 
 test("publishes the producer-owned Merman artifact without reprojecting it", async () => {
@@ -542,6 +692,11 @@ function rawFailureFacade(error: unknown): MermanDomainFacade {
 function facade(): MermanDomainFacade {
   return {
     packageVersion: "test-merman",
+    presentationCatalog: () => ({
+      schema_version: 1,
+      theme_presets: [],
+      profiles: [],
+    }),
     detectDiagram: () => ({
       status: "available",
       validity: "valid",
@@ -563,7 +718,36 @@ function facade(): MermanDomainFacade {
       error: null,
       status: "success",
     }),
+    svgPlan: (
+      source: string,
+      _theme?: string,
+      _configJson?: string,
+      options?: MermanRenderOptions,
+    ) =>
+      svgPlan({
+        diagramType: source,
+        profileId: options?.presentationProfileId ?? null,
+      }),
   } as unknown as MermanDomainFacade;
+}
+
+function svgPlan({
+  diagramType = "flowchart-v2",
+  profileId = null,
+}: {
+  diagramType?: string;
+  profileId?: string | null;
+} = {}): ReturnType<MermanDomainFacade["svgPlan"]> {
+  return {
+    schema_version: 1,
+    planned_operation_id: "svg",
+    diagram_type: diagramType,
+    presentation_profile_id: profileId,
+    presentation_aspects: [],
+    required_capability_ids: [],
+    missing_capability_ids: [],
+    ready: true,
+  };
 }
 
 function fakeCompare(

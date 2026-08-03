@@ -1,0 +1,7 @@
+flowchart TD
+    RECEIVE[Receive request] --> VALID{Input valid?}
+    VALID -->|Yes| PROCESS[Process request]
+    VALID -->|No| ERROR[Return error]
+    PROCESS --> STORE[(Persist result)]
+    ERROR --> FINISH([Finish])
+    STORE --> FINISH

@@ -49,6 +49,7 @@ export const WASM_ARTIFACT_FILE_NAMES = Object.freeze([
 const ARTIFACT_FILES = new Set(REQUIRED_ARTIFACT_FILES);
 
 export function buildWasmInputManifest({
+  compilerInputs = [],
   metadata,
   outputRoot,
   preset,
@@ -56,7 +57,11 @@ export function buildWasmInputManifest({
   toolVersions,
 }) {
   const config = normalizedBuildConfig(preset);
-  const inputs = collectWasmInputEntries({ metadata, repoRoot });
+  const inputs = collectWasmInputEntries({
+    additionalInputs: compilerInputs,
+    metadata,
+    repoRoot,
+  });
   const artifacts = collectArtifactEntries(outputRoot);
   const sourceDigest = digestJson(inputs);
   const normalizedTools = normalizedToolVersions(toolVersions);
@@ -113,7 +118,13 @@ export function verifyWasmInputManifest({
   let currentInputs;
   let currentArtifacts;
   try {
-    currentInputs = collectWasmInputEntries({ metadata, repoRoot });
+    currentInputs = collectWasmInputEntries({
+      additionalInputs: manifest.inputs.map((entry) =>
+        resolveRepositoryPath(repoRoot, entry.path),
+      ),
+      metadata,
+      repoRoot,
+    });
     currentArtifacts = collectArtifactEntries(outputRoot);
   } catch (error) {
     reasons.push(error instanceof Error ? error.message : String(error));
@@ -139,9 +150,8 @@ export function verifyWasmInputManifest({
   return { ok: reasons.length === 0, reasons };
 }
 
-export function cargoMetadataForPreset({ preset, repoRoot, capture = runCapture }) {
-  const config = normalizedBuildConfig(preset);
-  const repositoryMetadata = parseCargoMetadata(
+export function cargoRepositoryMetadata({ repoRoot, capture = runCapture }) {
+  return parseCargoMetadata(
     capture(
       "cargo",
       [
@@ -157,6 +167,17 @@ export function cargoMetadataForPreset({ preset, repoRoot, capture = runCapture 
       repoRoot,
     ),
   );
+}
+
+export function cargoMetadataForPreset({
+  preset,
+  repoRoot,
+  capture = runCapture,
+  repositoryMetadata = null,
+}) {
+  const config = normalizedBuildConfig(preset);
+  const lockedRepositoryMetadata =
+    repositoryMetadata ?? cargoRepositoryMetadata({ repoRoot, capture });
   const probeRoot = mkdtempSync(path.join(os.tmpdir(), "merman-wasm-metadata-"));
   try {
     mkdirSync(path.join(probeRoot, "src"));
@@ -182,7 +203,7 @@ export function cargoMetadataForPreset({ preset, repoRoot, capture = runCapture 
         repoRoot,
       ),
     );
-    assertProbeResolutionUsesLockedPackages(probeMetadata, repositoryMetadata);
+    assertProbeResolutionUsesLockedPackages(probeMetadata, lockedRepositoryMetadata);
     return probeMetadata;
   } finally {
     rmSync(probeRoot, { recursive: true, force: true });
@@ -198,7 +219,11 @@ export function currentWasmBuildToolVersions(repoRoot) {
   };
 }
 
-export function collectWasmInputEntries({ metadata, repoRoot }) {
+export function collectWasmInputEntries({
+  additionalInputs = [],
+  metadata,
+  repoRoot,
+}) {
   const files = new Set();
   for (const relative of ROOT_FILE_INPUTS) {
     const absolute = resolveRepositoryPath(repoRoot, relative);
@@ -211,29 +236,87 @@ export function collectWasmInputEntries({ metadata, repoRoot }) {
   }
   addTreeFiles(buildModuleRoot, files);
 
+  for (const input of additionalInputs) {
+    files.add(path.resolve(input));
+  }
+
   for (const packageInfo of workspaceDependencyPackages(metadata, repoRoot)) {
     const manifest = path.resolve(packageInfo.manifest_path);
     files.add(manifest);
     const packageRoot = path.dirname(manifest);
-    const rustSources = [];
     const buildScript = path.join(packageRoot, "build.rs");
     if (existsSync(buildScript)) {
       files.add(buildScript);
-      rustSources.push(buildScript);
     }
     const sourceRoot = path.join(packageRoot, "src");
     assertProductionTargetsAreOwned(packageInfo, packageRoot, sourceRoot, buildScript);
     if (existsSync(sourceRoot)) {
-      addTreeFiles(sourceRoot, files, (absolute) => {
-        if (path.extname(absolute) === ".rs") rustSources.push(absolute);
-      });
+      addTreeFiles(sourceRoot, files);
     }
-    addEmbeddedRustInputs({ files, repoRoot, rustSources });
+    for (const declaredInput of declaredPackageWasmInputs(packageInfo, packageRoot)) {
+      addTreeFiles(declaredInput, files);
+    }
   }
 
   return [...files]
     .map((absolute) => fileEntry(repoRoot, absolute))
     .sort((left, right) => compareNames(left.path, right.path));
+}
+
+function declaredPackageWasmInputs(packageInfo, packageRoot) {
+  const declared = packageInfo.metadata?.merman?.["wasm-inputs"] ?? [];
+  if (!Array.isArray(declared) || !declared.every((item) => typeof item === "string")) {
+    throw new Error(
+      `Cargo package metadata.merman.wasm-inputs must be an array of paths: ${packageInfo.name ?? packageInfo.id}`,
+    );
+  }
+
+  return declared.map((relative) => {
+    if (relative.length === 0 || path.isAbsolute(relative)) {
+      throw new Error(
+        `Cargo package metadata.merman.wasm-inputs contains an invalid path: ${relative || "<empty>"}`,
+      );
+    }
+    const absolute = path.resolve(packageRoot, relative);
+    if (!isWithin(packageRoot, absolute)) {
+      throw new Error(
+        `Cargo package metadata.merman.wasm-inputs escapes its package root: ${relative}`,
+      );
+    }
+    if (!existsSync(absolute)) {
+      throw new Error(
+        `Cargo package metadata.merman.wasm-inputs is missing: ${relative}`,
+      );
+    }
+    return absolute;
+  });
+}
+
+export function rustcWasmInputPaths({ metadata, repoRoot }) {
+  if (typeof metadata?.target_directory !== "string") {
+    throw new Error("cargo metadata is missing target_directory.");
+  }
+  const depInfoPath = path.join(
+    path.resolve(metadata.target_directory),
+    "wasm32-unknown-unknown",
+    "wasm-size",
+    "merman_wasm.d",
+  );
+  let contents;
+  try {
+    contents = readFileSync(depInfoPath, "utf8");
+  } catch (error) {
+    throw new Error(`Cannot read rustc WASM dep-info ${depInfoPath}: ${error.message}`);
+  }
+
+  const canonicalRepo = path.resolve(repoRoot);
+  return parseMakefileDependencies(contents)
+    .map((dependency) =>
+      path.isAbsolute(dependency)
+        ? path.resolve(dependency)
+        : path.resolve(repoRoot, dependency),
+    )
+    .filter((dependency) => isWithin(canonicalRepo, dependency));
 }
 
 export function collectArtifactEntries(outputRoot) {
@@ -326,281 +409,72 @@ function assertProductionTargetsAreOwned(packageInfo, packageRoot, sourceRoot, b
   }
 }
 
-function addTreeFiles(root, files, onFile = () => {}) {
+function addTreeFiles(root, files) {
   const stat = lstatSync(root);
   if (stat.isSymbolicLink()) {
     throw new Error(`WASM input tree contains a symbolic link: ${root}`);
   }
   if (stat.isFile()) {
     files.add(root);
-    onFile(root);
     return;
   }
   if (!stat.isDirectory()) return;
   for (const entry of readdirSync(root, { withFileTypes: true }).sort((left, right) =>
     compareNames(left.name, right.name),
   )) {
-    addTreeFiles(path.join(root, entry.name), files, onFile);
+    addTreeFiles(path.join(root, entry.name), files);
   }
 }
 
-function addEmbeddedRustInputs({ files, repoRoot, rustSources }) {
-  for (const sourcePath of rustSources) {
-    const source = readFileSync(sourcePath, "utf8");
-    for (const embedded of embeddedRustInputs(source, sourcePath, repoRoot)) {
-      files.add(embedded);
-    }
-  }
-}
-
-function embeddedRustInputs(source, sourcePath, repoRoot) {
-  const inputs = [];
-  let cursor = 0;
-  while (cursor < source.length) {
-    if (source.startsWith("//", cursor)) {
-      cursor = skipLineComment(source, cursor);
-      continue;
-    }
-    if (source.startsWith("/*", cursor)) {
-      cursor = skipBlockComment(source, cursor);
-      continue;
-    }
-
-    const rawString = parseRawString(source, cursor);
-    if (rawString) {
-      cursor = rawString.end;
-      continue;
-    }
-    if (source[cursor] === '"') {
-      cursor = scanQuotedString(source, cursor);
-      continue;
-    }
-    if (source[cursor] === "'") {
-      cursor = scanCharacterLiteral(source, cursor);
-      continue;
-    }
-    if (!isIdentifierStart(source[cursor])) {
-      cursor += 1;
-      continue;
-    }
-
-    const identifierStart = cursor;
-    cursor = scanIdentifier(source, cursor);
-    const macroName = source.slice(identifierStart, cursor);
-    if (macroName !== "include_str" && macroName !== "include_bytes") {
-      continue;
-    }
-
-    let argument = skipRustTrivia(source, cursor);
-    if (source[argument] !== "!") continue;
-    argument = skipRustTrivia(source, argument + 1);
-    if (source[argument] === "=") continue;
-    const closingDelimiter = {
-      "(": ")",
-      "[": "]",
-      "{": "}",
-    }[source[argument]];
-    if (!closingDelimiter) {
-      throw unresolvedRustInput(macroName, source, sourcePath, repoRoot, argument);
-    }
-    argument = skipRustTrivia(source, argument + 1);
-
-    const literal = parseRustStringLiteral(source, argument);
-    if (!literal) {
-      throw unresolvedRustInput(macroName, source, sourcePath, repoRoot, argument);
-    }
-    let end = skipRustTrivia(source, literal.end);
-    if (source[end] === ",") end = skipRustTrivia(source, end + 1);
-    if (source[end] !== closingDelimiter) {
-      throw unresolvedRustInput(macroName, source, sourcePath, repoRoot, end);
-    }
-
-    const absolute = path.resolve(path.dirname(sourcePath), literal.value);
-    if (!isWithin(path.resolve(repoRoot), absolute)) {
-      throw new Error(
-        `WASM ${macroName}! input escapes the repository: ${normalizePath(path.relative(repoRoot, absolute))}`,
-      );
-    }
-    if (!existsSync(absolute)) {
-      throw new Error(
-        `WASM ${macroName}! input is missing: ${normalizePath(path.relative(repoRoot, absolute))}`,
-      );
-    }
-    inputs.push(absolute);
-    cursor = end + 1;
-  }
-  return inputs;
-}
-
-function parseRustStringLiteral(source, cursor) {
-  const raw = parseRawString(source, cursor, { requireBarePrefix: true });
-  if (raw) return raw;
-  if (source[cursor] !== '"') return null;
-
-  let value = "";
-  let index = cursor + 1;
-  while (index < source.length) {
-    const character = source[index];
-    if (character === '"') return { end: index + 1, value };
-    if (character === "\n" || character === "\r") {
-      throw new Error("Rust string literal contains an unescaped newline.");
-    }
-    if (character !== "\\") {
-      value += character;
-      index += 1;
-      continue;
-    }
-
-    const escaped = decodeRustStringEscape(source, index);
-    value += escaped.value;
-    index = escaped.end;
-  }
-  throw new Error("Rust string literal is unterminated.");
-}
-
-function parseRawString(source, cursor, { requireBarePrefix = false } = {}) {
-  const prefixes = requireBarePrefix ? ["r"] : ["br", "cr", "r"];
-  const prefix = prefixes.find((candidate) => source.startsWith(candidate, cursor));
-  if (!prefix || isIdentifierContinue(source[cursor - 1])) return null;
-
-  let quote = cursor + prefix.length;
-  let hashes = 0;
-  while (source[quote] === "#") {
-    hashes += 1;
-    quote += 1;
-  }
-  if (source[quote] !== '"') return null;
-
-  const closing = `"${"#".repeat(hashes)}`;
-  const endQuote = source.indexOf(closing, quote + 1);
-  if (endQuote === -1) throw new Error("Rust raw string literal is unterminated.");
-  return {
-    end: endQuote + closing.length,
-    value: source.slice(quote + 1, endQuote),
-  };
-}
-
-function decodeRustStringEscape(source, slash) {
-  const escaped = source[slash + 1];
-  const simple = {
-    0: "\0",
-    n: "\n",
-    r: "\r",
-    t: "\t",
-    '"': '"',
-    "'": "'",
-    "\\": "\\",
-  };
-  if (Object.hasOwn(simple, escaped)) {
-    return { end: slash + 2, value: simple[escaped] };
-  }
-  if (escaped === "x") {
-    const digits = source.slice(slash + 2, slash + 4);
-    if (!/^[0-9a-fA-F]{2}$/.test(digits)) {
-      throw new Error("Rust string literal has an invalid hexadecimal escape.");
-    }
-    return { end: slash + 4, value: String.fromCharCode(Number.parseInt(digits, 16)) };
-  }
-  if (escaped === "u" && source[slash + 2] === "{") {
-    const close = source.indexOf("}", slash + 3);
-    const digits = close === -1 ? "" : source.slice(slash + 3, close).replaceAll("_", "");
-    if (!/^[0-9a-fA-F]{1,6}$/.test(digits)) {
-      throw new Error("Rust string literal has an invalid Unicode escape.");
-    }
-    return {
-      end: close + 1,
-      value: String.fromCodePoint(Number.parseInt(digits, 16)),
-    };
-  }
-  if (escaped === "\n" || (escaped === "\r" && source[slash + 2] === "\n")) {
-    let end = slash + (escaped === "\r" ? 3 : 2);
-    while (source[end] === " " || source[end] === "\t" || source[end] === "\n") end += 1;
-    return { end, value: "" };
-  }
-  throw new Error(`Rust string literal has an unsupported escape: \\${escaped ?? ""}`);
-}
-
-function scanQuotedString(source, quote) {
-  let cursor = quote + 1;
-  while (cursor < source.length) {
-    if (source[cursor] === "\\") {
-      cursor += 2;
-    } else if (source[cursor] === '"') {
-      return cursor + 1;
-    } else {
-      cursor += 1;
-    }
-  }
-  return source.length;
-}
-
-function scanCharacterLiteral(source, quote) {
-  let cursor = quote + 1;
-  if (source[cursor] === "\\") {
-    cursor += 2;
-  } else {
-    cursor += 1;
-  }
-  return source[cursor] === "'" ? cursor + 1 : quote + 1;
-}
-
-function skipRustTrivia(source, cursor) {
-  while (cursor < source.length) {
-    if (/\s/.test(source[cursor])) {
-      cursor += 1;
-    } else if (source.startsWith("//", cursor)) {
-      cursor = skipLineComment(source, cursor);
-    } else if (source.startsWith("/*", cursor)) {
-      cursor = skipBlockComment(source, cursor);
-    } else {
+function parseMakefileDependencies(contents) {
+  let separator = -1;
+  for (let index = 0; index < contents.length - 1; index += 1) {
+    if (contents[index] === ":" && /\s/.test(contents[index + 1])) {
+      separator = index;
       break;
     }
   }
-  return cursor;
-}
-
-function skipLineComment(source, cursor) {
-  const newline = source.indexOf("\n", cursor + 2);
-  return newline === -1 ? source.length : newline + 1;
-}
-
-function skipBlockComment(source, cursor) {
-  let depth = 1;
-  cursor += 2;
-  while (cursor < source.length && depth > 0) {
-    if (source.startsWith("/*", cursor)) {
-      depth += 1;
-      cursor += 2;
-    } else if (source.startsWith("*/", cursor)) {
-      depth -= 1;
-      cursor += 2;
-    } else {
-      cursor += 1;
-    }
+  if (separator === -1) {
+    throw new Error("rustc WASM dep-info does not contain a dependency rule.");
   }
-  return cursor;
-}
 
-function scanIdentifier(source, cursor) {
-  cursor += 1;
-  while (isIdentifierContinue(source[cursor])) cursor += 1;
-  return cursor;
-}
-
-function isIdentifierStart(character) {
-  return Boolean(character && /[A-Za-z_]/.test(character));
-}
-
-function isIdentifierContinue(character) {
-  return Boolean(character && /[A-Za-z0-9_]/.test(character));
-}
-
-function unresolvedRustInput(macroName, source, sourcePath, repoRoot, cursor) {
-  const line = source.slice(0, cursor).split("\n").length;
-  const relative = normalizePath(path.relative(repoRoot, sourcePath));
-  return new Error(
-    `Cannot resolve ${macroName}! input in ${relative}:${line}; use a string literal so the WASM input manifest stays fail-closed.`,
-  );
+  const dependencies = [];
+  let token = "";
+  const body = contents.slice(separator + 1);
+  for (let index = 0; index < body.length; index += 1) {
+    const character = body[index];
+    if (character === "\\") {
+      const next = body[index + 1];
+      if (next === "\n") {
+        index += 1;
+        continue;
+      }
+      if (next === "\r" && body[index + 2] === "\n") {
+        index += 2;
+        continue;
+      }
+      if (next && /[\s#:\\]/.test(next)) {
+        token += next;
+        index += 1;
+        continue;
+      }
+      token += character;
+      continue;
+    }
+    if (character === "$" && body[index + 1] === "$") {
+      token += "$";
+      index += 1;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      if (token) dependencies.push(token);
+      token = "";
+      continue;
+    }
+    token += character;
+  }
+  if (token) dependencies.push(token);
+  return dependencies;
 }
 
 function fileEntry(root, absolute) {

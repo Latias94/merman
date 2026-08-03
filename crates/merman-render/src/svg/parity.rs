@@ -410,23 +410,15 @@ pub(crate) fn with_test_svg_execution<T>(
 
 pub(crate) fn render_builtin_family_artifact(
     family: &crate::family::BuiltinFamilyArtifact,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_type: &str,
-    title: Option<&str>,
+    metadata: &merman_core::ParseMetadata,
     session: &RenderSession,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<String> {
     let execution = SvgExecution::new(options, debug, session)?;
-    let rooted_svg = render_builtin_family_artifact_raw(
-        family,
-        effective_config,
-        diagram_type,
-        title,
-        &execution,
-    )?;
+    let rooted_svg = render_builtin_family_artifact_raw(family, metadata, &execution)?;
     let svg = rooted_svg.into_string_for(family.kind())?;
-    apply_theme_css(svg, effective_config.as_value(), session)
+    apply_theme_css(svg, metadata.effective_config.as_value(), session)
 }
 
 #[cfg(feature = "layout-cytoscape")]
@@ -456,15 +448,16 @@ pub(crate) fn render_architecture_family_artifact(
 
 fn render_builtin_family_artifact_raw(
     family: &crate::family::BuiltinFamilyArtifact,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_type: &str,
-    title: Option<&str>,
+    metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     use crate::family::BuiltinFamilyArtifact;
 
     let measurer = options.text_measurer();
+    let effective_config = &metadata.effective_config;
     let effective_config_value = effective_config.as_value();
+    let diagram_type = metadata.diagram_type.as_str();
+    let title = metadata.title.as_deref();
 
     match family {
         BuiltinFamilyArtifact::Error(pair) => error::render_error_diagram_svg_model(
@@ -482,13 +475,14 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        BuiltinFamilyArtifact::Flowchart(pair) => {
+        BuiltinFamilyArtifact::Flowchart(artifact) => {
             flowchart::render_flowchart_svg_model_with_config(
-                pair.layout(),
-                pair.semantic(),
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
                 effective_config,
                 diagram_type,
                 title,
+                artifact.policy(),
                 options,
             )
         }

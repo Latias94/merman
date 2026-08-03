@@ -5,10 +5,11 @@
 //! The crate intentionally stays thin: all parsing, rendering, options parsing, and error
 //! classification are delegated to `merman-bindings-core`.
 
+#[cfg(feature = "editor")]
+use merman_bindings_core::TransportCompiledExtensionKey;
 use merman_bindings_core::{
     BindingError, BindingOperationRequest, BindingPayloadSchemaKey, CompiledBindingSurface,
-    RuntimeCatalog, RuntimePolicyExposure, TargetKey, TransportCompiledExtensionKey,
-    TransportExposure, ValidatedArtifactContract,
+    RuntimeCatalog, RuntimePolicyExposure, TargetKey, TransportExposure, ValidatedArtifactContract,
 };
 use serde::Serialize;
 use std::sync::OnceLock;
@@ -275,9 +276,9 @@ pub fn supported_themes() -> Result<JsValue, JsValue> {
     json_value_result(wasm_artifact_contract().metadata_json("supported-themes"))
 }
 
-#[wasm_bindgen(js_name = supportedHostThemePresets)]
-pub fn supported_host_theme_presets() -> Result<JsValue, JsValue> {
-    json_value_result(wasm_artifact_contract().metadata_json("supported-host-theme-presets"))
+#[wasm_bindgen(js_name = presentationCatalog)]
+pub fn presentation_catalog() -> Result<JsValue, JsValue> {
+    json_value_result(wasm_artifact_contract().metadata_json("presentation-catalog"))
 }
 
 #[wasm_bindgen(js_name = asciiSupportedDiagrams)]

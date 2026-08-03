@@ -290,8 +290,10 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: aarch64-linux-android,wasm32-unknown-unknown
+
+      - name: Install parity Rust targets
+        if: matrix.parity
+        run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
@@ -336,12 +338,11 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
         run: npm ci
 
-      - name: Verify generated architecture contracts
+      - name: Verify pull-request architecture contracts
         if: matrix.parity
         run: |
           cargo run --locked -p xtask -- verify-generated
-          python3 scripts/verify_artifact_dependency_closures.py --baseline abi/ffi-contract-baseline/dependency-closures.json
-          cargo run --locked -p xtask -- verify-feature-matrix --strict
+          cargo run --locked -p xtask -- verify-feature-matrix
           python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
 
       - name: Test (nextest)

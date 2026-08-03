@@ -1584,6 +1584,7 @@ pub struct C4RelLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct C4DiagramLayout {
     pub bounds: Option<Bounds>,
     pub width: f64,
@@ -1592,6 +1593,8 @@ pub struct C4DiagramLayout {
     pub use_max_width: bool,
     pub container_width: f64,
     pub container_height: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screen_available_width: Option<f64>,
     pub c4_type: String,
     pub title: Option<String>,
     pub boundaries: Vec<C4BoundaryLayout>,

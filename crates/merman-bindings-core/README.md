@@ -64,7 +64,7 @@ This example requires the `svg` feature. An explicit `environment.text_measureme
 { "svg": { "pipeline": "resvg-safe" } }
 ```
 
-Editor previews that inject host CSS can also use `host_theme` presets, or enable `drop_native_duplicate_fallbacks` when duplicate native/fallback labels are visible in the host surface.
+Editor previews can supply a semantic host theme under `presentation.theme`, select an optional first-party product profile under `presentation.profile`, or enable `drop_native_duplicate_fallbacks` when duplicate native/fallback labels are visible in the host surface. Raw Mermaid overrides remain top-level `site_config`, while SVG pipeline and postprocessing choices remain under `svg`.
 
 Hosts that inline SVG in a browser and want fallback text while retaining the original `<foreignObject>` nodes can use `"readable"` instead. PNG, JPEG, and PDF are available through the same generic binding operation route when their output capability is compiled; their format-specific resource limits remain part of the selected resource policy.
 

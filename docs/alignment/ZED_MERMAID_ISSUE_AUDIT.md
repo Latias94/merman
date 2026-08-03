@@ -31,7 +31,7 @@ the default image string resolver treats `<image href>` values as host file path
 PNG/JPG/PDF exporters disable that resolver, but the protection does not follow a plain SVG string
 into GPUI. On upgrade, Zed should:
 
-- use `HostThemeProfile` or the equivalent `MermaidConfig` for theme variables,
+- use `Presentation::with_theme(HostTheme::new()...)` or the equivalent `MermaidConfig` for theme variables,
 - replace its duplicate fallback pass with
   `SvgPipeline::with_drop_native_duplicate_fallbacks(true)`,
 - keep only product-specific accent assignment and palette generation in Zed,

@@ -127,7 +127,6 @@ export function BenchDialog() {
     code,
     diagramFont,
     diagramTheme,
-    hostThemePreset,
     mermaidConfig,
     textMeasurementMode,
   } = useAppStore(
@@ -135,7 +134,6 @@ export function BenchDialog() {
       code: current.code,
       diagramFont: current.diagramFont,
       diagramTheme: current.diagramTheme,
-      hostThemePreset: current.hostThemePreset,
       mermaidConfig: current.mermaidConfig,
       textMeasurementMode: current.textMeasurementMode,
     }))
@@ -159,14 +157,12 @@ export function BenchDialog() {
         diagramTheme,
         mermaidConfig,
         diagramFont,
-        hostThemePreset,
         textMeasurementMode,
       ]),
     [
       code,
       diagramFont,
       diagramTheme,
-      hostThemePreset,
       mermaidConfig,
       textMeasurementMode,
     ]
@@ -213,8 +209,6 @@ export function BenchDialog() {
     setElapsedMs(0);
     const options = {
       diagramFont,
-      hostThemePreset:
-        hostThemePreset === "none" ? undefined : hostThemePreset,
       textMeasurementMode,
     } as const;
     const detection = facade.detectDiagram(
@@ -250,7 +244,6 @@ export function BenchDialog() {
     diagramTheme,
     facade,
     fingerprint,
-    hostThemePreset,
     iterations,
     mermaidConfig,
     mode,

@@ -18,11 +18,11 @@ def valid_catalog():
             "ascii-capabilities",
             "diagram-family-capabilities",
             "lint-rule-catalog",
+            "presentation-catalog",
             "supported-diagrams",
-            "supported-host-theme-presets",
             "supported-themes",
         ],
-        "option_group_ids": ["ascii", "environment", "host_theme", "lint", "svg"],
+        "option_group_ids": ["ascii", "environment", "lint", "presentation", "svg"],
         "constructor_service_ids": ["host-text-measurement"],
         "capabilities": {
             "capability_ids": ["analysis", "ascii", "svg", "system-clock"],

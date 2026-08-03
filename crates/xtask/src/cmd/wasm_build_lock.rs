@@ -15,7 +15,6 @@ static TOKEN_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[derive(Debug, Deserialize, Serialize)]
 struct LockOwner {
     pid: u32,
-    started_at_ms: u64,
     token: String,
 }
 
@@ -78,7 +77,6 @@ impl WorkspaceWasmBuildLock {
     fn claim(directory: PathBuf) -> Result<Self, XtaskError> {
         let owner = LockOwner {
             pid: std::process::id(),
-            started_at_ms: epoch_millis(),
             token: lock_token(),
         };
         let owner_path = directory.join("owner.json");
@@ -285,7 +283,7 @@ mod tests {
         fs::create_dir(&directory).expect("lock directory");
         fs::write(
             directory.join("owner.json"),
-            br#"{"pid":2147483647,"started_at_ms":0,"token":"dead"}"#,
+            br#"{"pid":2147483647,"token":"dead"}"#,
         )
         .expect("dead owner");
 

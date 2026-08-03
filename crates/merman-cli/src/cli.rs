@@ -598,6 +598,16 @@ pub(crate) enum RuntimePolicyKind {
 #[derive(Debug, Clone, Default, ClapArgs)]
 pub(crate) struct RenderCliArgs {
     #[cfg(feature = "svg")]
+    /// First-party presentation profile applied below explicit Mermaid configuration.
+    #[arg(
+        long = "presentation-profile",
+        value_parser = presentation_profile_value_parser(),
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
+    )]
+    pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
+
+    #[cfg(feature = "svg")]
     /// Text measurement strategy.
     #[arg(
         long = "text-measurer",
@@ -698,6 +708,7 @@ pub(crate) struct LayoutRenderCliArgs {
 impl LayoutRenderCliArgs {
     pub(crate) fn into_render_args(self) -> RenderCliArgs {
         RenderCliArgs {
+            presentation_profile: None,
             text_measurer: Some(self.text_measurer),
             math_renderer: self.math_renderer,
             container_width: self.container_width,
@@ -744,14 +755,8 @@ pub(crate) struct MmdcParseCliArgs {
     pub(crate) config_file: Option<PathBuf>,
 
     /// Theme of the chart.
-    #[arg(
-        short = 't',
-        long,
-        value_enum,
-        default_value_t = MmdcTheme::Default,
-        help_heading = "mmdc-compatible export"
-    )]
-    pub(crate) theme: MmdcTheme,
+    #[arg(short = 't', long, value_enum, help_heading = "mmdc-compatible export")]
+    pub(crate) theme: Option<MmdcTheme>,
 
     #[command(flatten)]
     pub(crate) runtime: RuntimeCliArgs,
@@ -760,6 +765,15 @@ pub(crate) struct MmdcParseCliArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct MmdcRenderCliArgs {
+    /// First-party presentation profile applied below explicit Mermaid configuration.
+    #[arg(
+        long = "presentation-profile",
+        value_parser = presentation_profile_value_parser(),
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
+    )]
+    pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
+
     /// Text measurement strategy.
     #[arg(
         long = "text-measurer",
@@ -823,6 +837,7 @@ pub(crate) struct MmdcRenderCliArgs {
 impl Default for MmdcRenderCliArgs {
     fn default() -> Self {
         Self {
+            presentation_profile: None,
             text_measurer: TextMeasurerKind::Vendored,
             math_renderer: None,
             container_width: 800.0,
@@ -1452,6 +1467,20 @@ fn resource_profile_value_parser() -> impl TypedValueParser<Value = ResourceProf
 
 fn theme_value_parser() -> impl TypedValueParser<Value = String> {
     PossibleValuesParser::new(merman::supported_themes().iter().copied())
+}
+
+#[cfg(feature = "svg")]
+fn presentation_profile_value_parser()
+-> impl TypedValueParser<Value = merman::svg::PresentationProfile> {
+    PossibleValuesParser::new(
+        merman::svg::presentation_profile_descriptors()
+            .iter()
+            .map(|descriptor| descriptor.id()),
+    )
+    .map(|id| {
+        merman::svg::PresentationProfile::from_id(&id)
+            .expect("possible values come from the presentation profile descriptors")
+    })
 }
 
 fn parse_resource_limit_override(value: &str) -> Result<ResourceLimitOverride, String> {

@@ -3,19 +3,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::{
-    AnalyzerConfigurationChange, AnalyzerOptionsPreparation, CachedAnalysisGeneration,
-    ConfigurationUpdateOutcome, DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
-    DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES,
-    DiagnosticProjectionPreparation, DocumentDiagnosticState, DocumentDiscardedSource,
-    DocumentResourceLimit, DocumentSyncError, PreparedDocumentText, SemanticTokensState,
-    SessionState, SnapshotConfigurationPlan, StoredDocument, TextChangePreparation,
-    TextDocumentUpdate, cached_analysis_weight, default_lsp_analysis_options,
+    AnalyzerConfigurationChange, AnalyzerOptionsPreparation, ConfigurationUpdateOutcome,
+    DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES, DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS,
+    DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticProjectionPreparation, DiagnosticProjectionTicket,
+    DocumentDiagnosticState, DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError,
+    PreparedDocumentText, SemanticTokensState, SessionState, SnapshotConfigurationPlan,
+    StoredDocument, TextChangePreparation, TextDocumentUpdate, default_lsp_analysis_options,
 };
-use crate::session::analysis::request::{
-    AnalysisBuildError, AnalysisBuildRequest, DiagnosticProjectionOrigin,
-    DiagnosticReprojectionRequest,
-};
-use crate::session::cache::WeightedReplacement;
+use crate::session::analysis::request::{AnalysisBuildError, AnalysisBuildRequest};
 use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot, SnapshotContext};
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, AnalysisResourceLimit,
@@ -31,7 +26,7 @@ static CUSTOM_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static CUSTOM_ASYNC_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static REPEATED_DIAGNOSTIC_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
-fn reprojection_for(store: &SessionState, uri: &Uri) -> DiagnosticReprojectionRequest {
+fn reprojection_for(store: &SessionState, uri: &Uri) -> DiagnosticProjectionTicket {
     store
         .diagnostic_reprojection_request(uri)
         .expect("expected a lazy diagnostic reprojection")
@@ -292,54 +287,15 @@ fn commit_built_snapshot_for_test(
     request: &AnalysisBuildRequest,
     snapshot: Arc<DocumentSnapshot>,
 ) -> Option<(SnapshotContext, Arc<DocumentAnalysisContext>)> {
-    let snapshot = store.commit_built_snapshot(request, snapshot)?;
-    match store.prepare_diagnostic_projection_for_snapshot(
-        &snapshot,
-        DiagnosticProjectionOrigin::FreshBuild,
-    )? {
+    let snapshot = store.commit_built_snapshot_direct_for_test(request, snapshot)?;
+    match store.prepare_diagnostic_projection_for_snapshot(&snapshot)? {
         DiagnosticProjectionPreparation::Ready(context) => {
-            let cached = Arc::clone(store.cached_analysis_generation(request.uri())?);
+            let cached = store.cached_analysis_generation(request.uri())?;
             Some((context, cached))
         }
         DiagnosticProjectionPreparation::Project(projection) => {
             let projected = project_snapshot_for_test(store, Arc::clone(projection.snapshot()));
-            let context = SnapshotContext::with_analysis(
-                Arc::clone(&projected.snapshot),
-                Arc::clone(&projected.payload),
-                projection.snapshot_generation(),
-                store.diagnostic_generation,
-                projection.document_epoch(),
-            );
-            let replacement = WeightedReplacement {
-                key: projection.uri().clone(),
-                value: CachedAnalysisGeneration {
-                    context: Arc::clone(&projected),
-                    document_epoch: projection.document_epoch(),
-                    snapshot_generation: projection.snapshot_generation(),
-                },
-                weight: cached_analysis_weight(projection.uri(), &projected),
-            };
-            let cached_matches_generation = store
-                .analysis_generations
-                .peek(projection.uri())
-                .is_some_and(|cached| {
-                    cached.document_epoch == projection.document_epoch()
-                        && cached.snapshot_generation == projection.snapshot_generation()
-                        && cached.context.generation_identity() == projected.generation_identity()
-                });
-            if cached_matches_generation {
-                store
-                    .analysis_generations
-                    .replace_batch_preserving_recency(vec![replacement]);
-            } else if store.analysis_generations.peek(projection.uri()).is_some() {
-                return None;
-            } else if matches!(projection.origin(), DiagnosticProjectionOrigin::FreshBuild) {
-                store.analysis_generations.insert(
-                    replacement.key,
-                    replacement.value,
-                    replacement.weight,
-                );
-            }
+            let context = store.commit_diagnostic_reprojection_for_test(&projection, &projected)?;
             Some((context, projected))
         }
     }
@@ -2095,6 +2051,11 @@ async fn repeated_diagnostic_updates_preserve_environment_and_parse_once() {
     assert_eq!(REPEATED_DIAGNOSTIC_PARSE_CALLS.load(Ordering::SeqCst), 1);
 
     for severity in [DiagnosticSeverity::Hint, DiagnosticSeverity::Warning] {
+        let previous = store
+            .cached_analysis_generation(&uri)
+            .expect("the previous complete generation should be cached");
+        let previous_payload = Arc::downgrade(&previous.payload);
+        drop(previous);
         let change = store.begin_analyzer_options(
             options.clone().with_rule_config(
                 AnalysisRuleConfig::default()
@@ -2104,15 +2065,18 @@ async fn repeated_diagnostic_updates_preserve_environment_and_parse_once() {
         );
         assert_eq!(change, AnalyzerConfigurationChange::DiagnosticsOnly);
         assert_eq!(store.analyzer_environment_identity(), &identity);
+        assert!(store.has_snapshot(&uri));
+        assert!(!store.has_analysis_payload(&uri));
+        assert!(previous_payload.upgrade().is_none());
 
         let request = reprojection_for(&store, &uri);
         let projection = store
             .analysis_executor()
-            .execute_diagnostic_reprojection(&request)
+            .execute_diagnostic_reprojection(request.request())
             .await
             .expect("diagnostic reprojection should succeed");
         store
-            .commit_diagnostic_reprojection_context(&projection)
+            .commit_diagnostic_reprojection_context(&request, &projection)
             .expect("current diagnostic reprojection should commit");
 
         assert!(Arc::ptr_eq(
@@ -2124,6 +2088,19 @@ async fn repeated_diagnostic_updates_preserve_environment_and_parse_once() {
         ));
         assert_eq!(REPEATED_DIAGNOSTIC_PARSE_CALLS.load(Ordering::SeqCst), 1);
     }
+
+    let next_uri = Uri::from_str("file:///tmp/repeated-diagnostic-config-next.mmd").unwrap();
+    store.upsert_text(
+        next_uri.clone(),
+        1,
+        "flowchart TD\nC-->D\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    store
+        .snapshot_context(&next_uri)
+        .expect("the custom registry must remain active for newly opened documents");
+    assert_eq!(store.analyzer_environment_identity(), &identity);
+    assert_eq!(REPEATED_DIAGNOSTIC_PARSE_CALLS.load(Ordering::SeqCst), 2);
 }
 
 #[test]
@@ -2205,11 +2182,11 @@ async fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
     let request = reprojection_for(&store, &uri);
     let projection = store
         .analysis_executor()
-        .execute_diagnostic_reprojection(&request)
+        .execute_diagnostic_reprojection(request.request())
         .await
         .expect("current reprojection should complete");
     let committed = store
-        .commit_diagnostic_reprojection_context(&projection)
+        .commit_diagnostic_reprojection_context(&request, &projection)
         .is_some();
 
     assert!(committed);
@@ -2269,21 +2246,26 @@ async fn equivalent_reprojection_waiters_share_work_and_commit_idempotently() {
     let executor = store.analysis_executor();
 
     let first = executor
-        .execute_diagnostic_reprojection(&request)
+        .execute_diagnostic_reprojection(request.request())
         .await
         .unwrap();
     let second = executor
-        .execute_diagnostic_reprojection(&request)
+        .execute_diagnostic_reprojection(request.request())
         .await
         .unwrap();
 
     assert!(first.shares_result_with(&second));
     assert_eq!(executor.reprojection_count(), 1);
     let first_context = store
-        .commit_diagnostic_reprojection_context(&first)
+        .commit_diagnostic_reprojection_context(&request, &first)
         .expect("first waiter should commit");
+    let after_first = (
+        store.analysis_cache_len(),
+        store.analysis_cache_total_weight(),
+        store.analysis_cache_statistics(),
+    );
     let second_context = store
-        .commit_diagnostic_reprojection_context(&second)
+        .commit_diagnostic_reprojection_context(&request, &second)
         .expect("second waiter should observe the equivalent commit");
     assert!(Arc::ptr_eq(
         &first_context.snapshot,
@@ -2292,6 +2274,19 @@ async fn equivalent_reprojection_waiters_share_work_and_commit_idempotently() {
     assert_eq!(
         first_context.diagnostic_generation(),
         second_context.diagnostic_generation()
+    );
+    assert_eq!(
+        first_context.analysis_payload() as *const AnalysisPayload,
+        second_context.analysis_payload() as *const AnalysisPayload
+    );
+    assert_eq!(
+        (
+            store.analysis_cache_len(),
+            store.analysis_cache_total_weight(),
+            store.analysis_cache_statistics(),
+        ),
+        after_first,
+        "an equivalent waiter commit must not touch or mutate the resident entry"
     );
 }
 
@@ -2319,7 +2314,7 @@ async fn diagnostic_reprojection_does_not_overwrite_a_newer_document_epoch() {
     let request = reprojection_for(&store, &uri);
     let projection = store
         .analysis_executor()
-        .execute_diagnostic_reprojection(&request)
+        .execute_diagnostic_reprojection(request.request())
         .await
         .expect("current reprojection should complete");
 
@@ -2335,7 +2330,7 @@ async fn diagnostic_reprojection_does_not_overwrite_a_newer_document_epoch() {
 
     assert!(
         store
-            .commit_diagnostic_reprojection_context(&projection)
+            .commit_diagnostic_reprojection_context(&request, &projection)
             .is_none()
     );
     assert!(store.has_snapshot(&uri));
@@ -2382,11 +2377,11 @@ async fn diagnostic_reprojection_does_not_commit_a_superseded_policy_epoch() {
     let second_request = reprojection_for(&store, &uri);
     let first_projection = store
         .analysis_executor()
-        .execute_diagnostic_reprojection(&first_request)
+        .execute_diagnostic_reprojection(first_request.request())
         .await;
     let second_projection = store
         .analysis_executor()
-        .execute_diagnostic_reprojection(&second_request)
+        .execute_diagnostic_reprojection(second_request.request())
         .await
         .expect("current reprojection should complete");
 
@@ -2397,7 +2392,7 @@ async fn diagnostic_reprojection_does_not_commit_a_superseded_policy_epoch() {
     assert!(!store.has_analysis_payload(&uri));
     assert!(
         store
-            .commit_diagnostic_reprojection_context(&second_projection)
+            .commit_diagnostic_reprojection_context(&second_request, &second_projection)
             .is_some()
     );
     assert!(store.has_analysis_payload(&uri));
@@ -3662,6 +3657,18 @@ fn estimated_entry_weight(uri: &Uri, text: &str, kind: DocumentKind) -> usize {
     SessionState::estimated_analysis_cache_entry_weight(uri, &context)
 }
 
+fn estimated_snapshot_entry_weight(uri: &Uri, text: &str, kind: DocumentKind) -> usize {
+    let mut sizing = SessionState::new();
+    sizing.upsert_text(uri.clone(), 1, text.to_string(), kind);
+    let request = sizing
+        .snapshot_build_request(uri)
+        .expect("sizing document should require analysis");
+    let snapshot = request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .expect("sizing analysis should be accepted");
+    SessionState::estimated_snapshot_cache_entry_weight(uri, &snapshot)
+}
+
 fn assert_default_cache_admits(uri: Uri, text: String, kind: DocumentKind) {
     let mut store = SessionState::new();
     store.upsert_text(uri.clone(), 1, text, kind);
@@ -3679,6 +3686,53 @@ fn assert_default_cache_admits(uri: Uri, text: String, kind: DocumentKind) {
     assert_eq!(statistics.current_weight, weight);
     assert_eq!(statistics.high_water_weight, weight);
     assert_eq!(statistics.oversized_entries, 0);
+}
+
+#[test]
+fn diagnostic_preparation_touches_the_cache_once() {
+    let uri = Uri::from_str("file:///tmp/single-touch.mmd").unwrap();
+    let mut store = SessionState::new();
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let request = store.snapshot_build_request(&uri).unwrap();
+    let snapshot = request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
+    let inserted = store
+        .commit_built_snapshot_direct_for_test(&request, Arc::clone(&snapshot))
+        .expect("snapshot admission should succeed");
+    drop(inserted);
+
+    let before = store.analysis_cache_statistics();
+    let lease = store
+        .snapshot_lease_for_uri(&uri)
+        .expect("resident snapshot should be acquired");
+    let after_acquire = store.analysis_cache_statistics();
+    assert_eq!(after_acquire.hits, before.hits + 1);
+    assert_eq!(after_acquire.misses, before.misses);
+
+    let preparation = store
+        .prepare_diagnostic_projection_for_snapshot(&lease)
+        .expect("current snapshot should prepare diagnostics");
+    let after_prepare = store.analysis_cache_statistics();
+    assert_eq!(after_prepare.hits, after_acquire.hits);
+    assert_eq!(after_prepare.misses, after_acquire.misses);
+    let DiagnosticProjectionPreparation::Project(projection) = preparation else {
+        panic!("snapshot-only acquisition should require diagnostic projection");
+    };
+    assert!(Arc::ptr_eq(projection.snapshot(), &lease.snapshot));
+
+    let projected = project_snapshot_for_test(&store, Arc::clone(projection.snapshot()));
+    store
+        .commit_diagnostic_reprojection_for_test(&projection, &projected)
+        .expect("current diagnostic projection should commit");
+    let after_commit = store.analysis_cache_statistics();
+    assert_eq!(after_commit.hits, after_acquire.hits);
+    assert_eq!(after_commit.misses, after_acquire.misses);
 }
 
 #[test]
@@ -3717,11 +3771,37 @@ fn weighted_analysis_cache_touches_and_evicts_complete_generations() {
 }
 
 #[test]
-fn oversized_analysis_is_returned_current_without_disturbing_cache_invariants() {
+fn oversized_snapshot_is_request_local_only() {
+    let uri = Uri::from_str("file:///tmp/oversized-snapshot.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+    let snapshot_weight = estimated_snapshot_entry_weight(&uri, text, DocumentKind::Diagram);
+    let mut store = SessionState::with_analysis_cache_budget(snapshot_weight - 1);
+    store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let request = store.snapshot_build_request(&uri).unwrap();
+    let snapshot = request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
+    let weak = Arc::downgrade(&snapshot);
+
+    let lease = store
+        .commit_built_snapshot_direct_for_test(&request, Arc::clone(&snapshot))
+        .expect("an oversized snapshot should remain valid for the current request");
+    drop(snapshot);
+
+    assert_eq!(store.analysis_cache_len(), 0);
+    assert_eq!(store.analysis_cache_total_weight(), 0);
+    assert_eq!(store.analysis_cache_statistics().oversized_entries, 1);
+    assert!(weak.upgrade().is_some());
+    drop(lease);
+    assert!(weak.upgrade().is_none());
+}
+
+#[test]
+fn oversized_complete_retains_snapshot_only_generation() {
     let uri = Uri::from_str("file:///tmp/a.mmd").unwrap();
     let text = "flowchart TD\nA-->B\n";
-    let entry_weight = estimated_entry_weight(&uri, text, DocumentKind::Diagram);
-    let mut store = SessionState::with_analysis_cache_budget(entry_weight - 1);
+    let complete_weight = estimated_entry_weight(&uri, text, DocumentKind::Diagram);
+    let mut store = SessionState::with_analysis_cache_budget(complete_weight - 1);
     store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
     let request = store
         .snapshot_build_request(&uri)
@@ -3730,6 +3810,9 @@ fn oversized_analysis_is_returned_current_without_disturbing_cache_invariants() 
         .build_cancellable(&AnalysisCancellationToken::new())
         .expect("analysis should succeed");
     let weak = Arc::downgrade(&analysis);
+    let snapshot_weight =
+        SessionState::estimated_snapshot_cache_entry_weight(&uri, analysis.as_ref());
+    assert!(snapshot_weight < complete_weight);
 
     let (context, projected) =
         commit_built_snapshot_for_test(&mut store, &request, Arc::clone(&analysis))
@@ -3738,15 +3821,17 @@ fn oversized_analysis_is_returned_current_without_disturbing_cache_invariants() 
     drop(analysis);
 
     assert!(store.is_analysis_context_current(&context));
-    assert_eq!(store.analysis_cache_len(), 0);
-    assert_eq!(store.analysis_cache_total_weight(), 0);
+    assert_eq!(store.analysis_cache_len(), 1);
+    assert_eq!(store.analysis_cache_total_weight(), snapshot_weight);
     let statistics = store.analysis_cache_statistics();
     assert_eq!(statistics.oversized_entries, 1);
-    assert_eq!(statistics.current_weight, 0);
-    assert_eq!(statistics.high_water_weight, 0);
+    assert_eq!(statistics.current_weight, snapshot_weight);
+    assert_eq!(statistics.high_water_weight, snapshot_weight);
     assert!(store.get(&uri).is_some());
     assert!(weak.upgrade().is_some());
     drop(context);
+    assert!(weak.upgrade().is_some());
+    store.remove(&uri);
     assert!(weak.upgrade().is_none());
 }
 
@@ -3793,6 +3878,129 @@ fn cancelled_and_stale_builds_do_not_change_cache_weight_or_eviction_order() {
             store.analysis_cache_total_weight(),
             store.analysis_cache_len(),
             store.analysis_cache_statistics().evictions,
+        ),
+        before
+    );
+}
+
+#[tokio::test]
+async fn duplicate_build_waiter_cannot_resurrect_an_evicted_cache_entry() {
+    let a = Uri::from_str("file:///tmp/duplicate-build-a.mmd").unwrap();
+    let b = Uri::from_str("file:///tmp/duplicate-build-b.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+
+    let mut sizing = SessionState::new();
+    sizing.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let sizing_request = sizing.snapshot_build_request(&a).unwrap();
+    let sizing_snapshot = sizing_request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
+    let budget = SessionState::estimated_snapshot_cache_entry_weight(&a, &sizing_snapshot);
+
+    let mut store = SessionState::with_analysis_cache_budget(budget);
+    store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    store.upsert_text(b.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let executor = store.analysis_executor();
+    let a_request = store.snapshot_build_request(&a).unwrap();
+    let (first, second) = tokio::join!(executor.execute(&a_request), executor.execute(&a_request));
+    let first = first.unwrap();
+    let second = second.unwrap();
+    assert!(Arc::ptr_eq(first.snapshot(), second.snapshot()));
+
+    store
+        .commit_built_snapshot(&a_request, &first)
+        .expect("the first waiter should admit the shared build");
+    assert!(store.has_snapshot(&a));
+
+    let b_request = store.snapshot_build_request(&b).unwrap();
+    let b_analysis = executor.execute(&b_request).await.unwrap();
+    store
+        .commit_built_snapshot(&b_request, &b_analysis)
+        .expect("the newer build should replace the older cache entry");
+    assert!(!store.has_snapshot(&a));
+    assert!(store.has_snapshot(&b));
+    let before = (
+        store.analysis_cache_total_weight(),
+        store.analysis_cache_statistics(),
+    );
+
+    let request_local = store
+        .commit_built_snapshot(&a_request, &second)
+        .expect("the duplicate waiter remains a valid request-local result");
+
+    assert!(Arc::ptr_eq(&request_local.snapshot, second.snapshot()));
+    assert!(!store.has_snapshot(&a));
+    assert!(store.has_snapshot(&b));
+    assert_eq!(
+        (
+            store.analysis_cache_total_weight(),
+            store.analysis_cache_statistics(),
+        ),
+        before
+    );
+}
+
+#[tokio::test]
+async fn cache_hit_consumes_a_new_build_outputs_admission_claim() {
+    let a = Uri::from_str("file:///tmp/cache-hit-build-a.mmd").unwrap();
+    let b = Uri::from_str("file:///tmp/cache-hit-build-b.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+
+    let mut sizing = SessionState::new();
+    sizing.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let sizing_request = sizing.snapshot_build_request(&a).unwrap();
+    let sizing_snapshot = sizing_request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
+    let budget = SessionState::estimated_snapshot_cache_entry_weight(&a, &sizing_snapshot);
+
+    let mut store = SessionState::with_analysis_cache_budget(budget);
+    store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    store.upsert_text(b.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let executor = store.analysis_executor();
+    let a_request = store.snapshot_build_request(&a).unwrap();
+
+    let initial = executor.execute(&a_request).await.unwrap();
+    let initial_snapshot = Arc::clone(initial.snapshot());
+    store
+        .commit_built_snapshot(&a_request, &initial)
+        .expect("the initial build should enter the cache");
+    drop(initial);
+
+    let (first, second) = tokio::join!(executor.execute(&a_request), executor.execute(&a_request));
+    let first = first.unwrap();
+    let second = second.unwrap();
+    assert!(Arc::ptr_eq(first.snapshot(), second.snapshot()));
+    assert!(!Arc::ptr_eq(&initial_snapshot, first.snapshot()));
+    let cached = store
+        .commit_built_snapshot(&a_request, &first)
+        .expect("the new build should observe the resident snapshot");
+    assert!(Arc::ptr_eq(&cached.snapshot, &initial_snapshot));
+    drop(cached);
+
+    let b_request = store.snapshot_build_request(&b).unwrap();
+    let b_analysis = executor.execute(&b_request).await.unwrap();
+    store
+        .commit_built_snapshot(&b_request, &b_analysis)
+        .expect("the newer URI should evict the resident snapshot");
+    assert!(!store.has_snapshot(&a));
+    assert!(store.has_snapshot(&b));
+    let before = (
+        store.analysis_cache_total_weight(),
+        store.analysis_cache_statistics(),
+    );
+
+    let request_local = store
+        .commit_built_snapshot(&a_request, &second)
+        .expect("the duplicate new-build waiter remains request-local");
+
+    assert!(Arc::ptr_eq(&request_local.snapshot, second.snapshot()));
+    assert!(!store.has_snapshot(&a));
+    assert!(store.has_snapshot(&b));
+    assert_eq!(
+        (
+            store.analysis_cache_total_weight(),
+            store.analysis_cache_statistics(),
         ),
         before
     );
@@ -3883,35 +4091,39 @@ async fn larger_diagnostic_reprojection_can_be_current_without_being_cached() {
     let entry_weight = estimated_entry_weight(&uri, text, DocumentKind::Diagram);
     let mut store = SessionState::with_analysis_cache_budget(entry_weight);
     store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
-    store.snapshot_context(&uri).unwrap();
+    let initial = store.snapshot_context(&uri).unwrap();
+    let snapshot_weight =
+        SessionState::estimated_snapshot_cache_entry_weight(&uri, initial.snapshot.as_ref());
     let _ = store.begin_analyzer_options(default_lsp_analysis_options().with_rule_config(
         AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
     ));
     let request = reprojection_for(&store, &uri);
     let executor = store.analysis_executor();
     let first = executor
-        .execute_diagnostic_reprojection(&request)
+        .execute_diagnostic_reprojection(request.request())
         .await
         .unwrap();
     let second = executor
-        .execute_diagnostic_reprojection(&request)
+        .execute_diagnostic_reprojection(request.request())
         .await
         .unwrap();
     assert!(first.shares_result_with(&second));
     assert_eq!(executor.reprojection_count(), 1);
 
     let first_context = store
-        .commit_diagnostic_reprojection_context(&first)
+        .commit_diagnostic_reprojection_context(&request, &first)
         .expect("valid projected context must be returned even when oversized");
     let second_context = store
-        .commit_diagnostic_reprojection_context(&second)
+        .commit_diagnostic_reprojection_context(&request, &second)
         .expect("an equivalent waiter must receive the current uncached result");
 
     assert!(store.is_analysis_context_current(&first_context));
     assert!(store.is_analysis_context_current(&second_context));
     assert!(!first_context.analysis_payload().diagnostics.is_empty());
-    assert_eq!(store.analysis_cache_len(), 0);
-    assert_eq!(store.analysis_cache_total_weight(), 0);
+    assert_eq!(store.analysis_cache_len(), 1);
+    assert_eq!(store.analysis_cache_total_weight(), snapshot_weight);
+    assert!(store.has_snapshot(&uri));
+    assert!(!store.has_analysis_payload(&uri));
     assert!(store.get(&uri).is_some());
 }
 

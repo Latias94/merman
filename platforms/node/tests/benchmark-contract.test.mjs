@@ -154,7 +154,7 @@ const RUNTIME_CATALOG = {
     { id: "operation-metadata", version: 1 },
   ],
   metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
-  option_group_ids: ["environment", "host_theme", "layout", "svg"],
+  option_group_ids: ["environment", "layout", "presentation", "svg"],
   constructor_service_ids: [],
   capabilities: {
     capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],

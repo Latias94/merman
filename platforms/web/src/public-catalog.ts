@@ -47,7 +47,7 @@ export const SUPPORTED_THEMES = [
 
 export type ThemeName = (typeof SUPPORTED_THEMES)[number];
 
-export const SUPPORTED_HOST_THEME_PRESETS = [
+export const BUNDLED_THEME_PRESETS = [
   "editor-light",
   "editor-dark",
   "one-dark",
@@ -57,7 +57,7 @@ export const SUPPORTED_HOST_THEME_PRESETS = [
   "ayu-dark",
 ] as const;
 
-export type HostThemePresetName = (typeof SUPPORTED_HOST_THEME_PRESETS)[number];
+export type BundledThemePresetName = (typeof BUNDLED_THEME_PRESETS)[number];
 
 export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
 
@@ -239,10 +239,10 @@ export function isThemeName(theme: string): theme is ThemeName {
   return (SUPPORTED_THEMES as readonly string[]).includes(theme);
 }
 
-export function isHostThemePresetName(
+export function isBundledThemePresetName(
   preset: string
-): preset is HostThemePresetName {
-  return (SUPPORTED_HOST_THEME_PRESETS as readonly string[]).includes(preset);
+): preset is BundledThemePresetName {
+  return (BUNDLED_THEME_PRESETS as readonly string[]).includes(preset);
 }
 
 export function isDiagramType(diagram: string): diagram is DiagramType {
@@ -296,8 +296,8 @@ export function normalizeThemeName(theme: string | null | undefined): ThemeName 
   return theme && isThemeName(theme) ? theme : "default";
 }
 
-export function normalizeHostThemePresetName(
+export function normalizeBundledThemePresetName(
   preset: string | null | undefined
-): HostThemePresetName | null {
-  return preset && isHostThemePresetName(preset) ? preset : null;
+): BundledThemePresetName | null {
+  return preset && isBundledThemePresetName(preset) ? preset : null;
 }

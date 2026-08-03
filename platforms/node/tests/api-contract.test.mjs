@@ -123,7 +123,7 @@ function runtimeCatalog(overrides = {}) {
       { id: "operation-metadata", version: 1 },
     ],
     metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
-    option_group_ids: ["environment", "host_theme", "layout", "svg"],
+    option_group_ids: ["environment", "layout", "presentation", "svg"],
     constructor_service_ids: [],
     capabilities: {
       capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
@@ -805,7 +805,7 @@ test("runtime catalog follows descriptor-owned SVG compiled prerequisites", asyn
     catalog.capabilities.capability_ids = [operation.capability];
     catalog.capabilities.output_ids = [operation.output];
     catalog.capabilities.operation_ids = [operation.id, "semantic-json"].sort();
-    catalog.option_group_ids = ["environment", "host_theme", "layout", "svg"];
+    catalog.option_group_ids = ["environment", "layout", "presentation", "svg"];
     if (operation.id === "jpeg") catalog.option_group_ids.push("jpeg", "raster");
     if (operation.id === "pdf") catalog.option_group_ids.push("pdf");
     if (operation.id === "png") catalog.option_group_ids.push("raster");
@@ -897,7 +897,7 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
   futureOutput.capabilities.capability_ids = ["future-image"];
   futureOutput.capabilities.output_ids = ["future-image"];
   futureOutput.capabilities.operation_ids = ["future-render", "semantic-json"];
-  futureOutput.option_group_ids = ["environment", "host_theme", "layout", "svg"];
+  futureOutput.option_group_ids = ["environment", "layout", "presentation", "svg"];
   futureOutput.output_contracts = [{
     id: "future-image",
     media_type: "image/future",
@@ -947,7 +947,7 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
   invalidCatalogs.push(wrongRequiredPayloadVersion);
 
   const missingKnownOptionGroup = runtimeCatalog();
-  missingKnownOptionGroup.option_group_ids = ["environment", "host_theme", "layout"];
+  missingKnownOptionGroup.option_group_ids = ["environment", "layout", "presentation"];
   invalidCatalogs.push(missingKnownOptionGroup);
 
   const unavailableKnownOptionGroup = runtimeCatalog();

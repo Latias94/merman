@@ -1,20 +1,20 @@
 import { create } from "zustand";
+import type { ThemeName } from "@mermanjs/web";
+import type { DiagramFont } from "../lib/diagram-font.ts";
+import { DEFAULT_MERMAID_CONFIG } from "../lib/mermaid-config.ts";
 import type {
-  HostThemePresetName,
-  ThemeName,
-} from "@mermanjs/web";
-import type { DiagramFont } from "@/src/lib/diagram-font";
-import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
-import type { MermanTextMeasurementMode } from "@/src/runtime/merman-core";
+  MermanSvgPipeline,
+  MermanTextMeasurementMode,
+} from "../runtime/merman-core.ts";
 
 export type Theme = ThemeName;
-export type HostThemePreset = "none" | HostThemePresetName;
 export type UITheme = "light" | "dark" | "system";
 export type ResolvedUITheme = Exclude<UITheme, "system">;
 export type EditorMode = "code" | "config";
 export type PreviewMode = "svg" | "ascii" | "compare" | "diagnostics";
 export type WorkspacePane = "editor" | "preview";
 export type TextMeasurementMode = MermanTextMeasurementMode;
+export type SvgPipeline = MermanSvgPipeline;
 export type { DiagramFont };
 
 export interface AppState {
@@ -29,8 +29,12 @@ export interface AppState {
   // Diagram presentation
   diagramTheme: Theme;
   setDiagramTheme: (theme: Theme) => void;
-  hostThemePreset: HostThemePreset;
-  setHostThemePreset: (preset: HostThemePreset) => void;
+  presentationThemePresetId: string | null;
+  setPresentationThemePresetId: (presetId: string | null) => void;
+  presentationProfileId: string | null;
+  setPresentationProfileId: (profileId: string | null) => void;
+  svgPipeline: SvgPipeline;
+  setSvgPipeline: (pipeline: SvgPipeline) => void;
   textMeasurementMode: TextMeasurementMode;
   setTextMeasurementMode: (mode: TextMeasurementMode) => void;
   diagramFont: DiagramFont;
@@ -118,14 +122,15 @@ export const useAppStore = create<AppState>((set) => ({
 
   // Diagram presentation
   diagramTheme: "default",
-  setDiagramTheme: (diagramTheme) =>
-    set({ diagramTheme, hostThemePreset: "none" }),
-  hostThemePreset: "none",
-  setHostThemePreset: (hostThemePreset) =>
-    set((state) => ({
-      hostThemePreset,
-      diagramTheme: hostThemePreset === "none" ? state.diagramTheme : "default",
-    })),
+  setDiagramTheme: (diagramTheme) => set({ diagramTheme }),
+  presentationThemePresetId: null,
+  setPresentationThemePresetId: (presentationThemePresetId) =>
+    set({ presentationThemePresetId }),
+  presentationProfileId: null,
+  setPresentationProfileId: (presentationProfileId) =>
+    set({ presentationProfileId }),
+  svgPipeline: "parity",
+  setSvgPipeline: (svgPipeline) => set({ svgPipeline }),
   textMeasurementMode: "browser",
   setTextMeasurementMode: (textMeasurementMode) => set({ textMeasurementMode }),
   diagramFont: "trebuchet",

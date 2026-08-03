@@ -1142,8 +1142,8 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
     assert!(!change.affects_snapshots());
     assert_eq!(
         server.session.probe().cache_state(&uri).await,
-        (false, false),
-        "a snapshot-only read keeps no complete cache entry; diagnostic-only configuration defers projection to demand"
+        (true, false),
+        "diagnostic-only configuration retains the parsed snapshot and defers projection to demand"
     );
     assert_eq!(
         server.session.analysis_execution_count(),

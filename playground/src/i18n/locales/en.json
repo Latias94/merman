@@ -8,7 +8,10 @@
     "examples": "Examples",
     "theme": "Theme",
     "mermaidTheme": "Mermaid themes",
-    "hostTheme": "Host presets",
+    "presentation": "Presentation",
+    "presentationTheme": "Presentation theme",
+    "presentationProfile": "Presentation profile",
+    "svgOutput": "SVG output",
     "renderSettings": "Render settings",
     "textMeasurement": "Text measurement",
     "font": "Font",
@@ -295,6 +298,9 @@
     "editorLanguage": "Editor",
     "renderTime": "Render",
     "theme": "Theme",
+    "presentationTheme": "Presentation theme",
+    "presentationProfile": "Profile",
+    "svgOutput": "SVG",
     "measurement": "Measure",
     "font": "Font",
     "ready": "Ready",
@@ -313,7 +319,7 @@
     "base": "Base",
     "system": "System"
   },
-  "hostThemes": {
+  "presentationThemes": {
     "none": "None",
     "editor-light": "Editor Light",
     "editor-dark": "Editor Dark",
@@ -322,6 +328,24 @@
     "gruvbox-dark": "Gruvbox Dark",
     "ayu-light": "Ayu Light",
     "ayu-dark": "Ayu Dark"
+  },
+  "presentationProfiles": {
+    "none": "None",
+    "merman-modern": "Merman Modern"
+  },
+  "svgPipelines": {
+    "parity": "Mermaid parity",
+    "readable": "Readable SVG",
+    "resvg-safe": "PNG-safe SVG"
+  },
+  "presentationStatus": {
+    "none": "No presentation profile selected.",
+    "pending": "Checking {{profile}} for the current render.",
+    "fully-available": "{{profile}} is fully available.",
+    "missing-but-inapplicable": "{{profile}} is available for this diagram; missing capabilities are not applicable ({{capabilities}}).",
+    "inactive-by-explicit-renderer": "{{profile}} is available with the selected renderer; unavailable default-renderer features are inactive ({{capabilities}}).",
+    "blocked-for-current-operation": "{{profile}} is blocked for this render by missing capabilities: {{capabilities}}.",
+    "unknown-future-id": "{{profile}} is not in this runtime catalog; the ID is preserved for a future runtime."
   },
   "uiThemes": {
     "light": "Light",

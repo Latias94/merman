@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 
 /// First public schema for the artifact-owned runtime catalog.
 pub const RUNTIME_CATALOG_SCHEMA_VERSION: u32 = 1;
+pub const PRESENTATION_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK: &str = "host-callback";
 pub const TEXT_MEASUREMENT_PROVIDER_VENDORED: &str = "vendored";
 
@@ -15,7 +16,6 @@ static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
-static SUPPORTED_HOST_THEME_PRESETS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 #[cfg(feature = "analysis")]
 static LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
@@ -219,6 +219,44 @@ pub struct RuleCatalogEntry {
     pub fixable: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct BindingPresentationCatalog {
+    schema_version: u32,
+    theme_presets: Vec<BindingPresentationThemePreset>,
+    profiles: Vec<BindingPresentationProfile>,
+}
+
+#[derive(Debug, Serialize)]
+struct BindingPresentationThemePreset {
+    id: &'static str,
+    appearance: &'static str,
+    fully_available: bool,
+    missing_capability_ids: Vec<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+struct BindingPresentationProfile {
+    id: &'static str,
+    fully_available: bool,
+    missing_capability_ids: Vec<&'static str>,
+    aspects: Vec<BindingPresentationAspect>,
+}
+
+#[derive(Debug, Serialize)]
+struct BindingPresentationAspect {
+    id: &'static str,
+    applicability: BindingPresentationApplicability,
+    required_capability_id: Option<&'static str>,
+    available: bool,
+    missing_capability_ids: Vec<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+struct BindingPresentationApplicability {
+    kind: &'static str,
+    family_id: Option<&'static str>,
+}
+
 impl ValidatedArtifactContract {
     /// Produces the exact open-string capability DTO advertised by this transport.
     #[must_use]
@@ -306,7 +344,7 @@ impl ValidatedArtifactContract {
                 self.target().id()
             )));
         }
-        collect_metadata(key)
+        collect_metadata(self, key)
     }
 }
 
@@ -442,14 +480,85 @@ pub fn supported_themes() -> &'static [&'static str] {
     merman::supported_themes()
 }
 
-pub fn supported_host_theme_presets() -> &'static [&'static str] {
+fn presentation_catalog_for(
+    artifact_contract: &ValidatedArtifactContract,
+) -> BindingPresentationCatalog {
+    if !artifact_contract.exposes_capability(crate::CapabilityKey::Svg) {
+        return BindingPresentationCatalog {
+            schema_version: PRESENTATION_CATALOG_SCHEMA_VERSION,
+            theme_presets: Vec::new(),
+            profiles: Vec::new(),
+        };
+    }
+
     #[cfg(feature = "svg")]
     {
-        merman::supported_host_theme_presets()
+        let theme_presets = merman::svg::theme_preset_descriptors()
+            .iter()
+            .map(|descriptor| BindingPresentationThemePreset {
+                id: descriptor.id(),
+                appearance: descriptor.appearance().as_str(),
+                fully_available: true,
+                missing_capability_ids: Vec::new(),
+            })
+            .collect();
+        let profiles = merman::svg::presentation_profile_descriptors()
+            .iter()
+            .map(|descriptor| {
+                let aspects = descriptor
+                    .aspects()
+                    .iter()
+                    .map(|aspect| {
+                        let applicability = aspect.applicability();
+                        let required_capability_id = aspect.required_capability_id();
+                        let available = required_capability_id.is_none_or(|capability_id| {
+                            artifact_contract
+                                .capability_keys()
+                                .any(|capability| capability.id() == capability_id)
+                        });
+                        BindingPresentationAspect {
+                            id: aspect.id(),
+                            applicability: BindingPresentationApplicability {
+                                kind: applicability.kind_id(),
+                                family_id: applicability.family_id(),
+                            },
+                            required_capability_id,
+                            available,
+                            missing_capability_ids: required_capability_id
+                                .filter(|_| !available)
+                                .into_iter()
+                                .collect(),
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let mut missing_capability_ids = aspects
+                    .iter()
+                    .flat_map(|aspect| aspect.missing_capability_ids.iter().copied())
+                    .collect::<Vec<_>>();
+                missing_capability_ids.sort_unstable();
+                missing_capability_ids.dedup();
+                BindingPresentationProfile {
+                    id: descriptor.id(),
+                    fully_available: missing_capability_ids.is_empty(),
+                    missing_capability_ids,
+                    aspects,
+                }
+            })
+            .collect();
+        BindingPresentationCatalog {
+            schema_version: PRESENTATION_CATALOG_SCHEMA_VERSION,
+            theme_presets,
+            profiles,
+        }
     }
+
     #[cfg(not(feature = "svg"))]
     {
-        &[]
+        BindingPresentationCatalog {
+            schema_version: PRESENTATION_CATALOG_SCHEMA_VERSION,
+            theme_presets: Vec::new(),
+            profiles: Vec::new(),
+        }
     }
 }
 
@@ -520,11 +629,10 @@ pub fn supported_themes_json() -> Result<Vec<u8>, BindingError> {
     cached_json(&SUPPORTED_THEMES_JSON, supported_themes)
 }
 
-pub fn supported_host_theme_presets_json() -> Result<Vec<u8>, BindingError> {
-    cached_json(
-        &SUPPORTED_HOST_THEME_PRESETS_JSON,
-        supported_host_theme_presets,
-    )
+fn presentation_catalog_json_for(
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(&presentation_catalog_for(artifact_contract)).map_err(internal_json_error)
 }
 
 pub fn lint_rule_catalog() -> Result<Vec<RuleCatalogEntry>, BindingError> {
@@ -615,13 +723,16 @@ pub fn diagram_family_capabilities_json() -> Result<Vec<u8>, BindingError> {
     Ok(bytes)
 }
 
-fn collect_metadata(key: MetadataKey) -> Result<Vec<u8>, BindingError> {
+fn collect_metadata(
+    artifact_contract: &ValidatedArtifactContract,
+    key: MetadataKey,
+) -> Result<Vec<u8>, BindingError> {
     match key.spec().handler() {
         MetadataHandlerKey::AsciiCapabilities => ascii_capabilities_json(),
         MetadataHandlerKey::DiagramFamilyCapabilities => diagram_family_capabilities_json(),
         MetadataHandlerKey::LintRuleCatalog => lint_rule_catalog_json(),
+        MetadataHandlerKey::PresentationCatalog => presentation_catalog_json_for(artifact_contract),
         MetadataHandlerKey::SupportedDiagrams => supported_diagrams_json(),
-        MetadataHandlerKey::SupportedHostThemePresets => supported_host_theme_presets_json(),
         MetadataHandlerKey::SupportedThemes => supported_themes_json(),
     }
 }
@@ -1193,22 +1304,136 @@ mod tests {
     }
 
     #[test]
-    fn supported_host_theme_presets_exposes_render_theme_surface() {
-        if cfg!(feature = "svg") {
+    fn presentation_catalog_projects_the_artifact_surface() {
+        let empty_contract = CompiledBindingSurface::current()
+            .validate(
+                TransportExposure::for_target(TargetKey::Native)
+                    .with_operations([crate::OperationKey::SemanticJson])
+                    .expect("semantic operation must be declarable"),
+            )
+            .expect("semantic-only artifact contract must be coherent");
+        let empty: Value =
+            serde_json::from_slice(&presentation_catalog_json_for(&empty_contract).unwrap())
+                .unwrap();
+        assert_eq!(
+            empty,
+            serde_json::json!({
+                "schema_version": PRESENTATION_CATALOG_SCHEMA_VERSION,
+                "theme_presets": [],
+                "profiles": [],
+            })
+        );
+
+        #[cfg(feature = "svg")]
+        {
+            let no_elk = CompiledBindingSurface::current()
+                .validate(
+                    TransportExposure::for_target(TargetKey::Native)
+                        .with_operations([crate::OperationKey::Svg])
+                        .expect("SVG operation must be declarable"),
+                )
+                .expect("SVG artifact contract without ELK exposure must be coherent");
+            let no_elk: Value =
+                serde_json::from_slice(&presentation_catalog_json_for(&no_elk).unwrap()).unwrap();
             assert_eq!(
-                supported_host_theme_presets(),
-                &[
+                no_elk["schema_version"],
+                PRESENTATION_CATALOG_SCHEMA_VERSION
+            );
+            assert_eq!(
+                no_elk["theme_presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|preset| preset["id"].as_str().unwrap())
+                    .collect::<Vec<_>>(),
+                vec![
                     "editor-light",
                     "editor-dark",
                     "one-dark",
                     "gruvbox-light",
                     "gruvbox-dark",
                     "ayu-light",
-                    "ayu-dark"
+                    "ayu-dark",
                 ]
             );
-        } else {
-            assert!(supported_host_theme_presets().is_empty());
+            assert!(
+                no_elk["theme_presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|preset| preset["fully_available"] == true
+                        && preset["missing_capability_ids"] == serde_json::json!([]))
+            );
+            let profile = &no_elk["profiles"][0];
+            assert_eq!(profile["id"], "merman-modern");
+            assert_eq!(profile["fully_available"], false);
+            assert_eq!(
+                profile["missing_capability_ids"],
+                serde_json::json!(["layout-elk"])
+            );
+            assert_eq!(
+                profile["aspects"],
+                serde_json::json!([
+                    {
+                        "id": "global-defaults",
+                        "applicability": {
+                            "kind": "all-diagrams",
+                            "family_id": null,
+                        },
+                        "required_capability_id": null,
+                        "available": true,
+                        "missing_capability_ids": [],
+                    },
+                    {
+                        "id": "flowchart-svg",
+                        "applicability": {
+                            "kind": "family",
+                            "family_id": "flowchart",
+                        },
+                        "required_capability_id": null,
+                        "available": true,
+                        "missing_capability_ids": [],
+                    },
+                    {
+                        "id": "flowchart-elk-default",
+                        "applicability": {
+                            "kind": "family",
+                            "family_id": "flowchart",
+                        },
+                        "required_capability_id": "layout-elk",
+                        "available": false,
+                        "missing_capability_ids": ["layout-elk"],
+                    },
+                ])
+            );
+
+            let empty_again: Value =
+                serde_json::from_slice(&presentation_catalog_json_for(&empty_contract).unwrap())
+                    .unwrap();
+            assert_eq!(empty_again, empty);
+
+            if merman::svg::layout_elk_available() {
+                let full = CompiledBindingSurface::current()
+                    .validate(
+                        TransportExposure::for_target(TargetKey::Native)
+                            .with_operations([crate::OperationKey::Svg])
+                            .and_then(|exposure| {
+                                exposure.with_supplemental_capabilities([
+                                    crate::CapabilityKey::LayoutElk,
+                                ])
+                            })
+                            .expect("SVG and ELK exposure must be declarable"),
+                    )
+                    .expect("SVG artifact contract with ELK must be coherent");
+                let full: Value =
+                    serde_json::from_slice(&presentation_catalog_json_for(&full).unwrap()).unwrap();
+                assert_eq!(full["profiles"][0]["fully_available"], true);
+                assert_eq!(
+                    full["profiles"][0]["missing_capability_ids"],
+                    serde_json::json!([])
+                );
+                assert_eq!(full["profiles"][0]["aspects"][2]["available"], true);
+            }
         }
     }
 
@@ -1314,8 +1539,10 @@ mod tests {
         let ascii_capabilities: Value =
             serde_json::from_slice(&ascii_capabilities_json().unwrap()).unwrap();
         let themes: Value = serde_json::from_slice(&supported_themes_json().unwrap()).unwrap();
-        let host_presets: Value =
-            serde_json::from_slice(&supported_host_theme_presets_json().unwrap()).unwrap();
+        let presentation_catalog: Value = serde_json::from_slice(
+            &presentation_catalog_json_for(&full_native_contract()).unwrap(),
+        )
+        .unwrap();
         let family_capabilities: Value =
             serde_json::from_slice(&diagram_family_capabilities_json().unwrap()).unwrap();
         assert!(
@@ -1348,15 +1575,12 @@ mod tests {
                 .unwrap()
                 .contains(&Value::String("default".to_string()))
         );
-        assert!(host_presets.is_array());
-        if cfg!(feature = "svg") {
-            assert!(
-                host_presets
-                    .as_array()
-                    .unwrap()
-                    .contains(&Value::String("one-dark".to_string()))
-            );
-        }
+        assert_eq!(
+            presentation_catalog["schema_version"],
+            PRESENTATION_CATALOG_SCHEMA_VERSION
+        );
+        assert!(presentation_catalog["theme_presets"].is_array());
+        assert!(presentation_catalog["profiles"].is_array());
         let flowchart = family_capabilities
             .as_array()
             .unwrap()
@@ -1433,8 +1657,8 @@ mod tests {
                 MetadataKey::AsciiCapabilities => ascii_capabilities_json(),
                 MetadataKey::DiagramFamilyCapabilities => diagram_family_capabilities_json(),
                 MetadataKey::LintRuleCatalog => lint_rule_catalog_json(),
+                MetadataKey::PresentationCatalog => presentation_catalog_json_for(&contract),
                 MetadataKey::SupportedDiagrams => supported_diagrams_json(),
-                MetadataKey::SupportedHostThemePresets => supported_host_theme_presets_json(),
                 MetadataKey::SupportedThemes => supported_themes_json(),
             };
             match (contract.metadata_json(id), expected) {
@@ -1473,9 +1697,9 @@ mod tests {
     }
 
     #[test]
-    fn artifact_metadata_rejects_unknown_catalogs() {
+    fn artifact_metadata_rejects_removed_host_theme_catalog() {
         let error = full_native_contract()
-            .metadata_json("unknown-catalog")
+            .metadata_json("supported-host-theme-presets")
             .unwrap_err();
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
