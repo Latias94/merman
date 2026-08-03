@@ -354,7 +354,7 @@
   ],
   "playground": {
     "workspace": "playground",
-    "packageJsonSha256": "ccbfd748aad30f75e42bdfd1f0469ab357e03ac2e34f9d2ca954fdbb6780c91c",
+    "packageJsonSha256": "993995227b367ece63b7c20d21e80e9e2d1639307ace6b4b9f752a38bbc6a140",
     "packageLockSha256": "6a49b268c3086de3d83ca53f9e074c55259358c266de7b4e14f93d799d28ec21"
   },
   "referenceCli": {
