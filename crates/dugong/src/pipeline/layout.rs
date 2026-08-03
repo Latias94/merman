@@ -414,8 +414,7 @@ fn run_layout(
             prev_y += rank_sep;
         }
     }
-    work_control.charge(bk_position_work_units(g)?)?;
-    let xs = position::bk::position_x_with_layering(g, &layering);
+    let xs = position::bk::position_x_with_layering_controlled(g, &layering, work_control)?;
     work_control.charge(g.node_count())?;
     g.for_each_node_mut(|id, n| {
         n.x = Some(xs.get(id).copied().unwrap_or(0.0));
@@ -645,17 +644,6 @@ fn edge_route_materialization_work_units(
     })
 }
 
-fn bk_position_work_units(
-    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
-) -> Result<usize, WorkError> {
-    let linear = checked_mul(checked_add(g.node_count(), g.edge_count())?, 10)?;
-    let sortable = checked_add(
-        checked_n_log_n(g.node_count())?,
-        checked_n_log_n(g.edge_count())?,
-    )?;
-    checked_add(linear, checked_mul(sortable, 4)?)
-}
-
 /// Writes proxy ranks back before retiring every proxy through one graph-wide removal pass.
 ///
 /// Generated proxies retain the upstream writeback order. Caller-provided defensive leftovers are
@@ -762,21 +750,6 @@ mod tests {
             compound: true,
             ..Default::default()
         })
-    }
-
-    #[test]
-    fn sparse_bk_work_stays_below_the_constrained_profile_budget() {
-        let mut graph = test_graph();
-        for index in 0..256 {
-            graph.set_node(format!("n{index}"), NodeLabel::default());
-            if index > 0 {
-                graph.set_edge(format!("n{}", index - 1), format!("n{index}"));
-            }
-        }
-
-        let work = bk_position_work_units(&graph).unwrap();
-        assert!(work > graph.node_count() + graph.edge_count());
-        assert!(work < 125_000);
     }
 
     #[test]

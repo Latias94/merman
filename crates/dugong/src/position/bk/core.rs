@@ -5,7 +5,8 @@
 //! Note: this file is being split into submodules to keep individual algorithms focused.
 
 use crate::graphlib::{Graph, GraphOptions};
-use crate::{EdgeLabel, GraphLabel, NodeLabel};
+use crate::work::{ceil_log2, checked_add, checked_mul};
+use crate::{EdgeLabel, GraphLabel, NodeLabel, NoopWorkControl, WorkControl, WorkError};
 use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
 use std::collections::{BTreeMap, BTreeSet};
@@ -360,6 +361,43 @@ const ORIENTATIONS: [Orientation; 4] = [
     },
 ];
 
+fn charge_nonzero(work_control: &mut dyn WorkControl, units: usize) -> Result<(), WorkError> {
+    if units == 0 {
+        return Ok(());
+    }
+    work_control.charge(units)
+}
+
+fn local_sort_work(degree: usize) -> Result<usize, WorkError> {
+    if degree <= 1 {
+        return Ok(0);
+    }
+    // Each vertical-alignment sort is local to one node's adjacency list. There is no graph-wide
+    // node or edge sort in BK positioning.
+    checked_mul(degree, ceil_log2(degree))
+}
+
+fn layered_adjacency_work(
+    layering: &[Vec<usize>],
+    predecessors: &[Vec<usize>],
+    successors: &[Vec<usize>],
+) -> Result<(usize, usize, usize, usize), WorkError> {
+    layering.iter().flatten().try_fold(
+        (0usize, 0usize, 0usize, 0usize),
+        |(predecessor_entries, successor_entries, predecessor_sort_work, successor_sort_work),
+         &node| {
+            let predecessor_degree = predecessors[node].len();
+            let successor_degree = successors[node].len();
+            Ok((
+                checked_add(predecessor_entries, predecessor_degree)?,
+                checked_add(successor_entries, successor_degree)?,
+                checked_add(predecessor_sort_work, local_sort_work(predecessor_degree)?)?,
+                checked_add(successor_sort_work, local_sort_work(successor_degree)?)?,
+            ))
+        },
+    )
+}
+
 struct BkWorkspace<'a> {
     g: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
     layering: Vec<Vec<usize>>,
@@ -383,6 +421,12 @@ struct BkWorkspace<'a> {
     block_x: Vec<f64>,
     scheduled: Vec<bool>,
     stack: Vec<(usize, bool)>,
+    layer_entries: usize,
+    adjacent_layer_pairs: usize,
+    predecessor_entries: usize,
+    successor_entries: usize,
+    predecessor_sort_work: usize,
+    successor_sort_work: usize,
 }
 
 impl<'a> BkWorkspace<'a> {
@@ -390,9 +434,35 @@ impl<'a> BkWorkspace<'a> {
         g: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
         source_layering: &[Vec<String>],
     ) -> Self {
+        let mut work_control = NoopWorkControl;
+        Self::new_controlled(g, source_layering, &mut work_control)
+            .expect("the checked no-op Dugong work control cannot reject BK setup")
+    }
+
+    fn new_controlled(
+        g: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        source_layering: &[Vec<String>],
+        work_control: &mut dyn WorkControl,
+    ) -> Result<Self, WorkError> {
+        charge_nonzero(work_control, source_layering.len())?;
+        let source_layer_entries = source_layering
+            .iter()
+            .try_fold(0usize, |total, layer| checked_add(total, layer.len()))?;
+        let edge_scan_entries = if g.is_directed() {
+            g.edge_count()
+        } else {
+            checked_mul(g.edge_count(), 2)?
+        };
+        charge_nonzero(
+            work_control,
+            checked_add(
+                checked_add(source_layering.len(), source_layer_entries)?,
+                edge_scan_entries,
+            )?,
+        )?;
+
+        let mut required_graph_slots = 0usize;
         let mut layering: Vec<Vec<usize>> = Vec::with_capacity(source_layering.len());
-        let mut nodes: Vec<BkNode> = Vec::new();
-        let mut graph_to_local: Vec<usize> = Vec::new();
 
         for source_layer in source_layering {
             let mut layer: Vec<usize> = Vec::with_capacity(source_layer.len());
@@ -400,35 +470,46 @@ impl<'a> BkWorkspace<'a> {
                 let Some(graph_ix) = g.node_ix(id) else {
                     continue;
                 };
-                if graph_ix >= graph_to_local.len() {
-                    graph_to_local.resize(graph_ix + 1, NONE);
-                }
+                required_graph_slots = required_graph_slots.max(checked_add(graph_ix, 1)?);
+                layer.push(graph_ix);
+            }
+            layering.push(layer);
+        }
 
-                let local_ix = graph_to_local[graph_ix];
+        charge_nonzero(
+            work_control,
+            checked_add(required_graph_slots, source_layer_entries)?,
+        )?;
+        let mut graph_to_local = vec![NONE; required_graph_slots];
+        let mut nodes: Vec<BkNode> = Vec::with_capacity(source_layer_entries.min(g.node_count()));
+
+        for layer in &mut layering {
+            for graph_ix in layer {
+                let local_ix = graph_to_local[*graph_ix];
                 if local_ix != NONE {
-                    layer.push(local_ix);
+                    *graph_ix = local_ix;
                     continue;
                 }
 
-                let Some(label) = g.node_label_by_ix(graph_ix) else {
-                    continue;
-                };
+                let label = g
+                    .node_label_by_ix(*graph_ix)
+                    .expect("a live graph node index must retain its label");
 
                 let local_ix = nodes.len();
-                graph_to_local[graph_ix] = local_ix;
+                graph_to_local[*graph_ix] = local_ix;
                 nodes.push(BkNode {
-                    graph_ix,
+                    graph_ix: *graph_ix,
                     order: label.order,
                     metrics: SepNodeMetrics::from(label),
                     is_border: label.dummy.as_deref() == Some("border"),
                     border_type: BorderType::from_label(label),
                 });
-                layer.push(local_ix);
+                *graph_ix = local_ix;
             }
-            layering.push(layer);
         }
 
         let node_count = nodes.len();
+        charge_nonzero(work_control, node_count)?;
         let mut predecessors = vec![Vec::new(); node_count];
         let mut successors = vec![Vec::new(); node_count];
         let mut first_predecessor = vec![None; node_count];
@@ -517,7 +598,18 @@ impl<'a> BkWorkspace<'a> {
             });
         }
 
-        Self {
+        let layer_entries = layering
+            .iter()
+            .try_fold(0usize, |total, layer| checked_add(total, layer.len()))?;
+        let adjacent_layer_pairs = layering.iter().try_fold(0usize, |total, layer| {
+            checked_add(total, layer.len().saturating_sub(1))
+        })?;
+        charge_nonzero(work_control, layer_entries)?;
+        let (predecessor_entries, successor_entries, predecessor_sort_work, successor_sort_work) =
+            layered_adjacency_work(&layering, &predecessors, &successors)?;
+        charge_nonzero(work_control, node_count)?;
+
+        Ok(Self {
             g,
             layering,
             nodes,
@@ -540,23 +632,106 @@ impl<'a> BkWorkspace<'a> {
             block_x: vec![0.0; node_count],
             scheduled: vec![false; node_count],
             stack: Vec::new(),
-        }
+            layer_entries,
+            adjacent_layer_pairs,
+            predecessor_entries,
+            successor_entries,
+            predecessor_sort_work,
+            successor_sort_work,
+        })
     }
 
-    fn run(mut self) -> HashMap<String, f64> {
+    fn run(self) -> HashMap<String, f64> {
+        let mut work_control = NoopWorkControl;
+        self.run_controlled(&mut work_control)
+            .expect("the checked no-op Dugong work control cannot reject BK positioning")
+    }
+
+    fn run_controlled(
+        mut self,
+        work_control: &mut dyn WorkControl,
+    ) -> Result<HashMap<String, f64>, WorkError> {
         if self.nodes.is_empty() {
-            return HashMap::default();
+            return Ok(HashMap::default());
         }
 
+        charge_nonzero(work_control, self.conflict_work_units()?)?;
         self.find_conflicts();
         for orientation in ORIENTATIONS {
+            charge_nonzero(
+                work_control,
+                self.vertical_alignment_work_units(orientation)?,
+            )?;
+            charge_nonzero(work_control, self.neighbor_sort_work_units(orientation))?;
             self.vertical_alignment(orientation);
+            charge_nonzero(work_control, self.horizontal_compaction_work_units()?)?;
             self.horizontal_compaction(orientation);
         }
 
+        charge_nonzero(
+            work_control,
+            checked_mul(self.nodes.len(), ORIENTATIONS.len())?,
+        )?;
         let smallest = self.find_smallest_width_alignment();
+        charge_nonzero(
+            work_control,
+            checked_mul(self.nodes.len(), ORIENTATIONS.len())?,
+        )?;
         self.align_coordinates(smallest);
-        self.balance()
+        charge_nonzero(work_control, self.nodes.len())?;
+        Ok(self.balance())
+    }
+
+    fn conflict_work_units(&self) -> Result<usize, WorkError> {
+        // Type-1 scans layering and predecessors once. Type-2 additionally builds and traverses
+        // its per-layer boundary intervals before its predecessor scan.
+        checked_add(
+            checked_mul(self.layer_entries, 4)?,
+            checked_mul(self.predecessor_entries, 2)?,
+        )
+    }
+
+    fn vertical_alignment_work_units(&self, orientation: Orientation) -> Result<usize, WorkError> {
+        let directional_entries = if orientation.reverse_layers {
+            self.successor_entries
+        } else {
+            self.predecessor_entries
+        };
+        // One workspace reset, one position pass, one node pass, up to two median probes per
+        // layering occurrence, and the selected local adjacency entries. The k log k sort tranche
+        // is charged separately immediately before execution.
+        checked_add(
+            checked_add(self.nodes.len(), checked_mul(self.layer_entries, 4)?)?,
+            directional_entries,
+        )
+    }
+
+    fn neighbor_sort_work_units(&self, orientation: Orientation) -> usize {
+        if orientation.reverse_layers {
+            self.successor_sort_work
+        } else {
+            self.predecessor_sort_work
+        }
+    }
+
+    #[cfg(test)]
+    fn total_neighbor_sort_work_units(&self) -> Result<usize, WorkError> {
+        checked_mul(
+            checked_add(self.predecessor_sort_work, self.successor_sort_work)?,
+            2,
+        )
+    }
+
+    fn horizontal_compaction_work_units(&self) -> Result<usize, WorkError> {
+        // Compaction builds and traverses a block graph from workspace nodes and adjacent layer
+        // pairs. Charge both materialization and traversal; it never sorts the complete edge set.
+        checked_mul(
+            checked_add(
+                checked_add(self.nodes.len(), self.layer_entries)?,
+                self.adjacent_layer_pairs,
+            )?,
+            2,
+        )
     }
 
     fn find_conflicts(&mut self) {
@@ -954,6 +1129,18 @@ pub fn position_x_with_layering(
     BkWorkspace::new(g, layering).run()
 }
 
+/// Computes BK horizontal coordinates under caller-owned work control.
+///
+/// Setup, conflict discovery, each orientation's local adjacency sorts and compaction, and final
+/// coordinate reconciliation are charged before their derived allocations or work execute.
+pub fn position_x_with_layering_controlled(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    layering: &[Vec<String>],
+    work_control: &mut dyn WorkControl,
+) -> Result<HashMap<String, f64>, WorkError> {
+    BkWorkspace::new_controlled(g, layering, work_control)?.run_controlled(work_control)
+}
+
 pub fn horizontal_compaction(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     layering: &[Vec<String>],
@@ -1207,6 +1394,200 @@ pub fn position_x(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> HashMap<String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct RecordingWorkControl {
+        charges: Vec<usize>,
+        reject_units: Option<usize>,
+    }
+
+    impl WorkControl for RecordingWorkControl {
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.charges.push(units);
+            if self.reject_units == Some(units) {
+                return Err(WorkError::Interrupted);
+            }
+            Ok(())
+        }
+    }
+
+    fn chain_graph(
+        node_count: usize,
+    ) -> (Graph<NodeLabel, EdgeLabel, GraphLabel>, Vec<Vec<String>>) {
+        let mut g = Graph::new(GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: false,
+        });
+        g.set_graph(GraphLabel::default());
+        let mut layering = Vec::with_capacity(node_count);
+        for index in 0..node_count {
+            let id = format!("chain-{index}");
+            g.set_node(
+                id.clone(),
+                NodeLabel {
+                    rank: Some(index as i32),
+                    order: Some(0),
+                    ..Default::default()
+                },
+            );
+            if index > 0 {
+                g.set_edge(format!("chain-{}", index - 1), id.clone());
+            }
+            layering.push(vec![id]);
+        }
+        (g, layering)
+    }
+
+    fn fanout_graph(
+        degrees: &[usize],
+    ) -> (Graph<NodeLabel, EdgeLabel, GraphLabel>, Vec<Vec<String>>) {
+        let mut g = Graph::new(GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: false,
+        });
+        g.set_graph(GraphLabel::default());
+
+        let mut north = Vec::with_capacity(degrees.len());
+        let mut south = Vec::new();
+        for (source_index, &degree) in degrees.iter().enumerate() {
+            let source = format!("source-{source_index}");
+            g.set_node(
+                source.clone(),
+                NodeLabel {
+                    rank: Some(0),
+                    order: Some(source_index),
+                    ..Default::default()
+                },
+            );
+            north.push(source.clone());
+
+            for target_index in 0..degree {
+                let target = format!("target-{source_index}-{target_index}");
+                let order = south.len();
+                g.set_node(
+                    target.clone(),
+                    NodeLabel {
+                        rank: Some(1),
+                        order: Some(order),
+                        ..Default::default()
+                    },
+                );
+                g.set_edge(source.clone(), target.clone());
+                south.push(target);
+            }
+        }
+
+        (g, vec![north, south])
+    }
+
+    #[test]
+    fn neighbor_sort_work_is_zero_for_a_chain() {
+        let (g, layering) = chain_graph(256);
+        let workspace = BkWorkspace::new(&g, &layering);
+
+        assert_eq!(workspace.predecessor_sort_work, 0);
+        assert_eq!(workspace.successor_sort_work, 0);
+        assert_eq!(workspace.total_neighbor_sort_work_units(), Ok(0));
+    }
+
+    #[test]
+    fn neighbor_sort_work_tracks_star_degree_k_log_k() {
+        for degree in [2, 4, 8, 16, 32, 64] {
+            let (g, layering) = fanout_graph(&[degree]);
+            let workspace = BkWorkspace::new(&g, &layering);
+            let one_direction = checked_mul(degree, ceil_log2(degree)).unwrap();
+
+            assert_eq!(workspace.predecessor_sort_work, 0);
+            assert_eq!(workspace.successor_sort_work, one_direction);
+            assert_eq!(
+                workspace.total_neighbor_sort_work_units(),
+                checked_mul(one_direction, 2)
+            );
+        }
+    }
+
+    #[test]
+    fn neighbor_sort_work_sums_local_degrees_instead_of_global_edges() {
+        let cases = [(vec![16], 128), (vec![4, 4, 4, 4], 64), (vec![1; 16], 0)];
+
+        for (degrees, expected) in cases {
+            let (g, layering) = fanout_graph(&degrees);
+            assert_eq!(g.edge_count(), 16);
+            let workspace = BkWorkspace::new(&g, &layering);
+            assert_eq!(workspace.total_neighbor_sort_work_units(), Ok(expected));
+        }
+    }
+
+    #[test]
+    fn neighbor_sort_work_counts_each_layering_occurrence() {
+        let degree = 8;
+        let (g, mut layering) = fanout_graph(&[degree]);
+        layering[0].push("source-0".to_string());
+        let workspace = BkWorkspace::new(&g, &layering);
+        let one_sort = checked_mul(degree, ceil_log2(degree)).unwrap();
+
+        assert_eq!(workspace.successor_sort_work, one_sort * 2);
+        assert_eq!(
+            workspace.total_neighbor_sort_work_units(),
+            checked_mul(one_sort, 4)
+        );
+    }
+
+    #[test]
+    fn controlled_bk_rejects_setup_before_workspace_allocation() {
+        let (g, layering) = fanout_graph(&[8]);
+        let source_entries = layering.iter().map(Vec::len).sum::<usize>();
+        let setup_work = layering.len() + source_entries + g.edge_count();
+        let mut work_control = RecordingWorkControl {
+            reject_units: Some(setup_work),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            position_x_with_layering_controlled(&g, &layering, &mut work_control),
+            Err(WorkError::Interrupted)
+        );
+        assert_eq!(work_control.charges, vec![layering.len(), setup_work]);
+    }
+
+    #[test]
+    fn controlled_bk_rejects_the_successor_sort_tranche_before_positioning() {
+        let degree = 31;
+        let (g, layering) = fanout_graph(&[degree]);
+        let successor_sort_work = local_sort_work(degree).unwrap();
+        let mut work_control = RecordingWorkControl {
+            reject_units: Some(successor_sort_work),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            position_x_with_layering_controlled(&g, &layering, &mut work_control),
+            Err(WorkError::Interrupted)
+        );
+        assert_eq!(work_control.charges.last(), Some(&successor_sort_work));
+        assert_eq!(
+            work_control
+                .charges
+                .iter()
+                .filter(|&&units| units == successor_sort_work)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn controlled_bk_matches_the_compatibility_entry_point() {
+        let (g, layering) = fanout_graph(&[3, 5, 7]);
+        let expected = position_x_with_layering(&g, &layering);
+        let mut work_control = RecordingWorkControl::default();
+
+        let actual = position_x_with_layering_controlled(&g, &layering, &mut work_control).unwrap();
+
+        assert_eq!(actual, expected);
+        assert!(!work_control.charges.is_empty());
+    }
 
     fn fallback_graph(
         intermediate_count: usize,
