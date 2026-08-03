@@ -24,7 +24,7 @@ impl AcceptedResidualPolicy {
             Self::ScopedDomEvidenceCatalog => {
                 "source-backed family- and fixture-scoped DOM evidence catalog"
             }
-            Self::RootParityExact => "compare-all exact fail-closed root residual registry",
+            Self::RootParityExact => "exact fail-closed root residual registry",
         }
     }
 }
@@ -140,6 +140,7 @@ pub(crate) struct CompareRequest {
     pub(crate) root_report_limit: Option<super::RootDeltaReportLimit>,
     pub(crate) flowchart_text_measurer: Option<String>,
     pub(crate) accepted_residual_policy: AcceptedResidualPolicy,
+    pub(crate) defer_root_residual_policy_to_caller: bool,
 }
 
 impl Default for CompareRequest {
@@ -154,11 +155,20 @@ impl Default for CompareRequest {
             root_report_limit: None,
             flowchart_text_measurer: None,
             accepted_residual_policy: AcceptedResidualPolicy::None,
+            defer_root_residual_policy_to_caller: false,
         }
     }
 }
 
 impl CompareRequest {
+    fn applies_direct_root_residual_policy(&self, dom_mode: &str, dom_decimals: u32) -> bool {
+        self.check_dom
+            && self.filter.is_none()
+            && svgdom::DomMode::parse(dom_mode) == svgdom::DomMode::ParityRoot
+            && dom_decimals == 3
+            && !self.defer_root_residual_policy_to_caller
+    }
+
     pub(crate) fn parse_for_fact(
         args: Vec<String>,
         fact: DiagramVerificationFact,
@@ -909,7 +919,19 @@ pub(crate) fn run_canonical_svg_compare(
         observed_operations,
     };
 
-    run_svg_compare(
+    let direct_root_residual_policy = if request
+        .applies_direct_root_residual_policy(dom_mode, dom_decimals)
+    {
+        Some(
+            super::RootParityResidualPolicy::verify(&[fact.diagram], dom_decimals).map_err(
+                |error| CompareRunFailure::without_evidence(XtaskError::SvgCompareFailed(error)),
+            )?,
+        )
+    } else {
+        None
+    };
+    let report_path = request.out_path.clone();
+    let result = run_svg_compare(
         CompareHarnessOptions::new(CompareRunOptions {
             diagram: fact.diagram,
             out_path: request.out_path.clone(),
@@ -1128,7 +1150,61 @@ pub(crate) fn run_canonical_svg_compare(
                 write_notes_section(report, notes);
             }
         },
-    )
+    );
+
+    match direct_root_residual_policy {
+        Some(policy) => {
+            apply_direct_root_residual_policy(fact.diagram, report_path.as_deref(), result, policy)
+        }
+        None => result,
+    }
+}
+
+fn apply_direct_root_residual_policy(
+    diagram: &str,
+    report_path: Option<&Path>,
+    result: CompareRunResult,
+    mut policy: super::RootParityResidualPolicy,
+) -> CompareRunResult {
+    let (evidence, error) = match result {
+        Ok(evidence) => (evidence, None),
+        Err(failure) => (failure.evidence(), Some(failure.into_error())),
+    };
+    let mut failures = Vec::new();
+
+    match error {
+        Some(XtaskError::SvgCompareFailed(message)) => {
+            if let Some(failure) =
+                policy.accept_or_summarize_failure(diagram, &message, report_path)
+            {
+                failures.push(failure);
+            }
+        }
+        Some(error) => return Err(CompareRunFailure::with_evidence(evidence, error)),
+        None => {}
+    }
+
+    match policy.finish() {
+        Ok(finish) => {
+            if !finish.accepted_summaries.is_empty() {
+                println!("\n== accepted root parity residuals ==");
+                for line in finish.accepted_summaries {
+                    println!("{line}");
+                }
+            }
+            failures.extend(finish.failures);
+        }
+        Err(error) => failures.push(error),
+    }
+
+    if failures.is_empty() {
+        Ok(evidence)
+    } else {
+        Err(CompareRunFailure::with_evidence(
+            evidence,
+            XtaskError::SvgCompareFailed(failures.join("\n")),
+        ))
+    }
 }
 
 pub(crate) fn write_verification_policy_metadata(
@@ -1177,10 +1253,17 @@ pub(crate) fn write_verification_policy_metadata(
     };
 
     let _ = writeln!(report, "- Normalization policy: `{normalization}`");
+    let accepted_residual_policy = if request
+        .applies_direct_root_residual_policy(dom_mode, request.dom_decimals.unwrap_or(3))
+    {
+        AcceptedResidualPolicy::RootParityExact
+    } else {
+        request.accepted_residual_policy
+    };
     let _ = writeln!(
         report,
         "- Accepted residual policy: `{}`",
-        request.accepted_residual_policy.label()
+        accepted_residual_policy.label()
     );
     let _ = writeln!(report, "- Root coverage: `{root_coverage}`");
     let _ = writeln!(report, "- Root-delta diagnostics: `{root_diagnostics}`");
@@ -1932,6 +2015,54 @@ mod tests {
             "Root coverage: `fixture-scoped (exact viewport by default; browser-measured math dimensions diagnostic-only after structural validation)`"
         ));
         assert!(report.contains("Root-delta diagnostics: `reported`"));
+    }
+
+    #[test]
+    fn direct_root_residual_policy_requires_the_complete_deterministic_profile() {
+        let request = CompareRequest {
+            check_dom: true,
+            dom_mode: Some("parity-root".to_string()),
+            dom_decimals: Some(3),
+            ..CompareRequest::default()
+        };
+        assert!(request.applies_direct_root_residual_policy("parity-root", 3));
+
+        let filtered = CompareRequest {
+            filter: Some("basic".to_string()),
+            ..request.clone()
+        };
+        assert!(!filtered.applies_direct_root_residual_policy("parity-root", 3));
+
+        let delegated = CompareRequest {
+            defer_root_residual_policy_to_caller: true,
+            ..request.clone()
+        };
+        assert!(!delegated.applies_direct_root_residual_policy("parity-root", 3));
+        assert!(!request.applies_direct_root_residual_policy("parity", 3));
+        assert!(!request.applies_direct_root_residual_policy("parity-root", 6));
+
+        let disabled = CompareRequest {
+            check_dom: false,
+            ..request
+        };
+        assert!(!disabled.applies_direct_root_residual_policy("parity-root", 3));
+    }
+
+    #[test]
+    fn direct_root_policy_metadata_reports_the_effective_exact_registry() {
+        let fact = super::super::diagram_verification_fact("state")
+            .copied()
+            .expect("State verification fact");
+        let request = CompareRequest {
+            check_dom: true,
+            dom_decimals: Some(3),
+            ..CompareRequest::default()
+        };
+        let mut report = String::new();
+
+        write_verification_policy_metadata(&mut report, &request, fact, "parity-root", true);
+
+        assert!(report.contains("exact fail-closed root residual registry"));
     }
 
     #[test]
