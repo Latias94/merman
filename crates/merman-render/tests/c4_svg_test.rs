@@ -37,6 +37,13 @@ fn layout_c4_with_options(source: &str, options: &LayoutOptions) -> C4DiagramLay
     serde_json::from_value(projection["layout"]["C4Diagram"].clone()).expect("C4 layout projection")
 }
 
+fn svg_text_content(node: roxmltree::Node<'_, '_>) -> String {
+    node.descendants()
+        .filter(|descendant| descendant.is_text())
+        .filter_map(|descendant| descendant.text())
+        .collect()
+}
+
 #[derive(Debug)]
 struct C4TypeWidthProbe;
 
@@ -69,7 +76,7 @@ fn deep_c4_boundary_chain(depth: usize) -> String {
 }
 
 #[test]
-fn c4_public_layout_handles_deep_boundary_chain() {
+fn c4_public_layout_and_svg_render_handle_deep_boundary_chain() {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     const DEPTH: usize = 1500;
     let source = deep_c4_boundary_chain(DEPTH);
@@ -90,6 +97,15 @@ fn c4_public_layout_handles_deep_boundary_chain() {
     assert_eq!(c4.boundaries.len(), DEPTH + 1);
     assert_eq!(c4.shapes.len(), 1);
     assert_eq!(c4.shapes[0].alias, "leaf");
+
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("SVG painting should use an iterative boundary traversal")
+        .svg()
+        .to_owned();
+    assert!(svg.contains(">Leaf</tspan>"));
+    assert!(svg.contains(">B0</tspan>"));
+    assert!(svg.contains(&format!(">B{}</tspan>", DEPTH - 1)));
 }
 
 #[test]
@@ -145,4 +161,94 @@ fn c4_uses_explicit_screen_available_width_without_changing_container_geometry()
     assert_eq!(wide_screen.screen_available_width, Some(1280.0));
     assert!(wide_screen.width > default.width);
     assert!(wide_screen.height < default.height);
+}
+
+#[test]
+fn c4_svg_paints_each_boundary_subtree_in_mermaid_order() {
+    let svg = render_c4_svg_with_environment(
+        r#"C4Context
+System(root_before, "Root Before")
+Boundary(outer, "Outer Boundary") {
+  System(outer_before, "Outer Before")
+  Boundary(inner, "Inner Boundary") {
+    System(inner_shape, "Inner Shape")
+  }
+  System(outer_after, "Outer After")
+}
+System(root_after, "Root After")
+Rel(inner_shape, root_before, "Leaves subtree")
+"#,
+        &RenderEnvironment::deterministic(),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+    let labels = document
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .map(svg_text_content)
+        .filter(|text| {
+            matches!(
+                text.as_str(),
+                "Root Before"
+                    | "Root After"
+                    | "Outer Before"
+                    | "Outer After"
+                    | "Inner Shape"
+                    | "Inner Boundary"
+                    | "Outer Boundary"
+                    | "Leaves subtree"
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        labels,
+        [
+            "Root Before",
+            "Root After",
+            "Outer Before",
+            "Outer After",
+            "Inner Shape",
+            "Inner Boundary",
+            "Outer Boundary",
+            "Leaves subtree",
+        ]
+    );
+}
+
+#[test]
+fn c4_relation_keeps_explicit_line_and_text_styles() {
+    let svg = render_c4_svg_with_environment(
+        r#"C4Context
+System(a, "A")
+System(b, "B")
+Rel(a, b, "Calls", "HTTPS")
+UpdateRelStyle(a, b, $textColor="red", $lineColor="blue", $offsetX="10", $offsetY="20")
+"#,
+        &RenderEnvironment::deterministic(),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+    let calls = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && svg_text_content(*node) == "Calls")
+        .expect("relationship label");
+    let technology = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && svg_text_content(*node) == "[HTTPS]")
+        .expect("relationship technology label");
+    let line = document
+        .descendants()
+        .find(|node| {
+            matches!(node.tag_name().name(), "line" | "path")
+                && node.attribute("stroke") == Some("blue")
+        })
+        .expect("relationship line");
+
+    assert_eq!(calls.attribute("fill"), Some("red"));
+    assert!(calls.attribute("style").is_some_and(|style| {
+        style.contains("text-anchor: middle") && style.contains("font-family:")
+    }));
+    assert_eq!(technology.attribute("fill"), Some("red"));
+    assert_eq!(technology.attribute("font-style"), Some("italic"));
+    assert_eq!(line.attribute("stroke-width"), Some("1"));
+    assert_eq!(line.attribute("style"), Some("fill: none;"));
 }

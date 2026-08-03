@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::BTreeMap;
 
 fn assert_fragments_in_order(css: &str, fragments: &[&str]) {
     let mut cursor = 0;
@@ -7,6 +8,38 @@ fn assert_fragments_in_order(css: &str, fragments: &[&str]) {
             .find(fragment)
             .unwrap_or_else(|| panic!("missing CSS fragment: {fragment}"));
         cursor += offset + fragment.len();
+    }
+}
+
+fn css_properties_for_selector(css: &str, selector: &str) -> BTreeMap<String, String> {
+    css.split('}')
+        .filter_map(|rule| rule.rsplit_once('{'))
+        .find_map(|(selectors, declarations)| {
+            selectors
+                .split(',')
+                .map(str::trim)
+                .any(|candidate| candidate == selector)
+                .then(|| {
+                    declarations
+                        .split(';')
+                        .filter_map(|declaration| declaration.split_once(':'))
+                        .map(|(property, value)| {
+                            (property.trim().to_string(), value.trim().to_string())
+                        })
+                        .collect()
+                })
+        })
+        .unwrap_or_else(|| panic!("missing CSS selector: {selector}"))
+}
+
+fn assert_css_properties(css: &str, selector: &str, expected: &[(&str, &str)]) {
+    let actual = css_properties_for_selector(css, selector);
+    for (property, value) in expected {
+        assert_eq!(
+            actual.get(*property).map(String::as_str),
+            Some(*value),
+            "{selector} {property}"
+        );
     }
 }
 
@@ -57,6 +90,72 @@ fn mermaid_base_css_fragments_keep_parity_order() {
     assert!(er.ends_with(
         r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
     ));
+}
+
+#[test]
+fn mermaid_base_css_exposes_the_complete_common_neo_contract() {
+    let css = info_css_with_config(
+        "diag",
+        &serde_json::json!({
+            "themeVariables": {
+                "nodeBorder": "#123456",
+                "strokeWidth": 3,
+                "useGradient": true,
+                "dropShadow": "url(#drop-shadow)"
+            }
+        }),
+    );
+    let gradient = "url(#diag-gradient)";
+    let shadow = "url(#diag-drop-shadow)";
+
+    assert_css_properties(&css, "#diag .node .neo-node", &[("stroke", "#123456")]);
+    for selector in [
+        "#diag [data-look=\"neo\"].node rect",
+        "#diag [data-look=\"neo\"].cluster rect",
+        "#diag [data-look=\"neo\"].node polygon",
+    ] {
+        assert_css_properties(&css, selector, &[("stroke", gradient), ("filter", shadow)]);
+    }
+    assert_css_properties(
+        &css,
+        "#diag [data-look=\"neo\"].swimlane.cluster rect",
+        &[("filter", "none")],
+    );
+    assert_css_properties(
+        &css,
+        "#diag [data-look=\"neo\"].node path",
+        &[("stroke", gradient), ("stroke-width", "3px")],
+    );
+    assert_css_properties(
+        &css,
+        "#diag [data-look=\"neo\"].node .outer-path",
+        &[("filter", shadow)],
+    );
+    assert_css_properties(
+        &css,
+        "#diag [data-look=\"neo\"].node .neo-line path",
+        &[("stroke", "#123456"), ("filter", "none")],
+    );
+    assert_css_properties(
+        &css,
+        "#diag [data-look=\"neo\"].node circle",
+        &[("stroke", gradient), ("filter", shadow)],
+    );
+    assert_css_properties(
+        &css,
+        "#diag [data-look=\"neo\"].node circle .state-start",
+        &[("fill", "#000000")],
+    );
+    assert_css_properties(
+        &css,
+        "#diag [data-look=\"neo\"].icon-shape .icon",
+        &[("fill", gradient), ("filter", shadow)],
+    );
+    assert_css_properties(
+        &css,
+        "#diag [data-look=\"neo\"].icon-shape .icon-neo path",
+        &[("stroke", gradient), ("filter", shadow)],
+    );
 }
 
 #[cfg(feature = "layout-cytoscape")]

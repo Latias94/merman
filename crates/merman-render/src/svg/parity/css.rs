@@ -56,6 +56,85 @@ fn write_mermaid_base_css_prefix(out: &mut String, id: &str, css: MermaidBaseCss
     );
 }
 
+fn mermaid_neo_stroke_width(effective_config: &serde_json::Value) -> String {
+    let value = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "strokeWidth"],
+    )
+    .unwrap_or_else(|| "1".to_string());
+    let value = value.trim();
+    if value.parse::<f64>().is_ok() {
+        format!("{value}px")
+    } else {
+        value.to_string()
+    }
+}
+
+fn write_mermaid_common_neo_css(out: &mut String, id: &str, effective_config: &serde_json::Value) {
+    let node_border = theme_token(effective_config, "nodeBorder", "#9370DB");
+    let use_gradient =
+        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
+    let neo_stroke = if use_gradient {
+        format!("url(#{id}-gradient)")
+    } else {
+        node_border.clone()
+    };
+    let drop_shadow = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "dropShadow"],
+    )
+    .unwrap_or_else(|| "none".to_string())
+    .replace("url(#drop-shadow)", &format!("url(#{id}-drop-shadow)"));
+    let stroke_width = mermaid_neo_stroke_width(effective_config);
+
+    let _ = write!(out, r#"#{} .node .neo-node{{stroke:{};}}"#, id, node_border);
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].node rect,#{} [data-look="neo"].cluster rect,#{} [data-look="neo"].node polygon{{stroke:{};filter:{};}}"#,
+        id, id, id, neo_stroke, drop_shadow
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].swimlane.cluster rect{{filter:none;}}"#,
+        id
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
+        id, neo_stroke, stroke_width
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].node .outer-path{{filter:{};}}"#,
+        id, drop_shadow
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].node .neo-line path{{stroke:{};filter:none;}}"#,
+        id, node_border
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].node circle{{stroke:{};filter:{};}}"#,
+        id, neo_stroke, drop_shadow
+    );
+    let _ = write!(
+        out,
+        r##"#{} [data-look="neo"].node circle .state-start{{fill:#000000;}}"##,
+        id
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].icon-shape .icon{{fill:{};filter:{};}}"#,
+        id, neo_stroke, drop_shadow
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].icon-shape .icon-neo path{{stroke:{};filter:{};}}"#,
+        id, neo_stroke, drop_shadow
+    );
+}
+
 fn mermaid_base_css_root_rule(id: &str, font_family: &str) -> String {
     format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font_family)
 }
@@ -75,6 +154,7 @@ pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
             error_text: "#552222",
         },
     );
+    write_mermaid_common_neo_css(out, &id, &serde_json::Value::Null);
     out.push_str(&mermaid_base_css_root_rule(&id, font));
 }
 
@@ -152,7 +232,9 @@ fn info_css_parts_with_font_size_source(
         },
     );
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
-    let root_rule = mermaid_base_css_root_rule(&id, &font_family);
+    let mut root_rule = String::new();
+    write_mermaid_common_neo_css(&mut root_rule, &id, effective_config);
+    root_rule.push_str(&mermaid_base_css_root_rule(&id, &font_family));
 
     InfoCssParts {
         css_prefix: out,
@@ -232,7 +314,6 @@ pub(super) fn architecture_css_parts_with_config(
             error_text: &error_text,
         },
     );
-
     let _ = write!(
         &mut out,
         r#"#{} .edge{{stroke-width:{};stroke:{};fill:none;}}"#,
@@ -259,6 +340,7 @@ pub(super) fn architecture_css_parts_with_config(
         id
     );
 
+    write_mermaid_common_neo_css(&mut out, &id, effective_config);
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
     out.push_str(&mermaid_base_css_root_rule(&id, &font_family));
     ArchitectureCssParts {
@@ -321,20 +403,6 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
     } else {
         "1px".to_string()
     };
-    let neo_node_stroke_width = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "strokeWidth"],
-    )
-    .map(|value| {
-        let value = value.trim().to_string();
-        if value.parse::<f64>().is_ok() {
-            format!("{value}px")
-        } else {
-            value
-        }
-    })
-    .unwrap_or_else(|| "1px".to_string());
-
     let _ = write!(
         &mut out,
         r#"#{} marker{{fill:{};stroke:{};}}#{} marker.cross{{stroke:{};}}"#,
@@ -381,13 +449,6 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
         id,
         requirement_edge_label_background
     );
-    if look.is_neo() {
-        let _ = write!(
-            &mut out,
-            r#"#{} .node .neo-node{{stroke:{};}}#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
-            id, node_border, id, node_border, neo_node_stroke_width
-        );
-    }
     out.push_str(&parts.root_rule);
     out
 }
@@ -494,6 +555,7 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
         r#"#{} .marker{{fill:none!important;stroke:{}!important;stroke-width:1;}}"#,
         id, line_color
     );
+    write_mermaid_common_neo_css(&mut out, &id, effective_config);
     out.push_str(&mermaid_base_css_root_rule(&id, &font));
     Ok(out)
 }
