@@ -10,6 +10,7 @@ use super::label::{
 use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
 use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
+use crate::svg::parity::edge_label_geometry::position_edge_label;
 use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 use base64::Engine as _;
 use std::fmt::Write as _;
@@ -163,97 +164,6 @@ pub(super) fn class_line_with_marker_offset_points_into(
     }
 }
 
-fn class_js_round(v: f64, decimals: i32) -> f64 {
-    if !v.is_finite() {
-        return 0.0;
-    }
-    let factor = 10f64.powi(decimals);
-    let rounded = (v * factor).round() / factor;
-    if rounded == -0.0 { 0.0 } else { rounded }
-}
-
-fn class_calc_label_position(points: &[LayoutPoint]) -> Option<LayoutPoint> {
-    if points.is_empty() {
-        return None;
-    }
-    if points.len() == 1 {
-        return Some(points[0].clone());
-    }
-
-    let mut total = 0.0;
-    for window in points.windows(2) {
-        total += (window[1].x - window[0].x).hypot(window[1].y - window[0].y);
-    }
-    if !total.is_finite() || total <= 0.0 {
-        return Some(points[0].clone());
-    }
-
-    let mut remaining = total / 2.0;
-    for window in points.windows(2) {
-        let a = &window[0];
-        let b = &window[1];
-        let seg = (b.x - a.x).hypot(b.y - a.y);
-        if !seg.is_finite() || seg <= 0.0 {
-            return Some(a.clone());
-        }
-        if seg < remaining {
-            remaining -= seg;
-            continue;
-        }
-        let ratio = remaining / seg;
-        if ratio <= 0.0 {
-            return Some(a.clone());
-        }
-        if ratio >= 1.0 {
-            return Some(LayoutPoint {
-                x: class_js_round(b.x, 5),
-                y: class_js_round(b.y, 5),
-            });
-        }
-        return Some(LayoutPoint {
-            x: class_js_round((1.0 - ratio) * a.x + ratio * b.x, 5),
-            y: class_js_round((1.0 - ratio) * a.y + ratio * b.y, 5),
-        });
-    }
-
-    Some(points[0].clone())
-}
-
-fn class_is_label_coordinate_in_path(point: &LayoutPoint, d_attr: &str) -> bool {
-    let rounded_x = point.x.round() as i64;
-    let rounded_y = point.y.round() as i64;
-    let bytes = d_attr.as_bytes();
-    let mut idx = 0usize;
-    while idx < bytes.len() {
-        let b = bytes[idx];
-        let is_start = b.is_ascii_digit() || b == b'-' || b == b'.';
-        if !is_start {
-            idx += 1;
-            continue;
-        }
-
-        let start = idx;
-        idx += 1;
-        while idx < bytes.len() {
-            let b = bytes[idx];
-            if b.is_ascii_digit() || b == b'.' {
-                idx += 1;
-                continue;
-            }
-            break;
-        }
-
-        if let Ok(v) = d_attr[start..idx].parse::<f64>() {
-            let rounded = v.round() as i64;
-            if rounded == rounded_x || rounded == rounded_y {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
 pub(super) fn render_class_edge_groups(
     state: ClassEdgeGroupsRenderState<'_>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
@@ -318,12 +228,6 @@ pub(super) fn render_class_edge_groups(
         } else {
             super::super::curve::curve_basis_path_d_and_bounds(edge_curve_source)
         };
-        if let Some(lbl) = e.label.as_ref() {
-            edge_label_centers.insert(
-                e.id.as_str(),
-                class_edge_label_center(&edge_raw_points, &d, lbl, ctx.content_tx, ctx.content_ty),
-            );
-        }
         if let Some(s) = curve_start {
             detail.edge_curve += s.elapsed();
         }
@@ -333,6 +237,19 @@ pub(super) fn render_class_edge_groups(
             None
         };
         let render_d = rough_d.as_deref().unwrap_or(&d);
+        if let Some(lbl) = e.label.as_ref() {
+            edge_label_centers.insert(
+                e.id.as_str(),
+                class_edge_label_center(
+                    &edge_raw_points,
+                    render_d,
+                    e.from_cluster.is_some() || e.to_cluster.is_some(),
+                    lbl,
+                    ctx.content_tx,
+                    ctx.content_ty,
+                ),
+            );
+        }
         let path_bounds_start = ctx.timing.start();
         if rough_d.is_none()
             && let Some(pb) = d_pb.as_ref()
@@ -555,23 +472,22 @@ pub(super) fn render_class_edge_groups(
 }
 
 pub(super) fn class_edge_label_center(
-    raw_points: &[LayoutPoint],
-    d_attr: &str,
+    label_path_points: &[LayoutPoint],
+    rendered_d: &str,
+    points_were_explicitly_updated: bool,
     label: &LayoutLabel,
     content_tx: f64,
     content_ty: f64,
 ) -> LayoutPoint {
-    let mut center = LayoutPoint {
-        x: label.x + content_tx,
-        y: label.y + content_ty,
-    };
-    if let Some(mid) = raw_points.get(raw_points.len() / 2)
-        && !class_is_label_coordinate_in_path(mid, d_attr)
-        && let Some(pos) = class_calc_label_position(raw_points)
-    {
-        center = pos;
-    }
-    center
+    position_edge_label(
+        LayoutPoint {
+            x: label.x + content_tx,
+            y: label.y + content_ty,
+        },
+        label_path_points,
+        rendered_d,
+        points_were_explicitly_updated,
+    )
 }
 
 fn render_class_edge_label_group(
@@ -877,4 +793,69 @@ pub(super) fn class_edge_render_order<'a>(
         a_key.cmp(&b_key)
     });
     ordered
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn label_at(x: f64, y: f64) -> LayoutLabel {
+        LayoutLabel {
+            x,
+            y,
+            width: 20.0,
+            height: 16.0,
+        }
+    }
+
+    #[test]
+    fn class_edge_label_uses_pre_curve_points_when_cluster_clipping_updates_the_path() {
+        let label_path_points = [
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: 30.0, y: 0.0 },
+            LayoutPoint { x: 100.0, y: 0.0 },
+        ];
+
+        // Mermaid positions labels from `paths.updatedPath`, before marker offsets and D3 curves.
+        let center = class_edge_label_center(
+            &label_path_points,
+            "M17.25,0L30,0L100,0",
+            true,
+            &label_at(12.0, 8.0),
+            0.0,
+            0.0,
+        );
+
+        assert_eq!((center.x, center.y), (50.0, 0.0));
+    }
+
+    #[test]
+    fn class_edge_label_checks_the_actual_rendered_path_before_repositioning() {
+        let label_path_points = [
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: 10.0, y: 0.0 },
+            LayoutPoint { x: 20.0, y: 0.0 },
+        ];
+        let label = label_at(4.0, 5.0);
+
+        let unchanged = class_edge_label_center(
+            &label_path_points,
+            "M0,0L10,0L20,0",
+            false,
+            &label,
+            100.0,
+            200.0,
+        );
+        assert_eq!((unchanged.x, unchanged.y), (104.0, 205.0));
+
+        let rough_path = class_edge_label_center(
+            &label_path_points,
+            "M1.25,2.5C3.5,4.5,5.5,6.5,7.5,8.5",
+            false,
+            &label,
+            100.0,
+            200.0,
+        );
+        assert_eq!((rough_path.x, rough_path.y), (10.0, 0.0));
+    }
 }
