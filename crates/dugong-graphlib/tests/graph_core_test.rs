@@ -743,6 +743,39 @@ fn successors_returns_node_successors() {
 }
 
 #[test]
+fn directed_node_adjacency_deduplicates_parallel_edges_but_edge_queries_do_not() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge_named("a", "b", Some("first"), None);
+    g.set_edge_named("a", "b", Some("second"), None);
+    g.set_edge_named("a", "c", Some("third"), None);
+
+    assert_eq!(g.successors("a"), vec!["b", "c"]);
+    assert_eq!(g.predecessors("b"), vec!["a"]);
+    assert_eq!(g.first_successor("a"), Some("b"));
+    assert_eq!(g.first_predecessor("b"), Some("a"));
+
+    let mut successors = Vec::new();
+    g.extend_successors("a", &mut successors);
+    assert_eq!(successors, vec!["b", "c"]);
+    let mut predecessors = Vec::new();
+    g.extend_predecessors("b", &mut predecessors);
+    assert_eq!(predecessors, vec!["a"]);
+
+    let mut visited_successors = Vec::new();
+    g.for_each_successor("a", |node| visited_successors.push(node));
+    assert_eq!(visited_successors, vec!["b", "c"]);
+    let mut visited_predecessors = Vec::new();
+    g.for_each_predecessor("b", |node| visited_predecessors.push(node));
+    assert_eq!(visited_predecessors, vec!["a"]);
+
+    assert_eq!(g.out_edges("a", Some("b")).len(), 2);
+    assert_eq!(g.in_edges("b", Some("a")).len(), 2);
+}
+
+#[test]
 fn neighbors_returns_unique_in_and_out_neighbors() {
     let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
     g.set_edge("a", "b");

@@ -310,12 +310,60 @@ where
                 in_cursors[e.w_ix] += 1;
             }
 
+            // Graphlib stores predecessor/successor counts by endpoint id and exposes their keys.
+            // Keep the edge CSR for edge queries, but build a second unique-node CSR for node
+            // adjacency so parallel edges do not duplicate neighbors.
+            let mut successor_pairs = Vec::new();
+            let mut predecessor_pairs = Vec::new();
+            let mut seen_successors: HashSet<(usize, usize)> = HashSet::default();
+            let mut seen_predecessors: HashSet<(usize, usize)> = HashSet::default();
+            for e in self.edges.iter().filter_map(|edge| edge.as_ref()) {
+                if seen_successors.insert((e.v_ix, e.w_ix)) {
+                    successor_pairs.push((e.v_ix, e.w_ix));
+                }
+                if seen_predecessors.insert((e.w_ix, e.v_ix)) {
+                    predecessor_pairs.push((e.w_ix, e.v_ix));
+                }
+            }
+
+            let mut successor_offsets = vec![0; node_slots + 1];
+            let mut predecessor_offsets = vec![0; node_slots + 1];
+            for &(source, _) in &successor_pairs {
+                successor_offsets[source + 1] += 1;
+            }
+            for &(target, _) in &predecessor_pairs {
+                predecessor_offsets[target + 1] += 1;
+            }
+            for i in 1..=node_slots {
+                successor_offsets[i] += successor_offsets[i - 1];
+                predecessor_offsets[i] += predecessor_offsets[i - 1];
+            }
+
+            let mut successors = vec![0; successor_pairs.len()];
+            let mut predecessors = vec![0; predecessor_pairs.len()];
+            let mut successor_cursors = successor_offsets.clone();
+            let mut predecessor_cursors = predecessor_offsets.clone();
+            for (source, target) in successor_pairs {
+                let position = successor_cursors[source];
+                successors[position] = target;
+                successor_cursors[source] += 1;
+            }
+            for (target, source) in predecessor_pairs {
+                let position = predecessor_cursors[target];
+                predecessors[position] = source;
+                predecessor_cursors[target] += 1;
+            }
+
             *cache = Some(DirectedAdjCache {
                 generation,
                 out_offsets,
                 out_edges,
                 in_offsets,
                 in_edges,
+                successor_offsets,
+                successors,
+                predecessor_offsets,
+                predecessors,
             });
         }
         std::cell::RefMut::map(cache, |c| {
@@ -325,6 +373,10 @@ where
                 out_edges: Vec::new(),
                 in_offsets: vec![0; self.nodes.len() + 1],
                 in_edges: Vec::new(),
+                successor_offsets: vec![0; self.nodes.len() + 1],
+                successors: Vec::new(),
+                predecessor_offsets: vec![0; self.nodes.len() + 1],
+                predecessors: Vec::new(),
             })
         })
     }
@@ -1150,15 +1202,11 @@ where
             return Vec::new();
         };
         let cache = self.ensure_directed_adj();
-        let out_edges = cache.out_edges(v_idx);
-        let mut out: Vec<&str> = Vec::with_capacity(out_edges.len());
-        for &edge_idx in out_edges {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            out.push(edge.key.w.as_str());
-        }
-        out
+        cache
+            .successors(v_idx)
+            .iter()
+            .filter_map(|&node_ix| self.node_id_by_ix(node_ix))
+            .collect()
     }
 
     pub fn predecessors(&self, v: &str) -> Vec<&str> {
@@ -1169,15 +1217,11 @@ where
             return Vec::new();
         };
         let cache = self.ensure_directed_adj();
-        let in_edges = cache.in_edges(v_idx);
-        let mut out: Vec<&str> = Vec::with_capacity(in_edges.len());
-        for &edge_idx in in_edges {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            out.push(edge.key.v.as_str());
-        }
-        out
+        cache
+            .predecessors(v_idx)
+            .iter()
+            .filter_map(|&node_ix| self.node_id_by_ix(node_ix))
+            .collect()
     }
 
     pub fn first_successor<'a>(&'a self, v: &str) -> Option<&'a str> {
@@ -1187,8 +1231,8 @@ where
         let &v_idx = self.node_index.get(v)?;
         let w = {
             let cache = self.ensure_directed_adj();
-            let edge_idx = *cache.out_edges(v_idx).first()?;
-            self.edges.get(edge_idx)?.as_ref()?.key.w.as_str()
+            let node_ix = *cache.successors(v_idx).first()?;
+            self.node_id_by_ix(node_ix)?
         };
         Some(w)
     }
@@ -1200,8 +1244,8 @@ where
         let &v_idx = self.node_index.get(v)?;
         let u = {
             let cache = self.ensure_directed_adj();
-            let edge_idx = *cache.in_edges(v_idx).first()?;
-            self.edges.get(edge_idx)?.as_ref()?.key.v.as_str()
+            let node_ix = *cache.predecessors(v_idx).first()?;
+            self.node_id_by_ix(node_ix)?
         };
         Some(u)
     }
@@ -1215,13 +1259,12 @@ where
             return;
         };
         let cache = self.ensure_directed_adj();
-        let out_edges = cache.out_edges(v_idx);
-        out.reserve(out_edges.len());
-        for &edge_idx in out_edges {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            out.push(edge.key.w.as_str());
+        let successors = cache.successors(v_idx);
+        out.reserve(successors.len());
+        for &node_ix in successors {
+            if let Some(node) = self.node_id_by_ix(node_ix) {
+                out.push(node);
+            }
         }
     }
 
@@ -1234,13 +1277,12 @@ where
             return;
         };
         let cache = self.ensure_directed_adj();
-        let in_edges = cache.in_edges(v_idx);
-        out.reserve(in_edges.len());
-        for &edge_idx in in_edges {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            out.push(edge.key.v.as_str());
+        let predecessors = cache.predecessors(v_idx);
+        out.reserve(predecessors.len());
+        for &node_ix in predecessors {
+            if let Some(node) = self.node_id_by_ix(node_ix) {
+                out.push(node);
+            }
         }
     }
 
@@ -1258,11 +1300,10 @@ where
             return;
         };
         let cache = self.ensure_directed_adj();
-        for &edge_idx in cache.out_edges(v_idx) {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            f(edge.key.w.as_str());
+        for &node_ix in cache.successors(v_idx) {
+            if let Some(node) = self.node_id_by_ix(node_ix) {
+                f(node);
+            }
         }
     }
 
@@ -1280,11 +1321,10 @@ where
             return;
         };
         let cache = self.ensure_directed_adj();
-        for &edge_idx in cache.in_edges(v_idx) {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            f(edge.key.v.as_str());
+        for &node_ix in cache.predecessors(v_idx) {
+            if let Some(node) = self.node_id_by_ix(node_ix) {
+                f(node);
+            }
         }
     }
 

@@ -10,6 +10,10 @@ pub(in crate::graph) struct DirectedAdjCache {
     pub(in crate::graph) out_edges: Vec<usize>,
     pub(in crate::graph) in_offsets: Vec<usize>,
     pub(in crate::graph) in_edges: Vec<usize>,
+    pub(in crate::graph) successor_offsets: Vec<usize>,
+    pub(in crate::graph) successors: Vec<usize>,
+    pub(in crate::graph) predecessor_offsets: Vec<usize>,
+    pub(in crate::graph) predecessors: Vec<usize>,
 }
 
 impl DirectedAdjCache {
@@ -23,6 +27,18 @@ impl DirectedAdjCache {
         let start = self.in_offsets[v_ix];
         let end = self.in_offsets[v_ix + 1];
         &self.in_edges[start..end]
+    }
+
+    pub(in crate::graph) fn successors(&self, v_ix: usize) -> &[usize] {
+        let start = self.successor_offsets[v_ix];
+        let end = self.successor_offsets[v_ix + 1];
+        &self.successors[start..end]
+    }
+
+    pub(in crate::graph) fn predecessors(&self, v_ix: usize) -> &[usize] {
+        let start = self.predecessor_offsets[v_ix];
+        let end = self.predecessor_offsets[v_ix + 1];
+        &self.predecessors[start..end]
     }
 }
 
