@@ -1,34 +1,63 @@
 use crate::model::LayoutPoint;
 
-fn js_round(value: f64, precision: i32) -> f64 {
+fn js_round(value: f64, precision: i32) -> Option<f64> {
     if !value.is_finite() {
-        return value;
+        return None;
     }
     let factor = 10_f64.powi(precision);
-    let rounded = (value * factor + 0.5).floor() / factor;
-    if rounded == 0.0 { 0.0 } else { rounded }
+    let scaled = value * factor;
+    if !factor.is_finite() || !scaled.is_finite() {
+        return None;
+    }
+    let lower = scaled.floor();
+    let rounded_integer = if scaled - lower < 0.5 {
+        lower
+    } else {
+        lower + 1.0
+    };
+    let rounded_integer = if rounded_integer == 0.0 && scaled.is_sign_negative() {
+        -0.0
+    } else {
+        rounded_integer
+    };
+    let rounded = rounded_integer / factor;
+    rounded.is_finite().then_some(rounded)
 }
 
-pub(super) fn calc_label_position(points: &[LayoutPoint]) -> Option<LayoutPoint> {
-    match points {
+/// Mirrors Mermaid 11.16 `utils.calcLabelPosition` for finite SVG geometry.
+pub(super) fn calc_label_position(label_path_points: &[LayoutPoint]) -> Option<LayoutPoint> {
+    if label_path_points
+        .iter()
+        .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
+        return None;
+    }
+
+    match label_path_points {
         [] => return None,
         [point] => return Some(point.clone()),
         _ => {}
     }
 
-    let total_distance = points
+    let total_distance = label_path_points
         .windows(2)
-        .map(|segment| (segment[1].x - segment[0].x).hypot(segment[1].y - segment[0].y))
+        .map(|segment| {
+            let dx = segment[1].x - segment[0].x;
+            let dy = segment[1].y - segment[0].y;
+            (dx * dx + dy * dy).sqrt()
+        })
         .sum::<f64>();
     if !total_distance.is_finite() {
         return None;
     }
 
     let mut remaining_distance = total_distance / 2.0;
-    for segment in points.windows(2) {
+    for segment in label_path_points.windows(2) {
         let previous = &segment[0];
         let point = &segment[1];
-        let vector_distance = (point.x - previous.x).hypot(point.y - previous.y);
+        let dx = point.x - previous.x;
+        let dy = point.y - previous.y;
+        let vector_distance = (dx * dx + dy * dy).sqrt();
         if vector_distance == 0.0 {
             return Some(previous.clone());
         }
@@ -45,8 +74,8 @@ pub(super) fn calc_label_position(points: &[LayoutPoint]) -> Option<LayoutPoint>
             return Some(point.clone());
         }
         return Some(LayoutPoint {
-            x: js_round((1.0 - ratio) * previous.x + ratio * point.x, 5),
-            y: js_round((1.0 - ratio) * previous.y + ratio * point.y, 5),
+            x: js_round((1.0 - ratio) * previous.x + ratio * point.x, 5)?,
+            y: js_round((1.0 - ratio) * previous.y + ratio * point.y, 5)?,
         });
     }
 
@@ -54,29 +83,54 @@ pub(super) fn calc_label_position(points: &[LayoutPoint]) -> Option<LayoutPoint>
 }
 
 pub(super) fn is_label_coordinate_in_path(point: &LayoutPoint, d_attr: &str) -> bool {
-    let rounded_x = js_round(point.x, 0) as i64;
-    let rounded_y = js_round(point.y, 0) as i64;
-    let sanitized = round_decimal_numbers_in_path(d_attr);
-    sanitized.contains(&rounded_x.to_string()) || sanitized.contains(&rounded_y.to_string())
+    let Some(rounded_x) = js_rounded_number_string(point.x) else {
+        return false;
+    };
+    let Some(rounded_y) = js_rounded_number_string(point.y) else {
+        return false;
+    };
+    let Some(sanitized) = round_decimal_numbers_in_path(d_attr) else {
+        return false;
+    };
+    sanitized.contains(&rounded_x) || sanitized.contains(&rounded_y)
 }
 
 pub(super) fn position_edge_label(
     dagre_anchor: LayoutPoint,
-    rendered_points: &[LayoutPoint],
+    label_path_points: &[LayoutPoint],
     rendered_d: &str,
     points_were_explicitly_updated: bool,
 ) -> LayoutPoint {
-    let midpoint_missing_from_path = rendered_points
-        .get(rendered_points.len() / 2)
+    let midpoint_missing_from_path = label_path_points
+        .get(label_path_points.len() / 2)
         .is_some_and(|midpoint| !is_label_coordinate_in_path(midpoint, rendered_d));
-    if points_were_explicitly_updated || midpoint_missing_from_path {
-        calc_label_position(rendered_points).unwrap_or(dagre_anchor)
-    } else {
-        dagre_anchor
-    }
+    position_edge_label_for_path(
+        dagre_anchor,
+        label_path_points,
+        points_were_explicitly_updated || midpoint_missing_from_path,
+    )
 }
 
-fn round_decimal_numbers_in_path(d_attr: &str) -> String {
+fn position_edge_label_for_path(
+    dagre_anchor: LayoutPoint,
+    label_path_points: &[LayoutPoint],
+    path_was_updated: bool,
+) -> LayoutPoint {
+    path_was_updated
+        .then(|| calc_label_position(label_path_points))
+        .flatten()
+        .unwrap_or(dagre_anchor)
+}
+
+fn js_rounded_number_string(value: f64) -> Option<String> {
+    let mut rounded = js_round(value, 0)?;
+    if rounded == -0.0 {
+        rounded = 0.0;
+    }
+    Some(ryu_js::Buffer::new().format_finite(rounded).to_string())
+}
+
+fn round_decimal_numbers_in_path(d_attr: &str) -> Option<String> {
     let mut out = String::new();
     let mut copied_until = 0usize;
     let mut cursor = 0usize;
@@ -89,8 +143,8 @@ fn round_decimal_numbers_in_path(d_attr: &str) -> String {
                 changed = true;
             }
             out.push_str(&d_attr[copied_until..cursor]);
-            let value = d_attr[cursor..end].parse::<f64>().unwrap_or(0.0);
-            out.push_str(&(js_round(value, 0) as i64).to_string());
+            let value = d_attr[cursor..end].parse::<f64>().ok()?;
+            out.push_str(&js_rounded_number_string(value)?);
             copied_until = end;
             cursor = end;
             continue;
@@ -104,9 +158,9 @@ fn round_decimal_numbers_in_path(d_attr: &str) -> String {
 
     if changed {
         out.push_str(&d_attr[copied_until..]);
-        out
+        Some(out)
     } else {
-        d_attr.to_string()
+        Some(d_attr.to_string())
     }
 }
 
@@ -227,13 +281,67 @@ mod tests {
         let point = LayoutPoint { x: 22.0, y: 99.0 };
         assert!(is_label_coordinate_in_path(&point, "M122 0"));
         assert!(is_label_coordinate_in_path(
+            &LayoutPoint {
+                x: 9_007_199_254_740_994.0,
+                y: 22.0,
+            },
+            "M122 0"
+        ));
+        assert!(is_label_coordinate_in_path(
             &LayoutPoint { x: 12.0, y: 99.0 },
             "M-12.4 0"
         ));
-        assert_eq!(round_decimal_numbers_in_path("M.5 10."), "M.5 10.");
+        assert_eq!(
+            round_decimal_numbers_in_path("M1 .5 10."),
+            Some("M1 .5 10.".to_string())
+        );
         assert!(!is_label_coordinate_in_path(
             &LayoutPoint { x: 7.0, y: 8.0 },
-            "M.5 10."
+            "M1 .5 10."
         ));
+    }
+
+    #[test]
+    fn negative_half_rounding_preserves_the_unsigned_decimal_regex_quirk() {
+        assert_eq!(js_round(0.49999999999999994, 0), Some(0.0));
+        assert_eq!(js_round(0.5, 0), Some(1.0));
+        assert_eq!(js_round(-10.5, 0), Some(-10.0));
+        assert!(js_round(-0.1, 0).is_some_and(f64::is_sign_negative));
+        assert_eq!(
+            round_decimal_numbers_in_path("M-10.5 20.6"),
+            Some("M-11 21".to_string())
+        );
+        assert!(!is_label_coordinate_in_path(
+            &LayoutPoint { x: -10.5, y: 99.0 },
+            "M-10.5 20.6"
+        ));
+    }
+
+    #[test]
+    fn non_finite_geometry_fails_closed() {
+        let anchor = LayoutPoint { x: 4.0, y: 5.0 };
+        let points = [
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint {
+                x: f64::NAN,
+                y: 1.0,
+            },
+        ];
+
+        assert!(calc_label_position(&points).is_none());
+        assert!(!is_label_coordinate_in_path(
+            &LayoutPoint {
+                x: f64::INFINITY,
+                y: 0.0,
+            },
+            "M0 0L1 1"
+        ));
+        let overflowing_decimal = format!("M{}.0 0", "9".repeat(400));
+        assert!(!is_label_coordinate_in_path(
+            &LayoutPoint { x: 9.0, y: 8.0 },
+            &overflowing_decimal
+        ));
+        let position = position_edge_label(anchor.clone(), &points, "M0 0L1 1", true);
+        assert_eq!((position.x, position.y), (anchor.x, anchor.y));
     }
 }
