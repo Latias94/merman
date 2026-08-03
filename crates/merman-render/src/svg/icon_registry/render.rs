@@ -2,6 +2,7 @@ use super::IconRenderRequest;
 use super::ingest::ResolvedIcon;
 use super::xml::ValidatedIconBody;
 use crate::svg::pipeline::validate_well_formed_svg;
+use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
 
 const WORK_BYTES_PER_UNIT: usize = 256;
 // lol_html serializes a literal double quote in an attribute value as `&quot;` (six bytes).
@@ -10,6 +11,69 @@ const WORK_BYTES_PER_UNIT: usize = 256;
 const SANITIZER_MAX_BYTE_EXPANSION: usize = "&quot;".len();
 const SANITIZER_MAX_ADDED_BYTES_PER_ELEMENT: usize = 64;
 const SANITIZER_FIXED_OVERHEAD_BYTES: usize = 1_024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BoundedSanitizeError {
+    OutputLimitExceeded { max_bytes: usize },
+    AllocationFailed,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BoundedSanitizeSink {
+    max_output_bytes: usize,
+}
+
+impl BoundedSanitizeSink {
+    const fn new(max_output_bytes: usize) -> Self {
+        Self { max_output_bytes }
+    }
+
+    const fn output_limit_error(self) -> BoundedSanitizeError {
+        BoundedSanitizeError::OutputLimitExceeded {
+            max_bytes: self.max_output_bytes,
+        }
+    }
+}
+
+impl SanitizeOutputSink for BoundedSanitizeSink {
+    type Error = BoundedSanitizeError;
+
+    fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error> {
+        let next = current
+            .checked_add(additional)
+            .ok_or_else(|| self.output_limit_error())?;
+        if next > self.max_output_bytes {
+            return Err(self.output_limit_error());
+        }
+        Ok(next)
+    }
+
+    fn string_with_capacity(&self, capacity: usize) -> Result<String, Self::Error> {
+        self.checked_output_len(0, capacity)?;
+        let mut output = String::new();
+        output
+            .try_reserve_exact(capacity)
+            .map_err(|_| BoundedSanitizeError::AllocationFailed)?;
+        Ok(output)
+    }
+
+    fn output_buffer(&self, input_len: usize) -> Result<Vec<u8>, Self::Error> {
+        let mut output = Vec::new();
+        output
+            .try_reserve_exact(input_len.min(self.max_output_bytes))
+            .map_err(|_| BoundedSanitizeError::AllocationFailed)?;
+        Ok(output)
+    }
+
+    fn push_output_chunk(&self, output: &mut Vec<u8>, chunk: &[u8]) -> Result<(), Self::Error> {
+        self.checked_output_len(output.len(), chunk.len())?;
+        output
+            .try_reserve(chunk.len())
+            .map_err(|_| BoundedSanitizeError::AllocationFailed)?;
+        output.extend_from_slice(chunk);
+        Ok(())
+    }
+}
 
 pub(super) fn render_resolved_icon(
     icon: &ResolvedIcon,
@@ -68,13 +132,14 @@ pub(super) fn render_resolved_icon(
     let reserved_svg_bytes = projected_svg_bytes
         .checked_add(growth_reservation.additional_bytes)
         .ok_or_else(|| crate::Error::icon_processing("sanitizer reservation overflowed"))?;
-    let sanitized = match merman_core::sanitize::try_sanitize_text(
+    let sanitize_sink = BoundedSanitizeSink::new(reserved_svg_bytes);
+    let sanitized = match merman_core::sanitize::sanitize_text_with_sink(
         &raw_svg,
         request.effective_config,
-        reserved_svg_bytes,
+        &sanitize_sink,
     ) {
         Ok(sanitized) => sanitized,
-        Err(merman_core::sanitize::SanitizeError::OutputLimitExceeded { .. }) => {
+        Err(SanitizeFailure::Output(BoundedSanitizeError::OutputLimitExceeded { .. })) => {
             request
                 .work_meter
                 .reconcile_svg_bytes(reserved_svg_bytes, 0)?;
@@ -85,7 +150,7 @@ pub(super) fn render_resolved_icon(
                 "icon SVG sanitizer exceeded its fixed expansion ceiling",
             ));
         }
-        Err(merman_core::sanitize::SanitizeError::RejectedInput) => {
+        Err(SanitizeFailure::RejectedInput) => {
             request
                 .work_meter
                 .reconcile_svg_bytes(reserved_svg_bytes, 0)?;
@@ -94,8 +159,8 @@ pub(super) fn render_resolved_icon(
             ));
         }
         Err(
-            merman_core::sanitize::SanitizeError::AllocationFailed
-            | merman_core::sanitize::SanitizeError::InvalidUtf8Output,
+            SanitizeFailure::Output(BoundedSanitizeError::AllocationFailed)
+            | SanitizeFailure::InvalidUtf8Output,
         ) => {
             request
                 .work_meter
@@ -331,6 +396,37 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
 
+    #[derive(Debug, Clone, Copy)]
+    struct InvalidUtf8Sink(BoundedSanitizeSink);
+
+    impl SanitizeOutputSink for InvalidUtf8Sink {
+        type Error = BoundedSanitizeError;
+
+        fn checked_output_len(
+            &self,
+            current: usize,
+            additional: usize,
+        ) -> Result<usize, Self::Error> {
+            self.0.checked_output_len(current, additional)
+        }
+
+        fn string_with_capacity(&self, capacity: usize) -> Result<String, Self::Error> {
+            self.0.string_with_capacity(capacity)
+        }
+
+        fn output_buffer(&self, input_len: usize) -> Result<Vec<u8>, Self::Error> {
+            self.0.output_buffer(input_len)
+        }
+
+        fn push_output_chunk(&self, output: &mut Vec<u8>, chunk: &[u8]) -> Result<(), Self::Error> {
+            self.0.push_output_chunk(output, chunk)?;
+            if let Some(first) = output.first_mut() {
+                *first = u8::MAX;
+            }
+            Ok(())
+        }
+    }
+
     fn resolved_icon(body: &str) -> ResolvedIcon {
         ResolvedIcon {
             body: Arc::new(
@@ -429,6 +525,60 @@ mod tests {
             .expect_err("ambiguous sanitizer input must fail closed");
             assert!(matches!(error, crate::Error::InvalidIconOutput { .. }));
         }
+    }
+
+    #[test]
+    fn bounded_sanitizer_accepts_exact_output_limit_and_rejects_one_less() {
+        let input = r#"<a href="https://example.com" target="_blank">example</a>"#;
+        let expected =
+            r#"<a href="https://example.com" rel="noopener" target="_blank">example</a>"#;
+        let config = merman_core::MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "htmlLabels": true
+        }));
+
+        assert_eq!(
+            merman_core::sanitize::sanitize_text_with_sink(
+                input,
+                &config,
+                &BoundedSanitizeSink::new(expected.len()),
+            )
+            .unwrap(),
+            expected
+        );
+        assert_eq!(
+            merman_core::sanitize::sanitize_text_with_sink(
+                input,
+                &config,
+                &BoundedSanitizeSink::new(expected.len() - 1),
+            ),
+            Err(SanitizeFailure::Output(
+                BoundedSanitizeError::OutputLimitExceeded {
+                    max_bytes: expected.len() - 1,
+                },
+            ))
+        );
+    }
+
+    #[test]
+    fn bounded_sanitizer_classifies_allocation_and_invalid_utf8_failures() {
+        assert_eq!(
+            BoundedSanitizeSink::new(usize::MAX).string_with_capacity(usize::MAX),
+            Err(BoundedSanitizeError::AllocationFailed)
+        );
+
+        let config = merman_core::MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "htmlLabels": true
+        }));
+        assert_eq!(
+            merman_core::sanitize::sanitize_text_with_sink(
+                "<b>ok</b>",
+                &config,
+                &InvalidUtf8Sink(BoundedSanitizeSink::new(4096)),
+            ),
+            Err(SanitizeFailure::InvalidUtf8Output)
+        );
     }
 
     #[test]

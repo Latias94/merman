@@ -5,17 +5,83 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+/// Failure produced by the shared sanitizer pipeline.
+///
+/// This is an internal cross-crate SPI, not a stable extension surface.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum SanitizeError {
-    #[error("HTML sanitizer rejected the input")]
+pub enum SanitizeFailure<E> {
+    /// The HTML parser rejected ambiguous or malformed input.
     RejectedInput,
-    #[error("sanitized output exceeds the {max_bytes}-byte limit")]
-    OutputLimitExceeded { max_bytes: usize },
-    #[error("sanitizer output allocation failed")]
-    AllocationFailed,
-    #[error("sanitizer produced invalid UTF-8")]
+    /// The caller-owned output sink rejected an allocation or output chunk.
+    Output(E),
+    /// The HTML rewriter produced bytes that were not valid UTF-8.
     InvalidUtf8Output,
+}
+
+/// Caller-owned storage policy for the shared sanitizer pipeline.
+///
+/// The core text API uses an ordinary `String` sink. Renderers handling untrusted retained
+/// markup can supply a bounded sink without adding their resource-limit machinery to semantic-only
+/// artifacts.
+///
+/// This is an internal cross-crate SPI, not a stable extension surface.
+#[doc(hidden)]
+pub trait SanitizeOutputSink {
+    /// Sink-specific output or allocation error.
+    type Error;
+
+    /// Checks the length of a generated output fragment before it is allocated.
+    fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error>;
+
+    /// Allocates a string whose final length has already passed `checked_output_len`.
+    fn string_with_capacity(&self, capacity: usize) -> Result<String, Self::Error>;
+
+    /// Allocates the byte buffer used by the streaming HTML rewriter.
+    fn output_buffer(&self, input_len: usize) -> Result<Vec<u8>, Self::Error>;
+
+    /// Appends one streaming HTML rewriter chunk to the output buffer.
+    fn push_output_chunk(&self, output: &mut Vec<u8>, chunk: &[u8]) -> Result<(), Self::Error>;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StringOutputSink;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StringOutputError;
+
+impl SanitizeOutputSink for StringOutputSink {
+    type Error = StringOutputError;
+
+    fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error> {
+        current.checked_add(additional).ok_or(StringOutputError)
+    }
+
+    fn string_with_capacity(&self, capacity: usize) -> Result<String, Self::Error> {
+        let mut output = String::new();
+        output
+            .try_reserve_exact(capacity)
+            .map_err(|_| StringOutputError)?;
+        Ok(output)
+    }
+
+    fn output_buffer(&self, input_len: usize) -> Result<Vec<u8>, Self::Error> {
+        let mut output = Vec::new();
+        output
+            .try_reserve_exact(input_len)
+            .map_err(|_| StringOutputError)?;
+        Ok(output)
+    }
+
+    fn push_output_chunk(&self, output: &mut Vec<u8>, chunk: &[u8]) -> Result<(), Self::Error> {
+        self.checked_output_len(output.len(), chunk.len())?;
+        output
+            .try_reserve(chunk.len())
+            .map_err(|_| StringOutputError)?;
+        output.extend_from_slice(chunk);
+        Ok(())
+    }
 }
 
 fn mermaid_line_break_tag_end(input: &str, start: usize) -> Option<usize> {
@@ -71,18 +137,20 @@ fn is_js_regex_whitespace(ch: char) -> bool {
     )
 }
 
-fn escape_html_preserving_breaks(
+fn escape_html_preserving_breaks<S: SanitizeOutputSink>(
     text: &str,
     escape_equals: bool,
-    max_output_bytes: usize,
-) -> Result<String, SanitizeError> {
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
     let mut output_len = 0usize;
     let mut cursor = 0usize;
     while cursor < text.len() {
         if text.as_bytes()[cursor] == b'<'
             && let Some(end) = mermaid_line_break_tag_end(text, cursor)
         {
-            output_len = checked_output_len(output_len, "<br/>".len(), max_output_bytes)?;
+            output_len = sink
+                .checked_output_len(output_len, "<br/>".len())
+                .map_err(SanitizeFailure::Output)?;
             cursor = end;
             continue;
         }
@@ -96,13 +164,15 @@ fn escape_html_preserving_breaks(
             '=' if escape_equals => 5,
             _ => ch.len_utf8(),
         };
-        output_len = checked_output_len(output_len, replacement_len, max_output_bytes)?;
+        output_len = sink
+            .checked_output_len(output_len, replacement_len)
+            .map_err(SanitizeFailure::Output)?;
         cursor += ch.len_utf8();
     }
 
-    let mut out = String::new();
-    out.try_reserve_exact(output_len)
-        .map_err(|_| SanitizeError::AllocationFailed)?;
+    let mut out = sink
+        .string_with_capacity(output_len)
+        .map_err(SanitizeFailure::Output)?;
     cursor = 0;
     while cursor < text.len() {
         if text.as_bytes()[cursor] == b'<'
@@ -128,33 +198,16 @@ fn escape_html_preserving_breaks(
     Ok(out)
 }
 
-fn checked_output_len(
-    current: usize,
-    additional: usize,
-    max_output_bytes: usize,
-) -> Result<usize, SanitizeError> {
-    let next = current
-        .checked_add(additional)
-        .ok_or(SanitizeError::OutputLimitExceeded {
-            max_bytes: max_output_bytes,
-        })?;
-    if next > max_output_bytes {
-        return Err(SanitizeError::OutputLimitExceeded {
-            max_bytes: max_output_bytes,
-        });
-    }
-    Ok(next)
-}
-
-fn bounded_owned(text: &str, max_output_bytes: usize) -> Result<String, SanitizeError> {
-    if text.len() > max_output_bytes {
-        return Err(SanitizeError::OutputLimitExceeded {
-            max_bytes: max_output_bytes,
-        });
-    }
-    let mut out = String::new();
-    out.try_reserve_exact(text.len())
-        .map_err(|_| SanitizeError::AllocationFailed)?;
+fn owned_output<S: SanitizeOutputSink>(
+    text: &str,
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
+    let output_len = sink
+        .checked_output_len(0, text.len())
+        .map_err(SanitizeFailure::Output)?;
+    let mut out = sink
+        .string_with_capacity(output_len)
+        .map_err(SanitizeFailure::Output)?;
     out.push_str(text);
     Ok(out)
 }
@@ -659,11 +712,11 @@ fn replace_hex_colon_entity_like_current_regex(input: &str) -> String {
     out
 }
 
-fn dompurify_like_sanitize_html(
+fn dompurify_like_sanitize_html<S: SanitizeOutputSink>(
     text: &str,
     cfg: &DompurifyEffectiveConfig,
-    max_output_bytes: usize,
-) -> Result<String, SanitizeError> {
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
     if text.is_empty() {
         return Ok(String::new());
     }
@@ -675,10 +728,10 @@ fn dompurify_like_sanitize_html(
     //
     // To stay closer to Mermaid's `sanitizeText` behavior, pre-escape such `<` tokens before
     // running the DOMPurify-like rewrite.
-    fn escape_stray_lt(
-        input: &str,
-        max_output_bytes: usize,
-    ) -> Result<Cow<'_, str>, SanitizeError> {
+    fn escape_stray_lt<'a, S: SanitizeOutputSink>(
+        input: &'a str,
+        sink: &S,
+    ) -> Result<Cow<'a, str>, SanitizeFailure<S::Error>> {
         let bytes = input.as_bytes();
         let mut pos = 0usize;
         let mut stray_count = 0usize;
@@ -687,12 +740,9 @@ fn dompurify_like_sanitize_html(
                 let next = bytes.get(pos + 1).copied().unwrap_or(b' ');
                 let tag_start = next.is_ascii_alphabetic() || matches!(next, b'/' | b'!' | b'?');
                 if !tag_start {
-                    stray_count =
-                        stray_count
-                            .checked_add(1)
-                            .ok_or(SanitizeError::OutputLimitExceeded {
-                                max_bytes: max_output_bytes,
-                            })?;
+                    stray_count = sink
+                        .checked_output_len(stray_count, 1)
+                        .map_err(SanitizeFailure::Output)?;
                 }
             }
             pos += 1;
@@ -701,21 +751,14 @@ fn dompurify_like_sanitize_html(
             return Ok(Cow::Borrowed(input));
         }
 
-        let output_len = stray_count
-            .checked_mul("&lt;".len() - 1)
-            .and_then(|growth| input.len().checked_add(growth))
-            .ok_or(SanitizeError::OutputLimitExceeded {
-                max_bytes: max_output_bytes,
-            })?;
-        if output_len > max_output_bytes {
-            return Err(SanitizeError::OutputLimitExceeded {
-                max_bytes: max_output_bytes,
-            });
-        }
+        let growth = stray_count.saturating_mul("&lt;".len() - 1);
+        let output_len = sink
+            .checked_output_len(input.len(), growth)
+            .map_err(SanitizeFailure::Output)?;
 
-        let mut out = String::new();
-        out.try_reserve_exact(output_len)
-            .map_err(|_| SanitizeError::AllocationFailed)?;
+        let mut out = sink
+            .string_with_capacity(output_len)
+            .map_err(SanitizeFailure::Output)?;
         let mut last = 0usize;
         let mut i = 0usize;
         while i < bytes.len() {
@@ -736,7 +779,7 @@ fn dompurify_like_sanitize_html(
         Ok(Cow::Owned(out))
     }
 
-    let text = escape_stray_lt(text, max_output_bytes)?;
+    let text = escape_stray_lt(text, sink)?;
 
     let rewrite_str_settings = RewriteStrSettings::new()
         .append_element_content_handler(element!("script", |el| {
@@ -810,59 +853,46 @@ fn dompurify_like_sanitize_html(
         }));
 
     let settings: Settings<'_, '_> = rewrite_str_settings.into();
-    let initial_capacity = text.len().min(max_output_bytes);
-    let mut output = Vec::new();
-    output
-        .try_reserve_exact(initial_capacity)
-        .map_err(|_| SanitizeError::AllocationFailed)?;
+    let mut output = sink
+        .output_buffer(text.len())
+        .map_err(SanitizeFailure::Output)?;
     let mut sink_error = None;
     {
         let mut rewriter = HtmlRewriter::new(settings, |chunk: &[u8]| {
             if sink_error.is_some() {
                 return;
             }
-            let Some(next_len) = output.len().checked_add(chunk.len()) else {
-                sink_error = Some(SanitizeError::OutputLimitExceeded {
-                    max_bytes: max_output_bytes,
-                });
-                return;
-            };
-            if next_len > max_output_bytes {
-                sink_error = Some(SanitizeError::OutputLimitExceeded {
-                    max_bytes: max_output_bytes,
-                });
-                return;
+            if let Err(error) = sink.push_output_chunk(&mut output, chunk) {
+                sink_error = Some(error);
             }
-            if output.try_reserve(chunk.len()).is_err() {
-                sink_error = Some(SanitizeError::AllocationFailed);
-                return;
-            }
-            output.extend_from_slice(chunk);
         });
         rewriter
             .write(text.as_bytes())
-            .map_err(|_| SanitizeError::RejectedInput)?;
-        rewriter.end().map_err(|_| SanitizeError::RejectedInput)?;
+            .map_err(|_| SanitizeFailure::RejectedInput)?;
+        rewriter.end().map_err(|_| SanitizeFailure::RejectedInput)?;
     }
     if let Some(error) = sink_error {
-        return Err(error);
+        return Err(SanitizeFailure::Output(error));
     }
-    String::from_utf8(output).map_err(|_| SanitizeError::InvalidUtf8Output)
+    String::from_utf8(output).map_err(|_| SanitizeFailure::InvalidUtf8Output)
 }
 
 pub fn remove_script(text: &str) -> String {
-    try_remove_script(text, usize::MAX).unwrap_or_default()
+    try_remove_script(text, &StringOutputSink).unwrap_or_default()
 }
 
-fn try_remove_script(text: &str, max_output_bytes: usize) -> Result<String, SanitizeError> {
+fn try_remove_script<S: SanitizeOutputSink>(
+    text: &str,
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
     if text.is_empty() || !text.contains('<') {
-        return bounded_owned(text, max_output_bytes);
+        return owned_output(text, sink);
     }
     let cfg = dompurify_effective_config(
         &MermaidConfig::from_value(serde_json::Value::Object(serde_json::Map::new())),
         false,
     );
-    dompurify_like_sanitize_html(text, &cfg, max_output_bytes)
+    dompurify_like_sanitize_html(text, &cfg, sink)
 }
 
 fn effective_html_labels(config: &MermaidConfig) -> bool {
@@ -920,39 +950,44 @@ fn sanitizer_preserves_unformatted_ascii_paragraph(config: &MermaidConfig) -> bo
     paragraph_is_allowed && !list_contains("FORBID_TAGS", "p")
 }
 
-fn sanitize_more(
+fn sanitize_more<S: SanitizeOutputSink>(
     text: &str,
     config: &MermaidConfig,
-    max_output_bytes: usize,
-) -> Result<String, SanitizeError> {
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
     let html_labels_enabled = effective_html_labels(config);
     if !html_labels_enabled {
-        return bounded_owned(text, max_output_bytes);
+        return owned_output(text, sink);
     }
 
     let level = config.get_str("securityLevel");
     if matches!(level, Some("antiscript" | "strict" | "sandbox")) {
-        return try_remove_script(text, max_output_bytes);
+        return try_remove_script(text, sink);
     }
 
     if level != Some("loose") {
-        return escape_html_preserving_breaks(text, true, max_output_bytes);
+        return escape_html_preserving_breaks(text, true, sink);
     }
 
-    bounded_owned(text, max_output_bytes)
+    owned_output(text, sink)
 }
 
 pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
-    try_sanitize_text(text, config, usize::MAX).unwrap_or_default()
+    sanitize_text_with_sink(text, config, &StringOutputSink).unwrap_or_default()
 }
 
-/// Sanitizes text with a hard output bound and reports parser ambiguity instead of returning the
-/// original input. Callers handling untrusted markup should use this fallible entry point.
-pub fn try_sanitize_text(
+/// Sanitizes text through a caller-owned output sink.
+///
+/// Parser ambiguity always fails closed. Resource-aware callers should implement a sink that
+/// rejects output growth and allocation failure according to their local policy.
+///
+/// This is an internal cross-crate SPI, not a stable extension surface.
+#[doc(hidden)]
+pub fn sanitize_text_with_sink<S: SanitizeOutputSink>(
     text: &str,
     config: &MermaidConfig,
-    max_output_bytes: usize,
-) -> Result<String, SanitizeError> {
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
     if text.is_empty() {
         return Ok(String::new());
     }
@@ -961,16 +996,16 @@ pub fn try_sanitize_text(
     if is_unformatted_ascii_paragraph(text)
         && sanitizer_preserves_unformatted_ascii_paragraph(config)
     {
-        return bounded_owned(text, max_output_bytes);
+        return owned_output(text, sink);
     }
 
-    let t = sanitize_more(text, config, max_output_bytes)?;
+    let t = sanitize_more(text, config, sink)?;
     if !t.contains('<') {
         return Ok(t);
     }
 
     let cfg = dompurify_effective_config(config, true);
-    dompurify_like_sanitize_html(&t, &cfg, max_output_bytes)
+    dompurify_like_sanitize_html(&t, &cfg, sink)
 }
 
 pub fn sanitize_text_or_array(
@@ -1012,12 +1047,12 @@ mod tests {
     #[test]
     fn preserved_line_breaks_match_mermaid_regex_shape() {
         assert_eq!(
-            escape_html_preserving_breaks("A<br>B<BR/>C<br \t/>D<br   >E", true, usize::MAX)
+            escape_html_preserving_breaks("A<br>B<BR/>C<br \t/>D<br   >E", true, &StringOutputSink)
                 .unwrap(),
             "A<br/>B<br/>C<br/>D<br/>E"
         );
         assert_eq!(
-            escape_html_preserving_breaks("A<br\u{00A0}/>B<br\u{FEFF}>C", true, usize::MAX)
+            escape_html_preserving_breaks("A<br\u{00A0}/>B<br\u{FEFF}>C", true, &StringOutputSink,)
                 .unwrap(),
             "A<br/>B<br/>C"
         );
@@ -1035,7 +1070,7 @@ mod tests {
             "flowchart": { "htmlLabels": true }
         }));
         assert_eq!(
-            sanitize_more(r#"<b a=1>ok</b>"#, &root_false, usize::MAX).unwrap(),
+            sanitize_more(r#"<b a=1>ok</b>"#, &root_false, &StringOutputSink).unwrap(),
             r#"<b a=1>ok</b>"#
         );
 
@@ -1045,7 +1080,7 @@ mod tests {
             "flowchart": { "htmlLabels": false }
         }));
         assert_eq!(
-            sanitize_more(r#"<b a=1>ok</b>"#, &root_true, usize::MAX).unwrap(),
+            sanitize_more(r#"<b a=1>ok</b>"#, &root_true, &StringOutputSink).unwrap(),
             r#"<b>ok</b>"#
         );
 
@@ -1054,7 +1089,7 @@ mod tests {
             "flowchart": { "htmlLabels": false }
         }));
         assert_eq!(
-            sanitize_more(r#"<b a=1>ok</b>"#, &deprecated_false, usize::MAX).unwrap(),
+            sanitize_more(r#"<b a=1>ok</b>"#, &deprecated_false, &StringOutputSink,).unwrap(),
             r#"<b a=1>ok</b>"#
         );
     }
@@ -1248,30 +1283,11 @@ mod tests {
                 "htmlLabels": true
             }));
             assert_eq!(
-                try_sanitize_text(payload, &config, 4096),
-                Err(SanitizeError::RejectedInput)
+                sanitize_text_with_sink(payload, &config, &StringOutputSink),
+                Err(SanitizeFailure::RejectedInput)
             );
             assert_eq!(sanitize_text(payload, &config), "");
         }
-    }
-
-    #[test]
-    fn fallible_sanitizer_accepts_exact_output_limit_and_rejects_one_less() {
-        let input = r#"<a href="https://example.com" target="_blank">example</a>"#;
-        let expected =
-            r#"<a href="https://example.com" rel="noopener" target="_blank">example</a>"#;
-        let config = cfg_strict();
-
-        assert_eq!(
-            try_sanitize_text(input, &config, expected.len()).unwrap(),
-            expected
-        );
-        assert_eq!(
-            try_sanitize_text(input, &config, expected.len() - 1),
-            Err(SanitizeError::OutputLimitExceeded {
-                max_bytes: expected.len() - 1
-            })
-        );
     }
 
     #[test]
