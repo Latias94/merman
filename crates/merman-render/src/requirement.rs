@@ -10,14 +10,14 @@ use merman_core::diagrams::requirement::{
     RequirementDiagramRenderModel, RequirementRenderElement, RequirementRenderNode,
 };
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 mod config;
 
 pub(crate) use config::RequirementConfigView;
 
 fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize {
-    let node_count = model
+    let source_node_count = model
         .requirements
         .iter()
         .filter(|node| node.name != "__proto__")
@@ -29,7 +29,15 @@ fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize
                 .filter(|node| node.name != "__proto__")
                 .count(),
         );
-    let edge_count = model.relationships.len();
+    let source_edge_count = model.relationships.len();
+    let self_loop_count = model
+        .relationships
+        .iter()
+        .filter(|relationship| relationship.src == relationship.dst)
+        .count();
+    // Mermaid expands every self-loop into two labelRect nodes and three layout edges.
+    let node_count = source_node_count.saturating_add(self_loop_count.saturating_mul(2));
+    let edge_count = source_edge_count.saturating_add(self_loop_count.saturating_mul(2));
     // Dugong's ranking, crossing, and routing phases repeatedly inspect graph incidence. Charge a
     // deterministic V*E upper bound before constructing the graph rather than exposing a
     // Requirement-specific public threshold.
@@ -68,8 +76,8 @@ pub(crate) struct RequirementLabelMetrics {
 #[derive(Debug)]
 pub(crate) struct RequirementPreparedArtifact {
     layout: RequirementDiagramLayout,
-    nodes: Vec<RequirementNodeLabelPlan>,
-    edges: Vec<RequirementEdgeLabelPlan>,
+    nodes: HashMap<String, RequirementNodeRenderPlan>,
+    edges: HashMap<EdgeKey, RequirementEdgeLabelPlan>,
 }
 
 impl RequirementPreparedArtifact {
@@ -81,11 +89,17 @@ impl RequirementPreparedArtifact {
         &self,
     ) -> (
         &RequirementDiagramLayout,
-        &[RequirementNodeLabelPlan],
-        &[RequirementEdgeLabelPlan],
+        &HashMap<String, RequirementNodeRenderPlan>,
+        &HashMap<EdgeKey, RequirementEdgeLabelPlan>,
     ) {
         (&self.layout, &self.nodes, &self.edges)
     }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum RequirementNodeRenderPlan {
+    Semantic(RequirementNodeLabelPlan),
+    EdgeLabelAnchor,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +122,10 @@ pub(crate) struct RequirementEdgeLabelPlan {
     pub(crate) relationship_type: String,
     pub(crate) display_text: String,
     pub(crate) max_width_px: i64,
+    pub(crate) rendered_id: String,
+    pub(crate) has_label: bool,
+    pub(crate) marker_start: bool,
+    pub(crate) marker_end: bool,
 }
 
 #[derive(Debug)]
@@ -296,6 +314,32 @@ fn requirement_edge_key(src: &str, dst: &str) -> EdgeKey {
     EdgeKey::new(src, dst, Some(requirement_edge_id(src, dst, 0)))
 }
 
+fn requirement_layout_edge_label(width: f64, height: f64) -> EdgeLabel {
+    EdgeLabel {
+        width,
+        height,
+        labelpos: LabelPos::C,
+        // Dagre defaults to 10 when unspecified.
+        labeloffset: 10.0,
+        minlen: 1,
+        weight: 1.0,
+        ..Default::default()
+    }
+}
+
+fn insert_requirement_layout_edge(
+    graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    plans: &mut HashMap<EdgeKey, RequirementEdgeLabelPlan>,
+    from: &str,
+    to: &str,
+    graph_name: &str,
+    label: EdgeLabel,
+    plan: RequirementEdgeLabelPlan,
+) {
+    graph.set_edge_named(from, to, Some(graph_name), Some(label));
+    plans.insert(EdgeKey::new(from, to, Some(graph_name)), plan);
+}
+
 fn prefixed_nonempty_line(prefix: &str, value: &str) -> String {
     let value = value.trim();
     if value.is_empty() {
@@ -436,6 +480,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     let mut requirement_node_labels = HashMap::new();
     let mut element_node_labels = HashMap::new();
     let mut edge_labels = HashMap::new();
+    let mut edge_label_anchor_nodes = HashSet::new();
 
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
@@ -528,11 +573,6 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
             });
         }
 
-        // Mermaid 11.16 emits each Graphlib edge's label, pattern, and marker even when its public
-        // id collides: the id counter resets to zero, while identity remains (v, w, name).
-        // Preserve distinct endpoint pairs and the same-endpoint last-write-wins behavior.
-        let edge_key = requirement_edge_key(&rel.src, &rel.dst);
-
         let label_display = format!("&lt;&lt;{}&gt;&gt;", rel.rel_type);
         let label_calculation = label_display.clone();
         let metrics = measure_requirement_label_metrics(
@@ -551,28 +591,104 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
             ),
         })?;
 
-        let el = EdgeLabel {
-            width: metrics.width.max(0.0),
-            height: metrics.height.max(0.0),
-            labelpos: LabelPos::C,
-            // Dagre defaults to 10 when unspecified.
-            labeloffset: 10.0,
-            minlen: 1,
-            weight: 1.0,
-            ..Default::default()
-        };
-        g.set_edge_named(
-            edge_key.v.clone(),
-            edge_key.w.clone(),
-            edge_key.name.clone(),
-            Some(el),
-        );
-        let label_plan = RequirementEdgeLabelPlan {
-            relationship_type: rel.rel_type.clone(),
-            display_text: label_display,
-            max_width_px: metrics.max_width_px,
-        };
-        edge_labels.insert(edge_key, label_plan);
+        let is_contains = rel.rel_type == "contains";
+        if rel.src == rel.dst {
+            // The pinned Dagre renderer replaces a self-loop with two measured labelRect nodes and
+            // three named edges. Requirement intentionally keeps those segments separate in SVG.
+            let first_anchor = format!("{}---{}---1", rel.src, rel.src);
+            let second_anchor = format!("{}---{}---2", rel.src, rel.src);
+            for anchor in [&first_anchor, &second_anchor] {
+                g.set_node(
+                    anchor.clone(),
+                    NodeLabel {
+                        width: 0.1,
+                        height: 0.1,
+                        ..Default::default()
+                    },
+                );
+                edge_label_anchor_nodes.insert(anchor.clone());
+            }
+
+            let first_graph_name = format!("{}-cyclic-special-0", rel.src);
+            let middle_graph_name = format!("{}-cyclic-special-1", rel.src);
+            let last_graph_name = format!("{}-cyclic-special-2", rel.src);
+            insert_requirement_layout_edge(
+                &mut g,
+                &mut edge_labels,
+                &rel.src,
+                &first_anchor,
+                &first_graph_name,
+                requirement_layout_edge_label(0.0, 0.0),
+                RequirementEdgeLabelPlan {
+                    relationship_type: rel.rel_type.clone(),
+                    display_text: String::new(),
+                    max_width_px: 200,
+                    rendered_id: format!("{}-cyclic-special-1", rel.src),
+                    has_label: false,
+                    marker_start: is_contains,
+                    marker_end: false,
+                },
+            );
+            insert_requirement_layout_edge(
+                &mut g,
+                &mut edge_labels,
+                &first_anchor,
+                &second_anchor,
+                &middle_graph_name,
+                requirement_layout_edge_label(metrics.width.max(0.0), metrics.height.max(0.0)),
+                RequirementEdgeLabelPlan {
+                    relationship_type: rel.rel_type.clone(),
+                    display_text: label_display,
+                    max_width_px: metrics.max_width_px,
+                    rendered_id: format!("{}-cyclic-special-mid", rel.src),
+                    has_label: true,
+                    marker_start: false,
+                    marker_end: false,
+                },
+            );
+            insert_requirement_layout_edge(
+                &mut g,
+                &mut edge_labels,
+                &second_anchor,
+                &rel.dst,
+                &last_graph_name,
+                requirement_layout_edge_label(0.0, 0.0),
+                RequirementEdgeLabelPlan {
+                    relationship_type: rel.rel_type.clone(),
+                    display_text: String::new(),
+                    max_width_px: 200,
+                    rendered_id: last_graph_name.clone(),
+                    has_label: false,
+                    marker_start: false,
+                    marker_end: !is_contains,
+                },
+            );
+        } else {
+            // Mermaid's Requirement edge counter resets to zero. Graph identity remains the full
+            // (source, target, name) tuple even when two public ids collide.
+            let edge_key = requirement_edge_key(&rel.src, &rel.dst);
+            let rendered_id = edge_key
+                .name
+                .clone()
+                .expect("Requirement edges are always named");
+            insert_requirement_layout_edge(
+                &mut g,
+                &mut edge_labels,
+                &edge_key.v,
+                &edge_key.w,
+                &rendered_id,
+                requirement_layout_edge_label(metrics.width.max(0.0), metrics.height.max(0.0)),
+                RequirementEdgeLabelPlan {
+                    relationship_type: rel.rel_type.clone(),
+                    display_text: label_display,
+                    max_width_px: metrics.max_width_px,
+                    rendered_id: rendered_id.clone(),
+                    has_label: true,
+                    marker_start: is_contains,
+                    marker_end: !is_contains,
+                },
+            );
+        }
     }
 
     dugong::layout(&mut g);
@@ -598,7 +714,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     }
 
     let mut out_edges: Vec<LayoutEdge> = Vec::new();
-    let mut prepared_edge_labels = Vec::new();
+    let mut prepared_edge_labels = HashMap::new();
     for ek in g.edge_keys() {
         let Some(e) = g.edge_by_key(&ek) else {
             continue;
@@ -626,11 +742,12 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
             _ => None,
         };
 
+        let layout_edge_id = ek
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("{}-{}", ek.v, ek.w));
         out_edges.push(LayoutEdge {
-            id: ek
-                .name
-                .clone()
-                .unwrap_or_else(|| format!("{}-{}", ek.v, ek.w)),
+            id: layout_edge_id,
             from: ek.v.clone(),
             to: ek.w.clone(),
             from_cluster: None,
@@ -645,7 +762,11 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
             end_marker: None,
             stroke_dasharray: None,
         });
-        prepared_edge_labels.push(prepared_label);
+        if prepared_edge_labels.insert(ek, prepared_label).is_some() {
+            return Err(Error::InvalidModel {
+                message: "duplicate prepared Requirement edge identity after layout".to_string(),
+            });
+        }
     }
 
     fn bounds_for_nodes_edges(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
@@ -690,18 +811,26 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     }
 
     let bounds = bounds_for_nodes_edges(&out_nodes, &out_edges);
-    let mut prepared_node_labels = Vec::with_capacity(out_nodes.len());
+    let mut prepared_node_labels = HashMap::with_capacity(out_nodes.len());
     for node in &out_nodes {
-        // A node's public id is its Graphlib identity, so there is no lossy re-keying here.
-        // Preserve the renderer's historical requirement-before-element precedence when both
-        // semantic collections contain the same node name.
-        let prepared_label = requirement_node_labels
-            .remove(&node.id)
-            .or_else(|| element_node_labels.remove(&node.id))
-            .ok_or_else(|| Error::InvalidModel {
-                message: format!("missing prepared Requirement node label for {}", node.id),
-            })?;
-        prepared_node_labels.push(prepared_label);
+        let plan = if edge_label_anchor_nodes.contains(&node.id) {
+            RequirementNodeRenderPlan::EdgeLabelAnchor
+        } else {
+            // Preserve the renderer's historical requirement-before-element precedence when both
+            // semantic collections contain the same node name.
+            let prepared_label = requirement_node_labels
+                .remove(&node.id)
+                .or_else(|| element_node_labels.remove(&node.id))
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!("missing prepared Requirement node label for {}", node.id),
+                })?;
+            RequirementNodeRenderPlan::Semantic(prepared_label)
+        };
+        if prepared_node_labels.insert(node.id.clone(), plan).is_some() {
+            return Err(Error::InvalidModel {
+                message: format!("duplicate prepared Requirement node identity: {}", node.id),
+            });
+        }
     }
     let layout = RequirementDiagramLayout {
         nodes: out_nodes,
