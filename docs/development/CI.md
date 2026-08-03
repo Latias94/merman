@@ -26,7 +26,8 @@ pairwise combination and artifact recipe.
 The Pages workflow owns the deployable Playground and browser integration evidence. It builds the
 Web package group once, then uses those exact package artifacts for size budgets, package smoke,
 Playground preparation, and browser tests. Generated-source freshness remains owned by the central
-CI workflow and is not repeated in Pages.
+CI workflow for pull requests. A main-branch or manual Pages deployment repeats only the deployable
+browser projections because deployment is an independently mutable side effect.
 
 Pull requests build and test the site but do not deploy it. Main-branch runs upload the same tested
 `playground/dist` directory to GitHub Pages. Chromium exercises the full browser suite; Firefox and

@@ -87,21 +87,32 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.15.0 --locked
 
+      - name: Verify deployable browser projections
+        if: github.event_name != 'pull_request'
+        run: |
+          cargo run --locked -p xtask -- verify-mermaid-reference
+          cargo run --locked -p xtask -- verify-capability-surface
+          cargo run --locked -p xtask -- verify-editor-token-descriptor
+          cargo run --locked -p xtask -- verify-text-measurement-protocol
+          cargo run --locked -p xtask -- verify-web-diagram-catalog
+          cargo run --locked -p xtask -- verify-resource-contract
+          cargo run --locked -p xtask -- verify-playground-example-catalog
+
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web
 
       - name: Build web package
         run: npm run build --prefix platforms/web
 
+      - name: Verify and smoke web package
+        run: npm run smoke --prefix platforms/web
+
       - name: Check final Web package WASM size budgets
         run: |
           cargo run --locked -p xtask -- wasm-size-matrix \
             --surface web \
-            --web-package-root platforms/web/pkg \
+            --web-package-root platforms/web/packages \
             --budget-file docs/release/WASM_SIZE_BUDGETS.json
-
-      - name: Verify and smoke web package
-        run: npm run smoke --prefix platforms/web
 
       - name: Install playground dependencies
         run: npm ci --prefix playground

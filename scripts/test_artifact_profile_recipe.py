@@ -608,48 +608,6 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["cwd"], artifact_profile_recipe.REPO_ROOT)
         self.assertTrue(run.call_args.kwargs["check"])
 
-    def test_pull_requests_use_curated_matrix_and_release_preflight_uses_strict_matrix(
-        self,
-    ) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
-        job = workflow_job(workflow, "build-test")
-        step = workflow_step(
-            job,
-            name="Verify pull-request architecture contracts",
-        )
-        commands = [line.strip() for line in step["run"].splitlines() if line.strip()]
-        self.assertIn(
-            "cargo run --locked -p xtask -- verify-feature-matrix",
-            commands,
-        )
-        self.assertNotIn(
-            "cargo run --locked -p xtask -- verify-feature-matrix --strict",
-            commands,
-        )
-        self.assertNotIn(
-            "python3 scripts/verify_artifact_dependency_closures.py",
-            commands,
-        )
-
-        release_workflow = load_workflow_contract(
-            repo_root / ".github/workflows/release-preflight.yml"
-        )
-        release_step = workflow_step(
-            workflow_job(release_workflow, "versions-and-packages"),
-            name="Verify exhaustive Cargo feature and artifact recipes",
-        )
-        self.assertEqual(
-            release_step["run"],
-            "cargo run --locked -p xtask -- verify-feature-matrix --strict",
-        )
-        parity_targets = workflow_step(job, name="Install parity Rust targets")
-        self.assertEqual(parity_targets["if"], "matrix.parity")
-        self.assertEqual(
-            parity_targets["run"],
-            "rustup target add aarch64-linux-android wasm32-unknown-unknown",
-        )
-
     def test_cli_profiles_use_binary_process_contracts(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")

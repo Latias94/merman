@@ -383,7 +383,7 @@ fn parse_options(args: Vec<String>) -> Result<FeatureMatrixOptions, XtaskError> 
                 println!("usage: xtask verify-feature-matrix [--strict]");
                 println!();
                 println!(
-                    "Always validates Cargo feature implications, leaf builds, and exact artifact recipes."
+                    "Always validates Cargo feature implications and a curated set of product and transport builds."
                 );
                 println!("  --strict  build every public capability leaf, a bounded pairwise set,");
                 println!("            and every exact host plus Web/Typst WASM artifact recipe");

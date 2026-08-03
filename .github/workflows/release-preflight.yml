@@ -428,15 +428,15 @@ jobs:
       - name: Build web package
         run: npm run build --prefix platforms/web
 
+      - name: Verify and smoke web package
+        run: npm run smoke --prefix platforms/web
+
       - name: Check final Web package WASM size budgets
         run: |
           cargo run --locked -p xtask -- wasm-size-matrix \
             --surface web \
-            --web-package-root platforms/web/pkg \
+            --web-package-root platforms/web/packages \
             --budget-file docs/release/WASM_SIZE_BUDGETS.json
-
-      - name: Verify and smoke web package
-        run: npm run smoke --prefix platforms/web
 
       - name: Pack and verify Web package group dry-run
         shell: bash

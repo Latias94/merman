@@ -163,15 +163,17 @@ Use the xtask size matrix before changing an artifact profile:
 ```bash
 npm ci --prefix platforms/web
 npm run build --prefix platforms/web
+npm run smoke --prefix platforms/web
 cargo run -p xtask -- wasm-size-matrix --surface web \
-  --web-package-root platforms/web/pkg \
+  --web-package-root platforms/web/packages \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run -p xtask -- wasm-size-matrix --surface typst \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
-The Web command measures the wasm-bindgen artifacts that the package assembler copies into the
-published npm packages; it must not rebuild an alternate Cargo-only size artifact. The Typst
+The Web command measures the wasm-bindgen artifacts inside the assembled npm package directories;
+the preceding smoke proves their provenance and package closure. It must not rebuild an alternate
+Cargo-only size artifact. The Typst
 command builds its descriptor-owned `wasm-size` artifact because that transport has a separate
 package producer. Both report raw, stripped, gzip, and Brotli bytes together with the exact Cargo
 profile, target, feature set, runtime IDs, capabilities, and output IDs. The schema-2 budget file

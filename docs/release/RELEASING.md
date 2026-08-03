@@ -240,8 +240,9 @@ gates:
 ```bash
 npm ci --prefix platforms/web
 npm run build --prefix platforms/web
+npm run smoke --prefix platforms/web
 cargo run -p xtask -- wasm-size-matrix --surface web \
-  --web-package-root platforms/web/pkg \
+  --web-package-root platforms/web/packages \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run --locked -p xtask -- verify-typst-profile-constants
