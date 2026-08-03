@@ -154,10 +154,7 @@ jobs:
       - name: Build Web package group
         run: npm run build --prefix platforms/web
 
-      - name: Verify Web package group
-        run: npm run verify:packages --prefix platforms/web
-
-      - name: Smoke Web package group
+      - name: Verify and smoke Web package group
         run: npm run smoke --prefix platforms/web
 
       - name: Pack verified Web package group

@@ -23,8 +23,9 @@
     "test": "npm run test:wasm-inputs",
     "test:wasm-inputs": "node --test scripts/*.test.mjs",
     "check:contracts": "node scripts/check-contracts.mjs",
-    "smoke:dom-safety": "tsc -p tsconfig.build.json && node scripts/dom-safety-smoke.mjs",
-    "smoke": "npm run verify:wasm-inputs && npm run verify:packages && node scripts/smoke.mjs && npm run smoke:dom-safety",
+    "smoke:dom-safety": "tsc -p tsconfig.build.json && npm run smoke:dom-safety:built",
+    "smoke:dom-safety:built": "node scripts/dom-safety-smoke.mjs",
+    "smoke": "npm run verify:wasm-inputs && npm run verify:packages && node scripts/smoke.mjs && npm run smoke:dom-safety:built",
     "prepublishOnly": "node -e \"throw new Error('The Web workspace is private; publish an admitted package-group artifact instead.')\""
   },
   "devDependencies": {

@@ -227,11 +227,10 @@ jobs:
           cargo run --locked -p xtask -- verify-artifact-profiles
           cargo run --locked -p xtask -- verify-web-diagram-catalog
 
-      - name: Build and smoke Web package group
+      - name: Build, verify, and smoke Web package group
         run: |
           npm ci --prefix platforms/web
           npm run build --prefix platforms/web
-          npm run verify:packages --prefix platforms/web
           npm run smoke --prefix platforms/web
 
   typst-owner-preflight:

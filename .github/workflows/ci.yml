@@ -290,8 +290,10 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: aarch64-linux-android,wasm32-unknown-unknown
+
+      - name: Install parity Rust targets
+        if: matrix.parity
+        run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
