@@ -479,12 +479,27 @@ impl ArtifactRuntime for SystemArtifactRuntime {
 
 pub(crate) fn verify_typst_wasm_optimizer() -> Result<String, XtaskError> {
     let version = command_version("wasm-opt", &["--version"])?;
-    if version != WASM_OPT_VERSION {
+    validate_typst_wasm_optimizer_version(&version)?;
+    Ok(version)
+}
+
+fn validate_typst_wasm_optimizer_version(version: &str) -> Result<(), XtaskError> {
+    let compatible = match version.strip_prefix(WASM_OPT_VERSION) {
+        Some("") => true,
+        Some(suffix) => suffix
+            .strip_prefix(" (")
+            .and_then(|metadata| metadata.strip_suffix(')'))
+            .is_some_and(|metadata| {
+                !metadata.is_empty() && !metadata.chars().any(char::is_whitespace)
+            }),
+        None => false,
+    };
+    if !compatible {
         return Err(artifact_error(format!(
-            "Typst packaging requires `{WASM_OPT_VERSION}`, found `{version}`"
+            "Typst packaging requires Binaryen 131 (`{WASM_OPT_VERSION}`), found `{version}`"
         )));
     }
-    Ok(version)
+    Ok(())
 }
 
 pub(crate) fn optimize_typst_wasm(input: &Path, output: &Path) -> Result<(), XtaskError> {
@@ -1569,6 +1584,16 @@ fn artifact_error(message: impl Into<String>) -> XtaskError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wasm_optimizer_version_accepts_release_build_suffix() {
+        assert!(validate_typst_wasm_optimizer_version(WASM_OPT_VERSION).is_ok());
+        assert!(
+            validate_typst_wasm_optimizer_version("wasm-opt version 131 (version_131)").is_ok()
+        );
+        assert!(validate_typst_wasm_optimizer_version("wasm-opt version 130").is_err());
+        assert!(validate_typst_wasm_optimizer_version("wasm-opt version 1310").is_err());
+    }
 
     struct Fixture {
         _temporary: tempfile::TempDir,
