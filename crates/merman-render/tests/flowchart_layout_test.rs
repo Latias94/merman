@@ -1071,6 +1071,84 @@ fn flowchart_multigraph_edges_keep_distinct_routes_and_labels() {
     }
 }
 
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_parallel_edge_labels_stay_bound_to_source_edge_ids() {
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin render session");
+    let text = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures")
+            .join("flowchart")
+            .join(
+                "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034.mmd",
+            ),
+    )
+    .expect("read signed upstream fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &session)
+        .expect("layout ok");
+    let model = flowchart_model(&parsed);
+
+    let semantic_edge = |id: &str| {
+        model
+            .edges
+            .iter()
+            .find(|edge| edge.id == id)
+            .unwrap_or_else(|| panic!("semantic edge {id}"))
+    };
+    let layout_edge = |id: &str| {
+        layout
+            .edges
+            .iter()
+            .find(|edge| edge.id == id)
+            .unwrap_or_else(|| panic!("layout edge {id}"))
+    };
+
+    let lower = layout_edge("L_a1_a2_0");
+    let upper = layout_edge("L_a1_a2_2");
+    assert_eq!(semantic_edge("L_a1_a2_0").label.as_deref(), Some("l1"));
+    assert_eq!(semantic_edge("L_a1_a2_2").label.as_deref(), Some("l2"));
+
+    let lower_label = lower.label.as_ref().expect("l1 layout label");
+    let upper_label = upper.label.as_ref().expect("l2 layout label");
+    assert!(approx_eq(lower_label.y, 108.5), "lower={lower:?}");
+    assert!(approx_eq(upper_label.y, 68.5), "upper={upper:?}");
+    assert!(
+        lower_label.y > upper_label.y,
+        "l1 must remain on the lower route and l2 on the upper route"
+    );
+
+    assert_eq!(lower.points.len(), 6, "l1 must use the bent lower route");
+    assert!(
+        lower
+            .points
+            .windows(2)
+            .any(|points| approx_eq(points[0].x, points[1].x)
+                && !approx_eq(points[0].y, points[1].y)),
+        "the lower l1 route must contain a vertical bend: {lower:?}"
+    );
+    assert_eq!(
+        upper.points.len(),
+        2,
+        "l2 must use the straight upper route"
+    );
+    assert!(
+        upper
+            .points
+            .iter()
+            .all(|point| approx_eq(point.y, upper.points[0].y)),
+        "the upper l2 route must remain horizontal: {upper:?}"
+    );
+}
+
 #[test]
 fn flowchart_isolated_cluster_with_multiple_labeled_edges_contains_all_labels() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
