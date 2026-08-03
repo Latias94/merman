@@ -108,6 +108,11 @@ fn mermaid_base_css_exposes_the_complete_common_neo_contract() {
     let gradient = "url(#diag-gradient)";
     let shadow = "url(#diag-drop-shadow)";
 
+    assert_css_properties(
+        &css,
+        "#diag .edge-thickness-normal",
+        &[("stroke-width", "3px")],
+    );
     assert_css_properties(&css, "#diag .node .neo-node", &[("stroke", "#123456")]);
     for selector in [
         "#diag [data-look=\"neo\"].node rect",
