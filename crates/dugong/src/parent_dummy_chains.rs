@@ -4,11 +4,24 @@
 //! between the edge endpoints and the cluster min/max ranks. This mirrors upstream behavior.
 
 use crate::graphlib::Graph;
+use crate::work::{checked_add, checked_mul};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
-use std::collections::BTreeMap;
+use crate::{NoopWorkControl, WorkControl, WorkError};
+use rustc_hash::FxHashMap as HashMap;
 
 pub fn parent_dummy_chains(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    let postorder_nums = postorder(g);
+    let mut work_control = NoopWorkControl;
+    parent_dummy_chains_controlled(g, &mut work_control)
+        .expect("the checked no-op Dugong work control cannot reject dummy-chain work");
+}
+
+pub(crate) fn parent_dummy_chains_controlled(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
+    work_control.charge(parent_dummy_chain_base_work_units(g)?)?;
+    work_control.charge(parent_dummy_chain_path_work_units(g)?)?;
+    let postorder_nums = postorder(g)?;
 
     let chains = g.graph().dummy_chains.clone();
     for mut v in chains {
@@ -78,6 +91,49 @@ pub fn parent_dummy_chains(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             v = next;
         }
     }
+    Ok(())
+}
+
+fn parent_dummy_chain_base_work_units(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    checked_add(checked_mul(g.node_count(), 3)?, g.edge_count())
+}
+
+fn parent_dummy_chain_path_work_units(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    let mut depths: HashMap<String, usize> = HashMap::default();
+    let mut stack: Vec<(String, usize)> = g
+        .children_root()
+        .into_iter()
+        .rev()
+        .map(|id| (id.to_string(), 0))
+        .collect();
+    while let Some((id, depth)) = stack.pop() {
+        depths.insert(id.clone(), depth);
+        let child_depth = checked_add(depth, 1)?;
+        stack.extend(
+            g.children(&id)
+                .into_iter()
+                .rev()
+                .map(|child| (child.to_string(), child_depth)),
+        );
+    }
+
+    let mut path_work = 0usize;
+    for chain in &g.graph().dummy_chains {
+        let Some(edge) = g.node(chain).and_then(|node| node.edge_obj.as_ref()) else {
+            continue;
+        };
+        let endpoint_depth = checked_add(
+            depths.get(&edge.v).copied().unwrap_or(0),
+            depths.get(&edge.w).copied().unwrap_or(0),
+        )?;
+        path_work = checked_add(path_work, checked_add(endpoint_depth, 2)?)?;
+    }
+
+    Ok(path_work)
 }
 
 struct PostorderNum {
@@ -92,7 +148,7 @@ struct PathData {
 
 fn find_path(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    postorder_nums: &BTreeMap<String, PostorderNum>,
+    postorder_nums: &HashMap<String, PostorderNum>,
     v: &str,
     w: &str,
 ) -> PathData {
@@ -147,8 +203,10 @@ fn find_path(
     PathData { path, lca }
 }
 
-fn postorder(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> BTreeMap<String, PostorderNum> {
-    let mut result: BTreeMap<String, PostorderNum> = BTreeMap::new();
+fn postorder(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<HashMap<String, PostorderNum>, WorkError> {
+    let mut result: HashMap<String, PostorderNum> = HashMap::default();
     let mut lim: usize = 0;
 
     let mut stack: Vec<(String, bool, usize)> = g
@@ -161,7 +219,7 @@ fn postorder(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> BTreeMap<String, Po
     while let Some((v, expanded, low)) = stack.pop() {
         if expanded {
             result.insert(v, PostorderNum { low, lim });
-            lim += 1;
+            lim = checked_add(lim, 1)?;
             continue;
         }
 
@@ -172,5 +230,5 @@ fn postorder(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> BTreeMap<String, Po
         }
     }
 
-    result
+    Ok(result)
 }

@@ -11,6 +11,9 @@ pub mod data;
 mod model;
 pub use model::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, SelfEdge};
 
+mod work;
+pub use work::{NoopWorkControl, WorkControl, WorkError};
+
 pub mod acyclic;
 pub mod add_border_segments;
 pub mod coordinate_system;
@@ -25,4 +28,4 @@ pub mod self_edges;
 pub mod util;
 
 mod pipeline;
-pub use pipeline::layout;
+pub use pipeline::{layout, layout_controlled};

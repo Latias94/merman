@@ -28,5 +28,6 @@ pub use cross_count::cross_count;
 
 mod ordering;
 pub use ordering::{OrderOptions, order};
+pub(crate) use ordering::order_controlled;
 
 mod workspace;

@@ -2,7 +2,9 @@
 
 use super::{feasible_tree, tree, util};
 use crate::graphlib::{EdgeKey, Graph, alg};
+use crate::work::{checked_add, checked_mul, checked_n_log_n};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
+use crate::{NoopWorkControl, WorkControl, WorkError};
 
 mod edges;
 
@@ -528,21 +530,39 @@ impl TreeState {
 }
 
 pub fn network_simplex(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    let mut work_control = NoopWorkControl;
+    network_simplex_controlled(g, &mut work_control)
+        .expect("the checked no-op Dugong work control cannot reject network simplex work");
+}
+
+pub(crate) fn network_simplex_controlled(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
+    work_control.charge(simplify_work_units(g)?)?;
+    crate::rank::validate_rank_arithmetic(g)?;
     let mut simplified = crate::util::simplify(g);
-    util::longest_path(&mut simplified);
-    let mut t = feasible_tree::feasible_tree(&mut simplified);
+    work_control.charge(checked_add(
+        simplified.node_count(),
+        checked_mul(simplified.edge_count(), 2)?,
+    )?)?;
+    util::longest_path_controlled(&mut simplified)?;
+    let mut t = feasible_tree::feasible_tree_controlled(&mut simplified, work_control)?;
+    work_control.charge(tree_state_rebuild_work_units(&simplified, &t)?)?;
     let mut t_state = TreeState::new(&t, &simplified);
     t_state.rebuild(&t, &simplified, None);
 
-    let mut rank_by_ix: Vec<i32> = Vec::new();
+    work_control.charge(simplified.node_count())?;
+    let mut rank_by_ix: Vec<i128> = Vec::new();
     simplified.for_each_node_ix(|g_ix, _id, lbl| {
         if g_ix >= rank_by_ix.len() {
             rank_by_ix.resize(g_ix + 1, 0);
         }
-        rank_by_ix[g_ix] = lbl.rank.unwrap_or(0);
+        rank_by_ix[g_ix] = i128::from(lbl.rank.unwrap_or(0));
     });
 
     while let Some((leave_u_tix, leave_v_tix)) = t_state.find_leave_edge_in_insertion_order(&t) {
+        work_control.charge(simplex_iteration_work_units(&simplified, &t)?)?;
         let leave_u_id = t.node_id_by_ix(leave_u_tix);
         let leave_v_id = t.node_id_by_ix(leave_v_tix);
         let Some((leave_u_id, leave_v_id)) = leave_u_id.zip(leave_v_id) else {
@@ -562,9 +582,10 @@ pub fn network_simplex(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         t.set_edge(f.v, f.w);
 
         t_state.rebuild(&t, &simplified, None);
-        update_ranks_fast(&mut t_state, &mut simplified, &mut rank_by_ix);
+        update_ranks_fast(&mut t_state, &mut simplified, &mut rank_by_ix)?;
     }
 
+    work_control.charge(g.node_count())?;
     for v in g.node_ids() {
         if let Some(rank) = simplified.node(&v).and_then(|n| n.rank)
             && let Some(lbl) = g.node_mut(&v)
@@ -572,12 +593,47 @@ pub fn network_simplex(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             lbl.rank = Some(rank);
         }
     }
+    Ok(())
+}
+
+fn simplify_work_units(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<usize, WorkError> {
+    let node_work = checked_mul(g.node_count(), 2)?;
+    let edge_work = checked_add(
+        checked_mul(g.edge_count(), 3)?,
+        checked_mul(checked_n_log_n(g.edge_count())?, 2)?,
+    )?;
+    checked_add(node_work, edge_work)
+}
+
+fn tree_state_rebuild_work_units(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+) -> Result<usize, WorkError> {
+    let graph_nodes = checked_mul(g.node_count(), 3)?;
+    let graph_edges = checked_mul(g.edge_count(), 3)?;
+    let tree_nodes = checked_mul(tree.node_count(), 8)?;
+    let tree_edges = checked_mul(tree.edge_count(), 5)?;
+    checked_add(
+        checked_add(graph_nodes, graph_edges)?,
+        checked_add(tree_nodes, tree_edges)?,
+    )
+}
+
+fn simplex_iteration_work_units(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+) -> Result<usize, WorkError> {
+    let entering_and_rank_work = checked_add(checked_mul(g.node_count(), 2)?, g.edge_count())?;
+    checked_add(
+        entering_and_rank_work,
+        tree_state_rebuild_work_units(g, tree)?,
+    )
 }
 
 fn enter_edge_fast(
     t_state: &mut TreeState,
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    rank_by_ix: &[i32],
+    rank_by_ix: &[i128],
     leave_u_tix: usize,
     leave_v_tix: usize,
 ) -> EdgeKey {
@@ -658,7 +714,7 @@ fn enter_edge_fast(
         t_state.tail_g_ixs.push(g_ix);
     }
 
-    let mut best: Option<(i32, usize)> = None;
+    let mut best: Option<(i128, usize)> = None;
 
     if g.is_directed() {
         if !flip {
@@ -688,7 +744,7 @@ fn enter_edge_fast(
 
                         let v_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
                         let w_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                        let minlen: i32 = (lbl.minlen.max(1)) as i32;
+                        let minlen = lbl.minlen.max(1) as i128;
                         let slack = w_rank - v_rank - minlen;
                         match &best {
                             Some((best_slack, _)) if slack >= *best_slack => {}
@@ -724,7 +780,7 @@ fn enter_edge_fast(
 
                         let v_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
                         let w_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                        let minlen: i32 = (lbl.minlen.max(1)) as i32;
+                        let minlen = lbl.minlen.max(1) as i128;
                         let slack = w_rank - v_rank - minlen;
                         match &best {
                             Some((best_slack, _)) if slack >= *best_slack => {}
@@ -741,7 +797,7 @@ fn enter_edge_fast(
             if flip == v_desc && flip != w_desc {
                 let v_rank = rank_by_ix.get(g_v_ix).copied().unwrap_or(0);
                 let w_rank = rank_by_ix.get(g_w_ix).copied().unwrap_or(0);
-                let minlen: i32 = (lbl.minlen.max(1)) as i32;
+                let minlen = lbl.minlen.max(1) as i128;
                 let slack = w_rank - v_rank - minlen;
                 match &best {
                     Some((best_slack, _)) if slack >= *best_slack => {}
@@ -760,8 +816,8 @@ fn enter_edge_fast(
 fn update_ranks_fast(
     t_state: &mut TreeState,
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    rank_by_ix: &mut Vec<i32>,
-) {
+    rank_by_ix: &mut Vec<i128>,
+) -> Result<(), WorkError> {
     for &root_tix in &t_state.roots {
         if t_state
             .g_ix_by_t_ix
@@ -792,9 +848,9 @@ fn update_ranks_fast(
 
                 let (minlen, flipped) =
                     if let Some(e) = g.edge_by_endpoints_ix(child_gix, parent_gix) {
-                        (e.minlen as i32, false)
+                        (e.minlen.max(1) as i128, false)
                     } else if let Some(e) = g.edge_by_endpoints_ix(parent_gix, child_gix) {
-                        (e.minlen as i32, true)
+                        (e.minlen.max(1) as i128, true)
                     } else {
                         continue;
                     };
@@ -804,9 +860,10 @@ fn update_ranks_fast(
                 } else {
                     parent_rank - minlen
                 };
+                let rank_i32 = i32::try_from(rank).map_err(|_| WorkError::ArithmeticOverflow)?;
 
                 if let Some(node) = g.node_label_mut_by_ix(child_gix) {
-                    node.rank = Some(rank);
+                    node.rank = Some(rank_i32);
                 }
 
                 if child_gix >= rank_by_ix.len() {
@@ -817,6 +874,7 @@ fn update_ranks_fast(
             }
         }
     }
+    Ok(())
 }
 
 pub fn init_low_lim_values(

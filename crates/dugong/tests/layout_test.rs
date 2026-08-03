@@ -1,5 +1,359 @@
 use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, layout};
+use dugong::{
+    EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, WorkControl, WorkError, layout,
+    layout_controlled,
+};
+
+#[derive(Default)]
+struct RecordingWorkControl {
+    charges: Vec<usize>,
+    remaining: Option<usize>,
+    reject_at_call: Option<usize>,
+}
+
+impl RecordingWorkControl {
+    fn with_limit(limit: usize) -> Self {
+        Self {
+            remaining: Some(limit),
+            ..Self::default()
+        }
+    }
+
+    fn reject_at(call: usize) -> Self {
+        Self {
+            reject_at_call: Some(call),
+            ..Self::default()
+        }
+    }
+
+    fn total(&self) -> usize {
+        self.charges.iter().copied().sum()
+    }
+}
+
+impl WorkControl for RecordingWorkControl {
+    fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+        self.charges.push(units);
+        if self.reject_at_call == Some(self.charges.len()) {
+            return Err(WorkError::Interrupted);
+        }
+        let Some(remaining) = self.remaining else {
+            return Ok(());
+        };
+        let Some(next) = remaining.checked_sub(units) else {
+            return Err(WorkError::Interrupted);
+        };
+        self.remaining = Some(next);
+        Ok(())
+    }
+}
+
+fn controlled_budget_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+    let mut graph = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    graph.set_graph(GraphLabel::default());
+    graph.set_default_edge_label(EdgeLabel::default);
+    for id in ["a", "b", "c"] {
+        graph.set_node(
+            id,
+            NodeLabel {
+                width: 40.0,
+                height: 20.0,
+                x: Some(-10.0),
+                y: Some(-20.0),
+                ..Default::default()
+            },
+        );
+    }
+    graph.set_edge_with_label(
+        "a",
+        "b",
+        EdgeLabel {
+            width: 12.0,
+            height: 8.0,
+            points: vec![Point { x: -1.0, y: -2.0 }],
+            ..Default::default()
+        },
+    );
+    graph.set_edge("b", "c");
+    graph.graph_mut().width = -30.0;
+    graph.graph_mut().height = -40.0;
+    graph
+}
+
+fn assert_budget_graph_layout_eq(
+    left: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    right: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) {
+    let left_options = left.options();
+    let right_options = right.options();
+    assert_eq!(left_options.multigraph, right_options.multigraph);
+    assert_eq!(left_options.compound, right_options.compound);
+    assert_eq!(left_options.directed, right_options.directed);
+
+    let left_graph = left.graph();
+    let right_graph = right.graph();
+    assert_eq!(left_graph.rankdir, right_graph.rankdir);
+    assert_eq!(left_graph.nodesep, right_graph.nodesep);
+    assert_eq!(left_graph.ranksep, right_graph.ranksep);
+    assert_eq!(left_graph.edgesep, right_graph.edgesep);
+    assert_eq!(left_graph.marginx, right_graph.marginx);
+    assert_eq!(left_graph.marginy, right_graph.marginy);
+    assert_eq!(left_graph.width, right_graph.width);
+    assert_eq!(left_graph.height, right_graph.height);
+    assert_eq!(left_graph.align, right_graph.align);
+    assert_eq!(left_graph.ranker, right_graph.ranker);
+    assert_eq!(left_graph.acyclicer, right_graph.acyclicer);
+    assert_eq!(left_graph.dummy_chains, right_graph.dummy_chains);
+    assert_eq!(left_graph.nesting_root, right_graph.nesting_root);
+    assert_eq!(left_graph.node_rank_factor, right_graph.node_rank_factor);
+
+    assert_eq!(left.node_ids(), right.node_ids());
+    for id in left.node_ids() {
+        assert_eq!(left.node(&id), right.node(&id));
+        assert_eq!(left.parent(&id), right.parent(&id));
+        assert_eq!(left.children(&id), right.children(&id));
+    }
+    assert_eq!(left.edge_keys(), right.edge_keys());
+    for key in left.edge_keys() {
+        assert_eq!(left.edge_by_key(&key), right.edge_by_key(&key));
+    }
+}
+
+#[test]
+fn controlled_layout_records_work_and_matches_compatibility_output() {
+    let mut compatibility = controlled_budget_graph();
+    layout(&mut compatibility);
+
+    let mut controlled = controlled_budget_graph();
+    let mut recorder = RecordingWorkControl::default();
+    layout_controlled(&mut controlled, &mut recorder).unwrap();
+
+    assert!(!recorder.charges.is_empty());
+    assert!(recorder.total() > 0);
+    assert_budget_graph_layout_eq(&compatibility, &controlled);
+}
+
+#[test]
+fn controlled_layout_honors_below_equal_and_above_work_boundaries() {
+    let mut measured = controlled_budget_graph();
+    let mut recorder = RecordingWorkControl::default();
+    layout_controlled(&mut measured, &mut recorder).unwrap();
+    let exact = recorder.total();
+    assert!(exact > 0);
+
+    let mut below = controlled_budget_graph();
+    let mut below_control = RecordingWorkControl::with_limit(exact - 1);
+    assert_eq!(
+        layout_controlled(&mut below, &mut below_control),
+        Err(WorkError::Interrupted)
+    );
+    let initial = controlled_budget_graph();
+    assert_budget_graph_layout_eq(&below, &initial);
+
+    for limit in [exact, exact + 1] {
+        let mut graph = controlled_budget_graph();
+        let mut control = RecordingWorkControl::with_limit(limit);
+        layout_controlled(&mut graph, &mut control).unwrap();
+        assert_budget_graph_layout_eq(&measured, &graph);
+    }
+}
+
+#[test]
+fn controlled_layout_stops_after_the_first_rejected_tranche() {
+    let mut graph = controlled_budget_graph();
+    let mut control = RecordingWorkControl::reject_at(3);
+    assert_eq!(
+        layout_controlled(&mut graph, &mut control),
+        Err(WorkError::Interrupted)
+    );
+    assert_eq!(control.charges.len(), 3);
+}
+
+#[test]
+fn controlled_layout_accepts_a_normal_250_node_sparse_graph() {
+    fn sparse_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel::default());
+        graph.set_default_edge_label(EdgeLabel::default);
+        for index in 0..250 {
+            graph.set_node(
+                format!("n{index}"),
+                NodeLabel {
+                    width: 40.0,
+                    height: 20.0,
+                    ..Default::default()
+                },
+            );
+            if index > 0 {
+                graph.set_edge(format!("n{}", index - 1), format!("n{index}"));
+            }
+        }
+        graph
+    }
+
+    const LIMIT: usize = 125_000;
+
+    let mut graph = sparse_graph();
+    let mut control = RecordingWorkControl::default();
+    layout_controlled(&mut graph, &mut control)
+        .expect("a normal sparse graph fits the constrained profile budget");
+
+    assert!(
+        control.total() <= LIMIT,
+        "sparse graph work was {}",
+        control.total()
+    );
+    assert!(graph.nodes().all(|id| {
+        graph
+            .node(id)
+            .is_some_and(|node| node.x.is_some() && node.y.is_some())
+    }));
+
+    let mut limited_graph = sparse_graph();
+    let mut limited = RecordingWorkControl::with_limit(LIMIT);
+    layout_controlled(&mut limited_graph, &mut limited)
+        .expect("the constrained profile must admit the measured sparse graph");
+    assert_budget_graph_layout_eq(&graph, &limited_graph);
+}
+
+#[test]
+fn controlled_layout_accepts_a_normal_250_node_compound_graph() {
+    fn compound_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel::default());
+        graph.set_default_edge_label(EdgeLabel::default);
+        for cluster in 0..10 {
+            graph.set_node(format!("cluster{cluster}"), NodeLabel::default());
+        }
+        for index in 0..240 {
+            let id = format!("n{index}");
+            graph.set_node(
+                id.clone(),
+                NodeLabel {
+                    width: 40.0,
+                    height: 20.0,
+                    ..Default::default()
+                },
+            );
+            graph.set_parent(id.clone(), format!("cluster{}", index / 24));
+            if index > 0 {
+                graph.set_edge("n0", id);
+            }
+        }
+        graph
+    }
+
+    const LIMIT: usize = 250_000;
+
+    let mut graph = compound_graph();
+    let mut control = RecordingWorkControl::default();
+    layout_controlled(&mut graph, &mut control)
+        .expect("a normal compound graph fits the default profile budget");
+
+    assert!(
+        control.total() <= LIMIT,
+        "compound graph work was {}",
+        control.total()
+    );
+    assert!(graph.nodes().all(|id| {
+        graph
+            .node(id)
+            .is_some_and(|node| node.x.is_some() && node.y.is_some())
+    }));
+
+    let mut limited_graph = compound_graph();
+    let mut limited = RecordingWorkControl::with_limit(LIMIT);
+    layout_controlled(&mut limited_graph, &mut limited)
+        .expect("the default profile must admit the measured compound graph");
+    assert_budget_graph_layout_eq(&graph, &limited_graph);
+}
+
+#[test]
+fn controlled_layout_arithmetic_failure_preserves_the_entire_caller_graph() {
+    fn overflow_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel::default());
+        graph.set_default_edge_label(EdgeLabel::default);
+        graph.set_node("cluster", NodeLabel::default());
+        graph.set_node("a", NodeLabel::default());
+        graph.set_node("b", NodeLabel::default());
+        graph.set_parent("a", "cluster");
+        graph.set_edge_with_label(
+            "a",
+            "b",
+            EdgeLabel {
+                minlen: usize::MAX,
+                ..Default::default()
+            },
+        );
+        graph
+    }
+
+    let mut graph = overflow_graph();
+    let initial = overflow_graph();
+    let mut control = RecordingWorkControl::default();
+
+    assert_eq!(
+        layout_controlled(&mut graph, &mut control),
+        Err(WorkError::ArithmeticOverflow)
+    );
+    assert_budget_graph_layout_eq(&graph, &initial);
+}
+
+#[test]
+fn controlled_layout_rejects_cumulative_rank_span_overflow_transactionally() {
+    fn overflow_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel::default());
+        graph.set_default_edge_label(EdgeLabel::default);
+        for id in ["a", "b", "c"] {
+            graph.set_node(id, NodeLabel::default());
+        }
+        for (from, to) in [("a", "b"), ("b", "c")] {
+            graph.set_edge_with_label(
+                from,
+                to,
+                EdgeLabel {
+                    // The label-spacing pass doubles each edge to 2_147_483_646. Either edge
+                    // fits i32 independently, but the complete rank path does not.
+                    minlen: 1_073_741_823,
+                    ..Default::default()
+                },
+            );
+        }
+        graph
+    }
+
+    let mut graph = overflow_graph();
+    let initial = overflow_graph();
+    let mut control = RecordingWorkControl::default();
+
+    assert_eq!(
+        layout_controlled(&mut graph, &mut control),
+        Err(WorkError::ArithmeticOverflow)
+    );
+    assert_budget_graph_layout_eq(&graph, &initial);
+}
 
 fn coords(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,

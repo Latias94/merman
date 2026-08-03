@@ -5,15 +5,23 @@ use crate::{EdgeLabel, GraphLabel, NodeLabel};
 use rustc_hash::FxHashMap as HashMap;
 
 pub fn longest_path(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    longest_path_controlled(g)
+        .expect("rank arithmetic must fit the public longest-path compatibility API");
+}
+
+pub(crate) fn longest_path_controlled(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<(), crate::WorkError> {
+    crate::rank::validate_rank_arithmetic(g)?;
     struct Frame {
         v: String,
         edges: Vec<EdgeKey>,
         next_edge: usize,
-        rank: Option<i32>,
-        incoming_minlen: Option<i32>,
+        rank: Option<i128>,
+        incoming_minlen: Option<i128>,
     }
 
-    fn apply_candidate(rank: &mut Option<i32>, candidate: i32) {
+    fn apply_candidate(rank: &mut Option<i128>, candidate: i128) {
         *rank = Some(match *rank {
             Some(current) => current.min(candidate),
             None => candidate,
@@ -21,7 +29,7 @@ pub fn longest_path(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     }
 
     let sources: Vec<String> = g.sources().into_iter().map(|s| s.to_string()).collect();
-    let mut visited: HashMap<String, i32> = HashMap::default();
+    let mut visited: HashMap<String, i128> = HashMap::default();
     for v in sources {
         if visited.contains_key(&v) {
             continue;
@@ -50,7 +58,7 @@ pub fn longest_path(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
                 frame.next_edge += 1;
                 let minlen = g
                     .edge_by_key(&edge)
-                    .map(|lbl| lbl.minlen as i32)
+                    .map(|lbl| lbl.minlen.max(1) as i128)
                     .unwrap_or(1);
                 if let Some(child_rank) = visited.get(edge.w.as_str()).copied() {
                     apply_candidate(&mut frame.rank, child_rank - minlen);
@@ -70,8 +78,9 @@ pub fn longest_path(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
                 break;
             };
             let rank = frame.rank.unwrap_or(0);
+            let rank_i32 = i32::try_from(rank).map_err(|_| crate::WorkError::ArithmeticOverflow)?;
             if let Some(label) = g.node_mut(&frame.v) {
-                label.rank = Some(rank);
+                label.rank = Some(rank_i32);
             }
             visited.insert(frame.v, rank);
             if let (Some(parent), Some(minlen)) = (stack.last_mut(), frame.incoming_minlen) {
@@ -79,13 +88,22 @@ pub fn longest_path(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             }
         }
     }
+    Ok(())
 }
 
 pub fn slack(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>, e: &EdgeKey) -> i32 {
+    slack_checked(g, e).expect("rank slack must fit the public compatibility API")
+}
+
+pub(crate) fn slack_checked(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    e: &EdgeKey,
+) -> Result<i32, crate::WorkError> {
     // Be defensive: callers can provide arbitrary graphs. Missing nodes/ranks are treated
     // as `0` so layout can degrade gracefully instead of panicking.
     let w_rank = g.node(&e.w).and_then(|n| n.rank).unwrap_or(0);
     let v_rank = g.node(&e.v).and_then(|n| n.rank).unwrap_or(0);
-    let minlen: i32 = g.edge_by_key(e).map(|lbl| lbl.minlen as i32).unwrap_or(1);
-    w_rank - v_rank - minlen
+    let minlen = g.edge_by_key(e).map_or(1, |lbl| lbl.minlen.max(1)) as i128;
+    let slack = i128::from(w_rank) - i128::from(v_rank) - minlen;
+    i32::try_from(slack).map_err(|_| crate::WorkError::ArithmeticOverflow)
 }

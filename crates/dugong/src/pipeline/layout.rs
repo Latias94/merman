@@ -6,16 +6,31 @@
 use rustc_hash::FxHashSet;
 
 use crate::graphlib;
+use crate::work::{checked_add, checked_mul, checked_n_log_n};
 use crate::{
     EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, acyclic, add_border_segments,
     coordinate_system, nesting_graph, normalize, order, parent_dummy_chains, position, rank,
     self_edges, util,
 };
+use crate::{NoopWorkControl, WorkControl, WorkError};
 
 pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    let mut layout_graph = build_layout_graph(g);
-    run_layout(&mut layout_graph);
-    update_input_graph(g, &layout_graph);
+    let mut work_control = NoopWorkControl;
+    layout_controlled(g, &mut work_control)
+        .expect("the checked no-op Dugong work control cannot reject layout work");
+}
+
+/// Runs the canonical Dagre pipeline under caller-owned work control.
+///
+/// All algorithm-local mutation happens on a temporary graph. The caller graph is updated only
+/// after every checked charge and layout phase succeeds.
+pub fn layout_controlled(
+    g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
+    let mut layout_graph = build_layout_graph(g, work_control)?;
+    run_layout(&mut layout_graph, work_control)?;
+    update_input_graph(g, &layout_graph, work_control)
 }
 
 // Dagre runs its mutating phases on a temporary graph built from a whitelist of layout inputs.
@@ -23,7 +38,12 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
 // algorithm-local state from leaking into a later layout of the caller's graph.
 fn build_layout_graph(
     input: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
-) -> graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel> {
+    work_control: &mut dyn WorkControl,
+) -> Result<graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>, WorkError> {
+    let node_work = checked_mul(input.node_count(), 2)?;
+    let work = checked_add(checked_add(1, node_work)?, input.edge_count())?;
+    work_control.charge(work)?;
+
     let mut layout = graphlib::Graph::with_capacity(
         graphlib::GraphOptions {
             multigraph: true,
@@ -82,13 +102,26 @@ fn build_layout_graph(
         );
     });
 
-    layout
+    Ok(layout)
 }
 
 fn update_input_graph(
     input: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
     layout: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
-) {
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
+    let edge_point_work = layout.edges().try_fold(0usize, |total, key| {
+        checked_add(
+            total,
+            layout.edge_by_key(key).map_or(0, |edge| edge.points.len()),
+        )
+    })?;
+    let work = checked_add(
+        checked_add(checked_add(1, input.node_count())?, input.edge_count())?,
+        edge_point_work,
+    )?;
+    work_control.charge(work)?;
+
     for id in input.node_ids() {
         let Some(layout_node) = layout.node(&id) else {
             continue;
@@ -121,15 +154,35 @@ fn update_input_graph(
 
     input.graph_mut().width = layout.graph().width;
     input.graph_mut().height = layout.graph().height;
+    Ok(())
 }
 
-fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+fn run_layout(
+    g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
     // Mirror Dagre's `makeSpaceForEdgeLabels` so edge-label proxy ranks become integers
     // (we later materialize label nodes in `normalize::run`).
+    work_control.charge(g.edge_count())?;
+    let spaced_minlens = g
+        .edges()
+        .map(|edge_key| {
+            let minlen = g.edge_by_key(edge_key).map_or(1, |edge| edge.minlen.max(1));
+            let minlen = checked_mul(minlen, 2)?;
+            if minlen > i32::MAX as usize {
+                return Err(WorkError::ArithmeticOverflow);
+            }
+            Ok((edge_key.clone(), minlen))
+        })
+        .collect::<Result<Vec<_>, WorkError>>()?;
     g.graph_mut().ranksep /= 2.0;
     let rankdir = g.graph().rankdir;
+    for (edge_key, minlen) in spaced_minlens {
+        if let Some(edge) = g.edge_mut_by_key(&edge_key) {
+            edge.minlen = minlen;
+        }
+    }
     g.for_each_edge_mut(|_ek, e| {
-        e.minlen = e.minlen.max(1).saturating_mul(2);
         if !matches!(e.labelpos, LabelPos::C) {
             match rankdir {
                 RankDir::TB | RankDir::BT => e.width += e.labeloffset,
@@ -140,8 +193,10 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     // Dagre removes self-loops before ranking/normalization and re-inserts them during positioning
     // via dummy "selfedge" nodes. This avoids invalid rank constraints and gives self-loops a
     // deterministic, spacing-aware offset in BK positioning.
+    work_control.charge(g.edge_count())?;
     self_edges::remove_self_edges(g);
 
+    work_control.charge(g.node_count())?;
     let mut has_compound_structure = false;
     g.for_each_node(|id, _n| {
         if g.parent(id).is_some() || g.children_iter(id).next().is_some() {
@@ -158,14 +213,14 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     let ran_acyclic = if tiny_simple_chain || g.edge_count() <= 1 {
         false
     } else {
-        acyclic::run(g);
+        acyclic::run_controlled(g, work_control)?;
         true
     };
     // Mermaid's dagre adapter always enables `compound: true`, and Dagre's ranker expects a
     // connected graph. Nesting graph connects components (even if there are no explicit
     // subgraphs), preventing network-simplex from panicking on disconnected inputs.
     if g.options().compound && !tiny_simple_chain {
-        nesting_graph::run(g);
+        nesting_graph::run_controlled(g, work_control)?;
     }
 
     // Match upstream Dagre: ranking runs on a non-compound view of the graph so cluster nodes
@@ -179,10 +234,12 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         // identical for these cases while cutting fixed-cost work.
         g.for_each_node_mut(|_id, n| n.rank = Some(0));
         if let Some(ek) = first_edge_pre.clone() {
-            let minlen = g
-                .edge_by_key(&ek)
-                .map(|e| e.minlen.max(1) as i32)
-                .unwrap_or(1);
+            let minlen = match g.edge_by_key(&ek) {
+                Some(edge) => {
+                    i32::try_from(edge.minlen.max(1)).map_err(|_| WorkError::ArithmeticOverflow)?
+                }
+                None => 1,
+            };
             if let Some(n) = g.node_mut(&ek.v) {
                 n.rank = Some(0);
             }
@@ -191,13 +248,15 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             }
         }
     } else {
+        charge_graph_scan(g, work_control)?;
         let mut rank_graph = util::as_non_compound_graph(g);
-        rank::rank(&mut rank_graph);
+        rank::rank_controlled(&mut rank_graph, work_control)?;
         // Mirror Dagre's JS behavior: `rank(asNonCompoundGraph(g))` mutates the same label objects
         // for leaf nodes, but does not propagate ranks to compound nodes (nodes with children).
         //
         // In Rust we don't share label objects between graphs, so we copy ranks explicitly for leaf
         // nodes only.
+        work_control.charge(g.node_count())?;
         for v in g.node_ids() {
             if g.children_iter(&v).next().is_some() {
                 continue;
@@ -216,6 +275,7 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     let mut edge_proxy_nodes: Vec<String> = Vec::new();
     // Only clone edge keys when a proxy is actually needed.
     let mut to_proxy: Vec<(graphlib::EdgeKey, i32)> = Vec::new();
+    work_control.charge(g.edge_count())?;
     g.for_each_edge(|ek, edge| {
         if edge.width <= 0.0 || edge.height <= 0.0 {
             return;
@@ -230,6 +290,7 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         to_proxy.push((ek.clone(), rank));
     });
 
+    work_control.charge(to_proxy.len())?;
     for (ek, rank) in to_proxy {
         let id = util::unique_id("_ep");
         edge_proxy_nodes.push(id.clone());
@@ -244,22 +305,27 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         );
     }
 
+    work_control.charge(remove_empty_ranks_work_units(g)?)?;
     util::remove_empty_ranks(g);
 
     // Match upstream Dagre: `nestingGraph.cleanup` must happen before ordering/positioning.
     if g.options().compound && !tiny_simple_chain {
+        charge_graph_scan(g, work_control)?;
         nesting_graph::cleanup(g);
     }
 
+    work_control.charge(g.node_count())?;
     util::normalize_ranks(g);
 
     // Finish every label-rank writeback before the single graph-wide proxy retirement pass.
+    charge_graph_scan(g, work_control)?;
     remove_edge_label_proxies(g, edge_proxy_nodes);
 
     // Dagre uses `assignRankMinMax` to annotate compound nodes with their rank span, derived from
     // the `nestingGraph` border top/bottom nodes. This rank span is later used by subgraph
     // ordering and border segment generation.
     if g.options().compound && !tiny_simple_chain {
+        work_control.charge(g.node_count())?;
         let node_ids = g.node_ids();
         for v in node_ids {
             let Some(node) = g.node(&v).cloned() else {
@@ -281,12 +347,14 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         }
     }
 
+    work_control.charge(normalize_work_units(g)?)?;
     normalize::run(g);
     if g.options().compound && !tiny_simple_chain {
-        parent_dummy_chains::parent_dummy_chains(g);
-        add_border_segments::add_border_segments(g);
+        parent_dummy_chains::parent_dummy_chains_controlled(g, work_control)?;
+        add_border_segments::add_border_segments_controlled(g, work_control)?;
     }
     if tiny_simple_chain {
+        work_control.charge(g.node_count())?;
         let mut nodes: Vec<(i32, String)> = Vec::with_capacity(g.node_count());
         g.for_each_node(|id, n| nodes.push((n.rank.unwrap_or(0), id.to_string())));
         nodes.sort_by(|a, b| (a.0, a.1.as_str()).cmp(&(b.0, b.1.as_str())));
@@ -304,23 +372,31 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             next_order += 1;
         }
     } else {
-        order::order(
+        order::order_controlled(
             g,
             order::OrderOptions {
                 disable_optimal_order_heuristic: false,
             },
-        );
+            work_control,
+        )?;
     }
     // Positioning runs in TB coordinates; `coordinate_system::adjust` maps LR/RL/BT into TB.
+    charge_graph_scan(g, work_control)?;
     coordinate_system::adjust(g);
 
     // Insert dummy self-edge nodes after ordering and rankdir transforms, so their sizes match the
     // active coordinate system (TB) and they can influence BK x-positioning.
+    charge_graph_scan(g, work_control)?;
     self_edges::insert_self_edges(g);
 
     let rank_sep = g.graph().ranksep;
+    work_control.charge(g.node_count())?;
     let layering = util::build_layer_matrix(g);
 
+    let layering_nodes = layering
+        .iter()
+        .try_fold(0usize, |total, layer| checked_add(total, layer.len()))?;
+    work_control.charge(layering_nodes)?;
     let mut prev_y: f64 = 0.0;
     for (idx, layer) in layering.iter().enumerate() {
         let max_h = layer
@@ -338,26 +414,34 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             prev_y += rank_sep;
         }
     }
+    work_control.charge(bk_position_work_units(g)?)?;
     let xs = position::bk::position_x_with_layering(g, &layering);
+    work_control.charge(g.node_count())?;
     g.for_each_node_mut(|id, n| {
         n.x = Some(xs.get(id).copied().unwrap_or(0.0));
     });
     // Convert dummy self-edge nodes into self-loop edge point sequences and remove the dummy nodes.
+    charge_graph_scan(g, work_control)?;
     self_edges::position_self_edges(g);
 
     // Match upstream Dagre: `removeBorderNodes` runs after positioning and before `normalize.undo`.
     // It sets compound-node geometry (x/y/width/height) from border nodes, then removes all
     // border dummy nodes.
     if g.options().compound && !tiny_simple_chain {
+        charge_graph_scan(g, work_control)?;
         super::compound::remove_border_nodes(g);
     }
 
+    charge_graph_scan(g, work_control)?;
     normalize::undo(g);
+    work_control.charge(g.edge_count())?;
     fixup_edge_label_coords(g);
+    charge_graph_scan(g, work_control)?;
     coordinate_system::undo(g);
 
     // Translate so the minimum top-left is at (marginx, marginy), matching Dagre's
     // `translateGraph(...)` behavior.
+    charge_graph_scan(g, work_control)?;
     let mut min_x: f64 = f64::INFINITY;
     let mut min_y: f64 = f64::INFINITY;
     let mut max_x: f64 = f64::NEG_INFINITY;
@@ -386,6 +470,8 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     });
 
     if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
+        let translation_work = checked_add(g.node_count(), edge_point_work_units(g)?)?;
+        work_control.charge(translation_work)?;
         // Dagre shifts the graph by `-(min - margin)` so the smallest x/y becomes `margin`.
         // This is observable in Mermaid flowchart-v2 SVG output where `diagramPadding: 0`
         // still yields a `viewBox` starting at x=8 (the Dagre margin).
@@ -422,6 +508,7 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     }
     // Ensure every edge has at least one internal point (so D3 `curveBasis` emits cubic beziers),
     // and add node intersection endpoints to better match Dagre/Mermaid edge point semantics.
+    work_control.charge(edge_route_materialization_work_units(g)?)?;
     let edge_keys: Vec<graphlib::EdgeKey> = g.edges().cloned().collect();
     for e in edge_keys {
         let Some((sx, sy, sw, sh)) = g
@@ -504,8 +591,69 @@ fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         }
     }
     if ran_acyclic {
+        charge_graph_scan(g, work_control)?;
         acyclic::undo(g);
     }
+    Ok(())
+}
+
+fn charge_graph_scan(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
+    work_control.charge(checked_add(g.node_count(), g.edge_count())?)
+}
+
+fn normalize_work_units(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    let mut derived_nodes = 0usize;
+    for edge in g.edges() {
+        let v_rank = g.node(&edge.v).and_then(|node| node.rank).unwrap_or(0);
+        let w_rank = g.node(&edge.w).and_then(|node| node.rank).unwrap_or(0);
+        let gap = usize::try_from((i64::from(w_rank) - i64::from(v_rank) - 1).max(0))
+            .map_err(|_| WorkError::ArithmeticOverflow)?;
+        derived_nodes = checked_add(derived_nodes, gap)?;
+    }
+    checked_add(g.edge_count(), derived_nodes)
+}
+
+fn remove_empty_ranks_work_units(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    checked_add(g.node_count(), checked_n_log_n(g.node_count())?)
+}
+
+fn edge_point_work_units(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    g.edges().try_fold(0usize, |total, key| {
+        let points = g.edge_by_key(key).map_or(0, |edge| edge.points.len());
+        checked_add(checked_add(total, 1)?, points)
+    })
+}
+
+fn edge_route_materialization_work_units(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    g.edges().try_fold(0usize, |total, key| {
+        let internal_points = g
+            .edge_by_key(key)
+            .map_or(0, |edge| edge.points.len().max(1));
+        let materialized = checked_add(internal_points, 2)?;
+        checked_add(total, materialized)
+    })
+}
+
+fn bk_position_work_units(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    let linear = checked_mul(checked_add(g.node_count(), g.edge_count())?, 10)?;
+    let sortable = checked_add(
+        checked_n_log_n(g.node_count())?,
+        checked_n_log_n(g.edge_count())?,
+    )?;
+    checked_add(linear, checked_mul(sortable, 4)?)
 }
 
 /// Writes proxy ranks back before retiring every proxy through one graph-wide removal pass.
@@ -614,6 +762,21 @@ mod tests {
             compound: true,
             ..Default::default()
         })
+    }
+
+    #[test]
+    fn sparse_bk_work_stays_below_the_constrained_profile_budget() {
+        let mut graph = test_graph();
+        for index in 0..256 {
+            graph.set_node(format!("n{index}"), NodeLabel::default());
+            if index > 0 {
+                graph.set_edge(format!("n{}", index - 1), format!("n{index}"));
+            }
+        }
+
+        let work = bk_position_work_units(&graph).unwrap();
+        assert!(work > graph.node_count() + graph.edge_count());
+        assert!(work < 125_000);
     }
 
     #[test]

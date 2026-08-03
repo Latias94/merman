@@ -3,10 +3,13 @@
 //! This mirrors Dagre's `nesting-graph.js`: it creates a synthetic root, adds border nodes for
 //! clusters, and injects nesting edges so the ranker sees a connected graph.
 
-use crate::graphlib::{EdgeKey, Graph, alg};
+use crate::graphlib::{EdgeKey, Graph};
+use crate::work::{checked_add, checked_mul};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
+use crate::{NoopWorkControl, WorkControl, WorkError};
 use rustc_hash::FxHashMap;
-use std::collections::BTreeMap;
+use rustc_hash::FxHashSet;
+use std::collections::VecDeque;
 
 #[derive(Default)]
 struct DummyNodeIdGen {
@@ -18,13 +21,13 @@ impl DummyNodeIdGen {
         &mut self,
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         prefix: &'static str,
-    ) -> String {
+    ) -> Result<String, WorkError> {
         let suffix = match self.next_suffix.get(&prefix).copied() {
             Some(v) => v,
             None => {
                 if !g.has_node(prefix) {
                     self.next_suffix.insert(prefix, 1);
-                    return prefix.to_string();
+                    return Ok(prefix.to_string());
                 }
                 self.next_suffix.insert(prefix, 1);
                 1
@@ -37,10 +40,10 @@ impl DummyNodeIdGen {
         loop {
             let id = format!("{prefix}{next}");
             if !g.has_node(&id) {
-                self.next_suffix.insert(prefix, next + 1);
-                return id;
+                self.next_suffix.insert(prefix, checked_add(next, 1)?);
+                return Ok(id);
             }
-            next += 1;
+            next = checked_add(next, 1)?;
         }
     }
 }
@@ -51,18 +54,18 @@ fn add_dummy_node(
     dummy: &str,
     mut label: NodeLabel,
     name: &'static str,
-) -> String {
-    let id = ids.unique_id(g, name);
+) -> Result<String, WorkError> {
+    let id = ids.unique_id(g, name)?;
     label.dummy = Some(dummy.to_string());
     g.set_node(id.clone(), label);
-    id
+    Ok(id)
 }
 
 fn add_border_node(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     ids: &mut DummyNodeIdGen,
     prefix: &'static str,
-) -> String {
+) -> Result<String, WorkError> {
     add_dummy_node(
         g,
         ids,
@@ -76,8 +79,10 @@ fn add_border_node(
     )
 }
 
-fn tree_depths(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> BTreeMap<String, usize> {
-    let mut out: BTreeMap<String, usize> = BTreeMap::new();
+fn tree_depths(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<FxHashMap<String, usize>, WorkError> {
+    let mut out: FxHashMap<String, usize> = FxHashMap::default();
     let mut stack: Vec<(String, usize)> = g
         .children_root()
         .into_iter()
@@ -89,11 +94,11 @@ fn tree_depths(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> BTreeMap<String, 
         out.insert(v.clone(), depth);
         let children: Vec<String> = g.children_iter(&v).map(|s| s.to_string()).collect();
         for child in children.into_iter().rev() {
-            stack.push((child, depth + 1));
+            stack.push((child, checked_add(depth, 1)?));
         }
     }
 
-    out
+    Ok(out)
 }
 
 enum NestingDfsFrame {
@@ -135,7 +140,7 @@ fn add_child_nesting_edges(
     top: &str,
     bottom: &str,
     child: &str,
-) {
+) -> Result<(), WorkError> {
     let child_node = g.node(child).cloned().unwrap_or_default();
     let child_top = child_node
         .border_top
@@ -156,7 +161,7 @@ fn add_child_nesting_edges(
         1usize
     } else {
         let dv = ctx.depths.get(parent).copied().unwrap_or(1);
-        ctx.height.saturating_sub(dv).saturating_add(1)
+        checked_add(ctx.height.saturating_sub(dv), 1)?
     };
 
     g.set_edge_with_label(
@@ -179,6 +184,7 @@ fn add_child_nesting_edges(
             ..Default::default()
         },
     );
+    Ok(())
 }
 
 fn add_root_cluster_edge(
@@ -186,7 +192,7 @@ fn add_root_cluster_edge(
     ctx: &NestingDfsCtx<'_>,
     v: &str,
     top: &str,
-) {
+) -> Result<(), WorkError> {
     if g.parent(v).is_none() {
         let dv = ctx.depths.get(v).copied().unwrap_or(1);
         g.set_edge_with_label(
@@ -194,12 +200,13 @@ fn add_root_cluster_edge(
             top,
             EdgeLabel {
                 weight: 0.0,
-                minlen: ctx.height + dv,
+                minlen: checked_add(ctx.height, dv)?,
                 nesting_edge: true,
                 ..Default::default()
             },
         );
     }
+    Ok(())
 }
 
 fn nesting_dfs(
@@ -207,7 +214,7 @@ fn nesting_dfs(
     ctx: &NestingDfsCtx<'_>,
     ids: &mut DummyNodeIdGen,
     root_child: String,
-) {
+) -> Result<(), WorkError> {
     let mut stack = vec![NestingDfsFrame::Enter(root_child)];
 
     while let Some(frame) = stack.pop() {
@@ -219,8 +226,8 @@ fn nesting_dfs(
                     continue;
                 }
 
-                let top = add_border_node(g, ids, "_bt");
-                let bottom = add_border_node(g, ids, "_bb");
+                let top = add_border_node(g, ids, "_bt")?;
+                let bottom = add_border_node(g, ids, "_bb")?;
 
                 g.set_parent_ref(top.as_str(), &v);
                 if let Some(lbl) = g.node_mut(&v) {
@@ -250,10 +257,11 @@ fn nesting_dfs(
                 top,
                 bottom,
                 child,
-            } => add_child_nesting_edges(g, ctx, &parent, &top, &bottom, &child),
-            NestingDfsFrame::LinkRoot { node, top } => add_root_cluster_edge(g, ctx, &node, &top),
+            } => add_child_nesting_edges(g, ctx, &parent, &top, &bottom, &child)?,
+            NestingDfsFrame::LinkRoot { node, top } => add_root_cluster_edge(g, ctx, &node, &top)?,
         }
     }
+    Ok(())
 }
 
 fn sum_weights(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> f64 {
@@ -267,10 +275,37 @@ struct NestingDfsCtx<'a> {
     node_sep: usize,
     weight: f64,
     height: usize,
-    depths: &'a BTreeMap<String, usize>,
+    depths: &'a FxHashMap<String, usize>,
 }
 
 pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    let mut work_control = NoopWorkControl;
+    run_controlled(g, &mut work_control)
+        .expect("the checked no-op Dugong work control cannot reject nesting work");
+}
+
+pub(crate) fn run_controlled(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
+    work_control.charge(nesting_work_units(g)?)?;
+    let depths = tree_depths(g)?;
+    let height = depths
+        .values()
+        .copied()
+        .max()
+        .unwrap_or(1)
+        .saturating_sub(1);
+    let node_sep = checked_add(checked_mul(2, height)?, 1)?;
+
+    let scaled_minlen = g
+        .edges()
+        .map(|key| {
+            let minlen = g.edge_by_key(key).map_or(0, |edge| edge.minlen);
+            Ok((key.clone(), checked_mul(minlen, node_sep.max(1))?))
+        })
+        .collect::<Result<Vec<_>, WorkError>>()?;
+
     let mut ids = DummyNodeIdGen::default();
     let root = add_dummy_node(
         g,
@@ -280,24 +315,15 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             ..Default::default()
         },
         "_root",
-    );
-
-    let depths = tree_depths(g);
-    let height = depths
-        .values()
-        .copied()
-        .max()
-        .unwrap_or(1)
-        .saturating_sub(1);
-    let node_sep = 2 * height + 1;
-
+    )?;
     if let Some(gl) = g.graph_mut().nesting_root.replace(root.clone()) {
         let _ = gl;
     }
-
-    g.for_each_edge_mut(|_k, e| {
-        e.minlen *= node_sep.max(1);
-    });
+    for (key, minlen) in scaled_minlen {
+        if let Some(edge) = g.edge_mut_by_key(&key) {
+            edge.minlen = minlen;
+        }
+    }
 
     let weight = sum_weights(g) + 1.0;
     let ctx = NestingDfsCtx {
@@ -314,7 +340,7 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         .map(|s| s.to_string())
         .collect::<Vec<_>>();
     for child in children {
-        nesting_dfs(g, &ctx, &mut ids, child);
+        nesting_dfs(g, &ctx, &mut ids, child)?;
     }
 
     g.graph_mut().node_rank_factor = Some(node_sep);
@@ -323,7 +349,7 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     // Our upstream parity tests include cases where the input graph is not fully connected
     // by the nesting edges alone (e.g. edges incident on cluster nodes). Connect any
     // remaining components through the nesting root so network-simplex does not panic.
-    let comps = alg::components(g);
+    let comps = components(g);
     if comps.len() > 1 {
         for comp in comps {
             if comp.iter().any(|v| v == &root) {
@@ -353,6 +379,54 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             );
         }
     }
+    Ok(())
+}
+
+fn components(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<Vec<String>> {
+    let mut seen = FxHashSet::default();
+    let mut out = Vec::new();
+    for start in g.node_ids() {
+        if !seen.insert(start.clone()) {
+            continue;
+        }
+        let mut component = Vec::new();
+        let mut queue = VecDeque::from([start]);
+        while let Some(node) = queue.pop_front() {
+            component.push(node.clone());
+            for neighbor in g.successors(&node) {
+                if seen.insert(neighbor.to_string()) {
+                    queue.push_back(neighbor.to_string());
+                }
+            }
+            for neighbor in g.predecessors(&node) {
+                if seen.insert(neighbor.to_string()) {
+                    queue.push_back(neighbor.to_string());
+                }
+            }
+        }
+        out.push(component);
+    }
+    out
+}
+
+fn nesting_work_units(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<usize, WorkError> {
+    let mut clusters = 0usize;
+    let mut child_links = 0usize;
+    for id in g.node_ids() {
+        let children = g.children(&id);
+        if !children.is_empty() {
+            clusters = checked_add(clusters, 1)?;
+            child_links = checked_add(child_links, children.len())?;
+        }
+    }
+    let derived_nodes = checked_add(1, checked_mul(clusters, 2)?)?;
+    let derived_edges = checked_add(
+        checked_mul(child_links, 2)?,
+        checked_mul(g.node_count(), 2)?,
+    )?;
+    let node_work = checked_mul(checked_add(g.node_count(), derived_nodes)?, 8)?;
+    let edge_work = checked_mul(checked_add(g.edge_count(), derived_edges)?, 4)?;
+    checked_add(node_work, edge_work)
 }
 
 pub fn cleanup(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {

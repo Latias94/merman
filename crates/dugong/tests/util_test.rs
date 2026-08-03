@@ -559,6 +559,38 @@ fn util_remove_empty_ranks_handles_parents_with_undefined_ranks() {
 }
 
 #[test]
+fn util_remove_empty_ranks_skips_extreme_empty_rank_spans() {
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: false,
+        compound: false,
+        ..Default::default()
+    });
+    g.set_graph(GraphLabel {
+        node_rank_factor: Some(2),
+        ..Default::default()
+    });
+    g.set_node(
+        "low",
+        NodeLabel {
+            rank: Some(i32::MIN),
+            ..Default::default()
+        },
+    );
+    g.set_node(
+        "high",
+        NodeLabel {
+            rank: Some(i32::MAX),
+            ..Default::default()
+        },
+    );
+
+    util::remove_empty_ranks(&mut g);
+
+    assert_eq!(g.node("low").unwrap().rank, Some(i32::MIN));
+    assert_eq!(g.node("high").unwrap().rank, Some(0));
+}
+
+#[test]
 fn util_range_builds_an_array_to_the_limit() {
     let range = util::range(4);
     assert_eq!(range.len(), 4);

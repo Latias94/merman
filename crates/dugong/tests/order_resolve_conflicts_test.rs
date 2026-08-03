@@ -364,3 +364,27 @@ fn resolve_conflicts_ignores_edges_not_related_to_entries() {
         ]
     );
 }
+
+#[test]
+fn resolve_conflicts_merges_long_constraint_chains_without_recopying_prefixes() {
+    let count = 4096usize;
+    let input = (0..count)
+        .map(|index| BarycenterEntry {
+            v: format!("n{index}"),
+            barycenter: None,
+            weight: None,
+        })
+        .collect::<Vec<_>>();
+    let mut constraints: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    for index in 1..count {
+        constraints.set_edge(format!("n{}", index - 1), format!("n{index}"));
+    }
+
+    let resolved = resolve_conflicts(&input, &constraints);
+
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0].vs.len(), count);
+    assert_eq!(resolved[0].vs.first().map(String::as_str), Some("n0"));
+    let expected_last = format!("n{}", count - 1);
+    assert_eq!(resolved[0].vs.last(), Some(&expected_last));
+}

@@ -2,17 +2,33 @@
 
 use super::tree;
 use crate::graphlib::{Graph, GraphOptions};
+use crate::work::{checked_add, checked_mul};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
+use crate::{NoopWorkControl, WorkControl, WorkError};
 
 pub fn feasible_tree(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
 ) -> Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()> {
-    let mut rank_by_ix: Vec<i32> = Vec::new();
+    let mut work_control = NoopWorkControl;
+    feasible_tree_controlled(g, &mut work_control)
+        .expect("the checked no-op Dugong work control cannot reject feasible-tree work")
+}
+
+pub(crate) fn feasible_tree_controlled(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>, WorkError> {
+    work_control.charge(checked_add(
+        checked_mul(g.node_count(), 4)?,
+        checked_mul(g.edge_count(), 2)?,
+    )?)?;
+    crate::rank::validate_rank_arithmetic(g)?;
+    let mut rank_by_ix: Vec<i128> = Vec::new();
     g.for_each_node_ix(|ix, _id, lbl| {
         if ix >= rank_by_ix.len() {
             rank_by_ix.resize(ix + 1, 0);
         }
-        rank_by_ix[ix] = lbl.rank.unwrap_or(0);
+        rank_by_ix[ix] = i128::from(lbl.rank.unwrap_or(0));
     });
     let mut in_tree_by_ix: Vec<bool> = vec![false; rank_by_ix.len()];
     let mut tree_g_ixs: Vec<usize> = Vec::new();
@@ -23,7 +39,7 @@ pub fn feasible_tree(
     });
 
     let Some(start) = g.nodes().next().map(|s| s.to_string()) else {
-        return t;
+        return Ok(t);
     };
     let size = g.node_count();
     t.set_node(start.clone(), tree::TreeNodeLabel::default());
@@ -36,7 +52,11 @@ pub fn feasible_tree(
         tree_g_ixs.push(ix);
     }
 
-    while tight_tree(&mut t, g, &rank_by_ix, &mut in_tree_by_ix, &mut tree_g_ixs) < size {
+    loop {
+        work_control.charge(feasible_tree_iteration_work_units(g)?)?;
+        if tight_tree(&mut t, g, &rank_by_ix, &mut in_tree_by_ix, &mut tree_g_ixs) >= size {
+            break;
+        }
         let Some((slack, in_v)) = find_min_slack_edge(g, &rank_by_ix, &in_tree_by_ix) else {
             // Disconnected graphs can occur in downstream usage. Dagre effectively works
             // per component; here we create a forest by starting a new component root.
@@ -63,16 +83,24 @@ pub fn feasible_tree(
             continue;
         };
         let delta = if in_v { slack } else { -slack };
-        shift_ranks(g, &mut rank_by_ix, &tree_g_ixs, delta);
+        shift_ranks(g, &mut rank_by_ix, &tree_g_ixs, delta)?;
     }
 
-    t
+    Ok(t)
+}
+
+fn feasible_tree_iteration_work_units(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    let node_work = checked_mul(g.node_count(), 4)?;
+    let edge_work = checked_mul(g.edge_count(), 3)?;
+    checked_add(node_work, edge_work)
 }
 
 fn tight_tree(
     t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    rank_by_ix: &[i32],
+    rank_by_ix: &[i128],
     in_tree_by_ix: &mut Vec<bool>,
     tree_g_ixs: &mut Vec<usize>,
 ) -> usize {
@@ -92,7 +120,7 @@ fn tight_tree(
 
                 let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
                 let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                let minlen: i32 = lbl.minlen.max(1) as i32;
+                let minlen = lbl.minlen.max(1) as i128;
                 let slack = head_rank - tail_rank - minlen;
                 if slack == 0 {
                     let Some(w_id) = g.node_id_by_ix(head_ix) else {
@@ -118,7 +146,7 @@ fn tight_tree(
 
                 let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
                 let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                let minlen: i32 = lbl.minlen.max(1) as i32;
+                let minlen = lbl.minlen.max(1) as i128;
                 let slack = head_rank - tail_rank - minlen;
                 if slack == 0 {
                     let Some(w_id) = g.node_id_by_ix(tail_ix) else {
@@ -152,7 +180,7 @@ fn tight_tree(
                         return;
                     }
 
-                    let minlen: i32 = lbl.minlen.max(1) as i32;
+                    let minlen = lbl.minlen.max(1) as i128;
 
                     let Some(tail_ix) = g.node_ix(&ek.v) else {
                         return;
@@ -184,10 +212,10 @@ fn tight_tree(
 
 fn find_min_slack_edge(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    rank_by_ix: &[i32],
+    rank_by_ix: &[i128],
     in_tree_by_ix: &[bool],
-) -> Option<(i32, bool)> {
-    let mut best: Option<(i32, bool)> = None;
+) -> Option<(i128, bool)> {
+    let mut best: Option<(i128, bool)> = None;
     g.for_each_edge_ix(|v_ix, w_ix, _key, lbl| {
         let in_v = in_tree_by_ix.get(v_ix).copied().unwrap_or(false);
         let in_w = in_tree_by_ix.get(w_ix).copied().unwrap_or(false);
@@ -197,7 +225,7 @@ fn find_min_slack_edge(
 
         let v_rank = rank_by_ix.get(v_ix).copied().unwrap_or(0);
         let w_rank = rank_by_ix.get(w_ix).copied().unwrap_or(0);
-        let minlen: i32 = lbl.minlen.max(1) as i32;
+        let minlen = lbl.minlen.max(1) as i128;
         let slack = w_rank - v_rank - minlen;
 
         match &best {
@@ -210,18 +238,24 @@ fn find_min_slack_edge(
 
 fn shift_ranks(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    rank_by_ix: &mut Vec<i32>,
+    rank_by_ix: &mut Vec<i128>,
     tree_g_ixs: &[usize],
-    delta: i32,
-) {
+    delta: i128,
+) -> Result<(), WorkError> {
+    let mut updates = Vec::with_capacity(tree_g_ixs.len());
     for &ix in tree_g_ixs {
         if ix >= rank_by_ix.len() {
             rank_by_ix.resize(ix + 1, 0);
         }
         let new_rank = rank_by_ix[ix] + delta;
+        let new_rank_i32 = i32::try_from(new_rank).map_err(|_| WorkError::ArithmeticOverflow)?;
+        updates.push((ix, new_rank, new_rank_i32));
+    }
+    for (ix, new_rank, new_rank_i32) in updates {
         rank_by_ix[ix] = new_rank;
         if let Some(label) = g.node_label_mut_by_ix(ix) {
-            label.rank = Some(new_rank);
+            label.rank = Some(new_rank_i32);
         }
     }
+    Ok(())
 }

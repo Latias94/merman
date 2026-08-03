@@ -4,16 +4,54 @@
 //! but can opt into the greedy strategy.
 
 use crate::graphlib::{EdgeKey, Graph};
+use crate::work::{ceil_log2, checked_add, checked_mul, checked_n_log_n};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
-use std::collections::BTreeSet;
+use crate::{NoopWorkControl, WorkControl, WorkError};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+
+#[derive(Debug, Default)]
+struct ReverseNameGen {
+    next_by_endpoints: HashMap<(String, String), usize>,
+}
+
+impl ReverseNameGen {
+    fn next(
+        &mut self,
+        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        v: &str,
+        w: &str,
+    ) -> Result<String, WorkError> {
+        let endpoints = (v.to_string(), w.to_string());
+        let mut next = self.next_by_endpoints.get(&endpoints).copied().unwrap_or(1);
+        loop {
+            let candidate = format!("rev{next}");
+            if !g.has_edge(v, w, Some(&candidate)) {
+                self.next_by_endpoints
+                    .insert(endpoints, checked_add(next, 1)?);
+                return Ok(candidate);
+            }
+            next = checked_add(next, 1)?;
+        }
+    }
+}
 
 pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    let mut work_control = NoopWorkControl;
+    run_controlled(g, &mut work_control)
+        .expect("the checked no-op Dugong work control cannot reject acyclic work");
+}
+
+pub(crate) fn run_controlled(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
     let fas = if g
         .graph()
         .acyclicer
         .as_deref()
         .is_some_and(|s| s == "greedy")
     {
+        work_control.charge(greedy_work_units(g)?)?;
         crate::greedy_fas::greedy_fas_with_weight(g, |lbl: &EdgeLabel| {
             if !lbl.weight.is_finite() {
                 return 0;
@@ -21,9 +59,14 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             lbl.weight.round() as i64
         })
     } else {
+        work_control.charge(checked_add(
+            g.node_count(),
+            checked_mul(g.edge_count(), 2)?,
+        )?)?;
         dfs_fas(g)
     };
 
+    let mut reverse_names = ReverseNameGen::default();
     for e in fas.into_iter().filter(|e| e.v != e.w) {
         let Some(label) = g.edge_by_key(&e).cloned() else {
             continue;
@@ -34,11 +77,18 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         label.forward_name = e.name.clone();
         label.reversed = true;
 
-        let Some(name) = unique_rev_name(g, &e.w, &e.v) else {
-            continue;
-        };
+        let name = reverse_names.next(g, &e.w, &e.v)?;
         g.set_edge_named(e.w, e.v, Some(name), Some(label));
     }
+    Ok(())
+}
+
+fn greedy_work_units(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<usize, WorkError> {
+    let nodes = g.node_count();
+    let edges = g.edge_count();
+    let node_work = checked_mul(checked_n_log_n(nodes)?, 3)?;
+    let edge_steps = checked_add(ceil_log2(nodes).max(1), 6)?;
+    checked_add(node_work, checked_mul(edges, edge_steps)?)
 }
 
 pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
@@ -60,25 +110,11 @@ pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     }
 }
 
-fn unique_rev_name(
-    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    v: &str,
-    w: &str,
-) -> Option<String> {
-    for i in 1usize.. {
-        let candidate = format!("rev{i}");
-        if !g.has_edge(v, w, Some(&candidate)) {
-            return Some(candidate);
-        }
-    }
-    None
-}
-
 fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
     // Ported from Dagre `lib/acyclic.js` (dfsFAS) as used by Mermaid `@11.12.2`.
     let mut fas: Vec<EdgeKey> = Vec::new();
-    let mut stack: BTreeSet<String> = BTreeSet::new();
-    let mut visited: BTreeSet<String> = BTreeSet::new();
+    let mut stack: HashSet<String> = HashSet::default();
+    let mut visited: HashSet<String> = HashSet::default();
 
     struct DfsFrame {
         v: String,
@@ -89,8 +125,8 @@ fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
     fn push_frame(
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         v: String,
-        visited: &mut BTreeSet<String>,
-        stack: &mut BTreeSet<String>,
+        visited: &mut HashSet<String>,
+        stack: &mut HashSet<String>,
         frames: &mut Vec<DfsFrame>,
     ) {
         visited.insert(v.clone());
@@ -105,8 +141,8 @@ fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
     fn dfs_iterative(
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         root: &str,
-        visited: &mut BTreeSet<String>,
-        stack: &mut BTreeSet<String>,
+        visited: &mut HashSet<String>,
+        stack: &mut HashSet<String>,
         fas: &mut Vec<EdgeKey>,
     ) {
         if visited.contains(root) {

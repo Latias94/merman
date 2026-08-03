@@ -1482,6 +1482,17 @@ where
         }
     }
 
+    /// Returns the number of directed outgoing edge entries for an indexed node.
+    ///
+    /// This is an allocation-free cardinality query over the shared adjacency cache. It is useful
+    /// to budget an owner-local edge scan before executing that scan.
+    pub fn out_edge_count_ix(&self, v_ix: usize) -> usize {
+        if !self.options.directed {
+            return 0;
+        }
+        self.ensure_directed_adj().out_edges(v_ix).len()
+    }
+
     pub fn for_each_out_edge_entry_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
     where
         F: FnMut(usize, usize, usize, &EdgeKey, &E),
