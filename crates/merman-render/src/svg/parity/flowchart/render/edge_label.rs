@@ -22,6 +22,70 @@ fn padded_html_edge_label_background(padding: f64, width: f64, height: f64) -> S
     )
 }
 
+fn position_flowchart_edge_label(
+    dagre_anchor: crate::model::LayoutPoint,
+    geom: &FlowchartEdgePathGeom,
+    always_recompute: bool,
+) -> crate::model::LayoutPoint {
+    let rendered_d = geom
+        .emitted_d_for_label
+        .as_deref()
+        .unwrap_or(geom.d.as_str());
+    crate::svg::parity::edge_label_geometry::position_edge_label(
+        dagre_anchor,
+        &geom.label_path_points,
+        rendered_d,
+        geom.label_path_was_explicitly_updated || always_recompute,
+    )
+}
+
+fn resolve_flowchart_edge_label_position(
+    ctx: &FlowchartRenderCtx<'_>,
+    layout_edge: &crate::model::LayoutEdge,
+    label: &crate::model::LayoutLabel,
+    edge_id: &str,
+    origin_x: f64,
+    origin_y: f64,
+    edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
+    always_recompute: bool,
+) -> crate::model::LayoutPoint {
+    let dagre_anchor = crate::model::LayoutPoint {
+        x: label.x + ctx.tx - origin_x,
+        y: label.y + ctx.ty - origin_y,
+    };
+
+    if let Some(geom) = edge_cache
+        .get(edge_id)
+        .filter(|entry| {
+            (entry.origin_x - origin_x).abs() <= 1e-9 && (entry.origin_y - origin_y).abs() <= 1e-9
+        })
+        .map(|entry| &entry.geom)
+    {
+        return position_flowchart_edge_label(dagre_anchor, geom, always_recompute);
+    }
+
+    // Geometry caching only skips routes with fewer than two points. For that degenerate case,
+    // `calcLabelPosition` either keeps the anchor (empty) or returns the sole waypoint.
+    if always_recompute || layout_edge.to_cluster.is_some() || layout_edge.from_cluster.is_some() {
+        let points = layout_edge
+            .points
+            .iter()
+            .map(|point| crate::model::LayoutPoint {
+                x: point.x + ctx.tx - origin_x,
+                y: point.y + ctx.ty - origin_y,
+            })
+            .collect::<Vec<_>>();
+        return crate::svg::parity::edge_label_geometry::position_edge_label(
+            dagre_anchor.clone(),
+            &points,
+            "",
+            true,
+        );
+    }
+
+    dagre_anchor
+}
+
 pub(in crate::svg::parity) fn render_flowchart_edge_label(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
@@ -45,86 +109,44 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         false,
     );
 
-    fn js_round(v: f64, decimals: i32) -> f64 {
-        if !v.is_finite() {
-            return 0.0;
-        }
-        let factor = 10f64.powi(decimals);
-        let x = v * factor;
-        let r = (x + 0.5).floor() / factor;
-        if r == -0.0 { 0.0 } else { r }
-    }
-
-    fn calc_label_position(
-        points: &[crate::model::LayoutPoint],
-    ) -> Option<crate::model::LayoutPoint> {
-        // Mermaid `utils.calcLabelPosition(points)`:
-        // - computes polyline total length
-        // - traverses half distance along segments
-        // - rounds interpolated coordinates to 5 decimals using JS `Math.round`.
-        if points.is_empty() {
-            return None;
-        }
-        if points.len() == 1 {
-            return Some(points[0].clone());
-        }
-
-        let mut total = 0.0;
-        for w in points.windows(2) {
-            total += (w[1].x - w[0].x).hypot(w[1].y - w[0].y);
-        }
-        if !total.is_finite() || total <= 0.0 {
-            return Some(points[0].clone());
-        }
-
-        let mut remaining = total / 2.0;
-        for w in points.windows(2) {
-            let a = &w[0];
-            let b = &w[1];
-            let seg = (b.x - a.x).hypot(b.y - a.y);
-            if !seg.is_finite() || seg <= 0.0 {
-                return Some(a.clone());
-            }
-            if seg < remaining {
-                remaining -= seg;
-                continue;
-            }
-            let ratio = remaining / seg;
-            if ratio <= 0.0 {
-                return Some(a.clone());
-            }
-            if ratio >= 1.0 {
-                return Some(crate::model::LayoutPoint {
-                    x: js_round(b.x, 5),
-                    y: js_round(b.y, 5),
-                });
-            }
-            return Some(crate::model::LayoutPoint {
-                x: js_round((1.0 - ratio) * a.x + ratio * b.x, 5),
-                y: js_round((1.0 - ratio) * a.y + ratio * b.y, 5),
-            });
-        }
-
-        Some(points[0].clone())
-    }
-
     fn fallback_midpoint(
         le: &crate::model::LayoutEdge,
         ctx: &FlowchartRenderCtx<'_>,
         origin_x: f64,
         origin_y: f64,
     ) -> (f64, f64) {
-        let Some(p) = le.points.get(le.points.len() / 2) else {
-            return (ctx.tx - origin_x, ctx.ty - origin_y);
+        let anchor = crate::model::LayoutPoint {
+            x: ctx.tx - origin_x,
+            y: ctx.ty - origin_y,
         };
-        (p.x + ctx.tx - origin_x, p.y + ctx.ty - origin_y)
+        let points = le
+            .points
+            .iter()
+            .map(|point| crate::model::LayoutPoint {
+                x: point.x + ctx.tx - origin_x,
+                y: point.y + ctx.ty - origin_y,
+            })
+            .collect::<Vec<_>>();
+        let position =
+            crate::svg::parity::edge_label_geometry::position_edge_label(anchor, &points, "", true);
+        (position.x, position.y)
     }
 
     if !ctx.edge_html_labels {
         if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
             if let Some(lbl) = le.label.as_ref() {
-                let x = lbl.x + ctx.tx - origin_x;
-                let y = lbl.y + ctx.ty - origin_y;
+                let position = resolve_flowchart_edge_label_position(
+                    ctx,
+                    le,
+                    lbl,
+                    edge.id.as_str(),
+                    origin_x,
+                    origin_y,
+                    edge_cache,
+                    false,
+                );
+                let x = position.x;
+                let y = position.y;
 
                 if label_text_plain.trim().is_empty() {
                     if !label_text.trim().is_empty() {
@@ -253,217 +275,18 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
 
     if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
         if let Some(lbl) = le.label.as_ref() {
-            let mut x = lbl.x + ctx.tx - origin_x;
-            let mut y = lbl.y + ctx.ty - origin_y;
-
-            let cached_geom = edge_cache
-                .get(edge.id.as_str())
-                .filter(|entry| {
-                    (entry.origin_x - origin_x).abs() <= 1e-9
-                        && (entry.origin_y - origin_y).abs() <= 1e-9
-                })
-                .map(|entry| &entry.geom);
-            if let Some(pos) = cached_geom.and_then(|geom| geom.label_position.as_ref()) {
-                x = pos.x;
-                y = pos.y;
-            } else if le.to_cluster.is_some() || le.from_cluster.is_some() {
-                // A degenerate edge can fail to produce cached path geometry. Preserve Mermaid's
-                // `updatedPath` cluster behavior from the clipped polyline in that case.
-                fn dedup_consecutive_points(
-                    input: &[crate::model::LayoutPoint],
-                ) -> Vec<crate::model::LayoutPoint> {
-                    if input.len() <= 1 {
-                        return input.to_vec();
-                    }
-                    const EPS: f64 = 1e-9;
-                    let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(input.len());
-                    for p in input {
-                        if out.last().is_some_and(|prev| {
-                            (prev.x - p.x).abs() <= EPS && (prev.y - p.y).abs() <= EPS
-                        }) {
-                            continue;
-                        }
-                        out.push(p.clone());
-                    }
-                    out
-                }
-
-                #[derive(Debug, Clone, Copy)]
-                struct BoundaryNode {
-                    x: f64,
-                    y: f64,
-                    width: f64,
-                    height: f64,
-                }
-
-                fn outside_node(node: &BoundaryNode, point: &crate::model::LayoutPoint) -> bool {
-                    let dx = (point.x - node.x).abs();
-                    let dy = (point.y - node.y).abs();
-                    let w = node.width / 2.0;
-                    let h = node.height / 2.0;
-                    dx >= w || dy >= h
-                }
-
-                fn rect_intersection(
-                    node: &BoundaryNode,
-                    outside_point: &crate::model::LayoutPoint,
-                    inside_point: &crate::model::LayoutPoint,
-                ) -> crate::model::LayoutPoint {
-                    let x = node.x;
-                    let y = node.y;
-
-                    let w = node.width / 2.0;
-                    let h = node.height / 2.0;
-
-                    let q_abs = (outside_point.y - inside_point.y).abs();
-                    let r_abs = (outside_point.x - inside_point.x).abs();
-
-                    if (y - outside_point.y).abs() * w > (x - outside_point.x).abs() * h {
-                        let q = if inside_point.y < outside_point.y {
-                            outside_point.y - h - y
-                        } else {
-                            y - h - outside_point.y
-                        };
-                        let r = if q_abs == 0.0 {
-                            0.0
-                        } else {
-                            (r_abs * q) / q_abs
-                        };
-                        let mut res = crate::model::LayoutPoint {
-                            x: if inside_point.x < outside_point.x {
-                                inside_point.x + r
-                            } else {
-                                inside_point.x - r_abs + r
-                            },
-                            y: if inside_point.y < outside_point.y {
-                                inside_point.y + q_abs - q
-                            } else {
-                                inside_point.y - q_abs + q
-                            },
-                        };
-
-                        if r.abs() <= 1e-9 {
-                            res.x = outside_point.x;
-                            res.y = outside_point.y;
-                        }
-                        if r_abs == 0.0 {
-                            res.x = outside_point.x;
-                        }
-                        if q_abs == 0.0 {
-                            res.y = outside_point.y;
-                        }
-                        return res;
-                    }
-
-                    let r = if inside_point.x < outside_point.x {
-                        outside_point.x - w - x
-                    } else {
-                        x - w - outside_point.x
-                    };
-                    let q = if r_abs == 0.0 {
-                        0.0
-                    } else {
-                        (q_abs * r) / r_abs
-                    };
-                    let mut ix = if inside_point.x < outside_point.x {
-                        inside_point.x + r_abs - r
-                    } else {
-                        inside_point.x - r_abs + r
-                    };
-                    let mut iy = if inside_point.y < outside_point.y {
-                        inside_point.y + q
-                    } else {
-                        inside_point.y - q
-                    };
-
-                    if r.abs() <= 1e-9 {
-                        ix = outside_point.x;
-                        iy = outside_point.y;
-                    }
-                    if r_abs == 0.0 {
-                        ix = outside_point.x;
-                    }
-                    if q_abs == 0.0 {
-                        iy = outside_point.y;
-                    }
-
-                    crate::model::LayoutPoint { x: ix, y: iy }
-                }
-
-                fn cut_path_at_intersect(
-                    input: &[crate::model::LayoutPoint],
-                    boundary: &BoundaryNode,
-                ) -> Vec<crate::model::LayoutPoint> {
-                    if input.is_empty() {
-                        return Vec::new();
-                    }
-                    let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
-                    let mut last_point_outside = input[0].clone();
-                    let mut is_inside = false;
-                    const EPS: f64 = 1e-9;
-
-                    for point in input {
-                        if !outside_node(boundary, point) && !is_inside {
-                            let inter = rect_intersection(boundary, &last_point_outside, point);
-                            if !out.iter().any(|p| {
-                                (p.x - inter.x).abs() <= EPS && (p.y - inter.y).abs() <= EPS
-                            }) {
-                                out.push(inter);
-                            }
-                            is_inside = true;
-                        } else {
-                            last_point_outside = point.clone();
-                            if !is_inside {
-                                out.push(point.clone());
-                            }
-                        }
-                    }
-                    out
-                }
-
-                fn boundary_for_cluster(
-                    ctx: &FlowchartRenderCtx<'_>,
-                    cluster_id: &str,
-                    origin_x: f64,
-                    origin_y: f64,
-                ) -> Option<BoundaryNode> {
-                    let n = ctx.layout_clusters_by_id.get(cluster_id)?;
-                    Some(BoundaryNode {
-                        x: n.x + ctx.tx - origin_x,
-                        y: n.y + ctx.ty - origin_y,
-                        width: n.width,
-                        height: n.height,
-                    })
-                }
-
-                let mut points: Vec<crate::model::LayoutPoint> = le
-                    .points
-                    .iter()
-                    .map(|p| crate::model::LayoutPoint {
-                        x: p.x + ctx.tx - origin_x,
-                        y: p.y + ctx.ty - origin_y,
-                    })
-                    .collect();
-                points = dedup_consecutive_points(&points);
-
-                if let Some(tc) = le.to_cluster.as_deref()
-                    && let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y)
-                {
-                    points = cut_path_at_intersect(&points, &boundary);
-                }
-                if let Some(fc) = le.from_cluster.as_deref()
-                    && let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y)
-                {
-                    points.reverse();
-                    points = cut_path_at_intersect(&points, &boundary);
-                    points.reverse();
-                }
-
-                if let Some(pos) = calc_label_position(&points) {
-                    x = pos.x;
-                    y = pos.y;
-                }
-            }
+            let position = resolve_flowchart_edge_label_position(
+                ctx,
+                le,
+                lbl,
+                edge.id.as_str(),
+                origin_x,
+                origin_y,
+                edge_cache,
+                false,
+            );
+            let x = position.x;
+            let y = position.y;
 
             let layout_w = lbl.width.max(0.0);
             let h = lbl.height.max(0.0);
@@ -585,6 +408,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     edge: &crate::flowchart::FlowEdge,
     origin_x: f64,
     origin_y: f64,
+    edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
 ) {
     let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
         return;
@@ -602,8 +426,20 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         &ctx.default_edge_style,
         &edge.style,
     );
-    let x = label.x + ctx.tx - origin_x;
-    let y = label.y + ctx.ty - origin_y;
+    // Swimlane's private `positionEdgeLabel` recomputes whenever `insertEdge` returns a paths
+    // object, independent of the ordinary updated-path heuristic.
+    let position = resolve_flowchart_edge_label_position(
+        ctx,
+        layout_edge,
+        label,
+        edge.id.as_str(),
+        origin_x,
+        origin_y,
+        edge_cache,
+        true,
+    );
+    let x = position.x;
+    let y = position.y;
     let width = label.width.max(0.0);
     let height = label.height.max(0.0);
 
@@ -662,4 +498,95 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         write_flowchart_svg_text(out, &wrapped, true);
     }
     out.push_str("</g></g></g>");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn point(x: f64, y: f64) -> crate::model::LayoutPoint {
+        crate::model::LayoutPoint { x, y }
+    }
+
+    fn geom(d: &str, points: Vec<crate::model::LayoutPoint>) -> FlowchartEdgePathGeom {
+        FlowchartEdgePathGeom {
+            d: d.to_string(),
+            pb: None,
+            data_points: points.clone(),
+            data_points_b64: String::new(),
+            original_path_length: None,
+            path_length: None,
+            line_hop_applied: false,
+            label_path_points: points,
+            label_path_was_explicitly_updated: false,
+            emitted_d_for_label: None,
+            bounds_skipped_for_viewbox: false,
+        }
+    }
+
+    #[test]
+    fn ordinary_dagre_keeps_anchor_until_insert_edge_marks_path_updated() {
+        let anchor = point(4.0, 5.0);
+        let mut geometry = geom(
+            "M0,0L10,0L20,0",
+            vec![point(0.0, 0.0), point(10.0, 0.0), point(20.0, 0.0)],
+        );
+
+        let unchanged = position_flowchart_edge_label(anchor.clone(), &geometry, false);
+        assert_eq!((unchanged.x, unchanged.y), (4.0, 5.0));
+
+        geometry.label_path_was_explicitly_updated = true;
+        let updated = position_flowchart_edge_label(anchor, &geometry, false);
+        assert_eq!((updated.x, updated.y), (10.0, 0.0));
+    }
+
+    #[test]
+    fn swimlane_always_recomputes_from_returned_waypoints() {
+        let geometry = geom(
+            "M0,0L10,0L20,0",
+            vec![point(0.0, 0.0), point(10.0, 0.0), point(20.0, 0.0)],
+        );
+
+        let positioned = position_flowchart_edge_label(point(4.0, 5.0), &geometry, true);
+        assert_eq!((positioned.x, positioned.y), (10.0, 0.0));
+    }
+
+    #[test]
+    fn rough_actual_emitted_path_drives_updated_path_detection() {
+        let anchor = point(4.0, 5.0);
+        let mut geometry = geom(
+            "M0,0L10,20L30,20",
+            vec![point(0.0, 0.0), point(10.0, 20.0), point(30.0, 20.0)],
+        );
+
+        let logical_curve = position_flowchart_edge_label(anchor.clone(), &geometry, false);
+        assert_eq!((logical_curve.x, logical_curve.y), (4.0, 5.0));
+
+        geometry.emitted_d_for_label = Some("M1.1,2.2C3.3,4.4,5.5,6.6,7.7,8.8".to_string());
+        let rough_curve = position_flowchart_edge_label(anchor, &geometry, false);
+        assert_ne!((rough_curve.x, rough_curve.y), (4.0, 5.0));
+    }
+
+    #[test]
+    fn shared_geometry_handles_empty_single_degenerate_and_polyline_paths() {
+        let anchor = point(4.0, 5.0);
+        let empty = geom("", Vec::new());
+        let positioned = position_flowchart_edge_label(anchor.clone(), &empty, true);
+        assert_eq!((positioned.x, positioned.y), (4.0, 5.0));
+
+        let single = geom("M2,3", vec![point(2.0, 3.0)]);
+        let positioned = position_flowchart_edge_label(anchor.clone(), &single, true);
+        assert_eq!((positioned.x, positioned.y), (2.0, 3.0));
+
+        let degenerate = geom("M2,3L2,3", vec![point(2.0, 3.0), point(2.0, 3.0)]);
+        let positioned = position_flowchart_edge_label(anchor.clone(), &degenerate, true);
+        assert_eq!((positioned.x, positioned.y), (2.0, 3.0));
+
+        let polyline = geom(
+            "M0,0L6,0L6,8",
+            vec![point(0.0, 0.0), point(6.0, 0.0), point(6.0, 8.0)],
+        );
+        let positioned = position_flowchart_edge_label(anchor, &polyline, true);
+        assert_eq!((positioned.x, positioned.y), (6.0, 1.0));
+    }
 }

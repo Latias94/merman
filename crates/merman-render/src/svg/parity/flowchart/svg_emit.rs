@@ -418,7 +418,7 @@ fn render_flowchart_svg_model(
     let mut root_session = FlowchartRootRenderSession {
         timing: render_timing,
         details: &mut detail,
-        edge_cache: &edge_path_cache,
+        edge_cache: &mut edge_path_cache,
     };
     if layout.uses_elk_adapter_dom {
         out.push_str("<g>");
