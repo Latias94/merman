@@ -554,6 +554,10 @@ pub(crate) struct CompareEvidence {
     observed_measurement_routes: usize,
     raw_source_svg_dom_comparisons: usize,
     raw_source_svg_byte_comparisons: usize,
+    semantic_label_expected_fixture_comparisons: usize,
+    semantic_label_fixture_comparisons: usize,
+    semantic_label_sample_comparisons: usize,
+    semantic_label_accepted_residuals: usize,
 }
 
 impl CompareEvidence {
@@ -579,6 +583,15 @@ impl CompareEvidence {
 
     pub(crate) const fn comparisons(self) -> usize {
         self.raw_source_svg_dom_comparisons + self.raw_source_svg_byte_comparisons
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn semantic_label_comparisons(self) -> (usize, usize, usize) {
+        (
+            self.semantic_label_fixture_comparisons,
+            self.semantic_label_sample_comparisons,
+            self.semantic_label_accepted_residuals,
+        )
     }
 
     pub(crate) fn gate_failures(self, subject: &str, check_dom: bool) -> Vec<String> {
@@ -607,6 +620,31 @@ impl CompareEvidence {
                 self.rendered_fixtures, self.skipped_fixtures
             ));
         }
+        if self.semantic_label_accepted_residuals > self.semantic_label_sample_comparisons {
+            failures.push(format!(
+                "semantic label evidence is inconsistent for {subject}: samples={} accepted-residuals={}",
+                self.semantic_label_sample_comparisons,
+                self.semantic_label_accepted_residuals
+            ));
+        }
+        if check_dom
+            && self.semantic_label_fixture_comparisons
+                != self.semantic_label_expected_fixture_comparisons
+        {
+            failures.push(format!(
+                "semantic label fixture evidence mismatch for {subject}: expected={} compared={}",
+                self.semantic_label_expected_fixture_comparisons,
+                self.semantic_label_fixture_comparisons
+            ));
+        }
+        if self.semantic_label_fixture_comparisons > 0
+            && self.semantic_label_sample_comparisons == 0
+        {
+            failures.push(format!(
+                "semantic label fixtures produced no samples for {subject}: fixtures={}",
+                self.semantic_label_fixture_comparisons
+            ));
+        }
         failures
     }
 
@@ -626,6 +664,14 @@ impl CompareEvidence {
             report,
             "- Artifact evidence contract: this command may collect only `raw/source parity` (see counts); browser-visible=`not collected (requires browser computed-style/geometry evidence)`; resvg-safe=`not collected (requires output-pipeline and usvg/resvg evidence)`"
         );
+        let _ = writeln!(
+            report,
+            "- Semantic label evidence: expected-fixtures=`{}` fixtures=`{}` samples=`{}` accepted-residuals=`{}`",
+            self.semantic_label_expected_fixture_comparisons,
+            self.semantic_label_fixture_comparisons,
+            self.semantic_label_sample_comparisons,
+            self.semantic_label_accepted_residuals,
+        );
     }
 
     fn record_render(&mut self, evidence: ObservedRenderEvidence) {
@@ -638,11 +684,16 @@ impl CompareEvidence {
         self.observed_measurement_routes += evidence.measurement_routes;
     }
 
-    fn record_comparison(&mut self, comparison: RawSourceComparison) {
-        match comparison {
+    fn record_comparison(&mut self, comparison: FixtureComparisonEvidence) {
+        match comparison.raw_source {
             RawSourceComparison::None => {}
             RawSourceComparison::SvgDom => self.raw_source_svg_dom_comparisons += 1,
             RawSourceComparison::SvgBytes => self.raw_source_svg_byte_comparisons += 1,
+        }
+        if let Some(labels) = comparison.semantic_labels {
+            self.semantic_label_fixture_comparisons += 1;
+            self.semantic_label_sample_comparisons += labels.compared_samples;
+            self.semantic_label_accepted_residuals += labels.accepted_residuals;
         }
     }
 }
@@ -656,6 +707,11 @@ impl AddAssign for CompareEvidence {
         self.observed_measurement_routes += rhs.observed_measurement_routes;
         self.raw_source_svg_dom_comparisons += rhs.raw_source_svg_dom_comparisons;
         self.raw_source_svg_byte_comparisons += rhs.raw_source_svg_byte_comparisons;
+        self.semantic_label_expected_fixture_comparisons +=
+            rhs.semantic_label_expected_fixture_comparisons;
+        self.semantic_label_fixture_comparisons += rhs.semantic_label_fixture_comparisons;
+        self.semantic_label_sample_comparisons += rhs.semantic_label_sample_comparisons;
+        self.semantic_label_accepted_residuals += rhs.semantic_label_accepted_residuals;
     }
 }
 
@@ -1191,6 +1247,14 @@ where
     }
     let mut evidence = CompareEvidence {
         selected_fixtures: mmd_files.len(),
+        semantic_label_expected_fixture_comparisons: if run.check_dom {
+            super::registered_semantic_label_fixtures(run.diagram)
+                .iter()
+                .filter(|stem| run.filter.is_none_or(|filter| stem.contains(filter)))
+                .count()
+        } else {
+            0
+        },
         ..CompareEvidence::default()
     };
     let provenance = if validate_pinned_upstream {
@@ -1293,6 +1357,7 @@ where
                 let comparison = write_rendered_fixture(
                     &local_out_path,
                     &local_svg,
+                    &text,
                     &mut failures,
                     &mut notes,
                     issues,
@@ -1323,6 +1388,7 @@ where
                 let comparison = write_rendered_fixture(
                     &local_out_path,
                     &local_svg,
+                    &text,
                     &mut failures,
                     &mut notes,
                     issues,
@@ -1394,13 +1460,20 @@ enum RawSourceComparison {
     SvgBytes,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FixtureComparisonEvidence {
+    raw_source: RawSourceComparison,
+    semantic_labels: Option<super::SemanticLabelGateEvidence>,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn write_rendered_fixture(
     local_out_path: &Path,
     local_svg: &str,
+    input_text: &str,
     failures: &mut Vec<String>,
     notes: &mut Vec<String>,
-    issues: Vec<String>,
+    mut issues: Vec<String>,
     fixture_notes: Vec<String>,
     compare_svg_when_dom_disabled: bool,
     check_dom: bool,
@@ -1411,11 +1484,34 @@ fn write_rendered_fixture(
     upstream_path: &Path,
     mode: svgdom::DomMode,
     dom_decimals: u32,
-) -> Result<RawSourceComparison, XtaskError> {
+) -> Result<FixtureComparisonEvidence, XtaskError> {
     fs::write(local_out_path, local_svg).map_err(|source| XtaskError::WriteFile {
         path: local_out_path.display().to_string(),
         source,
     })?;
+
+    let semantic_labels = if check_dom {
+        match super::compare_registered_semantic_labels(
+            diagram,
+            stem,
+            input_text,
+            upstream_svg,
+            local_svg,
+            dom_decimals,
+        ) {
+            Ok(Some(outcome)) => {
+                issues.extend(outcome.issues);
+                Some(outcome.evidence)
+            }
+            Ok(None) => None,
+            Err(error) => {
+                issues.push(error);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     if check_dom && compare_dom {
         let (profile, residual_note) = fixture_dom_profile(diagram, stem, mode);
@@ -1437,17 +1533,23 @@ fn write_rendered_fixture(
         }
         failures.extend(issues);
         notes.extend(fixture_notes);
-        return Ok(RawSourceComparison::SvgDom);
+        return Ok(FixtureComparisonEvidence {
+            raw_source: RawSourceComparison::SvgDom,
+            semantic_labels,
+        });
     } else if !check_dom && compare_svg_when_dom_disabled && upstream_svg != local_svg {
         failures.push(format!("svg mismatch for {stem}"));
     }
 
     failures.extend(issues);
     notes.extend(fixture_notes);
-    Ok(if !check_dom && compare_svg_when_dom_disabled {
-        RawSourceComparison::SvgBytes
-    } else {
-        RawSourceComparison::None
+    Ok(FixtureComparisonEvidence {
+        raw_source: if !check_dom && compare_svg_when_dom_disabled {
+            RawSourceComparison::SvgBytes
+        } else {
+            RawSourceComparison::None
+        },
+        semantic_labels,
     })
 }
 
@@ -2086,6 +2188,165 @@ mod tests {
     }
 
     #[test]
+    fn semantic_label_evidence_counts_remain_orthogonal_to_dom_evidence() {
+        let mut evidence = CompareEvidence::default();
+        evidence.semantic_label_expected_fixture_comparisons = 1;
+
+        evidence.record_comparison(FixtureComparisonEvidence {
+            raw_source: RawSourceComparison::SvgDom,
+            semantic_labels: Some(super::super::SemanticLabelGateEvidence {
+                compared_samples: 5,
+                accepted_residuals: 5,
+            }),
+        });
+
+        assert_eq!(evidence.comparisons(), 1);
+        assert_eq!(evidence.semantic_label_comparisons(), (1, 5, 5));
+        let mut report = String::new();
+        evidence.write_report(&mut report);
+        assert!(
+            report.contains(
+                "Semantic label evidence: expected-fixtures=`1` fixtures=`1` samples=`5` accepted-residuals=`5`"
+            )
+        );
+    }
+
+    #[test]
+    fn semantic_label_gate_fails_when_registered_fixture_evidence_is_missing() {
+        let evidence = CompareEvidence {
+            rendered_fixtures: 1,
+            observed_operation_reports: 1,
+            observed_measurement_routes: 4,
+            raw_source_svg_dom_comparisons: 1,
+            semantic_label_expected_fixture_comparisons: 1,
+            ..CompareEvidence::default()
+        };
+
+        let failures = evidence.gate_failures("c4", true);
+
+        assert!(failures.iter().any(|failure| {
+            failure.contains("semantic label fixture evidence mismatch")
+                && failure.contains("expected=1 compared=0")
+        }));
+    }
+
+    #[test]
+    fn full_harness_requires_registered_semantic_fixture_but_filter_may_exclude_it() {
+        let root = unique_test_root("semantic-label-registration");
+        let fixtures_root = root.join("fixtures");
+        let upstream_root = root.join("upstream");
+        let fixture_dir = fixtures_root.join("c4");
+        let upstream_dir = upstream_root.join("c4");
+        fs::create_dir_all(&fixture_dir).expect("fixture dir should be created");
+        fs::create_dir_all(&upstream_dir).expect("upstream dir should be created");
+        fs::write(fixture_dir.join("only.mmd"), "C4Context\nPerson(a, \"A\")")
+            .expect("fixture should be written");
+        fs::write(upstream_dir.join("only.svg"), "<svg/>").expect("upstream should be written");
+
+        let run = |filter, out_path| {
+            run_svg_compare(
+                CompareHarnessOptions {
+                    run: CompareRunOptions {
+                        diagram: "c4",
+                        out_path: Some(out_path),
+                        filter,
+                        check_dom: true,
+                        dom_mode: "structure",
+                        dom_decimals: 3,
+                    },
+                    fixtures_root: Some(fixtures_root.clone()),
+                    upstream_root: Some(upstream_root.clone()),
+                },
+                &mut (),
+                |_, _, _, _| {},
+                |_, _, _| None,
+                |_, input| {
+                    Ok(CompareFixtureResult::Rendered {
+                        render_evidence: ObservedRenderEvidence::test_only(),
+                        local_svg: input.upstream_svg.to_string(),
+                        compare_dom: true,
+                        issues: Vec::new(),
+                        notes: Vec::new(),
+                    })
+                },
+                |_, _, _| {},
+                |_, _, _, _, _, _| {},
+            )
+        };
+
+        let full_error = run(None, root.join("full.md"))
+            .expect_err("full C4 run without its registered fixture should fail");
+        assert!(
+            full_error
+                .into_error()
+                .to_string()
+                .contains("semantic label fixture evidence mismatch for c4: expected=1 compared=0")
+        );
+
+        run(Some("only"), root.join("filtered.md"))
+            .expect("an explicit filter may exclude every registered semantic fixture");
+    }
+
+    #[test]
+    fn semantic_label_gate_runs_when_dom_profile_comparison_is_disabled() {
+        const FIXTURE: &str = "upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010";
+        let source = fs::read_to_string(
+            crate::cmd::fixtures_root()
+                .join("c4")
+                .join(format!("{FIXTURE}.mmd")),
+        )
+        .expect("signed C4 source should exist");
+        let upstream_path = crate::cmd::fixtures_root()
+            .join("upstream-svgs")
+            .join("c4")
+            .join(format!("{FIXTURE}.svg"));
+        let upstream = fs::read_to_string(&upstream_path).expect("signed C4 SVG should exist");
+        let local = upstream.replacen(
+            r#"x="493.6410154384848" y="897""#,
+            r#"x="593.9486587427764" y="842""#,
+            1,
+        );
+        let root = unique_test_root("semantic-label-without-dom-profile");
+        fs::create_dir_all(&root).expect("test output root should be created");
+        let local_path = root.join("local.svg");
+        let mut failures = Vec::new();
+        let mut notes = Vec::new();
+
+        let comparison = write_rendered_fixture(
+            &local_path,
+            &local,
+            &source,
+            &mut failures,
+            &mut notes,
+            Vec::new(),
+            Vec::new(),
+            false,
+            true,
+            false,
+            "c4",
+            FIXTURE,
+            &upstream,
+            &upstream_path,
+            svgdom::DomMode::Structure,
+            3,
+        )
+        .expect("writing the local SVG should succeed");
+
+        assert_eq!(comparison.raw_source, RawSourceComparison::None);
+        assert_eq!(
+            comparison.semantic_labels,
+            Some(super::super::SemanticLabelGateEvidence {
+                compared_samples: 5,
+                accepted_residuals: 0,
+            })
+        );
+        assert!(failures.iter().any(|failure| {
+            failure.contains("label or associated edge geometry differs without an exact residual")
+                && failure.contains("anchor_x: 593.949")
+        }));
+    }
+
+    #[test]
     fn svg_compare_harness_supports_custom_roots_and_render_level_skips() {
         let root = unique_test_root("roots-and-skips");
         let fixtures_root = root.join("fixtures");
@@ -2162,6 +2423,10 @@ mod tests {
                 observed_measurement_routes: 4,
                 raw_source_svg_dom_comparisons: 1,
                 raw_source_svg_byte_comparisons: 0,
+                semantic_label_expected_fixture_comparisons: 0,
+                semantic_label_fixture_comparisons: 0,
+                semantic_label_sample_comparisons: 0,
+                semantic_label_accepted_residuals: 0,
             }
         );
         let report = fs::read_to_string(&out_path).expect("report should be written");
@@ -2245,6 +2510,10 @@ mod tests {
                 observed_measurement_routes: 4,
                 raw_source_svg_dom_comparisons: 0,
                 raw_source_svg_byte_comparisons: 0,
+                semantic_label_expected_fixture_comparisons: 0,
+                semantic_label_fixture_comparisons: 0,
+                semantic_label_sample_comparisons: 0,
+                semantic_label_accepted_residuals: 0,
             }
         );
         assert!(matches!(failure.into_error(), XtaskError::WriteFile { .. }));
@@ -2313,6 +2582,10 @@ mod tests {
                 observed_measurement_routes: 4,
                 raw_source_svg_dom_comparisons: 1,
                 raw_source_svg_byte_comparisons: 0,
+                semantic_label_expected_fixture_comparisons: 0,
+                semantic_label_fixture_comparisons: 0,
+                semantic_label_sample_comparisons: 0,
+                semantic_label_accepted_residuals: 0,
             }
         );
         assert!(matches!(failure.into_error(), XtaskError::WriteFile { .. }));
