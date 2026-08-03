@@ -203,6 +203,40 @@ fn transaction_plan_indexes_every_target_across_representative_cardinalities() {
 }
 
 #[test]
+fn stage_target_lookup_count_is_one_per_request_at_scale() {
+    for target_count in [1_usize, 16, 64, 256] {
+        let temp = tempfile::tempdir().unwrap();
+        let mut targets = (0..target_count.saturating_sub(1))
+            .map(|index| relative(temp.path(), &format!("artifact-{index:03}.svg")))
+            .collect::<Vec<_>>();
+        targets.push(relative(temp.path(), ".merman-manifest.json"));
+
+        let entries = targets
+            .iter()
+            .enumerate()
+            .map(|(index, target)| {
+                let role = if index + 1 == targets.len() {
+                    TransactionRole::Manifest
+                } else {
+                    TransactionRole::Artifact
+                };
+                TransactionEntryPlan::write(role, target.clone())
+            })
+            .collect::<Vec<_>>();
+        let mut staging = LockedRecoveredRoot::acquire(temp.path())
+            .unwrap()
+            .begin(TransactionPlan::new(entries).unwrap())
+            .unwrap();
+
+        for target in &targets {
+            staging.stage_bytes(target, b"x").unwrap();
+        }
+
+        assert_eq!(staging.target_lookup_count(), target_count);
+    }
+}
+
+#[test]
 fn transaction_plan_rejects_duplicate_targets_before_building_the_index() {
     let temp = tempfile::tempdir().unwrap();
     let artifact = relative(temp.path(), "duplicate.svg");

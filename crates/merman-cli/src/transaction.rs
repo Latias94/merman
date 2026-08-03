@@ -375,6 +375,8 @@ impl LockedRecoveredRoot {
             target_indices,
             issued,
             outstanding_slots: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            target_lookup_count: 0,
         })
     }
 }
@@ -384,11 +386,18 @@ pub(crate) struct StagingTransaction {
     target_indices: HashMap<RelativeTarget, usize>,
     issued: Vec<bool>,
     outstanding_slots: Arc<AtomicUsize>,
+    #[cfg(test)]
+    target_lookup_count: usize,
 }
 
 impl StagingTransaction {
     pub(crate) fn transaction_id(&self) -> &str {
         &self.working.state.id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn target_lookup_count(&self) -> usize {
+        self.target_lookup_count
     }
 
     #[cfg(test)]
@@ -404,6 +413,10 @@ impl StagingTransaction {
         &mut self,
         target: &RelativeTarget,
     ) -> Result<StageSlot, TransactionError> {
+        #[cfg(test)]
+        {
+            self.target_lookup_count += 1;
+        }
         let index = self.target_indices.get(target).copied().ok_or_else(|| {
             TransactionError::invalid_state(
                 &self.working.transaction_dir,
