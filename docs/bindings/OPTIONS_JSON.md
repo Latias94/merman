@@ -29,24 +29,21 @@ than translated implicitly.
   "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
-  "host_theme": {
-    "preset": "one-dark",
-    "appearance": "dark",
-    "font_family": "Inter, system-ui, sans-serif",
-    "roles": {
-      "canvas": "#0f172a",
-      "surface": "#111827",
-      "text": "#e5e7eb",
-      "border": "#475569",
-      "line": "#94a3b8",
-      "success": "#34d399"
-    },
-    "series_palette": ["#60a5fa", "#34d399", "#f59e0b"],
-    "output": {
-      "pipeline": "resvg-safe",
-      "root_background": "canvas",
-      "css_override_policy": "strip-existing-important",
-      "drop_native_duplicate_fallbacks": false
+  "presentation": {
+    "profile": "merman-modern",
+    "theme": {
+      "preset": "one-dark",
+      "appearance": "dark",
+      "font_family": "Inter, system-ui, sans-serif",
+      "roles": {
+        "canvas": "#0f172a",
+        "surface": "#111827",
+        "text": "#e5e7eb",
+        "border": "#475569",
+        "line": "#94a3b8",
+        "success": "#34d399"
+      },
+      "series_palette": ["#60a5fa", "#34d399", "#f59e0b"]
     }
   },
   "site_config": {
@@ -81,7 +78,8 @@ than translated implicitly.
   },
   "layout": {
     "container_width": 1024,
-    "container_height": 768
+    "container_height": 768,
+    "screen_available_width": 1440
   },
   "environment": {
     "text_measurement": "vendored",
@@ -161,7 +159,7 @@ Every field is optional.
 | `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
 | `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date in `YYYY-MM-DD` format for time-dependent diagrams such as Gantt. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
 | `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
-| `host_theme` | object | none | Opt-in host/editor theme profile compiled into Mermaid config and SVG output settings. |
+| `presentation` | object | none | Optional first-party presentation profile plus independent host semantic theme data. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
@@ -283,61 +281,44 @@ theme selection, `themeVariables`, and Mermaid `themeCSS`:
 does not apply host palette replacement or product-specific CSS postprocessing; use explicit host
 postprocessing for editor-specific colors.
 
-## Host Theme Profile
+## Presentation
 
-`host_theme` is an opt-in semantic profile for editor and application previews. It compiles host
-roles into Mermaid-compatible `themeVariables`, selected diagram config defaults, and SVG
-postprocessing options. Default rendering is unchanged when `host_theme` is omitted.
+`presentation` has two independent inputs: an optional first-party product profile and an optional host semantic theme. It does not own raw Mermaid configuration or SVG postprocessing. Default rendering is unchanged when `presentation` is omitted or empty.
 
 ```json
 {
-  "host_theme": {
-    "preset": "one-dark",
-    "appearance": "dark",
-    "font_family": "Inter, system-ui, sans-serif",
-    "font_size": "14px",
-    "roles": {
-      "canvas": "#0f172a",
-      "surface": "#111827",
-      "surface_alt": "#1f2937",
-      "text": "#e5e7eb",
-      "subtle_text": "#cbd5e1",
-      "border": "#475569",
-      "line": "#94a3b8",
-      "note_background": "#422006",
-      "note_border": "#f59e0b",
-      "success": "#34d399"
-    },
-    "series_palette": ["#60a5fa", "#34d399", "#f59e0b"],
-    "theme_variables": {
-      "nodeBorder": "#38bdf8"
-    },
-    "output": {
-      "pipeline": "resvg-safe",
-      "root_background": "canvas",
-      "css_override_policy": "strip-existing-important",
-      "drop_native_duplicate_fallbacks": false
+  "presentation": {
+    "profile": "merman-modern",
+    "theme": {
+      "preset": "one-dark",
+      "appearance": "dark",
+      "font_family": "Inter, system-ui, sans-serif",
+      "font_size": "14px",
+      "roles": {
+        "canvas": "#0f172a",
+        "surface": "#111827",
+        "surface-alt": "#1f2937",
+        "text": "#e5e7eb",
+        "subtle-text": "#cbd5e1",
+        "border": "#475569",
+        "line": "#94a3b8",
+        "note-background": "#422006",
+        "note-border": "#f59e0b",
+        "success": "#34d399"
+      },
+      "series_palette": ["#60a5fa", "#34d399", "#f59e0b"]
     }
   }
 }
 ```
 
-`host_theme.appearance` accepts `light` or `dark`. `host_theme.output.pipeline` accepts `parity`,
-`readable`, or `resvg-safe`. `host_theme.output.root_background` accepts `none`,
-`canvas`, or a single CSS declaration value. `host_theme.output.drop_native_duplicate_fallbacks`
-opts into removing fallback groups whose text duplicates native `<text>` after readable or
-`resvg-safe` fallback generation. It is off by default because repeated labels can be intentional in
-unrelated nodes. An empty `{ "host_theme": {} }` is a no-op and does not force Mermaid `theme=base`.
+`presentation.profile` currently accepts `merman-modern`. The profile selects Redux/slate defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG presentation. A selected profile is not rejected during Options parsing merely because ELK is absent: `svg-plan-json` reports each profile aspect independently, and only a Flowchart whose final effective renderer still needs ELK is blocked.
 
-`host_theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
-`gruvbox-dark`, `ayu-light`, `ayu-dark`, `merman-modern`, or `mermaid`. `merman-modern` selects Redux, Neo, the ELK flowchart renderer, a restrained slate palette, padded edge labels, and compact rounded corners, so rendering it requires a `layout-elk` build. `mermaid` explicitly selects upstream Mermaid defaults and parity SVG output. Explicit `roles`, `series_palette`, `theme_variables`, `site_config`, and `output` fields override the preset. Host theme presets are
-separate from Mermaid core theme names returned by `supported_themes`. Binding surfaces expose the
-stable preset list through `supported_host_theme_presets` / `supportedHostThemePresets`-style
-metadata helpers.
+`presentation.theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. `presentation.theme.appearance` accepts `light` or `dark`. Role keys use the stable kebab-case semantic IDs published by the Rust theme owner, such as `surface-alt`, `subtle-text`, and `edge-label-background`; unknown role IDs fail closed.
 
-Merge precedence is Mermaid defaults, then `host_theme` derived config, then explicit
-`host_theme.theme_variables` / `host_theme.site_config`, then top-level `site_config`, then diagram
-directives. Explicit `svg.*` options override profile output options.
+Raw Mermaid overrides belong at top-level `site_config`. Output choices belong under `svg`. The removed `host_theme` group returns a migration-oriented error naming `presentation.theme`, `site_config`, and `svg`; nested `output`, `theme_variables`, and `site_config` fields are not accepted under `presentation.theme`.
+
+Merge precedence is the engine's base config, presentation profile defaults, explicit `presentation.theme`, top-level `site_config`, then diagram frontmatter and directives. In a reusable engine request, omitted or empty presentation values inherit the constructor presentation through normal deep overlay semantics.
 
 ## Parse Options
 
@@ -400,10 +381,13 @@ The terminal-grid budget is resource policy, not an ASCII presentation option. S
 | --- | --- | --- | --- |
 | `layout.container_width` | positive finite number | renderer default | Available width of the host layout container in CSS pixels. |
 | `layout.container_height` | positive finite number | renderer default | Available height of the host layout container in CSS pixels. |
+| `layout.screen_available_width` | positive finite number | `layout.container_width` | Browser `screen.availWidth` in CSS pixels. This is distinct because Mermaid's C4 renderer uses the available screen width rather than the owning container width. |
 
 Container dimensions describe the element that owns diagram layout, not the browser page viewport
-or the final SVG viewBox. The removed `layout.viewport_width` and `layout.viewport_height` names
-are rejected; update requests rather than relying on an alias.
+or the final SVG viewBox. Browser hosts that need C4 parity should also pass
+`layout.screen_available_width`; headless hosts can omit it for deterministic container-width
+behavior. The removed `layout.viewport_width` and `layout.viewport_height` names are rejected;
+update requests rather than relying on an alias.
 
 ## Render Environment Options
 
@@ -574,7 +558,7 @@ does not depend on them.
 | `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
 | `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
 | `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
-| `svg.css_override_policy` | string | `preserve` | `preserve` or `strip-existing-important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied, and can override `host_theme.output.css_override_policy`. |
+| `svg.css_override_policy` | string | `preserve` | `preserve` or `strip-existing-important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied. |
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 

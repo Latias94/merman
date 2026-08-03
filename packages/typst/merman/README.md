@@ -27,7 +27,7 @@ flowchart TD
 | `0.2.0` | `0.8.0-alpha.3` | `2` | Uses the structured Typst result envelope and descriptor-owned capability catalog. |
 | `0.1.0` | `0.8.0-alpha.1` | `1` | Initial published Typst wrapper. |
 
-The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `1`, including `layout` for geometry and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
+The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `2`, including `presentation` for first-party profiles and host themes, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
 
 ## Examples
 
@@ -168,7 +168,7 @@ This refactor intentionally removes compatibility-only context wrappers:
 
 `context` is a Typst keyword, so the public parameter is named `document-context`.
 
-Version `0.2.0` also moves measurement and math selection to the binding options schema `1` render environment:
+The current development package also moves measurement and math selection to the binding options schema `2` render environment:
 
 ```typst
 #mermaid(source, text-measurement: "deterministic", math-renderer: "none")
@@ -195,7 +195,8 @@ Common parameters:
 - `scale`: wraps the rendered image with Typst `scale`; accepts ratios such as `120%` or numbers such as `1.2`.
 - `document-context`: `false` by default. Set to `true` to inherit Typst text font, text size, and finite available width for image rendering. An auto-width page reports an infinite outer width, so Merman keeps its renderer default instead of serializing infinity.
 - `profile`: reusable options produced by `mermaid-profile(...)`.
-- `typography`: high-level font and size intent, mapped to the current `host-theme` fields.
+- `typography`: high-level font and size intent, merged into the Typst host theme and projected to `presentation.theme`.
+- `presentation-profile`: first-party Merman presentation profile ID, such as `"merman-modern"`. This is independent from Mermaid themes and SVG output policy.
 - `id`: stable SVG root id. `diagram-id` is kept as the lower-level binding name and takes precedence when both are provided.
 - `background`: SVG root background color, mapped to `svg.root_background_color`.
 - `theme-name`: Mermaid theme name, such as `"base"` or `"dark"`.
@@ -208,7 +209,7 @@ Advanced renderer parameters:
 
 - `pipeline`: `"resvg-safe"` by default for embedded Typst images. Use `"parity"` when you need Mermaid-like SVG DOM output, or `"readable"` for inline SVG inspection.
 - `site-config`: full Mermaid site config object.
-- `host-theme`: merman host theme profile object.
+- `host-theme`: Typst document or host theme values projected to `presentation.theme`. Use stable semantic role IDs such as `"actor-background"`; this is independent from `theme-name`/`theme`, which configure Mermaid itself.
 - `layout`: full binding layout object for container geometry. This overrides the container shorthands.
 - `container-width`, `container-height`: shorthands for `layout.container_width` and `layout.container_height`.
 - `environment`: full binding render-environment object. Use `text_measurement` and `math_renderer` fields when composing options directly.
@@ -219,7 +220,7 @@ Advanced renderer parameters:
 
 ### `mermaid-profile(..)`
 
-Returns a reusable profile dictionary. Profiles normalize into the same binding options used by direct parameters, so they do not create a second rendering path.
+Returns a reusable Typst settings dictionary. `profile` refers to this wrapper-level bundle, while `presentation-profile` selects a first-party Merman presentation profile. Profiles normalize into the same binding options used by direct parameters, so they do not create a second rendering path.
 
 ### `mermaid-figure(source, ..)`
 

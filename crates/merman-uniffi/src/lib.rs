@@ -24,7 +24,6 @@ pub const UNIFFI_BINDING_API_VERSION: u32 = 3;
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
 static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
-static SUPPORTED_HOST_THEME_PRESETS: OnceLock<Vec<String>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MermanErrorKind {
@@ -401,6 +400,13 @@ impl MermanEngine {
         ))
     }
 
+    /// Returns the presentation catalog projected to this native artifact.
+    pub fn presentation_catalog_json(&self) -> Result<String, MermanError> {
+        string_output(merman_bindings_core::presentation_catalog_json_for(
+            &native_transport_capability_surface(),
+        ))
+    }
+
     /// Executes a descriptor-owned output operation with a fresh engine configuration.
     pub fn execute(
         &self,
@@ -576,13 +582,6 @@ impl MermanEngine {
 
     pub fn supported_themes(&self) -> Vec<String> {
         cached_string_vec(&SUPPORTED_THEMES, merman_bindings_core::supported_themes)
-    }
-
-    pub fn supported_host_theme_presets(&self) -> Vec<String> {
-        cached_string_vec(
-            &SUPPORTED_HOST_THEME_PRESETS,
-            merman_bindings_core::supported_host_theme_presets,
-        )
     }
 
     pub fn diagram_family_capabilities(&self) -> Vec<MermanDiagramFamilyCapability> {
@@ -1966,11 +1965,31 @@ mod tests {
             assert!(ascii_capabilities.is_empty());
         }
         assert!(engine.supported_themes().contains(&"default".to_string()));
-        let host_theme_presets = engine.supported_host_theme_presets();
+        let presentation_catalog: serde_json::Value =
+            serde_json::from_str(&engine.presentation_catalog_json().unwrap()).unwrap();
+        assert_eq!(presentation_catalog["schema_version"], 1);
         if has_svg {
-            assert!(host_theme_presets.contains(&"one-dark".to_string()));
+            assert!(
+                presentation_catalog["theme_presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|preset| preset["id"] == "one-dark")
+            );
+            assert_eq!(presentation_catalog["profiles"][0]["id"], "merman-modern");
         } else {
-            assert!(host_theme_presets.is_empty());
+            assert!(
+                presentation_catalog["theme_presets"]
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(
+                presentation_catalog["profiles"]
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
         }
         let capabilities = engine.diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {

@@ -245,6 +245,7 @@ assert.equal(
 assert.equal(Object.isFrozen(api.UNAVAILABLE_DIAGRAM_DETECTION), true);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
 const runtimeCatalog = api.runtimeCatalog();
+const presentationCatalog = api.presentationCatalog();
 const capabilities = runtimeCatalog.capabilities;
 const hasCapability = (id) => capabilities.capability_ids.includes(id);
 const completeCytoscapeRenderSurface = hasCapability("layout-cytoscape");
@@ -371,6 +372,27 @@ assert.equal(
   "interactive"
 );
 assert.equal(runtimeCatalog.resources.cli_default_profile, "trusted-native");
+assert.ok(runtimeCatalog.metadata_ids.includes("presentation-catalog"));
+assert.equal(presentationCatalog.schema_version, 1);
+if (hasCapability("svg")) {
+  assert.deepEqual(
+    presentationCatalog.theme_presets.map(({ id }) => id),
+    [...api.BUNDLED_THEME_PRESETS],
+  );
+  const modernProfile = presentationCatalog.profiles.find(
+    ({ id }) => id === "merman-modern",
+  );
+  assert.ok(modernProfile);
+  assert.equal(modernProfile.fully_available, hasCapability("layout-elk"));
+  assert.equal(
+    modernProfile.aspects.find(({ id }) => id === "flowchart-elk-default")
+      ?.available,
+    hasCapability("layout-elk"),
+  );
+} else {
+  assert.deepEqual(presentationCatalog.theme_presets, []);
+  assert.deepEqual(presentationCatalog.profiles, []);
+}
 const resourceLimitIds = runtimeCatalog.resources.limits
   .map((limit) => limit.id)
   .sort();
@@ -777,13 +799,6 @@ if (hasCapability("svg")) {
 }
 
 assert.deepEqual(api.supportedThemes(), [...api.SUPPORTED_THEMES]);
-if (hasCapability("svg")) {
-  assert.deepEqual(api.supportedHostThemePresets(), [
-    ...api.SUPPORTED_HOST_THEME_PRESETS,
-  ]);
-} else {
-  assert.equal(typeof api.supportedHostThemePresets, "undefined");
-}
 
 assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
 assert.equal(
@@ -1330,6 +1345,11 @@ async function runSameProcessPackageSmoke() {
     analysis.runtimeCatalog().capabilities.capability_ids.includes("svg"),
     false
   );
+  assert.deepEqual(analysis.presentationCatalog(), {
+    schema_version: 1,
+    theme_presets: [],
+    profiles: [],
+  });
   assert.equal(typeof analysis.renderSvg, "undefined");
 
   await full.initMerman({
@@ -1345,11 +1365,14 @@ async function runSameProcessPackageSmoke() {
     full.runtimeCatalog().resources.general_binding_default_profile,
     "interactive"
   );
+  assert.equal(full.presentationCatalog().theme_presets.length, 7);
+  assert.equal(full.presentationCatalog().profiles[0].id, "merman-modern");
   assert.match(full.renderSvg(source, options), /<svg/);
   assert.equal(
     analysis.runtimeCatalog().capabilities.capability_ids.includes("svg"),
     false
   );
+  assert.equal(analysis.presentationCatalog().theme_presets.length, 0);
   assert.equal(typeof analysis.renderSvg, "undefined");
 }
 

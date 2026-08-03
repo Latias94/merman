@@ -70,9 +70,9 @@
 //! ```
 //!
 //! A fresh `HeadlessRenderer` keeps the Mermaid parity SVG contract for
-//! `HeadlessRenderer::render_svg_sync`. Calling `with_host_theme` or
-//! `with_svg_pipeline` installs a renderer-owned output pipeline for that
-//! method. Use
+//! `HeadlessRenderer::render_svg_sync`. Calling `with_svg_pipeline` installs a
+//! renderer-owned output pipeline for that method. Product presentation is selected
+//! independently with `HeadlessRenderer::with_presentation`. Use
 //! `HeadlessRenderer::render_svg_readable_sync` when browser
 //! `<foreignObject>` labels may need readable `<text>` fallbacks, and
 //! `HeadlessRenderer::render_svg_resvg_safe_sync` when the output will
@@ -201,5 +201,3 @@ pub mod ascii;
 
 #[cfg(feature = "svg")]
 pub mod svg;
-#[cfg(feature = "svg")]
-pub use svg::supported_host_theme_presets;

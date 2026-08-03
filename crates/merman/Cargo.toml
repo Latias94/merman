@@ -182,7 +182,7 @@ name = "example_11_custom_output_environment"
 required-features = ["svg"]
 
 [[example]]
-name = "example_12_host_theme_profile"
+name = "example_12_presentation_theme"
 required-features = ["svg"]
 
 [[example]]

@@ -16,8 +16,6 @@
     "clusterBorder": "#CBD5E1"
   },
   "flowchart": {
-    "defaultRenderer": "elk",
-    "edgeLabelPadding": 4,
-    "compactEdgeCorners": true
+    "defaultRenderer": "elk"
   }
 }

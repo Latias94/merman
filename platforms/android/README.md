@@ -79,7 +79,7 @@ val svg = MermanEngine.renderSvg(
 
 An omitted `runtime_policy` is deterministic even though the normal Android artifact compiles native adapters. Add `"runtime_policy":"native"` only when an operation should use Android's clock, time-zone rules, and random source; a custom slim artifact missing an adapter fails with a typed unsupported-operation error.
 
-Use `MermanEngine.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, metadata IDs, capability/output/operation subset, and resource-to-operation mappings. It returns the flat runtime catalog, including the Android transport API version. The package's normal release artifact uses the complete native feature set, but hosts should still query the catalog before exposing optional output choices.
+Use `MermanEngine.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, metadata IDs, capability/output/operation subset, and resource-to-operation mappings. Use `MermanEngine.presentationCatalogJson()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog instead of maintaining a Kotlin enum. The package's normal release artifact uses the complete native feature set, but hosts should still query the loaded catalogs before exposing optional choices.
 
 `analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; document facts also use their independently defined schema `1`. These payload schemas are independent of Android transport version. Pass full Markdown/MDX-like content plus a URI to document analysis:
 

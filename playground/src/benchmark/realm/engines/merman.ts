@@ -8,7 +8,10 @@ import {
   type DiagramFont,
 } from "../../../lib/diagram-font.ts";
 import { sourceWithConfig } from "../../../lib/mermaid-config.ts";
-import { assertRealmSourceBudget } from "../../../runtime/realm/channel-protocol.ts";
+import {
+  assertRealmSourceBudget,
+  type RealmViewport,
+} from "../../../runtime/realm/channel-protocol.ts";
 import {
   BenchmarkEngineError,
   runBenchmarkEngineStage,
@@ -73,7 +76,7 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
         payload.configJson
       );
       assertRealmSourceBudget(configuredSource);
-      options = bindingOptions(payload.diagramFont);
+      options = bindingOptions(payload.diagramFont, payload.viewport);
       version = module.packageVersion();
     } catch (error) {
       measurement?.dispose();
@@ -131,12 +134,24 @@ function validateMermanWasmUrl(value: string | null): URL {
   return url;
 }
 
-function bindingOptions(diagramFont: DiagramFont): string {
+function bindingOptions(
+  diagramFont: DiagramFont,
+  viewport: RealmViewport
+): string {
   const fontFamily = diagramFontStack(diagramFont);
+  const screenAvailableWidth = window.screen.availWidth;
   const options: SvgBindingOptions = {
+    version: 2,
     site_config: {
       fontFamily,
       themeVariables: { fontFamily },
+    },
+    layout: {
+      container_width: viewport.width,
+      container_height: viewport.height,
+      ...(Number.isFinite(screenAvailableWidth) && screenAvailableWidth > 0
+        ? { screen_available_width: screenAvailableWidth }
+        : {}),
     },
   };
   return JSON.stringify(options);

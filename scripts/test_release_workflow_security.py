@@ -885,7 +885,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-web.yml")
         build = workflow_job(workflow, "build")
         publish = workflow_job(workflow, "publish")
-        verify_packages = workflow_step(build, name="Verify Web package group")
+        smoke = workflow_step(build, name="Verify and smoke Web package group")
         pack = workflow_step(build, name="Pack verified Web package group")
         upload = workflow_step(build, name="Upload verified Web package group")
         download = workflow_step(publish, name="Download verified Web package group")
@@ -893,7 +893,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         reconcile = workflow_step(publish, name="Reconcile npm package group")
         report = workflow_step(publish, name="Upload npm reconciliation report")
 
-        self.assertEqual(verify_packages["run"], "npm run verify:packages --prefix platforms/web")
+        self.assertEqual(smoke["run"], "npm run smoke --prefix platforms/web")
+        self.assertLess(build["steps"].index(smoke), build["steps"].index(pack))
         self.assertEqual(pack["id"], "pack")
         self.assertIn("python3 scripts/web_package_group.py pack", pack["run"])
         self.assertIn("python3 scripts/web_package_group.py verify-artifact", pack["run"])
@@ -918,10 +919,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
     def test_release_preflight_packs_and_verifies_the_web_package_group(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
         preflight = workflow_job(workflow, "web-npm-dry-run")
-        verify_packages = workflow_step(preflight, name="Verify web package")
+        smoke = workflow_step(preflight, name="Verify and smoke web package")
         pack = workflow_step(preflight, name="Pack and verify Web package group dry-run")
 
-        self.assertEqual(verify_packages["run"], "npm run verify:packages --prefix platforms/web")
+        self.assertEqual(smoke["run"], "npm run smoke --prefix platforms/web")
+        self.assertLess(preflight["steps"].index(smoke), preflight["steps"].index(pack))
         self.assertIn("python3 scripts/web_package_group.py pack", pack["run"])
         self.assertIn("python3 scripts/web_package_group.py verify-artifact", pack["run"])
         self.assertIn("--source-sha \"$source_sha\"", pack["run"])

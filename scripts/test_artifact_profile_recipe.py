@@ -621,10 +621,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             "cargo run --locked -p xtask -- verify-feature-matrix --strict",
             commands,
         )
-        toolchain = workflow_step(job, name="Install Rust toolchain")
+        parity_targets = workflow_step(job, name="Install parity Rust targets")
+        self.assertEqual(parity_targets["if"], "matrix.parity")
         self.assertEqual(
-            set(toolchain["with"]["targets"].split(",")),
-            {"aarch64-linux-android", "wasm32-unknown-unknown"},
+            parity_targets["run"],
+            "rustup target add aarch64-linux-android wasm32-unknown-unknown",
         )
 
     def test_cli_profiles_use_binary_process_contracts(self) -> None:

@@ -36,6 +36,7 @@ fn render_help_excludes_mmdc_and_batch_only_options() {
         "--output",
         "--format",
         "--css-file",
+        "--presentation-profile",
         "--raster-max-width",
         "--icon-pack",
         "--icon-pack-source",
@@ -79,6 +80,7 @@ fn render_short_help_prioritizes_the_common_workflow() {
         "--pdf-filter-scale",
         "--embedded-image-max-bytes",
         "--text-measurer",
+        "--presentation-profile",
         "--system-timing",
         "--allow-private-network",
     ] {
@@ -124,7 +126,13 @@ fn batch_help_exposes_only_graphical_batch_options() {
         );
     }
 
-    for present in ["--output-dir", "--format", "--jobs", "--svg-pipeline"] {
+    for present in [
+        "--output-dir",
+        "--format",
+        "--jobs",
+        "--svg-pipeline",
+        "--presentation-profile",
+    ] {
         assert!(
             stdout.contains(present),
             "batch help should expose graphical batch option {present}:\n{stdout}"
@@ -156,6 +164,7 @@ fn batch_and_mmdc_use_progressive_help_without_losing_long_options() {
                 "--raster-max-width",
                 "--pdf-filter-scale",
                 "--svg-pipeline",
+                "--presentation-profile",
             ][..],
         ),
         (
@@ -168,6 +177,7 @@ fn batch_and_mmdc_use_progressive_help_without_losing_long_options() {
                 "--raster-max-width",
                 "--pdf-filter-scale",
                 "--svg-pipeline",
+                "--presentation-profile",
                 "--puppeteerConfigFile",
             ][..],
         ),

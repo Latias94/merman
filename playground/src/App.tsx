@@ -24,7 +24,7 @@ import {
 } from "./store";
 import { isDiagramFont } from "./lib/diagram-font";
 import { useShare } from "./hooks/useShare";
-import { normalizeHostThemePresetName, normalizeThemeName } from "@mermanjs/web";
+import { normalizeThemeName } from "@mermanjs/web";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
 
 const CodeEditor = lazy(() =>
@@ -57,7 +57,9 @@ export default function App() {
   const {
     setCode,
     setDiagramTheme,
-    setHostThemePreset,
+    setPresentationProfileId,
+    setPresentationThemePresetId,
+    setSvgPipeline,
     setTextMeasurementMode,
     setDiagramFont,
     setMermaidConfig,
@@ -72,8 +74,10 @@ export default function App() {
       setDiagramFont: state.setDiagramFont,
       setDiagramTheme: state.setDiagramTheme,
       setEditorMode: state.setEditorMode,
-      setHostThemePreset: state.setHostThemePreset,
+      setPresentationProfileId: state.setPresentationProfileId,
+      setPresentationThemePresetId: state.setPresentationThemePresetId,
       setMermaidConfig: state.setMermaidConfig,
+      setSvgPipeline: state.setSvgPipeline,
       setTextMeasurementMode: state.setTextMeasurementMode,
       setWorkspacePane: state.setWorkspacePane,
       workspacePane: state.workspacePane,
@@ -98,16 +102,9 @@ export default function App() {
       if (initialData.theme) {
         setDiagramTheme(normalizeThemeName(initialData.theme));
       }
-      if (initialData.hostThemePreset) {
-        if (initialData.hostThemePreset === "none") {
-          setHostThemePreset("none");
-        } else {
-          const preset = normalizeHostThemePresetName(initialData.hostThemePreset);
-          if (preset) {
-            setHostThemePreset(preset);
-          }
-        }
-      }
+      setPresentationThemePresetId(initialData.presentationThemePresetId);
+      setPresentationProfileId(initialData.presentationProfileId);
+      setSvgPipeline(initialData.svgPipeline);
       if (initialData.config !== undefined) {
         setMermaidConfig(initialData.config);
       }
@@ -123,8 +120,10 @@ export default function App() {
     setCode,
     setDiagramFont,
     setDiagramTheme,
-    setHostThemePreset,
     setMermaidConfig,
+    setPresentationProfileId,
+    setPresentationThemePresetId,
+    setSvgPipeline,
     setTextMeasurementMode,
   ]);
 

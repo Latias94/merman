@@ -16,8 +16,8 @@ use crate::invocation::ResolvedRenderOptions;
 use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 #[cfg(feature = "svg")]
 use merman::svg::{
-    HeadlessRenderer, IconRegistry, LayoutOptions, MathRenderer, RenderEnvironment,
-    SvgRenderOptions, TextMeasurementPolicy,
+    HeadlessRenderer, IconRegistry, LayoutOptions, MathRenderer, Presentation, PresentationProfile,
+    RenderEnvironment, SvgRenderOptions, TextMeasurementPolicy,
 };
 #[cfg(feature = "svg")]
 use std::sync::Arc;
@@ -240,6 +240,7 @@ pub(crate) fn renderer_for_resolved(
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, Copy)]
 struct RendererInputs<'a> {
+    presentation_profile: Option<PresentationProfile>,
     text_measurer: TextMeasurerKind,
     math_renderer: Option<MathRendererKind>,
     container_width: Option<f64>,
@@ -252,6 +253,7 @@ struct RendererInputs<'a> {
 impl<'a> RendererInputs<'a> {
     fn from_cli(render: &'a RenderCliArgs) -> Self {
         Self {
+            presentation_profile: render.presentation_profile,
             text_measurer: render.text_measurer.unwrap_or(TextMeasurerKind::Vendored),
             math_renderer: render.math_renderer,
             container_width: render.container_width,
@@ -263,6 +265,7 @@ impl<'a> RendererInputs<'a> {
 
     fn from_resolved(render: &'a ResolvedRenderOptions) -> Self {
         Self {
+            presentation_profile: render.presentation_profile,
             text_measurer: render.text_measurer,
             math_renderer: render.math_renderer,
             container_width: render.container_width,
@@ -305,16 +308,18 @@ fn renderer_from_config(
         site_config.set_value("handDrawnSeed", serde_json::json!(seed));
     }
 
-    let engine = runtime.apply_engine(Engine::new().with_site_config(site_config));
-    Ok(
-        HeadlessRenderer::from_engine_and_environment(engine, environment)
-            .with_parse_options(parse_options)
-            .with_layout_options(LayoutOptions {
-                container_width: render.container_width.unwrap_or(800.0),
-                container_height: render.container_height.unwrap_or(600.0),
-            })
-            .with_svg_options(svg),
-    )
+    let engine = runtime.apply_engine(Engine::new());
+    let mut renderer = HeadlessRenderer::from_engine_and_environment(engine, environment)
+        .with_parse_options(parse_options)
+        .with_layout_options(LayoutOptions::default().with_container_size(
+            render.container_width.unwrap_or(800.0),
+            render.container_height.unwrap_or(600.0),
+        ))
+        .with_svg_options(svg);
+    if let Some(profile) = render.presentation_profile {
+        renderer = renderer.with_presentation(Presentation::new().with_profile(profile));
+    }
+    Ok(renderer.with_site_config(site_config))
 }
 
 #[cfg(feature = "svg")]

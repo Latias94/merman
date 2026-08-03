@@ -773,14 +773,8 @@ fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
         .begin_session()
         .expect("begin render session");
 
-    let layout = layout_flowchart_render_model(
-        parsed,
-        &LayoutOptions {
-            ..Default::default()
-        },
-        session,
-    )
-    .expect("layout ok");
+    let layout = layout_flowchart_render_model(parsed, &LayoutOptions::default(), session)
+        .expect("layout ok");
 
     let edge = layout
         .edges
@@ -847,9 +841,7 @@ fn flowchart_html_labels_allow_browser_font_fallback_overflow() {
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -883,9 +875,7 @@ fn flowchart_layout_uses_host_text_measurer_for_font_widths() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let baseline_options = LayoutOptions {
-        ..Default::default()
-    };
+    let baseline_options = LayoutOptions::default();
     let wide_options = LayoutOptions::default();
     let wide_session = environment_with_measurer(
         "test.flowchart-width-scaled",
@@ -1076,102 +1066,69 @@ flowchart TD
 }
 
 #[test]
-fn flowchart_neo_uses_configurable_radius_shadow_and_round_edges() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "theme": "redux",
-        "look": "neo",
-        "themeVariables": {"edgeLabelBackground": "#FFFFFF"},
-        "flowchart": {
-            "curve": "rounded",
-            "edgeCornerRadius": 14,
-            "edgeLabelPadding": 4,
-            "compactEdgeCorners": true
-        }
-    })));
-    let svg = render_flowchart_svg_from_text_with_engine(
-        engine,
-        r##"flowchart TD
+fn flowchart_neo_ignores_removed_private_presentation_keys() {
+    let baseline_engine =
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "redux",
+            "look": "neo",
+            "themeVariables": {"edgeLabelBackground": "#FFFFFF"},
+            "flowchart": {"curve": "rounded"}
+        })));
+    let private_keys_engine =
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "redux",
+            "look": "neo",
+            "themeVariables": {"edgeLabelBackground": "#FFFFFF"},
+            "flowchart": {
+                "curve": "rounded",
+                "edgeCornerRadius": 14,
+                "edgeLabelPadding": 4,
+                "compactEdgeCorners": true
+            }
+        })));
+    let source = r##"flowchart TD
     A[Start] --> B{Condition?}
     B -->|Yes| C[Execute]
     B -->|No| D[End]
     C --> D
-"##,
-    );
+"##;
+    let baseline = render_flowchart_svg_from_text_with_engine(baseline_engine, source);
+    let with_private_keys = render_flowchart_svg_from_text_with_engine(private_keys_engine, source);
 
-    assert!(
-        svg.contains(r#"rx="12" ry="12""#),
-        "expected Redux radius on ordinary Neo rectangles: {svg}"
-    );
-    assert!(
-        svg.contains(r#".node[data-look="neo"] .label-container{filter:url(#merman-drop-shadow);stroke-linejoin:round;}"#),
-        "expected scoped Redux node shadow: {svg}"
-    );
-    assert!(
-        svg.contains(
-            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
-        ),
-        "expected rounded Neo edge caps and joins: {svg}"
-    );
-    assert!(
-        svg.contains(".edgeLabel rect{opacity:1;}"),
-        "expected opaque Neo label backgrounds to mask the edge cleanly: {svg}"
-    );
-    assert!(
-        svg.contains(r#"rx="4" ry="4"/><g class="label" data-id="L_B_C_0""#),
-        "expected a padded, rounded background behind the Yes label: {svg}"
-    );
-    assert!(
-        svg.contains(r#"rx="4" ry="4"/><g class="label" data-id="L_B_D_0""#),
-        "expected a padded, rounded background behind the No label: {svg}"
+    assert_eq!(
+        with_private_keys, baseline,
+        "removed private Flowchart config keys must not alter SVG output"
     );
 }
 
 #[cfg(feature = "layout-elk")]
 #[test]
-fn flowchart_modern_elk_projects_terminal_routes_directly_to_shape_boundaries() {
-    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "layout": "elk",
-        "look": "neo",
-        "flowchart": {"compactEdgeCorners": true}
-    })));
+fn flowchart_private_compact_edge_corners_key_does_not_change_elk_routes() {
     let text = r#"flowchart LR
     ABOVE[Above] --> TARGET([Target])
     MIDDLE[Middle] --> TARGET
     BELOW[Below] --> TARGET
 "#;
-    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-    assert_eq!(
-        parsed.metadata().effective_config.as_value()["flowchart"]["compactEdgeCorners"],
-        true
+    let baseline = render_flowchart_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "layout": "elk",
+            "look": "neo"
+        }))),
+        text,
     );
-    let layout_options = LayoutOptions::default();
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .expect("begin render session");
-    let svg = render_flowchart_artifact(
-        parsed,
-        &layout_options,
-        session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
+    let with_private_key = render_flowchart_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "layout": "elk",
+            "look": "neo",
+            "flowchart": {"compactEdgeCorners": true}
+        }))),
+        text,
+    );
 
-    for edge_id in ["L_ABOVE_TARGET_0", "L_BELOW_TARGET_0"] {
-        let points = flowchart_svg_edge_data_points(&svg, edge_id);
-        assert_eq!(
-            points.len(),
-            4,
-            "expected the ELK port adapter to be removed: {points:?}"
-        );
-        let route = &points[points.len() - 2];
-        let boundary = &points[points.len() - 1];
-        assert!(
-            (route.y - boundary.y).abs() <= 1e-6 && route.x < boundary.x,
-            "expected one horizontal segment from the route to the visible boundary: {points:?}"
-        );
-    }
+    assert_eq!(
+        with_private_key, baseline,
+        "removed private compactEdgeCorners config must not alter ELK output"
+    );
 }
 
 #[test]
@@ -1498,9 +1455,7 @@ A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", 
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let layout = layout_flowchart_render_model(
         parsed.clone(),
         &layout_options,
@@ -1695,9 +1650,7 @@ fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1733,9 +1686,7 @@ fn flowchart_html_edge_labels_use_non_markdown_paragraph_wrapper() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1761,9 +1712,7 @@ fn flowchart_html_edge_label_svg_width_matches_layout_bbox() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let layout = layout_flowchart_render_model(
         parsed.clone(),
         &layout_options,
@@ -1818,9 +1767,7 @@ fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1858,9 +1805,7 @@ fn flowchart_empty_subgraph_node_applies_inline_style() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1896,9 +1841,7 @@ fn flowchart_crossed_circle_aliases_use_source_symmetric_root_bounds() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1943,9 +1886,7 @@ linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,
@@ -1994,9 +1935,7 @@ fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available()
             .expect("parse ok")
             .expect("diagram detected");
 
-        let layout_options = LayoutOptions {
-            ..Default::default()
-        };
+        let layout_options = LayoutOptions::default();
         render_flowchart_artifact(
             parsed,
             &layout_options,
@@ -2037,16 +1976,6 @@ fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available()
         rounded_d.contains('Q') && !rounded_d.contains('C'),
         "expected explicit flowchart.curve=rounded to render rounded corners: {rounded_d}"
     );
-
-    let tight_radius_engine = Engine::new().with_site_config(MermaidConfig::from_value(
-        serde_json::json!({"flowchart": {"curve": "rounded", "edgeCornerRadius": 1}}),
-    ));
-    let tight_radius_svg = render_with_engine(tight_radius_engine, diagram);
-    let tight_radius_d = edge_path_d(&tight_radius_svg, "L_A_B_0");
-    assert_ne!(
-        rounded_d, tight_radius_d,
-        "expected flowchart.edgeCornerRadius to alter rounded edge geometry"
-    );
 }
 
 #[test]
@@ -2062,9 +1991,7 @@ D@{ shape: datastore, label: "Datastore" }
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(
         parsed,
         &layout_options,

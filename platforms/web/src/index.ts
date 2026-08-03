@@ -1,5 +1,6 @@
 export {
   BINDING_STATUS_CODE_NAMES,
+  BUNDLED_THEME_PRESETS,
   SYSTEM_ADAPTER_IDS,
   TEXT_MEASUREMENT_PROVIDER_IDS,
   WEB_CAPABILITIES,
@@ -8,15 +9,14 @@ export {
   WEB_OUTPUTS,
   SUPPORTED_ASCII_DIAGRAMS,
   SUPPORTED_DIAGRAMS,
-  SUPPORTED_HOST_THEME_PRESETS,
   SUPPORTED_THEMES,
   isAsciiDiagramType,
   isBindingErrorPayload,
   isBindingStatusCodeName,
+  isBundledThemePresetName,
   isDiagramType,
-  isHostThemePresetName,
   isThemeName,
-  normalizeHostThemePresetName,
+  normalizeBundledThemePresetName,
   normalizeThemeName,
 } from "./public-catalog.js";
 export type * from "./public-catalog.js";
@@ -60,6 +60,7 @@ export {
   initMerman,
   isMermanInitialized,
   packageVersion,
+  presentationCatalog,
   runtimeCatalog,
   supportedDiagrams,
   supportedThemes,
@@ -92,7 +93,6 @@ export {
   renderSvgElement,
   renderSvgToElement,
   renderSvgWithTextMeasurer,
-  supportedHostThemePresets,
   svgPlanJson,
 } from "./runtime-render.js";
 export {

@@ -12,7 +12,6 @@ mod icon_registry;
 mod parity;
 mod pipeline;
 pub(crate) mod scanner;
-mod theme_profile;
 
 #[cfg(feature = "layout-cytoscape")]
 pub(crate) use parity::render_architecture_family_artifact;
@@ -28,9 +27,4 @@ pub use pipeline::{
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
     SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
     SvgPostprocessor, SvgReferencePlan, finalize_resvg_svg,
-};
-pub use theme_profile::{
-    CompiledHostTheme, HostThemeAppearance, HostThemeOutput, HostThemePipelinePreset,
-    HostThemePreset, HostThemeProfile, HostThemeProfileBuilder, HostThemeRoles,
-    HostThemeRootBackground, supported_host_theme_presets,
 };

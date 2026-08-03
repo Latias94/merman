@@ -1,13 +1,16 @@
 mod support;
 
-use merman::svg::{HeadlessRenderer, HostThemeOutput, HostThemePreset, HostThemeProfile};
+use merman::svg::{
+    CssOverridePolicy, HeadlessRenderer, HostTheme, HostThemePreset, Presentation, SvgOutputPolicy,
+    SvgPipelinePreset,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = support::read_mermaid_or_default(
         "example_13_stylized_theme_showcase",
         r#"flowchart TD
     subgraph Editor["Editor Preview"]
-      A[Parse Mermaid] --> B{Theme Profile}
+      A[Parse Mermaid] --> B{Presentation Theme}
       B -->|preset| C[Common editor themes]
       B -->|custom CSS| D[Stylized showcase]
     end
@@ -16,10 +19,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 "#,
     )?;
 
-    let mut profile = HostThemeProfile::from_preset(HostThemePreset::AyuDark);
-    profile.output = {
-        let mut output = HostThemeOutput::resvg_safe_editor();
-        output.scoped_css = Some(
+    let theme = HostTheme::from_preset(HostThemePreset::AyuDark);
+    let output = SvgOutputPolicy {
+        preset: SvgPipelinePreset::ResvgSafe,
+        css_override_policy: CssOverridePolicy::StripExistingImportant,
+        root_background_color: Some("#0b0e14".to_string()),
+        drop_native_duplicate_fallbacks: false,
+        scoped_css: Some(
             r#"
 .node rect,
 .node circle,
@@ -51,12 +57,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 "#
             .to_string(),
-        );
-        output
+        ),
     };
 
     let renderer = HeadlessRenderer::new()
-        .with_host_theme(&profile)
+        .with_presentation(Presentation::new().with_theme(theme))
+        .with_svg_pipeline(output.pipeline())
         .with_vendored_text_measurer()
         .with_diagram_id("stylized-theme-showcase");
 

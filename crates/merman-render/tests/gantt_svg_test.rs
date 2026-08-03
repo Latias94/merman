@@ -32,10 +32,8 @@ fn layout_gantt_from_text_with_environment(
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let options = LayoutOptions {
-        container_width,
-        ..LayoutOptions::default()
-    };
+    let mut options = LayoutOptions::default();
+    options.container_width = container_width;
     let session = environment.begin_session().expect("render session");
     let artifact = family::prepare(parsed, &options, session).expect("layout ok");
     let projection = artifact.layout_json().expect("Gantt layout projection");

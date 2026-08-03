@@ -1,5 +1,9 @@
 use crate::environment::RenderSession;
 use crate::model::*;
+use crate::presentation::{
+    FlowchartPresentationPolicy, PresentationAspectResolution, PresentationProfile,
+    PresentationRenderPolicy,
+};
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
     ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
@@ -100,6 +104,8 @@ pub struct RenderCapabilityPlan {
     diagram_type: String,
     required: Vec<RenderCapability>,
     missing: Vec<RenderCapability>,
+    presentation_profile: Option<PresentationProfile>,
+    presentation_aspects: Vec<PresentationAspectResolution>,
 }
 
 impl RenderCapabilityPlan {
@@ -116,6 +122,24 @@ impl RenderCapabilityPlan {
     /// Returns the required capabilities unavailable in the planned render session.
     pub fn missing_capabilities(&self) -> &[RenderCapability] {
         &self.missing
+    }
+
+    /// Returns the selected first-party presentation profile, if any.
+    pub const fn presentation_profile(&self) -> Option<PresentationProfile> {
+        self.presentation_profile
+    }
+
+    /// Returns the selected presentation profile's stable ID, if any.
+    pub const fn presentation_profile_id(&self) -> Option<&'static str> {
+        match self.presentation_profile {
+            Some(profile) => Some(profile.id()),
+            None => None,
+        }
+    }
+
+    /// Returns per-aspect resolution for the selected presentation profile.
+    pub fn presentation_aspects(&self) -> &[PresentationAspectResolution] {
+        &self.presentation_aspects
     }
 
     /// Iterates over stable semantic IDs for every required capability.
@@ -180,6 +204,22 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 }
 
 #[derive(Debug)]
+pub(crate) struct FlowchartFamilyArtifact {
+    pair: FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout>,
+    policy: Option<FlowchartPresentationPolicy>,
+}
+
+impl FlowchartFamilyArtifact {
+    pub(crate) fn pair(&self) -> &FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn policy(&self) -> Option<FlowchartPresentationPolicy> {
+        self.policy
+    }
+}
+
+#[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
@@ -195,7 +235,7 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
-    Flowchart(Box<FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout>>),
+    Flowchart(Box<FlowchartFamilyArtifact>),
     Swimlane(Box<FamilyPair<diagrams::flowchart::FlowchartModel, SwimlaneLayout>>),
     #[cfg(feature = "layout-cytoscape")]
     Architecture(
@@ -416,7 +456,7 @@ impl BuiltinFamilyArtifact {
             Self::State(pair) => pair.compatibility_json(metadata),
             Self::Sequence(pair) => pair.compatibility_json(metadata),
             Self::Zenuml(pair) => pair.compatibility_json(metadata),
-            Self::Flowchart(pair) => pair.compatibility_json(metadata),
+            Self::Flowchart(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Swimlane(pair) => pair.compatibility_json(metadata),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => pair.compatibility_json(metadata),
@@ -455,7 +495,7 @@ impl BuiltinFamilyArtifact {
             Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout()),
             Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
-            Self::Flowchart(pair) => LayoutProjection::Flowchart(pair.layout()),
+            Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
             Self::Swimlane(pair) => LayoutProjection::SwimlaneDiagram(pair.layout()),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
@@ -814,9 +854,7 @@ fn render_family_artifact_svg(
     }
     crate::svg::render_builtin_family_artifact(
         &artifact.family,
-        &artifact.metadata.effective_config,
-        &artifact.metadata.diagram_type,
-        artifact.metadata.title.as_deref(),
+        &artifact.metadata,
         &artifact.session,
         &options,
         debug,
@@ -830,6 +868,18 @@ fn prepare_pair<S, L>(
 ) -> Result<Box<FamilyPair<S, L>>> {
     let layout = layout(&semantic)?;
     Ok(Box::new(FamilyPair::new(semantic, layout)))
+}
+
+fn prepare_flowchart_artifact(
+    semantic: diagrams::flowchart::FlowchartModel,
+    policy: Option<FlowchartPresentationPolicy>,
+    layout: impl FnOnce(&diagrams::flowchart::FlowchartModel) -> Result<FlowchartLayout>,
+) -> Result<Box<FlowchartFamilyArtifact>> {
+    let layout = layout(&semantic)?;
+    Ok(Box::new(FlowchartFamilyArtifact {
+        pair: FamilyPair::new(semantic, layout),
+        policy,
+    }))
 }
 
 fn flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel) -> bool {
@@ -947,6 +997,15 @@ pub fn plan_render(
     parsed: &ParsedDiagramRender,
     session: &RenderSession,
 ) -> Result<RenderCapabilityPlan> {
+    plan_render_with_policy(parsed, session, PresentationRenderPolicy::default())
+}
+
+/// Plans capability admission and selected presentation aspects without running layout.
+pub fn plan_render_with_policy(
+    parsed: &ParsedDiagramRender,
+    session: &RenderSession,
+    render_policy: PresentationRenderPolicy,
+) -> Result<RenderCapabilityPlan> {
     let meta = parsed.metadata();
     let model = parsed.model();
     validate_render_input(meta, model, session)?;
@@ -956,11 +1015,20 @@ pub fn plan_render(
         .copied()
         .filter(|capability| !capability_is_available(*capability, session))
         .collect();
+    let flowchart_svg_applicable = matches!(model, RenderSemanticModel::Flowchart(_))
+        && meta.effective_config.get_str("layout") != Some("swimlane");
+    let presentation_aspects = render_policy.resolve_aspects(
+        flowchart_svg_applicable,
+        crate::uses_elk_layout(&meta.effective_config),
+        capability_is_available(RenderCapability::LayoutElk, session),
+    );
 
     Ok(RenderCapabilityPlan {
         diagram_type: meta.diagram_type.clone(),
         required,
         missing,
+        presentation_profile: render_policy.profile(),
+        presentation_aspects,
     })
 }
 
@@ -1028,13 +1096,28 @@ pub fn prepare(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
-    plan_render(&parsed, &session)?.ensure_available()?;
+    prepare_with_render_policy(
+        parsed,
+        options,
+        session,
+        PresentationRenderPolicy::default(),
+    )
+}
+
+/// Prepares one family artifact with renderer policy derived from a resolved presentation.
+pub fn prepare_with_render_policy(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: RenderSession,
+    render_policy: PresentationRenderPolicy,
+) -> Result<FamilyRenderArtifact> {
+    plan_render_with_policy(&parsed, &session, render_policy)?.ensure_available()?;
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
     if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
         return prepare_class_render(parsed, options, session);
     }
-    prepare_non_class_render(parsed, options, session)
+    prepare_non_class_render(parsed, options, session, render_policy)
 }
 
 #[inline(never)]
@@ -1042,6 +1125,7 @@ fn prepare_non_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
     session: RenderSession,
+    render_policy: PresentationRenderPolicy,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model) = parsed.into_parts();
     let diagram_type = meta.diagram_type.as_str();
@@ -1107,16 +1191,16 @@ fn prepare_non_class_render(
                 )
             })?)
         }
-        RenderSemanticModel::Flowchart(model) => {
-            BuiltinFamilyArtifact::Flowchart(prepare_pair(model, |model| {
+        RenderSemanticModel::Flowchart(model) => BuiltinFamilyArtifact::Flowchart(
+            prepare_flowchart_artifact(model, render_policy.flowchart(), |model| {
                 crate::layout_flowchart_typed_by_engine(
                     diagram_type,
                     model,
                     &meta.effective_config,
                     &execution,
                 )
-            })?)
-        }
+            })?,
+        ),
         #[cfg(feature = "layout-cytoscape")]
         RenderSemanticModel::Architecture(model) => {
             BuiltinFamilyArtifact::Architecture(prepare_pair(model, |model| {
@@ -1146,6 +1230,7 @@ fn prepare_non_class_render(
                     execution.text_measurer(),
                     execution.container_width,
                     execution.container_height,
+                    execution.screen_available_width,
                 )
             })?)
         }
