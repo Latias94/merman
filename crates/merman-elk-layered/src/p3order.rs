@@ -471,6 +471,9 @@ fn sorted_ports_by_model_order(
     target_node_model_order: &HashMap<usize, usize>,
 ) -> Vec<usize> {
     let mut order = (0..graph.layerless_nodes[node].ports.len()).collect::<Vec<_>>();
+    // ELK's comparator records transitive relations while it compares, including equal-order
+    // cases. Keep one comparator for this stable sort: key sorting, unstable sorting, or rebuilding
+    // the comparator per comparison changes observable Mermaid ordering.
     let mut comparator = ModelOrderPortComparator::new(
         graph,
         node,
@@ -489,6 +492,7 @@ fn sorted_nodes_by_model_order(
     previous_layer: &[usize],
 ) -> Vec<usize> {
     let mut order = nodes.to_vec();
+    // See sorted_ports_by_model_order: comparison order and shared comparator state are semantic.
     let mut comparator = ModelOrderNodeComparator::new(
         graph,
         previous_layer,
@@ -564,8 +568,10 @@ pub fn target_node(graph: &LGraph, port: PortRef) -> Option<usize> {
         .outgoing_edges
         .first()
         .copied()?;
+    let mut remaining_hops = graph.edges.len().saturating_add(1);
 
-    loop {
+    while remaining_hops > 0 {
+        remaining_hops -= 1;
         let node = graph.edges.get(edge)?.target.node;
         if let Some(target) = graph.layerless_nodes[node]
             .long_edge_target
@@ -578,12 +584,19 @@ pub fn target_node(graph: &LGraph, port: PortRef) -> Option<usize> {
             return Some(node);
         }
 
-        let next_edge = graph.node_outgoing_edges(node).into_iter().next();
+        // ELK follows the first outgoing segment. Avoid materializing every outgoing edge on each
+        // hop; the bound only changes malformed cyclic intermediate graphs, which now fail closed.
+        let next_edge = graph.layerless_nodes[node]
+            .ports
+            .iter()
+            .find_map(|port| port.outgoing_edges.first().copied());
         match next_edge {
             Some(next_edge) => edge = next_edge,
             None => return None,
         }
     }
+
+    None
 }
 
 pub(super) fn count_model_order_node_changes(
@@ -675,8 +688,8 @@ impl<'a> ModelOrderNodeComparator<'a> {
             || self.graph.layerless_nodes[n1].model_order.is_none()
             || self.graph.layerless_nodes[n2].model_order.is_none()
         {
-            let p1_source_port = first_previous_layer_source_port(self.graph, n1);
-            let p2_source_port = first_previous_layer_source_port(self.graph, n2);
+            let p1_source_port = last_previous_layer_source_port(self.graph, n1);
+            let p2_source_port = last_previous_layer_source_port(self.graph, n2);
 
             if let (Some(p1), Some(p2)) = (p1_source_port, p2_source_port) {
                 if p1.node == p2.node {
@@ -1005,6 +1018,8 @@ impl<'a> ModelOrderPortComparator<'a> {
         first_port: usize,
         second_port: usize,
     ) -> usize {
+        // This asymmetric lookup is source behavior: ELK checks whether p2 has model order, then
+        // reads p1's value. It looks like a typo, but correcting it changes stable-sort decisions.
         if self.graph.layerless_nodes[self.node].ports[second_port]
             .outgoing_edges
             .first()
@@ -1081,18 +1096,21 @@ impl<'a> ModelOrderPortComparator<'a> {
     }
 }
 
-fn first_previous_layer_source_port(graph: &LGraph, node: usize) -> Option<PortRef> {
+fn last_previous_layer_source_port(graph: &LGraph, node: usize) -> Option<PortRef> {
+    let mut selected = None;
     for port in &graph.layerless_nodes[node].ports {
         if let Some(edge) = port.incoming_edges.first() {
             let source = graph.edges[*edge].source;
             if graph.layerless_nodes[source.node].layer_index
                 != graph.layerless_nodes[node].layer_index
             {
-                return Some(source);
+                // Upstream deliberately keeps scanning, so the last qualifying incoming port is
+                // the comparator's source descriptor. Returning early changes model-order ties.
+                selected = Some(source);
             }
         }
     }
-    None
+    selected
 }
 
 fn update_bigger_and_smaller_associations<T>(
@@ -1138,7 +1156,7 @@ fn update_bigger_and_smaller_associations<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{GraphNodeRef, LNode, LNodeKind, LPoint, PortType};
+    use crate::graph::{GraphNodeRef, LNode, LNodeKind, LPoint, LayeredEdge, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputNode, import_graph};
     use crate::intermediate::split_long_edges;
     use crate::options::{ElkDirection, LayeredOptions};
@@ -1168,6 +1186,7 @@ mod tests {
             label: None,
             minlen: 1,
             inside_self_loops_yo: false,
+            model_order: None,
             priority_direction: 0,
             priority_shortness: 0,
             priority_straightness: 0,
@@ -1182,6 +1201,27 @@ mod tests {
             edges,
         })
         .unwrap()
+    }
+
+    fn layered_edge(id: &str, source: PortRef, target: PortRef) -> LayeredEdge {
+        LayeredEdge {
+            id: id.to_string(),
+            source,
+            target,
+            source_node_id: format!("node-{}", source.node),
+            target_node_id: format!("node-{}", target.node),
+            labels: Vec::new(),
+            minlen: 1,
+            reversed: false,
+            bend_points: Vec::new(),
+            model_order: None,
+            priority_direction: 0,
+            priority_shortness: 0,
+            priority_straightness: 0,
+            thickness: 0.0,
+            original_opposite_port: None,
+            compound_segment: None,
+        }
     }
 
     #[test]
@@ -1367,6 +1407,46 @@ mod tests {
     }
 
     #[test]
+    fn model_order_node_source_descriptor_uses_last_cross_layer_port() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        for index in 0..3 {
+            graph.layerless_nodes.push(LNode::new(
+                format!("node-{index}"),
+                10.0,
+                10.0,
+                Some(index),
+            ));
+        }
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 0);
+        graph.set_node_layer(2, 1);
+
+        let first_source = graph
+            .add_port(0, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+        let last_source = graph
+            .add_port(1, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+        let first_target = graph
+            .add_port(2, PortType::Input, PortSide::West, LPoint::default())
+            .unwrap();
+        let last_target = graph
+            .add_port(2, PortType::Input, PortSide::West, LPoint::default())
+            .unwrap();
+        graph
+            .add_edge(layered_edge("first", first_source, first_target))
+            .unwrap();
+        graph
+            .add_edge(layered_edge("last", last_source, last_target))
+            .unwrap();
+
+        assert_eq!(
+            last_previous_layer_source_port(&graph, 2),
+            Some(last_source)
+        );
+    }
+
+    #[test]
     fn sort_by_input_model_matches_source_outgoing_second_port_order() {
         let mut graph = LGraph::new(
             "root",
@@ -1493,6 +1573,52 @@ mod tests {
                 .iter()
                 .any(|port| port.long_edge_target_node == Some(d))
         );
+    }
+
+    #[test]
+    fn target_node_rejects_cyclic_long_edge_chain() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        for index in 0..3 {
+            graph.layerless_nodes.push(LNode::new(
+                format!("node-{index}"),
+                10.0,
+                10.0,
+                Some(index),
+            ));
+        }
+        graph.layerless_nodes[1].kind = LNodeKind::LongEdge;
+        graph.layerless_nodes[2].kind = LNodeKind::LongEdge;
+
+        let source = graph
+            .add_port(0, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+        let first_input = graph
+            .add_port(1, PortType::Input, PortSide::West, LPoint::default())
+            .unwrap();
+        let first_output = graph
+            .add_port(1, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+        let cycle_input = graph
+            .add_port(1, PortType::Input, PortSide::West, LPoint::default())
+            .unwrap();
+        let second_input = graph
+            .add_port(2, PortType::Input, PortSide::West, LPoint::default())
+            .unwrap();
+        let second_output = graph
+            .add_port(2, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+
+        graph
+            .add_edge(layered_edge("source", source, first_input))
+            .unwrap();
+        graph
+            .add_edge(layered_edge("forward", first_output, second_input))
+            .unwrap();
+        graph
+            .add_edge(layered_edge("cycle", second_output, cycle_input))
+            .unwrap();
+
+        assert_eq!(target_node(&graph, source), None);
     }
 
     #[test]

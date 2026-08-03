@@ -342,15 +342,13 @@ fn layout_flowchart_elk_typed_by_feature(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
-    options
-        .resource_policy()
-        .check_layout_work_units(flowchart::flowchart_layout_work_units(model))?;
     flowchart::elk::layout_flowchart_elk_typed_with_operation_seed(
         model,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
         options.elk_operation_seed(),
+        options.work_meter(),
     )
 }
 

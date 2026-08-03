@@ -16,7 +16,9 @@ use super::options::{
     PortConstraints, WrappingStrategy,
 };
 use crate::RandomSeedError;
-use crate::compound::preprocess_source_ported_compound_graph;
+use crate::compound::{
+    preprocess_source_ported_compound_graph, source_ported_cross_hierarchy_segment_count,
+};
 use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::{LGraph, LNode, LNodeKind, LPoint, LSize, PortSide};
 use crate::intermediate::{
@@ -52,6 +54,9 @@ use crate::selfloops::{
     postprocess_self_loops, preprocess_self_loops, restore_self_loop_ports, route_self_loops,
 };
 use crate::transform::{GraphTransformMode, transform_graph_direction};
+use crate::work::{
+    NoopWorkControl, WorkControl, WorkError, checked_add, checked_mul, checked_n_log_n, checked_sum,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PipelineError {
@@ -63,6 +68,8 @@ pub enum PipelineError {
     UnsupportedCompoundGraph { reason: &'static str },
     #[error(transparent)]
     Intermediate(#[from] IntermediateError),
+    #[error(transparent)]
+    Work(#[from] WorkError),
 }
 
 pub type PipelineResult<T> = Result<T, PipelineError>;
@@ -209,10 +216,124 @@ pub struct GraphExecution {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct GraphAlgorithm {
-    path: Vec<usize>,
     next_processor: usize,
     processors: Vec<ProcessorSlot>,
     execution: GraphExecution,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GraphArenaParent {
+    graph: usize,
+    node: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GraphArenaChild {
+    graph: usize,
+    node: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct GraphArenaEntry {
+    parent: Option<GraphArenaParent>,
+    children: Vec<GraphArenaChild>,
+}
+
+#[derive(Debug)]
+struct CompoundGraphArena {
+    entries: Vec<GraphArenaEntry>,
+    postorder: Vec<usize>,
+    algorithms: Vec<GraphAlgorithm>,
+}
+
+impl CompoundGraphArena {
+    fn new(root: &LGraph) -> Self {
+        let mut entries = vec![GraphArenaEntry {
+            parent: None,
+            children: Vec::new(),
+        }];
+        let mut algorithms = vec![graph_algorithm(root)];
+        let mut search = vec![(0usize, root)];
+
+        while let Some((graph_index, graph)) = search.pop() {
+            let mut children = Vec::new();
+            for (node_index, node) in graph.layerless_nodes.iter().enumerate() {
+                let Some(nested) = node.nested_graph.as_deref() else {
+                    continue;
+                };
+                let child_index = entries.len();
+                let parent = GraphArenaParent {
+                    graph: graph_index,
+                    node: node_index,
+                };
+                let child = GraphArenaChild {
+                    graph: child_index,
+                    node: node_index,
+                };
+                entries.push(GraphArenaEntry {
+                    parent: Some(parent),
+                    children: Vec::new(),
+                });
+                algorithms.push(graph_algorithm(nested));
+                entries[graph_index].children.push(child);
+                children.push((child_index, nested));
+            }
+            search.extend(children.into_iter().rev());
+        }
+
+        // ELK advances every nested algorithm before its parent. The explicit postorder keeps that
+        // source order without retaining or rebuilding complete root-to-graph paths.
+        let mut postorder = Vec::with_capacity(entries.len());
+        let mut stack = vec![(0usize, false)];
+        while let Some((graph_index, expanded)) = stack.pop() {
+            if expanded {
+                postorder.push(graph_index);
+                continue;
+            }
+            stack.push((graph_index, true));
+            stack.extend(
+                entries[graph_index]
+                    .children
+                    .iter()
+                    .rev()
+                    .map(|child| (child.graph, false)),
+            );
+        }
+
+        Self {
+            entries,
+            postorder,
+            algorithms,
+        }
+    }
+
+    fn into_executions(self) -> Vec<GraphExecution> {
+        let mut executions = self
+            .algorithms
+            .into_iter()
+            .map(|algorithm| Some(algorithm.execution))
+            .collect::<Vec<_>>();
+        self.postorder
+            .into_iter()
+            .map(|graph_index| {
+                executions[graph_index]
+                    .take()
+                    .expect("each graph execution should be emitted exactly once")
+            })
+            .collect()
+    }
+}
+
+fn graph_algorithm(graph: &LGraph) -> GraphAlgorithm {
+    GraphAlgorithm {
+        next_processor: 0,
+        processors: assemble_processors_for_graph(graph),
+        execution: GraphExecution {
+            graph_id: graph.id.clone(),
+            parent_node_id: graph.parent_node_id.clone(),
+            processors: Vec::new(),
+        },
+    }
 }
 
 #[derive(Debug)]
@@ -405,12 +526,20 @@ pub fn execute_processors_until(
     graph: &mut LGraph,
     target: LayeredPhase,
 ) -> PipelineResult<Vec<ProcessorKind>> {
+    let mut work_control = NoopWorkControl;
+    execute_processors_until_with_work_control(graph, target, &mut work_control)
+}
+
+pub fn execute_processors_until_with_work_control(
+    graph: &mut LGraph,
+    target: LayeredPhase,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<Vec<ProcessorKind>> {
     let mut executed = Vec::new();
-    configure_graph_properties(graph)?;
-    let processors = assemble_processors_for_graph(graph);
+    let processors = prepare_single_graph_processors(graph, work_control)?;
 
     for slot in processors {
-        execute_processor(graph, slot.kind)?;
+        execute_processor_with_work_control(graph, slot.kind, work_control)?;
         executed.push(slot.kind);
 
         if slot.phase == Some(target) {
@@ -429,12 +558,20 @@ pub fn execute_processors_until_processor(
     graph: &mut LGraph,
     target: ProcessorKind,
 ) -> PipelineResult<Vec<ProcessorKind>> {
+    let mut work_control = NoopWorkControl;
+    execute_processors_until_processor_with_work_control(graph, target, &mut work_control)
+}
+
+pub fn execute_processors_until_processor_with_work_control(
+    graph: &mut LGraph,
+    target: ProcessorKind,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<Vec<ProcessorKind>> {
     let mut executed = Vec::new();
-    configure_graph_properties(graph)?;
-    let processors = assemble_processors_for_graph(graph);
+    let processors = prepare_single_graph_processors(graph, work_control)?;
 
     for slot in processors {
-        execute_processor(graph, slot.kind)?;
+        execute_processor_with_work_control(graph, slot.kind, work_control)?;
         executed.push(slot.kind);
 
         if slot.kind == target {
@@ -451,16 +588,35 @@ pub fn execute_processors_until_processor(
 /// processor list as the phase-limited runner, fails at the first unsupported processor, and leaves
 /// the graph in the post-processor state produced by the ported pipeline.
 pub fn execute_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<ProcessorKind>> {
+    let mut work_control = NoopWorkControl;
+    execute_ported_processors_with_work_control(graph, &mut work_control)
+}
+
+pub fn execute_ported_processors_with_work_control(
+    graph: &mut LGraph,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<Vec<ProcessorKind>> {
     let mut executed = Vec::new();
-    configure_graph_properties(graph)?;
-    let processors = assemble_processors_for_graph(graph);
+    let processors = prepare_single_graph_processors(graph, work_control)?;
 
     for slot in processors {
-        execute_processor(graph, slot.kind)?;
+        execute_processor_with_work_control(graph, slot.kind, work_control)?;
         executed.push(slot.kind);
     }
 
     Ok(executed)
+}
+
+fn prepare_single_graph_processors(
+    graph: &mut LGraph,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<Vec<ProcessorSlot>> {
+    // Processor execution below is root-local, but the source-backed GraphConfigurator walks every
+    // nested graph to resolve options and random seeds. Charge that complete hierarchy atomically
+    // before configuration mutates any graph; a root-only preflight would under-account this API.
+    charge_hierarchy_work(graph, work_control)?;
+    configure_graph_properties(graph)?;
+    Ok(assemble_processors_for_graph(graph))
 }
 
 /// Execute the source-backed layered pipeline for a compound graph hierarchy.
@@ -474,7 +630,15 @@ pub fn execute_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<Proce
 pub fn execute_ported_compound_processors(
     graph: &mut LGraph,
 ) -> PipelineResult<Vec<GraphExecution>> {
-    execute_ported_compound_processors_to(graph, None)
+    let mut work_control = NoopWorkControl;
+    execute_ported_compound_processors_with_work_control(graph, &mut work_control)
+}
+
+pub fn execute_ported_compound_processors_with_work_control(
+    graph: &mut LGraph,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<Vec<GraphExecution>> {
+    execute_ported_compound_processors_to(graph, None, work_control)
 }
 
 /// Execute the source-backed compound pipeline until the requested phase completes.
@@ -486,7 +650,16 @@ pub fn execute_ported_compound_processors_until(
     graph: &mut LGraph,
     target: LayeredPhase,
 ) -> PipelineResult<Vec<GraphExecution>> {
-    execute_ported_compound_processors_to(graph, Some(PipelineStop::Phase(target)))
+    let mut work_control = NoopWorkControl;
+    execute_ported_compound_processors_until_with_work_control(graph, target, &mut work_control)
+}
+
+pub fn execute_ported_compound_processors_until_with_work_control(
+    graph: &mut LGraph,
+    target: LayeredPhase,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<Vec<GraphExecution>> {
+    execute_ported_compound_processors_to(graph, Some(PipelineStop::Phase(target)), work_control)
 }
 
 /// Execute the source-backed compound pipeline until the requested processor completes.
@@ -497,7 +670,24 @@ pub fn execute_ported_compound_processors_until_processor(
     graph: &mut LGraph,
     target: ProcessorKind,
 ) -> PipelineResult<Vec<GraphExecution>> {
-    execute_ported_compound_processors_to(graph, Some(PipelineStop::Processor(target)))
+    let mut work_control = NoopWorkControl;
+    execute_ported_compound_processors_until_processor_with_work_control(
+        graph,
+        target,
+        &mut work_control,
+    )
+}
+
+pub fn execute_ported_compound_processors_until_processor_with_work_control(
+    graph: &mut LGraph,
+    target: ProcessorKind,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<Vec<GraphExecution>> {
+    execute_ported_compound_processors_to(
+        graph,
+        Some(PipelineStop::Processor(target)),
+        work_control,
+    )
 }
 
 /// Execute a guarded compound prefix, then collect the source-port hierarchical crossing trace.
@@ -510,7 +700,30 @@ pub fn inspect_compound_crossings_after_processor(
     graph: &mut LGraph,
     target: ProcessorKind,
 ) -> PipelineResult<(Vec<GraphExecution>, Option<HierarchySweepDebugTrace>)> {
-    let executions = execute_ported_compound_processors_until_processor(graph, target)?;
+    let mut work_control = NoopWorkControl;
+    inspect_compound_crossings_after_processor_with_work_control(graph, target, &mut work_control)
+}
+
+pub fn inspect_compound_crossings_after_processor_with_work_control(
+    graph: &mut LGraph,
+    target: ProcessorKind,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<(Vec<GraphExecution>, Option<HierarchySweepDebugTrace>)> {
+    let executions = execute_ported_compound_processors_until_processor_with_work_control(
+        graph,
+        target,
+        work_control,
+    )?;
+    let sweep_work = hierarchy_processor_work_units(
+        graph,
+        ProcessorKind::LayerSweepCrossingMinimizerBarycenter,
+    )?;
+    // The diagnostic path additionally snapshots graph/run/layer state while executing the same
+    // barycenter sweep. They are one indivisible call, so reject the combined tranche before
+    // either the sweep or its trace materialization begins.
+    let diagnostic_work = checked_add(sweep_work, hierarchy_work_units(graph)?)?;
+    work_control.check(diagnostic_work)?;
+    work_control.charge(diagnostic_work)?;
     let trace = debug_crossings_layer_sweep_hierarchical_with_type(graph, CrossMinType::Barycenter);
     Ok((executions, trace))
 }
@@ -518,45 +731,36 @@ pub fn inspect_compound_crossings_after_processor(
 fn execute_ported_compound_processors_to(
     graph: &mut LGraph,
     stop: Option<PipelineStop>,
+    work_control: &mut dyn WorkControl,
 ) -> PipelineResult<Vec<GraphExecution>> {
+    charge_hierarchy_work(graph, work_control)?;
+    charge_compound_preprocess_work(graph, work_control)?;
     preprocess_source_ported_compound_graph(graph);
+    charge_hierarchy_work(graph, work_control)?;
     configure_graph_properties(graph)?;
     reject_unsupported_compound_graph(graph)?;
     review_and_correct_hierarchical_processors(graph)?;
 
-    let paths = collect_graph_paths_bottom_up(graph);
-    let root_index = paths.len().saturating_sub(1);
-    let mut algorithms = paths
-        .into_iter()
-        .map(|path| {
-            let current = graph_at_path(graph, &path);
-            GraphAlgorithm {
-                path,
-                next_processor: 0,
-                processors: assemble_processors_for_graph(current),
-                execution: GraphExecution {
-                    graph_id: current.id.clone(),
-                    parent_node_id: current.parent_node_id.clone(),
-                    processors: Vec::new(),
-                },
-            }
-        })
-        .collect::<Vec<_>>();
+    let mut arena = build_compound_graph_arena_with_work_control(graph, work_control)?;
+    const ROOT_GRAPH: usize = 0;
 
-    while algorithms[root_index].next_processor < algorithms[root_index].processors.len()
+    while arena.algorithms[ROOT_GRAPH].next_processor
+        < arena.algorithms[ROOT_GRAPH].processors.len()
         && stop
-            .map(|stop| !compound_algorithms_reached_stop(&algorithms, root_index, stop))
+            .map(|stop| !compound_algorithms_reached_stop(&arena.algorithms, ROOT_GRAPH, stop))
             .unwrap_or(true)
     {
-        for (index, algorithm) in algorithms.iter_mut().enumerate() {
-            execute_compound_algorithm_until_pause(graph, algorithm, index == root_index, stop)?;
-        }
+        charge_compound_graph_round_work(arena.entries.len(), work_control)?;
+        execute_compound_graph_round(
+            graph,
+            &arena.entries,
+            &mut arena.algorithms,
+            stop,
+            work_control,
+        )?;
     }
 
-    Ok(algorithms
-        .into_iter()
-        .map(|algorithm| algorithm.execution)
-        .collect())
+    Ok(arena.into_executions())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -602,7 +806,9 @@ fn execute_compound_algorithm_until_pause(
     graph: &mut LGraph,
     algorithm: &mut GraphAlgorithm,
     is_root: bool,
+    mut parent: Option<ParentGraph<'_>>,
     stop: Option<PipelineStop>,
+    work_control: &mut dyn WorkControl,
 ) -> PipelineResult<()> {
     while algorithm.next_processor < algorithm.processors.len() {
         let slot = algorithm.processors[algorithm.next_processor];
@@ -615,15 +821,17 @@ fn execute_compound_algorithm_until_pause(
         }
 
         let size = if hierarchy_aware {
+            charge_hierarchy_processor_work(graph, kind, work_control)?;
             execute_hierarchy_aware_processor(graph, kind)?;
-            actual_graph_size(graph_at_path(graph, &algorithm.path))
+            actual_graph_size(graph)
         } else {
-            let current = graph_mut_at_path(graph, &algorithm.path);
-            execute_processor(current, kind)?;
-            actual_graph_size(current)
+            execute_processor_with_work_control(graph, kind, work_control)?;
+            actual_graph_size(graph)
         };
-        if kind == ProcessorKind::HierarchicalNodeResizer {
-            transfer_nested_graph_layout_to_parent_node(graph, &algorithm.path, size);
+        if kind == ProcessorKind::HierarchicalNodeResizer
+            && let Some(parent) = parent.as_mut()
+        {
+            transfer_nested_graph_layout_to_parent_node(graph, parent.graph, parent.node, size);
         }
         algorithm.execution.processors.push(kind);
 
@@ -633,6 +841,194 @@ fn execute_compound_algorithm_until_pause(
     }
 
     Ok(())
+}
+
+struct ParentGraph<'a> {
+    graph: &'a mut LGraph,
+    node: usize,
+}
+
+struct CompoundTraversalFrame {
+    graph_index: usize,
+    parent_node: usize,
+    graph: Box<LGraph>,
+    next_child: usize,
+}
+
+/// Owns the Rust-only detachment used while one compound subtree is processed.
+///
+/// Eclipse ELK keeps every nested graph attached to its parent object throughout execution. The
+/// source port detaches graphs only to obtain disjoint mutable Rust owners, so an error or unwind
+/// must not make that implementation detail observable to the caller. Dropping this guard restores
+/// the complete child-to-parent chain in bottom-up order.
+struct DetachedCompoundSubtree<'a> {
+    root_parent: &'a mut LGraph,
+    stack: Vec<CompoundTraversalFrame>,
+}
+
+impl<'a> DetachedCompoundSubtree<'a> {
+    fn new(root_parent: &'a mut LGraph, root_child: GraphArenaChild) -> Self {
+        let graph = root_parent.layerless_nodes[root_child.node]
+            .nested_graph
+            .take()
+            .expect("the compound graph topology must remain stable during layered execution");
+        Self {
+            root_parent,
+            stack: vec![CompoundTraversalFrame {
+                graph_index: root_child.graph,
+                parent_node: root_child.node,
+                graph,
+                next_child: 0,
+            }],
+        }
+    }
+
+    fn reattach_completed_frame(&mut self) {
+        let frame = self
+            .stack
+            .pop()
+            .expect("a completed compound graph should have an active frame");
+        reattach_compound_frame(frame, &mut self.stack, self.root_parent);
+    }
+}
+
+impl Drop for DetachedCompoundSubtree<'_> {
+    fn drop(&mut self) {
+        while let Some(frame) = self.stack.pop() {
+            reattach_compound_frame(frame, &mut self.stack, self.root_parent);
+        }
+    }
+}
+
+fn execute_compound_graph_round(
+    root: &mut LGraph,
+    entries: &[GraphArenaEntry],
+    algorithms: &mut [GraphAlgorithm],
+    stop: Option<PipelineStop>,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<()> {
+    for child in entries[0].children.iter().copied() {
+        debug_assert_eq!(
+            entries[child.graph].parent,
+            Some(GraphArenaParent {
+                graph: 0,
+                node: child.node,
+            })
+        );
+        execute_compound_subtree_round(root, child, entries, algorithms, stop, work_control)?;
+    }
+    execute_compound_algorithm_until_pause(root, &mut algorithms[0], true, None, stop, work_control)
+}
+
+fn execute_compound_subtree_round(
+    root_parent: &mut LGraph,
+    root_child: GraphArenaChild,
+    entries: &[GraphArenaEntry],
+    algorithms: &mut [GraphAlgorithm],
+    stop: Option<PipelineStop>,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<()> {
+    let mut traversal = DetachedCompoundSubtree::new(root_parent, root_child);
+
+    loop {
+        let child = {
+            let frame = traversal
+                .stack
+                .last_mut()
+                .expect("a detached compound subtree always has an active frame");
+            let child = entries[frame.graph_index]
+                .children
+                .get(frame.next_child)
+                .copied();
+            frame.next_child += usize::from(child.is_some());
+            child
+        };
+        if let Some(child) = child {
+            debug_assert_eq!(
+                entries[child.graph].parent,
+                Some(GraphArenaParent {
+                    graph: traversal
+                        .stack
+                        .last()
+                        .expect("the parent frame should still be active")
+                        .graph_index,
+                    node: child.node,
+                })
+            );
+            let graph = traversal
+                .stack
+                .last_mut()
+                .expect("the parent frame should still be active")
+                .graph
+                .layerless_nodes[child.node]
+                .nested_graph
+                .take()
+                .expect("the compound graph topology must remain stable during layered execution");
+            traversal.stack.push(CompoundTraversalFrame {
+                graph_index: child.graph,
+                parent_node: child.node,
+                graph,
+                next_child: 0,
+            });
+            continue;
+        }
+
+        let frame_count = traversal.stack.len();
+        let result = {
+            let (root_parent, stack) = (&mut *traversal.root_parent, &mut traversal.stack);
+            if frame_count > 1 {
+                let (parents, current) = stack.split_at_mut(frame_count - 1);
+                let parent = parents
+                    .last_mut()
+                    .expect("a nested compound frame should have a parent frame");
+                let frame = &mut current[0];
+                execute_compound_algorithm_until_pause(
+                    &mut frame.graph,
+                    &mut algorithms[frame.graph_index],
+                    false,
+                    Some(ParentGraph {
+                        graph: &mut parent.graph,
+                        node: frame.parent_node,
+                    }),
+                    stop,
+                    work_control,
+                )
+            } else {
+                let frame = stack
+                    .last_mut()
+                    .expect("a detached compound subtree always has an active frame");
+                execute_compound_algorithm_until_pause(
+                    &mut frame.graph,
+                    &mut algorithms[frame.graph_index],
+                    false,
+                    Some(ParentGraph {
+                        graph: root_parent,
+                        node: frame.parent_node,
+                    }),
+                    stop,
+                    work_control,
+                )
+            }
+        };
+
+        traversal.reattach_completed_frame();
+        result?;
+        if traversal.stack.is_empty() {
+            return Ok(());
+        }
+    }
+}
+
+fn reattach_compound_frame(
+    frame: CompoundTraversalFrame,
+    stack: &mut [CompoundTraversalFrame],
+    root_parent: &mut LGraph,
+) {
+    if let Some(parent) = stack.last_mut() {
+        parent.graph.layerless_nodes[frame.parent_node].nested_graph = Some(frame.graph);
+    } else {
+        root_parent.layerless_nodes[frame.parent_node].nested_graph = Some(frame.graph);
+    }
 }
 
 fn execute_hierarchy_aware_processor(
@@ -660,102 +1056,50 @@ fn execute_hierarchy_aware_processor(
     Ok(())
 }
 
-fn reject_unsupported_compound_graph(graph: &LGraph) -> PipelineResult<()> {
-    for node in &graph.layerless_nodes {
-        if let Some(nested_graph) = node.nested_graph.as_deref() {
-            reject_unsupported_compound_graph(nested_graph)?;
-        }
-    }
-
+fn reject_unsupported_compound_graph(_graph: &LGraph) -> PipelineResult<()> {
     Ok(())
 }
 
 fn review_and_correct_hierarchical_processors(root: &mut LGraph) -> PipelineResult<()> {
     let root_crossing = root.options.crossing_minimization_strategy;
     let root_greedy_switch = root.options.greedy_switch_hierarchical_type;
-    review_nested_hierarchical_processors(root, root_crossing, root_greedy_switch)
+    root.try_for_each_graph_mut(|graph| {
+        if graph.options.crossing_minimization_strategy != root_crossing {
+            return Err(PipelineError::UnsupportedCompoundGraph {
+                reason: "child graphs must use the root hierarchy-aware crossing minimizer",
+            });
+        }
+        graph.options.greedy_switch_hierarchical_type = root_greedy_switch;
+        Ok(())
+    })
 }
 
-fn review_nested_hierarchical_processors(
+fn build_compound_graph_arena_with_work_control(
     graph: &mut LGraph,
-    root_crossing: CrossingMinimizationStrategy,
-    root_greedy_switch: GreedySwitchType,
-) -> PipelineResult<()> {
-    if graph.options.crossing_minimization_strategy != root_crossing {
-        return Err(PipelineError::UnsupportedCompoundGraph {
-            reason: "child graphs must use the root hierarchy-aware crossing minimizer",
-        });
-    }
-    graph.options.greedy_switch_hierarchical_type = root_greedy_switch;
-
-    for node in &mut graph.layerless_nodes {
-        if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
-            review_nested_hierarchical_processors(nested_graph, root_crossing, root_greedy_switch)?;
-        }
-    }
-
-    Ok(())
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<CompoundGraphArena> {
+    charge_hierarchy_arena_plan_work(graph, work_control)?;
+    Ok(CompoundGraphArena::new(graph))
 }
 
-fn collect_graph_paths_bottom_up(graph: &LGraph) -> Vec<Vec<usize>> {
-    let mut paths = vec![Vec::new()];
-    let mut search = vec![Vec::new()];
-
-    while let Some(path) = search.pop() {
-        let current = graph_at_path(graph, &path);
-        for (index, node) in current.layerless_nodes.iter().enumerate() {
-            if node.nested_graph.is_some() {
-                let mut child_path = path.clone();
-                child_path.push(index);
-                paths.insert(0, child_path.clone());
-                search.push(child_path);
-            }
-        }
-    }
-
-    paths
-}
-
-fn graph_at_path<'a>(mut graph: &'a LGraph, path: &[usize]) -> &'a LGraph {
-    for index in path {
-        graph = graph.layerless_nodes[*index]
-            .nested_graph
-            .as_deref()
-            .expect("graph path should only contain nested graph nodes");
-    }
-    graph
-}
-
-fn graph_mut_at_path<'a>(mut graph: &'a mut LGraph, path: &[usize]) -> &'a mut LGraph {
-    for index in path {
-        graph = graph.layerless_nodes[*index]
-            .nested_graph
-            .as_deref_mut()
-            .expect("graph path should only contain nested graph nodes");
-    }
-    graph
-}
-
-fn transfer_nested_graph_layout_to_parent_node(graph: &mut LGraph, path: &[usize], size: LSize) {
-    let Some((node_index, parent_path)) = path.split_last() else {
-        return;
-    };
-    let parent = graph_mut_at_path(graph, parent_path);
+fn transfer_nested_graph_layout_to_parent_node(
+    nested_graph: &mut LGraph,
+    parent: &mut LGraph,
+    node_index: usize,
+    size: LSize,
+) {
     let has_external_ports = {
-        let node = &mut parent.layerless_nodes[*node_index];
-        let Some(nested_graph) = node.nested_graph.as_mut() else {
-            return;
-        };
+        let node = &mut parent.layerless_nodes[node_index];
         transfer_external_port_dummy_layout_to_parent_node(
             nested_graph,
-            *node_index,
+            node_index,
             &mut node.ports,
         );
         nested_graph.graph_properties.external_ports
     };
 
     {
-        let node = &mut parent.layerless_nodes[*node_index];
+        let node = &mut parent.layerless_nodes[node_index];
         if has_external_ports {
             node.port_constraints = PortConstraints::FixedPos;
             resize_layered_node(node, size, false, true);
@@ -852,7 +1196,20 @@ fn external_port_position(graph: &mut LGraph, dummy_index: usize) -> LPoint {
     port_position
 }
 
+#[cfg(test)]
 fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<()> {
+    let mut work_control = NoopWorkControl;
+    execute_processor_with_work_control(graph, kind, &mut work_control)
+}
+
+fn execute_processor_with_work_control(
+    graph: &mut LGraph,
+    kind: ProcessorKind,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<()> {
+    let work_units = processor_work_units(graph, kind)?;
+    work_control.check(work_units)?;
+    work_control.charge(work_units)?;
     match kind {
         ProcessorKind::DirectionPreprocessor => {
             transform_graph_direction(graph, GraphTransformMode::ToInputDirection);
@@ -930,6 +1287,835 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
 
+    Ok(())
+}
+
+fn local_graph_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut ports = 0usize;
+    let mut labels = 0usize;
+    for node in &graph.layerless_nodes {
+        ports = checked_add(ports, node.ports.len())?;
+        labels = checked_add(labels, node.labels.len())?;
+    }
+    for edge in &graph.edges {
+        labels = checked_add(labels, edge.labels.len())?;
+    }
+    Ok(checked_sum([
+        graph.layerless_nodes.len(),
+        graph.edges.len(),
+        graph.layers.len(),
+        ports,
+        labels,
+    ])?
+    .max(1))
+}
+
+fn processor_work_units(graph: &LGraph, kind: ProcessorKind) -> Result<usize, WorkError> {
+    if matches!(
+        kind,
+        ProcessorKind::GreedyCycleBreaker | ProcessorKind::GreedyModelOrderCycleBreaker
+    ) {
+        return greedy_cycle_breaker_work_units(graph);
+    }
+    if kind == ProcessorKind::LongEdgeSplitter {
+        return long_edge_splitter_work_units(graph);
+    }
+    if kind == ProcessorKind::LongEdgeJoiner {
+        return long_edge_joiner_work_units(graph);
+    }
+    if kind == ProcessorKind::EndLabelSorter {
+        return end_label_sorter_work_units(graph);
+    }
+    if kind == ProcessorKind::PortListSorter {
+        return port_list_sorter_work_units(graph);
+    }
+    if kind == ProcessorKind::SortByInputModelProcessor {
+        return sort_by_input_model_work_units(graph);
+    }
+
+    let base = local_graph_work_units(graph)?;
+    let multiplier = match kind {
+        ProcessorKind::NetworkSimplexLayerer => {
+            let component_scale = (graph.layerless_nodes.len() as f64).sqrt() as usize;
+            checked_mul(
+                checked_mul(graph.options.thoroughness, 4)?,
+                component_scale.max(1),
+            )?
+        }
+        ProcessorKind::NetworkSimplexPlacer => {
+            let auxiliary_nodes = checked_sum([graph.layerless_nodes.len(), graph.edges.len(), 1])?;
+            checked_mul(graph.options.thoroughness, auxiliary_nodes.max(1))?
+        }
+        ProcessorKind::LayerSweepCrossingMinimizerBarycenter
+        | ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch
+        | ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch => {
+            checked_mul(graph.options.thoroughness.max(1), graph.edges.len().max(1))?
+        }
+        _ => 1,
+    };
+    checked_mul(base, multiplier.max(1))
+}
+
+fn end_label_sorter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut port_labels = 0usize;
+    let mut local_sort_work = 0usize;
+    for node in &graph.layerless_nodes {
+        for port in &node.ports {
+            port_labels = checked_add(port_labels, port.labels.len())?;
+            local_sort_work = checked_add(local_sort_work, checked_n_log_n(port.labels.len())?)?;
+        }
+    }
+    checked_sum([
+        local_graph_work_units(graph)?,
+        graph.edges.len(),
+        port_labels,
+        local_sort_work,
+    ])
+}
+
+fn long_edge_joiner_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let layer_memberships = graph
+        .layers
+        .iter()
+        .try_fold(0usize, |total, layer| checked_add(total, layer.nodes.len()))?;
+    let has_long_edge_dummy = graph.layers.iter().any(|layer| {
+        layer
+            .nodes
+            .iter()
+            .any(|&node| graph.layerless_nodes[node].kind == LNodeKind::LongEdge)
+    });
+    let base = local_graph_work_units(graph)?;
+    if !has_long_edge_dummy {
+        return checked_add(base, layer_memberships);
+    }
+
+    let mut indexed_ports = 0usize;
+    let mut indexed_incoming_edges = 0usize;
+    for node in &graph.layerless_nodes {
+        indexed_ports = checked_add(indexed_ports, node.ports.len())?;
+        for port in &node.ports {
+            indexed_incoming_edges =
+                checked_add(indexed_incoming_edges, port.incoming_edges.len())?;
+        }
+    }
+
+    let mut join_work = checked_sum([
+        checked_mul(layer_memberships, 2)?,
+        indexed_ports,
+        indexed_incoming_edges,
+    ])?;
+
+    for layer in &graph.layers {
+        for &node_index in &layer.nodes {
+            let node = &graph.layerless_nodes[node_index];
+            if node.kind != LNodeKind::LongEdge {
+                continue;
+            }
+            join_work = checked_add(join_work, checked_mul(node.ports.len(), 2)?)?;
+            let Some(input_port) = node
+                .ports
+                .iter()
+                .position(|port| port.side == PortSide::West)
+            else {
+                continue;
+            };
+            let Some(output_port) = node
+                .ports
+                .iter()
+                .position(|port| port.side == PortSide::East)
+            else {
+                continue;
+            };
+            let input_edges = &node.ports[input_port].incoming_edges;
+            let output_edges = &node.ports[output_port].outgoing_edges;
+            let pair_count = input_edges.len().min(output_edges.len());
+            join_work = checked_sum([
+                join_work,
+                input_edges.len(),
+                output_edges.len(),
+                checked_mul(pair_count, 8)?,
+            ])?;
+
+            for dropped_edge in output_edges.iter().copied().take(pair_count) {
+                let edge = &graph.edges[dropped_edge];
+                join_work = checked_sum([
+                    join_work,
+                    checked_mul(edge.bend_points.len(), 2)?,
+                    edge.labels.len(),
+                ])?;
+            }
+        }
+    }
+
+    // The implementation builds one incoming-edge position index for the whole graph. Shared
+    // collector ports therefore contribute their adjacency once, not once per long-edge dummy.
+    checked_add(base, join_work)
+}
+
+fn port_list_sorter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut node_visits = 0usize;
+    let mut port_scans = 0usize;
+    let mut adjacency_scans = 0usize;
+    let mut sort_work = 0usize;
+    let mut reference_rewrites = 0usize;
+    let mut reorder_context = None;
+
+    for layer in &graph.layers {
+        for &node_index in &layer.nodes {
+            node_visits = checked_add(node_visits, 1)?;
+            let node = &graph.layerless_nodes[node_index];
+            let port_count = node.ports.len();
+            let constraints = node.port_constraints;
+            if constraints.is_order_fixed() {
+                let reorder_work = prepared_reorder_node_ports_work_units(
+                    graph,
+                    node_index,
+                    &mut reorder_context,
+                )?;
+                port_scans = checked_add(port_scans, port_count)?;
+                sort_work = checked_add(sort_work, checked_n_log_n(port_count)?)?;
+                reference_rewrites = checked_add(reference_rewrites, reorder_work)?;
+            } else if constraints.is_side_fixed() {
+                let reorder_work = prepared_reorder_node_ports_work_units(
+                    graph,
+                    node_index,
+                    &mut reorder_context,
+                )?;
+                // One side-key pass plus the two official South/West range probes.
+                port_scans = checked_add(port_scans, checked_mul(port_count, 5)?)?;
+                sort_work = checked_add(sort_work, checked_n_log_n(port_count)?)?;
+                reference_rewrites = checked_add(reference_rewrites, reorder_work)?;
+                for side in [crate::graph::PortSide::South, crate::graph::PortSide::West] {
+                    if node.ports.iter().filter(|port| port.side == side).count() > 2 {
+                        port_scans = checked_add(port_scans, port_count)?;
+                        reference_rewrites = checked_add(reference_rewrites, reorder_work)?;
+                    }
+                }
+                if graph.options.port_sorting_strategy
+                    == crate::options::PortSortingStrategy::PortDegree
+                {
+                    port_scans = checked_add(port_scans, port_count)?;
+                    sort_work = checked_add(sort_work, checked_n_log_n(port_count)?)?;
+                    reference_rewrites = checked_add(reference_rewrites, reorder_work)?;
+                    for port in &node.ports {
+                        adjacency_scans = checked_add(
+                            adjacency_scans,
+                            checked_add(port.incoming_edges.len(), port.outgoing_edges.len())?,
+                        )?;
+                    }
+                }
+            }
+        }
+    }
+
+    // Mermaid enables this processor by default. Charge each official owner-local permutation and
+    // the exact reference domains it scans; unrelated descendant edges and labels are not work of
+    // the parent owner and must not be folded into a hierarchy-wide square.
+    checked_sum([
+        local_graph_work_units(graph)?,
+        node_visits,
+        port_scans,
+        adjacency_scans,
+        sort_work,
+        reference_rewrites,
+    ])
+}
+
+fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let max_ports = graph
+        .layerless_nodes
+        .iter()
+        .map(|node| node.ports.len())
+        .max()
+        .unwrap_or(0);
+    let chain_bound = checked_mul(
+        checked_add(graph.edges.len(), 1)?,
+        checked_add(max_ports, 2)?,
+    )?;
+    let mut layer_copy_work = 0usize;
+    let mut preprocessing_work = 0usize;
+    let mut relation_sort_work = 0usize;
+    let mut reference_rewrites = 0usize;
+    let mut reorder_context = None;
+
+    for (layer_index, layer) in graph.layers.iter().enumerate() {
+        let previous_layer = if layer_index == 0 {
+            layer
+        } else {
+            &graph.layers[layer_index - 1]
+        };
+        layer_copy_work = checked_sum([
+            layer_copy_work,
+            previous_layer.nodes.len(),
+            layer.nodes.len(),
+            layer.nodes.len(),
+        ])?;
+
+        let node_context =
+            checked_sum([previous_layer.nodes.len(), checked_mul(max_ports, 4)?, 1])?;
+        relation_sort_work = checked_add(
+            relation_sort_work,
+            stateful_relation_sort_work_units(layer.nodes.len(), node_context)?,
+        )?;
+
+        for &node_index in &layer.nodes {
+            let node = &graph.layerless_nodes[node_index];
+            if matches!(
+                node.port_constraints,
+                PortConstraints::FixedOrder | PortConstraints::FixedPos
+            ) {
+                continue;
+            }
+
+            let port_count = node.ports.len();
+            let outgoing_ports = node
+                .ports
+                .iter()
+                .filter(|port| !port.outgoing_edges.is_empty())
+                .count();
+            preprocessing_work = checked_sum([
+                preprocessing_work,
+                checked_mul(port_count, 2)?,
+                checked_mul(outgoing_ports, chain_bound)?,
+            ])?;
+            relation_sort_work = checked_add(
+                relation_sort_work,
+                stateful_relation_sort_work_units(
+                    port_count,
+                    checked_add(previous_layer.nodes.len(), 1)?,
+                )?,
+            )?;
+            reference_rewrites = checked_add(
+                reference_rewrites,
+                prepared_reorder_node_ports_work_units(graph, node_index, &mut reorder_context)?,
+            )?;
+        }
+    }
+
+    // The stateful ELK comparator must keep its stable-sort call order. Model its owner-local layer
+    // and port widths plus the references each resulting permutation actually rewrites; taking the
+    // fourth power of total hierarchy payload rejected ordinary official Mermaid fixtures.
+    checked_sum([
+        local_graph_work_units(graph)?,
+        layer_copy_work,
+        preprocessing_work,
+        relation_sort_work,
+        reference_rewrites,
+    ])
+}
+
+fn stateful_relation_sort_work_units(
+    item_count: usize,
+    contextual_scan: usize,
+) -> Result<usize, WorkError> {
+    let comparisons = checked_n_log_n(item_count)?;
+    let squared = checked_mul(item_count, item_count)?;
+    // The official stateful comparator clones two relation sets and can clone/extend another set
+    // inside each side of the transitive-closure update. Keep this local to the sorted owner set.
+    let relation_closure =
+        checked_sum([checked_mul(squared, 4)?, checked_mul(item_count, 8)?, 16])?;
+    checked_mul(comparisons, checked_add(relation_closure, contextual_scan)?)
+}
+
+struct ReorderNodePortsWorkContext {
+    shared_reference_work: usize,
+    self_loop_holder_scan_work: usize,
+    self_loop_payload_by_node: Vec<usize>,
+}
+
+impl ReorderNodePortsWorkContext {
+    fn new(graph: &LGraph) -> Result<Self, WorkError> {
+        let mut self_loop_payload_by_node = vec![0usize; graph.layerless_nodes.len()];
+        for holder in &graph.self_loop_holders {
+            let Some(payload) = self_loop_payload_by_node.get_mut(holder.node) else {
+                continue;
+            };
+            for hyper_loop in &holder.hyper_loops {
+                *payload = checked_sum([
+                    *payload,
+                    hyper_loop.ports.len(),
+                    checked_mul(hyper_loop.edges.len(), 2)?,
+                ])?;
+            }
+        }
+
+        let mut descendant_nodes = 0usize;
+        let mut stack = graph
+            .layerless_nodes
+            .iter()
+            .filter_map(|node| node.nested_graph.as_deref())
+            .collect::<Vec<_>>();
+        while let Some(current) = stack.pop() {
+            descendant_nodes = checked_add(descendant_nodes, current.layerless_nodes.len())?;
+            stack.extend(
+                current
+                    .layerless_nodes
+                    .iter()
+                    .filter_map(|node| node.nested_graph.as_deref()),
+            );
+        }
+
+        Ok(Self {
+            shared_reference_work: checked_sum([
+                checked_mul(graph.edges.len(), 3)?,
+                checked_mul(graph.layerless_nodes.len(), 3)?,
+                descendant_nodes,
+                graph.id.len(),
+            ])?,
+            self_loop_holder_scan_work: graph.self_loop_holders.len(),
+            self_loop_payload_by_node,
+        })
+    }
+
+    fn node_work(&self, graph: &LGraph, node_index: usize) -> Result<usize, WorkError> {
+        let port_count = graph.layerless_nodes[node_index].ports.len();
+        checked_sum([
+            checked_mul(port_count, 4)?,
+            self.shared_reference_work,
+            self.self_loop_holder_scan_work,
+            self.self_loop_payload_by_node
+                .get(node_index)
+                .copied()
+                .unwrap_or(0),
+        ])
+    }
+}
+
+fn prepared_reorder_node_ports_work_units(
+    graph: &LGraph,
+    node_index: usize,
+    context: &mut Option<ReorderNodePortsWorkContext>,
+) -> Result<usize, WorkError> {
+    if context.is_none() {
+        // ELK reorders each owner independently, so every permutation still charges its global
+        // reference rewrite. Only the immutable reference-domain census is shared across owners;
+        // rebuilding that census per node made the resource estimator itself quadratic.
+        *context = Some(ReorderNodePortsWorkContext::new(graph)?);
+    }
+    context
+        .as_ref()
+        .expect("reorder work context was initialized above")
+        .node_work(graph, node_index)
+}
+
+#[cfg(test)]
+fn unprepared_reorder_node_ports_work_units(
+    graph: &LGraph,
+    node_index: usize,
+) -> Result<usize, WorkError> {
+    let port_count = graph.layerless_nodes[node_index].ports.len();
+    let mut self_loop_refs = graph.self_loop_holders.len();
+    for holder in &graph.self_loop_holders {
+        if holder.node != node_index {
+            continue;
+        }
+        for hyper_loop in &holder.hyper_loops {
+            self_loop_refs = checked_sum([
+                self_loop_refs,
+                hyper_loop.ports.len(),
+                checked_mul(hyper_loop.edges.len(), 2)?,
+            ])?;
+        }
+    }
+
+    let mut descendant_nodes = 0usize;
+    let mut stack = graph
+        .layerless_nodes
+        .iter()
+        .filter_map(|node| node.nested_graph.as_deref())
+        .collect::<Vec<_>>();
+    while let Some(current) = stack.pop() {
+        descendant_nodes = checked_add(descendant_nodes, current.layerless_nodes.len())?;
+        stack.extend(
+            current
+                .layerless_nodes
+                .iter()
+                .filter_map(|node| node.nested_graph.as_deref()),
+        );
+    }
+
+    // Validation, permutation storage, old-to-new mapping, and moving each port are four local
+    // passes. Edges expose three port references, local nodes expose three optional references,
+    // while descendants are visited only for their `origin_port` reference.
+    checked_sum([
+        checked_mul(port_count, 4)?,
+        checked_mul(graph.edges.len(), 3)?,
+        self_loop_refs,
+        checked_mul(graph.layerless_nodes.len(), 3)?,
+        descendant_nodes,
+        graph.id.len(),
+    ])
+}
+
+fn graph_port_and_adjacency_work_units(graph: &LGraph) -> Result<(usize, usize), WorkError> {
+    let mut ports = 0usize;
+    let mut adjacency = 0usize;
+    for node in &graph.layerless_nodes {
+        ports = checked_add(ports, node.ports.len())?;
+        for port in &node.ports {
+            adjacency = checked_add(adjacency, port.incoming_edges.len())?;
+            adjacency = checked_add(adjacency, port.outgoing_edges.len())?;
+        }
+    }
+    Ok((ports, adjacency))
+}
+
+fn edge_reversal_adjacency_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut port_incidence = Vec::with_capacity(graph.layerless_nodes.len());
+    let mut collector_incidence = Vec::with_capacity(graph.layerless_nodes.len());
+    for node in &graph.layerless_nodes {
+        let mut node_port_incidence = Vec::with_capacity(node.ports.len());
+        let mut node_collector_incidence = 0usize;
+        for port in &node.ports {
+            let incidence = checked_add(port.incoming_edges.len(), port.outgoing_edges.len())?;
+            node_port_incidence.push(incidence);
+            if port.collector_type.is_some() {
+                node_collector_incidence = checked_add(node_collector_incidence, incidence)?;
+            }
+        }
+        port_incidence.push(node_port_incidence);
+        collector_incidence.push(node_collector_incidence);
+    }
+
+    let mut total = 0usize;
+    for edge in &graph.edges {
+        let source_port = &graph.layerless_nodes[edge.source.node].ports[edge.source.port];
+        let target_port = &graph.layerless_nodes[edge.target.node].ports[edge.target.port];
+        let source_degree = if source_port.collector_type.is_some() {
+            collector_incidence[edge.source.node]
+        } else {
+            port_incidence[edge.source.node][edge.source.port]
+        };
+        let target_degree = if target_port.collector_type.is_some() {
+            collector_incidence[edge.target.node]
+        } else {
+            port_incidence[edge.target.node][edge.target.port]
+        };
+        // `reverse_edge` performs a linear search and then a shifting `Vec::remove` at both
+        // endpoints. A normal port can only exchange incoming/outgoing incidence with itself;
+        // collector adaptation can exchange incidence across the node's collector pair. Charge
+        // those stable local bounds without turning unrelated per-edge ports into a false E^2.
+        total = checked_add(
+            total,
+            checked_mul(checked_add(source_degree, target_degree)?, 2)?,
+        )?;
+    }
+    Ok(total)
+}
+
+fn edge_reversal_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut total = edge_reversal_adjacency_work_units(graph)?;
+    for edge in &graph.edges {
+        let source_node = &graph.layerless_nodes[edge.source.node];
+        let target_node = &graph.layerless_nodes[edge.target.node];
+        // Collector adaptation scans the endpoint port lists and may append one opposite
+        // collector. Labels and bend points are then traversed in place.
+        total = checked_add(
+            total,
+            checked_sum([
+                source_node.ports.len(),
+                target_node.ports.len(),
+                2,
+                edge.labels.len(),
+                edge.bend_points.len(),
+                1,
+            ])?,
+        )?;
+    }
+    Ok(total)
+}
+
+fn checked_triangular(value: usize) -> Result<usize, WorkError> {
+    if value <= 1 {
+        return Ok(0);
+    }
+    let predecessor = value - 1;
+    if value.is_multiple_of(2) {
+        checked_mul(value / 2, predecessor)
+    } else {
+        checked_mul(value, predecessor / 2)
+    }
+}
+
+fn split_edge_payload_work_units(
+    edge: &crate::graph::LayeredEdge,
+    split_count: usize,
+) -> Result<usize, WorkError> {
+    if split_count == 0 {
+        return Ok(0);
+    }
+
+    let label_count = edge.labels.len();
+    let mut head_label_count = 0usize;
+    let mut first_removal_shifts = 0usize;
+    for (index, label) in edge.labels.iter().enumerate() {
+        if label.placement == crate::graph::EdgeLabelPlacement::Head {
+            head_label_count = checked_add(head_label_count, 1)?;
+            first_removal_shifts = checked_add(first_removal_shifts, label_count - index - 1)?;
+        }
+    }
+
+    // The first split clones every label and bend point, scans the old label vector, shifts the
+    // tail for each removed head label, then moves each head label through the temporary vector.
+    let first_split = checked_sum([
+        checked_mul(label_count, 2)?,
+        first_removal_shifts,
+        checked_mul(head_label_count, 2)?,
+        edge.bend_points.len(),
+    ])?;
+    if split_count == 1 {
+        return Ok(first_split);
+    }
+
+    // Later segments contain only head labels. Removing them from the front produces the exact
+    // triangular shift count on every downstream split, in addition to clone/scan/move passes.
+    let later_split = checked_add(
+        checked_mul(head_label_count, 4)?,
+        checked_triangular(head_label_count)?,
+    )?;
+    checked_add(first_split, checked_mul(later_split, split_count - 1)?)
+}
+
+fn greedy_cycle_breaker_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let node_count = graph.layerless_nodes.len();
+    let (ports, adjacency) = graph_port_and_adjacency_work_units(graph)?;
+
+    // A source/sink removal visits each port and adjacency reference a bounded number of times.
+    // When a cyclic remainder has neither, ELK's greedy selector scans all nodes and then scans its
+    // maximal candidate set; at most one such pair of scans removes each node. Three V^2 tranches
+    // cover the node scan, candidate collection, and model-order/random choice without pretending
+    // sparse E alone bounds the processor.
+    let quadratic = checked_mul(checked_mul(node_count, node_count)?, 3)?;
+    let linear = checked_mul(
+        checked_sum([node_count, ports, adjacency, graph.edges.len()])?,
+        4,
+    )?;
+    Ok(checked_sum([quadratic, linear, edge_reversal_work_units(graph)?])?.max(1))
+}
+
+fn long_edge_splitter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let base = local_graph_work_units(graph)?;
+    let layer_count = graph.layers.len();
+    if layer_count <= 2 {
+        return Ok(base);
+    }
+
+    let mut split_count = 0usize;
+    let mut target_adjacency_rewrite_work = 0usize;
+    let mut split_payload_work = 0usize;
+    for edge in &graph.edges {
+        let source_layer = graph
+            .layerless_nodes
+            .get(edge.source.node)
+            .and_then(|node| node.layer_index);
+        let target_layer = graph
+            .layerless_nodes
+            .get(edge.target.node)
+            .and_then(|node| node.layer_index);
+        let Some(source_layer) = source_layer else {
+            continue;
+        };
+        let Some(next_source_layer) = source_layer.checked_add(1) else {
+            continue;
+        };
+        if next_source_layer >= layer_count {
+            continue;
+        }
+
+        let remaining_layers = layer_count - next_source_layer;
+        let edge_splits = match target_layer {
+            None => 0,
+            Some(target_layer)
+                if target_layer == source_layer || target_layer == next_source_layer =>
+            {
+                0
+            }
+            Some(target_layer) if target_layer > next_source_layer => {
+                (target_layer - next_source_layer).min(remaining_layers)
+            }
+            // A malformed/backward layered edge can still be visited once in every later source
+            // layer by the mutation loop. Charge that reachable upper bound rather than assuming
+            // the normal forward-edge invariant.
+            Some(_) => remaining_layers,
+        };
+        split_count = checked_add(split_count, edge_splits)?;
+        if edge_splits > 0 {
+            let target_degree = graph
+                .layerless_nodes
+                .get(edge.target.node)
+                .and_then(|node| node.ports.get(edge.target.port))
+                .map(|port| port.incoming_edges.len())
+                .unwrap_or(0);
+            // Every downstream split removes its segment from the original target port and appends
+            // the replacement. On collector ports the list length stays constant, so account for
+            // both the linear search and shifting removal at that full degree on every split.
+            target_adjacency_rewrite_work = checked_add(
+                target_adjacency_rewrite_work,
+                checked_mul(checked_mul(edge_splits, target_degree)?, 2)?,
+            )?;
+            split_payload_work = checked_add(
+                split_payload_work,
+                split_edge_payload_work_units(edge, edge_splits)?,
+            )?;
+        }
+    }
+
+    // Each split inserts one node, two ports, one edge, and their adjacency/layer memberships.
+    // The cloned segment also copies every label on the first split and the head labels that move
+    // to the downstream segment on every later split.
+    checked_sum([
+        base,
+        checked_mul(split_count, 8)?,
+        target_adjacency_rewrite_work,
+        split_payload_work,
+    ])
+}
+
+fn hierarchy_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut total = 0usize;
+    let mut stack = vec![graph];
+    while let Some(current) = stack.pop() {
+        total = checked_add(total, local_graph_work_units(current)?)?;
+        total = checked_add(total, current.hierarchy_edges.len())?;
+        total = checked_add(total, current.cross_hierarchy_edges.len())?;
+        for node in &current.layerless_nodes {
+            if let Some(nested) = node.nested_graph.as_deref() {
+                stack.push(nested);
+            }
+        }
+    }
+    Ok(total.max(1))
+}
+
+fn hierarchy_arena_plan_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut graph_count = 0usize;
+    let mut node_count = 0usize;
+    let mut nested_graph_count = 0usize;
+    let mut stack = vec![graph];
+    while let Some(current) = stack.pop() {
+        graph_count = checked_add(graph_count, 1)?;
+        node_count = checked_add(node_count, current.layerless_nodes.len())?;
+        for node in &current.layerless_nodes {
+            if let Some(nested) = node.nested_graph.as_deref() {
+                nested_graph_count = checked_add(nested_graph_count, 1)?;
+                stack.push(nested);
+            }
+        }
+    }
+
+    // Charge discovery, the full node scan, both stored ends of every parent/child link, both
+    // postorder frames, and one algorithm binding per graph. None of these terms depends on depth.
+    checked_sum([
+        graph_count,
+        node_count,
+        checked_mul(nested_graph_count, 2)?,
+        checked_mul(graph_count, 2)?,
+        graph_count,
+    ])
+}
+
+fn compound_graph_round_work_units(graph_count: usize) -> Result<usize, WorkError> {
+    let nested_graph_count = graph_count.saturating_sub(1);
+    // Every round dispatches each graph once and moves every nested graph out of and back into its
+    // parent exactly once. The iterative frames keep the live storage linear in hierarchy depth.
+    checked_sum([graph_count, checked_mul(nested_graph_count, 2)?])
+}
+
+fn compound_preprocess_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut total = checked_mul(hierarchy_work_units(graph)?, 4)?;
+    let mut stack = vec![graph];
+    while let Some(current) = stack.pop() {
+        for edge in &current.hierarchy_edges {
+            total = checked_add(
+                total,
+                source_ported_cross_hierarchy_segment_count(
+                    edge.source_node_id.as_str(),
+                    edge.target_node_id.as_str(),
+                    &edge.source_path,
+                    &edge.target_path,
+                )?,
+            )?;
+        }
+        for node in &current.layerless_nodes {
+            if let Some(nested) = node.nested_graph.as_deref() {
+                stack.push(nested);
+            }
+        }
+    }
+    Ok(total)
+}
+
+fn charge_hierarchy_work(graph: &LGraph, work_control: &mut dyn WorkControl) -> PipelineResult<()> {
+    let work_units = hierarchy_work_units(graph)?;
+    work_control.check(work_units)?;
+    work_control.charge(work_units)?;
+    Ok(())
+}
+
+fn charge_hierarchy_arena_plan_work(
+    graph: &LGraph,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<()> {
+    let work_units = hierarchy_arena_plan_work_units(graph)?;
+    work_control.check(work_units)?;
+    work_control.charge(work_units)?;
+    Ok(())
+}
+
+fn charge_compound_graph_round_work(
+    graph_count: usize,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<()> {
+    let work_units = compound_graph_round_work_units(graph_count)?;
+    work_control.check(work_units)?;
+    work_control.charge(work_units)?;
+    Ok(())
+}
+
+fn charge_hierarchy_processor_work(
+    graph: &LGraph,
+    kind: ProcessorKind,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<()> {
+    let work_units = hierarchy_processor_work_units(graph, kind)?;
+    work_control.check(work_units)?;
+    work_control.charge(work_units)?;
+    Ok(())
+}
+
+fn hierarchy_processor_work_units(graph: &LGraph, kind: ProcessorKind) -> Result<usize, WorkError> {
+    let base = hierarchy_work_units(graph)?;
+    let mut multiplier = 1usize;
+    if matches!(
+        kind,
+        ProcessorKind::LayerSweepCrossingMinimizerBarycenter
+            | ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch
+            | ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch
+    ) {
+        let mut stack = vec![graph];
+        let mut edge_count = 0usize;
+        while let Some(current) = stack.pop() {
+            multiplier = multiplier.max(current.options.thoroughness.max(1));
+            edge_count = checked_add(edge_count, current.edges.len())?;
+            stack.extend(
+                current
+                    .layerless_nodes
+                    .iter()
+                    .filter_map(|node| node.nested_graph.as_deref()),
+            );
+        }
+        multiplier = checked_mul(multiplier, edge_count.max(1))?;
+    }
+    checked_mul(base, multiplier)
+}
+
+fn charge_compound_preprocess_work(
+    graph: &LGraph,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<()> {
+    let work_units = compound_preprocess_work_units(graph)?;
+    work_control.check(work_units)?;
+    work_control.charge(work_units)?;
     Ok(())
 }
 
@@ -1409,7 +2595,7 @@ fn edge_routing_dependencies(options: &LayeredOptions, _processor: ProcessorKind
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{LNode, LNodeKind, PortSide, PortType};
+    use crate::graph::{LLabel, LNode, LNodeKind, LPort, Layer, PortSide, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
     use crate::options::{
         CycleBreakingStrategy, ElkDirection, FixedAlignment, GreedySwitchType, LayeredOptions,
@@ -1522,6 +2708,7 @@ mod tests {
             label: None,
             minlen: 1,
             inside_self_loops_yo: false,
+            model_order: None,
             priority_direction: 0,
             priority_shortness: 0,
             priority_straightness: 0,
@@ -1534,6 +2721,937 @@ mod tests {
             greedy_switch_type: GreedySwitchType::Off,
             ..LayeredOptions::default()
         }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct BudgetWorkControl {
+        remaining: usize,
+        charged: usize,
+    }
+
+    impl BudgetWorkControl {
+        fn new(remaining: usize) -> Self {
+            Self {
+                remaining,
+                charged: 0,
+            }
+        }
+    }
+
+    impl WorkControl for BudgetWorkControl {
+        fn check(&mut self, units: usize) -> Result<(), WorkError> {
+            if units <= self.remaining {
+                Ok(())
+            } else {
+                Err(WorkError::Interrupted)
+            }
+        }
+
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.check(units)?;
+            self.remaining -= units;
+            self.charged += units;
+            Ok(())
+        }
+    }
+
+    fn bidirected_cycle_graph(node_count: usize) -> LGraph {
+        let nodes = (0..node_count)
+            .map(|index| node(&format!("n{index}")))
+            .collect::<Vec<_>>();
+        let mut edges = Vec::with_capacity(node_count * 2);
+        for index in 0..node_count {
+            let next = (index + 1) % node_count;
+            edges.push(edge(
+                &format!("forward-{index}"),
+                &format!("n{index}"),
+                &format!("n{next}"),
+            ));
+            edges.push(edge(
+                &format!("backward-{index}"),
+                &format!("n{next}"),
+                &format!("n{index}"),
+            ));
+        }
+
+        import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                consider_model_order_strategy: OrderingStrategy::NodesAndEdges,
+                ..LayeredOptions::default()
+            },
+            nodes,
+            edges,
+        })
+        .unwrap()
+    }
+
+    fn parallel_long_edge_graph(edge_count: usize) -> LGraph {
+        disjoint_long_edge_graph(edge_count, edge_count + 1)
+    }
+
+    fn disjoint_long_edge_graph(edge_count: usize, target_layer: usize) -> LGraph {
+        assert!(target_layer > 0);
+        let mut nodes = Vec::with_capacity(edge_count * 2);
+        let mut edges = Vec::with_capacity(edge_count);
+        for index in 0..edge_count {
+            nodes.push(node(&format!("source-{index}")));
+            nodes.push(node(&format!("target-{index}")));
+            edges.push(edge(
+                &format!("edge-{index}"),
+                &format!("source-{index}"),
+                &format!("target-{index}"),
+            ));
+        }
+
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::default(),
+            nodes,
+            edges,
+        })
+        .unwrap();
+        graph.clear_layers();
+        for index in 0..edge_count {
+            graph.set_node_layer(index * 2, 0);
+            graph.set_node_layer(index * 2 + 1, target_layer);
+        }
+        graph
+    }
+
+    fn shared_target_long_edge_graph_with_span(edge_count: usize, target_layer: usize) -> LGraph {
+        assert!(target_layer > 0);
+        let mut nodes = (0..edge_count)
+            .map(|index| node(&format!("source-{index}")))
+            .collect::<Vec<_>>();
+        nodes.push(node("target"));
+        let edges = (0..edge_count)
+            .map(|index| {
+                edge(
+                    &format!("edge-{index}"),
+                    &format!("source-{index}"),
+                    "target",
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                merge_edges: true,
+                ..LayeredOptions::default()
+            },
+            nodes,
+            edges,
+        })
+        .unwrap();
+        graph.clear_layers();
+        for source in 0..edge_count {
+            graph.set_node_layer(source, 0);
+        }
+        graph.set_node_layer(edge_count, target_layer);
+        graph
+    }
+
+    fn shared_port_cycle_graph(parallel_edge_count: usize) -> LGraph {
+        let mut edges = Vec::with_capacity(parallel_edge_count * 2);
+        for index in 0..parallel_edge_count {
+            edges.push(edge(&format!("A-B-{index}"), "A", "B"));
+            edges.push(edge(&format!("B-A-{index}"), "B", "A"));
+        }
+        import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                merge_edges: true,
+                consider_model_order_strategy: OrderingStrategy::NodesAndEdges,
+                ..LayeredOptions::default()
+            },
+            nodes: vec![node("A"), node("B")],
+            edges,
+        })
+        .unwrap()
+    }
+
+    fn deep_compound_chain(graph_count: usize) -> LGraph {
+        assert!(graph_count > 0);
+        let options = LayeredOptions {
+            hierarchy_handling: crate::options::HierarchyHandling::IncludeChildren,
+            greedy_switch_type: GreedySwitchType::Off,
+            greedy_switch_hierarchical_type: GreedySwitchType::Off,
+            ..LayeredOptions::default()
+        };
+        let mut nested = None;
+        for depth in (0..graph_count).rev() {
+            let mut graph = LGraph::new(format!("graph-{depth}"), options.clone());
+            if depth > 0 {
+                graph.parent_node_id = Some(format!("node-{}", depth - 1));
+            }
+            if let Some(child) = nested.take() {
+                let mut holder = LNode::new(format!("node-{depth}"), 1.0, 1.0, None);
+                holder.compound = true;
+                holder.nested_graph = Some(child);
+                graph.layerless_nodes.push(holder);
+            }
+            nested = Some(Box::new(graph));
+        }
+        *nested.expect("a positive graph count creates the root graph")
+    }
+
+    fn high_thoroughness_diagnostic_graph() -> LGraph {
+        let mut options = LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down);
+        options.thoroughness = 64;
+        import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options,
+            nodes: vec![
+                node("top-a"),
+                node("top-b"),
+                node("bottom-a"),
+                node("bottom-b"),
+            ],
+            // K2,2 has an unavoidable crossing, so the debug barycenter sweep cannot terminate
+            // early at zero and must execute every configured thoroughness run.
+            edges: vec![
+                edge("aa", "top-a", "bottom-a"),
+                edge("ab", "top-a", "bottom-b"),
+                edge("ba", "top-b", "bottom-a"),
+                edge("bb", "top-b", "bottom-b"),
+            ],
+        })
+        .unwrap()
+    }
+
+    fn assert_processor_budget_boundaries(graph: &LGraph, kind: ProcessorKind) {
+        let required = processor_work_units(graph, kind).unwrap();
+        assert!(required > 0);
+
+        let mut below_graph = graph.clone();
+        let mut below = BudgetWorkControl::new(required - 1);
+        assert_eq!(
+            execute_processor_with_work_control(&mut below_graph, kind, &mut below),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(below_graph, *graph, "rejection must precede mutation");
+        assert_eq!(below.charged, 0);
+        assert_eq!(below.remaining, required - 1);
+
+        let mut exact_graph = graph.clone();
+        let mut exact = BudgetWorkControl::new(required);
+        execute_processor_with_work_control(&mut exact_graph, kind, &mut exact).unwrap();
+        assert_ne!(
+            exact_graph, *graph,
+            "{kind:?} boundary fixture must expose mutation"
+        );
+        assert_eq!(exact.charged, required);
+        assert_eq!(exact.remaining, 0);
+
+        let mut above_graph = graph.clone();
+        let mut above = BudgetWorkControl::new(required + 1);
+        execute_processor_with_work_control(&mut above_graph, kind, &mut above).unwrap();
+        assert_eq!(
+            above_graph, exact_graph,
+            "budget headroom changed semantics"
+        );
+        assert_eq!(above.charged, required);
+        assert_eq!(above.remaining, 1);
+    }
+
+    #[test]
+    fn superlinear_processors_enforce_transactional_budget_boundaries() {
+        let cycle_graph = bidirected_cycle_graph(4);
+        assert_processor_budget_boundaries(&cycle_graph, ProcessorKind::GreedyCycleBreaker);
+        assert_processor_budget_boundaries(
+            &cycle_graph,
+            ProcessorKind::GreedyModelOrderCycleBreaker,
+        );
+
+        let long_edge_graph = parallel_long_edge_graph(3);
+        assert_processor_budget_boundaries(&long_edge_graph, ProcessorKind::LongEdgeSplitter);
+
+        let mut joined_graph = disjoint_long_edge_graph(3, 2);
+        split_long_edges(&mut joined_graph);
+        assert_processor_budget_boundaries(&joined_graph, ProcessorKind::LongEdgeJoiner);
+
+        let mut shared_target_graph = shared_target_long_edge_graph_with_span(32, 2);
+        split_long_edges(&mut shared_target_graph);
+        assert_processor_budget_boundaries(&shared_target_graph, ProcessorKind::LongEdgeJoiner);
+    }
+
+    #[test]
+    fn long_edge_joiner_work_is_linear_in_disjoint_segment_count() {
+        for edge_count in [1usize, 8, 32, 128] {
+            let mut graph = disjoint_long_edge_graph(edge_count, 2);
+            split_long_edges(&mut graph);
+            let base = local_graph_work_units(&graph).unwrap();
+
+            // Each edge creates one two-port dummy and one pair. The preflight and layer rebuild
+            // visit three nodes per edge, while the global port/adjacency index is built once.
+            assert_eq!(
+                long_edge_joiner_work_units(&graph),
+                Ok(base + 26 * edge_count)
+            );
+            assert_eq!(
+                processor_work_units(&graph, ProcessorKind::LongEdgeJoiner),
+                long_edge_joiner_work_units(&graph)
+            );
+        }
+    }
+
+    #[test]
+    fn long_edge_joiner_work_is_linear_for_shared_target_fanin() {
+        for edge_count in [1usize, 8, 32, 128, 512] {
+            let mut graph = shared_target_long_edge_graph_with_span(edge_count, 2);
+            split_long_edges(&mut graph);
+            let base = local_graph_work_units(&graph).unwrap();
+
+            // The collector's incoming adjacency is indexed once for the whole graph. It must not
+            // be multiplied by the number of long-edge dummies that share that target port.
+            assert_eq!(
+                long_edge_joiner_work_units(&graph),
+                Ok(base + 23 * edge_count + 3)
+            );
+        }
+    }
+
+    #[test]
+    fn long_edge_joiner_work_skips_index_cost_without_dummies() {
+        let graph = disjoint_long_edge_graph(32, 1);
+        let base = local_graph_work_units(&graph).unwrap();
+        let layer_memberships = graph
+            .layers
+            .iter()
+            .map(|layer| layer.nodes.len())
+            .sum::<usize>();
+
+        assert_eq!(
+            long_edge_joiner_work_units(&graph),
+            Ok(base + layer_memberships)
+        );
+    }
+
+    #[test]
+    fn end_label_sorter_work_sums_owner_local_label_sorts() {
+        let expected_sort_work = [(1usize, 0usize), (8, 24), (16, 64), (32, 160)];
+        for (label_count, sort_work) in expected_sort_work {
+            let mut graph = LGraph::new("root", LayeredOptions::default());
+            let mut node = LNode::new("node", 10.0, 10.0, Some(0));
+            let mut port = LPort::new("port", 0, PortType::Output);
+            port.labels = (0..label_count)
+                .map(|index| LLabel::new(format!("label-{index}"), 1.0, 1.0))
+                .collect();
+            node.ports.push(port);
+            graph.layerless_nodes.push(node);
+
+            let base = local_graph_work_units(&graph).unwrap();
+            assert_eq!(
+                end_label_sorter_work_units(&graph),
+                Ok(base + label_count + sort_work)
+            );
+            assert_eq!(
+                processor_work_units(&graph, ProcessorKind::EndLabelSorter),
+                end_label_sorter_work_units(&graph)
+            );
+        }
+
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let mut node = LNode::new("node", 10.0, 10.0, Some(0));
+        for port_index in 0..2 {
+            let mut port = LPort::new(format!("port-{port_index}"), 0, PortType::Output);
+            port.labels = (0..8)
+                .map(|label_index| {
+                    LLabel::new(format!("label-{port_index}-{label_index}"), 1.0, 1.0)
+                })
+                .collect();
+            node.ports.push(port);
+        }
+        graph.layerless_nodes.push(node);
+        let base = local_graph_work_units(&graph).unwrap();
+        // Two local 8-item sorts cost 2*24, not one global 16-item sort (64).
+        assert_eq!(end_label_sorter_work_units(&graph), Ok(base + 16 + 48));
+    }
+
+    #[test]
+    fn port_model_order_processors_charge_only_owner_local_amplification() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let mut node = LNode::new("node", 10.0, 10.0, Some(0));
+        node.ports.push(LPort::new("port-0", 0, PortType::Output));
+        node.ports.push(LPort::new("port-1", 0, PortType::Output));
+        graph.layerless_nodes.push(node);
+        graph.layers.push(Layer {
+            nodes: vec![0],
+            ..Layer::default()
+        });
+
+        // One node, two ports, and one layer give an independently countable base of four.
+        assert_eq!(local_graph_work_units(&graph), Ok(4));
+        assert_eq!(hierarchy_work_units(&graph), Ok(4));
+
+        // Free ports make PortListSorter visit the owner node without sorting or rewriting it.
+        assert_eq!(port_list_sorter_work_units(&graph), Ok(4 + 1));
+        // SortByInputModel copies the one-node layer three times, scans two ports twice, charges
+        // one two-item stateful relation sort, and performs one exact owner reference rewrite.
+        assert_eq!(
+            sort_by_input_model_work_units(&graph),
+            Ok(4 + 3 + 4 + 100 + 15)
+        );
+        assert_eq!(
+            processor_work_units(&graph, ProcessorKind::PortListSorter),
+            Ok(5)
+        );
+        assert_eq!(
+            processor_work_units(&graph, ProcessorKind::SortByInputModelProcessor),
+            Ok(126)
+        );
+
+        graph.layerless_nodes[0].port_constraints = PortConstraints::FixedOrder;
+        // Fixed-order ports add one scan, one two-item sort, and one hierarchy-wide reference
+        // rewrite. SortByInputModel now skips the node after the layer-copy work.
+        assert_eq!(port_list_sorter_work_units(&graph), Ok(4 + 1 + 2 + 2 + 15));
+        assert_eq!(sort_by_input_model_work_units(&graph), Ok(4 + 3));
+    }
+
+    #[test]
+    fn prepared_port_reorder_work_matches_the_per_owner_reference() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        for node_index in 0..16 {
+            let mut node = LNode::new(format!("node-{node_index}"), 10.0, 10.0, Some(node_index));
+            node.port_constraints = PortConstraints::FixedOrder;
+            node.ports.push(LPort::new(
+                format!("port-{node_index}-0"),
+                node_index,
+                PortType::Output,
+            ));
+            node.ports.push(LPort::new(
+                format!("port-{node_index}-1"),
+                node_index,
+                PortType::Output,
+            ));
+            graph.layerless_nodes.push(node);
+        }
+        graph.layers.push(Layer {
+            nodes: (0..graph.layerless_nodes.len()).collect(),
+            ..Layer::default()
+        });
+        graph.layerless_nodes[0].nested_graph = Some(Box::new(deep_compound_chain(64)));
+
+        let context = ReorderNodePortsWorkContext::new(&graph).unwrap();
+        for node_index in 0..graph.layerless_nodes.len() {
+            assert_eq!(
+                context.node_work(&graph, node_index),
+                unprepared_reorder_node_ports_work_units(&graph, node_index)
+            );
+        }
+    }
+
+    #[test]
+    fn single_graph_configuration_preflights_the_complete_nested_hierarchy() {
+        let graph = deep_compound_chain(32);
+        let required = hierarchy_work_units(&graph).unwrap();
+
+        for runner in 0..3 {
+            let mut below_graph = graph.clone();
+            let before = below_graph.clone();
+            let mut below = BudgetWorkControl::new(required - 1);
+            let result = match runner {
+                0 => execute_processors_until_with_work_control(
+                    &mut below_graph,
+                    LayeredPhase::P1CycleBreaking,
+                    &mut below,
+                )
+                .map(|_| ()),
+                1 => execute_processors_until_processor_with_work_control(
+                    &mut below_graph,
+                    ProcessorKind::PortListSorter,
+                    &mut below,
+                )
+                .map(|_| ()),
+                _ => execute_ported_processors_with_work_control(&mut below_graph, &mut below)
+                    .map(|_| ()),
+            };
+            assert_eq!(result, Err(PipelineError::Work(WorkError::Interrupted)));
+            assert_eq!(below_graph, before);
+            assert_eq!(below.charged, 0);
+            assert_eq!(below.remaining, required - 1);
+        }
+
+        let mut exact_graph = graph.clone();
+        let mut exact = BudgetWorkControl::new(required);
+        let exact_processors =
+            prepare_single_graph_processors(&mut exact_graph, &mut exact).unwrap();
+        assert_eq!(exact.charged, required);
+        assert_eq!(exact.remaining, 0);
+
+        let mut above_graph = graph;
+        let mut above = BudgetWorkControl::new(required + 1);
+        let above_processors =
+            prepare_single_graph_processors(&mut above_graph, &mut above).unwrap();
+        assert_eq!(above_graph, exact_graph);
+        assert_eq!(above_processors, exact_processors);
+        assert_eq!(above.charged, required);
+        assert_eq!(above.remaining, 1);
+    }
+
+    #[test]
+    fn greedy_cycle_breaker_work_curve_covers_quadratic_candidate_scans() {
+        let mut previous_quadratic = None;
+        for node_count in [8usize, 16, 32, 64] {
+            let graph = bidirected_cycle_graph(node_count);
+            let (ports, adjacency) = graph_port_and_adjacency_work_units(&graph).unwrap();
+            let linear = checked_mul(
+                checked_sum([node_count, ports, adjacency, graph.edges.len()]).unwrap(),
+                4,
+            )
+            .unwrap();
+            let work = greedy_cycle_breaker_work_units(&graph).unwrap();
+            let quadratic = work - linear - edge_reversal_work_units(&graph).unwrap();
+
+            assert_eq!(quadratic, 3 * node_count * node_count);
+            for kind in [
+                ProcessorKind::GreedyCycleBreaker,
+                ProcessorKind::GreedyModelOrderCycleBreaker,
+            ] {
+                assert_eq!(
+                    processor_work_units(&graph, kind),
+                    greedy_cycle_breaker_work_units(&graph)
+                );
+            }
+            if let Some(previous) = previous_quadratic {
+                assert_eq!(quadratic, previous * 4);
+            }
+            previous_quadratic = Some(quadratic);
+        }
+    }
+
+    #[test]
+    fn greedy_cycle_breaker_work_curve_tracks_shared_port_removal_amplification() {
+        let mut previous = None;
+        for parallel_edge_count in [8usize, 16, 32, 64] {
+            let graph = shared_port_cycle_graph(parallel_edge_count);
+            let adjacency_work = edge_reversal_adjacency_work_units(&graph).unwrap();
+
+            assert_eq!(
+                adjacency_work,
+                16 * parallel_edge_count * parallel_edge_count
+            );
+            if let Some(previous) = previous {
+                assert_eq!(adjacency_work, previous * 4);
+            }
+            previous = Some(adjacency_work);
+        }
+    }
+
+    #[test]
+    fn long_edge_splitter_work_curve_tracks_total_rank_span() {
+        let edge_count = 4usize;
+        for target_layer in [2usize, 4, 8, 16, 32] {
+            let graph = disjoint_long_edge_graph(edge_count, target_layer);
+            let base = local_graph_work_units(&graph).unwrap();
+            let work = long_edge_splitter_work_units(&graph).unwrap();
+            let expected_splits = edge_count * (target_layer - 1);
+
+            assert_eq!(work - base, expected_splits * 10);
+            assert_eq!(
+                processor_work_units(&graph, ProcessorKind::LongEdgeSplitter),
+                Ok(work)
+            );
+        }
+    }
+
+    #[test]
+    fn long_edge_splitter_work_curve_is_linear_in_edge_count_at_fixed_span() {
+        let target_layer = 9usize;
+        let mut previous = None;
+        for edge_count in [4usize, 8, 16, 32] {
+            let graph = disjoint_long_edge_graph(edge_count, target_layer);
+            let base = local_graph_work_units(&graph).unwrap();
+            let incremental = long_edge_splitter_work_units(&graph).unwrap() - base;
+
+            assert_eq!(incremental, edge_count * (target_layer - 1) * 10);
+            if let Some(previous) = previous {
+                assert_eq!(incremental, previous * 2);
+            }
+            previous = Some(incremental);
+        }
+    }
+
+    #[test]
+    fn long_edge_splitter_work_curve_tracks_shared_target_removal_amplification() {
+        let target_layer = 9usize;
+        for edge_count in [4usize, 8, 16, 32] {
+            let graph = shared_target_long_edge_graph_with_span(edge_count, target_layer);
+            let base = local_graph_work_units(&graph).unwrap();
+            let work = long_edge_splitter_work_units(&graph).unwrap();
+            let split_count = edge_count * (target_layer - 1);
+            let target_rewrite_work = 2 * split_count * edge_count;
+
+            assert_eq!(work - base, split_count * 8 + target_rewrite_work);
+        }
+    }
+
+    #[test]
+    fn long_edge_splitter_work_ignores_same_layer_and_unlayered_targets() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::default(),
+            nodes: vec![node("A"), node("B"), node("C"), node("layer-anchor")],
+            edges: vec![edge("same", "A", "B"), edge("unlayered", "A", "C")],
+        })
+        .unwrap();
+        graph.clear_layers();
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 0);
+        graph.set_node_layer(3, 2);
+
+        assert_eq!(
+            long_edge_splitter_work_units(&graph),
+            local_graph_work_units(&graph)
+        );
+    }
+
+    #[test]
+    fn long_edge_splitter_work_accounts_for_repeated_head_label_moves() {
+        let mut head = ElkInputLabel::center("head", 20.0, 10.0);
+        head.placement = crate::graph::EdgeLabelPlacement::Head;
+        let mut labelled = edge("long", "A", "D");
+        labelled.label = Some(head);
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::default(),
+            nodes: vec![node("A"), node("B"), node("C"), node("D")],
+            edges: vec![labelled],
+        })
+        .unwrap();
+        graph.clear_layers();
+        for node_index in 0..4 {
+            graph.set_node_layer(node_index, node_index);
+        }
+
+        let base = local_graph_work_units(&graph).unwrap();
+        // Two splits: 16 structural units, four target-list rewrite units, and two complete
+        // clone/scan/move passes over the downstream head label.
+        assert_eq!(long_edge_splitter_work_units(&graph).unwrap() - base, 28);
+    }
+
+    #[test]
+    fn long_edge_splitter_work_accounts_for_quadratic_head_label_removals() {
+        let mut head = ElkInputLabel::center("head-0", 20.0, 10.0);
+        head.placement = crate::graph::EdgeLabelPlacement::Head;
+        let mut labelled = edge("long", "A", "E");
+        labelled.label = Some(head);
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::default(),
+            nodes: vec![node("A"), node("B"), node("C"), node("D"), node("E")],
+            edges: vec![labelled],
+        })
+        .unwrap();
+        for index in 1..4 {
+            let mut label = crate::graph::LLabel::new(format!("head-{index}"), 20.0, 10.0);
+            label.placement = crate::graph::EdgeLabelPlacement::Head;
+            graph.edges[0].labels.push(label);
+        }
+        graph.clear_layers();
+        for node_index in 0..5 {
+            graph.set_node_layer(node_index, node_index);
+        }
+
+        assert_eq!(split_edge_payload_work_units(&graph.edges[0], 3), Ok(66));
+        let base = local_graph_work_units(&graph).unwrap();
+        // Three splits add 24 structural units and six target-list rewrite units. Four head labels
+        // add 22 units on the first split and on each later split: clone + scan + moves + 3+2+1
+        // shifted tail elements from repeated `Vec::remove(0)`.
+        assert_eq!(long_edge_splitter_work_units(&graph).unwrap() - base, 96);
+    }
+
+    #[test]
+    fn compound_arena_plan_work_curve_is_linear_in_depth() {
+        for graph_count in [8usize, 16, 32, 64, 128] {
+            let graph = deep_compound_chain(graph_count);
+            let node_count = graph_count - 1;
+            let nested_graph_count = graph_count - 1;
+            assert_eq!(
+                hierarchy_arena_plan_work_units(&graph).unwrap(),
+                graph_count * 4 + node_count + nested_graph_count * 2
+            );
+        }
+    }
+
+    #[test]
+    fn compound_arena_stores_one_parent_and_child_link_per_nested_graph() {
+        for graph_count in [8usize, 16, 32, 64, 128] {
+            let graph = deep_compound_chain(graph_count);
+            let arena = CompoundGraphArena::new(&graph);
+            let parent_links = arena
+                .entries
+                .iter()
+                .filter(|entry| entry.parent.is_some())
+                .count();
+            let child_links = arena
+                .entries
+                .iter()
+                .map(|entry| entry.children.len())
+                .sum::<usize>();
+
+            assert_eq!(arena.entries.len(), graph_count);
+            assert_eq!(arena.algorithms.len(), graph_count);
+            assert_eq!(arena.postorder.len(), graph_count);
+            assert_eq!(parent_links, graph_count - 1);
+            assert_eq!(child_links, graph_count - 1);
+            assert_eq!(arena.postorder, (0..graph_count).rev().collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn compound_arena_preserves_node_ordered_depth_first_postorder() {
+        let options = LayeredOptions::default();
+        let grandchild = LGraph::new("grandchild", options.clone());
+        let mut first_child = LGraph::new("first-child", options.clone());
+        let mut grandchild_holder = LNode::new("grandchild-holder", 1.0, 1.0, None);
+        grandchild_holder.nested_graph = Some(Box::new(grandchild));
+        first_child.layerless_nodes.push(grandchild_holder);
+        let second_child = LGraph::new("second-child", options.clone());
+        let mut root = LGraph::new("root", options);
+        let mut first_holder = LNode::new("first-holder", 1.0, 1.0, None);
+        first_holder.nested_graph = Some(Box::new(first_child));
+        let mut second_holder = LNode::new("second-holder", 1.0, 1.0, None);
+        second_holder.nested_graph = Some(Box::new(second_child));
+        root.layerless_nodes.extend([first_holder, second_holder]);
+
+        let arena = CompoundGraphArena::new(&root);
+        let graph_ids = arena
+            .postorder
+            .iter()
+            .map(|graph_index| arena.algorithms[*graph_index].execution.graph_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            graph_ids,
+            ["grandchild", "first-child", "second-child", "root"]
+        );
+    }
+
+    #[test]
+    fn compound_round_reattaches_the_hierarchy_when_a_child_processor_fails() {
+        let options = LayeredOptions::default();
+        let child = LGraph::new("child", options.clone());
+        let mut holder = LNode::new("holder", 1.0, 1.0, None);
+        holder.nested_graph = Some(Box::new(child));
+        let mut root = LGraph::new("root", options);
+        root.layerless_nodes.push(holder);
+        let mut arena = CompoundGraphArena::new(&root);
+        let child_index = arena.entries[0].children[0].graph;
+        arena.algorithms[child_index].processors = vec![ProcessorSlot {
+            phase: None,
+            kind: ProcessorKind::CommentPreprocessor,
+        }];
+        let mut work_control = NoopWorkControl;
+
+        assert_eq!(
+            execute_compound_graph_round(
+                &mut root,
+                &arena.entries,
+                &mut arena.algorithms,
+                None,
+                &mut work_control,
+            ),
+            Err(PipelineError::UnsupportedProcessor {
+                kind: ProcessorKind::CommentPreprocessor,
+            })
+        );
+        assert_eq!(
+            root.layerless_nodes[0]
+                .nested_graph
+                .as_deref()
+                .map(|graph| graph.id.as_str()),
+            Some("child")
+        );
+    }
+
+    #[test]
+    fn compound_round_reattaches_the_complete_hierarchy_when_work_control_panics() {
+        struct PanicOnCharge;
+
+        impl WorkControl for PanicOnCharge {
+            fn check(&mut self, _units: usize) -> Result<(), WorkError> {
+                Ok(())
+            }
+
+            fn charge(&mut self, _units: usize) -> Result<(), WorkError> {
+                panic!("injected work-control panic")
+            }
+        }
+
+        let mut root = deep_compound_chain(3);
+        let mut arena = CompoundGraphArena::new(&root);
+        for algorithm in &mut arena.algorithms {
+            algorithm.processors.clear();
+        }
+        let child_index = arena.entries[0].children[0].graph;
+        let grandchild_index = arena.entries[child_index].children[0].graph;
+        arena.algorithms[grandchild_index].processors = vec![ProcessorSlot {
+            phase: None,
+            kind: ProcessorKind::DirectionPreprocessor,
+        }];
+        let mut work_control = PanicOnCharge;
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = execute_compound_graph_round(
+                &mut root,
+                &arena.entries,
+                &mut arena.algorithms,
+                None,
+                &mut work_control,
+            );
+        }));
+
+        assert!(result.is_err());
+        let child = root.layerless_nodes[0]
+            .nested_graph
+            .as_deref()
+            .expect("the first detached graph must be restored during unwind");
+        assert_eq!(child.id, "graph-1");
+        let grandchild = child.layerless_nodes[0]
+            .nested_graph
+            .as_deref()
+            .expect("the deepest detached graph must be restored during unwind");
+        assert_eq!(grandchild.id, "graph-2");
+    }
+
+    #[test]
+    fn compound_arena_plan_work_curve_accounts_for_flat_node_scans() {
+        for node_count in [8usize, 16, 32, 64, 128] {
+            let mut graph = LGraph::new("root", LayeredOptions::default());
+            for index in 0..node_count {
+                graph
+                    .layerless_nodes
+                    .push(LNode::new(format!("node-{index}"), 1.0, 1.0, None));
+            }
+
+            assert_eq!(
+                hierarchy_arena_plan_work_units(&graph).unwrap(),
+                node_count + 4
+            );
+        }
+    }
+
+    #[test]
+    fn compound_arena_plan_rejects_before_materializing_the_index() {
+        let mut graph = deep_compound_chain(32);
+        let required = hierarchy_arena_plan_work_units(&graph).unwrap();
+
+        let mut below = BudgetWorkControl::new(required - 1);
+        assert!(matches!(
+            build_compound_graph_arena_with_work_control(&mut graph, &mut below),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        ));
+        assert_eq!(below.charged, 0);
+        assert_eq!(below.remaining, required - 1);
+
+        let mut exact = BudgetWorkControl::new(required);
+        let exact_arena =
+            build_compound_graph_arena_with_work_control(&mut graph, &mut exact).unwrap();
+        assert_eq!(exact_arena.entries.len(), 32);
+        assert_eq!(exact_arena.postorder, (0..32).rev().collect::<Vec<_>>());
+        assert_eq!(exact.charged, required);
+        assert_eq!(exact.remaining, 0);
+
+        let mut above = BudgetWorkControl::new(required + 1);
+        let above_arena =
+            build_compound_graph_arena_with_work_control(&mut graph, &mut above).unwrap();
+        assert_eq!(above_arena.entries, exact_arena.entries);
+        assert_eq!(above_arena.postorder, exact_arena.postorder);
+        assert_eq!(above.charged, required);
+        assert_eq!(above.remaining, 1);
+    }
+
+    #[test]
+    fn diagnostic_crossing_sweep_and_trace_share_one_budget_tranche() {
+        const HIERARCHY_WORK: usize = 18;
+        const EDGE_COUNT: usize = 4;
+        const THOROUGHNESS: usize = 64;
+        const DIAGNOSTIC_WORK: usize = HIERARCHY_WORK * (THOROUGHNESS * EDGE_COUNT + 1);
+
+        let target = ProcessorKind::PortListSorter;
+        let graph = high_thoroughness_diagnostic_graph();
+
+        let mut prepared = graph.clone();
+        let mut prefix = BudgetWorkControl::new(usize::MAX);
+        execute_ported_compound_processors_until_processor_with_work_control(
+            &mut prepared,
+            target,
+            &mut prefix,
+        )
+        .unwrap();
+        assert_eq!(hierarchy_work_units(&prepared), Ok(HIERARCHY_WORK));
+        assert_eq!(
+            hierarchy_processor_work_units(
+                &prepared,
+                ProcessorKind::LayerSweepCrossingMinimizerBarycenter,
+            ),
+            Ok(HIERARCHY_WORK * THOROUGHNESS * EDGE_COUNT)
+        );
+        let required = checked_add(prefix.charged, DIAGNOSTIC_WORK).unwrap();
+
+        let mut below_graph = graph.clone();
+        let mut below = BudgetWorkControl::new(required - 1);
+        assert_eq!(
+            inspect_compound_crossings_after_processor_with_work_control(
+                &mut below_graph,
+                target,
+                &mut below,
+            ),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(below_graph, prepared);
+        assert_eq!(below.charged, prefix.charged);
+        assert_eq!(below.remaining, DIAGNOSTIC_WORK - 1);
+
+        let mut exact_graph = graph.clone();
+        let mut exact = BudgetWorkControl::new(required);
+        let (_, exact_trace) = inspect_compound_crossings_after_processor_with_work_control(
+            &mut exact_graph,
+            target,
+            &mut exact,
+        )
+        .unwrap();
+        assert_eq!(
+            exact_trace.as_ref().map(|trace| trace.runs.len()),
+            Some(THOROUGHNESS)
+        );
+        assert_eq!(exact.charged, required);
+        assert_eq!(exact.remaining, 0);
+
+        let mut above_graph = graph;
+        let mut above = BudgetWorkControl::new(required + 1);
+        let above_result = inspect_compound_crossings_after_processor_with_work_control(
+            &mut above_graph,
+            target,
+            &mut above,
+        )
+        .unwrap();
+        assert_eq!(above_graph, exact_graph);
+        assert_eq!(above_result.1, exact_trace);
+        assert_eq!(above.charged, required);
+        assert_eq!(above.remaining, 1);
+    }
+
+    #[test]
+    fn processor_work_rejects_configured_iteration_overflow_before_execution() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions {
+                thoroughness: usize::MAX,
+                ..LayeredOptions::default()
+            },
+        );
+        graph
+            .layerless_nodes
+            .push(LNode::new("A", 80.0, 40.0, None));
+
+        assert_eq!(
+            processor_work_units(&graph, ProcessorKind::NetworkSimplexLayerer),
+            Err(WorkError::ArithmeticOverflow)
+        );
     }
 
     #[test]
@@ -1879,6 +3997,7 @@ mod tests {
                     label: Some(ElkInputLabel::center("inside", 24.0, 12.0)),
                     minlen: 1,
                     inside_self_loops_yo: false,
+                    model_order: None,
                     priority_direction: 0,
                     priority_shortness: 0,
                     priority_straightness: 0,
@@ -1890,6 +4009,7 @@ mod tests {
                     label: None,
                     minlen: 1,
                     inside_self_loops_yo: false,
+                    model_order: None,
                     priority_direction: 0,
                     priority_shortness: 0,
                     priority_straightness: 0,
@@ -1938,6 +4058,7 @@ mod tests {
                 label: None,
                 minlen: 1,
                 inside_self_loops_yo: true,
+                model_order: None,
                 priority_direction: 0,
                 priority_shortness: 0,
                 priority_straightness: 0,

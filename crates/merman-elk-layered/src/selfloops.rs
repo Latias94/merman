@@ -2490,6 +2490,7 @@ mod tests {
             label: None,
             minlen: 1,
             inside_self_loops_yo: false,
+            model_order: None,
             priority_direction: 0,
             priority_shortness: 0,
             priority_straightness: 0,
