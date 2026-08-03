@@ -189,18 +189,7 @@ fn state_edge_clip_self_loop_points_to_node(
     origin_x: f64,
     origin_y: f64,
 ) -> Option<Vec<crate::model::LayoutPoint>> {
-    if le.from != le.to || le.from_cluster.is_some() || le.to_cluster.is_some() || input.len() < 3 {
-        return None;
-    }
-    if ctx.layout_clusters_by_id.contains_key(le.from.as_str()) {
-        return None;
-    }
-    if ctx
-        .nodes_by_id
-        .get(le.from.as_str())
-        .copied()
-        .is_some_and(|node| node.is_group && node.shape != "noteGroup")
-    {
+    if le.from != le.to || input.len() < 3 {
         return None;
     }
 
@@ -391,16 +380,44 @@ fn state_line_with_end_marker_offset_points(
     out
 }
 
-fn state_edge_prepare_points(
+struct StatePreparedEdgeGeometry {
+    data_points: Vec<crate::model::LayoutPoint>,
+    label_path_points: Vec<crate::model::LayoutPoint>,
+    rendered_d: String,
+    points_were_explicitly_updated: bool,
+}
+
+fn state_edge_finish_geometry(
+    data_points: Vec<crate::model::LayoutPoint>,
+    label_path_points: Vec<crate::model::LayoutPoint>,
+    arrow_type_end: Option<&str>,
+    points_were_explicitly_updated: bool,
+) -> StatePreparedEdgeGeometry {
+    // Mermaid keeps `paths.updatedPath` before `fixCorners`, marker offsets, and curve encoding.
+    // Only the rendered SVG path consumes these projected curve points.
+    let mut points_for_curve = label_path_points
+        .iter()
+        .filter(|point| !point.y.is_nan())
+        .cloned()
+        .collect::<Vec<_>>();
+    points_for_curve = state_edge_fix_corners(&points_for_curve);
+    points_for_curve = state_line_with_end_marker_offset_points(&points_for_curve, arrow_type_end);
+
+    StatePreparedEdgeGeometry {
+        data_points,
+        label_path_points,
+        rendered_d: curve_basis_path_d(&points_for_curve),
+        points_were_explicitly_updated,
+    }
+}
+
+fn state_edge_prepare_geometry(
     ctx: &StateRenderCtx<'_>,
     le: &crate::model::LayoutEdge,
     arrow_type_end: Option<&str>,
     origin_x: f64,
     origin_y: f64,
-) -> (
-    Vec<crate::model::LayoutPoint>,
-    Vec<crate::model::LayoutPoint>,
-) {
+) -> StatePreparedEdgeGeometry {
     let mut raw_local_points: Vec<crate::model::LayoutPoint> = Vec::new();
     for p in &le.points {
         raw_local_points.push(crate::model::LayoutPoint {
@@ -408,48 +425,39 @@ fn state_edge_prepare_points(
             y: p.y - origin_y,
         });
     }
-    let local_points =
+    // `data-points` is captured immediately after endpoint clipping. A later cluster cut changes
+    // the label path and rendered `d`, but deliberately does not rewrite this attribute.
+    let data_points =
         state_edge_clip_self_loop_points_to_node(ctx, le, &raw_local_points, origin_x, origin_y)
-            .unwrap_or(raw_local_points);
-    let mut points_for_curve = local_points.clone();
+            .unwrap_or_else(|| raw_local_points.clone());
+    let mut label_path_points = data_points.clone();
+    let mut points_were_explicitly_updated = false;
 
-    // Match Mermaid `dagre-wrapper/edges.js insertEdge`: cut the path at cluster boundaries when the
-    // edge connects to a cluster.
+    // Match Mermaid `rendering-elements/edges.js insertEdge`: `toCluster` restarts from the
+    // original edge points, while `fromCluster` continues from the current cut path.
     if let Some(tc) = le.to_cluster.as_deref()
         && let Some(boundary) = state_edge_boundary_for_cluster(ctx, tc, origin_x, origin_y)
     {
-        points_for_curve = state_edge_cut_path_at_intersect(&points_for_curve, &boundary);
+        label_path_points = state_edge_cut_path_at_intersect(&raw_local_points, &boundary);
+        points_were_explicitly_updated = true;
     }
     if let Some(fc) = le.from_cluster.as_deref()
         && let Some(boundary) = state_edge_boundary_for_cluster(ctx, fc, origin_x, origin_y)
     {
-        let mut rev = points_for_curve;
+        let mut rev = label_path_points;
         rev.reverse();
         rev = state_edge_cut_path_at_intersect(&rev, &boundary);
         rev.reverse();
-        points_for_curve = rev;
+        label_path_points = rev;
+        points_were_explicitly_updated = true;
     }
 
-    points_for_curve = state_edge_fix_corners(&points_for_curve);
-    points_for_curve = state_line_with_end_marker_offset_points(&points_for_curve, arrow_type_end);
-
-    (local_points, points_for_curve)
-}
-
-fn state_edge_encode_path(
-    ctx: &StateRenderCtx<'_>,
-    le: &crate::model::LayoutEdge,
-    arrow_type_end: Option<&str>,
-    origin_x: f64,
-    origin_y: f64,
-) -> (String, String) {
-    let (local_points, points_for_curve) =
-        state_edge_prepare_points(ctx, le, arrow_type_end, origin_x, origin_y);
-
-    let data_points = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_vec(&local_points).unwrap_or_default());
-    let d = curve_basis_path_d(&points_for_curve);
-    (d, data_points)
+    state_edge_finish_geometry(
+        data_points,
+        label_path_points,
+        arrow_type_end,
+        points_were_explicitly_updated,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -468,11 +476,13 @@ fn write_state_edge_path(
         return;
     }
 
-    let (d, data_points) = state_edge_encode_path(ctx, le, arrow_type_end, origin_x, origin_y);
+    let geometry = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
+    let data_points = base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_vec(&geometry.data_points).unwrap_or_default());
     let _ = write!(
         out,
         r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
-        d,
+        geometry.rendered_d,
         escape_xml_display(&state_scoped_dom_id(ctx, edge_id)),
         escape_xml_display(classes),
         escape_xml_display(edge_id),
@@ -610,121 +620,8 @@ pub(super) fn render_state_edge_label(
         }
     }
 
-    fn mermaid_round_number(num: f64, precision: i32) -> f64 {
-        let factor = 10_f64.powi(precision);
-        (num * factor).round() / factor
-    }
-
-    fn mermaid_distance(
-        point: &crate::model::LayoutPoint,
-        prev: Option<&crate::model::LayoutPoint>,
-    ) -> f64 {
-        let Some(prev) = prev else {
-            return 0.0;
-        };
-        ((point.x - prev.x).powi(2) + (point.y - prev.y).powi(2)).sqrt()
-    }
-
-    fn mermaid_calculate_point(
-        points: &[crate::model::LayoutPoint],
-        distance_to_traverse: f64,
-    ) -> Option<crate::model::LayoutPoint> {
-        let mut prev: Option<&crate::model::LayoutPoint> = None;
-        let mut remaining = distance_to_traverse;
-        for point in points {
-            if let Some(prev_point) = prev {
-                let vector_distance = mermaid_distance(point, Some(prev_point));
-                if vector_distance == 0.0 {
-                    return Some(prev_point.clone());
-                }
-                if vector_distance < remaining {
-                    remaining -= vector_distance;
-                } else {
-                    let distance_ratio = remaining / vector_distance;
-                    if distance_ratio <= 0.0 {
-                        return Some(prev_point.clone());
-                    }
-                    if distance_ratio >= 1.0 {
-                        return Some(point.clone());
-                    }
-                    if distance_ratio > 0.0 && distance_ratio < 1.0 {
-                        return Some(crate::model::LayoutPoint {
-                            x: mermaid_round_number(
-                                (1.0 - distance_ratio) * prev_point.x + distance_ratio * point.x,
-                                5,
-                            ),
-                            y: mermaid_round_number(
-                                (1.0 - distance_ratio) * prev_point.y + distance_ratio * point.y,
-                                5,
-                            ),
-                        });
-                    }
-                }
-            }
-            prev = Some(point);
-        }
-        None
-    }
-
-    fn mermaid_calc_label_position(
-        points: &[crate::model::LayoutPoint],
-    ) -> Option<crate::model::LayoutPoint> {
-        if points.is_empty() {
-            return None;
-        }
-        if points.len() == 1 {
-            return Some(points[0].clone());
-        }
-
-        let mut total_distance: f64 = 0.0;
-        let mut prev: Option<&crate::model::LayoutPoint> = None;
-        for point in points {
-            total_distance += mermaid_distance(point, prev);
-            prev = Some(point);
-        }
-
-        let remaining_distance = total_distance / 2.0;
-        mermaid_calculate_point(points, remaining_distance)
-    }
-
     let empty_edge_label_style = edge_label_div_style(0.0);
     let label_text = edge.label.trim();
-    if edge.start == edge.end {
-        let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
-            if label_text.is_empty() {
-                write_empty_edge_label(
-                    out,
-                    &edge.id,
-                    ctx.html_labels,
-                    empty_edge_label_style.as_str(),
-                );
-            }
-            return;
-        };
-        if label_text.is_empty() {
-            write_empty_edge_label(
-                out,
-                &edge.id,
-                ctx.html_labels,
-                empty_edge_label_style.as_str(),
-            );
-        } else if let Some(lbl) = le.label.as_ref() {
-            write_visible_edge_label(
-                out,
-                &edge.id,
-                label_text,
-                crate::model::LayoutPoint {
-                    x: lbl.x - origin_x,
-                    y: lbl.y - origin_y,
-                },
-                lbl.width,
-                lbl.height,
-                ctx.html_labels,
-            );
-        }
-        return;
-    }
-
     if label_text.is_empty() {
         write_empty_edge_label(
             out,
@@ -742,77 +639,22 @@ pub(super) fn render_state_edge_label(
         return;
     };
 
-    let mut cx = lbl.x - origin_x;
-    let mut cy = lbl.y - origin_y;
-
-    // Mermaid `rendering-elements/edges.js insertEdge` sets `paths.updatedPath` when:
-    // - cluster cutting happened (`toCluster` / `fromCluster`)
-    // - or the mid point would not be present in the rendered `d` string (curveBasis does not
-    //   pass through all control points; labels anchored on those points drift).
-    //
-    // `positionEdgeLabel` then recomputes the label center from `utils.calcLabelPosition(...)`
-    // *only when* `updatedPath` exists. Otherwise it keeps Dagre's `edge.x/y` unchanged.
-    let (_local_points, points_for_curve) = state_edge_prepare_points(
+    let geometry = state_edge_prepare_geometry(
         ctx,
         le,
         Some(edge.arrow_type_end.as_str()),
         origin_x,
         origin_y,
     );
-
-    fn mermaid_is_label_coordinate_in_path(
-        point: &crate::model::LayoutPoint,
-        d_attr: &str,
-    ) -> bool {
-        let rounded_x = point.x.round() as i64;
-        let rounded_y = point.y.round() as i64;
-
-        let bytes = d_attr.as_bytes();
-        let mut i = 0usize;
-        while i < bytes.len() {
-            let b = bytes[i];
-            let is_start = b.is_ascii_digit() || b == b'-' || b == b'.';
-            if !is_start {
-                i += 1;
-                continue;
-            }
-
-            let start = i;
-            i += 1;
-            while i < bytes.len() {
-                let b = bytes[i];
-                if b.is_ascii_digit() || b == b'.' {
-                    i += 1;
-                    continue;
-                }
-                break;
-            }
-
-            let token = &d_attr[start..i];
-            if let Ok(v) = token.parse::<f64>() {
-                let r = v.round() as i64;
-                if r == rounded_x || r == rounded_y {
-                    return true;
-                }
-            }
-        }
-
-        false
-    }
-
-    let mut points_has_changed = le.to_cluster.is_some() || le.from_cluster.is_some();
-    if !points_has_changed && !points_for_curve.is_empty() {
-        let d_attr = curve_basis_path_d(&points_for_curve);
-        let mid = &points_for_curve[points_for_curve.len() / 2];
-        if !mermaid_is_label_coordinate_in_path(mid, &d_attr) {
-            points_has_changed = true;
-        }
-    }
-
-    if points_has_changed && let Some(pos) = mermaid_calc_label_position(&points_for_curve) {
-        cx = pos.x;
-        cy = pos.y;
-    }
+    let label_position = super::super::edge_label_geometry::position_edge_label(
+        crate::model::LayoutPoint {
+            x: lbl.x - origin_x,
+            y: lbl.y - origin_y,
+        },
+        &geometry.label_path_points,
+        &geometry.rendered_d,
+        geometry.points_were_explicitly_updated,
+    );
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
 
@@ -820,7 +662,7 @@ pub(super) fn render_state_edge_label(
         out,
         &edge.id,
         label_text,
-        crate::model::LayoutPoint { x: cx, y: cy },
+        label_position,
         w,
         h,
         ctx.html_labels,
@@ -845,5 +687,37 @@ mod tests {
         assert!((output[0].y - 0.0).abs() <= 1e-9);
         assert!((output[1].x - 4.5).abs() <= 1e-9);
         assert!((output[1].y - 0.0).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn state_updated_path_labels_use_points_before_curve_projection() {
+        let label_path_points = vec![
+            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+            crate::model::LayoutPoint { x: 0.0, y: 20.0 },
+            crate::model::LayoutPoint { x: 20.0, y: 20.0 },
+        ];
+        let geometry = state_edge_finish_geometry(
+            label_path_points.clone(),
+            label_path_points.clone(),
+            Some("arrow_barb_neo"),
+            true,
+        );
+
+        assert_eq!(geometry.label_path_points.len(), label_path_points.len());
+        for (actual, expected) in geometry.label_path_points.iter().zip(&label_path_points) {
+            assert_eq!((actual.x, actual.y), (expected.x, expected.y));
+        }
+        assert_ne!(
+            geometry.rendered_d,
+            curve_basis_path_d(&geometry.label_path_points),
+            "fixCorners and marker offsets should affect only the rendered curve"
+        );
+        let position = crate::svg::parity::edge_label_geometry::position_edge_label(
+            crate::model::LayoutPoint { x: 99.0, y: 99.0 },
+            &geometry.label_path_points,
+            &geometry.rendered_d,
+            geometry.points_were_explicitly_updated,
+        );
+        assert_eq!((position.x, position.y), (0.0, 20.0));
     }
 }

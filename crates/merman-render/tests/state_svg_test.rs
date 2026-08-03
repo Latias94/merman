@@ -6,6 +6,48 @@ use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
+fn state_edge_data_points(svg: &str, edge_id: &str) -> Vec<merman_render::model::LayoutPoint> {
+    use base64::Engine as _;
+
+    let document = roxmltree::Document::parse(svg).expect("valid State SVG XML");
+    let encoded = document
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(edge_id))
+        .and_then(|node| node.attribute("data-points"))
+        .unwrap_or_else(|| panic!("missing data-points for State edge {edge_id}"));
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .expect("base64 State edge points");
+    serde_json::from_slice(&decoded).expect("JSON State edge points")
+}
+
+fn state_edge_label_position(svg: &str, edge_id: &str) -> (f64, f64) {
+    let document = roxmltree::Document::parse(svg).expect("valid State SVG XML");
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some(edge_id)
+                && node
+                    .attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|class| class == "label"))
+        })
+        .unwrap_or_else(|| panic!("missing State edge label {edge_id}"));
+    let transform = label
+        .parent()
+        .and_then(|node| node.attribute("transform"))
+        .unwrap_or_else(|| panic!("missing outer transform for State edge label {edge_id}"));
+    let components = transform
+        .strip_prefix("translate(")
+        .and_then(|value| value.strip_suffix(')'))
+        .and_then(|value| value.split_once(','))
+        .unwrap_or_else(|| panic!("invalid State edge label transform: {transform}"));
+    (
+        components.0.trim().parse().expect("numeric label x"),
+        components.1.trim().parse().expect("numeric label y"),
+    )
+}
+
 fn render_state_svg_from_text(text: &str) -> String {
     render_state_svg_from_text_with_engine(Engine::new(), text)
 }
@@ -388,6 +430,55 @@ A --> A: again
         svg.matches("<foreignObject").count(),
         0,
         "root htmlLabels=false should override deprecated flowchart.htmlLabels=true for State self-loop label DOM: {svg}"
+    );
+}
+
+#[test]
+fn state_svg_leaf_self_loop_keeps_dagre_label_anchor_without_an_explicit_path_update() {
+    let svg = render_state_svg_from_text(
+        r#"stateDiagram-v2
+A --> A: again
+"#,
+    );
+
+    let points = state_edge_data_points(&svg, "edge0");
+    let (_, label_y) = state_edge_label_position(&svg, "edge0");
+    let path_max_y = points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    assert!(
+        label_y > path_max_y,
+        "a leaf self-loop has no cluster cut, so Mermaid keeps its outside Dagre label anchor: {svg}"
+    );
+}
+
+#[test]
+fn state_svg_composite_self_loop_uses_the_explicitly_updated_cluster_path_for_its_label() {
+    let svg = render_state_svg_from_text(
+        r#"stateDiagram-v2
+state Active {
+  Idle
+}
+Inactive --> Idle: ACT
+Active --> Active: LOG
+"#,
+    );
+
+    let points = state_edge_data_points(&svg, "edge1");
+    assert_eq!(points.len(), 4, "expected one compact logical self-loop");
+    assert!(
+        points[0].x > points[1].x && points[3].x < points[2].x,
+        "data-points must retain the endpoint-clipped self-loop geometry: {points:?}"
+    );
+
+    let (label_x, label_y) = state_edge_label_position(&svg, "edge1");
+    let expected_x = (points[1].x + points[2].x) / 2.0;
+    let expected_y = (points[1].y + points[2].y) / 2.0;
+    assert!(
+        (label_x - expected_x).abs() <= 1e-5 && (label_y - expected_y).abs() <= 1e-5,
+        "a composite self-loop cluster cut must move the label to the updated path midpoint: label=({label_x}, {label_y}), expected=({expected_x}, {expected_y})"
     );
 }
 
