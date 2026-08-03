@@ -34,12 +34,17 @@ struct AnalysisGenerationStorage {
     source: SourceDescriptor,
 }
 
+/// The result of rich analysis capture before diagnostic projection.
+///
+/// A rejected source has no generation, but retains a canonical diagnostics payload and typed
+/// resource-limit reason through [`AnalysisRejection`].
 #[derive(Debug)]
 pub enum AnalysisCaptureOutcome {
     Ready(AnalysisGeneration),
     Rejected(AnalysisRejection),
 }
 
+/// A source rejected before an [`AnalysisGeneration`] could be created.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnalysisRejection {
     payload: Box<AnalysisPayload>,
@@ -61,6 +66,7 @@ pub enum AnalysisResourceLimit {
 }
 
 impl AnalysisResourceLimit {
+    /// Returns the stable resource-limit identifier.
     pub const fn id(self) -> &'static str {
         match self {
             Self::SourceBytes { .. } => {
@@ -70,6 +76,7 @@ impl AnalysisResourceLimit {
         }
     }
 
+    /// Returns the observed resource value.
     pub const fn observed(self) -> usize {
         match self {
             Self::SourceBytes { source_len, .. } => source_len,
@@ -80,6 +87,7 @@ impl AnalysisResourceLimit {
         }
     }
 
+    /// Returns the configured maximum resource value.
     pub const fn maximum(self) -> usize {
         match self {
             Self::SourceBytes {
@@ -106,6 +114,7 @@ impl fmt::Display for AnalysisResourceLimit {
 }
 
 impl AnalysisCaptureOutcome {
+    /// Borrows the ready generation, if capture succeeded.
     pub fn as_ready(&self) -> Option<&AnalysisGeneration> {
         match self {
             Self::Ready(generation) => Some(generation),
@@ -113,6 +122,7 @@ impl AnalysisCaptureOutcome {
         }
     }
 
+    /// Extracts the generation or returns the typed rejection.
     pub fn into_ready(self) -> Result<AnalysisGeneration, AnalysisRejection> {
         match self {
             Self::Ready(generation) => Ok(generation),
@@ -120,6 +130,7 @@ impl AnalysisCaptureOutcome {
         }
     }
 
+    /// Borrows the typed rejection, if admission failed.
     pub fn rejection(&self) -> Option<&AnalysisRejection> {
         match self {
             Self::Ready(_) => None,
@@ -159,14 +170,17 @@ impl AnalysisRejection {
         }
     }
 
+    /// Borrows the canonical diagnostics payload for the rejection.
     pub fn payload(&self) -> &AnalysisPayload {
         self.payload.as_ref()
     }
 
+    /// Extracts the canonical diagnostics payload.
     pub fn into_payload(self) -> AnalysisPayload {
         *self.payload
     }
 
+    /// Returns the exact resource limit that rejected capture.
     pub const fn resource_limit(&self) -> AnalysisResourceLimit {
         self.resource_limit
     }
