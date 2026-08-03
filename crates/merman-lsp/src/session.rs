@@ -312,10 +312,12 @@ tokio::task_local! {
 /// Default maximum number of ordinary data-plane handler futures polled concurrently.
 pub const LSP_ORDINARY_HANDLER_CONCURRENCY: usize = 4;
 
-/// Maximum encoded size of one LSP message accepted by the bundled transport.
+/// Maximum encoded JSON body size accepted by the bundled transport.
+///
+/// This is the `Content-Length` value and does not include LSP framing headers.
 pub const LSP_MAX_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
 
-/// Maximum aggregate encoded bytes retained by queued and running ordinary requests.
+/// Maximum aggregate encoded JSON body bytes retained by queued and running ordinary requests.
 pub const LSP_REQUEST_BYTE_BUDGET: usize = LSP_MAX_MESSAGE_BYTES * LSP_ORDINARY_HANDLER_CONCURRENCY;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

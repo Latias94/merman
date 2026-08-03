@@ -567,6 +567,14 @@ fn admission_class_requires_exact_small_control_notifications() {
         admission_class(&cancel, 128, MAX_CONTROL_MESSAGE_BYTES),
         AdmissionClass::ImmediateControl
     );
+    assert_eq!(
+        admission_class(
+            &cancel,
+            MAX_CONTROL_MESSAGE_BYTES,
+            MAX_CONTROL_MESSAGE_BYTES,
+        ),
+        AdmissionClass::ImmediateControl
+    );
 
     let missing_cancel_params = Request::build("$/cancelRequest").finish();
     let invalid_cancel_params = Request::build("$/cancelRequest")
@@ -1404,6 +1412,43 @@ async fn oversized_cancel_cannot_bypass_the_main_request_budget() {
     )
     .await
     .expect("an oversized pseudo-control message should fail closed");
+
+    assert_eq!(stop, TransportStop::InputOverloaded);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn oversized_valid_exit_cannot_bypass_full_deferred_capacity() {
+    let main = br#"{"jsonrpc":"2.0","id":1,"method":"test/block","params":null}"#;
+    let normal_exit = br#"{"jsonrpc":"2.0","method":"exit","params":null}"#;
+    let oversized_exit = format!(
+        r#"{{"jsonrpc":"2.0","method":"exit","params":null{}}}"#,
+        " ".repeat(normal_exit.len())
+    );
+    assert!(oversized_exit.len() > normal_exit.len());
+
+    let mut input = frame(main);
+    input.extend(frame(oversized_exit.as_bytes()));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let (responses_tx, _responses_rx) = mpsc::unbounded();
+
+    let stop = timeout(
+        Duration::from_secs(2),
+        stdio_server(
+            Cursor::new(input),
+            Vec::<u8>::new(),
+            ResponseLoopback {
+                responses: responses_tx,
+            },
+        )
+        .retained_deferred_capacity(1)
+        .control_message_byte_limit(normal_exit.len())
+        .serve_inner(PendingService {
+            calls: Arc::clone(&calls),
+        }),
+    )
+    .await
+    .expect("an oversized exit notification should fail closed at deferred saturation");
 
     assert_eq!(stop, TransportStop::InputOverloaded);
     assert_eq!(calls.load(Ordering::SeqCst), 1);

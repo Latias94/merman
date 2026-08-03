@@ -399,9 +399,9 @@ enum TransportStop {
 /// Merman's bounded, frame-preserving stdio transport.
 ///
 /// The transport privately executes exact, valid, ID-less cancel and exit notifications inline
-/// when their encoded frame is small enough. Ordinary messages share one retained admission
-/// budget and a separate consumer concurrency limit. Request overload is reported with a bounded
-/// JSON-RPC error when possible; notification overload terminates input integrity.
+/// when their encoded JSON body is small enough. Ordinary messages share one retained body-byte
+/// admission budget and a separate consumer concurrency limit. Request overload is reported with
+/// a bounded framed JSON-RPC error when possible; notification overload terminates input integrity.
 #[derive(Debug)]
 pub struct StdioServer<I, O, L> {
     stdin: I,
