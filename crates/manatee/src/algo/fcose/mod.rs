@@ -17,6 +17,14 @@ const DEFAULT_FCOSE_ITERATIONS: usize = 2500;
 /// budget. Manatee deliberately keeps the failure neutral so renderers can map it to their own
 /// resource error type without creating a reverse dependency.
 pub trait WorkControl {
+    /// Checks whether a complete predictable tranche can fit without consuming it.
+    ///
+    /// The default keeps compatibility callers unbounded. Budgeted callers should override this
+    /// so the kernel can reject configured CoSE work before materializing its simulation graph.
+    fn check(&mut self, _units: usize) -> std::result::Result<(), WorkFailure> {
+        Ok(())
+    }
+
     fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure>;
 }
 
@@ -370,6 +378,38 @@ impl IndexedGraph {
             }
         }
 
+        // Reject cyclic compound ownership before SimGraph or spectral hierarchy materialization.
+        // Public IndexedGraph callers can otherwise construct a self/indirect parent cycle that
+        // makes every parent-chain walk non-terminating despite a finite work budget.
+        let mut state = vec![0u8; self.compounds.len()];
+        let mut path: Vec<usize> = Vec::new();
+        for start in 0..self.compounds.len() {
+            if state[start] != 0 {
+                continue;
+            }
+
+            path.clear();
+            let mut current = Some(start);
+            while let Some(compound) = current {
+                match state[compound] {
+                    0 => {
+                        state[compound] = 1;
+                        path.push(compound);
+                        current = self.compounds[compound].parent;
+                    }
+                    1 => {
+                        return Err(crate::error::Error::MissingEndpoint {
+                            edge_id: format!("compound-parent-cycle:#{compound}"),
+                        });
+                    }
+                    _ => break,
+                }
+            }
+            for compound in path.drain(..) {
+                state[compound] = 2;
+            }
+        }
+
         for (idx, e) in self.edges.iter().enumerate() {
             if e.source >= self.nodes.len() || e.target >= self.nodes.len() {
                 return Err(crate::error::Error::MissingEndpoint {
@@ -540,11 +580,26 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
     graph.validate()?;
 
     let schedule = FcoseIterationSchedule::from_indexed_graph(opts.num_iter, graph, opts.rerun)?;
+    // The configured CoSE schedule is known before SimGraph allocation. Check it as one
+    // non-consuming tranche; convergence-dependent spectral work remains exactly charged by its
+    // owner before each topology, matrix, SVD, and power-iteration tranche.
+    work_control.check(schedule.maximum_work_units())?;
     work_control.charge(schedule.setup_work_units())?;
     let mut sim = SimGraph::from_indexed(graph);
 
     let constraints = Constraints::from_indexed_opts(&sim, opts);
     constraints.validate(sim.nodes.len())?;
+
+    let spectral_topology = if opts.randomize && sim.leaf_count > 0 {
+        Some(spectral::SpectralTopology::build(
+            &sim.nodes[..sim.leaf_count],
+            &sim.edges,
+            &sim.compound_parent,
+            work_control,
+        )?)
+    } else {
+        None
+    };
 
     let random_seed_offset = random_policy
         .seed_offset
@@ -597,6 +652,7 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
             schedule,
             &mut rng,
             &mut owner_bounds,
+            spectral_topology.as_ref(),
             work_control,
         )?;
 
@@ -1483,7 +1539,6 @@ struct SimGraph {
     nodes: Vec<SimNode>,
     edges: Vec<SimEdge>,
     compound_parent: Vec<Option<usize>>,
-    compound_ids_in_order: Vec<usize>,
     leaf_count: usize,
     // Owner graph identity for repulsion/gravity: each node belongs to the child graph of its
     // parent compound, or the root graph.
@@ -1592,7 +1647,6 @@ impl SimGraph {
 
         let compound_parent: Vec<Option<usize>> =
             graph.compounds.iter().map(|c| c.parent).collect();
-        let compound_ids_in_order: Vec<usize> = (0..compound_count).collect();
 
         // Materialize compound nodes as layout nodes (Cytoscape parent nodes).
         for c in &graph.compounds {
@@ -1832,7 +1886,6 @@ impl SimGraph {
             nodes,
             edges,
             compound_parent,
-            compound_ids_in_order,
             leaf_count,
             root_owner_idx,
             children_by_owner,
@@ -2369,6 +2422,7 @@ impl SimGraph {
         schedule: FcoseIterationSchedule,
         rng: &mut FcoseRandom,
         owner_bounds: &mut OwnerBounds,
+        spectral_topology: Option<&spectral::SpectralTopology>,
         work_control: &mut W,
     ) -> std::result::Result<(), WorkFailure> {
         // `cytoscape-fcose` constructs a fresh CoSELayout for every `layout.run()`. Keep the
@@ -2422,25 +2476,19 @@ impl SimGraph {
         // FCoSE performs a spectral initialization when `randomize=true`. Mermaid 11.15 sets
         // Architecture's default to `false`, while cytoscape-fcose's library default is `true`.
         let mut spectral_applied = false;
-        if opts.randomize {
+        if let Some(spectral_topology) = spectral_topology {
             let node_separation = opts
                 .node_separation
                 .filter(|v| v.is_finite() && *v > 0.0)
                 .unwrap_or(75.0);
-            let spectral_edges: Vec<SimEdge> = self
-                .edges
-                .iter()
-                .copied()
-                .filter(|e| e.a < self.leaf_count && e.b < self.leaf_count)
-                .collect();
             spectral_applied = spectral::apply_spectral_start_positions(
                 &mut self.nodes[..self.leaf_count],
-                &spectral_edges,
-                &self.compound_parent,
-                &self.compound_ids_in_order,
+                &self.edges,
+                spectral_topology,
                 node_separation,
                 rng,
-            );
+                work_control,
+            )?;
         }
 
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
@@ -4300,6 +4348,24 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct RejectingPreflight {
+        checks: Vec<usize>,
+        charges: Vec<usize>,
+    }
+
+    impl WorkControl for RejectingPreflight {
+        fn check(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            self.checks.push(units);
+            Err(WorkFailure::Interrupted)
+        }
+
+        fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            self.charges.push(units);
+            Ok(())
+        }
+    }
+
     fn node_at(left: f64, top: f64, w: f64, h: f64) -> SimNode {
         SimNode {
             parent: None,
@@ -4437,6 +4503,43 @@ mod tests {
     }
 
     #[test]
+    fn controlled_layout_preflights_the_complete_schedule_before_kernel_allocation() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RejectingPreflight::default();
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.checks, vec![5]);
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
     fn indexed_graph_schedule_matches_the_kernel_self_edge_filter() {
         let graph = IndexedGraph {
             nodes: vec![IndexedNode {
@@ -4505,6 +4608,181 @@ mod tests {
             Error::WorkFailure(WorkFailure::Interrupted)
         ));
         assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn controlled_randomized_layout_charges_spectral_setup_before_execution() {
+        let graph = IndexedGraph {
+            nodes: (0..3)
+                .map(|index| IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: index as f64 * 10.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                })
+                .collect(),
+            edges: vec![
+                IndexedEdge {
+                    source: 0,
+                    target: 1,
+                    label_width: None,
+                    label_height: None,
+                    source_anchor: None,
+                    target_anchor: None,
+                    curve_style_segments: false,
+                    ideal_length: 50.0,
+                    elasticity: 0.45,
+                },
+                IndexedEdge {
+                    source: 1,
+                    target: 2,
+                    label_width: None,
+                    label_height: None,
+                    source_anchor: None,
+                    target_anchor: None,
+                    curve_style_segments: false,
+                    ideal_length: 50.0,
+                    elasticity: 0.45,
+                },
+            ],
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: true,
+            num_iter: Some(5),
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RecordingWorkControl {
+            charges: Vec::new(),
+            reject_after: Some(1),
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.charges, vec![5]);
+    }
+
+    #[test]
+    fn randomized_rerun_reuses_one_spectral_topology() {
+        let graph = IndexedGraph {
+            nodes: (0..5)
+                .map(|index| IndexedNode {
+                    parent: match index {
+                        0 | 1 => Some(1),
+                        2 => Some(0),
+                        _ => None,
+                    },
+                    width: 40.0,
+                    height: 40.0,
+                    x: index as f64 * 50.0,
+                    y: (index % 2) as f64 * 30.0,
+                    bounds_extras: BoundsExtras::default(),
+                })
+                .collect(),
+            edges: [(0, 1), (0, 2), (1, 3), (2, 4), (3, 4)]
+                .into_iter()
+                .map(|(source, target)| IndexedEdge {
+                    source,
+                    target,
+                    label_width: None,
+                    label_height: None,
+                    source_anchor: None,
+                    target_anchor: None,
+                    curve_style_segments: false,
+                    ideal_length: 50.0,
+                    elasticity: 0.45,
+                })
+                .collect(),
+            compounds: vec![
+                IndexedCompound { parent: None },
+                IndexedCompound { parent: Some(0) },
+            ],
+        };
+        let options = IndexedFcoseOptions {
+            randomize: true,
+            rerun: true,
+            num_iter: Some(1),
+            ..IndexedFcoseOptions::default()
+        };
+
+        super::spectral::reset_topology_build_count();
+        let first = layout_indexed(&graph, &options).expect("randomized rerun layout");
+
+        assert_eq!(super::spectral::topology_build_count(), 1);
+        assert_eq!(first.node_positions.len(), graph.nodes.len());
+        assert!(
+            first
+                .node_positions
+                .iter()
+                .all(|point| point.x.is_finite() && point.y.is_finite())
+        );
+
+        super::spectral::reset_topology_build_count();
+        let replay = layout_indexed(&graph, &options).expect("deterministic rerun replay");
+        assert_eq!(super::spectral::topology_build_count(), 1);
+        assert_eq!(first.node_positions.len(), replay.node_positions.len());
+        for (left, right) in first.node_positions.iter().zip(&replay.node_positions) {
+            assert_eq!(left.x.to_bits(), right.x.to_bits());
+            assert_eq!(left.y.to_bits(), right.y.to_bits());
+        }
+    }
+
+    #[test]
+    fn indexed_layout_rejects_compound_parent_cycles_before_work() {
+        let cases = [
+            vec![IndexedCompound { parent: Some(0) }],
+            vec![
+                IndexedCompound { parent: Some(1) },
+                IndexedCompound { parent: Some(0) },
+            ],
+        ];
+
+        for compounds in cases {
+            let graph = IndexedGraph {
+                nodes: vec![IndexedNode {
+                    parent: Some(0),
+                    width: 40.0,
+                    height: 40.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                }],
+                edges: Vec::new(),
+                compounds,
+            };
+            let mut control = RecordingWorkControl::default();
+
+            let error = layout_indexed_with_random_policy_and_work_control(
+                &graph,
+                &IndexedFcoseOptions {
+                    randomize: true,
+                    num_iter: Some(1),
+                    ..IndexedFcoseOptions::default()
+                },
+                FcoseRandomPolicy::xorshift(1),
+                &mut control,
+            )
+            .expect_err("compound parent cycle must fail before layout work");
+
+            assert!(matches!(
+                error,
+                Error::MissingEndpoint { edge_id }
+                    if edge_id.starts_with("compound-parent-cycle:#")
+            ));
+            assert!(control.charges.is_empty());
+        }
     }
 
     #[test]

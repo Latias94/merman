@@ -37,6 +37,16 @@ impl<'a> ArchitectureManateeWorkControl<'a> {
 }
 
 impl manatee::algo::fcose::WorkControl for ArchitectureManateeWorkControl<'_> {
+    fn check(&mut self, units: usize) -> std::result::Result<(), manatee::WorkFailure> {
+        match self.meter.preflight(units) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.denied = Some(error);
+                Err(manatee::WorkFailure::Interrupted)
+            }
+        }
+    }
+
     fn charge(&mut self, units: usize) -> std::result::Result<(), manatee::WorkFailure> {
         match self.meter.charge(units) {
             Ok(()) => Ok(()),
