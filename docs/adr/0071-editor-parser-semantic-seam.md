@@ -7,7 +7,7 @@ Accepted
 ## Dates
 
 - Accepted: 2026-06-24
-- Updated: 2026-07-28
+- Updated: 2026-08-02
 
 ## Context
 
@@ -134,30 +134,38 @@ The facts schema version is unrelated to:
   stale-result suppression; it does not sort tokens, assign legend indices, or define language
   semantics.
 
-The bundled stdio transport admits protocol messages synchronously before their futures become
-concurrent. Ordinary data-plane work and reserved cancellation/exit work have independent bounded
-lanes. Physical analysis-worker capacity remains separate from singleflight registry membership:
-invalidating a job removes its logical result immediately, but its worker slot is not released until
-the spawned task and any blocking projection have actually exited.
+The bundled stdio transport classifies protocol messages before Tower admission. Exact, valid,
+ID-less, size-bounded cancellation and exit notifications execute through a private immediate path.
+All other work shares one bounded retained-deferred budget and a separate ordinary consumer limit.
+Request overload is recoverable only when its complete JSON-RPC error fits a bounded output lane;
+notification overload or an unreportable request overload terminates input integrity. Physical
+analysis-worker capacity remains separate from singleflight registry membership: invalidating a job
+removes its logical result immediately, but its worker slot is not released until the spawned task
+and any blocking projection have actually exited.
 - WASM validates the same descriptor and returns the same packed words. Monaco and VS Code consume
   that descriptor without a second enum, lookup table, sort, or regex grammar.
 
-One weighted session-cache entry pairs an editor-core `DocumentSnapshot` with its canonical
-`AnalysisGeneration` and current diagnostic `AnalysisPayload` for a source version and analyzer
-configuration. A typed session operation borrows a `SnapshotContext`, which captures the document
-epoch and snapshot generation together with the diagnostic generation, performs expensive work
-outside the session mutex, and commits only if its guard is still current. The request kind
-determines whether currentness requires only the snapshot or both the snapshot and diagnostic
-payload. Completion, hover/structure, rename, code actions, diagnostics, detection, and tokens
-therefore use one coherent parse generation.
+One weighted session-cache entry owns each URI/current-stamp reusable result. The entry is either
+snapshot-only or complete; both states hold strong references, share one recency order and budget,
+and retain the same canonical `AnalysisGeneration` identity. Promotion adds the current diagnostic
+payload without touching recency a second time. If the complete entry is too large while the
+snapshot fits, the requester receives the complete result and the cache keeps snapshot-only parse
+evidence.
 
-A rule-only analyzer change advances the diagnostic generation and reprojects `AnalysisPayload`
-from the cached canonical `AnalysisGeneration` through `AnalysisGeneration::project`; it retains the
-same snapshot, parser evidence, and semantic-token state and does not invoke another parse.
-Snapshot-affecting changes instead advance both generations, clear cached analysis contexts and
-semantic-token state, and require a new analysis build. Site configuration, runtime policy
-including fixed date/time, source limits, and source descriptors are snapshot-affecting because
-they can alter parser facts, source availability, or source mapping.
+A typed session operation borrows a `SnapshotContext`, which captures the document epoch and
+snapshot generation together with the diagnostic generation, performs expensive work outside the
+session mutex, and commits only if its guard is still current. Cache-local incarnation tokens reject
+projection ABA after eviction and reinsertion. Each shared build output also owns one admission
+claim, consumed even when its first commit observes an already-resident equivalent entry, so later
+waiters cannot resurrect that output after capacity eviction.
+
+A rule-only analyzer change advances the diagnostic generation, derives the existing analyzer with
+`with_diagnostic_policy`, downgrades complete entries to snapshot-only, immediately releases obsolete
+payloads, and reprojects from the same generation without parsing. Snapshot-affecting changes instead
+advance both generations, remove whole cache entries, clear semantic-token state, and require a new
+analysis build. Site configuration, runtime policy including fixed date/time, source limits, and
+source descriptors are snapshot-affecting because they can alter parser facts, source availability,
+or source mapping.
 
 ## User-Visible Behavior
 

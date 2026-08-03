@@ -1,4 +1,4 @@
-use super::{StdioService, StdioTermination};
+use super::{AdmissionClass, ServiceAdmission, StdioAdmissionService, StdioTermination};
 use crate::session::ProtocolMessageShape;
 use futures::future::BoxFuture;
 use std::sync::Arc;
@@ -72,28 +72,42 @@ pub(super) struct ProtocolLifecycleService<S> {
 
 impl<S> ProtocolLifecycleService<S>
 where
-    S: StdioService,
+    S: StdioAdmissionService,
     S::Future: Send + 'static,
 {
     fn admit_with_lifecycle(
         &mut self,
         request: Request,
-    ) -> BoxFuture<'static, Result<Option<Response>, S::Error>> {
+        class: AdmissionClass,
+    ) -> ServiceAdmission<BoxFuture<'static, Result<Option<Response>, S::Error>>> {
         match ProtocolMessageShape::classify(&request) {
             ProtocolMessageShape::ShutdownNotification => {
                 tracing::warn!("ignoring shutdown notification; shutdown must be a request");
-                Box::pin(async { Ok(None) })
+                ServiceAdmission::Deferred(Box::pin(async { Ok(None) }))
             }
             ProtocolMessageShape::ExitRequest(id) => {
                 tracing::warn!("rejecting exit request; exit must be a notification");
-                Box::pin(
-                    async move { Ok(Some(Response::from_error(id, Error::invalid_request()))) },
-                )
+                ServiceAdmission::Deferred(Box::pin(async move {
+                    Ok(Some(Response::from_error(id, Error::invalid_request())))
+                }))
+            }
+            ProtocolMessageShape::InvalidExitNotification => {
+                tracing::warn!("ignoring exit notification with unexpected parameters");
+                ServiceAdmission::Deferred(Box::pin(async { Ok(None) }))
             }
             ProtocolMessageShape::ShutdownRequest => {
-                let future = self.inner.admit(request);
+                let future = match self.inner.admit(request, class) {
+                    ServiceAdmission::Deferred(future) => future,
+                    ServiceAdmission::Immediate(future) => {
+                        return ServiceAdmission::Immediate(Box::pin(future));
+                    }
+                    ServiceAdmission::Exit(future) => {
+                        self.lifecycle.observe_exit();
+                        return ServiceAdmission::Exit(Box::pin(future));
+                    }
+                };
                 let lifecycle = Arc::clone(&self.lifecycle);
-                Box::pin(async move {
+                ServiceAdmission::Deferred(Box::pin(async move {
                     let response = tokio::select! {
                         biased;
                         result = future => result?,
@@ -106,37 +120,51 @@ where
                         lifecycle.observe_shutdown();
                     }
                     Ok(response)
-                })
+                }))
             }
             ProtocolMessageShape::ExitNotification => {
-                let future = self.inner.admit(request);
+                let admission = self.inner.admit(request, class);
                 self.lifecycle.observe_exit();
-                Box::pin(future)
-            }
-            ProtocolMessageShape::Ordinary => {
-                let future = self.inner.admit(request);
-                let lifecycle = Arc::clone(&self.lifecycle);
-                Box::pin(async move {
-                    tokio::select! {
-                        biased;
-                        result = future => result,
-                        () = lifecycle.exited() => Ok(None),
+                match admission {
+                    ServiceAdmission::Immediate(future)
+                    | ServiceAdmission::Exit(future)
+                    | ServiceAdmission::Deferred(future) => {
+                        ServiceAdmission::Exit(Box::pin(future))
                     }
-                })
+                }
             }
+            ProtocolMessageShape::Ordinary => match self.inner.admit(request, class) {
+                ServiceAdmission::Immediate(future) => {
+                    ServiceAdmission::Immediate(Box::pin(future))
+                }
+                ServiceAdmission::Exit(future) => {
+                    self.lifecycle.observe_exit();
+                    ServiceAdmission::Exit(Box::pin(future))
+                }
+                ServiceAdmission::Deferred(future) => {
+                    let lifecycle = Arc::clone(&self.lifecycle);
+                    ServiceAdmission::Deferred(Box::pin(async move {
+                        tokio::select! {
+                            biased;
+                            result = future => result,
+                            () = lifecycle.exited() => Ok(None),
+                        }
+                    }))
+                }
+            },
         }
     }
 }
 
-impl<S> StdioService for ProtocolLifecycleService<S>
+impl<S> StdioAdmissionService for ProtocolLifecycleService<S>
 where
-    S: StdioService,
+    S: StdioAdmissionService,
     S::Future: Send + 'static,
 {
     type Error = S::Error;
     type Future = BoxFuture<'static, Result<Option<Response>, S::Error>>;
 
-    fn admit(&mut self, request: Request) -> Self::Future {
-        self.admit_with_lifecycle(request)
+    fn admit(&mut self, request: Request, class: AdmissionClass) -> ServiceAdmission<Self::Future> {
+        self.admit_with_lifecycle(request, class)
     }
 }

@@ -8,6 +8,11 @@ use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
 
+/// The forward-compatible root JSON shape for analysis configuration.
+///
+/// Unknown fields at this root and inside `lint` are ignored so configuration transports can add
+/// fields without breaking older readers. The versioned `resources` object remains strict. Direct
+/// deserialization of the public nested types is also strict.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct AnalysisOptionsJson {
     pub fixed_today: Option<String>,
@@ -17,6 +22,7 @@ pub struct AnalysisOptionsJson {
     pub lint: Option<LintOptionsJson>,
 }
 
+/// Strict resource-limit JSON for callers validating the versioned nested schema directly.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResourceOptionsJson {
@@ -24,6 +30,9 @@ pub struct ResourceOptionsJson {
     pub limits: BTreeMap<String, usize>,
 }
 
+/// Strict lint JSON for direct nested-schema validation.
+///
+/// Decode [`AnalysisOptionsJson`] when forward compatibility with future lint fields is required.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LintOptionsJson {
@@ -36,6 +45,7 @@ pub struct LintOptionsJson {
     pub rule_severities: Vec<LintRuleSeverityOverrideJson>,
 }
 
+/// One strict rule-severity override in the public nested lint schema.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LintRuleSeverityOverrideJson {
@@ -116,6 +126,7 @@ impl From<PermissiveLintRuleSeverityOverrideJson> for LintRuleSeverityOverrideJs
     }
 }
 
+/// An invalid analysis-options JSON shape or value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnalysisOptionsJsonError {
     message: String,
@@ -137,12 +148,21 @@ impl Display for AnalysisOptionsJsonError {
 
 impl StdError for AnalysisOptionsJsonError {}
 
+/// Decodes the shared root JSON shape and converts it to validated analysis options.
+///
+/// This accepts direct options or the supported `analysis`/`merman` wrapper forms. Unknown root
+/// and lint fields are ignored; strict nested resource validation and removed-option checks still
+/// apply.
 pub fn analysis_options_from_json_value(
     value: &Value,
 ) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
     analysis_options_json_from_json_value(value)?.to_analysis_options()
 }
 
+/// Decodes the forward-compatible shared root JSON shape without converting it.
+///
+/// Callers that intentionally validate one nested value should deserialize the corresponding
+/// public nested type directly, which rejects unknown fields.
 pub fn analysis_options_json_from_json_value(
     value: &Value,
 ) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
