@@ -238,9 +238,13 @@ Before changing Web or Typst artifact profiles, also run the surface-specific
 gates:
 
 ```bash
-cargo run -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
+npm ci --prefix platforms/web
+npm run build --prefix platforms/web
+npm run smoke --prefix platforms/web
+cargo run -p xtask -- wasm-size-matrix --surface web \
+  --web-package-root platforms/web/packages \
+  --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo run -p xtask -- wasm-size-matrix --surface all --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run --locked -p xtask -- verify-typst-profile-constants
 cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
 cargo run --locked -p xtask -- build-typst-package --profile publish
@@ -253,6 +257,8 @@ package as an independently installable artifact. Release preflight must build/c
 package's matching TypeScript, wasm-bindgen glue, single WASM, provenance, generated binding API,
 editor schema,
 and complete 35-family language catalog; it is not valid to publish only a wrapper declaration.
+Typst package builds additionally require Binaryen `wasm-opt version 131` and `wasm-tools`; the
+post-link optimizer and stripper versions are recorded in the artifact manifest.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
 browser/wasm-bindgen artifacts. Cargo defaults are intentionally empty. The sole public package
 profile is `publish`; it consumes the exact `typst-wasm` artifact recipe, which pins
