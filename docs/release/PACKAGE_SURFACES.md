@@ -153,7 +153,7 @@ a second SKU and a stable budget.
 | Browser npm package group | Pinned Mermaid and editor descriptors, exact artifact profiles, TypeScript/WASM contracts, package projection, install smoke, lockstep group assembly, and provenance all agree. |
 | VS Code extension | Descriptor-owned LSP and CLI artifacts pass extension tests, binary preparation, target-specific VSIX packaging, and package-content verification. |
 | Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
-| Browser/Typst size evidence | The combined size matrix covers every admitted Web and Typst artifact exactly once. |
+| Browser/Typst size evidence | The owner-specific Web and Typst size commands share one budget catalog and together cover every admitted artifact exactly once. |
 | Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 2, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `lol_html`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
 
 ## WASM Size Matrix
