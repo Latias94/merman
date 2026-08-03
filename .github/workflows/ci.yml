@@ -586,7 +586,7 @@ jobs:
           tag: version_131
 
       - name: Check WASM size budgets
-        run: cargo run --locked -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
+        run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Check exact Typst dependency closure
         run: cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
