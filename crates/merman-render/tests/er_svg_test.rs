@@ -80,8 +80,12 @@ fn er_svg_renders_entities_and_relationships() {
     assert!(svg.contains(r#"id="merman-drop-shadow""#));
     assert!(svg.contains("relationshipLine"));
     assert!(
-        !svg.contains(r#"style="undefined"#),
-        "relationship paths should not leak invalid style tokens"
+        Regex::new(
+            r#"<path[^>]*class="[^"]*relationshipLine[^"]*" style="undefined;;;undefined"[^>]*>"#
+        )
+        .expect("relationship path regex")
+        .is_match(&svg),
+        "relationship paths should preserve Mermaid's exact empty pathStyle serialization"
     );
     assert!(svg.contains("relationshipLabelBox"));
     assert!(
