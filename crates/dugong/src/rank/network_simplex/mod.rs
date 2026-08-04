@@ -539,9 +539,7 @@ pub(crate) fn network_simplex_controlled(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<(), WorkError> {
-    work_control.charge(simplify_work_units(g)?)?;
-    crate::rank::validate_rank_arithmetic(g)?;
-    let mut simplified = crate::util::simplify(g);
+    let mut simplified = build_simplified_graph(g, work_control)?;
     work_control.charge(checked_add(
         simplified.node_count(),
         checked_mul(simplified.edge_count(), 2)?,
@@ -600,11 +598,30 @@ fn simplify_work_units(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<us
     let node_work = checked_mul(g.node_count(), 2)?;
     let numeric_order_work =
         checked_ordered_key_updates(g.node_count(), g.array_index_node_count())?;
+    let numeric_adjacency_work = checked_ordered_key_updates(
+        g.node_count(),
+        g.directed_array_index_adjacency_entry_count(),
+    )?;
     let edge_work = checked_add(
         checked_mul(g.edge_count(), 3)?,
         checked_mul(checked_n_log_n(g.edge_count())?, 2)?,
     )?;
-    checked_add(checked_add(node_work, numeric_order_work)?, edge_work)
+    checked_add(
+        checked_add(
+            checked_add(node_work, numeric_order_work)?,
+            numeric_adjacency_work,
+        )?,
+        edge_work,
+    )
+}
+
+fn build_simplified_graph(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>, WorkError> {
+    work_control.charge(simplify_work_units(g)?)?;
+    crate::rank::validate_rank_arithmetic(g)?;
+    Ok(crate::util::simplify(g))
 }
 
 fn tree_state_rebuild_work_units(
@@ -1196,6 +1213,35 @@ mod tests {
     use super::*;
     use crate::graphlib::GraphOptions;
 
+    #[derive(Default)]
+    struct RecordingWorkControl {
+        charges: Vec<usize>,
+        remaining: Option<usize>,
+    }
+
+    impl RecordingWorkControl {
+        fn with_limit(limit: usize) -> Self {
+            Self {
+                remaining: Some(limit),
+                ..Self::default()
+            }
+        }
+    }
+
+    impl WorkControl for RecordingWorkControl {
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.charges.push(units);
+            let Some(remaining) = self.remaining else {
+                return Ok(());
+            };
+            let Some(next) = remaining.checked_sub(units) else {
+                return Err(WorkError::Interrupted);
+            };
+            self.remaining = Some(next);
+            Ok(())
+        }
+    }
+
     fn ranking_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
         let mut graph = Graph::new(GraphOptions::default());
         graph.set_graph(GraphLabel::default());
@@ -1224,6 +1270,42 @@ mod tests {
         tree
     }
 
+    fn mixed_simplify_graph(numeric: bool) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            ..GraphOptions::default()
+        });
+        graph.set_graph(GraphLabel::default());
+        let ids = if numeric {
+            ["0", "node-a", "1", "node-b"]
+        } else {
+            ["node-0", "node-a", "node-1", "node-b"]
+        };
+        for id in ids {
+            graph.set_node(id, NodeLabel::default());
+        }
+        for (v, w, name, weight) in [
+            (ids[0], ids[1], "parallel-0", 1.0),
+            (ids[0], ids[1], "parallel-1", 2.0),
+            (ids[1], ids[2], "mixed", 3.0),
+            (ids[0], ids[2], "numeric", 4.0),
+            (ids[2], ids[2], "self", 5.0),
+            (ids[1], ids[3], "ordinary", 6.0),
+        ] {
+            graph.set_edge_named(
+                v,
+                w,
+                Some(name),
+                Some(EdgeLabel {
+                    weight,
+                    minlen: 1,
+                    ..EdgeLabel::default()
+                }),
+            );
+        }
+        graph
+    }
+
     #[test]
     fn simplify_work_curve_includes_numeric_object_key_rebuilds() {
         for width in (0..=10).map(|shift| 1usize << shift) {
@@ -1233,11 +1315,70 @@ mod tests {
                 numeric.set_node(index.to_string(), NodeLabel::default());
                 ordinary.set_node(format!("node-{index}"), NodeLabel::default());
             }
+            for index in 1..width {
+                numeric.set_edge((index - 1).to_string(), index.to_string());
+                ordinary.set_edge(format!("node-{}", index - 1), format!("node-{index}"));
+            }
 
             let numeric_work = simplify_work_units(&numeric).unwrap();
             let ordinary_work = simplify_work_units(&ordinary).unwrap();
-            let ordered_work = checked_ordered_key_updates(width, width).unwrap();
+            let numeric_updates = width + (width.saturating_sub(1) * 2);
+            let ordered_work = checked_ordered_key_updates(width, numeric_updates).unwrap();
             assert_eq!(numeric_work, ordinary_work + ordered_work);
+        }
+    }
+
+    #[test]
+    fn simplify_precharges_mixed_numeric_directed_adjacency() {
+        let numeric = mixed_simplify_graph(true);
+        let ordinary = mixed_simplify_graph(false);
+        let adjacency_entries = numeric.directed_array_index_adjacency_entry_count();
+        assert_eq!(adjacency_entries, 6);
+        assert_eq!(ordinary.directed_array_index_adjacency_entry_count(), 0);
+
+        let node_order_work =
+            checked_ordered_key_updates(numeric.node_count(), numeric.array_index_node_count())
+                .unwrap();
+        let adjacency_work =
+            checked_ordered_key_updates(numeric.node_count(), adjacency_entries).unwrap();
+        let numeric_exact = simplify_work_units(&numeric).unwrap();
+        let ordinary_exact = simplify_work_units(&ordinary).unwrap();
+        assert_eq!(
+            numeric_exact,
+            checked_add(
+                ordinary_exact,
+                checked_add(node_order_work, adjacency_work).unwrap(),
+            )
+            .unwrap()
+        );
+
+        let mut measured = RecordingWorkControl::default();
+        let simplified = build_simplified_graph(&numeric, &mut measured)
+            .expect("the unbounded control admits the numeric simplify copy");
+        assert_eq!(measured.charges, [numeric_exact]);
+        assert_eq!(simplified.edge_count(), 5);
+        assert_eq!(
+            simplified.directed_array_index_adjacency_entry_count(),
+            adjacency_entries
+        );
+
+        let source_nodes = numeric.node_ids();
+        let source_edges = numeric.edge_keys();
+        let mut below = RecordingWorkControl::with_limit(numeric_exact - 1);
+        assert!(matches!(
+            build_simplified_graph(&numeric, &mut below),
+            Err(WorkError::Interrupted)
+        ));
+        assert_eq!(below.charges, [numeric_exact]);
+        assert_eq!(below.remaining, Some(numeric_exact - 1));
+        assert_eq!(numeric.node_ids(), source_nodes);
+        assert_eq!(numeric.edge_keys(), source_edges);
+
+        for limit in [numeric_exact, numeric_exact + 1] {
+            let mut admitted = RecordingWorkControl::with_limit(limit);
+            let simplified = build_simplified_graph(&numeric, &mut admitted)
+                .expect("equal and above numeric simplify-copy budgets succeed");
+            assert_eq!(simplified.edge_count(), 5);
         }
     }
 

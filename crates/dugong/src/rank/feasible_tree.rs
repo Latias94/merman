@@ -2,7 +2,7 @@
 
 use super::tree;
 use crate::graphlib::{Graph, GraphOptions};
-use crate::work::{checked_add, checked_mul};
+use crate::work::{checked_add, checked_mul, checked_ordered_key_updates};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
 use crate::{NoopWorkControl, WorkControl, WorkError};
 
@@ -18,10 +18,7 @@ pub(crate) fn feasible_tree_controlled(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>, WorkError> {
-    work_control.charge(checked_add(
-        checked_mul(g.node_count(), 4)?,
-        checked_mul(g.edge_count(), 2)?,
-    )?)?;
+    work_control.charge(feasible_tree_setup_work_units(g)?)?;
     crate::rank::validate_rank_arithmetic(g)?;
     let mut rank_by_ix: Vec<i128> = Vec::new();
     g.for_each_node_ix(|ix, _id, lbl| {
@@ -87,6 +84,18 @@ pub(crate) fn feasible_tree_controlled(
     }
 
     Ok(t)
+}
+
+fn feasible_tree_setup_work_units(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    let linear_work = checked_add(
+        checked_mul(g.node_count(), 4)?,
+        checked_mul(g.edge_count(), 2)?,
+    )?;
+    let numeric_node_work =
+        checked_ordered_key_updates(g.node_count(), g.array_index_node_count())?;
+    checked_add(linear_work, numeric_node_work)
 }
 
 fn feasible_tree_iteration_work_units(
@@ -258,4 +267,150 @@ fn shift_ranks(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct RecordingWorkControl {
+        charges: Vec<usize>,
+        remaining: Option<usize>,
+    }
+
+    impl RecordingWorkControl {
+        fn with_limit(limit: usize) -> Self {
+            Self {
+                remaining: Some(limit),
+                ..Self::default()
+            }
+        }
+    }
+
+    impl WorkControl for RecordingWorkControl {
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.charges.push(units);
+            let Some(remaining) = self.remaining else {
+                return Ok(());
+            };
+            let Some(next) = remaining.checked_sub(units) else {
+                return Err(WorkError::Interrupted);
+            };
+            self.remaining = Some(next);
+            Ok(())
+        }
+    }
+
+    fn tight_chain(numeric: bool) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel::default());
+        let ids = if numeric {
+            ["0", "1", "2", "3"]
+        } else {
+            ["node-0", "node-1", "node-2", "node-3"]
+        };
+        for (rank, id) in ids.into_iter().enumerate() {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(i32::try_from(rank).unwrap()),
+                    ..NodeLabel::default()
+                },
+            );
+        }
+        for pair in ids.windows(2) {
+            graph.set_edge_with_label(
+                pair[0],
+                pair[1],
+                EdgeLabel {
+                    minlen: 1,
+                    weight: 1.0,
+                    ..EdgeLabel::default()
+                },
+            );
+        }
+        graph
+    }
+
+    #[test]
+    fn feasible_tree_precharges_numeric_node_order_without_directed_adjacency() {
+        let mut numeric = tight_chain(true);
+        let mut ordinary = tight_chain(false);
+        let numeric_order_work =
+            checked_ordered_key_updates(numeric.node_count(), numeric.array_index_node_count())
+                .unwrap();
+        let numeric_setup = feasible_tree_setup_work_units(&numeric).unwrap();
+        let ordinary_setup = feasible_tree_setup_work_units(&ordinary).unwrap();
+        assert_eq!(numeric_setup, ordinary_setup + numeric_order_work);
+        assert!(numeric.directed_array_index_adjacency_entry_count() > 0);
+
+        let iteration_work = feasible_tree_iteration_work_units(&numeric).unwrap();
+        let exact = checked_add(numeric_setup, iteration_work).unwrap();
+        let source_nodes = numeric.node_ids();
+        let source_edges = numeric.edge_keys();
+        let source_ranks = source_nodes
+            .iter()
+            .map(|id| numeric.node(id).and_then(|node| node.rank))
+            .collect::<Vec<_>>();
+
+        let mut measured = RecordingWorkControl::default();
+        let tree = feasible_tree_controlled(&mut numeric, &mut measured)
+            .expect("the unbounded control admits the numeric feasible tree");
+        assert_eq!(measured.charges, [numeric_setup, iteration_work]);
+        assert_eq!(tree.node_count(), numeric.node_count());
+        assert_eq!(
+            tree.array_index_node_count(),
+            numeric.array_index_node_count()
+        );
+        assert!(!tree.is_directed());
+        assert_eq!(tree.directed_array_index_adjacency_entry_count(), 0);
+
+        let mut ordinary_measured = RecordingWorkControl::default();
+        let ordinary_tree = feasible_tree_controlled(&mut ordinary, &mut ordinary_measured)
+            .expect("the unbounded control admits the ordinary feasible tree");
+        assert_eq!(
+            ordinary_measured.charges,
+            [
+                ordinary_setup,
+                feasible_tree_iteration_work_units(&ordinary).unwrap()
+            ]
+        );
+        assert_eq!(ordinary_tree.array_index_node_count(), 0);
+
+        let mut rejected_graph = tight_chain(true);
+        let mut rejected = RecordingWorkControl::with_limit(numeric_setup - 1);
+        assert!(matches!(
+            feasible_tree_controlled(&mut rejected_graph, &mut rejected),
+            Err(WorkError::Interrupted)
+        ));
+        assert_eq!(rejected.charges, [numeric_setup]);
+        assert_eq!(rejected.remaining, Some(numeric_setup - 1));
+        assert_eq!(rejected_graph.node_ids(), source_nodes);
+        assert_eq!(rejected_graph.edge_keys(), source_edges);
+        assert_eq!(
+            source_nodes
+                .iter()
+                .map(|id| rejected_graph.node(id).and_then(|node| node.rank))
+                .collect::<Vec<_>>(),
+            source_ranks
+        );
+
+        let mut below_graph = tight_chain(true);
+        let mut below = RecordingWorkControl::with_limit(exact - 1);
+        assert!(matches!(
+            feasible_tree_controlled(&mut below_graph, &mut below),
+            Err(WorkError::Interrupted)
+        ));
+        assert_eq!(below.charges, [numeric_setup, iteration_work]);
+        assert_eq!(below.remaining, Some(iteration_work - 1));
+
+        for limit in [exact, exact + 1] {
+            let mut admitted_graph = tight_chain(true);
+            let mut admitted = RecordingWorkControl::with_limit(limit);
+            let tree = feasible_tree_controlled(&mut admitted_graph, &mut admitted)
+                .expect("equal and above numeric feasible-tree budgets succeed");
+            assert_eq!(tree.node_count(), admitted_graph.node_count());
+        }
+    }
 }

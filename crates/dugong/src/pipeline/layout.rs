@@ -43,6 +43,15 @@ fn build_layout_graph(
     input: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>, WorkError> {
+    let numeric_adjacency_entry_count = if input.is_directed() {
+        input.directed_array_index_adjacency_entry_count()
+    } else {
+        // The layout copy is always directed. An undirected source has no maintained directed
+        // adjacency counter, so meter and inspect its edge slots before deriving the target's
+        // unique ordered endpoint entries.
+        work_control.charge(checked_mul(input.edge_slot_count(), 2)?)?;
+        directed_copy_array_index_adjacency_entry_count(input)?
+    };
     // Pinned Dagre performs one `setNode` and one `setParent` operation per input node. The latter
     // also recreates parentless ordinary root properties, which the optimized reconstruction
     // replays after the atomic parent batch below.
@@ -51,10 +60,8 @@ fn build_layout_graph(
     // compound bucket. Parent-bucket moves are charged separately by the atomic batch owner.
     let numeric_update_count = checked_mul(input.array_index_node_count(), 2)?;
     let numeric_order_work = checked_ordered_key_updates(input.node_count(), numeric_update_count)?;
-    let numeric_adjacency_work = checked_ordered_key_updates(
-        input.edge_count(),
-        input.directed_array_index_adjacency_entry_count(),
-    )?;
+    let numeric_adjacency_work =
+        checked_ordered_key_updates(input.node_count(), numeric_adjacency_entry_count)?;
     let work = checked_add(
         checked_add(
             checked_add(1, node_iteration_work)?,
@@ -180,6 +187,33 @@ fn build_layout_graph(
     });
 
     Ok(layout)
+}
+
+fn directed_copy_array_index_adjacency_entry_count(
+    input: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    if input.is_directed() {
+        return Ok(input.directed_array_index_adjacency_entry_count());
+    }
+
+    let mut endpoint_pairs = FxHashSet::default();
+    let mut entry_count = Some(0usize);
+    input.for_each_edge_ix(|v_ix, w_ix, _key, _edge| {
+        if entry_count.is_none() || !endpoint_pairs.insert((v_ix, w_ix)) {
+            return;
+        }
+        let updates = usize::from(
+            input
+                .node_id_by_ix(v_ix)
+                .is_some_and(graphlib::is_javascript_array_index),
+        ) + usize::from(
+            input
+                .node_id_by_ix(w_ix)
+                .is_some_and(graphlib::is_javascript_array_index),
+        );
+        entry_count = entry_count.and_then(|total| total.checked_add(updates));
+    });
+    entry_count.ok_or(WorkError::ArithmeticOverflow)
 }
 
 fn update_input_graph(
@@ -331,13 +365,7 @@ fn run_layout(
             }
         }
     } else {
-        let rank_copy_order_work =
-            checked_ordered_key_updates(g.node_count(), g.array_index_node_count())?;
-        work_control.charge(checked_add(
-            graph_scan_work_units(g)?,
-            rank_copy_order_work,
-        )?)?;
-        let mut rank_graph = util::as_non_compound_graph(g);
+        let mut rank_graph = build_non_compound_rank_graph(g, work_control)?;
         rank::rank_controlled(&mut rank_graph, work_control)?;
         // Mirror Dagre's JS behavior: `rank(asNonCompoundGraph(g))` mutates the same label objects
         // for leaf nodes, but does not propagate ranks to compound nodes (nodes with children).
@@ -714,6 +742,23 @@ fn graph_scan_work_units(
     checked_add(g.node_order_slot_count(), g.edge_slot_count())
 }
 
+fn build_non_compound_rank_graph(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>, WorkError> {
+    let numeric_order_work =
+        checked_ordered_key_updates(g.node_count(), g.array_index_node_count())?;
+    let numeric_adjacency_work = checked_ordered_key_updates(
+        g.node_count(),
+        g.directed_array_index_adjacency_entry_count(),
+    )?;
+    work_control.charge(checked_add(
+        graph_scan_work_units(g)?,
+        checked_add(numeric_order_work, numeric_adjacency_work)?,
+    )?)?;
+    Ok(util::as_non_compound_graph(g))
+}
+
 fn node_snapshot_work_units(
     g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
 ) -> Result<usize, WorkError> {
@@ -894,6 +939,42 @@ mod tests {
         })
     }
 
+    fn mixed_adjacency_graph(
+        directed: bool,
+        numeric: bool,
+    ) -> graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = graphlib::Graph::new(graphlib::GraphOptions {
+            multigraph: true,
+            compound: true,
+            directed,
+        });
+        let ids = if numeric {
+            ["0", "node-a", "1", "node-b"]
+        } else {
+            ["node-0", "node-a", "node-1", "node-b"]
+        };
+        for id in ids {
+            graph.set_node(id, NodeLabel::default());
+        }
+        graph.set_edge_named(
+            ids[0],
+            ids[1],
+            Some("parallel-0"),
+            Some(EdgeLabel::default()),
+        );
+        graph.set_edge_named(
+            ids[0],
+            ids[1],
+            Some("parallel-1"),
+            Some(EdgeLabel::default()),
+        );
+        graph.set_edge_named(ids[1], ids[2], Some("mixed"), Some(EdgeLabel::default()));
+        graph.set_edge_named(ids[0], ids[2], Some("numeric"), Some(EdgeLabel::default()));
+        graph.set_edge_named(ids[2], ids[2], Some("self"), Some(EdgeLabel::default()));
+        graph.set_edge_named(ids[1], ids[3], Some("ordinary"), Some(EdgeLabel::default()));
+        graph
+    }
+
     #[test]
     fn build_layout_graph_precharges_descending_numeric_object_key_work() {
         for width in (0..=10).map(|shift| 1usize << shift) {
@@ -929,6 +1010,248 @@ mod tests {
                 let rebuilt = build_layout_graph(&graph, &mut admitted)
                     .expect("equal and above numeric object-key budgets succeed");
                 assert_eq!(rebuilt.node_count(), width);
+            }
+        }
+    }
+
+    #[test]
+    fn build_layout_graph_precharges_undirected_numeric_adjacency_copy() {
+        let input = mixed_adjacency_graph(false, true);
+        let source_nodes = input.node_ids();
+        let source_edges = input.edge_keys();
+        let adjacency_entries = 6;
+        let scan_work = checked_mul(input.edge_slot_count(), 2).unwrap();
+        let numeric_node_work = checked_ordered_key_updates(
+            input.node_count(),
+            checked_mul(input.array_index_node_count(), 2).unwrap(),
+        )
+        .unwrap();
+        let numeric_adjacency_work =
+            checked_ordered_key_updates(input.node_count(), adjacency_entries).unwrap();
+        let initial_work = checked_add(
+            checked_add(
+                checked_add(1, checked_mul(input.node_order_slot_count(), 2).unwrap()).unwrap(),
+                input.edge_slot_count(),
+            )
+            .unwrap(),
+            checked_add(numeric_node_work, numeric_adjacency_work).unwrap(),
+        )
+        .unwrap();
+        let exact = checked_add(scan_work, initial_work).unwrap();
+
+        let mut measured = RecordingWorkControl::default();
+        let rebuilt = build_layout_graph(&input, &mut measured)
+            .expect("the unbounded control admits the undirected numeric copy");
+        assert_eq!(measured.charges, [scan_work, initial_work]);
+        assert!(rebuilt.is_directed());
+        assert_eq!(
+            rebuilt.directed_array_index_adjacency_entry_count(),
+            adjacency_entries
+        );
+
+        let mut below = RecordingWorkControl::with_limit(exact - 1);
+        assert!(matches!(
+            build_layout_graph(&input, &mut below),
+            Err(WorkError::Interrupted)
+        ));
+        assert_eq!(below.charges, [scan_work, initial_work]);
+        assert_eq!(below.remaining, Some(initial_work - 1));
+        assert_eq!(input.node_ids(), source_nodes);
+        assert_eq!(input.edge_keys(), source_edges);
+
+        for limit in [exact, exact + 1] {
+            let mut admitted = RecordingWorkControl::with_limit(limit);
+            let rebuilt = build_layout_graph(&input, &mut admitted)
+                .expect("equal and above undirected numeric copy budgets succeed");
+            assert_eq!(
+                rebuilt.directed_array_index_adjacency_entry_count(),
+                adjacency_entries
+            );
+        }
+
+        let directed = mixed_adjacency_graph(true, true);
+        assert_eq!(
+            directed.directed_array_index_adjacency_entry_count(),
+            adjacency_entries
+        );
+        let directed_initial_work = checked_add(
+            checked_add(
+                checked_add(1, checked_mul(directed.node_order_slot_count(), 2).unwrap()).unwrap(),
+                directed.edge_slot_count(),
+            )
+            .unwrap(),
+            checked_add(
+                checked_ordered_key_updates(
+                    directed.node_count(),
+                    checked_mul(directed.array_index_node_count(), 2).unwrap(),
+                )
+                .unwrap(),
+                checked_ordered_key_updates(
+                    directed.node_count(),
+                    directed.directed_array_index_adjacency_entry_count(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut directed_measured = RecordingWorkControl::default();
+        let rebuilt = build_layout_graph(&directed, &mut directed_measured)
+            .expect("the directed copy retains its single exact construction charge");
+        assert_eq!(directed_measured.charges, [directed_initial_work]);
+        assert_eq!(
+            rebuilt.directed_array_index_adjacency_entry_count(),
+            adjacency_entries
+        );
+    }
+
+    #[test]
+    fn rank_graph_copy_precharges_mixed_numeric_adjacency() {
+        let numeric = mixed_adjacency_graph(true, true);
+        let ordinary = mixed_adjacency_graph(true, false);
+        let adjacency_entries = numeric.directed_array_index_adjacency_entry_count();
+        assert_eq!(adjacency_entries, 6);
+        assert_eq!(ordinary.directed_array_index_adjacency_entry_count(), 0);
+
+        let numeric_node_work =
+            checked_ordered_key_updates(numeric.node_count(), numeric.array_index_node_count())
+                .unwrap();
+        let numeric_adjacency_work =
+            checked_ordered_key_updates(numeric.node_count(), adjacency_entries).unwrap();
+        let numeric_exact = checked_add(
+            graph_scan_work_units(&numeric).unwrap(),
+            checked_add(numeric_node_work, numeric_adjacency_work).unwrap(),
+        )
+        .unwrap();
+        let ordinary_exact = graph_scan_work_units(&ordinary).unwrap();
+
+        let mut numeric_measured = RecordingWorkControl::default();
+        let copied = build_non_compound_rank_graph(&numeric, &mut numeric_measured)
+            .expect("the unbounded control admits the numeric rank copy");
+        assert_eq!(numeric_measured.charges, [numeric_exact]);
+        assert_eq!(
+            copied.directed_array_index_adjacency_entry_count(),
+            adjacency_entries
+        );
+
+        let mut ordinary_measured = RecordingWorkControl::default();
+        let copied = build_non_compound_rank_graph(&ordinary, &mut ordinary_measured)
+            .expect("the unbounded control admits the ordinary rank copy");
+        assert_eq!(ordinary_measured.charges, [ordinary_exact]);
+        assert_eq!(copied.directed_array_index_adjacency_entry_count(), 0);
+        assert_eq!(
+            numeric_exact,
+            checked_add(
+                ordinary_exact,
+                checked_add(numeric_node_work, numeric_adjacency_work).unwrap(),
+            )
+            .unwrap()
+        );
+
+        let source_nodes = numeric.node_ids();
+        let source_edges = numeric.edge_keys();
+        let mut below = RecordingWorkControl::with_limit(numeric_exact - 1);
+        assert!(matches!(
+            build_non_compound_rank_graph(&numeric, &mut below),
+            Err(WorkError::Interrupted)
+        ));
+        assert_eq!(below.charges, [numeric_exact]);
+        assert_eq!(below.remaining, Some(numeric_exact - 1));
+        assert_eq!(numeric.node_ids(), source_nodes);
+        assert_eq!(numeric.edge_keys(), source_edges);
+
+        for limit in [numeric_exact, numeric_exact + 1] {
+            let mut admitted = RecordingWorkControl::with_limit(limit);
+            let copied = build_non_compound_rank_graph(&numeric, &mut admitted)
+                .expect("equal and above numeric rank-copy budgets succeed");
+            assert_eq!(copied.edge_count(), numeric.edge_count());
+        }
+    }
+
+    #[test]
+    fn build_layout_graph_precharges_numeric_directed_adjacency_work() {
+        for width in (0..=8).map(|shift| 1usize << shift) {
+            let mut graph = test_graph();
+            graph.set_node("source", NodeLabel::default());
+            for index in (0..width).rev() {
+                let id = index.to_string();
+                graph.set_node(id.clone(), NodeLabel::default());
+                graph.set_edge("source", id);
+            }
+
+            let node_count = width + 1;
+            let numeric_updates = width * 3;
+            let expected = 1
+                + node_count * 2
+                + width
+                + checked_ordered_key_updates(node_count, numeric_updates).unwrap();
+
+            let mut measured = RecordingWorkControl::default();
+            let rebuilt = build_layout_graph(&graph, &mut measured)
+                .expect("the unbounded control admits numeric adjacency reconstruction");
+            assert_eq!(measured.charges, vec![expected]);
+            assert_eq!(
+                rebuilt.successors("source"),
+                (0..width)
+                    .map(|index| index.to_string())
+                    .collect::<Vec<_>>()
+            );
+
+            let mut below = RecordingWorkControl::with_limit(expected - 1);
+            assert!(matches!(
+                build_layout_graph(&graph, &mut below),
+                Err(WorkError::Interrupted)
+            ));
+            assert_eq!(below.charges, vec![expected]);
+
+            for limit in [expected, expected + 1] {
+                let mut admitted = RecordingWorkControl::with_limit(limit);
+                build_layout_graph(&graph, &mut admitted)
+                    .expect("equal and above numeric adjacency budgets succeed");
+            }
+        }
+    }
+
+    #[test]
+    fn build_layout_graph_meters_undirected_numeric_adjacency_planning() {
+        for width in (0..=8).map(|shift| 1usize << shift) {
+            let mut graph = graphlib::Graph::new(graphlib::GraphOptions {
+                directed: false,
+                multigraph: true,
+                compound: true,
+            });
+            graph.set_node("source", NodeLabel::default());
+            for index in (0..width).rev() {
+                let id = index.to_string();
+                graph.set_node(id.clone(), NodeLabel::default());
+                graph.set_edge("source", id);
+            }
+
+            let node_count = width + 1;
+            let planning_work = width * 2;
+            let reconstruction_work = 1
+                + node_count * 2
+                + width
+                + checked_ordered_key_updates(node_count, width * 3).unwrap();
+            let exact = planning_work + reconstruction_work;
+
+            let mut measured = RecordingWorkControl::default();
+            let rebuilt = build_layout_graph(&graph, &mut measured)
+                .expect("the unbounded control admits undirected adjacency planning");
+            assert_eq!(measured.charges, vec![planning_work, reconstruction_work]);
+            assert_eq!(rebuilt.edge_count(), width);
+
+            let mut below = RecordingWorkControl::with_limit(exact - 1);
+            assert!(matches!(
+                build_layout_graph(&graph, &mut below),
+                Err(WorkError::Interrupted)
+            ));
+            assert_eq!(below.charges, vec![planning_work, reconstruction_work]);
+
+            for limit in [exact, exact + 1] {
+                let mut admitted = RecordingWorkControl::with_limit(limit);
+                build_layout_graph(&graph, &mut admitted)
+                    .expect("equal and above undirected numeric adjacency budgets succeed");
             }
         }
     }
