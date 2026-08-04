@@ -54,7 +54,7 @@ import type { SafeInlineSvg } from "@/src/runtime/render-artifact";
 import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
 import {
   SvgViewport,
-  useSvgViewport,
+  useSvgViewportController,
 } from "@/src/components/SvgViewport";
 import {
   CompareView,
@@ -167,10 +167,7 @@ export function Preview({ className }: PreviewProps) {
   const asciiCapability = asciiSupport.capabilityFor(detectedDiagramType);
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
-  const svgViewport = useSvgViewport({
-    artifact: svgArtifact,
-    enabled: previewMode === "svg" && svgDisplayMode === "visual",
-  });
+  const svgViewport = useSvgViewportController();
   useEffect(() => {
     if (previewMode === "ascii" && !isAsciiSupported) {
       setPreviewMode("svg");
@@ -599,6 +596,7 @@ export function Preview({ className }: PreviewProps) {
             <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
           ) : (
             <SvgViewport
+              artifact={svgArtifact}
               presentationKey={currentBatch?.snapshot.requestId ?? null}
               controller={svgViewport}
               onPresentationReady={(at) => {

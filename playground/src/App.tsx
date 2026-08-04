@@ -20,14 +20,7 @@ import { StatusBar } from "./components/StatusBar";
 import { CodeEditor } from "./components/Editor";
 import { Preview } from "./components/Preview";
 import { LazyFeatureBoundary } from "./components/LazyFeatureBoundary";
-import {
-  useAppStore,
-  type TextMeasurementMode,
-  type WorkspacePane,
-} from "./store";
-import { isDiagramFont } from "./lib/diagram-font";
-import { useShare } from "./hooks/useShare";
-import { normalizeThemeName } from "@mermanjs/web";
+import { useAppStore, type WorkspacePane } from "./store";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
 
 const ConfigEditor = lazy(() =>
@@ -35,42 +28,16 @@ const ConfigEditor = lazy(() =>
     default: module.ConfigEditor,
   }))
 );
-const TEXT_MEASUREMENT_VALUES = new Set<TextMeasurementMode>([
-  "browser",
-  "headless",
-]);
 export default function App() {
   const { t, i18n } = useTranslation();
-  const {
-    setCode,
-    setDiagramTheme,
-    setPresentationProfileId,
-    setPresentationThemePresetId,
-    setSvgPipeline,
-    setTextMeasurementMode,
-    setDiagramFont,
-    setMermaidConfig,
-    editorMode,
-    setEditorMode,
-    workspacePane,
-    setWorkspacePane,
-  } = useAppStore(
+  const { editorMode, setEditorMode, workspacePane, setWorkspacePane } = useAppStore(
     useShallow((state) => ({
       editorMode: state.editorMode,
-      setCode: state.setCode,
-      setDiagramFont: state.setDiagramFont,
-      setDiagramTheme: state.setDiagramTheme,
       setEditorMode: state.setEditorMode,
-      setPresentationProfileId: state.setPresentationProfileId,
-      setPresentationThemePresetId: state.setPresentationThemePresetId,
-      setMermaidConfig: state.setMermaidConfig,
-      setSvgPipeline: state.setSvgPipeline,
-      setTextMeasurementMode: state.setTextMeasurementMode,
       setWorkspacePane: state.setWorkspacePane,
       workspacePane: state.workspacePane,
     }))
   );
-  const { initialData } = useShare();
   const isNarrowLayout = useNarrowLayout();
 
   useEffect(() => {
@@ -81,38 +48,6 @@ export default function App() {
       .querySelector('meta[name="description"]')
       ?.setAttribute("content", t("app.description"));
   }, [i18n.language, t]);
-
-  // Apply shared inputs only after the URL payload has been decoded and validated.
-  useEffect(() => {
-    if (initialData) {
-      setCode(initialData.code);
-      if (initialData.theme) {
-        setDiagramTheme(normalizeThemeName(initialData.theme));
-      }
-      setPresentationThemePresetId(initialData.presentationThemePresetId);
-      setPresentationProfileId(initialData.presentationProfileId);
-      setSvgPipeline(initialData.svgPipeline);
-      if (initialData.config !== undefined) {
-        setMermaidConfig(initialData.config);
-      }
-      if (isTextMeasurementMode(initialData.textMeasurementMode)) {
-        setTextMeasurementMode(initialData.textMeasurementMode);
-      }
-      if (isDiagramFont(initialData.diagramFont)) {
-        setDiagramFont(initialData.diagramFont);
-      }
-    }
-  }, [
-    initialData,
-    setCode,
-    setDiagramFont,
-    setDiagramTheme,
-    setMermaidConfig,
-    setPresentationProfileId,
-    setPresentationThemePresetId,
-    setSvgPipeline,
-    setTextMeasurementMode,
-  ]);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -171,12 +106,6 @@ export default function App() {
       </div>
     </TooltipProvider>
   );
-}
-
-function isTextMeasurementMode(
-  value: string | undefined
-): value is TextMeasurementMode {
-  return Boolean(value && TEXT_MEASUREMENT_VALUES.has(value as TextMeasurementMode));
 }
 
 function EditorPanel({

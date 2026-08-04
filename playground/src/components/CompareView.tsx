@@ -20,7 +20,7 @@ import {
 import { ViewportControls } from "@/src/components/PreviewArtifactViews";
 import {
   SvgViewport,
-  useSvgViewport,
+  useSvgViewportController,
   type SvgViewportController,
 } from "@/src/components/SvgViewport";
 import type { SafeInlineSvg } from "@/src/runtime/render-artifact";
@@ -114,10 +114,7 @@ function ComparePane({
     Boolean(artifact.unavailableLabel);
   const [svgDisplayMode, setSvgDisplayMode] =
     useState<SvgDisplayMode>("visual");
-  const controller = useSvgViewport({
-    artifact: artifact.svgArtifact,
-    enabled: svgDisplayMode === "visual",
-  });
+  const controller = useSvgViewportController();
   const statusId = useId();
   const paneRef = useRef<HTMLElement>(null);
   const ownedFocus = useRef(false);
@@ -181,7 +178,11 @@ function ComparePane({
           </p>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          {hasSvg ? <ViewportControls controller={controller} t={t} /> : <div />}
+          {hasSvg && svgDisplayMode === "visual" ? (
+            <ViewportControls controller={controller} t={t} />
+          ) : (
+            <div />
+          )}
           <div className="flex items-center gap-1">
             <CompareIconButton
               label={
@@ -343,6 +344,7 @@ function ComparePaneBody({
   }
   return (
     <SvgViewport
+      artifact={artifact.svgArtifact}
       presentationKey={artifact.presentationKey}
       controller={controller}
       onPresentationReady={onPresentationReady}

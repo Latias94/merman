@@ -44,7 +44,7 @@
     "test:browser:typecheck": "npm --prefix tests run typecheck",
     "test:zenuml-isolation": "npm --prefix tests run test:zenuml-isolation",
     "test:mermaid-config": "node --test --experimental-strip-types src/lib/mermaid-config.test.ts",
-    "test:runtime": "node --test --experimental-strip-types src/runtime/merman.test.ts src/runtime/render-coordinator.test.ts src/runtime/render-artifact.test.ts src/runtime/presentation-status.test.ts src/store/index.test.ts src/hooks/useShare.test.ts",
+    "test:runtime": "node --test --experimental-strip-types src/runtime/merman.test.ts src/runtime/render-coordinator.test.ts src/runtime/render-artifact.test.ts src/runtime/presentation-status.test.ts src/store/index.test.ts src/lib/share.test.ts",
     "test:mermaid-requirements": "node --test --experimental-strip-types src/runtime/mermaid-requirements.test.ts src/runtime/external-module-registrar.test.ts",
     "test:realm": "node --test --experimental-strip-types src/runtime/realm/*.test.ts src/runtime/mermaid-realm-controller.test.ts",
     "test:semantic-tokens": "node --test scripts/semantic-tokens.test.mjs",

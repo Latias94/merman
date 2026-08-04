@@ -3,90 +3,320 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
+  useSyncExternalStore,
   type PointerEvent,
   type ReactNode,
-  type RefObject,
-  type WheelEvent,
 } from "react";
+
 import {
   prepareSvgForResponsivePreview,
   type SvgDimensions,
 } from "@/src/lib/svg-geometry";
 import type { SafeInlineSvg } from "@/src/runtime/render-artifact";
-import { cn } from "@/lib/utils";
 
 interface Point {
-  x: number;
-  y: number;
+  readonly x: number;
+  readonly y: number;
 }
 
+const SVG_VIEWPORT_CONTROLLER = Symbol("svg-viewport-controller");
+
 export interface SvgViewportController {
-  zoom: number;
-  contentScale: number;
-  previewSize: SvgDimensions | null;
-  position: Point;
-  isDragging: boolean;
-  containerRef: RefObject<HTMLDivElement | null>;
-  contentRef: RefObject<HTMLDivElement | null>;
+  readonly [SVG_VIEWPORT_CONTROLLER]: true;
+  fitToView(): void;
+  reset(): void;
   zoomIn(): void;
   zoomOut(): void;
-  reset(): void;
+}
+
+interface ViewportCommands {
   fitToView(): void;
-  handleWheel(event: WheelEvent<HTMLDivElement>): void;
-  handlePointerDown(event: PointerEvent<HTMLDivElement>): void;
-  handlePointerMove(event: PointerEvent<HTMLDivElement>): void;
-  handlePointerUp(event: PointerEvent<HTMLDivElement>): void;
+  reset(): void;
+  zoomIn(): void;
+  zoomOut(): void;
+}
+
+class SvgViewportControllerImpl implements SvgViewportController {
+  readonly [SVG_VIEWPORT_CONTROLLER] = true;
+  readonly fitToView = () => this.owner?.commands.fitToView();
+  readonly reset = () => this.owner?.commands.reset();
+  readonly zoomIn = () => this.owner?.commands.zoomIn();
+  readonly zoomOut = () => this.owner?.commands.zoomOut();
+  readonly getSnapshot = () => this.zoom;
+  readonly subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  private readonly listeners = new Set<() => void>();
+  private owner: {
+    readonly commands: ViewportCommands;
+    readonly token: symbol;
+  } | null = null;
+  private zoom = 1;
+
+  connect(commands: ViewportCommands): () => void {
+    const token = Symbol("svg-viewport-owner");
+    this.owner = { commands, token };
+    return () => {
+      if (this.owner?.token === token) this.owner = null;
+    };
+  }
+
+  publishZoom(zoom: number): void {
+    if (Object.is(this.zoom, zoom)) return;
+    this.zoom = zoom;
+    for (const listener of this.listeners) listener();
+  }
+}
+
+export function useSvgViewportController(): SvgViewportController {
+  const controllerRef = useRef<SvgViewportController | null>(null);
+  if (!controllerRef.current) {
+    controllerRef.current = new SvgViewportControllerImpl();
+  }
+  return controllerRef.current;
+}
+
+export function useSvgViewportZoom(
+  controller: SvgViewportController
+): number {
+  const internal = internalController(controller);
+  return useSyncExternalStore(
+    internal.subscribe,
+    internal.getSnapshot,
+    internal.getSnapshot
+  );
 }
 
 type PreparedSvgPreview = NonNullable<
   ReturnType<typeof prepareSvgForResponsivePreview>
 >;
 
-const PREVIEW_BY_CONTROLLER = new WeakMap<
-  SvgViewportController,
-  PreparedSvgPreview
->();
+type Gesture =
+  | { readonly kind: "idle" }
+  | {
+      readonly kind: "pan";
+      readonly pointerId: number;
+      readonly startPointer: Point;
+      readonly startPosition: Point;
+    }
+  | {
+      readonly kind: "pinch";
+      readonly pointerIds: readonly [number, number];
+      readonly startDistance: number;
+      readonly startMidpoint: Point;
+      readonly startPosition: Point;
+      readonly startZoom: number;
+      readonly containerCenter: Point;
+    };
 
-interface UseSvgViewportOptions {
-  artifact: SafeInlineSvg | null;
-  enabled: boolean;
+interface ViewportState {
+  readonly pointers: Map<number, Point>;
+  autoFit: boolean;
+  fitZoom: number;
+  fittedPreview: PreparedSvgPreview | null;
+  gesture: Gesture;
+  position: Point;
+  scaleBaseZoom: number;
+  zoom: number;
 }
 
-export function useSvgViewport({
-  artifact,
-  enabled,
-}: UseSvgViewportOptions): SvgViewportController {
-  const preview = useMemo(() => {
-    if (!enabled || !artifact) return null;
+interface AppliedTransform {
+  readonly container: HTMLDivElement | null;
+  readonly contentScale: number;
+  readonly positionLayer: HTMLDivElement | null;
+  readonly positionX: number;
+  readonly positionY: number;
+  readonly scaleLayer: HTMLDivElement | null;
+  readonly zoom: number;
+}
 
+interface SvgViewportProps {
+  artifact: SafeInlineSvg | null;
+  presentationKey: number | null;
+  controller: SvgViewportController;
+  empty?: ReactNode;
+  onPresentationReady?: (at: number) => void;
+}
+
+export function SvgViewport({
+  artifact,
+  presentationKey,
+  controller,
+  empty,
+  onPresentationReady,
+}: SvgViewportProps) {
+  const preview = useMemo(() => {
+    if (!artifact) return null;
     try {
       return prepareSvgForResponsivePreview(artifact);
     } catch {
       return null;
     }
-  }, [artifact, enabled]);
-  const [zoom, setZoom] = useState(1);
-  const [fitZoom, setFitZoom] = useState(1);
-  const [previewSize, setPreviewSize] = useState<SvgDimensions | null>(null);
-  const [fittedPreview, setFittedPreview] =
-    useState<PreparedSvgPreview | null>(null);
-  const [position, setPosition] = useState<Point>({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
-  const [isAutoFit, setIsAutoFit] = useState(true);
+  }, [artifact]);
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const positionLayerRef = useRef<HTMLDivElement>(null);
+  const scaleLayerRef = useRef<HTMLDivElement>(null);
+  const shadowHostRef = useRef<HTMLDivElement>(null);
+  const transformFrameRef = useRef(0);
+  const fitFrameRef = useRef(0);
+  const readyFrameRef = useRef(0);
+  const previewRef = useRef(preview);
+  const lastAppliedRef = useRef<AppliedTransform | null>(null);
+  const presentationKeyRef = useRef(presentationKey);
+  const onPresentationReadyRef = useRef(onPresentationReady);
+  const presentedRef = useRef<{
+    readonly key: number | null;
+    readonly preview: PreparedSvgPreview;
+  } | null>(null);
+  const stateRef = useRef<ViewportState>({
+    autoFit: true,
+    fitZoom: 1,
+    fittedPreview: null,
+    gesture: { kind: "idle" },
+    pointers: new Map(),
+    position: { x: 0, y: 0 },
+    scaleBaseZoom: 1,
+    zoom: 1,
+  });
+  previewRef.current = preview;
+  presentationKeyRef.current = presentationKey;
+  onPresentationReadyRef.current = onPresentationReady;
 
-  const fitToView = useCallback(() => {
+  const applyTransform = useCallback(() => {
+    transformFrameRef.current = 0;
+    const state = stateRef.current;
+    const positionLayer = positionLayerRef.current;
+    const scaleLayer = scaleLayerRef.current;
+    const container = containerRef.current;
+    const hasCurrentFit = state.fittedPreview === previewRef.current;
+    const contentScale = hasCurrentFit
+      ? state.zoom / state.scaleBaseZoom
+      : 1;
+    const positionX = Math.round(state.position.x);
+    const positionY = Math.round(state.position.y);
+    const previous = lastAppliedRef.current;
+
+    if (
+      positionLayer &&
+      (previous?.positionLayer !== positionLayer ||
+        previous.positionX !== positionX ||
+        previous.positionY !== positionY)
+    ) {
+      positionLayer.style.transform = `translate(${positionX}px, ${positionY}px)`;
+    }
+    if (
+      scaleLayer &&
+      (previous?.scaleLayer !== scaleLayer ||
+        !Object.is(previous.contentScale, contentScale))
+    ) {
+      scaleLayer.style.transform = `translate(-50%, -50%) scale(${contentScale})`;
+    }
+    if (
+      container &&
+      (previous?.container !== container || !Object.is(previous.zoom, state.zoom))
+    ) {
+      container.dataset.zoom = String(state.zoom);
+    }
+    if (!previous || !Object.is(previous.zoom, state.zoom)) {
+      internalController(controller).publishZoom(state.zoom);
+    }
+    lastAppliedRef.current = {
+      container,
+      contentScale,
+      positionLayer,
+      positionX,
+      positionY,
+      scaleLayer,
+      zoom: state.zoom,
+    };
+  }, [controller]);
+
+  const scheduleTransform = useCallback(() => {
+    if (transformFrameRef.current) return;
+    transformFrameRef.current = requestAnimationFrame(applyTransform);
+  }, [applyTransform]);
+
+  const schedulePresentationReady = useCallback(() => {
+    cancelScheduledFrame(readyFrameRef);
+    readyFrameRef.current = requestAnimationFrame(() => {
+      readyFrameRef.current = 0;
+      const currentPreview = previewRef.current;
+      const root = shadowHostRef.current?.shadowRoot;
+      if (!currentPreview || !root) return;
+      const identity = presentedRef.current;
+      if (
+        identity?.preview === currentPreview &&
+        identity.key === presentationKeyRef.current
+      ) {
+        return;
+      }
+
+      const renderedSvg = root.querySelector("svg");
+      if (!renderedSvg) return;
+      const bounds = renderedSvg.getBoundingClientRect();
+      if (
+        !Number.isFinite(bounds.width) ||
+        !Number.isFinite(bounds.height) ||
+        bounds.width <= 0 ||
+        bounds.height <= 0
+      ) {
+        return;
+      }
+
+      presentedRef.current = {
+        key: presentationKeyRef.current,
+        preview: currentPreview,
+      };
+      onPresentationReadyRef.current?.(performance.now());
+    });
+  }, []);
+
+  const setDragging = useCallback((dragging: boolean) => {
+    const container = containerRef.current;
+    if (container) {
+      container.style.cursor = dragging ? "grabbing" : "";
+      container.dataset.dragging = String(dragging);
+    }
+  }, []);
+
+  const cancelGesture = useCallback((releaseCapture = false) => {
+    const state = stateRef.current;
+    const container = containerRef.current;
+    const pointerIds = [...state.pointers.keys()];
+    state.pointers.clear();
+    state.gesture = { kind: "idle" };
+    setDragging(false);
+
+    if (!releaseCapture || !container) return;
+    for (const pointerId of pointerIds) {
+      releaseCapturedPointer(container, pointerId);
+    }
+  }, [setDragging]);
+
+  const fitToView = useCallback((): boolean => {
     const container = containerRef.current;
     const content = contentRef.current;
-    if (!container || !content) return;
+    const shadowHost = shadowHostRef.current;
+    const currentPreview = previewRef.current;
+    if (
+      !container ||
+      !content ||
+      !shadowHost ||
+      !currentPreview ||
+      container.clientWidth <= 0 ||
+      container.clientHeight <= 0
+    ) {
+      return false;
+    }
 
     const availableWidth = Math.max(container.clientWidth - 48, 1);
     const availableHeight = Math.max(container.clientHeight - 48, 1);
-    const intrinsicSize = preview?.dimensions ?? null;
+    const intrinsicSize = currentPreview.dimensions;
     let nextZoom: number;
+    let scaleBaseZoom: number;
 
     if (intrinsicSize) {
       const insets = measureElementInsets(content);
@@ -97,259 +327,340 @@ export function useSvgViewport({
         availableSvgWidth / intrinsicSize.width,
         availableSvgHeight / intrinsicSize.height
       );
-      if (!Number.isFinite(nextZoom) || nextZoom <= 0) return;
-      setPreviewSize({
-        width: Math.max(1, intrinsicSize.width * nextZoom),
-        height: Math.max(1, intrinsicSize.height * nextZoom),
-      });
+      if (!isPositiveFinite(nextZoom)) return false;
+      shadowHost.style.width = `${Math.max(
+        1,
+        intrinsicSize.width * nextZoom
+      )}px`;
+      shadowHost.style.height = `${Math.max(
+        1,
+        intrinsicSize.height * nextZoom
+      )}px`;
+      scaleBaseZoom = nextZoom;
     } else {
+      shadowHost.style.removeProperty("width");
+      shadowHost.style.removeProperty("height");
       const contentSize = measureRenderedContent(content);
-      if (!contentSize) return;
+      if (!contentSize) return false;
       nextZoom = Math.min(
         1,
         availableWidth / contentSize.width,
         availableHeight / contentSize.height
       );
-      setPreviewSize(null);
+      if (!isPositiveFinite(nextZoom)) return false;
+      scaleBaseZoom = 1;
     }
 
-    setFittedPreview(preview);
-    setIsAutoFit(true);
-    setFitZoom(nextZoom);
-    setZoom(nextZoom);
-    setPosition({ x: 0, y: 0 });
-  }, [preview]);
+    cancelGesture(true);
+    const state = stateRef.current;
+    state.autoFit = true;
+    state.fitZoom = nextZoom;
+    state.fittedPreview = currentPreview;
+    state.position = { x: 0, y: 0 };
+    state.scaleBaseZoom = scaleBaseZoom;
+    state.zoom = nextZoom;
+    scheduleTransform();
+    schedulePresentationReady();
+    return true;
+  }, [cancelGesture, schedulePresentationReady, scheduleTransform]);
 
-  const zoomIn = useCallback(() => {
-    setIsAutoFit(false);
-    setZoom((value) => Math.min(value * 1.2, 5));
-  }, []);
+  const scheduleFit = useCallback(() => {
+    cancelScheduledFrame(fitFrameRef);
+    fitFrameRef.current = requestAnimationFrame(() => {
+      fitFrameRef.current = 0;
+      fitToView();
+    });
+  }, [fitToView]);
 
-  const zoomOut = useCallback(() => {
-    setIsAutoFit(false);
-    setZoom((value) => Math.max(value / 1.2, minimumZoom(fitZoom)));
-  }, [fitZoom]);
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const state = stateRef.current;
+      state.autoFit = false;
+      state.zoom = clampZoom(state.zoom * factor, state.fitZoom);
+      scheduleTransform();
+    },
+    [scheduleTransform]
+  );
 
   const reset = useCallback(() => {
-    setIsAutoFit(false);
-    setZoom(1);
-    setPosition({ x: 0, y: 0 });
-  }, []);
+    cancelGesture(true);
+    const state = stateRef.current;
+    state.autoFit = false;
+    state.position = { x: 0, y: 0 };
+    state.zoom = 1;
+    scheduleTransform();
+    schedulePresentationReady();
+  }, [cancelGesture, schedulePresentationReady, scheduleTransform]);
 
-  const handleWheel = useCallback(
-    (event: WheelEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      setIsAutoFit(false);
-      const delta = Math.exp(-event.deltaY * 0.001);
-      setZoom((value) =>
-        Math.max(minimumZoom(fitZoom), Math.min(5, value * delta))
-      );
+  useEffect(() => {
+    return internalController(controller).connect({
+      fitToView: () => fitToView(),
+      reset,
+      zoomIn: () => zoomBy(1.2),
+      zoomOut: () => zoomBy(1 / 1.2),
+    });
+  }, [controller, fitToView, reset, zoomBy]);
+
+  useEffect(() => {
+    const host = shadowHostRef.current;
+    const state = stateRef.current;
+    presentedRef.current = null;
+    cancelGesture(true);
+    state.autoFit = true;
+    state.fittedPreview = null;
+    state.position = { x: 0, y: 0 };
+    if (host) {
+      host.style.removeProperty("width");
+      host.style.removeProperty("height");
+    }
+    scheduleTransform();
+
+    if (!host || !preview) return;
+    const root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+    root.replaceChildren(preview.takeNode());
+    scheduleFit();
+
+    return () => root.replaceChildren();
+  }, [cancelGesture, preview, scheduleFit, scheduleTransform]);
+
+  useEffect(() => {
+    presentedRef.current = null;
+    schedulePresentationReady();
+  }, [presentationKey, preview, schedulePresentationReady]);
+
+  useEffect(() => {
+    if (!preview) return;
+    const container = containerRef.current;
+    const content = contentRef.current;
+    if (!container || !content) return;
+
+    const handleVisibleLayout = () => {
+      const state = stateRef.current;
+      if (state.gesture.kind === "pinch") {
+        state.gesture = {
+          ...state.gesture,
+          containerCenter: elementCenter(container),
+        };
+      }
+      if (state.autoFit) {
+        scheduleFit();
+      } else {
+        schedulePresentationReady();
+      }
+    };
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", handleVisibleLayout);
+      return () => window.removeEventListener("resize", handleVisibleLayout);
+    }
+
+    const resizeObserver = new ResizeObserver(handleVisibleLayout);
+    resizeObserver.observe(container);
+    if (!preview.dimensions) resizeObserver.observe(content);
+    const intersectionObserver =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver((entries) => {
+            if (entries.some((entry) => entry.isIntersecting)) {
+              handleVisibleLayout();
+            }
+          });
+    intersectionObserver?.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+      intersectionObserver?.disconnect();
+    };
+  }, [preview, scheduleFit, schedulePresentationReady]);
+
+  useEffect(() => {
+    const handleBlur = () => cancelGesture(true);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+      cancelGesture(true);
+      cancelScheduledFrame(transformFrameRef);
+      cancelScheduledFrame(fitFrameRef);
+      cancelScheduledFrame(readyFrameRef);
+    };
+  }, [cancelGesture]);
+
+  const beginGesture = useCallback(() => {
+    const state = stateRef.current;
+    const pointers = [...state.pointers.entries()];
+    if (pointers.length >= 2) {
+      const [first, second] = pointers;
+      if (!first || !second) return;
+      const midpoint = pointMidpoint(first[1], second[1]);
+      state.gesture = {
+        kind: "pinch",
+        containerCenter: elementCenter(containerRef.current),
+        pointerIds: [first[0], second[0]],
+        startDistance: Math.max(pointDistance(first[1], second[1]), 1),
+        startMidpoint: midpoint,
+        startPosition: state.position,
+        startZoom: state.zoom,
+      };
+    } else if (pointers.length === 1) {
+      const first = pointers[0];
+      if (!first) return;
+      state.gesture = {
+        kind: "pan",
+        pointerId: first[0],
+        startPointer: first[1],
+        startPosition: state.position,
+      };
+    } else {
+      state.gesture = { kind: "idle" };
+    }
+    setDragging(state.gesture.kind !== "idle");
+  }, [setDragging]);
+
+  const finishPointer = useCallback(
+    (pointerId: number, target: HTMLDivElement, releaseCapture: boolean) => {
+      const state = stateRef.current;
+      if (!state.pointers.delete(pointerId)) return;
+      beginGesture();
+      if (releaseCapture) releaseCapturedPointer(target, pointerId);
     },
-    [fitZoom]
+    [beginGesture]
   );
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
-
+      if (event.pointerType === "mouse" && event.button !== 0) return;
       event.preventDefault();
       window.getSelection()?.removeAllRanges();
-      event.currentTarget.setPointerCapture(event.pointerId);
-      setIsAutoFit(false);
-      setIsDragging(true);
-      setDragStart({
-        x: event.clientX - position.x,
-        y: event.clientY - position.y,
-      });
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Synthetic accessibility tooling may not create a capturable pointer.
+      }
+      const state = stateRef.current;
+      state.autoFit = false;
+      state.pointers.set(event.pointerId, eventPoint(event));
+      beginGesture();
     },
-    [position]
+    [beginGesture]
   );
 
   const handlePointerMove = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
-      if (!isDragging) return;
-
+      const state = stateRef.current;
+      if (!state.pointers.has(event.pointerId)) return;
       event.preventDefault();
       window.getSelection()?.removeAllRanges();
-      setPosition({
-        x: event.clientX - dragStart.x,
-        y: event.clientY - dragStart.y,
-      });
-    },
-    [dragStart, isDragging]
-  );
+      state.pointers.set(event.pointerId, eventPoint(event));
 
-  const handlePointerUp = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
-      if (isDragging && event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
+      const gesture = state.gesture;
+      if (gesture.kind === "pan") {
+        const pointer = state.pointers.get(gesture.pointerId);
+        if (!pointer) return;
+        state.position = {
+          x:
+            gesture.startPosition.x +
+            pointer.x -
+            gesture.startPointer.x,
+          y:
+            gesture.startPosition.y +
+            pointer.y -
+            gesture.startPointer.y,
+        };
+      } else if (gesture.kind === "pinch") {
+        const first = state.pointers.get(gesture.pointerIds[0]);
+        const second = state.pointers.get(gesture.pointerIds[1]);
+        if (!first || !second) return;
+        const midpoint = pointMidpoint(first, second);
+        const ratio =
+          pointDistance(first, second) / gesture.startDistance;
+        const nextZoom = clampZoom(
+          gesture.startZoom * ratio,
+          state.fitZoom
+        );
+        const zoomRatio = nextZoom / gesture.startZoom;
+        const startOffset = {
+          x: gesture.startMidpoint.x - gesture.containerCenter.x,
+          y: gesture.startMidpoint.y - gesture.containerCenter.y,
+        };
+        const nextOffset = {
+          x: midpoint.x - gesture.containerCenter.x,
+          y: midpoint.y - gesture.containerCenter.y,
+        };
+        state.position = {
+          x:
+            nextOffset.x -
+            (startOffset.x - gesture.startPosition.x) * zoomRatio,
+          y:
+            nextOffset.y -
+            (startOffset.y - gesture.startPosition.y) * zoomRatio,
+        };
+        state.zoom = nextZoom;
       }
-      setIsDragging(false);
+      scheduleTransform();
     },
-    [isDragging]
+    [scheduleTransform]
+  );
+
+  const handleWheel = useCallback(
+    (event: globalThis.WheelEvent) => {
+      event.preventDefault();
+      const state = stateRef.current;
+      state.autoFit = false;
+      state.zoom = clampZoom(
+        state.zoom * Math.exp(-event.deltaY * 0.001),
+        state.fitZoom
+      );
+      scheduleTransform();
+    },
+    [scheduleTransform]
   );
 
   useEffect(() => {
-    if (!enabled || !preview) return;
-
-    setIsAutoFit(true);
-    const frame = requestAnimationFrame(fitToView);
-    return () => cancelAnimationFrame(frame);
-  }, [enabled, fitToView, preview]);
-
-  useEffect(() => {
-    if (!enabled || !preview || !isAutoFit) return;
-
     const container = containerRef.current;
-    if (!container || typeof ResizeObserver === "undefined") return;
-
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(fitToView);
-    });
-
-    observer.observe(container);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [enabled, fitToView, isAutoFit, preview]);
-
-  const hasCurrentFit = fittedPreview === preview;
-  const controller: SvgViewportController = {
-    zoom,
-    contentScale: hasCurrentFit ? zoom / fitZoom : 1,
-    previewSize: hasCurrentFit ? previewSize : null,
-    position,
-    isDragging,
-    containerRef,
-    contentRef,
-    zoomIn,
-    zoomOut,
-    reset,
-    fitToView,
-    handleWheel,
-    handlePointerDown,
-    handlePointerMove,
-    handlePointerUp,
-  };
-  if (preview) {
-    PREVIEW_BY_CONTROLLER.set(controller, preview);
-  }
-  return controller;
-}
-
-interface SvgViewportProps {
-  presentationKey: number | null;
-  controller: SvgViewportController;
-  className?: string;
-  contentClassName?: string;
-  empty?: ReactNode;
-  onPresentationReady?: (at: number) => void;
-}
-
-export function SvgViewport({
-  presentationKey,
-  controller,
-  className,
-  contentClassName,
-  empty,
-  onPresentationReady,
-}: SvgViewportProps) {
-  const shadowHostRef = useRef<HTMLDivElement>(null);
-  const onPresentationReadyRef = useRef(onPresentationReady);
-  onPresentationReadyRef.current = onPresentationReady;
-  const preview = PREVIEW_BY_CONTROLLER.get(controller) ?? null;
-
-  useEffect(() => {
-    const host = shadowHostRef.current;
-    if (!host || !preview) return;
-
-    const root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
-    root.replaceChildren(preview.takeNode());
-
-    return () => root.replaceChildren();
-  }, [preview]);
-
-  useEffect(() => {
-    const root = shadowHostRef.current?.shadowRoot;
-    if (!root || !preview) return;
-
-    const frame = requestAnimationFrame(() => {
-      const renderedSvg = root.querySelector("svg");
-      if (!renderedSvg) return;
-      const bounds = renderedSvg.getBoundingClientRect();
-      if (
-        Number.isFinite(bounds.width) &&
-        Number.isFinite(bounds.height) &&
-        bounds.width > 0 &&
-        bounds.height > 0
-      ) {
-        onPresentationReadyRef.current?.(performance.now());
-      }
-    });
-
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, [
-    controller.previewSize?.height,
-    controller.previewSize?.width,
-    preview,
-    presentationKey,
-  ]);
+    if (!container) return;
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, [handleWheel]);
 
   return (
     <div
-      ref={controller.containerRef}
-      className={cn(
-        "relative h-full w-full overflow-hidden cursor-grab select-none touch-none",
-        controller.isDragging && "cursor-grabbing",
-        className
-      )}
-      onWheel={controller.handleWheel}
-      onPointerDown={controller.handlePointerDown}
-      onPointerMove={controller.handlePointerMove}
-      onPointerUp={controller.handlePointerUp}
-      onPointerCancel={controller.handlePointerUp}
+      ref={containerRef}
+      className="relative h-full w-full cursor-grab touch-none select-none overflow-hidden"
+      data-dragging="false"
+      data-merman-svg-viewport="true"
+      data-zoom="1"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={(event) =>
+        finishPointer(event.pointerId, event.currentTarget, true)
+      }
+      onPointerCancel={(event) =>
+        finishPointer(event.pointerId, event.currentTarget, true)
+      }
+      onLostPointerCapture={(event) =>
+        finishPointer(event.pointerId, event.currentTarget, false)
+      }
       onDragStart={(event) => event.preventDefault()}
     >
       {preview ? (
         <div
+          ref={positionLayerRef}
           className="absolute left-1/2 top-1/2"
-          style={{
-            transform: `translate(${Math.round(controller.position.x)}px, ${Math.round(
-              controller.position.y
-            )}px)`,
-          }}
+          data-merman-viewport-position-layer="true"
+          style={{ transform: "translate(0px, 0px)" }}
         >
           <div
+            ref={scaleLayerRef}
+            data-merman-viewport-scale-layer="true"
             style={{
-              transform: `translate(-50%, -50%) scale(${controller.contentScale})`,
+              transform: "translate(-50%, -50%) scale(1)",
               transformOrigin: "center center",
             }}
           >
             <div
-              ref={controller.contentRef}
-              className={cn(
-                "preview-container inline-flex bg-white rounded-lg shadow-sm p-4",
-                contentClassName
-              )}
+              ref={contentRef}
+              className="preview-container inline-flex rounded-lg bg-white p-4 shadow-sm"
             >
-              <div
-                ref={shadowHostRef}
-                className="block shrink-0"
-                style={
-                  controller.previewSize
-                    ? {
-                        width: controller.previewSize.width,
-                        height: controller.previewSize.height,
-                      }
-                    : undefined
-                }
-              />
+              <div ref={shadowHostRef} className="block shrink-0" />
             </div>
           </div>
         </div>
@@ -360,19 +671,25 @@ export function SvgViewport({
   );
 }
 
+function internalController(
+  controller: SvgViewportController
+): SvgViewportControllerImpl {
+  return controller as SvgViewportControllerImpl;
+}
+
 function measureRenderedContent(content: HTMLDivElement): SvgDimensions | null {
   if (content.offsetWidth <= 0 || content.offsetHeight <= 0) {
     return null;
   }
-
-  return {
-    width: content.offsetWidth,
-    height: content.offsetHeight,
-  };
+  return { width: content.offsetWidth, height: content.offsetHeight };
 }
 
 function minimumZoom(fitZoom: number): number {
   return Math.min(0.1, fitZoom / 10);
+}
+
+function clampZoom(value: number, fitZoom: number): number {
+  return Math.max(minimumZoom(fitZoom), Math.min(5, value));
 }
 
 function measureElementInsets(element: HTMLElement): SvgDimensions {
@@ -394,4 +711,46 @@ function measureElementInsets(element: HTMLElement): SvgDimensions {
 function parseCssPixels(value: string): number {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function eventPoint(event: Pick<PointerEvent, "clientX" | "clientY">): Point {
+  return { x: event.clientX, y: event.clientY };
+}
+
+function pointMidpoint(first: Point, second: Point): Point {
+  return { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+}
+
+function pointDistance(first: Point, second: Point): number {
+  return Math.hypot(second.x - first.x, second.y - first.y);
+}
+
+function elementCenter(element: HTMLElement | null): Point {
+  if (!element) return { x: 0, y: 0 };
+  const bounds = element.getBoundingClientRect();
+  return {
+    x: bounds.left + bounds.width / 2,
+    y: bounds.top + bounds.height / 2,
+  };
+}
+
+function releaseCapturedPointer(
+  element: HTMLElement,
+  pointerId: number
+): void {
+  if (!element.hasPointerCapture(pointerId)) return;
+  try {
+    element.releasePointerCapture(pointerId);
+  } catch {
+    // Capture may already have been released by the browser.
+  }
+}
+
+function cancelScheduledFrame(frame: { current: number }): void {
+  if (frame.current) cancelAnimationFrame(frame.current);
+  frame.current = 0;
+}
+
+function isPositiveFinite(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
 }

@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import {
   useAppStore,
+  selectWorkspaceSnapshot,
   type SvgPipeline,
   type TextMeasurementMode,
   type Theme,
@@ -26,7 +27,7 @@ import {
   isDiagramFont,
   type DiagramFont,
 } from "@/src/lib/diagram-font";
-import { useShare } from "@/src/hooks/useShare";
+import { copyShareUrl } from "@/src/lib/share";
 import {
   exportSVG,
   exportPNG,
@@ -271,7 +272,6 @@ export function Toolbar() {
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
   const lastRenderTime = useRenderCoordinator(selectCurrentMermanRenderTime);
   const currentBatch = useRenderCoordinator(selectCompletedRenderBatch);
-  const { copyShareUrl } = useShare();
   const facade = useMermanRuntime(selectMermanFacade);
   const asciiSupport = useAsciiSupport();
   const [isExporting, setIsExporting] = useState(false);
@@ -478,37 +478,18 @@ export function Toolbar() {
   }, [renderCurrentSvgArtifact, t]);
 
   const handleShare = useCallback(async () => {
-    if (!code.trim()) {
+    const snapshot = selectWorkspaceSnapshot(useAppStore.getState());
+    if (!snapshot.code.trim()) {
       toast.error(t("share.copyFailed"));
       return;
     }
     try {
-      await copyShareUrl({
-        code,
-        theme: diagramTheme,
-        config: mermaidConfig,
-        presentationProfileId,
-        presentationThemePresetId,
-        svgPipeline,
-        textMeasurementMode,
-        diagramFont,
-      });
+      await copyShareUrl(snapshot);
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [
-    code,
-    copyShareUrl,
-    diagramFont,
-    diagramTheme,
-    mermaidConfig,
-    presentationProfileId,
-    presentationThemePresetId,
-    svgPipeline,
-    t,
-    textMeasurementMode,
-  ]);
+  }, [t]);
 
   const handleOpenMermaidLive = useCallback(() => {
     if (!code.trim()) {

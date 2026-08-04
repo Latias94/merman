@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { useAppStore } from "./index.ts";
+import {
+  selectWorkspaceSnapshot,
+  useAppStore,
+  type WorkspaceSnapshot,
+} from "./index.ts";
 
 test("presentation setters update only their own axis", () => {
   useAppStore.setState({
@@ -42,6 +46,29 @@ test("presentation setters update only their own axis", () => {
     presentationThemePresetId: "future-theme",
     svgPipeline: "readable",
   });
+});
+
+test("applies one complete workspace snapshot with one coherent notification", () => {
+  const next: WorkspaceSnapshot = {
+    code: "sequenceDiagram\nA->>B: hello",
+    mermaidConfig: '{"look":"neo"}',
+    diagramTheme: "forest",
+    presentationProfileId: "future-profile",
+    presentationThemePresetId: "future-theme",
+    svgPipeline: "readable",
+    textMeasurementMode: "headless",
+    diagramFont: "arial",
+  };
+  const notifications: WorkspaceSnapshot[] = [];
+  const unsubscribe = useAppStore.subscribe((state) => {
+    notifications.push(selectWorkspaceSnapshot(state));
+  });
+
+  useAppStore.getState().applyWorkspaceSnapshot(next);
+  unsubscribe();
+
+  assert.deepEqual(notifications, [next]);
+  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), next);
 });
 
 function presentationState() {
