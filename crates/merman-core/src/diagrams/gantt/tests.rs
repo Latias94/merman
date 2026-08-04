@@ -4,7 +4,6 @@ use crate::{
     MermaidConfig, ParseControl, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel,
     SourceSpan,
 };
-use chrono::NaiveDate;
 use futures::executor::block_on;
 use serde_json::json;
 
@@ -55,14 +54,20 @@ fn with_test_local_time_zone<R>(time_zone: crate::time::LocalTimeZone, f: impl F
 }
 
 fn local_ms(y: i32, m0: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
-    let m = m0 + 1;
-    let naive = NaiveDate::from_ymd_opt(y, m, d)
-        .unwrap()
-        .and_hms_opt(h, min, s)
-        .unwrap();
-    crate::runtime::datetime_from_naive_local(naive)
+    let local = CivilDate::new(y, m0 + 1, d)
+        .and_then(|date| date.at_hms(h, min, s))
+        .expect("valid test civil datetime");
+    crate::runtime::resolve_local_datetime(local)
         .expect("test datetime is supported by the active timezone")
         .timestamp_millis()
+}
+
+fn utc_ms(y: i32, m: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
+    let utc = CivilDate::new(y, m, d)
+        .and_then(|date| date.at_hms(h, min, s))
+        .and_then(|civil| OffsetDateTime::from_local(civil, UtcOffset::UTC))
+        .expect("valid test UTC datetime");
+    utc.timestamp_millis()
 }
 
 #[test]
@@ -673,7 +678,7 @@ fn gantt_editor_facts_skip_frontmatter() {
 fn gantt_render_model_uses_fixed_today_for_missing_year_dates() {
     let engine = Engine::new()
         .with_fixed_today(Some(
-            NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed today"),
+            CivilDate::new(2026, 2, 15).expect("valid fixed today"),
         ))
         .try_with_fixed_local_offset_minutes(0)
         .expect("UTC is a valid fixed offset");
@@ -746,14 +751,6 @@ test1: id1,2013-01-01,2h
         t0["endTime"].as_i64().unwrap(),
         local_ms(2013, 0, 1, 2, 0, 0)
     );
-}
-
-#[test]
-fn gantt_last_day_of_month_degrades_without_epoch_unwraps() {
-    assert_eq!(last_day_of_month(2024, 2), 29);
-    assert_eq!(last_day_of_month(2023, 2), 28);
-    assert_eq!(last_day_of_month(2024, 13), 31);
-    assert_eq!(last_day_of_month(i32::MAX, 12), 31);
 }
 
 #[test]
@@ -908,6 +905,55 @@ fn gantt_js_date_fallback_year_bounds_match_upstream_guardrail() {
     });
 }
 
+#[test]
+fn gantt_js_date_fallback_keeps_ecmascript_expanded_years_distinct_from_civil_dates() {
+    let time_zone = crate::time::LocalTimeZone::fixed(8 * 60).unwrap();
+    with_test_local_time_zone(time_zone, || {
+        for invalid in [
+            "-0001-01-01",
+            "+0001-01-01",
+            "+10000-01-01",
+            "-10000-01-01",
+            "+010001-01-01",
+            "-000000-01-01",
+            "-000000-01-01T00:00:00",
+            "-000000-01-01T00:00:00Z",
+            "-000000-01-01T00:00:00+08:00",
+        ] {
+            assert!(parse_js_date_fallback(invalid).is_err(), "{invalid}");
+        }
+
+        assert_eq!(
+            parse_js_date_fallback("+002024-01-01")
+                .unwrap()
+                .timestamp_millis(),
+            utc_ms(2024, 1, 1, 0, 0, 0)
+        );
+        assert_eq!(parse_js_date_fallback("-000001-01-01").unwrap().year(), -1);
+        assert_eq!(
+            parse_js_date_fallback("+010000-01-01").unwrap().year(),
+            10_000
+        );
+        assert_eq!(
+            parse_js_date_fallback("-010000-01-01").unwrap().year(),
+            -10_000
+        );
+
+        assert_eq!(
+            parse_js_date_fallback("+002024-01-01T00:00:00")
+                .unwrap()
+                .timestamp_millis(),
+            local_ms(2024, 0, 1, 0, 0, 0)
+        );
+        assert_eq!(
+            parse_js_date_fallback("+002024-01-01T00:00:00Z")
+                .unwrap()
+                .timestamp_millis(),
+            utc_ms(2024, 1, 1, 0, 0, 0)
+        );
+    });
+}
+
 #[cfg(feature = "system-timezone")]
 #[test]
 fn gantt_js_date_fallback_supports_upper_guardrail_in_system_timezone() {
@@ -920,8 +966,6 @@ fn gantt_js_date_fallback_supports_upper_guardrail_in_system_timezone() {
 
 #[test]
 fn gantt_js_date_fallback_parses_mdy_hm_strings_like_v8() {
-    use chrono::{Datelike, Timelike};
-
     // Mermaid's gantt parser falls back to `new Date(str)`; in V8, the string
     // `08-08-09-01:00` parses as local time `2009-08-08 01:00`.
     let dt = parse_js_date_fallback("08-08-09-01:00").unwrap();
@@ -958,14 +1002,8 @@ fn gantt_parse_duration_matches_upstream_examples() {
 fn gantt_duration_arithmetic_rejects_unrepresentable_ranges_without_panicking() {
     let utc = crate::time::LocalTimeZone::utc();
     with_test_local_time_zone(utc, || {
-        let base = local_from_naive(
-            NaiveDate::from_ymd_opt(2026, 1, 1)
-                .unwrap()
-                .and_hms_opt(0, 0, 0)
-                .unwrap(),
-        )
-        .unwrap();
-        let max = local_from_naive(chrono::NaiveDateTime::MAX).unwrap();
+        let base = local_from_civil(CivilDate::new(2026, 1, 1).unwrap().at_midnight()).unwrap();
+        let max = OffsetDateTime::from_unix_millis(i64::MAX, UtcOffset::UTC);
 
         assert!(add_days_local(base, i64::MIN).is_none());
         assert!(add_months_local(base, i64::MAX).is_none());
@@ -1000,21 +1038,30 @@ fn gantt_huge_calendar_durations_use_the_existing_zero_duration_fallback() {
 }
 
 #[test]
-fn gantt_maximum_date_semantic_model_supports_one_millisecond_duration() {
-    let max_midnight = NaiveDate::MAX.and_hms_opt(0, 0, 0).unwrap();
-    let max_ms =
-        chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(max_midnight, chrono::Utc)
-            .timestamp_millis();
+fn gantt_javascript_time_boundary_supports_one_millisecond_duration() {
+    let max_ms = JS_MAX_TIME_MILLIS - 1;
     let source = format!("gantt\ndateFormat x\nsection Boundary\nTask: task,{max_ms},1ms\n");
     let utc = crate::time::LocalTimeZone::utc();
     let parsed = with_test_local_time_zone(utc, || {
         block_on(Engine::new().parse_diagram(&source, ParseOptions::default()))
     })
-    .expect("one millisecond remains representable on NaiveDate::MAX")
+    .expect("one millisecond remains representable at the JavaScript Date boundary")
     .expect("gantt detected");
     let task = &parsed.model["tasks"][0];
     assert_eq!(task["startTime"], max_ms);
     assert_eq!(task["endTime"], max_ms + 1);
+}
+
+#[test]
+fn gantt_javascript_time_clip_accepts_only_the_inclusive_endpoints() {
+    for milliseconds in [-JS_MAX_TIME_MILLIS, JS_MAX_TIME_MILLIS] {
+        let datetime = js_date_from_unix_millis(milliseconds)
+            .expect("JavaScript TimeClip endpoint must remain representable");
+        assert_eq!(datetime.timestamp_millis(), milliseconds);
+    }
+
+    assert!(js_date_from_unix_millis(-JS_MAX_TIME_MILLIS - 1).is_none());
+    assert!(js_date_from_unix_millis(JS_MAX_TIME_MILLIS + 1).is_none());
 }
 
 #[test]
@@ -1072,8 +1119,8 @@ London Trip 2: 202-12-01, 7d
 
     let ms0 = tasks[0]["startTime"].as_i64().unwrap();
     let ms1 = tasks[1]["startTime"].as_i64().unwrap();
-    let dt0 = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms0).unwrap();
-    let dt1 = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms1).unwrap();
+    let dt0 = OffsetDateTime::from_unix_millis(ms0, UtcOffset::UTC);
+    let dt1 = OffsetDateTime::from_unix_millis(ms1, UtcOffset::UTC);
     assert_eq!(dt0.year(), 2024);
     assert_eq!(dt1.year(), 202);
 }
@@ -1164,44 +1211,16 @@ fn dayjs_strict_parses_month_names_and_offsets() {
     assert_eq!(dt.timestamp_millis(), local_ms(2013, 0, 2, 0, 0, 0));
 
     let dt = parse_dayjs_like_strict("YYYY-MM-DDTHH:mm:ssZ", "2013-01-01T00:00:00+00:00").unwrap();
-    assert_eq!(
-        dt.timestamp_millis(),
-        chrono::Utc
-            .with_ymd_and_hms(2013, 1, 1, 0, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp_millis()
-    );
+    assert_eq!(dt.timestamp_millis(), utc_ms(2013, 1, 1, 0, 0, 0));
 
     let dt = parse_dayjs_like_strict("YYYY-MM-DDTHH:mm:ssZ", "2013-01-01T00:00:00+08:00").unwrap();
-    assert_eq!(
-        dt.timestamp_millis(),
-        chrono::Utc
-            .with_ymd_and_hms(2012, 12, 31, 16, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp_millis()
-    );
+    assert_eq!(dt.timestamp_millis(), utc_ms(2012, 12, 31, 16, 0, 0));
 
     let dt = parse_dayjs_like_strict("YYYY-MM-DDTHH:mm:ssZZ", "2013-01-01T00:00:00+0800").unwrap();
-    assert_eq!(
-        dt.timestamp_millis(),
-        chrono::Utc
-            .with_ymd_and_hms(2012, 12, 31, 16, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp_millis()
-    );
+    assert_eq!(dt.timestamp_millis(), utc_ms(2012, 12, 31, 16, 0, 0));
 
     let dt = parse_dayjs_like_strict("YYYY-MM-DDTHH:mm:ssZ", "2013-01-01T00:00:00Z").unwrap();
-    assert_eq!(
-        dt.timestamp_millis(),
-        chrono::Utc
-            .with_ymd_and_hms(2013, 1, 1, 0, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp_millis()
-    );
+    assert_eq!(dt.timestamp_millis(), utc_ms(2013, 1, 1, 0, 0, 0));
 }
 
 #[test]
@@ -1223,20 +1242,9 @@ test1: id1,2013-01-01,1d
     let t0 = &model["tasks"][0];
     assert_eq!(
         t0["startTime"].as_i64().unwrap(),
-        chrono::Utc
-            .with_ymd_and_hms(2013, 1, 1, 0, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp_millis()
+        utc_ms(2013, 1, 1, 0, 0, 0)
     );
-    assert_eq!(
-        t0["endTime"].as_i64().unwrap(),
-        chrono::Utc
-            .with_ymd_and_hms(2013, 1, 2, 0, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp_millis()
-    );
+    assert_eq!(t0["endTime"].as_i64().unwrap(), utc_ms(2013, 1, 2, 0, 0, 0));
 }
 
 #[test]
@@ -1276,34 +1284,13 @@ test1: id1,2013-01-01T00:00:00,1d
 #[test]
 fn gantt_js_date_fallback_parses_timezone_offsets_with_or_without_colon() {
     let dt = parse_js_date_fallback("2013-01-01T00:00:00+0800").unwrap();
-    assert_eq!(
-        dt.timestamp_millis(),
-        chrono::Utc
-            .with_ymd_and_hms(2012, 12, 31, 16, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp_millis()
-    );
+    assert_eq!(dt.timestamp_millis(), utc_ms(2012, 12, 31, 16, 0, 0));
 
     let dt = parse_js_date_fallback("2013-01-01T00:00:00+08:00").unwrap();
-    assert_eq!(
-        dt.timestamp_millis(),
-        chrono::Utc
-            .with_ymd_and_hms(2012, 12, 31, 16, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp_millis()
-    );
+    assert_eq!(dt.timestamp_millis(), utc_ms(2012, 12, 31, 16, 0, 0));
 
     let dt = parse_js_date_fallback("2013-01-01T00:00:00Z").unwrap();
-    assert_eq!(
-        dt.timestamp_millis(),
-        chrono::Utc
-            .with_ymd_and_hms(2013, 1, 1, 0, 0, 0)
-            .single()
-            .unwrap()
-            .timestamp_millis()
-    );
+    assert_eq!(dt.timestamp_millis(), utc_ms(2013, 1, 1, 0, 0, 0));
 }
 
 #[test]
@@ -1856,6 +1843,25 @@ t1: id1,20,1s
     let t0 = &model["tasks"][0];
     assert_eq!(t0["startTime"].as_i64().unwrap(), 20);
     assert_eq!(t0["endTime"].as_i64().unwrap(), 1_020);
+}
+
+#[test]
+fn dayjs_unix_seconds_floor_negative_milliseconds() {
+    let utc = crate::time::LocalTimeZone::utc();
+    with_test_local_time_zone(utc, || {
+        for (milliseconds, expected) in [
+            (-1_001, "-2"),
+            (-1_000, "-1"),
+            (-999, "-1"),
+            (-1, "-1"),
+            (0, "0"),
+            (999, "0"),
+            (1_000, "1"),
+        ] {
+            let datetime = OffsetDateTime::from_unix_millis(milliseconds, UtcOffset::UTC);
+            assert_eq!(format_dayjs_like(datetime, "X"), expected);
+        }
+    });
 }
 
 #[test]

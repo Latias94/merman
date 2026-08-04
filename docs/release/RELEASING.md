@@ -257,6 +257,8 @@ package as an independently installable artifact. Release preflight must build/c
 package's matching TypeScript, wasm-bindgen glue, single WASM, provenance, generated binding API,
 editor schema,
 and complete 35-family language catalog; it is not valid to publish only a wrapper declaration.
+Typst package builds additionally require Binaryen `wasm-opt version 131` and `wasm-tools`; the
+post-link optimizer and stripper versions are recorded in the artifact manifest.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
 browser/wasm-bindgen artifacts. Cargo defaults are intentionally empty. The sole public package
 profile is `publish`; it consumes the exact `typst-wasm` artifact recipe, which pins

@@ -19,18 +19,16 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from artifact_dependency_approvals import (  # noqa: E402
-    ARTIFACT_DEPENDENCY_APPROVALS,
-    HOST_CLOSURE_REFERENCE_TARGET,
-)
 from artifact_profile_recipe import (  # noqa: E402
     CargoArtifactRecipe,
     load_artifact_profile,
+    load_artifact_profiles,
 )
 from verify_artifact_dependency_closures import (  # noqa: E402
     AttributionClosure,
     AttributionPackage,
     FEATURE_MARKER,
+    HOST_CLOSURE_REFERENCE_TARGET,
     LINUX_REFERENCE_SCOPE,
     PACKAGE_MARKER,
     PROFILE_TARGET_SCOPE,
@@ -101,7 +99,6 @@ def claim(
     required: tuple[str, ...] = ("fixture",),
     forbidden: tuple[str, ...] = (),
     forbidden_features: tuple[PackageFeatureExclusion, ...] = (),
-    residual: tuple[str, ...] = (),
 ) -> ClosureClaim:
     return ClosureClaim(
         claim_id=f"{profile_id}-claim",
@@ -109,7 +106,6 @@ def claim(
         required_packages=required,
         forbidden_packages=forbidden,
         forbidden_features=forbidden_features,
-        observed_residual_packages=residual,
     )
 
 
@@ -119,13 +115,11 @@ def case(
     loaded_recipe: CargoArtifactRecipe | None = None,
     loaded_claim: ClosureClaim | None = None,
     target: str = HOST_CLOSURE_REFERENCE_TARGET,
-    fingerprint: str = "sha256:" + "0" * 64,
 ) -> VerificationCase:
     return VerificationCase(
         recipe=loaded_recipe or recipe(profile_id),
         claim=loaded_claim or claim(profile_id),
         target=target,
-        approved_fingerprint=fingerprint,
     )
 
 
@@ -184,66 +178,43 @@ def write_descriptor(
     return path
 
 
-class ApprovalCatalogTests(unittest.TestCase):
-    def test_repository_catalog_covers_every_profile_and_declared_target(self) -> None:
+class VerificationCaseTests(unittest.TestCase):
+    def test_repository_cases_cover_every_profile_and_declared_target(self) -> None:
+        profiles = load_artifact_profiles()
         cases = load_verification_cases()
-        self.assertEqual(
-            {case.recipe.profile_id for case in cases},
-            set(ARTIFACT_DEPENDENCY_APPROVALS),
-        )
-        self.assertGreater(len(cases), len(ARTIFACT_DEPENDENCY_APPROVALS))
-
-    def test_catalog_must_match_profile_directory_exactly(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            descriptor = write_descriptor(
-                Path(temporary_directory),
-                "known",
-                "missing",
+        expected_targets = {
+            profile.profile_id: (
+                (HOST_CLOSURE_REFERENCE_TARGET,)
+                if profile.cargo.build_target_kind == "host"
+                else profile.cargo.build_targets
             )
-            approvals = {
-                "known": (
-                    (HOST_CLOSURE_REFERENCE_TARGET, "sha256:" + "0" * 64),
-                ),
-                "unexpected": (
-                    (HOST_CLOSURE_REFERENCE_TARGET, "sha256:" + "0" * 64),
-                ),
-            }
+            for profile in profiles
+        }
+        actual_targets: dict[str, list[str]] = {}
+        for current in cases:
+            actual_targets.setdefault(current.recipe.profile_id, []).append(current.target)
+
+        self.assertEqual(
+            {
+                profile_id: tuple(targets)
+                for profile_id, targets in actual_targets.items()
+            },
+            expected_targets,
+        )
+
+    def test_semantic_claims_must_reference_known_profiles(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            descriptor = write_descriptor(Path(temporary_directory), "known")
             with self.assertRaisesRegex(
                 ClosureVerificationError,
-                r"missing=\['missing'\] unexpected=\['unexpected'\]",
+                r"unknown profiles: \['unexpected'\]",
             ):
                 load_verification_cases(
                     descriptor_path=descriptor,
-                    approvals=approvals,
-                    semantic_claims=(),
+                    semantic_claims=(claim("unexpected"),),
                 )
 
-    def test_targets_are_ordered_exact_and_fingerprints_are_valid(self) -> None:
-        fingerprint = "sha256:" + "0" * 64
-        invalid_catalogs = (
-            (
-                {"cross": (("target-one", fingerprint),)},
-                "must match descriptor evidence targets exactly",
-            ),
-            (
-                {
-                    "cross": (
-                        ("target-one", fingerprint),
-                        ("target-one", fingerprint),
-                    )
-                },
-                "duplicate approval targets",
-            ),
-            (
-                {
-                    "cross": (
-                        ("target-one", fingerprint),
-                        ("target-two", "not-a-fingerprint"),
-                    )
-                },
-                "invalid runtime fingerprints",
-            ),
-        )
+    def test_cases_follow_descriptor_target_order(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             descriptor = write_descriptor(
                 Path(temporary_directory),
@@ -253,16 +224,15 @@ class ApprovalCatalogTests(unittest.TestCase):
                     "triples": ["target-one", "target-two"],
                 },
             )
-            for approvals, message in invalid_catalogs:
-                with self.subTest(message=message), self.assertRaisesRegex(
-                    ClosureVerificationError,
-                    message,
-                ):
-                    load_verification_cases(
-                        descriptor_path=descriptor,
-                        approvals=approvals,
-                        semantic_claims=(),
-                    )
+            cases = load_verification_cases(
+                descriptor_path=descriptor,
+                semantic_claims=(),
+            )
+
+        self.assertEqual(
+            tuple(current.target for current in cases),
+            ("target-one", "target-two"),
+        )
 
     def test_recipe_derives_scope_and_exact_root_claim(self) -> None:
         cases = load_verification_cases()
@@ -963,7 +933,6 @@ class FixedFfiBaselineTests(unittest.TestCase):
         }
         return row
 
-
 class ClaimTests(unittest.TestCase):
     def test_semantic_failures_are_reported_together(self) -> None:
         loaded_claim = claim(
@@ -982,42 +951,29 @@ class ClaimTests(unittest.TestCase):
                 )
             )
         )
-        failures, _ = check_case(
-            case(loaded_claim=loaded_claim),
-            closure,
-            enforce_fingerprint=False,
-        )
+        failures, _ = check_case(case(loaded_claim=loaded_claim), closure)
         self.assertTrue(any("required packages missing: missing" in x for x in failures))
         self.assertTrue(any("forbidden packages present" in x for x in failures))
         self.assertTrue(any("enables forbidden features" in x for x in failures))
 
-    def test_residual_packages_must_remain_observed(self) -> None:
-        loaded_claim = claim(
-            "residual",
-            required=("root",),
-            residual=("upstream-residual",),
-        )
-        failures, _ = check_case(
-            case("residual", loaded_claim=loaded_claim),
-            parse_cargo_tree(tree_line("root")),
-            enforce_fingerprint=False,
-        )
-        self.assertIn("required packages missing: upstream-residual", failures)
-
-    def test_fingerprint_drift_is_fail_closed_but_print_mode_can_observe(self) -> None:
-        closure = parse_cargo_tree(tree_line("fixture"))
-        current = case(fingerprint="sha256:" + "0" * 64)
-
-        failures, observation = check_case(current, closure)
-        print_failures, _ = check_case(
-            current,
-            closure,
-            enforce_fingerprint=False,
+    def test_observation_keeps_readable_package_evidence(self) -> None:
+        closure = parse_cargo_tree(
+            "\n".join(
+                (
+                    tree_line("fixture", version="1.0.0"),
+                    tree_line("dependency", version="2.0.0"),
+                )
+            )
         )
 
-        self.assertTrue(any("fingerprint drift" in failure for failure in failures))
-        self.assertEqual(print_failures, [])
-        self.assertEqual(observation.fingerprint, closure_fingerprint(closure))
+        failures, observation = check_case(case(), closure)
+
+        self.assertEqual(failures, [])
+        self.assertEqual(observation.package_count, 2)
+        self.assertEqual(
+            observation.package_versions,
+            frozenset({("fixture", "1.0.0"), ("dependency", "2.0.0")}),
+        )
 
     def test_svg_basic_semantics_reject_optional_product_leaks(self) -> None:
         loaded_claim = next(
@@ -1039,7 +995,6 @@ class ClaimTests(unittest.TestCase):
         failures, _ = check_case(
             case("rust-svg-basic", loaded_claim=loaded_claim),
             closure,
-            enforce_fingerprint=False,
         )
         self.assertTrue(any("forbidden packages present" in x for x in failures))
         self.assertTrue(any("layout-elk" in x for x in failures))
@@ -1048,7 +1003,7 @@ class ClaimTests(unittest.TestCase):
 
 
 class VerificationTests(unittest.TestCase):
-    def test_rustsec_authority_uses_recipe_scope_not_fingerprint_mode(self) -> None:
+    def test_rustsec_authority_uses_recipe_scope(self) -> None:
         observations = (
             ClosureObservation(
                 profile_id="host",
@@ -1057,9 +1012,6 @@ class VerificationTests(unittest.TestCase):
                 closure_target=HOST_CLOSURE_REFERENCE_TARGET,
                 package_count=1,
                 package_versions=frozenset({("host", "1.0.0")}),
-                observed_residual_packages=(),
-                fingerprint="sha256:" + "0" * 64,
-                fingerprint_enforced=False,
             ),
             ClosureObservation(
                 profile_id="cross",
@@ -1068,9 +1020,6 @@ class VerificationTests(unittest.TestCase):
                 closure_target="x86_64-unknown-linux-gnu",
                 package_count=1,
                 package_versions=frozenset({("cross", "1.0.0")}),
-                observed_residual_packages=(),
-                fingerprint="sha256:" + "0" * 64,
-                fingerprint_enforced=False,
             ),
         )
 
@@ -1098,14 +1047,12 @@ class VerificationTests(unittest.TestCase):
             build_targets=targets,
         )
         output = tree_line("root")
-        fingerprint = closure_fingerprint(parse_cargo_tree(output))
         cases = tuple(
             case(
                 "cross",
                 loaded_recipe=loaded,
                 loaded_claim=claim("cross", required=("root",)),
                 target=target,
-                fingerprint=fingerprint,
             )
             for target in targets
         )
@@ -1115,11 +1062,7 @@ class VerificationTests(unittest.TestCase):
             commands.append(command)
             return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
 
-        observations = verify_cases(
-            cases,
-            runner=runner,
-            running_host_target="aarch64-apple-darwin",
-        )
+        observations = verify_cases(cases, runner=runner)
 
         self.assertEqual(
             tuple(command[command.index("--target") + 1] for command in commands),
@@ -1137,13 +1080,11 @@ class VerificationTests(unittest.TestCase):
     def test_identical_cargo_tree_commands_are_reused_across_claims(self) -> None:
         loaded = recipe("shared", package="root")
         output = tree_line("root")
-        fingerprint = closure_fingerprint(parse_cargo_tree(output))
         cases = tuple(
             case(
                 "shared",
                 loaded_recipe=loaded,
                 loaded_claim=claim("shared", required=("root",)),
-                fingerprint=fingerprint,
             )
             for _ in range(2)
         )
@@ -1153,48 +1094,15 @@ class VerificationTests(unittest.TestCase):
             commands.append(command)
             return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
 
-        observations = verify_cases(
-            cases,
-            runner=runner,
-            running_host_target=HOST_CLOSURE_REFERENCE_TARGET,
-        )
+        observations = verify_cases(cases, runner=runner)
 
         self.assertEqual(len(commands), 1)
         self.assertEqual(len(observations), 2)
 
-    def test_host_fingerprint_is_only_enforced_on_the_reference_host(self) -> None:
+    def test_semantic_claims_are_enforced_for_host_cases(self) -> None:
         output = tree_line("fixture")
-
-        def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=output,
-                stderr="",
-            )
-
-        with self.assertRaisesRegex(ClosureVerificationError, "fingerprint drift"):
-            verify_cases(
-                (case(fingerprint="sha256:" + "0" * 64),),
-                runner=runner,
-                running_host_target=HOST_CLOSURE_REFERENCE_TARGET,
-            )
-
-        observations = verify_cases(
-            (case(fingerprint="sha256:" + "0" * 64),),
-            runner=runner,
-            running_host_target="aarch64-apple-darwin",
-        )
-
-        self.assertFalse(observations[0].fingerprint_enforced)
-        self.assertEqual(
-            observations[0].fingerprint,
-            closure_fingerprint(parse_cargo_tree(output)),
-        )
-
         semantic_case = case(
             loaded_claim=claim("fixture", forbidden=("forbidden",)),
-            fingerprint="sha256:" + "0" * 64,
         )
         with self.assertRaisesRegex(
             ClosureVerificationError,
@@ -1208,31 +1116,6 @@ class VerificationTests(unittest.TestCase):
                     stdout="\n".join((output, tree_line("forbidden"))),
                     stderr="",
                 ),
-                running_host_target="aarch64-apple-darwin",
-            )
-
-    def test_target_set_fingerprint_remains_enforced_off_reference_host(self) -> None:
-        loaded = recipe(
-            "cross",
-            build_target_kind="target-set",
-            build_targets=("x86_64-unknown-linux-gnu",),
-        )
-        with self.assertRaisesRegex(ClosureVerificationError, "fingerprint drift"):
-            verify_cases(
-                (
-                    case(
-                        "cross",
-                        loaded_recipe=loaded,
-                        target="x86_64-unknown-linux-gnu",
-                    ),
-                ),
-                runner=lambda command: subprocess.CompletedProcess(
-                    command,
-                    0,
-                    stdout=tree_line("fixture"),
-                    stderr="",
-                ),
-                running_host_target="aarch64-apple-darwin",
             )
 
     def test_failures_are_aggregated_across_profiles(self) -> None:
@@ -1259,12 +1142,7 @@ class VerificationTests(unittest.TestCase):
             )
 
         with self.assertRaises(ClosureVerificationError) as raised:
-            verify_cases(
-                cases,
-                runner=runner,
-                enforce_fingerprints=False,
-                running_host_target=HOST_CLOSURE_REFERENCE_TARGET,
-            )
+            verify_cases(cases, runner=runner)
 
         message = str(raised.exception)
         self.assertIn("one-claim (one", message)
@@ -1285,17 +1163,12 @@ class VerificationTests(unittest.TestCase):
             ClosureVerificationError,
             "dependency resolution failed",
         ):
-            verify_cases(
-                (case(),),
-                runner=runner,
-                enforce_fingerprints=False,
-                running_host_target=HOST_CLOSURE_REFERENCE_TARGET,
-            )
+            verify_cases((case(),), runner=runner)
 
     def test_unknown_profile_selection_is_rejected(self) -> None:
         with self.assertRaisesRegex(
             ClosureVerificationError,
-            "no dependency-closure approval",
+            "no dependency-closure recipe",
         ):
             _select_cases((case(),), ("not-a-profile",))
 

@@ -151,6 +151,11 @@ def expected_projections(root: Path) -> dict[Path, bytes]:
             destination / CANONICAL_LICENSE_DIRECTORY,
             expected,
         )
+        if bundle_root == "packages/typst/merman":
+            expected.pop(
+                destination / CANONICAL_LICENSE_DIRECTORY / RUST_DEPENDENCY_REPORT,
+                None,
+            )
         native_report = NATIVE_RUST_REPORTS.get(bundle_root)
         if native_report is not None:
             expected[

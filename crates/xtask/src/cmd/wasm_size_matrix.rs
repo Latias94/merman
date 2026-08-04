@@ -1,7 +1,9 @@
 use crate::{
     XtaskError,
     cmd::{
-        artifact_profiles::load_wasm_size_artifact_profiles, paths,
+        artifact_profiles::load_wasm_size_artifact_profiles,
+        paths,
+        typst_artifact::{optimize_typst_wasm, verify_typst_wasm_optimizer},
         wasm_build_lock::WorkspaceWasmBuildLock,
     },
 };
@@ -177,6 +179,7 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
     let all_artifacts = all_artifacts()?;
     let options = parse_options(args, &all_artifacts)?;
     let artifacts = selected_artifacts(&options, &all_artifacts)?;
+    validate_measurement_source(&options, &artifacts)?;
     let budgets = options
         .budget_file
         .as_deref()
@@ -278,11 +281,7 @@ fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Option
         match arg.as_str() {
             "--surface" => {
                 let raw = iter.next().ok_or(XtaskError::Usage)?;
-                options.surface = if raw == "all" {
-                    None
-                } else {
-                    Some(Surface::parse(&raw)?)
-                };
+                options.surface = Some(Surface::parse(&raw)?);
             }
             "--artifact-profile" => {
                 options.artifact_profile = Some(iter.next().ok_or(XtaskError::Usage)?);
@@ -311,12 +310,19 @@ fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Option
         ));
     }
 
+    if options.surface.is_none() && options.artifact_profile.is_none() {
+        return Err(XtaskError::WasmSizeMatrixFailed(
+            "select --surface or --artifact-profile because Web packages and Typst plugins use different artifact producers"
+                .to_string(),
+        ));
+    }
+
     Ok(options)
 }
 
 fn print_usage(artifacts: &[WasmArtifact]) {
     println!(
-        "usage: xtask wasm-size-matrix [--surface web|typst] [--artifact-profile <id>] [--web-package-root <path>] [--no-strip] [--budget-file <path>]"
+        "usage: xtask wasm-size-matrix (--surface web|typst | --artifact-profile <id>) [--web-package-root <path>] [--no-strip] [--budget-file <path>]"
     );
     println!("  --web-package-root  measure assembled Web package artifacts instead of rebuilding");
     println!();
@@ -648,6 +654,25 @@ fn selected_artifacts<'a>(
     Ok(artifacts)
 }
 
+fn validate_measurement_source(
+    options: &Options,
+    artifacts: &[&WasmArtifact],
+) -> Result<(), XtaskError> {
+    if options.budget_file.is_some()
+        && options.web_package_root.is_none()
+        && artifacts
+            .iter()
+            .any(|artifact| artifact.surface == Surface::Web)
+    {
+        return Err(XtaskError::WasmSizeMatrixFailed(
+            "budgeted Web measurements require --web-package-root because the committed budgets describe assembled npm package artifacts"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 fn build_artifact(artifact: &WasmArtifact) -> Result<(), XtaskError> {
     let mut command = Command::new("cargo");
     command.args([
@@ -704,10 +729,19 @@ fn strip_copy(
     wasm_path: &Path,
     strip_dir: &Path,
 ) -> Result<PathBuf, XtaskError> {
+    let optimized_path = if artifact.surface == Surface::Typst {
+        verify_typst_wasm_optimizer()?;
+        let path = strip_dir.join(format!("{}.optimized.wasm", artifact.id));
+        optimize_typst_wasm(wasm_path, &path)?;
+        Some(path)
+    } else {
+        None
+    };
+    let strip_input = optimized_path.as_deref().unwrap_or(wasm_path);
     let stripped_path = strip_dir.join(format!("{}.stripped.wasm", artifact.id));
     let status = Command::new("wasm-tools")
         .args(["strip", "--all"])
-        .arg(wasm_path)
+        .arg(strip_input)
         .arg("-o")
         .arg(&stripped_path)
         .current_dir(paths::workspace_root())
@@ -792,13 +826,15 @@ mod tests {
     }
 
     #[test]
-    fn default_selection_includes_web_and_typst_artifact_profiles() {
-        let all_artifacts = artifacts();
-        let options = Options::default();
-        let selected = selected_artifacts(&options, all_artifacts).unwrap();
+    fn selection_requires_an_explicit_surface_or_artifact_profile() {
+        let error = parse_options(Vec::new(), artifacts()).unwrap_err();
 
-        assert!(selected.iter().any(|artifact| artifact.id == "web-full"));
-        assert!(selected.iter().any(|artifact| artifact.id == "typst-wasm"));
+        assert!(
+            error
+                .to_string()
+                .contains("select --surface or --artifact-profile"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -838,6 +874,21 @@ mod tests {
             vec!["layout-cytoscape", "layout-elk", "math", "svg"]
         );
         assert!(!selected[0].default_features);
+    }
+
+    #[test]
+    fn budgeted_web_measurements_require_assembled_package_artifacts() {
+        let all_artifacts = artifacts();
+        let options = Options {
+            surface: Some(Surface::Web),
+            budget_file: Some(PathBuf::from("docs/release/WASM_SIZE_BUDGETS.json")),
+            ..Options::default()
+        };
+        let selected = selected_artifacts(&options, all_artifacts).unwrap();
+
+        let error = validate_measurement_source(&options, &selected).unwrap_err();
+
+        assert!(error.to_string().contains("require --web-package-root"));
     }
 
     #[test]

@@ -296,7 +296,7 @@ fn cli_rejects_invalid_fixed_time_options() {
         (
             "--fixed-today",
             "2026/02/15",
-            "expected a date in YYYY-MM-DD format",
+            "expected a canonical civil date such as YYYY-MM-DD or +10000-MM-DD",
         ),
         (
             "--fixed-local-offset-minutes",

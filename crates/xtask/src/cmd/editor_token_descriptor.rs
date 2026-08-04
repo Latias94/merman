@@ -1200,7 +1200,7 @@ fn token_equivalence_artifact(
         .try_with_fixed_local_offset_minutes(0)
         .expect("valid UTC offset")
         .with_fixed_today(Some(
-            chrono::NaiveDate::from_ymd_opt(2026, 6, 10)
+            merman_core::time::CivilDate::new(2026, 6, 10)
                 .expect("token-equivalence evidence date is valid"),
         ));
     let analyzer =

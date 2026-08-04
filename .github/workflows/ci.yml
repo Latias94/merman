@@ -500,6 +500,13 @@ jobs:
       - name: Install wasm-tools
         uses: taiki-e/install-action@wasm-tools
 
+      - name: Install wasm-opt
+        uses: sigoden/install-binary@7eb4b088aedf19fe9b2bc6c6bbdc12379ffb355c # v1
+        with:
+          repo: WebAssembly/binaryen
+          name: wasm-opt
+          tag: version_131
+
       - name: Download Typst
         shell: bash
         run: |
@@ -571,8 +578,15 @@ jobs:
       - name: Install wasm-tools
         uses: taiki-e/install-action@wasm-tools
 
+      - name: Install wasm-opt
+        uses: sigoden/install-binary@7eb4b088aedf19fe9b2bc6c6bbdc12379ffb355c # v1
+        with:
+          repo: WebAssembly/binaryen
+          name: wasm-opt
+          tag: version_131
+
       - name: Check WASM size budgets
-        run: cargo run --locked -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
+        run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Check exact Typst dependency closure
         run: cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm

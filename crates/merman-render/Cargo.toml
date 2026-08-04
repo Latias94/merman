@@ -41,7 +41,6 @@ math = [
 
 [dependencies]
 base64.workspace = true
-chrono.workspace = true
 cssparser.workspace = true
 data-url.workspace = true
 dugong.workspace = true

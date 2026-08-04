@@ -124,13 +124,24 @@ function normalizeOptionalIsoDateString(value: unknown): string | undefined {
   if (!normalized) {
     return undefined;
   }
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(normalized);
+  const match = /^([+-]?\d{4,10})-(\d{2})-(\d{2})$/u.exec(normalized);
   if (!match) {
     return undefined;
   }
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
+  if (!Number.isInteger(year) || year < -2147483648 || year > 2147483647) {
+    return undefined;
+  }
+  const canonicalYear = year >= 0 && year <= 9999
+    ? year.toString().padStart(4, "0")
+    : year >= 10000
+    ? `+${year}`
+    : `-${Math.abs(year).toString().padStart(4, "0")}`;
+  if (`${canonicalYear}-${match[2]}-${match[3]}` !== normalized) {
+    return undefined;
+  }
   if (month < 1 || month > 12) {
     return undefined;
   }

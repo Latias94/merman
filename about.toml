@@ -18,7 +18,7 @@ accepted = [
 ]
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
-workarounds = ["chrono", "rustix"]
+workarounds = ["rustix"]
 
 [private]
 ignore = false

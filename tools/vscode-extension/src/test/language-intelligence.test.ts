@@ -153,7 +153,35 @@ describe("language intelligence adoption", () => {
     };
     const properties = configurationProperties(pkg.contributes.configuration);
 
-    assert.equal(properties["merman.analysis.fixed_today"]?.pattern, "^$|^\\d{4}-\\d{2}-\\d{2}$");
+    const fixedTodayPattern = properties["merman.analysis.fixed_today"]?.pattern;
+    assert.equal(
+      fixedTodayPattern,
+      "^$|^(?:\\d{4}|\\+(?:[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-7])|-(?:000[1-9]|00[1-9]\\d|0[1-9]\\d{2}|[1-9]\\d{3}|[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-8]))-\\d{2}-\\d{2}$",
+    );
+    const fixedToday = new RegExp(fixedTodayPattern ?? "");
+    for (const value of [
+      "",
+      "0000-01-01",
+      "9999-12-31",
+      "+10000-01-01",
+      "+2147483647-12-31",
+      "-0001-01-01",
+      "-10000-01-01",
+      "-2147483648-01-01",
+    ]) {
+      assert.equal(fixedToday.test(value), true, value);
+    }
+    for (const value of [
+      "+9999-01-01",
+      "+010000-01-01",
+      "+2147483648-01-01",
+      "-0000-01-01",
+      "-010000-01-01",
+      "-2147483649-01-01",
+      "10000-01-01",
+    ]) {
+      assert.equal(fixedToday.test(value), false, value);
+    }
     assert.deepEqual(properties["merman.analysis.fixed_local_offset_minutes"]?.type, [
       "integer",
       "null",
