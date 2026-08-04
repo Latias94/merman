@@ -43,7 +43,6 @@ fn resolve_flowchart_edge_label_position(
     ctx: &FlowchartRenderCtx<'_>,
     layout_edge: &crate::model::LayoutEdge,
     label: &crate::model::LayoutLabel,
-    edge_id: &str,
     origin_x: f64,
     origin_y: f64,
     edge_cache: &FxHashMap<&str, FlowchartEdgePathCacheEntry>,
@@ -55,7 +54,7 @@ fn resolve_flowchart_edge_label_position(
     };
 
     if let Some(geom) = edge_cache
-        .get(edge_id)
+        .get(layout_edge.id.as_str())
         .filter(|entry| {
             (entry.origin_x - origin_x).abs() <= 1e-9 && (entry.origin_y - origin_y).abs() <= 1e-9
         })
@@ -136,14 +135,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
             if let Some(lbl) = le.label.as_ref() {
                 let position = resolve_flowchart_edge_label_position(
-                    ctx,
-                    le,
-                    lbl,
-                    edge.id.as_str(),
-                    origin_x,
-                    origin_y,
-                    edge_cache,
-                    false,
+                    ctx, le, lbl, origin_x, origin_y, edge_cache, false,
                 );
                 let x = position.x;
                 let y = position.y;
@@ -276,14 +268,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
         if let Some(lbl) = le.label.as_ref() {
             let position = resolve_flowchart_edge_label_position(
-                ctx,
-                le,
-                lbl,
-                edge.id.as_str(),
-                origin_x,
-                origin_y,
-                edge_cache,
-                false,
+                ctx, le, lbl, origin_x, origin_y, edge_cache, false,
             );
             let x = position.x;
             let y = position.y;
@@ -432,7 +417,6 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         ctx,
         layout_edge,
         label,
-        edge.id.as_str(),
         origin_x,
         origin_y,
         edge_cache,

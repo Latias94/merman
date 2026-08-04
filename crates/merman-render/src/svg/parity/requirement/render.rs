@@ -605,7 +605,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<path d="{d}" id="{dom_id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{look_attr}{marker_attr}/>"#,
-            d = escape_xml(&d),
+            d = escape_xml(d),
             dom_id = escape_xml(&format!("{}{}", node_id_prefix, prepared_label.rendered_id)),
             id = escape_xml(&prepared_label.rendered_id),
             class = escape_xml(&class),

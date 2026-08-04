@@ -119,7 +119,7 @@ enum ClassLayoutEngine {
 
 enum ClassLayoutResult {
     Layout(ClassDiagramLayout),
-    DagreInput(ClassLayoutGraph),
+    DagreInput(Box<ClassLayoutGraph>),
 }
 
 fn normalize_dir(direction: &str) -> String {
@@ -2259,7 +2259,7 @@ fn layout_class_diagram_typed_inner(
     }
 
     if engine == ClassLayoutEngine::CaptureDagreInput {
-        return Ok(ClassLayoutResult::DagreInput(*g));
+        return Ok(ClassLayoutResult::DagreInput(g));
     }
 
     #[cfg(feature = "layout-elk")]
@@ -2476,7 +2476,7 @@ pub fn debug_build_class_diagram_dagre_graph(
         None,
         ClassLayoutEngine::CaptureDagreInput,
     )? {
-        ClassLayoutResult::DagreInput(graph) => Ok(graph),
+        ClassLayoutResult::DagreInput(graph) => Ok(*graph),
         ClassLayoutResult::Layout(_) => unreachable!("Class Dagre input capture ran layout"),
     }
 }

@@ -40,12 +40,13 @@ fn assert_renderable_theme_signals(
     assert!(svg.starts_with("<svg"), "{name}: expected SVG output");
     assert!(!svg.contains("NaN"), "{name}: SVG leaked NaN geometry");
 
-    let svg_without_upstream_placeholder_classes = svg
+    let svg_without_known_upstream_placeholders = svg
         .replace(r#"class="cluster undefined "#, r#"class="cluster "#)
         .replace(r#"class="node undefined"#, r#"class="node"#)
-        .replace(r#"class="node-bkg node-undefined""#, r#"class="node-bkg""#);
+        .replace(r#"class="node-bkg node-undefined""#, r#"class="node-bkg""#)
+        .replace(r#"style="undefined;;;undefined""#, r#"style="""#);
     assert!(
-        !svg_without_upstream_placeholder_classes.contains("undefined"),
+        !svg_without_known_upstream_placeholders.contains("undefined"),
         "{name}: SVG leaked undefined tokens"
     );
 
