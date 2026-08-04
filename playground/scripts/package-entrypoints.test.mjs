@@ -18,7 +18,7 @@ const viteConfig = await readFile(
 test("dev, build, and test fail closed on the complete browser package", () => {
   assert.match(npmrc, /^ignore-scripts=true$/mu);
   assert.equal(packageJson.packageManager, "npm@11.17.0");
-  assert.equal(packageJson.engines.node, ">=22.12.0");
+  assert.equal(packageJson.engines.node, "^22.13.0 || >=24.0.0");
   assert.equal(packageJson.engines.npm, ">=11.17.0");
   assert.equal(packageJson.scripts.predev, undefined);
   assert.equal(packageJson.scripts.prebuild, undefined);

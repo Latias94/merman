@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-playground
 Generator: generate-license-file 4.2.1
-package-lock.json SHA-256: 6a49b268c3086de3d83ca53f9e074c55259358c266de7b4e14f93d799d28ec21
+package-lock.json SHA-256: 3d19c2b0cc080bcb2de180a249be1a371573f295c0a0ad3494e562bb748ee7ce
 
 This file was generated with the generate-license-file npm package!
 https://www.npmjs.com/package/generate-license-file

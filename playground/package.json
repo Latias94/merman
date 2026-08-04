@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "npm@11.17.0",
   "engines": {
-    "node": ">=22.12.0",
+    "node": "^22.13.0 || >=24.0.0",
     "npm": ">=11.17.0"
   },
   "scripts": {
@@ -29,9 +29,10 @@
     "record:zenuml-browser-admission": "node scripts/zenuml-browser-admission.mjs --run --write",
     "verify:dependencies": "npm ls --all && npm --prefix tests ls --all",
     "test": "npm run prepare:browser-runtime && npm run test:prepared",
-    "test:prepared": "npm run test:browser:typecheck && npm run test:build-graph && npm run test:semantic-tokens && npm run test:editor-worker && npm run test:mermaid-config && npm run test:runtime && npm run test:mermaid-requirements && npm run test:realm && npm run test:examples && npm run test:export && npm run test:benchmark",
+    "test:prepared": "npm run test:browser:typecheck && npm run test:build-graph && npm run test:csp-policy:prepared && npm run test:semantic-tokens && npm run test:editor-worker && npm run test:mermaid-config && npm run test:runtime && npm run test:mermaid-requirements && npm run test:realm && npm run test:examples && npm run test:export && npm run test:benchmark",
     "test:benchmark": "node --test --experimental-strip-types src/benchmark/*.test.ts src/benchmark/realm/*.test.ts",
     "test:build-graph": "node --test scripts/benchmark-build-graph.test.mjs scripts/benchmark-page-guards.test.mjs scripts/csp-policy.test.mjs scripts/package-entrypoints.test.mjs",
+    "test:csp-policy:prepared": "node --test scripts/csp-policy.prepared.test.mjs",
     "test:examples": "node --test --experimental-strip-types src/lib/examples.test.ts",
     "test:editor-worker": "node --test --experimental-strip-types src/editor/worker-client.test.ts",
     "test:export": "node --test --experimental-strip-types src/lib/png-export-plan.test.ts",
@@ -83,10 +84,13 @@
   },
   "overrides": {
     "@zenuml/core": "3.50.1",
-    "brace-expansion": "5.0.8",
+    "brace-expansion": "5.0.9",
     "cytoscape": "3.34.0",
     "dompurify": "3.4.12",
-    "tar": "7.5.22"
+    "ip-address": "10.4.0",
+    "minimatch": "10.2.6",
+    "tar": "7.5.22",
+    "undici": "6.28.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -99,7 +103,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "generate-license-file": "4.2.1",
     "globals": "^17.6.0",
-    "postcss": "^8.5.20",
+    "postcss": "^8.5.25",
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",
     "typescript": "5.7.3",
