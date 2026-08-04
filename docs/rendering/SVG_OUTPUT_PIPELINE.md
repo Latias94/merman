@@ -72,7 +72,7 @@ let svg = renderer
 Runnable example:
 
 ```bash
-cargo run -p merman --features svg --example example_06_svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
+cargo run -p merman --features svg --example custom_svg_pipeline > out.svg
 merman-cli render fixtures/flowchart/basic.mmd --output out.svg --svg-pipeline resvg-safe
 ```
 

@@ -87,14 +87,11 @@ merman = { path = "crates/merman", default-features = false, features = ["comple
 ```
 
 ```rust
-use merman::svg::HeadlessRenderer;
+use merman::render_svg;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let renderer = HeadlessRenderer::new().with_diagram_id("example");
-    let svg = renderer
-        .render_svg_sync("flowchart TD\n  A[Start] --> B[Done]")?
-        .expect("diagram detected");
-    println!("{svg}");
+    let svg = render_svg("flowchart TD\n  A[Start] --> B[Done]")?;
+    std::fs::write("diagram.svg", svg)?;
     Ok(())
 }
 ```
@@ -103,6 +100,8 @@ The ordinary `merman = { path = "crates/merman" }` dependency uses the same `com
 aggregate.
 The default operation remains deterministic; it does not read ambient time, time zone, randomness,
 or timing state.
+
+Use `render_svg_with_id` when several SVGs share one HTML document. Use `merman::svg::HeadlessRenderer` for reusable configuration, layout inspection, binary export, presentation, resource policy, or an explicit SVG pipeline. The complete set of copyable task examples lives in [`crates/merman/examples`](../crates/merman/examples/README.md).
 
 ### Basic SVG without optional engines
 
@@ -177,7 +176,7 @@ Markdown conversion, native adapters, network icons, parallel Markdown, and shel
 Compiled native adapters never change the default runtime policy:
 
 ```sh
-cargo install merman-cli --version '^0.8.0-alpha.3' --locked
+cargo install --git https://github.com/Latias94/merman --locked merman-cli
 printf 'flowchart TD\n  A --> B\n' | merman-cli render - --output diagram.svg
 
 merman-cli render --runtime deterministic diagram.mmd

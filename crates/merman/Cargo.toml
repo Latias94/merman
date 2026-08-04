@@ -143,49 +143,49 @@ harness = false
 required-features = ["svg"]
 
 [[example]]
-name = "example_01_svg_basic"
+name = "render_svg"
 required-features = ["svg"]
 
 [[example]]
-name = "example_02_semantic_json"
-
-[[example]]
-name = "example_03_layout_json"
+name = "embed_multiple_svgs"
 required-features = ["svg"]
 
 [[example]]
-name = "example_04_ascii_output"
-required-features = ["ascii"]
+name = "render_many"
+required-features = ["svg"]
 
 [[example]]
-name = "example_05_raster_output"
+name = "render_png"
 required-features = ["png"]
 
 [[example]]
-name = "example_06_svg_pipeline"
+name = "render_terminal"
+required-features = ["ascii"]
+
+[[example]]
+name = "inspect_semantics"
+
+[[example]]
+name = "inspect_layout"
 required-features = ["svg"]
 
 [[example]]
-name = "example_07_theme_css"
+name = "configure_mermaid"
 required-features = ["svg"]
 
 [[example]]
-name = "example_08_deterministic_gantt"
+name = "deterministic_gantt"
 
 [[example]]
-name = "example_09_multiple_diagrams"
+name = "presentation_profile"
+required-features = ["layout-elk"]
+
+[[example]]
+name = "custom_presentation_theme"
 required-features = ["svg"]
 
 [[example]]
-name = "example_11_custom_output_environment"
-required-features = ["svg"]
-
-[[example]]
-name = "example_12_presentation_theme"
-required-features = ["svg"]
-
-[[example]]
-name = "example_13_stylized_theme_showcase"
+name = "custom_svg_pipeline"
 required-features = ["svg"]
 
 [[example]]

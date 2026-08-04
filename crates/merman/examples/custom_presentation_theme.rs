@@ -1,21 +1,16 @@
-mod support;
-
 use merman::svg::{
     CssOverridePolicy, HeadlessRenderer, HostTheme, HostThemeAppearance, Presentation,
     SvgOutputPolicy, SvgPipelinePreset, ThemeRole,
 };
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let input = support::read_mermaid_or_default(
-        "example_12_presentation_theme",
-        r#"sequenceDiagram
+const SOURCE: &str = r#"sequenceDiagram
     participant Host
     participant Merman
     Host->>Merman: Render preview
-    Note over Host,Merman: Presentation theme
-"#,
-    )?;
+    Note over Host,Merman: Semantic host theme
+"#;
 
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let theme = HostTheme::new()
         .with_appearance(HostThemeAppearance::Dark)
         .try_with_font_family("Inter, system-ui, sans-serif")?
@@ -33,17 +28,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         preset: SvgPipelinePreset::ResvgSafe,
         css_override_policy: CssOverridePolicy::StripExistingImportant,
         root_background_color: Some("#0f172a".to_string()),
-        drop_native_duplicate_fallbacks: false,
-        scoped_css: None,
+        ..SvgOutputPolicy::default()
     };
-
     let renderer = HeadlessRenderer::new()
         .with_presentation(Presentation::new().with_theme(theme))
         .with_svg_pipeline(output.pipeline())
         .with_vendored_text_measurer()
-        .with_diagram_id("presentation-theme-example");
-
-    let Some(svg) = renderer.render_svg_sync(&input)? else {
+        .with_diagram_id("custom-presentation-theme-example");
+    let Some(svg) = renderer.render_svg_sync(SOURCE)? else {
         return Err("no Mermaid diagram detected".into());
     };
 

@@ -1,19 +1,13 @@
-mod support;
-
 use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let input = support::read_mermaid_or_default(
-        "example_04_ascii_output",
-        r#"sequenceDiagram
+const SOURCE: &str = r#"sequenceDiagram
     participant User
-    participant System
-    User->>System: Request ASCII output
-    System-->>User: Rendered text
-"#,
-    )?;
+    participant Service
+    User->>Service: Request terminal output
+    Service-->>User: Rendered text
+"#;
 
-    // Pass `-- --ascii` for terminals or logs that should avoid Unicode box drawing.
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = if std::env::args().any(|arg| arg == "--ascii") {
         AsciiRenderOptions::ascii()
     } else {
@@ -22,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let renderer = HeadlessAsciiRenderer::new()
         .with_strict_parsing()
         .with_ascii_options(options);
-    let Some(text) = renderer.render_ascii_sync(&input)? else {
+    let Some(text) = renderer.render_ascii_sync(SOURCE)? else {
         return Err("no Mermaid diagram detected".into());
     };
 
