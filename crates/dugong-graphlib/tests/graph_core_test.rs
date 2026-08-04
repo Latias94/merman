@@ -1040,6 +1040,119 @@ fn unparented_parent_batch_merges_numeric_and_ordinary_children_linearly() {
 }
 
 #[test]
+fn unparented_leaf_parent_batch_preserves_object_key_order() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        compound: true,
+        ..Default::default()
+    });
+    for id in ["parent", "existing", "2", "ordinary-b", "1", "ordinary-a"] {
+        g.ensure_node(id);
+    }
+    g.set_parent("existing", "parent");
+    let parent_ix = g.node_ix("parent").unwrap();
+    let assignments = [
+        (usize::MAX, parent_ix),
+        (g.node_ix("2").unwrap(), parent_ix),
+        (g.node_ix("ordinary-b").unwrap(), parent_ix),
+        (g.node_ix("1").unwrap(), parent_ix),
+        (g.node_ix("ordinary-a").unwrap(), parent_ix),
+    ];
+
+    g.try_set_unparented_leaf_parents_ix(&assignments)
+        .expect("independent leaves satisfy the bounded batch contract");
+
+    assert_eq!(
+        g.children("parent"),
+        vec!["1", "2", "existing", "ordinary-b", "ordinary-a"]
+    );
+    assert_eq!(g.children_root(), vec!["parent"]);
+}
+
+#[test]
+fn unparented_leaf_parent_batch_rejects_contract_violations_atomically() {
+    #[derive(Clone, Copy)]
+    enum Case {
+        NonLeaf,
+        Duplicate,
+        SelfParent,
+        BatchChildAsParent,
+    }
+
+    for case in [
+        Case::NonLeaf,
+        Case::Duplicate,
+        Case::SelfParent,
+        Case::BatchChildAsParent,
+    ] {
+        let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+            compound: true,
+            ..Default::default()
+        });
+        for id in ["root", "a", "b", "nonleaf", "descendant"] {
+            g.ensure_node(id);
+        }
+        g.set_parent("descendant", "nonleaf");
+
+        let root_ix = g.node_ix("root").unwrap();
+        let a_ix = g.node_ix("a").unwrap();
+        let b_ix = g.node_ix("b").unwrap();
+        let nonleaf_ix = g.node_ix("nonleaf").unwrap();
+        let descendant_ix = g.node_ix("descendant").unwrap();
+        let (assignments, expected_child_ix) = match case {
+            Case::NonLeaf => (vec![(nonleaf_ix, root_ix)], nonleaf_ix),
+            Case::Duplicate => (vec![(a_ix, root_ix), (a_ix, nonleaf_ix)], a_ix),
+            Case::SelfParent => (vec![(a_ix, a_ix)], a_ix),
+            Case::BatchChildAsParent => (
+                vec![(a_ix, b_ix), (b_ix, root_ix), (descendant_ix, root_ix)],
+                b_ix,
+            ),
+        };
+        let before_root = g
+            .children_root()
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let before = ["root", "a", "b", "nonleaf", "descendant"].map(|id| {
+            (
+                id,
+                g.parent(id).map(str::to_owned),
+                g.children(id)
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>(),
+            )
+        });
+
+        let error = match g.try_set_unparented_leaf_parents_ix(&assignments) {
+            Ok(_) => panic!("invalid independent-leaf batch unexpectedly succeeded"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error,
+            GraphError::ParentBatchRequiresIndependentLeaf {
+                child_ix: expected_child_ix,
+            }
+        );
+        let after = ["root", "a", "b", "nonleaf", "descendant"].map(|id| {
+            (
+                id,
+                g.parent(id).map(str::to_owned),
+                g.children(id)
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>(),
+            )
+        });
+        assert_eq!(after, before);
+        assert_eq!(
+            g.children_root(),
+            before_root.iter().map(String::as_str).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
 fn unparented_parent_batch_matches_sequential_first_assignments_and_child_order() {
     let build = || {
         let mut graph: Graph<(), (), ()> = Graph::new(GraphOptions {

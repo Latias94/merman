@@ -100,6 +100,26 @@ pub(crate) fn checked_unparented_parent_batch_work(
     checked_add(checked_add(union_work, linear_work)?, ordered_work)
 }
 
+/// Conservative work for Graphlib's independent-leaf parent batch.
+///
+/// Each assignment pays sixteen linear units for live-slot checks, leaf/parent-role validation,
+/// two hash-set updates, snapshot growth, and the later root removal, parent write, and child-bucket
+/// insertion. Numeric child IDs additionally pay the ordered-map comparison bound for the root and
+/// parent updates.
+pub(crate) fn checked_unparented_leaf_parent_batch_work(
+    node_slots: usize,
+    assignment_count: usize,
+    numeric_assignment_count: usize,
+) -> Result<usize, WorkError> {
+    if assignment_count == 0 {
+        return Ok(0);
+    }
+    let linear_work = checked_mul(assignment_count, 16)?;
+    let ordered_updates = checked_mul(numeric_assignment_count, 2)?;
+    let ordered_work = checked_ordered_key_updates(node_slots, ordered_updates)?;
+    checked_add(linear_work, ordered_work)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,12 +152,19 @@ mod tests {
         assert_eq!(checked_unparented_parent_batch_work(4, 0, 3, 0), Ok(66));
         assert_eq!(checked_unparented_parent_batch_work(4, 0, 3, 2), Ok(78));
         assert_eq!(checked_unparented_parent_batch_work(4, 3, 3, 0), Ok(102));
+        assert_eq!(checked_unparented_leaf_parent_batch_work(4, 0, 0), Ok(0));
+        assert_eq!(checked_unparented_leaf_parent_batch_work(4, 3, 0), Ok(48));
+        assert_eq!(checked_unparented_leaf_parent_batch_work(4, 3, 2), Ok(60));
         assert_eq!(
             checked_ordered_key_updates(usize::MAX, usize::MAX),
             Err(WorkError::ArithmeticOverflow)
         );
         assert_eq!(
             checked_unparented_parent_batch_work(usize::MAX, usize::MAX, usize::MAX, usize::MAX,),
+            Err(WorkError::ArithmeticOverflow)
+        );
+        assert_eq!(
+            checked_unparented_leaf_parent_batch_work(usize::MAX, usize::MAX, usize::MAX),
             Err(WorkError::ArithmeticOverflow)
         );
     }

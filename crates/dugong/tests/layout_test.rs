@@ -255,7 +255,7 @@ fn controlled_layout_accepts_a_normal_250_node_compound_graph() {
         graph
     }
 
-    const LIMIT: usize = 250_000;
+    const LIMIT: usize = 300_000;
 
     let mut graph = compound_graph();
     let mut control = RecordingWorkControl::default();

@@ -184,6 +184,7 @@ pub enum GraphError {
     NamedEdgeInNonMultigraph,
     ParentCycle { child_ix: usize, parent_ix: usize },
     ParentBatchRequiresUnparentedChild { child_ix: usize },
+    ParentBatchRequiresIndependentLeaf { child_ix: usize },
 }
 
 impl fmt::Display for GraphError {
@@ -202,6 +203,10 @@ impl fmt::Display for GraphError {
             Self::ParentBatchRequiresUnparentedChild { child_ix } => write!(
                 f,
                 "Batch parent assignment requires node index {child_ix} to be unparented and assigned only once"
+            ),
+            Self::ParentBatchRequiresIndependentLeaf { child_ix } => write!(
+                f,
+                "Leaf parent assignment requires node index {child_ix} to be an unparented leaf, assigned only once, and never used as another batch parent"
             ),
         }
     }
@@ -2015,6 +2020,65 @@ where
         self
     }
 
+    /// Atomically assigns parents to independent, currently unparented leaf children.
+    ///
+    /// This is the bounded construction primitive for layout-generated dummy nodes. Removed or
+    /// out-of-range slots are ignored, matching [`Self::set_parent_ix`]. Every live child must be
+    /// an unparented leaf, occur once, and never appear as a parent in the same batch. Contract
+    /// violations return [`GraphError::ParentBatchRequiresIndependentLeaf`] without mutation.
+    ///
+    /// Because those conditions make a parent cycle impossible, the method validates and applies
+    /// the batch in `O(P)` expected time for ordinary string IDs, where `P = assignments.len()`.
+    /// Array-index IDs additionally preserve JavaScript `Object.keys` ordering through the same
+    /// ordered-map updates as [`Self::set_parent_ix`]. There is deliberately no fallback to a
+    /// graph-wide forest scan: callers may meter this narrow contract independently.
+    #[doc(hidden)]
+    pub fn try_set_unparented_leaf_parents_ix(
+        &mut self,
+        assignments: &[(usize, usize)],
+    ) -> Result<&mut Self, GraphError> {
+        if !self.options.compound || assignments.is_empty() {
+            return Ok(self);
+        }
+
+        let mut leaf_children: HashSet<usize> = HashSet::with_capacity_and_hasher(
+            assignments.len().min(self.nodes.len()),
+            FxBuildHasher,
+        );
+        let mut leaf_parents: HashSet<usize> = HashSet::with_capacity_and_hasher(
+            assignments.len().min(self.nodes.len()),
+            FxBuildHasher,
+        );
+        let mut valid_assignments = Vec::with_capacity(assignments.len().min(self.nodes.len()));
+        for &(child_ix, parent_ix) in assignments {
+            if self.nodes.get(child_ix).and_then(Option::as_ref).is_none()
+                || self.nodes.get(parent_ix).and_then(Option::as_ref).is_none()
+            {
+                continue;
+            }
+            if self.parent_ix[child_ix].is_some()
+                || self.children_ix[child_ix].len() != 0
+                || leaf_children.contains(&child_ix)
+            {
+                return Err(GraphError::ParentBatchRequiresIndependentLeaf { child_ix });
+            }
+            if child_ix == parent_ix || leaf_parents.contains(&child_ix) {
+                return Err(GraphError::ParentBatchRequiresIndependentLeaf { child_ix });
+            }
+            if leaf_children.contains(&parent_ix) {
+                return Err(GraphError::ParentBatchRequiresIndependentLeaf {
+                    child_ix: parent_ix,
+                });
+            }
+            leaf_children.insert(child_ix);
+            leaf_parents.insert(parent_ix);
+            valid_assignments.push((child_ix, parent_ix));
+        }
+
+        self.apply_unparented_parent_assignments(&valid_assignments);
+        Ok(self)
+    }
+
     /// Atomically assigns parents to currently unparented children in caller order.
     ///
     /// Each pair is `(child_ix, parent_ix)`. Removed or out-of-range node slots are ignored, as in
@@ -2136,12 +2200,16 @@ where
             return Ok(self);
         }
 
-        for (child_ix, parent_ix) in valid_assignments {
+        self.apply_unparented_parent_assignments(&valid_assignments);
+        Ok(self)
+    }
+
+    fn apply_unparented_parent_assignments(&mut self, assignments: &[(usize, usize)]) {
+        for &(child_ix, parent_ix) in assignments {
             self.remove_child_from_object(None, child_ix);
             self.parent_ix[child_ix] = Some(parent_ix);
             self.insert_child_in_object_key_order(Some(parent_ix), child_ix);
         }
-        Ok(self)
     }
 
     fn would_create_parent_cycle(&self, child_ix: usize, parent_ix: usize) -> bool {
