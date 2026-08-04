@@ -148,8 +148,6 @@ struct InlineHtmlPlanningStats {
     #[cfg(test)]
     fragment_capacity_refs: usize,
     #[cfg(test)]
-    fragment_copies: usize,
-    #[cfg(test)]
     line_plan_updates: usize,
     #[cfg(test)]
     line_plan_bytes: usize,
@@ -712,8 +710,22 @@ fn measure_inline_html_line_layout_with_carrier_and_stats<M: TextMeasurer + ?Siz
             measure_inline_run_width_px(measurer, &run.text, &run_style, WrapMode::HtmlLike, false)
         })
         .sum();
-    let breaks = index_inline_run_breaks(runs, stats);
     if carrier.is_builtin() {
+        let active_max_width = max_width.filter(|width| width.is_finite() && *width > 0.0);
+        if active_max_width.is_none_or(|max_width| natural_width <= max_width) {
+            // Min-content cannot affect the public result while the natural line already fits (or
+            // wrapping is disabled). Returning the natural width as a conservative private value
+            // avoids indexing every break segment on the dominant built-in fast path; it is at
+            // most the active maximum and therefore cannot widen another overflowing line.
+            return InlineHtmlLineLayout {
+                natural_width,
+                wrapped_width: natural_width,
+                min_content_width: natural_width,
+                line_count: 1,
+            };
+        }
+
+        let breaks = index_inline_run_breaks(runs, stats);
         return measure_builtin_inline_html_line_layout(
             carrier,
             runs,
@@ -725,6 +737,7 @@ fn measure_inline_html_line_layout_with_carrier_and_stats<M: TextMeasurer + ?Siz
         );
     }
 
+    let breaks = index_inline_run_breaks(runs, stats);
     measure_opaque_inline_html_line_layout(
         measurer,
         runs,
@@ -1463,13 +1476,19 @@ mod inline_planning_tests {
         assert_eq!(left.line_count, right.line_count);
     }
 
-    fn assert_layout_bits_eq(left: InlineHtmlLineLayout, right: InlineHtmlLineLayout) {
+    fn assert_layout_bits_eq(
+        left: InlineHtmlLineLayout,
+        right: InlineHtmlLineLayout,
+        max_width: f64,
+    ) {
         assert_eq!(left.natural_width.to_bits(), right.natural_width.to_bits());
         assert_eq!(left.wrapped_width.to_bits(), right.wrapped_width.to_bits());
-        assert_eq!(
-            left.min_content_width.to_bits(),
-            right.min_content_width.to_bits()
-        );
+        if right.natural_width > max_width {
+            assert_eq!(
+                left.min_content_width.to_bits(),
+                right.min_content_width.to_bits()
+            );
+        }
         assert_eq!(left.line_count, right.line_count);
     }
 
@@ -1510,7 +1529,7 @@ mod inline_planning_tests {
                     style,
                     Some(max_width),
                 );
-                assert_layout_bits_eq(actual, expected);
+                assert_layout_bits_eq(actual, expected, max_width);
             }
 
             let same_style_runs = vec![run("A", 0), run("V ", 0), run("office ", 0), run("fi", 0)];
@@ -1528,7 +1547,7 @@ mod inline_planning_tests {
                     style,
                     Some(max_width),
                 );
-                assert_layout_bits_eq(actual, expected);
+                assert_layout_bits_eq(actual, expected, max_width);
             }
 
             let escaped_break_runs = vec![run("wide<br   />tail end", 0)];
@@ -1546,7 +1565,7 @@ mod inline_planning_tests {
                     style,
                     Some(max_width),
                 );
-                assert_layout_bits_eq(actual, expected);
+                assert_layout_bits_eq(actual, expected, max_width);
 
                 let html = "wide&lt;br   /&gt;tail end";
                 let expected = measure_html_with_inline_styles(
@@ -1638,6 +1657,44 @@ mod inline_planning_tests {
             TextMeasurementOperation::Wrapped
         );
         assert_eq!(summary.count(), 3);
+    }
+
+    #[test]
+    fn qualified_builtin_fit_path_skips_break_indexing_and_stream_replay() {
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("deterministic render session");
+        let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
+        let style = TextStyle {
+            font_family: Some("sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+        let runs = vec![run("alpha beta ", 0), run("gamma delta", 1)];
+        let natural_width =
+            measure_inline_runs_width_px(&measurer, &runs, &style, WrapMode::HtmlLike, false);
+
+        for max_width in [None, Some(natural_width), Some(natural_width + 1.0)] {
+            let mut stats = InlineHtmlPlanningStats::default();
+            let layout = measure_inline_html_line_layout_with_carrier_and_stats(
+                &measurer,
+                inline_html_carrier(&measurer),
+                &runs,
+                &style,
+                max_width,
+                &mut stats,
+            );
+
+            assert_eq!(layout.natural_width.to_bits(), natural_width.to_bits());
+            assert_eq!(layout.wrapped_width.to_bits(), natural_width.to_bits());
+            assert_eq!(layout.line_count, 1);
+            assert_eq!(stats.backend_requests, runs.len());
+            assert_eq!(stats.break_segments, 0);
+            assert_eq!(stats.fragment_refs, 0);
+            assert_eq!(stats.builtin_stream_bytes, 0);
+            assert_eq!(stats.builtin_checkpoint_copies, 0);
+        }
     }
 
     #[test]
@@ -1828,7 +1885,6 @@ mod inline_planning_tests {
                 assert!(stats.fragment_refs <= fragment_bound);
                 assert_eq!(stats.fragment_capacity_refs, fragment_bound);
                 assert_eq!(stats.run_visits, run_count * 2 + stats.fragment_refs);
-                assert_eq!(stats.fragment_copies, 0);
                 assert!(stats.line_plan_updates <= segment_count * 2);
                 assert_eq!(stats.line_plan_bytes, std::mem::size_of::<InlineLinePlan>());
 
@@ -1892,7 +1948,6 @@ mod inline_planning_tests {
                 assert!(stats.fragment_refs <= fragment_bound);
                 assert!(stats.fragment_measure_visits >= stats.fragment_refs * 2);
                 assert!(stats.fragment_measure_visits <= stats.fragment_refs * 3);
-                assert_eq!(stats.fragment_copies, 0);
                 assert!(stats.line_plan_updates <= segment_count * 2);
                 assert_eq!(
                     stats.line_plan_bytes,
