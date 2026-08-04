@@ -288,7 +288,7 @@ impl BuiltinInlineRawLineWidth {
                 prev,
                 ..
             } => VendoredFontMetricsTextMeasurer::accumulate_unwrapped_html_char_em(
-                *table, em, prevprev, prev, ch,
+                table, em, prevprev, prev, ch,
             ),
             Self::Deterministic { em, .. } => {
                 let mut encoded = [0_u8; 4];

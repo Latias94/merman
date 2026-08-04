@@ -646,7 +646,7 @@ impl InlineLinePlan {
         self.fragment_start == self.fragment_end
     }
 
-    fn fragments<'a>(self, fragments: &'a [InlineRunFragment]) -> &'a [InlineRunFragment] {
+    fn fragments(self, fragments: &[InlineRunFragment]) -> &[InlineRunFragment] {
         &fragments[self.fragment_start..self.fragment_end]
     }
 
@@ -1034,6 +1034,7 @@ fn finish_inline_html_layout<M: TextMeasurer + ?Sized>(
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod inline_planning_tests {
     use super::*;
     use crate::environment::{
@@ -1052,9 +1053,11 @@ mod inline_planning_tests {
             .unwrap_or_else(InlineHtmlMeasurementCarrier::opaque)
     }
 
+    type RecordedMeasurementCall = (String, Option<String>, Option<String>, Option<String>);
+
     #[derive(Default)]
     struct RecordingMeasurer {
-        calls: RefCell<Vec<(String, Option<String>, Option<String>, Option<String>)>>,
+        calls: RefCell<Vec<RecordedMeasurementCall>>,
     }
 
     impl TextMeasurer for RecordingMeasurer {
@@ -1217,7 +1220,7 @@ mod inline_planning_tests {
         );
         assert_eq!(stats.source_bytes, expected_text.len());
         assert_eq!(stats.break_segments, actual_segments.len());
-        assert!(stats.fragment_refs <= runs.len() + actual_segments.len() - 1);
+        assert!(stats.fragment_refs < runs.len() + actual_segments.len());
         assert_eq!(stats.run_visits, runs.len() * 2 + stats.fragment_refs);
     }
 

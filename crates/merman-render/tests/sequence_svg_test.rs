@@ -14,16 +14,16 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+type RecordedSequenceMeasurement = (
+    String,
+    TextMeasurementOperation,
+    TextMeasurementPhase,
+    Option<String>,
+);
+
 #[derive(Default)]
 struct RecordingSequenceHost {
-    requests: Mutex<
-        Vec<(
-            String,
-            TextMeasurementOperation,
-            TextMeasurementPhase,
-            Option<String>,
-        )>,
-    >,
+    requests: Mutex<Vec<RecordedSequenceMeasurement>>,
 }
 
 impl HostTextMeasurer for RecordingSequenceHost {
