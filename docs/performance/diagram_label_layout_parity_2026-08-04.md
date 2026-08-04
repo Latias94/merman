@@ -1,6 +1,6 @@
 # Diagram Label Layout Parity Performance Receipt
 
-Status: preregistered; measurement pending
+Status: completed; public lane inconclusive and structural lane rejected
 
 Preregistered on 2026-08-04 before inspecting any base/head timing result.
 
@@ -95,5 +95,28 @@ identity gates remain mandatory regardless of timing.
 
 ## Results
 
-Pending. This section may record observations and classification, but the revisions, fixtures,
-commands, pair budget, thresholds, seed, resample count, and curve rules above must not change.
+The frozen public command exited `3`. All four rows failed the preregistered A/A calibration
+stability check, so the public result is inconclusive. No calibration or confirmation sample from
+this run will be reused or extended.
+
+- Markdown receipt SHA-256: `9552367a0c63606750c0325907289c97800b2adc8a819fc7e278a6183ce08af9`
+- JSON receipt SHA-256: `87c0391c06a2a6782b66bfcf4878983fce9ceed5b91233198f5310e8166ed6a9`
+
+The frozen structural curve produced these median point estimates:
+
+| Nodes | Base (ns) | Candidate (ns) | Candidate / base | Delta (ns) |
+| ---: | ---: | ---: | ---: | ---: |
+| 50 | 1,240,930.17 | 1,223,361.67 | 0.9858 | -17,568.50 |
+| 100 | 2,894,630.56 | 2,775,762.50 | 0.9589 | -118,868.06 |
+| 200 | 6,818,121.43 | 6,715,942.86 | 0.9850 | -102,178.57 |
+| 400 | 16,043,566.67 | 16,370,100.00 | 1.0204 | 326,533.33 |
+| 800 | 47,777,475.00 | 57,798,200.00 | 1.2097 | 10,020,725.00 |
+| 1600 | 149,046,850.00 | 171,220,750.00 | 1.1488 | 22,173,900.00 |
+
+The base log-log slope was `1.36886251049409`; the candidate slope was
+`1.43056916208687`, a permitted increase of `0.0617066515927773`. The 800- and 1600-node
+points nevertheless crossed both parts of the frozen joint threshold, so the structural lane
+failed. Attribution isolated the dominant cost to rebuilding unique directed-node adjacency with
+two graph-wide endpoint-pair hash sets. This receipt therefore does not satisfy R16 and makes no
+non-regression or speedup claim. A separately committed, source-equivalent adjacency replacement
+must use a new prospective receipt and fresh evidence.
