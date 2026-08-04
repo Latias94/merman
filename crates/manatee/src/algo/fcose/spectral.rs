@@ -166,7 +166,7 @@ pub(super) fn apply_spectral_start_positions<W: WorkControl + ?Sized>(
         sample = bfs_fill_column(
             sample,
             col,
-            &adjacency,
+            adjacency,
             node_separation,
             &mut c,
             Some(&mut min_dist),
@@ -194,14 +194,14 @@ pub(super) fn apply_spectral_start_positions<W: WorkControl + ?Sized>(
         None => return Ok(false),
     };
 
-    let (x_coords, y_coords) = match power_iteration(rng, &c, &inv, DEFAULT_PI_TOL, work_control)? {
+    let coordinates = match power_iteration(rng, &c, &inv, DEFAULT_PI_TOL, work_control)? {
         Some(v) => v,
         None => return Ok(false),
     };
 
     for i in 0..n_real {
-        let x = x_coords[i];
-        let y = y_coords[i];
+        let x = coordinates.x[i];
+        let y = coordinates.y[i];
         if !(x.is_finite() && y.is_finite()) {
             return Ok(false);
         }
@@ -872,13 +872,18 @@ fn regularized_inverse_from_svd<W: WorkControl + ?Sized>(
     Ok(Some(inv))
 }
 
+struct SpectralCoordinates {
+    x: Vec<f64>,
+    y: Vec<f64>,
+}
+
 fn power_iteration<W: WorkControl + ?Sized>(
     rng: &mut FcoseRandom,
     c: &[Vec<f64>],
     inv: &[Vec<f64>],
     pi_tol: f64,
     work_control: &mut W,
-) -> Result<Option<(Vec<f64>, Vec<f64>)>, WorkFailure> {
+) -> Result<Option<SpectralCoordinates>, WorkFailure> {
     let n = c.len();
     if n == 0 {
         return Ok(None);
@@ -922,7 +927,7 @@ fn power_iteration<W: WorkControl + ?Sized>(
     let s2 = theta2.abs().sqrt();
     let x: Vec<f64> = v1.iter().map(|v| v * s1).collect();
     let y: Vec<f64> = v2.iter().map(|v| v * s2).collect();
-    Ok(Some((x, y)))
+    Ok(Some(SpectralCoordinates { x, y }))
 }
 
 fn dominant_eigenvector<W: WorkControl + ?Sized>(

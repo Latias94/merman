@@ -640,15 +640,15 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
             .relocate_center
             .or_else(|| sim.bounding_box_center_eles(run_idx))
             .unwrap_or((0.0, 0.0));
-        sim.run_spring_embedder(
-            &constraints,
-            opts,
+        sim.run_spring_embedder(SpringEmbedderContext {
+            constraints: &constraints,
+            options: opts,
             schedule,
-            &mut rng,
-            &mut owner_bounds,
-            spectral_topology.as_ref(),
+            rng: &mut rng,
+            owner_bounds: &mut owner_bounds,
+            spectral_topology: spectral_topology.as_ref(),
             work_control,
-        )?;
+        })?;
 
         // Ensure compound node rectangles reflect the final child placements before we compute the
         // "current" component bounding box for relocation (`aux.relocateComponent(...)` parity).
@@ -1560,6 +1560,16 @@ struct OwnerBounds {
     bottom: Vec<f64>,
 }
 
+struct SpringEmbedderContext<'a, W: WorkControl + ?Sized> {
+    constraints: &'a Constraints,
+    options: &'a IndexedFcoseOptions,
+    schedule: FcoseIterationSchedule,
+    rng: &'a mut FcoseRandom,
+    owner_bounds: &'a mut OwnerBounds,
+    spectral_topology: Option<&'a spectral::SpectralTopology>,
+    work_control: &'a mut W,
+}
+
 impl OwnerBounds {
     fn new(owner_count: usize) -> Self {
         let mut bounds = Self {
@@ -2345,14 +2355,18 @@ impl SimGraph {
 
     fn run_spring_embedder<W: WorkControl + ?Sized>(
         &mut self,
-        constraints: &Constraints,
-        opts: &IndexedFcoseOptions,
-        schedule: FcoseIterationSchedule,
-        rng: &mut FcoseRandom,
-        owner_bounds: &mut OwnerBounds,
-        spectral_topology: Option<&spectral::SpectralTopology>,
-        work_control: &mut W,
+        context: SpringEmbedderContext<'_, W>,
     ) -> std::result::Result<(), WorkFailure> {
+        let SpringEmbedderContext {
+            constraints,
+            options: opts,
+            schedule,
+            rng,
+            owner_bounds,
+            spectral_topology,
+            work_control,
+        } = context;
+
         // `cytoscape-fcose` constructs a fresh CoSELayout for every `layout.run()`. Keep the
         // generation-based FR-grid deduplication scratch run-local as well; reusing markers while
         // restarting the generation counter can silently drop repulsion pairs on the second run.
