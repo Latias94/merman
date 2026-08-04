@@ -55,7 +55,7 @@ impl RenderOperationReport {
         self.session.unix_millis()
     }
 
-    pub const fn local_date(&self) -> chrono::NaiveDate {
+    pub const fn local_date(&self) -> merman_core::time::CivilDate {
         self.session.local_date()
     }
 

@@ -160,14 +160,14 @@ impl AnalysisOptions {
         self
     }
 
-    pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
+    pub fn with_fixed_today(mut self, today: Option<merman_core::time::CivilDate>) -> Self {
         self.snapshot.runtime_policy = self.snapshot.runtime_policy.with_fixed_today(today);
         self
     }
 
     pub fn try_with_fixed_today_at_local_midnight(
         mut self,
-        today: chrono::NaiveDate,
+        today: merman_core::time::CivilDate,
     ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
         self.snapshot.runtime_policy = self
             .snapshot

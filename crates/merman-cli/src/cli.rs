@@ -1,8 +1,10 @@
 use clap::builder::{PossibleValue, PossibleValuesParser, TypedValueParser};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
+use merman::time::{CivilDate, UtcOffset};
 #[cfg(feature = "analysis")]
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptor};
 use std::path::PathBuf;
+use std::str::FromStr;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -566,11 +568,11 @@ pub(crate) struct RuntimeCliArgs {
     /// Override the local "today" date for time-dependent diagrams.
     #[arg(
         long = "fixed-today",
-        value_parser = parse_naive_date,
+        value_parser = parse_civil_date,
         help_heading = "Runtime policy",
         hide_short_help = true
     )]
-    pub(crate) fixed_today: Option<chrono::NaiveDate>,
+    pub(crate) fixed_today: Option<CivilDate>,
 
     /// Override the local timezone offset in minutes for time-dependent diagrams.
     #[arg(
@@ -1874,19 +1876,17 @@ fn parse_mmdc_positive_integer(value: &str) -> Result<f64, String> {
     Ok(parsed as f64)
 }
 
-fn parse_naive_date(value: &str) -> Result<chrono::NaiveDate, String> {
-    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
-        .map_err(|_| "expected a date in YYYY-MM-DD format".to_string())
+fn parse_civil_date(value: &str) -> Result<CivilDate, String> {
+    CivilDate::from_str(value).map_err(|_| {
+        "expected a canonical civil date such as YYYY-MM-DD or +10000-MM-DD".to_string()
+    })
 }
 
 fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
     let parsed = value
         .parse::<i32>()
         .map_err(|_| "expected a timezone offset in minutes".to_string())?;
-    let Some(seconds) = parsed.checked_mul(60) else {
-        return Err("expected a timezone offset in minutes between -1439 and 1439".to_string());
-    };
-    if chrono::FixedOffset::east_opt(seconds).is_none() {
+    if UtcOffset::from_minutes(parsed).is_none() {
         return Err("expected a timezone offset in minutes between -1439 and 1439".to_string());
     }
     Ok(parsed)

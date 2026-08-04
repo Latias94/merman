@@ -189,7 +189,7 @@ impl Engine {
     ///
     /// This exists primarily to make fixture snapshots deterministic. The default runtime policy
     /// uses the Unix epoch; native callers must explicitly select [`Engine::try_native`].
-    pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
+    pub fn with_fixed_today(mut self, today: Option<time::CivilDate>) -> Self {
         self.runtime_policy = self.runtime_policy.with_fixed_today(today);
         self
     }

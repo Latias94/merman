@@ -167,6 +167,14 @@ Unless marked as an alpha.4 development-snapshot note, the mappings below compar
 `v0.8.0-alpha.3` tag with the final alpha.4 surface. Development-snapshot notes cover temporary
 APIs that were never part of the alpha.3 release and can be ignored by tag-only consumers.
 
+### Runtime date and time types
+
+- Replace `chrono::NaiveDate` values passed to `Engine::with_fixed_today`, `RuntimePolicy::with_fixed_today`, `AnalysisOptions::with_fixed_today`, and their local-midnight variants with `merman::time::CivilDate` or `merman_core::time::CivilDate`. Construct one with `CivilDate::new(year, month, day)` or parse its strict ISO representation.
+- `OperationContext::today_local`, `RenderSession::local_date`, `RenderSessionReport::local_date`, and `RenderOperationReport::local_date` now return `CivilDate`. Merman no longer exposes Chrono types or requires Chrono in downstream dependency graphs.
+- `CivilDate` uses the proleptic Gregorian calendar with a signed 32-bit year, including Mermaid's `+10000` and `-10000` boundaries. Its canonical text syntax uses four unsigned digits for years `0000` through `9999`, a leading `+` for later years, and `-` plus at least four digits for negative years; signed years reject unnecessary leading zeroes. Conversion to an `i64` millisecond instant remains checked; use `try_with_fixed_today_at_local_midnight` when the configured date must also become the operation clock.
+- Lower-level time integrations can use `CivilDateTime`, `UtcOffset`, and `OffsetDateTime` from the same module. Named system-zone resolution remains feature-gated by `system-timezone` and is backed internally by Jiff; these project-owned types keep Mermaid's wider calendar domain independent of Jiff's civil-year limits.
+- Replace `LocalTimeZone::datetime_from_naive_local(naive)` with a `CivilDateTime` construction followed by `LocalTimeZone::resolve_local(local)`. Replace `LocalTimeZone::datetime_to_local_fixed(datetime)` with `LocalTimeZone::at_instant(datetime.timestamp_millis())`, and replace `utc_fixed_offset()` with `UtcOffset::UTC`. The resolved value is now `OffsetDateTime`; use `local_datetime()` or `utc_datetime()` when a civil representation is required.
+
 ### Analysis capture and ownership
 
 - Rename Rust `AnalysisResult` to `AnalysisGeneration`, `Analyzer::analyze_result` to `Analyzer::analyze_generation`, and `analyze_document_result{,_shared}` to `analyze_document_generation{,_shared}`. Use `generation.project(&policy)` instead of direct `payload()` or `diagnostics()` access; `Analyzer::analyze()` remains the diagnostics-only payload path, and `Analyzer::analyze_facts()` owns serialized facts.

@@ -561,7 +561,7 @@ fn cli_commands_reject_out_of_range_fixed_local_midnight_consistently() {
         let output = run_with_stdin(
             &[
                 command,
-                "--fixed-today=-262143-01-01",
+                "--fixed-today=-2147483648-01-01",
                 "--fixed-local-offset-minutes",
                 "1439",
                 "-",

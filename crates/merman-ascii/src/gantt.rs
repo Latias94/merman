@@ -76,12 +76,8 @@ fn render_task_text(
 }
 
 fn format_date(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> String {
-    chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)
-        .and_then(|dt| {
-            let local = local_time_zone.datetime_to_local_fixed(
-                dt.with_timezone(&merman_core::time::utc_fixed_offset()),
-            )?;
-            Some(local.date_naive().format("%Y-%m-%d").to_string())
-        })
+    local_time_zone
+        .at_instant(ms)
+        .map(|local| local.date().to_string())
         .unwrap_or_else(|| ms.to_string())
 }

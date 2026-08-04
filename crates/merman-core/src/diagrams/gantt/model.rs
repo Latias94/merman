@@ -160,7 +160,7 @@ pub(super) struct RawTask {
     pub(super) type_: String,
     pub(super) processed: bool,
     pub(super) manual_end_time: bool,
-    pub(super) render_end_time: Option<DateTimeFixed>,
+    pub(super) render_end_time: Option<OffsetDateTime>,
     pub(super) raw: RawTaskRaw,
     pub(super) task: String,
     pub(super) classes: Vec<String>,
@@ -172,8 +172,8 @@ pub(super) struct RawTask {
     pub(super) milestone: bool,
     pub(super) vert: bool,
     pub(super) order: i64,
-    pub(super) start_time: Option<DateTimeFixed>,
-    pub(super) end_time: Option<DateTimeFixed>,
+    pub(super) start_time: Option<OffsetDateTime>,
+    pub(super) end_time: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone, Default)]

@@ -474,4 +474,8 @@ async fn lsp_service_smoke_serves_config_schema_custom_request() {
         result["schema"]["$defs"]["severity"]["enum"],
         serde_json::json!(["error", "warning", "info", "hint"])
     );
+    assert_eq!(
+        result["schema"]["$defs"]["analysisOptions"]["properties"]["fixed_today"]["pattern"],
+        FIXED_TODAY_SCHEMA_PATTERN
+    );
 }

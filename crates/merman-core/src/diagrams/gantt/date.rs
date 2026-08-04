@@ -1,5 +1,13 @@
 use super::*;
 
+pub(super) const JS_MAX_TIME_MILLIS: i64 = 8_640_000_000_000_000;
+
+pub(super) fn js_date_from_unix_millis(milliseconds: i64) -> Option<OffsetDateTime> {
+    (-JS_MAX_TIME_MILLIS..=JS_MAX_TIME_MILLIS)
+        .contains(&milliseconds)
+        .then(|| OffsetDateTime::from_unix_millis(milliseconds, UtcOffset::UTC))
+}
+
 #[derive(Debug, Clone)]
 enum DayjsFormatItem {
     Literal(String),
@@ -145,7 +153,7 @@ fn split_at_char_boundary(s: &str, byte_idx: usize) -> (&str, &str) {
     s.split_at(idx)
 }
 
-pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> {
+pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<OffsetDateTime> {
     let fmt = date_format.trim();
     if fmt.is_empty() {
         return None;
@@ -559,11 +567,10 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Date
     }
 
     if let Some(ms) = parts.unix_ms {
-        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-        return Some(dt.with_timezone(&crate::time::utc_fixed_offset()));
+        return js_date_from_unix_millis(ms);
     }
 
-    let base_date = crate::runtime::today_naive_local();
+    let base_date = crate::runtime::today_local();
 
     // Dayjs strict parsing defaults missing calendar fields to the *start* of the larger unit:
     // - `YYYY` => Jan 1st
@@ -598,18 +605,16 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Date
     let second = parts.second.unwrap_or(0);
     let millis = parts.millis.unwrap_or(0);
 
-    let date = NaiveDate::from_ymd_opt(year, month, day)?;
-    let naive = date.and_hms_milli_opt(hour, minute, second, millis)?;
+    let local = CivilDate::new(year, month, day)?.at_hms_milli(hour, minute, second, millis)?;
 
     if let Some(mins) = parts.offset_minutes {
-        let offset = FixedOffset::east_opt(mins * 60)?;
-        offset.from_local_datetime(&naive).single()
+        OffsetDateTime::from_local(local, UtcOffset::from_minutes(mins)?)
     } else {
-        local_from_naive(naive)
+        local_from_civil(local)
     }
 }
 
-pub(super) fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
+pub(super) fn parse_js_date_fallback(s: &str) -> Result<OffsetDateTime> {
     let s = s.trim();
 
     if let Some(dt) = parse_js_like_ymd_datetime(s).or_else(|| parse_js_like_mdy_hm_datetime(s)) {
@@ -634,26 +639,12 @@ pub(super) fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
                 format!("Invalid date:{s}"),
             ));
         }
-        let d = NaiveDate::from_ymd_opt(year, 1, 1).ok_or_else(|| {
+        let date = CivilDate::new(year, 1, 1).ok_or_else(|| {
             Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
         })?;
-        let midnight = d.and_hms_opt(0, 0, 0).ok_or_else(|| {
-            Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
-        })?;
-        return local_from_naive(midnight).ok_or_else(|| {
+        return local_from_civil(date.at_midnight()).ok_or_else(|| {
             Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
         });
-    }
-
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-        let year = dt.year();
-        if !(-10000..=10000).contains(&year) {
-            return Err(Error::diagram_parse_fallback(
-                "gantt".to_string(),
-                format!("Invalid date:{s}"),
-            ));
-        }
-        return Ok(dt);
     }
 
     Err(Error::diagram_parse_fallback(
@@ -662,7 +653,7 @@ pub(super) fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
     ))
 }
 
-fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
+fn parse_js_like_ymd_datetime(s: &str) -> Option<OffsetDateTime> {
     fn parse_u32(s: &str) -> Option<u32> {
         if s.is_empty() || !s.chars().all(|c| c.is_ascii_digit()) {
             return None;
@@ -677,7 +668,7 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
 
     fn parse_timezone_offset_minutes(s: &str) -> Option<(i32, &str)> {
         let s = s.trim_start();
-        if let Some(rest) = s.strip_prefix('Z') {
+        if let Some(rest) = s.strip_prefix(['Z', 'z']) {
             return Some((0, rest));
         }
         let (sign, rest) = if let Some(rest) = s.strip_prefix('+') {
@@ -708,13 +699,19 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
     fn js_date_only_is_iso_utc(year_str: &str, month_str: &str, day_str: &str) -> bool {
         // JavaScript treats date-only ISO 8601 strings (`YYYY-MM-DD`) as UTC. Non-ISO variants
         // such as `2019-09-1` (non-zero-padded day) are interpreted as local time in V8.
-        year_str.len() == 4 && month_str.len() == 2 && day_str.len() == 2
+        let year_digits = year_str.strip_prefix(['+', '-']).unwrap_or(year_str);
+        let year_is_iso = if year_str.starts_with(['+', '-']) {
+            year_digits.len() == 6
+        } else {
+            year_digits.len() == 4
+        };
+        year_is_iso && month_str.len() == 2 && day_str.len() == 2
     }
 
     let (date_part, mut rest) = {
         let mut end = s.len();
         for (i, c) in s.char_indices() {
-            if c == 'T' || c.is_whitespace() {
+            if c == 'T' || c == 't' || c.is_whitespace() {
                 end = i;
                 break;
             }
@@ -730,18 +727,30 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
         return None;
     };
 
-    let (year_str, rest1) = split_once(date_part, sep)?;
-    let (month_str, day_str) = split_once(rest1, sep)?;
-    if year_str.is_empty() || year_str.len() > 4 {
+    let (year_month, day_str) = date_part.rsplit_once(sep)?;
+    let (year_str, month_str) = year_month.rsplit_once(sep)?;
+    let year_digits = year_str.strip_prefix(['+', '-']).unwrap_or(year_str);
+    let signed_year = year_str.starts_with(['+', '-']);
+    let valid_year_shape = if signed_year {
+        sep == '-' && year_digits.len() == 6
+    } else {
+        (1..=4).contains(&year_digits.len())
+    };
+    if !valid_year_shape {
         return None;
     }
-    if !year_str.chars().all(|c| c.is_ascii_digit()) {
+    if !year_digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    // ECMAScript reserves the expanded-year spelling `-000000` as invalid. Do not collapse
+    // signed zero into civil year zero or emulate implementation-defined legacy date parsing.
+    if year_str == "-000000" {
         return None;
     }
     let year: i32 = year_str.parse().ok()?;
     let month = parse_u32(month_str)?;
     let day = parse_u32(day_str)?;
-    let date = NaiveDate::from_ymd_opt(year, month, day)?;
+    let date = CivilDate::new(year, month, day)?;
 
     let mut second: u32 = 0;
     let mut millis: u32 = 0;
@@ -749,16 +758,14 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
 
     rest = rest.trim_start();
     if rest.is_empty() {
-        let naive = date.and_hms_milli_opt(0, 0, 0, 0)?;
+        let local = date.at_midnight();
         if sep == '-' && js_date_only_is_iso_utc(year_str, month_str, day_str) {
-            let dt_utc =
-                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc);
-            return Some(dt_utc.with_timezone(&crate::time::utc_fixed_offset()));
+            return OffsetDateTime::from_local(local, UtcOffset::UTC);
         }
-        return local_from_naive(naive);
+        return local_from_civil(local);
     }
 
-    if let Some(r) = rest.strip_prefix('T') {
+    if let Some(r) = rest.strip_prefix(['T', 't']) {
         rest = r;
     }
     rest = rest.trim_start();
@@ -779,11 +786,8 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
         second = parse_u32(ss_str)?;
 
         if let Some(r) = rest4.strip_prefix('.') {
-            let ms_digits: String = r
-                .chars()
-                .take_while(|c| c.is_ascii_digit())
-                .take(3)
-                .collect();
+            let fraction_len = r.bytes().take_while(u8::is_ascii_digit).count();
+            let ms_digits: String = r.chars().take(fraction_len.min(3)).collect();
             if ms_digits.is_empty() {
                 return None;
             }
@@ -792,7 +796,7 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
                 2 => parse_u32(&ms_digits)? * 10,
                 _ => parse_u32(&ms_digits)?,
             };
-            rest4 = &r[ms_digits.len()..];
+            rest4 = &r[fraction_len..];
         }
 
         rest3 = rest4;
@@ -813,17 +817,16 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
     if hour > 23 || minute > 59 || second > 59 {
         return None;
     }
-    let naive = date.and_hms_milli_opt(hour, minute, second, millis)?;
+    let local = date.at_hms_milli(hour, minute, second, millis)?;
 
     if let Some(mins) = tz_minutes {
-        let offset = FixedOffset::east_opt(mins * 60)?;
-        return offset.from_local_datetime(&naive).single();
+        return OffsetDateTime::from_local(local, UtcOffset::from_minutes(mins)?);
     }
 
-    local_from_naive(naive)
+    local_from_civil(local)
 }
 
-fn parse_js_like_mdy_hm_datetime(s: &str) -> Option<DateTimeFixed> {
+fn parse_js_like_mdy_hm_datetime(s: &str) -> Option<OffsetDateTime> {
     // V8 parses strings like `08-08-09-01:00` as local time using an `MM-DD-YY-HH:mm` heuristic.
     // Mermaid gantt falls back to `new Date(str)` when dayjs strict parsing fails, so we mirror
     // that behavior for parity (see `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/ganttDb.js`).
@@ -899,9 +902,8 @@ fn parse_js_like_mdy_hm_datetime(s: &str) -> Option<DateTimeFixed> {
         (0u32, 0u32)
     };
 
-    let date = NaiveDate::from_ymd_opt(year, month, day)?;
-    let naive = date.and_hms_milli_opt(hour, minute, second, millis)?;
-    local_from_naive(naive)
+    let local = CivilDate::new(year, month, day)?.at_hms_milli(hour, minute, second, millis)?;
+    local_from_civil(local)
 }
 
 fn is_ascii_digits(s: &str) -> bool {
@@ -969,11 +971,11 @@ pub(super) fn get_start_date(
     db: &GanttDb,
     date_format: &str,
     raw: &str,
-) -> Result<Option<DateTimeFixed>> {
+) -> Result<Option<OffsetDateTime>> {
     let s = raw.trim();
 
     if let Some(ids) = relative_ref_ids(s, "after") {
-        let mut latest: Option<Option<DateTimeFixed>> = None;
+        let mut latest: Option<Option<OffsetDateTime>> = None;
         for id in ids.split(' ') {
             let id = id.trim();
             if id.is_empty() {
@@ -1009,9 +1011,9 @@ pub(super) fn get_start_date(
     if (fmt == "x" || fmt == "X")
         && is_ascii_digits(s)
         && let Ok(ms) = s.parse::<i64>()
-        && let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)
+        && let Some(dt) = js_date_from_unix_millis(ms)
     {
-        return Ok(Some(dt.with_timezone(&crate::time::utc_fixed_offset())));
+        return Ok(Some(dt));
     }
 
     if let Some(dt) = parse_dayjs_like_strict(date_format, s) {
@@ -1075,13 +1077,12 @@ fn trunc_f64_to_i64(value: f64) -> Option<i64> {
     Some(truncated as i64)
 }
 
-fn add_milliseconds(dt: DateTimeFixed, value: f64, scale: f64) -> Option<DateTimeFixed> {
+fn add_milliseconds(dt: OffsetDateTime, value: f64, scale: f64) -> Option<OffsetDateTime> {
     let milliseconds = trunc_f64_to_i64(value * scale)?;
-    let duration = Duration::try_milliseconds(milliseconds)?;
-    dt.checked_add_signed(duration)
+    dt.checked_add_millis(milliseconds)
 }
 
-fn add_duration(dt: DateTimeFixed, value: f64, unit: &str) -> Option<DateTimeFixed> {
+fn add_duration(dt: OffsetDateTime, value: f64, unit: &str) -> Option<OffsetDateTime> {
     if !value.is_finite() {
         return None;
     }
@@ -1125,15 +1126,15 @@ fn add_duration(dt: DateTimeFixed, value: f64, unit: &str) -> Option<DateTimeFix
 
 pub(super) fn get_end_date(
     db: &GanttDb,
-    prev_time: DateTimeFixed,
+    prev_time: OffsetDateTime,
     date_format: &str,
     raw: &str,
     inclusive: bool,
-) -> Result<Option<DateTimeFixed>> {
+) -> Result<Option<OffsetDateTime>> {
     let s = raw.trim();
 
     if let Some(ids) = relative_ref_ids(s, "until") {
-        let mut earliest: Option<Option<DateTimeFixed>> = None;
+        let mut earliest: Option<Option<OffsetDateTime>> = None;
         for id in ids.split(' ') {
             let id = id.trim();
             if id.is_empty() {
@@ -1191,31 +1192,7 @@ pub(super) fn is_strict_yyyy_mm_dd(s: &str) -> bool {
     {
         return false;
     }
-    NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
-}
-
-pub(super) fn weekday_full_name(weekday: chrono::Weekday) -> &'static str {
-    match weekday {
-        chrono::Weekday::Mon => "Monday",
-        chrono::Weekday::Tue => "Tuesday",
-        chrono::Weekday::Wed => "Wednesday",
-        chrono::Weekday::Thu => "Thursday",
-        chrono::Weekday::Fri => "Friday",
-        chrono::Weekday::Sat => "Saturday",
-        chrono::Weekday::Sun => "Sunday",
-    }
-}
-
-pub(super) fn weekday_short_name(weekday: chrono::Weekday) -> &'static str {
-    match weekday {
-        chrono::Weekday::Mon => "Mon",
-        chrono::Weekday::Tue => "Tue",
-        chrono::Weekday::Wed => "Wed",
-        chrono::Weekday::Thu => "Thu",
-        chrono::Weekday::Fri => "Fri",
-        chrono::Weekday::Sat => "Sat",
-        chrono::Weekday::Sun => "Sun",
-    }
+    s.parse::<CivilDate>().is_ok()
 }
 
 pub(super) fn month_short_name(month: u32) -> &'static str {
@@ -1267,66 +1244,60 @@ pub(super) fn ordinal_suffix(n: u32) -> &'static str {
     }
 }
 
-pub(super) fn format_dayjs_like(dt: DateTimeFixed, fmt: &str) -> String {
+pub(super) fn format_dayjs_like(dt: OffsetDateTime, fmt: &str) -> String {
     let fmt = fmt.trim();
     if fmt.is_empty() {
         return String::new();
     }
 
     let items = tokenize_dayjs_format(fmt);
-    let local = crate::runtime::datetime_to_local_fixed(dt);
-    let naive = local.naive_local();
+    let local = crate::runtime::datetime_to_local(dt);
+    let civil = local.local_datetime();
 
     let mut out = String::new();
     for item in items {
         match item {
             DayjsFormatItem::Literal(s) => out.push_str(&s),
             DayjsFormatItem::Token(tok) => match tok {
-                DayjsToken::Year4 => out.push_str(&format!("{:04}", naive.year())),
+                DayjsToken::Year4 => out.push_str(&format!("{:04}", civil.year())),
                 DayjsToken::Year2 => {
-                    out.push_str(&format!("{:02}", (naive.year().rem_euclid(100))))
+                    out.push_str(&format!("{:02}", (civil.year().rem_euclid(100))))
                 }
-                DayjsToken::Month2 => out.push_str(&format!("{:02}", naive.month())),
-                DayjsToken::Month1 => out.push_str(&format!("{}", naive.month())),
-                DayjsToken::MonthNameShort => out.push_str(month_short_name(naive.month())),
-                DayjsToken::MonthNameLong => out.push_str(month_long_name(naive.month())),
-                DayjsToken::Day2 => out.push_str(&format!("{:02}", naive.day())),
-                DayjsToken::Day1 => out.push_str(&format!("{}", naive.day())),
+                DayjsToken::Month2 => out.push_str(&format!("{:02}", civil.month())),
+                DayjsToken::Month1 => out.push_str(&format!("{}", civil.month())),
+                DayjsToken::MonthNameShort => out.push_str(month_short_name(civil.month())),
+                DayjsToken::MonthNameLong => out.push_str(month_long_name(civil.month())),
+                DayjsToken::Day2 => out.push_str(&format!("{:02}", civil.day())),
+                DayjsToken::Day1 => out.push_str(&format!("{}", civil.day())),
                 DayjsToken::DayOrdinal => {
-                    let d = naive.day();
+                    let d = civil.day();
                     out.push_str(&format!("{d}{}", ordinal_suffix(d)));
                 }
-                DayjsToken::Hour24_2 => out.push_str(&format!("{:02}", naive.hour())),
-                DayjsToken::Hour24_1 => out.push_str(&format!("{}", naive.hour())),
+                DayjsToken::Hour24_2 => out.push_str(&format!("{:02}", civil.hour())),
+                DayjsToken::Hour24_1 => out.push_str(&format!("{}", civil.hour())),
                 DayjsToken::Hour12_2 => {
-                    let mut h = naive.hour() % 12;
+                    let mut h = civil.hour() % 12;
                     if h == 0 {
                         h = 12;
                     }
                     out.push_str(&format!("{:02}", h));
                 }
                 DayjsToken::Hour12_1 => {
-                    let mut h = naive.hour() % 12;
+                    let mut h = civil.hour() % 12;
                     if h == 0 {
                         h = 12;
                     }
                     out.push_str(&format!("{}", h));
                 }
-                DayjsToken::Minute2 => out.push_str(&format!("{:02}", naive.minute())),
-                DayjsToken::Minute1 => out.push_str(&format!("{}", naive.minute())),
-                DayjsToken::Second2 => out.push_str(&format!("{:02}", naive.second())),
-                DayjsToken::Second1 => out.push_str(&format!("{}", naive.second())),
-                DayjsToken::Millis3 => {
-                    out.push_str(&format!("{:03}", local.timestamp_subsec_millis()))
-                }
-                DayjsToken::Millis2 => {
-                    out.push_str(&format!("{:02}", local.timestamp_subsec_millis() / 10))
-                }
-                DayjsToken::Millis1 => {
-                    out.push_str(&format!("{}", local.timestamp_subsec_millis() / 100))
-                }
+                DayjsToken::Minute2 => out.push_str(&format!("{:02}", civil.minute())),
+                DayjsToken::Minute1 => out.push_str(&format!("{}", civil.minute())),
+                DayjsToken::Second2 => out.push_str(&format!("{:02}", civil.second())),
+                DayjsToken::Second1 => out.push_str(&format!("{}", civil.second())),
+                DayjsToken::Millis3 => out.push_str(&format!("{:03}", civil.millisecond())),
+                DayjsToken::Millis2 => out.push_str(&format!("{:02}", civil.millisecond() / 10)),
+                DayjsToken::Millis1 => out.push_str(&format!("{}", civil.millisecond() / 100)),
                 DayjsToken::OffsetColon | DayjsToken::OffsetNoColon => {
-                    let secs = local.offset().local_minus_utc();
+                    let secs = local.offset().seconds();
                     let sign = if secs < 0 { '-' } else { '+' };
                     let secs = secs.abs();
                     let hh = secs / 3600;
@@ -1338,7 +1309,7 @@ pub(super) fn format_dayjs_like(dt: DateTimeFixed, fmt: &str) -> String {
                     }
                 }
                 DayjsToken::AmPmUpper | DayjsToken::AmPmLower => {
-                    let is_pm = naive.hour() >= 12;
+                    let is_pm = civil.hour() >= 12;
                     let s = if is_pm { "PM" } else { "AM" };
                     match tok {
                         DayjsToken::AmPmUpper => out.push_str(s),
@@ -1347,9 +1318,9 @@ pub(super) fn format_dayjs_like(dt: DateTimeFixed, fmt: &str) -> String {
                     }
                 }
                 DayjsToken::UnixMs => out.push_str(&dt.timestamp_millis().to_string()),
-                DayjsToken::UnixSec => out.push_str(&(dt.timestamp_millis() / 1000).to_string()),
-                DayjsToken::WeekdayLong => out.push_str(weekday_full_name(naive.weekday())),
-                DayjsToken::WeekdayShort => out.push_str(weekday_short_name(naive.weekday())),
+                DayjsToken::UnixSec => out.push_str(&dt.timestamp_seconds().to_string()),
+                DayjsToken::WeekdayLong => out.push_str(civil.weekday().full_name()),
+                DayjsToken::WeekdayShort => out.push_str(civil.weekday().short_name()),
             },
         }
     }

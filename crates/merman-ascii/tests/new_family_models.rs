@@ -300,8 +300,8 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
             "dateFormat: YYYY-MM-DD\n",
             "axisFormat: %d\n",
             "section: Build\n",
-            "  - Implement [9223372036854775000 -> 9223372036854775002] [milestone, active,\n",
-            "    done, crit, vert]",
+            "  - Implement [+292278994-08-17 -> +292278994-08-17] [milestone, active, done,\n",
+            "    crit, vert]",
         )
     );
 }

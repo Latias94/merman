@@ -1,7 +1,7 @@
-use chrono::NaiveDate;
 mod common;
 
 use common::legacy_init_theme_compat_config;
+use merman_core::time::CivilDate;
 use merman_core::{Engine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::family;
@@ -226,9 +226,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
     let runtime_policy = merman_core::runtime::RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(0)
         .expect("valid UTC offset")
-        .with_fixed_today(Some(
-            NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-        ));
+        .with_fixed_today(Some(CivilDate::new(2026, 2, 15).expect("valid date")));
     let environment = merman_render::environment::RenderEnvironment::deterministic()
         .with_text_measurement_policy(
             merman_render::environment::TextMeasurementPolicy::deterministic(),

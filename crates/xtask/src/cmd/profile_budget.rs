@@ -395,6 +395,7 @@ fn check_deps(profile: Profile, tree: &str, extra_forbidden: &[String]) -> Vec<S
 fn forbidden_crates(profile: Profile) -> &'static [&'static str] {
     match profile {
         Profile::PureWasm => &[
+            "chrono",
             "console_error_panic_hook",
             "getrandom",
             "json5",
@@ -410,6 +411,7 @@ fn forbidden_crates(profile: Profile) -> &'static [&'static str] {
             "web-time",
         ],
         Profile::Typst => &[
+            "chrono",
             "console_error_panic_hook",
             "getrandom",
             "js-sys",
@@ -518,7 +520,8 @@ merman-core v0.7.0
 
         let failures = check_deps(Profile::PureWasm, tree, &[]);
 
-        assert_eq!(failures.len(), 4);
+        assert_eq!(failures.len(), 5);
+        assert!(failures.iter().any(|failure| failure.contains("`chrono`")));
         assert!(failures.iter().any(|failure| failure.contains("`js-sys`")));
         assert!(
             failures
@@ -541,11 +544,23 @@ merman-core v0.7.0
     fn dependency_gate_accepts_profile_safe_tree() {
         let tree = r#"
 merman-core v0.7.0
-├── chrono v0.4.43
 └── serde_json v1.0.149
 "#;
 
         assert!(check_deps(Profile::PureWasm, tree, &[]).is_empty());
+    }
+
+    #[test]
+    fn dependency_gate_rejects_removed_chrono_dependency() {
+        let tree = r#"
+merman-core v0.8.0-alpha.4
+└── chrono v0.4.45
+"#;
+
+        assert_eq!(
+            check_deps(Profile::PureWasm, tree, &[]),
+            vec!["pure-wasm profile forbids dependency `chrono` in cargo tree"]
+        );
     }
 
     #[test]
