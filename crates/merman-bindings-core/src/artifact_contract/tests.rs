@@ -1,15 +1,15 @@
 use super::*;
 
 const STATIC_SEMANTIC_CONTRACT: ValidatedArtifactContract =
-    ArtifactContractSpec::new(TargetKey::Native)
+    ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
         .with_operations(&[OperationKey::SemanticJson])
         .materialize();
 
 const STATIC_EMPTY_CONTRACT: ValidatedArtifactContract =
-    ArtifactContractSpec::new(TargetKey::Native).materialize();
+    ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust).materialize();
 
 const STATIC_WEB_EDITOR_CONTRACT: ValidatedArtifactContract =
-    ArtifactContractSpec::new(TargetKey::Web)
+    ArtifactContractSpec::new(TargetKey::Web, crate::BindingTransportKey::Web)
         .with_operations(&[OperationKey::SemanticJson])
         .with_supplemental_capabilities(&[CapabilityKey::Editor])
         .with_transport_extensions(&[TransportCompiledExtensionKey::Editor])
@@ -17,6 +17,49 @@ const STATIC_WEB_EDITOR_CONTRACT: ValidatedArtifactContract =
 
 fn panics(action: impl FnOnce()) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(action)).is_err()
+}
+
+#[test]
+fn transport_exposure_rejects_the_wrong_target() {
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Web);
+    }));
+}
+
+#[test]
+fn transport_exposure_rejects_facade_unsupported_services() {
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Web, crate::BindingTransportKey::Web)
+            .with_constructor_services(&[ConstructorServiceKey::IconRegistry])
+            .materialize();
+    }));
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Node)
+            .with_constructor_services(&[ConstructorServiceKey::HostTextMeasurement])
+            .materialize();
+    }));
+}
+
+#[test]
+fn transport_candidate_services_require_explicit_artifact_selection() {
+    assert!(
+        !crate::BindingTransportKey::Rust
+            .spec()
+            .constructor_service_candidates()
+            .is_empty()
+    );
+    assert_eq!(
+        STATIC_SEMANTIC_CONTRACT
+            .constructor_service_keys()
+            .collect::<Vec<_>>(),
+        []
+    );
+    assert!(
+        STATIC_SEMANTIC_CONTRACT
+            .runtime_catalog(1)
+            .constructor_service_ids
+            .is_empty()
+    );
 }
 
 #[test]
@@ -44,9 +87,19 @@ fn semantic_snapshot_is_exact_and_does_not_inherit_compiled_features() {
     );
     assert_eq!(
         STATIC_SEMANTIC_CONTRACT
+            .payload_schema_keys()
+            .collect::<Vec<_>>(),
+        BindingPayloadSchemaKey::ALL
+    );
+    assert_eq!(
+        STATIC_SEMANTIC_CONTRACT
             .option_group_keys()
             .collect::<Vec<_>>(),
-        []
+        BindingOptionGroupKey::ALL
+            .iter()
+            .copied()
+            .filter(|key| key.spec().always_available())
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         STATIC_SEMANTIC_CONTRACT
@@ -69,6 +122,9 @@ fn semantic_snapshot_is_exact_and_does_not_inherit_compiled_features() {
 #[test]
 fn semantic_contract_rejects_every_unadvertised_constructor_option_group() {
     for group in BindingOptionGroupKey::ALL {
+        if group.spec().always_available() {
+            continue;
+        }
         let options = format!(r#"{{"{}":{{}}}}"#, group.id());
         let error = STATIC_SEMANTIC_CONTRACT
             .create_engine(options.as_bytes())
@@ -79,6 +135,87 @@ fn semantic_contract_rejects_every_unadvertised_constructor_option_group() {
         assert!(error.message().contains(group.id()));
         assert!(error.message().contains("not exposed by target `native`"));
     }
+}
+
+#[test]
+fn semantic_contract_accepts_every_schema_owned_option_field() {
+    STATIC_SEMANTIC_CONTRACT
+        .create_engine(
+            br#"{
+                "version": 2,
+                "runtime_policy": "deterministic",
+                "parse": {"suppress_errors": false},
+                "fixed_today": "2026-08-04",
+                "fixed_local_offset_minutes": 480,
+                "site_config": {},
+                "resources": {}
+            }"#,
+        )
+        .expect("schema-owned option fields must be exposed by every artifact contract");
+}
+
+#[test]
+fn constructor_resource_limit_admission_matches_the_runtime_catalog() {
+    for contract in [
+        STATIC_SEMANTIC_CONTRACT,
+        crate::artifact_contract::DEFAULT_ARTIFACT_SNAPSHOT,
+    ] {
+        let catalog = contract.runtime_catalog(1);
+        for descriptor in crate::binding_resource_contract()
+            .limits
+            .into_iter()
+            .filter(|descriptor| descriptor.overridable)
+        {
+            let advertised = catalog
+                .resources
+                .limits
+                .iter()
+                .any(|limit| limit.id == descriptor.stable_id);
+            let options = format!(
+                r#"{{"resources":{{"limits":{{"{}":{}}}}}}}"#,
+                descriptor.stable_id, descriptor.minimum_value
+            );
+            let result = contract.create_engine(options.as_bytes());
+
+            match (advertised, result) {
+                (true, Ok(_)) => {}
+                (false, Err(error)) => {
+                    assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
+                    assert!(error.message().contains(descriptor.stable_id), "{error:?}");
+                    assert!(error.message().contains("not exposed"), "{error:?}");
+                }
+                (true, Err(error)) => panic!(
+                    "target `{}` rejected advertised constructor resource limit `{}`: {error:?}",
+                    contract.target().id(),
+                    descriptor.stable_id
+                ),
+                (false, Ok(_)) => panic!(
+                    "target `{}` accepted unadvertised constructor resource limit `{}`",
+                    contract.target().id(),
+                    descriptor.stable_id
+                ),
+            }
+        }
+    }
+
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    let semantic_catalog = STATIC_SEMANTIC_CONTRACT.runtime_catalog(1);
+    #[cfg(feature = "svg")]
+    assert!(
+        semantic_catalog
+            .resources
+            .limits
+            .iter()
+            .all(|limit| limit.id != "max_svg_bytes")
+    );
+    #[cfg(feature = "ascii")]
+    assert!(
+        semantic_catalog
+            .resources
+            .limits
+            .iter()
+            .all(|limit| limit.id != "max_ascii_grid_cells")
+    );
 }
 
 #[test]
@@ -215,7 +352,7 @@ fn typed_transport_extensions_are_explicit_and_exact() {
     );
 
     assert!(panics(|| {
-        let _ = ArtifactContractSpec::new(TargetKey::Web)
+        let _ = ArtifactContractSpec::new(TargetKey::Web, crate::BindingTransportKey::Web)
             .with_operations(&[OperationKey::SemanticJson])
             .with_supplemental_capabilities(&[CapabilityKey::Editor])
             .materialize();
@@ -225,22 +362,27 @@ fn typed_transport_extensions_are_explicit_and_exact() {
 #[test]
 fn duplicate_and_reconfigured_fields_fail_closed() {
     assert!(panics(|| {
-        let _ = ArtifactContractSpec::new(TargetKey::Native)
+        let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_operations(&[OperationKey::SemanticJson, OperationKey::SemanticJson])
             .materialize();
     }));
     assert!(panics(|| {
-        let _ = ArtifactContractSpec::new(TargetKey::Native)
+        let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_operations(&[OperationKey::SemanticJson])
             .with_operations(&[]);
     }));
     assert!(panics(|| {
-        let _ = ArtifactContractSpec::new(TargetKey::Native)
+        let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_metadata(&[])
             .with_all_available_metadata();
     }));
     assert!(panics(|| {
-        let _ = ArtifactContractSpec::new(TargetKey::Web)
+        let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_constructor_services(&[])
+            .with_constructor_services(&[]);
+    }));
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Web, crate::BindingTransportKey::Web)
             .with_transport_extensions(&[
                 TransportCompiledExtensionKey::Editor,
                 TransportCompiledExtensionKey::Editor,
@@ -308,7 +450,7 @@ fn canonical_validator_rejects_unavailable_metadata_and_services() {
 #[test]
 fn binding_options_runtime_policy_is_native_target_only() {
     assert!(panics(|| {
-        let _ = ArtifactContractSpec::new(TargetKey::Web)
+        let _ = ArtifactContractSpec::new(TargetKey::Web, crate::BindingTransportKey::Web)
             .with_operations(&[OperationKey::SemanticJson])
             .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
             .materialize();
@@ -353,12 +495,12 @@ fn system_adapter_declarations_fail_closed() {
         );
     }));
     assert!(panics(|| {
-        let _ = ArtifactContractSpec::new(TargetKey::Native)
+        let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_system_adapters(&[CapabilityKey::SystemClock, CapabilityKey::SystemClock])
             .materialize();
     }));
     assert!(panics(|| {
-        let _ = ArtifactContractSpec::new(TargetKey::Native)
+        let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_system_adapters(&[])
             .with_system_adapters(&[]);
     }));
@@ -434,10 +576,11 @@ fn deterministic_only_contract_rejects_native_runtime_policy() {
 
 #[test]
 fn native_policy_reports_the_first_missing_transport_adapter() {
-    const CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
-        .with_operations(&[OperationKey::SemanticJson])
-        .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
-        .materialize();
+    const CONTRACT: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::SemanticJson])
+            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
+            .materialize();
 
     let error = CONTRACT
         .create_engine(br#"{"runtime_policy":"native"}"#)
@@ -452,11 +595,12 @@ fn native_policy_reports_the_first_missing_transport_adapter() {
 #[cfg(feature = "system-clock")]
 #[test]
 fn native_policy_uses_the_exact_transport_selection_after_feature_unification() {
-    const CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
-        .with_operations(&[OperationKey::SemanticJson])
-        .with_system_adapters(&[CapabilityKey::SystemClock])
-        .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
-        .materialize();
+    const CONTRACT: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::SemanticJson])
+            .with_system_adapters(&[CapabilityKey::SystemClock])
+            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
+            .materialize();
 
     let error = CONTRACT
         .create_engine(br#"{"runtime_policy":"native"}"#)
@@ -514,17 +658,20 @@ fn unadvertised_constructor_service_is_rejected() {
 #[cfg(feature = "svg")]
 #[test]
 fn operations_and_services_derive_text_measurement_providers() {
-    const VENDORED_ONLY: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
-        .with_operations(&[OperationKey::Svg])
-        .materialize();
-    const WITH_HOST: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
-        .with_operations(&[OperationKey::Svg])
-        .with_constructor_services(&[ConstructorServiceKey::HostTextMeasurement])
-        .materialize();
-    const WITH_ICONS: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
-        .with_operations(&[OperationKey::Svg])
-        .with_constructor_services(&[ConstructorServiceKey::IconRegistry])
-        .materialize();
+    const VENDORED_ONLY: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::Svg])
+            .materialize();
+    const WITH_HOST: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::Svg])
+            .with_constructor_services(&[ConstructorServiceKey::HostTextMeasurement])
+            .materialize();
+    const WITH_ICONS: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::Svg])
+            .with_constructor_services(&[ConstructorServiceKey::IconRegistry])
+            .materialize();
 
     assert_eq!(
         VENDORED_ONLY
@@ -552,9 +699,10 @@ fn operations_and_services_derive_text_measurement_providers() {
 #[cfg(feature = "png")]
 #[test]
 fn compiled_prerequisites_enable_the_pipeline_without_advertising_its_output() {
-    const PNG_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
-        .with_operations(&[OperationKey::Png])
-        .materialize();
+    const PNG_CONTRACT: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::Png])
+            .materialize();
 
     assert_eq!(
         PNG_CONTRACT.capability_keys().collect::<Vec<_>>(),
@@ -575,10 +723,11 @@ fn compiled_prerequisites_enable_the_pipeline_without_advertising_its_output() {
 #[cfg(feature = "layout-elk")]
 #[test]
 fn descriptor_implications_are_closed_automatically() {
-    const CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
-        .with_operations(&[OperationKey::Svg])
-        .with_supplemental_capabilities(&[CapabilityKey::LayoutElk])
-        .materialize();
+    const CONTRACT: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::Svg])
+            .with_supplemental_capabilities(&[CapabilityKey::LayoutElk])
+            .materialize();
 
     assert!(CONTRACT.exposes_capability(CapabilityKey::Svg));
     assert!(CONTRACT.exposes_capability(CapabilityKey::LayoutElk));

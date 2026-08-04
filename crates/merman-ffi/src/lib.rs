@@ -9,8 +9,8 @@
 use merman_bindings_core::{
     ArtifactContractSpec, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError,
     BindingEngineAdmissionMode, BindingEngineServices, BindingError, BindingErrorKind,
-    BindingIconRegistryErrorDetails, BindingOperationRequest, BindingPayloadSchemaKey,
-    BindingResourceErrorDetails, BindingStatus, CapabilityKey, ConstructorServiceKey, OperationKey,
+    BindingIconRegistryErrorDetails, BindingOperationRequest, BindingResourceErrorDetails,
+    BindingStatus, BindingTransportKey, CapabilityKey, ConstructorServiceKey, OperationKey,
     RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
@@ -273,15 +273,15 @@ const NATIVE_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
     CapabilityKey::SystemTimezone,
 ];
 const NATIVE_RUNTIME_POLICY: RuntimePolicyExposure = RuntimePolicyExposure::BindingOptions;
-static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
-    .with_operations(NATIVE_OPERATIONS)
-    .with_supplemental_capabilities(NATIVE_SUPPLEMENTAL_CAPABILITIES)
-    .with_all_available_metadata()
-    .with_payload_schemas(BindingPayloadSchemaKey::ALL)
-    .with_constructor_services(NATIVE_CONSTRUCTOR_SERVICES)
-    .with_system_adapters(NATIVE_SYSTEM_ADAPTERS)
-    .with_runtime_policy_exposure(NATIVE_RUNTIME_POLICY)
-    .materialize();
+static ARTIFACT_CONTRACT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::NativeC)
+        .with_operations(NATIVE_OPERATIONS)
+        .with_supplemental_capabilities(NATIVE_SUPPLEMENTAL_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_constructor_services(NATIVE_CONSTRUCTOR_SERVICES)
+        .with_system_adapters(NATIVE_SYSTEM_ADAPTERS)
+        .with_runtime_policy_exposure(NATIVE_RUNTIME_POLICY)
+        .materialize();
 
 fn reentrant_call_failure() -> NativeFailure {
     NativeFailure::reentrant_call("a host callback must not re-enter the same native engine")

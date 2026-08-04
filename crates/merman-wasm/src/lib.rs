@@ -6,7 +6,7 @@
 //! classification are delegated to `merman-bindings-core`.
 
 use merman_bindings_core::{
-    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingPayloadSchemaKey,
+    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingTransportKey,
     CapabilityKey, OperationKey, RuntimeCatalog, RuntimePolicyExposure, TargetKey,
     TransportCompiledExtensionKey, ValidatedArtifactContract,
 };
@@ -76,15 +76,15 @@ const WASM_CONSTRUCTOR_SERVICES: &[merman_bindings_core::ConstructorServiceKey] 
     #[cfg(all(feature = "svg", target_arch = "wasm32"))]
     merman_bindings_core::ConstructorServiceKey::HostTextMeasurement,
 ];
-static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Web)
-    .with_operations(WASM_OPERATIONS)
-    .with_supplemental_capabilities(WASM_SUPPLEMENTAL_CAPABILITIES)
-    .with_all_available_metadata()
-    .with_payload_schemas(&[BindingPayloadSchemaKey::BindingResult])
-    .with_constructor_services(WASM_CONSTRUCTOR_SERVICES)
-    .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
-    .with_transport_extensions(WASM_TRANSPORT_EXTENSIONS)
-    .materialize();
+static ARTIFACT_CONTRACT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(TargetKey::Web, BindingTransportKey::Web)
+        .with_operations(WASM_OPERATIONS)
+        .with_supplemental_capabilities(WASM_SUPPLEMENTAL_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_constructor_services(WASM_CONSTRUCTOR_SERVICES)
+        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+        .with_transport_extensions(WASM_TRANSPORT_EXTENSIONS)
+        .materialize();
 
 fn wasm_artifact_contract() -> &'static ValidatedArtifactContract {
     &ARTIFACT_CONTRACT

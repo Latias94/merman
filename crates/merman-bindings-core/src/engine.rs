@@ -204,7 +204,7 @@ impl BindingEngine {
                 self.unchanged_request_validation
                     .get_or_init(|| {
                         self.base_options
-                            .validate_unchanged_request(Some(&self.artifact_contract))
+                            .validate_unchanged_request(&self.artifact_contract)
                     })
                     .clone()?;
                 Ok(PreparedRequestOverlay::Unchanged)
@@ -212,7 +212,7 @@ impl BindingEngine {
             overlay @ common::BindingRequestOverlay::Override { .. } => {
                 let options = self
                     .base_options
-                    .apply_overlay(overlay, Some(&self.artifact_contract))?;
+                    .apply_overlay(overlay, &self.artifact_contract)?;
                 self.services.validate_options(&options)?;
                 let configs =
                     BindingOperationConfigs::compile(&options, self.runtime_policy.clone())?;

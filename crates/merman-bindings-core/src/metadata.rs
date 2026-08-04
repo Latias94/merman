@@ -320,7 +320,7 @@ impl ValidatedArtifactContract {
             })
             .collect::<Vec<_>>();
 
-        RuntimeCatalog {
+        let catalog = RuntimeCatalog {
             schema_version: RUNTIME_CATALOG_SCHEMA_VERSION,
             transport_api_version,
             package_version: env!("CARGO_PKG_VERSION"),
@@ -340,9 +340,11 @@ impl ValidatedArtifactContract {
             registry: RuntimeRegistryContract {
                 diagram_family_count: diagram_family_capabilities().len(),
             },
-            resources: runtime_resource_contract_for(&capabilities),
+            resources: runtime_resource_contract_for(self, &capabilities),
             capabilities,
-        }
+        };
+        assert_runtime_catalog_json_safe_integers(&catalog);
+        catalog
     }
 
     pub fn runtime_catalog_json(
@@ -365,6 +367,72 @@ impl ValidatedArtifactContract {
             )));
         }
         collect_metadata(self, key)
+    }
+}
+
+fn assert_runtime_catalog_json_safe_integers(catalog: &RuntimeCatalog) {
+    let maximum = u128::from(crate::RUNTIME_CATALOG_MAX_SAFE_INTEGER);
+    let assert_safe = |value: u128, field: &str| {
+        assert!(
+            value <= maximum,
+            "runtime catalog field `{field}` exceeds the JSON-safe integer maximum"
+        );
+    };
+
+    assert_safe(u128::from(catalog.schema_version), "schema_version");
+    assert_safe(
+        u128::from(catalog.transport_api_version),
+        "transport_api_version",
+    );
+    for version in &catalog.options_schema_versions {
+        assert_safe(u128::from(*version), "options_schema_versions");
+    }
+    for schema in &catalog.payload_schemas {
+        assert_safe(u128::from(schema.version), "payload_schemas.version");
+    }
+    if let Some(text_measurement) = &catalog.capabilities.text_measurement {
+        assert_safe(
+            u128::from(text_measurement.protocol_version),
+            "capabilities.text_measurement.protocol_version",
+        );
+    }
+    for service in &catalog.constructor_service_contracts {
+        for limit in &service.resource_limits {
+            assert_safe(
+                u128::from(limit.value),
+                "constructor_service_contracts.resource_limits.value",
+            );
+        }
+    }
+    for output in &catalog.output_contracts {
+        if let Some(images) = &output.embedded_images {
+            for limit in [
+                images.limits.max_bytes_per_image,
+                images.limits.max_total_bytes,
+                images.limits.max_pixels_per_image,
+                images.limits.max_total_pixels,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                assert_safe(u128::from(limit), "output_contracts.embedded_images.limits");
+            }
+        }
+    }
+    assert_safe(
+        catalog.registry.diagram_family_count as u128,
+        "registry.diagram_family_count",
+    );
+    for limit in &catalog.resources.limits {
+        assert_safe(
+            limit.minimum_value as u128,
+            "resources.limits.minimum_value",
+        );
+    }
+    for profile in &catalog.resources.profiles {
+        for value in profile.limits.values().flatten() {
+            assert_safe(*value as u128, "resources.profiles.limits");
+        }
     }
 }
 
@@ -490,22 +558,15 @@ fn runtime_output_contract(
     }
 }
 
-fn runtime_resource_contract_for(capabilities: &RuntimeCapabilities) -> RuntimeResourceContract {
+fn runtime_resource_contract_for(
+    artifact_contract: &ValidatedArtifactContract,
+    capabilities: &RuntimeCapabilities,
+) -> RuntimeResourceContract {
     let contract = crate::binding_resource_contract();
     let limits = contract
         .limits
         .into_iter()
-        .filter(|descriptor| {
-            match crate::resource_contract::resource_limit_owner(descriptor.stable_id) {
-                crate::resource_contract::BindingResourceOwner::Artifact => true,
-                crate::resource_contract::BindingResourceOwner::Capability(capability) => {
-                    capabilities.has_capability(capability)
-                }
-                crate::resource_contract::BindingResourceOwner::Outputs(outputs) => {
-                    outputs.iter().any(|output| capabilities.has_output(output))
-                }
-            }
-        })
+        .filter(|descriptor| artifact_contract.exposes_resource_limit(descriptor))
         .collect::<Vec<_>>();
     RuntimeResourceContract {
         general_binding_default_profile: contract.general_binding_default_profile,
@@ -853,7 +914,7 @@ mod tests {
     }
 
     fn semantic_contract() -> ValidatedArtifactContract {
-        ArtifactContractSpec::new(TargetKey::Native)
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_operations(&[OperationKey::SemanticJson])
             .materialize()
     }
@@ -1352,9 +1413,10 @@ mod tests {
             OperationKey::SemanticJson,
             OperationKey::ValidationJson,
         ];
-        let contract = ArtifactContractSpec::new(TargetKey::Native)
-            .with_operations(ANALYSIS_OPERATIONS)
-            .materialize();
+        let contract =
+            ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+                .with_operations(ANALYSIS_OPERATIONS)
+                .materialize();
         let capabilities = contract.runtime_capabilities();
         let catalog = contract.runtime_catalog(2);
 
@@ -1474,9 +1536,10 @@ mod tests {
 
         #[cfg(feature = "svg")]
         {
-            let no_elk = ArtifactContractSpec::new(TargetKey::Native)
-                .with_operations(&[OperationKey::Svg])
-                .materialize();
+            let no_elk =
+                ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+                    .with_operations(&[OperationKey::Svg])
+                    .materialize();
             let no_elk: Value =
                 serde_json::from_slice(&presentation_catalog_json_for(&no_elk).unwrap()).unwrap();
             assert_eq!(
@@ -1557,10 +1620,11 @@ mod tests {
             assert_eq!(empty_again, empty);
 
             if merman::svg::layout_elk_available() {
-                let full = ArtifactContractSpec::new(TargetKey::Native)
-                    .with_operations(&[OperationKey::Svg])
-                    .with_supplemental_capabilities(&[crate::CapabilityKey::LayoutElk])
-                    .materialize();
+                let full =
+                    ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+                        .with_operations(&[OperationKey::Svg])
+                        .with_supplemental_capabilities(&[crate::CapabilityKey::LayoutElk])
+                        .materialize();
                 let full: Value =
                     serde_json::from_slice(&presentation_catalog_json_for(&full).unwrap()).unwrap();
                 assert_eq!(full["profiles"][0]["fully_available"], true);

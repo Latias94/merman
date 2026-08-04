@@ -19,7 +19,7 @@ use jni::{errors::Error as JniError, objects::Global};
 use merman_bindings_core::{
     ArtifactContractSpec, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode,
     BindingEngineServices, BindingError, BindingOperationRequest, BindingOperationResult,
-    BindingPayloadSchemaKey, BindingStatus, CapabilityKey, ConstructorServiceKey, OperationKey,
+    BindingStatus, BindingTransportKey, CapabilityKey, ConstructorServiceKey, OperationKey,
     RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
@@ -121,15 +121,15 @@ const ANDROID_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
     CapabilityKey::SystemTimezone,
 ];
 const ANDROID_RUNTIME_POLICY: RuntimePolicyExposure = RuntimePolicyExposure::BindingOptions;
-static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
-    .with_operations(ANDROID_OPERATIONS)
-    .with_supplemental_capabilities(ANDROID_SUPPLEMENTAL_CAPABILITIES)
-    .with_all_available_metadata()
-    .with_payload_schemas(BindingPayloadSchemaKey::ALL)
-    .with_constructor_services(ANDROID_CONSTRUCTOR_SERVICES)
-    .with_system_adapters(ANDROID_SYSTEM_ADAPTERS)
-    .with_runtime_policy_exposure(ANDROID_RUNTIME_POLICY)
-    .materialize();
+static ARTIFACT_CONTRACT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::AndroidJni)
+        .with_operations(ANDROID_OPERATIONS)
+        .with_supplemental_capabilities(ANDROID_SUPPLEMENTAL_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_constructor_services(ANDROID_CONSTRUCTOR_SERVICES)
+        .with_system_adapters(ANDROID_SYSTEM_ADAPTERS)
+        .with_runtime_policy_exposure(ANDROID_RUNTIME_POLICY)
+        .materialize();
 
 fn android_artifact_contract() -> &'static ValidatedArtifactContract {
     &ARTIFACT_CONTRACT

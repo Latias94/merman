@@ -5,6 +5,95 @@ export const RUNTIME_CATALOG_SCHEMA_VERSION = 1;
 export const BINDING_OPTIONS_SCHEMA_VERSION = 2;
 export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 1;
 
+export const RUNTIME_CATALOG_IDENTIFIER_PATTERN = "^[a-z0-9][a-z0-9-]*$";
+export const RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN = "^[a-z][a-z0-9_-]*$";
+export const RUNTIME_CATALOG_MAX_SAFE_INTEGER = 9007199254740991;
+
+export const CAPABILITY_SPECS = [
+  {
+    "id": "analysis",
+    "implication_ids": []
+  },
+  {
+    "id": "ascii",
+    "implication_ids": []
+  },
+  {
+    "id": "editor",
+    "implication_ids": []
+  },
+  {
+    "id": "icons",
+    "implication_ids": []
+  },
+  {
+    "id": "jpeg",
+    "implication_ids": []
+  },
+  {
+    "id": "layout-cytoscape",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
+    "id": "layout-elk",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
+    "id": "markdown",
+    "implication_ids": []
+  },
+  {
+    "id": "math",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
+    "id": "network-icons",
+    "implication_ids": []
+  },
+  {
+    "id": "parallel-markdown",
+    "implication_ids": []
+  },
+  {
+    "id": "pdf",
+    "implication_ids": []
+  },
+  {
+    "id": "png",
+    "implication_ids": []
+  },
+  {
+    "id": "shell-completions",
+    "implication_ids": []
+  },
+  {
+    "id": "svg",
+    "implication_ids": []
+  },
+  {
+    "id": "system-clock",
+    "implication_ids": []
+  },
+  {
+    "id": "system-random",
+    "implication_ids": []
+  },
+  {
+    "id": "system-timezone",
+    "implication_ids": []
+  },
+  {
+    "id": "system-timing",
+    "implication_ids": []
+  }
+];
+
 export const BINDING_OPERATION_METADATA_CONTRACT = {
   "contract_schema_version": 1,
   "metadata_schema_version": 1,
@@ -384,9 +473,37 @@ export const BINDING_PAYLOAD_SCHEMAS = [
   }
 ];
 
+export const METADATA_SPECS = [
+  {
+    "id": "ascii-capabilities",
+    "required_capability_id": "ascii"
+  },
+  {
+    "id": "diagram-family-capabilities",
+    "required_capability_id": null
+  },
+  {
+    "id": "lint-rule-catalog",
+    "required_capability_id": "analysis"
+  },
+  {
+    "id": "presentation-catalog",
+    "required_capability_id": null
+  },
+  {
+    "id": "supported-diagrams",
+    "required_capability_id": null
+  },
+  {
+    "id": "supported-themes",
+    "required_capability_id": null
+  }
+];
+
 export const BINDING_OPTION_GROUP_SPECS = [
   {
     "id": "ascii",
+    "always_available": false,
     "any_capability_ids": [
       "ascii"
     ],
@@ -394,11 +511,25 @@ export const BINDING_OPTION_GROUP_SPECS = [
   },
   {
     "id": "environment",
+    "always_available": false,
     "any_capability_ids": [],
     "requires_svg_pipeline": true
   },
   {
+    "id": "fixed_local_offset_minutes",
+    "always_available": true,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": false
+  },
+  {
+    "id": "fixed_today",
+    "always_available": true,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": false
+  },
+  {
     "id": "jpeg",
+    "always_available": false,
     "any_capability_ids": [
       "jpeg"
     ],
@@ -406,18 +537,27 @@ export const BINDING_OPTION_GROUP_SPECS = [
   },
   {
     "id": "layout",
+    "always_available": false,
     "any_capability_ids": [],
     "requires_svg_pipeline": true
   },
   {
     "id": "lint",
+    "always_available": false,
     "any_capability_ids": [
       "analysis"
     ],
     "requires_svg_pipeline": false
   },
   {
+    "id": "parse",
+    "always_available": true,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": false
+  },
+  {
     "id": "pdf",
+    "always_available": false,
     "any_capability_ids": [
       "pdf"
     ],
@@ -425,11 +565,13 @@ export const BINDING_OPTION_GROUP_SPECS = [
   },
   {
     "id": "presentation",
+    "always_available": false,
     "any_capability_ids": [],
     "requires_svg_pipeline": true
   },
   {
     "id": "raster",
+    "always_available": false,
     "any_capability_ids": [
       "jpeg",
       "png"
@@ -437,9 +579,34 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "requires_svg_pipeline": false
   },
   {
+    "id": "resources",
+    "always_available": true,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": false
+  },
+  {
+    "id": "runtime_policy",
+    "always_available": true,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": false
+  },
+  {
+    "id": "site_config",
+    "always_available": true,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": false
+  },
+  {
     "id": "svg",
+    "always_available": false,
     "any_capability_ids": [],
     "requires_svg_pipeline": true
+  },
+  {
+    "id": "version",
+    "always_available": true,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": false
   }
 ];
 
@@ -466,12 +633,82 @@ export const HOST_CALLBACK_TEXT_MEASUREMENT_PROVIDER_ID = "host-callback";
 export const CONSTRUCTOR_SERVICE_SPECS = [
   {
     "id": "host-text-measurement",
+    "requires_svg_pipeline": true,
     "provided_text_measurement_provider_ids": [
       "host-callback"
     ]
   },
   {
     "id": "icon-registry",
+    "requires_svg_pipeline": true,
     "provided_text_measurement_provider_ids": []
   }
 ];
+export const BINDING_TRANSPORT_EXPOSURE_SPECS = [
+  {
+    "id": "android-jni",
+    "payload_schema_ids": [
+      "binding-result",
+      "operation-metadata"
+    ],
+    "constructor_service_candidate_ids": [
+      "host-text-measurement"
+    ]
+  },
+  {
+    "id": "native-c",
+    "payload_schema_ids": [
+      "binding-result",
+      "operation-metadata"
+    ],
+    "constructor_service_candidate_ids": [
+      "host-text-measurement",
+      "icon-registry"
+    ]
+  },
+  {
+    "id": "node",
+    "payload_schema_ids": [
+      "binding-result",
+      "operation-metadata"
+    ],
+    "constructor_service_candidate_ids": []
+  },
+  {
+    "id": "rust",
+    "payload_schema_ids": [
+      "binding-result",
+      "operation-metadata"
+    ],
+    "constructor_service_candidate_ids": [
+      "host-text-measurement",
+      "icon-registry"
+    ]
+  },
+  {
+    "id": "typst",
+    "payload_schema_ids": [],
+    "constructor_service_candidate_ids": []
+  },
+  {
+    "id": "uniffi",
+    "payload_schema_ids": [
+      "binding-result",
+      "operation-metadata"
+    ],
+    "constructor_service_candidate_ids": [
+      "host-text-measurement"
+    ]
+  },
+  {
+    "id": "web",
+    "payload_schema_ids": [
+      "binding-result"
+    ],
+    "constructor_service_candidate_ids": [
+      "host-text-measurement"
+    ]
+  }
+];
+export const HOST_TEXT_MEASUREMENT_CONSTRUCTOR_SERVICE_ID = "host-text-measurement";
+export const ICON_REGISTRY_CONSTRUCTOR_SERVICE_ID = "icon-registry";

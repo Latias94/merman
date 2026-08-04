@@ -27,12 +27,35 @@ import { summarize } from "../scripts/benchmark/stats.mjs";
 import { svgTransportEvidence } from "../scripts/benchmark/svg-signature.mjs";
 import { digestJson } from "../scripts/stable-json.mjs";
 import { measureWarmSample } from "../scripts/benchmark/worker.mjs";
+import {
+  BINDING_OPTION_GROUP_SPECS,
+  METADATA_SPECS,
+} from "../src/generated/binding-contract.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
 const PACKAGE_VERSION = JSON.parse(
   readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
 ).version;
+const STATIC_SVG_OPTION_GROUP_IDS = BINDING_OPTION_GROUP_SPECS
+  .filter(
+    (spec) =>
+      spec.always_available ||
+      spec.requires_svg_pipeline ||
+      spec.any_capability_ids.some((id) =>
+        ["layout-cytoscape", "layout-elk", "math", "svg"].includes(id)
+      ),
+  )
+  .map((spec) => spec.id);
+const STATIC_SVG_METADATA_IDS = METADATA_SPECS
+  .filter(
+    (spec) =>
+      spec.required_capability_id === null ||
+      ["layout-cytoscape", "layout-elk", "math", "svg"].includes(
+        spec.required_capability_id,
+      ),
+  )
+  .map((spec) => spec.id);
 
 const provenance = {
   measured_at_utc: "2026-07-23T12:00:00.000Z",
@@ -153,9 +176,10 @@ const RUNTIME_CATALOG = {
     { id: "binding-result", version: 1 },
     { id: "operation-metadata", version: 1 },
   ],
-  metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
-  option_group_ids: ["environment", "layout", "presentation", "svg"],
+  metadata_ids: STATIC_SVG_METADATA_IDS,
+  option_group_ids: STATIC_SVG_OPTION_GROUP_IDS,
   constructor_service_ids: [],
+  constructor_service_contracts: [],
   capabilities: {
     capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
     output_ids: ["svg"],

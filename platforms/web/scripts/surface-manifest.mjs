@@ -234,6 +234,7 @@ export const surfaceModules = defineSurfaceModules([
     internalValueExportNames: ["assertBrowserRuntime", "bindSurfaceRuntime"],
     exactValueExports: true,
   },
+  { specifier: "../generated/binding-contract.js", owner: "shared" },
   { specifier: "../generated/capability-surface.js", owner: "shared" },
   { specifier: "../generated/diagram-catalog.js", owner: "shared" },
   { specifier: "../generated/resource-contract.js", owner: "shared" },

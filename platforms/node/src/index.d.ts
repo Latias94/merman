@@ -112,6 +112,22 @@ export interface MermanRuntimePayloadSchema {
   [key: string]: unknown;
 }
 
+export interface MermanRuntimeConstructorResourceLimit {
+  id: string;
+  phase: string;
+  unit: string;
+  description: string;
+  value: number;
+  [key: string]: unknown;
+}
+
+export interface MermanRuntimeConstructorServiceContract {
+  id: string;
+  provided_text_measurement_provider_ids: string[];
+  resource_limits: MermanRuntimeConstructorResourceLimit[];
+  [key: string]: unknown;
+}
+
 export interface MermanRuntimeCatalog {
   schema_version: 1;
   transport_api_version: 1;
@@ -121,6 +137,7 @@ export interface MermanRuntimeCatalog {
   metadata_ids: string[];
   option_group_ids: string[];
   constructor_service_ids: string[];
+  constructor_service_contracts: MermanRuntimeConstructorServiceContract[];
   capabilities: {
     capability_ids: string[];
     output_ids: string[];

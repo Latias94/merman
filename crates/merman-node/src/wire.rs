@@ -1,11 +1,12 @@
 use merman_bindings_core::{
     ArtifactContractSpec, BindingEngine, BindingError, BindingOperationRequest,
-    BindingPayloadSchemaKey, BindingStatus, CapabilityKey, OperationKey, RuntimePolicyExposure,
-    TargetKey, ValidatedArtifactContract,
+    BindingPayloadSchemaKey, BindingStatus, BindingTransportKey, CapabilityKey, OperationKey,
+    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 use serde::{Deserialize, Serialize};
 
-const NODE_WIRE_VERSION: u32 = 1;
+const NODE_TRANSPORT_API_VERSION: u32 = 1;
+const NODE_BINDING_RESULT_PAYLOAD_VERSION: u32 = BindingPayloadSchemaKey::BindingResult.version();
 const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
     TargetKey::Web
 } else {
@@ -28,13 +29,13 @@ const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "svg")]
     OperationKey::SvgPlanJson,
 ];
-static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(NODE_TARGET)
-    .with_operations(NODE_STATIC_SVG_OPERATIONS)
-    .with_supplemental_capabilities(NODE_STATIC_SVG_CAPABILITIES)
-    .with_all_available_metadata()
-    .with_payload_schemas(BindingPayloadSchemaKey::ALL)
-    .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
-    .materialize();
+static ARTIFACT_CONTRACT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(NODE_TARGET, BindingTransportKey::Node)
+        .with_operations(NODE_STATIC_SVG_OPERATIONS)
+        .with_supplemental_capabilities(NODE_STATIC_SVG_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+        .materialize();
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -93,7 +94,7 @@ fn node_artifact_contract() -> &'static ValidatedArtifactContract {
 }
 
 pub(crate) fn runtime_catalog_wire() -> Result<String, BindingError> {
-    let bytes = node_artifact_contract().runtime_catalog_json(NODE_WIRE_VERSION)?;
+    let bytes = node_artifact_contract().runtime_catalog_json(NODE_TRANSPORT_API_VERSION)?;
     String::from_utf8(bytes).map_err(|error| {
         BindingError::internal(format!("Node runtime catalog was not UTF-8: {error}"))
     })
@@ -147,7 +148,7 @@ pub(crate) fn execute_wire(engine: &BindingEngine, request_json: &str) -> String
                 }
             };
             serialize_envelope(&SuccessEnvelope {
-                version: NODE_WIRE_VERSION,
+                version: NODE_BINDING_RESULT_PAYLOAD_VERSION,
                 ok: true,
                 result: SuccessResult {
                     operation_id: operation.operation_id().to_owned(),
@@ -167,7 +168,7 @@ pub(crate) fn error_envelope(error: &BindingError) -> String {
 
 pub(crate) fn error_value(error: &BindingError) -> serde_json::Value {
     serde_json::to_value(ErrorEnvelope {
-        version: NODE_WIRE_VERSION,
+        version: NODE_BINDING_RESULT_PAYLOAD_VERSION,
         ok: false,
         error: ErrorPayload {
             code: error.status().code(),
@@ -182,7 +183,7 @@ pub(crate) fn error_value(error: &BindingError) -> serde_json::Value {
     })
     .unwrap_or_else(|serialization_error| {
         serde_json::json!({
-            "version": NODE_WIRE_VERSION,
+            "version": NODE_BINDING_RESULT_PAYLOAD_VERSION,
             "ok": false,
             "error": {
                 "code": 9,
@@ -198,7 +199,7 @@ pub(crate) fn error_value(error: &BindingError) -> serde_json::Value {
 fn serialize_envelope(value: &impl Serialize) -> String {
     serde_json::to_string(value).unwrap_or_else(|error| {
         format!(
-            "{{\"version\":{NODE_WIRE_VERSION},\"ok\":false,\"error\":{{\"code\":9,\"code_name\":\"MERMAN_INTERNAL_ERROR\",\"kind\":\"generic\",\"capability_id\":null,\"message\":{}}}}}",
+            "{{\"version\":{NODE_BINDING_RESULT_PAYLOAD_VERSION},\"ok\":false,\"error\":{{\"code\":9,\"code_name\":\"MERMAN_INTERNAL_ERROR\",\"kind\":\"generic\",\"capability_id\":null,\"message\":{}}}}}",
             serde_json::to_string(&format!("failed to serialize Node response: {error}"))
                 .unwrap_or_else(|_| "\"failed to serialize Node response\"".to_owned())
         )
@@ -209,7 +210,7 @@ fn serialize_envelope(value: &impl Serialize) -> String {
 mod tests {
     use super::{
         NODE_STATIC_SVG_CAPABILITIES, NODE_STATIC_SVG_OPERATIONS, create_engine, error_envelope,
-        execute_wire, runtime_catalog_wire,
+        execute_wire, metadata_wire, node_artifact_contract, runtime_catalog_wire,
     };
 
     #[test]
@@ -241,6 +242,45 @@ mod tests {
             capabilities["text_measurement"]["provider_ids"],
             serde_json::json!(["vendored"])
         );
+    }
+
+    #[test]
+    fn runtime_catalog_metadata_ids_match_the_contract_dispatcher() {
+        let catalog: serde_json::Value =
+            serde_json::from_str(&runtime_catalog_wire().unwrap()).unwrap();
+        let advertised_ids = catalog["metadata_ids"]
+            .as_array()
+            .expect("Node runtime metadata IDs")
+            .iter()
+            .map(|id| id.as_str().expect("metadata ID string"))
+            .collect::<Vec<_>>();
+        let expected_ids = node_artifact_contract()
+            .metadata_keys()
+            .map(merman_bindings_core::MetadataKey::id)
+            .collect::<Vec<_>>();
+        assert_eq!(advertised_ids, expected_ids);
+
+        for id in advertised_ids {
+            let payload: serde_json::Value =
+                serde_json::from_str(&metadata_wire(id).unwrap_or_else(|error| {
+                    panic!("advertised Node metadata `{id}` failed: {error:?}")
+                }))
+                .unwrap_or_else(|error| panic!("Node metadata `{id}` was not JSON: {error}"));
+            assert!(!payload.is_null(), "Node metadata `{id}` returned null");
+        }
+
+        for key in merman_bindings_core::MetadataKey::ALL {
+            if !expected_ids.contains(&key.id()) {
+                let error = match metadata_wire(key.id()) {
+                    Ok(_) => panic!("unadvertised metadata `{}` succeeded", key.id()),
+                    Err(error) => error,
+                };
+                assert_eq!(
+                    error.status(),
+                    merman_bindings_core::BindingStatus::UnsupportedOperation
+                );
+            }
+        }
     }
 
     #[test]

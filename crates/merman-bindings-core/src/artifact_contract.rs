@@ -10,7 +10,7 @@ use crate::service_contract::{
     ConstructorServiceKey, RuntimePolicyExposure, TextMeasurementProviderKey,
     TextMeasurementProviderSource,
 };
-use crate::{BindingEngineServices, BindingError};
+use crate::{BindingEngineServices, BindingError, BindingTransportKey};
 use std::sync::{Arc, OnceLock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,7 +30,7 @@ pub struct ArtifactContractSpec {
     capabilities: &'static [CapabilityKey],
     operations: &'static [OperationKey],
     metadata: StaticMetadataSelection,
-    payload_schemas: &'static [BindingPayloadSchemaKey],
+    transport: BindingTransportKey,
     constructor_services: &'static [ConstructorServiceKey],
     system_adapters: &'static [CapabilityKey],
     runtime_policy: RuntimePolicyExposure,
@@ -41,21 +41,23 @@ pub struct ArtifactContractSpec {
 const OPERATIONS_CONFIGURED: u8 = 1 << 0;
 const CAPABILITIES_CONFIGURED: u8 = 1 << 1;
 const METADATA_CONFIGURED: u8 = 1 << 2;
-const PAYLOAD_SCHEMAS_CONFIGURED: u8 = 1 << 3;
-const CONSTRUCTOR_SERVICES_CONFIGURED: u8 = 1 << 4;
-const RUNTIME_POLICY_CONFIGURED: u8 = 1 << 5;
-const TRANSPORT_EXTENSIONS_CONFIGURED: u8 = 1 << 6;
-const SYSTEM_ADAPTERS_CONFIGURED: u8 = 1 << 7;
+const CONSTRUCTOR_SERVICES_CONFIGURED: u8 = 1 << 3;
+const RUNTIME_POLICY_CONFIGURED: u8 = 1 << 4;
+const TRANSPORT_EXTENSIONS_CONFIGURED: u8 = 1 << 5;
+const SYSTEM_ADAPTERS_CONFIGURED: u8 = 1 << 6;
 
 impl ArtifactContractSpec {
     #[must_use]
-    pub const fn new(target: TargetKey) -> Self {
+    pub const fn new(target: TargetKey, transport: BindingTransportKey) -> Self {
+        if !transport.spec().supports_target(target) {
+            panic!("binding transport does not support the selected target");
+        }
         Self {
             target,
             capabilities: &[],
             operations: &[],
             metadata: StaticMetadataSelection::Explicit(&[]),
-            payload_schemas: &[],
+            transport,
             constructor_services: &[],
             system_adapters: &[],
             runtime_policy: RuntimePolicyExposure::DeterministicOnly,
@@ -95,16 +97,10 @@ impl ArtifactContractSpec {
         self
     }
 
-    #[must_use]
-    pub const fn with_payload_schemas(
-        mut self,
-        payload_schemas: &'static [BindingPayloadSchemaKey],
-    ) -> Self {
-        self.configure_once(PAYLOAD_SCHEMAS_CONFIGURED);
-        self.payload_schemas = payload_schemas;
-        self
-    }
-
+    /// Selects the exact constructor services implemented by this artifact recipe.
+    ///
+    /// The concrete slice may narrow the transport registry's candidate services for feature or
+    /// target availability, but cannot add a service the selected transport cannot install.
     #[must_use]
     pub const fn with_constructor_services(
         mut self,
@@ -225,8 +221,14 @@ impl ArtifactContractSpec {
                 available_metadata_bits(compiled_metadata, capabilities)
             }
         };
-        let payload_schemas = payload_schema_slice_bits(self.payload_schemas);
+        let exposure = self.transport.spec();
+        let payload_schemas = payload_schema_slice_bits(exposure.payload_schemas());
+        let candidate_services =
+            constructor_service_slice_bits(exposure.constructor_service_candidates());
         let constructor_services = constructor_service_slice_bits(self.constructor_services);
+        if constructor_services & !candidate_services != 0 {
+            panic!("constructor service is not exposed by the selected transport");
+        }
         validate_constructor_service_bits(
             constructor_services,
             compiled_capabilities,
@@ -587,7 +589,8 @@ const fn option_group_bits(capabilities: u64, uses_svg_pipeline: bool) -> u64 {
     while index < BindingOptionGroupKey::ALL.len() {
         let key = BindingOptionGroupKey::ALL[index];
         let spec = key.spec();
-        let mut available = spec.requires_svg_pipeline() && uses_svg_pipeline;
+        let mut available =
+            spec.always_available() || (spec.requires_svg_pipeline() && uses_svg_pipeline);
         let any_capabilities = spec.any_capabilities();
         let mut capability_index = 0;
         while capability_index < any_capabilities.len() {
@@ -730,6 +733,26 @@ impl ValidatedArtifactContract {
         self.option_groups.contains(key)
     }
 
+    /// Applies the resource owner's capability/output closure to this exact artifact selection.
+    pub(crate) fn exposes_resource_limit(
+        &self,
+        descriptor: &crate::resource_contract::BindingResourceLimitDescriptor,
+    ) -> bool {
+        match crate::resource_contract::resource_limit_owner(descriptor.stable_id) {
+            crate::resource_contract::BindingResourceOwner::Artifact => true,
+            crate::resource_contract::BindingResourceOwner::Capability(capability_id) => {
+                CapabilityKey::from_id(capability_id)
+                    .is_some_and(|capability| self.capabilities.contains(capability))
+            }
+            crate::resource_contract::BindingResourceOwner::Outputs(output_ids) => {
+                output_ids.iter().any(|output_id| {
+                    OutputKey::from_id(output_id)
+                        .is_some_and(|output| self.outputs.contains(output))
+                })
+            }
+        }
+    }
+
     pub(crate) fn validate_native_runtime_policy(&self) -> Result<(), BindingError> {
         for capability in [
             CapabilityKey::SystemClock,
@@ -820,11 +843,10 @@ pub(crate) const DEFAULT_RUNTIME_POLICY: RuntimePolicyExposure =
     RuntimePolicyExposure::BindingOptions;
 
 pub(crate) const DEFAULT_ARTIFACT_SNAPSHOT: ValidatedArtifactContract =
-    ArtifactContractSpec::new(TargetKey::Native)
+    ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::Rust)
         .with_operations(DEFAULT_OPERATIONS)
         .with_supplemental_capabilities(DEFAULT_SUPPLEMENTAL_CAPABILITIES)
         .with_all_available_metadata()
-        .with_payload_schemas(BindingPayloadSchemaKey::ALL)
         .with_constructor_services(DEFAULT_CONSTRUCTOR_SERVICES)
         .with_system_adapters(DEFAULT_SYSTEM_ADAPTERS)
         .with_runtime_policy_exposure(DEFAULT_RUNTIME_POLICY)

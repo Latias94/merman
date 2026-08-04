@@ -7,7 +7,7 @@
 
 use merman_bindings_core::{
     ArtifactContractSpec, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode,
-    BindingError, BindingErrorKind, BindingPayloadSchemaKey, BindingStatus, CapabilityKey,
+    BindingError, BindingErrorKind, BindingStatus, BindingTransportKey, CapabilityKey,
     ConstructorServiceKey, OperationKey, RuntimePolicyExposure, TargetKey,
     ValidatedArtifactContract,
 };
@@ -74,15 +74,15 @@ const NATIVE_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
     CapabilityKey::SystemTimezone,
 ];
 const NATIVE_RUNTIME_POLICY: RuntimePolicyExposure = RuntimePolicyExposure::BindingOptions;
-static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
-    .with_operations(NATIVE_OPERATIONS)
-    .with_supplemental_capabilities(NATIVE_SUPPLEMENTAL_CAPABILITIES)
-    .with_all_available_metadata()
-    .with_payload_schemas(BindingPayloadSchemaKey::ALL)
-    .with_constructor_services(NATIVE_CONSTRUCTOR_SERVICES)
-    .with_system_adapters(NATIVE_SYSTEM_ADAPTERS)
-    .with_runtime_policy_exposure(NATIVE_RUNTIME_POLICY)
-    .materialize();
+static ARTIFACT_CONTRACT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::UniFfi)
+        .with_operations(NATIVE_OPERATIONS)
+        .with_supplemental_capabilities(NATIVE_SUPPLEMENTAL_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_constructor_services(NATIVE_CONSTRUCTOR_SERVICES)
+        .with_system_adapters(NATIVE_SYSTEM_ADAPTERS)
+        .with_runtime_policy_exposure(NATIVE_RUNTIME_POLICY)
+        .materialize();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MermanErrorKind {

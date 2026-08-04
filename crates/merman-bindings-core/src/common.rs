@@ -5,11 +5,11 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::artifact_contract::ValidatedArtifactContract;
+use crate::artifact_contract::{DEFAULT_ARTIFACT_SNAPSHOT, ValidatedArtifactContract};
 use crate::option_contract::BindingOptionGroupKey;
 use crate::resource_contract::{
-    BindingResourceScope, binding_resource_contract, resource_limit_descriptor,
-    resource_profile_value,
+    BindingResourceLimitDescriptor, BindingResourceScope, binding_resource_contract,
+    resource_limit_descriptor, resource_profile_value,
 };
 
 /// Current schema for constructor and request options JSON.
@@ -771,19 +771,19 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
 pub(crate) fn parse_base_options(
     bytes: &[u8],
 ) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
-    parse_base_options_for_contract(bytes, None)
+    parse_base_options_for_contract(bytes, &DEFAULT_ARTIFACT_SNAPSHOT)
 }
 
 pub(crate) fn parse_base_options_for_artifact(
     bytes: &[u8],
     artifact_contract: &ValidatedArtifactContract,
 ) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
-    parse_base_options_for_contract(bytes, Some(artifact_contract))
+    parse_base_options_for_contract(bytes, artifact_contract)
 }
 
 fn parse_base_options_for_contract(
     bytes: &[u8],
-    artifact_contract: Option<&ValidatedArtifactContract>,
+    artifact_contract: &ValidatedArtifactContract,
 ) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
     let wire = options_json_value(bytes)?;
     let typed = parse_options_value_for_contract(&wire, artifact_contract)?;
@@ -798,12 +798,12 @@ fn parse_base_options_for_contract(
 }
 
 fn parse_options_value(value: &Value) -> Result<BindingOptions, BindingError> {
-    parse_options_value_for_contract(value, None)
+    parse_options_value_for_contract(value, &DEFAULT_ARTIFACT_SNAPSHOT)
 }
 
 fn parse_options_value_for_contract(
     value: &Value,
-    artifact_contract: Option<&ValidatedArtifactContract>,
+    artifact_contract: &ValidatedArtifactContract,
 ) -> Result<BindingOptions, BindingError> {
     validate_options_schema_version(value)?;
     reject_ambiguous_analysis_wrappers(value)?;
@@ -831,7 +831,7 @@ fn parse_options_value_for_contract(
     }
     reject_unknown_options_json_fields(value)?;
     options.analysis = binding_analysis_options_json_from_json_value(value)?;
-    validate_resource_contract_ids(options.analysis.resources.as_ref())?;
+    validate_artifact_resource_options(options.analysis.resources.as_ref(), artifact_contract)?;
     Ok(options)
 }
 
@@ -978,7 +978,11 @@ pub(crate) fn parse_request_overlay(
     request_options_json: &[u8],
     resource_scope: BindingResourceScope,
 ) -> Result<BindingRequestOverlay, BindingError> {
-    parse_request_overlay_for_contract(request_options_json, resource_scope, None)
+    parse_request_overlay_for_contract(
+        request_options_json,
+        resource_scope,
+        &DEFAULT_ARTIFACT_SNAPSHOT,
+    )
 }
 
 pub(crate) fn parse_request_overlay_for_artifact(
@@ -986,17 +990,13 @@ pub(crate) fn parse_request_overlay_for_artifact(
     resource_scope: BindingResourceScope,
     artifact_contract: &ValidatedArtifactContract,
 ) -> Result<BindingRequestOverlay, BindingError> {
-    parse_request_overlay_for_contract(
-        request_options_json,
-        resource_scope,
-        Some(artifact_contract),
-    )
+    parse_request_overlay_for_contract(request_options_json, resource_scope, artifact_contract)
 }
 
 fn parse_request_overlay_for_contract(
     request_options_json: &[u8],
     resource_scope: BindingResourceScope,
-    artifact_contract: Option<&ValidatedArtifactContract>,
+    artifact_contract: &ValidatedArtifactContract,
 ) -> Result<BindingRequestOverlay, BindingError> {
     let request_value = options_json_value(request_options_json)?;
     if is_unchanged_request(&request_value) {
@@ -1023,7 +1023,7 @@ fn parse_request_overlay_for_contract(
 impl BaseBindingOptions {
     pub(crate) fn validate_unchanged_request(
         &self,
-        artifact_contract: Option<&ValidatedArtifactContract>,
+        artifact_contract: &ValidatedArtifactContract,
     ) -> Result<(), BindingError> {
         parse_options_value_for_contract(&self.normalized_wire, artifact_contract).map(drop)
     }
@@ -1031,7 +1031,7 @@ impl BaseBindingOptions {
     pub(crate) fn apply_overlay(
         &self,
         overlay: BindingRequestOverlay,
-        artifact_contract: Option<&ValidatedArtifactContract>,
+        artifact_contract: &ValidatedArtifactContract,
     ) -> Result<BindingOptions, BindingError> {
         let BindingRequestOverlay::Override {
             normalized_wire,
@@ -1071,7 +1071,7 @@ fn is_unchanged_request(value: &Value) -> bool {
 
 fn reject_unavailable_option_groups(
     value: &Value,
-    artifact_contract: Option<&ValidatedArtifactContract>,
+    artifact_contract: &ValidatedArtifactContract,
 ) -> Result<(), BindingError> {
     let Some(options) = value.as_object() else {
         return Ok(());
@@ -1086,17 +1086,14 @@ fn reject_unavailable_option_groups(
                         .and_then(Value::as_object)
                         .is_some_and(|nested| nested.contains_key(group))
                 }));
-        let available = artifact_contract
-            .map(|contract| contract.exposes_option_group(*key))
-            .unwrap_or_else(|| key.is_compiled());
+        let available = artifact_contract.exposes_option_group(*key);
         if present && !available {
-            let reason = artifact_contract.map_or_else(
-                || "is not available in this artifact".to_string(),
-                |contract| format!("is not exposed by target `{}`", contract.target().id()),
-            );
             return Err(BindingError::new(
                 BindingStatus::OptionsJsonError,
-                format!("options group `{group}` {reason}"),
+                format!(
+                    "options group `{group}` is not available because it is not exposed by target `{}`",
+                    artifact_contract.target().id()
+                ),
             ));
         }
     }
@@ -1130,36 +1127,74 @@ fn validate_output_options_for_scope(
     Ok(())
 }
 
-fn validate_resource_contract_ids(
+fn validate_artifact_resource_options(
+    resources: Option<&ResourceOptionsJson>,
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<(), BindingError> {
+    let Some(resources) = resources else {
+        return Ok(());
+    };
+    for (id, value) in &resources.limits {
+        let descriptor = compiled_resource_limit_descriptor(id)?;
+        if !artifact_contract.exposes_resource_limit(&descriptor) {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                format!(
+                    "resource limit id `{id}` is not exposed by target `{}`",
+                    artifact_contract.target().id()
+                ),
+            ));
+        }
+        validate_resource_limit_override(id, *value, descriptor)?;
+    }
+    Ok(())
+}
+
+fn validate_compiled_resource_options(
     resources: Option<&ResourceOptionsJson>,
 ) -> Result<(), BindingError> {
     let Some(resources) = resources else {
         return Ok(());
     };
     for (id, value) in &resources.limits {
-        let Some(descriptor) = resource_limit_descriptor(id) else {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!(
-                    "resource limit id `{id}` is not part of resource contract schema {BINDING_OPTIONS_SCHEMA_VERSION}"
-                ),
-            ));
-        };
-        if !descriptor.overridable {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!("resource limit id `{id}` is not overridable"),
-            ));
-        }
-        if *value < descriptor.minimum_value {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!(
-                    "resources.limits.{id} must be at least {}",
-                    descriptor.minimum_value
-                ),
-            ));
-        }
+        let descriptor = compiled_resource_limit_descriptor(id)?;
+        validate_resource_limit_override(id, *value, descriptor)?;
+    }
+    Ok(())
+}
+
+fn compiled_resource_limit_descriptor(
+    id: &str,
+) -> Result<BindingResourceLimitDescriptor, BindingError> {
+    resource_limit_descriptor(id).ok_or_else(|| {
+        BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!(
+                "resource limit id `{id}` is not part of resource contract schema {BINDING_OPTIONS_SCHEMA_VERSION}"
+            ),
+        )
+    })
+}
+
+fn validate_resource_limit_override(
+    id: &str,
+    value: usize,
+    descriptor: BindingResourceLimitDescriptor,
+) -> Result<(), BindingError> {
+    if !descriptor.overridable {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("resource limit id `{id}` is not overridable"),
+        ));
+    }
+    if value < descriptor.minimum_value {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!(
+                "resources.limits.{id} must be at least {}",
+                descriptor.minimum_value
+            ),
+        ));
     }
     Ok(())
 }
@@ -1986,7 +2021,7 @@ fn effective_resource_limits(
         })
         .transpose()?
         .unwrap_or(merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE);
-    validate_resource_contract_ids(Some(resources))?;
+    validate_compiled_resource_options(Some(resources))?;
 
     let mut values = binding_resource_contract()
         .limits
@@ -2094,10 +2129,10 @@ mod tests {
         let (_, base) = parse_base_options(base)?;
         Ok(match parse_request_overlay(request, scope)? {
             BindingRequestOverlay::Unchanged => {
-                base.validate_unchanged_request(None)?;
+                base.validate_unchanged_request(&DEFAULT_ARTIFACT_SNAPSHOT)?;
                 parse_options_value(&base.normalized_wire)?
             }
-            overlay => base.apply_overlay(overlay, None)?,
+            overlay => base.apply_overlay(overlay, &DEFAULT_ARTIFACT_SNAPSHOT)?,
         })
     }
 
@@ -2191,7 +2226,7 @@ mod tests {
     fn uncompiled_output_option_groups_are_rejected() {
         let error = parse_options(br#"{"raster":{"scale":2}}"#).unwrap_err();
         assert_eq!(error.status(), BindingStatus::OptionsJsonError);
-        assert!(error.message().contains("not available in this artifact"));
+        assert!(error.message().contains("not exposed by target"));
     }
 
     #[test]

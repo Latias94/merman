@@ -267,6 +267,43 @@ function editorCapabilities() {
   };
 }
 
+const EDITOR_METADATA_IDS = [
+  "diagram-family-capabilities",
+  "lint-rule-catalog",
+  "presentation-catalog",
+  "supported-diagrams",
+  "supported-themes",
+];
+const SVG_METADATA_IDS = [
+  "diagram-family-capabilities",
+  "presentation-catalog",
+  "supported-diagrams",
+  "supported-themes",
+];
+const EDITOR_OPTION_GROUP_IDS = [
+  "fixed_local_offset_minutes",
+  "fixed_today",
+  "lint",
+  "parse",
+  "resources",
+  "runtime_policy",
+  "site_config",
+  "version",
+];
+const SVG_OPTION_GROUP_IDS = [
+  "environment",
+  "fixed_local_offset_minutes",
+  "fixed_today",
+  "layout",
+  "parse",
+  "presentation",
+  "resources",
+  "runtime_policy",
+  "site_config",
+  "svg",
+  "version",
+];
+
 function surfaceModule(recordDescriptorCall) {
   return {
     default: async () => {},
@@ -283,6 +320,10 @@ function surfaceModule(recordDescriptorCall) {
 
 function runtimeCatalogFixture({
   capabilities = editorCapabilities(),
+  metadataIds = EDITOR_METADATA_IDS,
+  optionGroupIds = EDITOR_OPTION_GROUP_IDS,
+  constructorServiceIds = [],
+  constructorServiceContracts = [],
   outputContracts = capabilities.output_ids.map((id) => ({
     id,
     media_type: "application/octet-stream",
@@ -297,11 +338,11 @@ function runtimeCatalogFixture({
     options_schema_versions: [2],
     payload_schemas: [
       { id: "binding-result", version: 1 },
-      { id: "operation-metadata", version: 1 },
     ],
-    metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
-    option_group_ids: ["lint"],
-    constructor_service_ids: [],
+    metadata_ids: [...metadataIds],
+    option_group_ids: [...optionGroupIds],
+    constructor_service_ids: [...constructorServiceIds],
+    constructor_service_contracts: structuredClone(constructorServiceContracts),
     capabilities,
     output_contracts: outputContracts,
     registry: { diagram_family_count: 0 },
@@ -364,6 +405,38 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
       /does not advertise options schema v2/,
     ],
     [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.payload_schemas = [];
+        return catalog;
+      },
+      /payload schemas do not match the Web transport contract/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.payload_schemas = [{ id: "binding-result", version: 2 }];
+        return catalog;
+      },
+      /payload schemas do not match the Web transport contract/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.metadata_ids.unshift("ascii-capabilities");
+        return catalog;
+      },
+      /metadata ascii-capabilities requires capability ascii/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.option_group_ids = catalog.option_group_ids.filter((id) => id !== "resources");
+        return catalog;
+      },
+      /option group IDs do not match the artifact capability closure/,
+    ],
+    [
       () =>
         runtimeCatalogFixture({
           capabilities: {
@@ -393,6 +466,52 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
       () =>
         runtimeCatalogFixture({
           capabilities: {
+            capability_ids: ["layout-elk"],
+            output_ids: [],
+            operation_ids: ["semantic-json"],
+            system_adapter_ids: [],
+            text_measurement: null,
+          },
+        }),
+      /runtime capability layout-elk is missing implied capability svg/,
+    ],
+    [
+      () =>
+        runtimeCatalogFixture({
+          capabilities: {
+            capability_ids: ["analysis"],
+            output_ids: ["svg"],
+            operation_ids: ["svg"],
+            system_adapter_ids: [],
+            text_measurement: null,
+          },
+          metadataIds: EDITOR_METADATA_IDS,
+          optionGroupIds: EDITOR_OPTION_GROUP_IDS,
+        }),
+      /runtime operation svg is missing capability svg/,
+    ],
+    [
+      () =>
+        runtimeCatalogFixture({
+          capabilities: {
+            capability_ids: ["svg"],
+            output_ids: [],
+            operation_ids: ["svg"],
+            system_adapter_ids: [],
+            text_measurement: {
+              protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+              provider_ids: ["vendored"],
+            },
+          },
+          metadataIds: SVG_METADATA_IDS,
+          optionGroupIds: SVG_OPTION_GROUP_IDS,
+        }),
+      /runtime operation svg is missing output svg/,
+    ],
+    [
+      () =>
+        runtimeCatalogFixture({
+          capabilities: {
             capability_ids: ["analysis", "editor"],
             output_ids: [],
             operation_ids: ["analysis-json", "semantic-json"],
@@ -415,11 +534,168 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
               provider_ids: ["vendored"],
             },
           },
+          metadataIds: SVG_METADATA_IDS,
+          optionGroupIds: SVG_OPTION_GROUP_IDS,
+          constructorServiceIds: ["host-text-measurement"],
+          constructorServiceContracts: [{
+            id: "host-text-measurement",
+            provided_text_measurement_provider_ids: ["host-callback"],
+            resource_limits: [],
+          }],
         });
-        catalog.constructor_service_ids = ["host-text-measurement"];
         return catalog;
       },
-      /requires the host-callback provider/,
+      /provides an unavailable text measurement provider/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        delete catalog.constructor_service_contracts;
+        return catalog;
+      },
+      /constructor service IDs and contracts must appear together/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        delete catalog.constructor_service_ids;
+        return catalog;
+      },
+      /constructor service IDs and contracts must appear together/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.constructor_service_ids = ["future-service"];
+        catalog.constructor_service_contracts = [];
+        return catalog;
+      },
+      /must be in one-to-one correspondence/,
+    ],
+    [
+      () => runtimeCatalogFixture({
+        capabilities: {
+          capability_ids: ["svg"],
+          output_ids: ["svg"],
+          operation_ids: ["semantic-json", "svg"],
+          system_adapter_ids: [],
+          text_measurement: {
+            protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+            provider_ids: ["host-callback", "vendored"],
+          },
+        },
+        metadataIds: SVG_METADATA_IDS,
+        optionGroupIds: SVG_OPTION_GROUP_IDS,
+        constructorServiceIds: ["future-service", "host-text-measurement"],
+        constructorServiceContracts: [
+          {
+            id: "future-service",
+            provided_text_measurement_provider_ids: ["host-callback"],
+            resource_limits: [],
+          },
+          {
+            id: "host-text-measurement",
+            provided_text_measurement_provider_ids: [],
+            resource_limits: [],
+          },
+        ],
+      }),
+      /provider host-callback has the wrong constructor service owner/,
+    ],
+    [
+      () => runtimeCatalogFixture({
+        capabilities: {
+          capability_ids: ["svg"],
+          output_ids: ["svg"],
+          operation_ids: ["semantic-json", "svg"],
+          system_adapter_ids: [],
+          text_measurement: {
+            protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+            provider_ids: ["host-callback", "vendored"],
+          },
+        },
+        metadataIds: SVG_METADATA_IDS,
+        optionGroupIds: SVG_OPTION_GROUP_IDS,
+        constructorServiceIds: ["future-service", "host-text-measurement"],
+        constructorServiceContracts: [
+          {
+            id: "future-service",
+            provided_text_measurement_provider_ids: [],
+            resource_limits: [{
+              id: "future_limit",
+              phase: "future-construction",
+              unit: "items",
+              description: "Future constructor resource limit.",
+              value: -1,
+            }],
+          },
+          {
+            id: "host-text-measurement",
+            provided_text_measurement_provider_ids: ["host-callback"],
+            resource_limits: [],
+          },
+        ],
+      }),
+      /invalid runtime constructor service future-service resource limit value/,
+    ],
+    [
+      () => runtimeCatalogFixture({
+        capabilities: {
+          capability_ids: ["svg"],
+          output_ids: ["svg"],
+          operation_ids: ["semantic-json", "svg"],
+          system_adapter_ids: [],
+          text_measurement: {
+            protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+            provider_ids: ["host-callback", "vendored"],
+          },
+        },
+        metadataIds: SVG_METADATA_IDS,
+        optionGroupIds: SVG_OPTION_GROUP_IDS,
+        constructorServiceIds: ["future-service", "host-text-measurement"],
+        constructorServiceContracts: [
+          {
+            id: "future-service",
+            provided_text_measurement_provider_ids: [],
+            resource_limits: [{
+              id: "future-limit",
+              phase: "future-construction",
+              unit: "items",
+              description: "Future constructor resource limit.",
+              value: Number.MAX_SAFE_INTEGER + 1,
+            }],
+          },
+          {
+            id: "host-text-measurement",
+            provided_text_measurement_provider_ids: ["host-callback"],
+            resource_limits: [],
+          },
+        ],
+      }),
+      /invalid runtime constructor service future-service resource limit value/,
+    ],
+    [
+      () => runtimeCatalogFixture({
+        capabilities: {
+          capability_ids: ["svg"],
+          output_ids: ["svg"],
+          operation_ids: ["semantic-json", "svg"],
+          system_adapter_ids: [],
+          text_measurement: {
+            protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+            provider_ids: ["vendored"],
+          },
+        },
+        metadataIds: SVG_METADATA_IDS,
+        optionGroupIds: SVG_OPTION_GROUP_IDS,
+        constructorServiceIds: ["icon-registry"],
+        constructorServiceContracts: [{
+          id: "icon-registry",
+          provided_text_measurement_provider_ids: [],
+          resource_limits: [],
+        }],
+      }),
+      /constructor service icon-registry, which this Web facade cannot provide/,
     ],
     [
       () => runtimeCatalogFixture({
@@ -456,6 +732,33 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
         return catalog;
       },
       /runtime resource profile IDs must be unique/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.resources.limits = [{
+          id: "Bad ID",
+          phase: "source",
+          description: "Maximum source bytes.",
+          overridable: true,
+          hard_cap: false,
+          minimum_value: 1,
+          operation_ids: ["analysis-json"],
+        }];
+        catalog.resources.profiles[0].limits = { "Bad ID": 1024 };
+        catalog.resources.profiles[1].limits = { "Bad ID": null };
+        return catalog;
+      },
+      /invalid runtime resource limit/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        catalog.resources.profiles[0].id = "Bad ID";
+        catalog.resources.general_binding_default_profile = "Bad ID";
+        return catalog;
+      },
+      /invalid runtime resource profile/,
     ],
     [
       () => {
@@ -533,7 +836,26 @@ test("runtime catalog accepts unknown future IDs", async () => {
       future_capability_metadata: { version: 1 },
     },
   });
+  futureCatalog.metadata_ids = [...futureCatalog.metadata_ids, "future-metadata"].sort();
+  futureCatalog.payload_schemas.push({ id: "future-payload", version: 9 });
+  futureCatalog.payload_schemas.sort((left, right) => left.id.localeCompare(right.id));
+  futureCatalog.option_group_ids = [...futureCatalog.option_group_ids, "future-option"].sort();
+  futureCatalog.constructor_service_ids = ["future-service"];
+  futureCatalog.constructor_service_contracts = [{
+    id: "future-service",
+    provided_text_measurement_provider_ids: [],
+    resource_limits: [{
+      id: "future-constructor-limit",
+      phase: "future-construction",
+      unit: "items",
+      description: "Future constructor resource limit.",
+      value: 0,
+      future_resource_limit_metadata: true,
+    }],
+    future_service_metadata: { version: 1 },
+  }];
   futureCatalog.future_root_metadata = true;
+  futureCatalog.future_ratio = 0.5;
   futureCatalog.registry.future_registry_metadata = true;
   futureCatalog.resources.future_resource_metadata = true;
   futureCatalog.resources.limits = [
@@ -575,15 +897,36 @@ test("runtime catalog accepts unknown future IDs", async () => {
   assert.deepEqual(catalog.options_schema_versions, [2]);
   assert.deepEqual(catalog.payload_schemas, [
     { id: "binding-result", version: 1 },
-    { id: "operation-metadata", version: 1 },
+    { id: "future-payload", version: 9 },
   ]);
   assert.deepEqual(catalog.metadata_ids, [
     "diagram-family-capabilities",
+    "future-metadata",
+    "lint-rule-catalog",
+    "presentation-catalog",
     "supported-diagrams",
+    "supported-themes",
   ]);
-  assert.deepEqual(catalog.option_group_ids, ["lint"]);
-  assert.deepEqual(catalog.constructor_service_ids, []);
+  assert.deepEqual(catalog.option_group_ids, [
+    "fixed_local_offset_minutes",
+    "fixed_today",
+    "future-option",
+    "lint",
+    "parse",
+    "resources",
+    "runtime_policy",
+    "site_config",
+    "version",
+  ]);
+  assert.deepEqual(catalog.constructor_service_ids, ["future-service"]);
+  assert.equal(catalog.constructor_service_contracts[0].future_service_metadata.version, 1);
+  assert.equal(
+    catalog.constructor_service_contracts[0].resource_limits[0]
+      .future_resource_limit_metadata,
+    true,
+  );
   assert.equal(catalog.future_root_metadata, true);
+  assert.equal(catalog.future_ratio, 0.5);
   assert.equal(catalog.capabilities.future_capability_metadata.version, 1);
   assert.equal(catalog.registry.future_registry_metadata, true);
   assert.equal(catalog.resources.future_resource_metadata, true);
@@ -595,10 +938,45 @@ test("runtime catalog accepts unknown future IDs", async () => {
   assert.equal(catalog.resources.profiles[0].id, "future-profile");
 });
 
+test("runtime catalog preserves artifact-selected metadata and service subsets", async () => {
+  const subsetCatalog = runtimeCatalogFixture({
+    capabilities: {
+      capability_ids: ["svg"],
+      output_ids: ["svg"],
+      operation_ids: ["semantic-json", "svg"],
+      system_adapter_ids: [],
+      text_measurement: {
+        protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+        provider_ids: ["vendored"],
+      },
+    },
+    metadataIds: ["supported-diagrams"],
+    optionGroupIds: SVG_OPTION_GROUP_IDS,
+    constructorServiceIds: [],
+    constructorServiceContracts: [],
+  });
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      packageVersion: () => "0.8.0-alpha.4",
+      transportApiVersion: () => 3,
+      runtimeCatalog: () => subsetCatalog,
+    }),
+    coreTestImplementation,
+  );
+  await runtime.initMerman();
+
+  const catalog = runtime.runtimeCatalog();
+  assert.deepEqual(catalog.metadata_ids, ["supported-diagrams"]);
+  assert.deepEqual(catalog.constructor_service_ids, []);
+  assert.deepEqual(catalog.constructor_service_contracts, []);
+});
+
 test("runtime catalog defaults additive discovery sections for legacy producers", async () => {
   const legacyCatalog = runtimeCatalogFixture();
   delete legacyCatalog.option_group_ids;
   delete legacyCatalog.constructor_service_ids;
+  delete legacyCatalog.constructor_service_contracts;
   const runtime = bindSurfaceRuntime(
     async () => ({
       default: async () => {},
@@ -613,6 +991,49 @@ test("runtime catalog defaults additive discovery sections for legacy producers"
   const catalog = runtime.runtimeCatalog();
   assert.deepEqual(catalog.option_group_ids, []);
   assert.deepEqual(catalog.constructor_service_ids, []);
+  assert.deepEqual(catalog.constructor_service_contracts, []);
+});
+
+test("runtime catalog validates constructor service ownership and preserves extensions", async () => {
+  const serviceCatalog = runtimeCatalogFixture({
+    capabilities: {
+      capability_ids: ["svg"],
+      output_ids: ["svg"],
+      operation_ids: ["semantic-json", "svg"],
+      system_adapter_ids: [],
+      text_measurement: {
+        protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+        provider_ids: ["host-callback", "vendored"],
+      },
+    },
+    metadataIds: SVG_METADATA_IDS,
+    optionGroupIds: SVG_OPTION_GROUP_IDS,
+    constructorServiceIds: ["host-text-measurement"],
+    constructorServiceContracts: [{
+      id: "host-text-measurement",
+      provided_text_measurement_provider_ids: ["host-callback"],
+      resource_limits: [],
+      future_service_metadata: { version: 1 },
+    }],
+  });
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      packageVersion: () => "0.8.0-alpha.4",
+      transportApiVersion: () => 3,
+      runtimeCatalog: () => serviceCatalog,
+    }),
+    coreTestImplementation,
+  );
+  await runtime.initMerman();
+
+  const catalog = runtime.runtimeCatalog();
+  assert.deepEqual(catalog.constructor_service_ids, ["host-text-measurement"]);
+  assert.deepEqual(
+    catalog.constructor_service_contracts[0].provided_text_measurement_provider_ids,
+    ["host-callback"],
+  );
+  assert.equal(catalog.constructor_service_contracts[0].future_service_metadata.version, 1);
 });
 
 test("runtime catalog accepts text measurement for an internal rendering pipeline", async () => {
@@ -624,9 +1045,17 @@ test("runtime catalog accepts text measurement for an internal rendering pipelin
       system_adapter_ids: [],
       text_measurement: {
         protocol_version: webApi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
-        provider_ids: ["vendored"],
+        provider_ids: ["host-callback", "vendored"],
       },
     },
+    metadataIds: SVG_METADATA_IDS,
+    optionGroupIds: SVG_OPTION_GROUP_IDS,
+    constructorServiceIds: ["host-text-measurement"],
+    constructorServiceContracts: [{
+      id: "host-text-measurement",
+      provided_text_measurement_provider_ids: ["host-callback"],
+      resource_limits: [],
+    }],
   });
   const runtime = bindSurfaceRuntime(
     async () => ({
@@ -641,7 +1070,10 @@ test("runtime catalog accepts text measurement for an internal rendering pipelin
 
   const catalog = runtime.runtimeCatalog();
   assert.deepEqual(catalog.capabilities.capability_ids, ["future-output"]);
-  assert.deepEqual(catalog.capabilities.text_measurement.provider_ids, ["vendored"]);
+  assert.deepEqual(catalog.capabilities.text_measurement.provider_ids, [
+    "host-callback",
+    "vendored",
+  ]);
 });
 
 test("runtime catalog preserves wasm-bindgen optional and map projections", async () => {

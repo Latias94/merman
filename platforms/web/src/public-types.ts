@@ -53,7 +53,7 @@ export interface RenderEnvironmentOptions {
  */
 export interface RuntimeCatalog {
   [key: string]: unknown;
-  schema_version: number;
+  schema_version: 1;
   transport_api_version: number;
   package_version: string;
   options_schema_versions: number[];
@@ -61,11 +61,10 @@ export interface RuntimeCatalog {
   metadata_ids: string[];
   option_group_ids: string[];
   constructor_service_ids: string[];
+  constructor_service_contracts: RuntimeConstructorServiceContract[];
   capabilities: RuntimeCapabilities;
   output_contracts: RuntimeOutputContract[];
-  registry: {
-    diagram_family_count: number;
-  };
+  registry: RuntimeRegistryContract;
   resources: RuntimeResourceContract;
 }
 
@@ -103,11 +102,34 @@ export interface PresentationAspectApplicability {
 }
 
 export interface RuntimePayloadSchema {
+  [key: string]: unknown;
   id: string;
   version: number;
 }
 
+export interface RuntimeRegistryContract {
+  [key: string]: unknown;
+  diagram_family_count: number;
+}
+
+export interface RuntimeConstructorServiceContract {
+  [key: string]: unknown;
+  id: string;
+  provided_text_measurement_provider_ids: string[];
+  resource_limits: RuntimeConstructorResourceLimit[];
+}
+
+export interface RuntimeConstructorResourceLimit {
+  [key: string]: unknown;
+  id: string;
+  phase: string;
+  unit: string;
+  description: string;
+  value: number;
+}
+
 export interface RuntimeOutputContract {
+  [key: string]: unknown;
   id: string;
   media_type: string;
   system_fonts: RuntimeSystemFontContract | null;
@@ -115,6 +137,7 @@ export interface RuntimeOutputContract {
 }
 
 export interface RuntimeSystemFontContract {
+  [key: string]: unknown;
   source_id: string;
   discovery: string;
   cache_scope: string;
@@ -124,6 +147,7 @@ export interface RuntimeSystemFontContract {
 }
 
 export interface RuntimeEmbeddedImageContract {
+  [key: string]: unknown;
   source_ids: string[];
   filesystem_access: boolean;
   network_access: boolean;
@@ -132,6 +156,7 @@ export interface RuntimeEmbeddedImageContract {
 }
 
 export interface RuntimeEmbeddedImageLimits {
+  [key: string]: unknown;
   max_bytes_per_image: number | null;
   max_total_bytes: number | null;
   max_pixels_per_image: number | null;
@@ -139,6 +164,7 @@ export interface RuntimeEmbeddedImageLimits {
 }
 
 export interface RuntimeResourceContract {
+  [key: string]: unknown;
   general_binding_default_profile: string;
   cli_default_profile: string;
   limits: RuntimeResourceLimit[];
@@ -146,6 +172,7 @@ export interface RuntimeResourceContract {
 }
 
 export interface RuntimeResourceLimit {
+  [key: string]: unknown;
   id: string;
   phase: string;
   description: string;
@@ -156,6 +183,7 @@ export interface RuntimeResourceLimit {
 }
 
 export interface RuntimeResourceProfile {
+  [key: string]: unknown;
   id: string;
   purpose: string;
   trust_assumption: string;

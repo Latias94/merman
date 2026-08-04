@@ -6,8 +6,9 @@
 
 use crate::XtaskError;
 use merman_bindings_core::{
-    ArtifactContractSpec, BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract, OperationKey,
-    RuntimeResourceContract, TargetKey, binding_resource_contract,
+    ArtifactContractSpec, BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract,
+    BindingTransportKey, OperationKey, RuntimeResourceContract, TargetKey,
+    binding_resource_contract,
 };
 use std::fmt::Write as _;
 use std::fs;
@@ -87,7 +88,7 @@ fn web_resource_contract() -> RuntimeResourceContract {
         OperationKey::ValidationJson,
     ];
     const WEB_CONTRACT: merman_bindings_core::ValidatedArtifactContract =
-        ArtifactContractSpec::new(TargetKey::Web)
+        ArtifactContractSpec::new(TargetKey::Web, BindingTransportKey::Web)
             .with_operations(WEB_OPERATIONS)
             .materialize();
 

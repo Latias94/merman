@@ -16,8 +16,13 @@ import {
   MermanOperationError,
   MermanQueueSaturatedError,
   NODE_TRANSPORT_LIMITS,
+  parseRuntimeCatalogJsonText,
 } from "../src/errors.mjs";
-import { TEXT_MEASUREMENT_PROTOCOL_VERSION } from "../src/generated/binding-contract.mjs";
+import {
+  BINDING_OPTION_GROUP_SPECS,
+  METADATA_SPECS,
+  TEXT_MEASUREMENT_PROTOCOL_VERSION,
+} from "../src/generated/binding-contract.mjs";
 import { NODE_BINDING_OPERATIONS } from "../src/generated/capability-surface.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,6 +30,29 @@ const repositoryRoot = path.resolve(nodeRoot, "..", "..");
 const PACKAGE_VERSION = JSON.parse(
   readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
 ).version;
+
+function optionGroupIds(capabilityIds, { usesSvgPipeline = false } = {}) {
+  const capabilities = new Set(capabilityIds);
+  return BINDING_OPTION_GROUP_SPECS
+    .filter(
+      (spec) =>
+        spec.always_available ||
+        (spec.requires_svg_pipeline && usesSvgPipeline) ||
+        spec.any_capability_ids.some((id) => capabilities.has(id)),
+    )
+    .map((spec) => spec.id);
+}
+
+function metadataIds(capabilityIds) {
+  const capabilities = new Set(capabilityIds);
+  return METADATA_SPECS
+    .filter(
+      (spec) =>
+        spec.required_capability_id === null ||
+        capabilities.has(spec.required_capability_id),
+    )
+    .map((spec) => spec.id);
+}
 
 function deferred() {
   let resolve;
@@ -112,6 +140,37 @@ test("operation errors preserve structured resource details", () => {
   assert.deepEqual(error.resourceDetails, resource);
 });
 
+test("runtime catalog lossless integer scanning covers every known numeric path", () => {
+  const unsafe = "9007199254740991.1";
+  const catalogs = [
+    `{"schema_version":${unsafe}}`,
+    `{"transport_api_version":${unsafe}}`,
+    `{"options_schema_versions":[${unsafe}]}`,
+    `{"payload_schemas":[{"version":${unsafe}}]}`,
+    `{"capabilities":{"text_measurement":{"protocol_version":${unsafe}}}}`,
+    `{"constructor_service_contracts":[{"resource_limits":[{"value":${unsafe}}]}]}`,
+    `{"output_contracts":[{"embedded_images":{"limits":{"max_bytes_per_image":${unsafe}}}}]}`,
+    `{"output_contracts":[{"embedded_images":{"limits":{"max_total_bytes":${unsafe}}}}]}`,
+    `{"output_contracts":[{"embedded_images":{"limits":{"max_pixels_per_image":${unsafe}}}}]}`,
+    `{"output_contracts":[{"embedded_images":{"limits":{"max_total_pixels":${unsafe}}}}]}`,
+    `{"registry":{"diagram_family_count":${unsafe}}}`,
+    `{"resources":{"limits":[{"minimum_value":${unsafe}}]}}`,
+    `{"resources":{"profiles":[{"limits":{"future_limit":${unsafe}}}]}}`,
+  ];
+  for (const catalog of catalogs) {
+    assert.throws(
+      () => parseRuntimeCatalogJsonText(catalog),
+      /known integer fields as exact JSON-safe integers/i,
+    );
+  }
+
+  const additive = parseRuntimeCatalogJsonText(
+    `{"future_ratio":0.5,"future_nested":{"values":[${unsafe}]}}`,
+  );
+  assert.equal(additive.future_ratio, 0.5);
+  assert.equal(additive.future_nested.values.length, 1);
+});
+
 function runtimeCatalog(overrides = {}) {
   return {
     schema_version: 1,
@@ -122,9 +181,13 @@ function runtimeCatalog(overrides = {}) {
       { id: "binding-result", version: 1 },
       { id: "operation-metadata", version: 1 },
     ],
-    metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
-    option_group_ids: ["environment", "layout", "presentation", "svg"],
+    metadata_ids: metadataIds(["layout-cytoscape", "layout-elk", "math", "svg"]),
+    option_group_ids: optionGroupIds(
+      ["layout-cytoscape", "layout-elk", "math", "svg"],
+      { usesSvgPipeline: true },
+    ),
     constructor_service_ids: [],
+    constructor_service_contracts: [],
     capabilities: {
       capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
       output_ids: ["svg"],
@@ -178,6 +241,7 @@ function runtimeCatalog(overrides = {}) {
 test("runtime catalog accepts additive fields within schema 1", async () => {
   const catalog = runtimeCatalog();
   catalog.future_root_metadata = true;
+  catalog.future_ratio = 0.5;
   catalog.capabilities.future_capability_metadata = true;
   catalog.output_contracts[0].future_output_metadata = true;
   catalog.registry.future_registry_metadata = true;
@@ -196,6 +260,7 @@ test("runtime catalog accepts additive fields within schema 1", async () => {
     "svg",
   ]);
   assert.equal(engine.runtimeCatalog.output_contracts[0].future_output_metadata, true);
+  assert.equal(engine.runtimeCatalog.future_ratio, 0.5);
   await engine.dispose();
 });
 
@@ -529,7 +594,7 @@ test("metadata helper rejects non-text, oversized, unadvertised, and typed-error
   );
   assert.throws(
     () => directObjectEngine.metadataJson("future-metadata"),
-    /not advertised/i,
+    /not callable/i,
   );
   await directObjectEngine.dispose();
 
@@ -805,11 +870,9 @@ test("runtime catalog follows descriptor-owned SVG compiled prerequisites", asyn
     catalog.capabilities.capability_ids = [operation.capability];
     catalog.capabilities.output_ids = [operation.output];
     catalog.capabilities.operation_ids = [operation.id, "semantic-json"].sort();
-    catalog.option_group_ids = ["environment", "layout", "presentation", "svg"];
-    if (operation.id === "jpeg") catalog.option_group_ids.push("jpeg", "raster");
-    if (operation.id === "pdf") catalog.option_group_ids.push("pdf");
-    if (operation.id === "png") catalog.option_group_ids.push("raster");
-    catalog.option_group_ids.sort();
+    catalog.option_group_ids = optionGroupIds([operation.capability], {
+      usesSvgPipeline: true,
+    });
     catalog.output_contracts = [{
       id: operation.output,
       media_type: operation.media_type,
@@ -867,8 +930,22 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
   const additive = runtimeCatalog();
   additive.payload_schemas.splice(1, 0, { id: "future-payload", version: 9 });
   additive.metadata_ids.splice(1, 0, "future-metadata");
-  additive.option_group_ids.splice(1, 0, "future-option-group");
+  additive.option_group_ids.push("future-option-group");
+  additive.option_group_ids.sort();
   additive.constructor_service_ids = ["future-constructor-service"];
+  additive.constructor_service_contracts = [{
+    id: "future-constructor-service",
+    provided_text_measurement_provider_ids: ["future-provider"],
+    resource_limits: [{
+      id: "future-constructor-limit",
+      phase: "future-construction",
+      unit: "items",
+      description: "Future constructor-owned resource ceiling.",
+      value: 0,
+      future_limit_metadata: true,
+    }],
+    future_service_metadata: true,
+  }];
   additive.capabilities.text_measurement.provider_ids = ["future-provider", "vendored"];
   additive.future_root = { preserved: true };
   const additiveFactory = transportFactory({
@@ -890,14 +967,24 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
     additiveEngine.runtimeCatalog.constructor_service_ids,
     additive.constructor_service_ids,
   );
+  assert.deepEqual(
+    additiveEngine.runtimeCatalog.constructor_service_contracts,
+    additive.constructor_service_contracts,
+  );
   assert.deepEqual(additiveEngine.runtimeCatalog.future_root, { preserved: true });
+  assert.throws(
+    () => additiveEngine.metadataJson("future-metadata"),
+    /not callable through this SDK/i,
+  );
   await additiveEngine.dispose();
 
   const futureOutput = runtimeCatalog();
   futureOutput.capabilities.capability_ids = ["future-image"];
   futureOutput.capabilities.output_ids = ["future-image"];
   futureOutput.capabilities.operation_ids = ["future-render", "semantic-json"];
-  futureOutput.option_group_ids = ["environment", "layout", "presentation", "svg"];
+  futureOutput.option_group_ids = optionGroupIds(["future-image"], {
+    usesSvgPipeline: true,
+  });
   futureOutput.output_contracts = [{
     id: "future-image",
     media_type: "image/future",
@@ -922,11 +1009,19 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
     futureOutputEngine.runtimeCatalog.output_contracts[0].future_output_contract,
     true,
   );
+  assert.throws(
+    () => futureOutputEngine.executeOperationSync({
+      operationId: "future-render",
+      source: "flowchart TD\nA --> B",
+    }),
+    /not callable through this SDK version/i,
+  );
   await futureOutputEngine.dispose();
 
   const legacy = runtimeCatalog();
   delete legacy.option_group_ids;
   delete legacy.constructor_service_ids;
+  delete legacy.constructor_service_contracts;
   const legacyFactory = transportFactory({
     runtimeCatalogJson() {
       return JSON.stringify(legacy);
@@ -935,7 +1030,47 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
   const legacyEngine = await createNodeEngine({}, { loadTransport: legacyFactory.loadTransport });
   assert.deepEqual(legacyEngine.runtimeCatalog.option_group_ids, []);
   assert.deepEqual(legacyEngine.runtimeCatalog.constructor_service_ids, []);
+  assert.deepEqual(legacyEngine.runtimeCatalog.constructor_service_contracts, []);
   await legacyEngine.dispose();
+
+  const hiddenKnownOperation = runtimeCatalog();
+  hiddenKnownOperation.capabilities.operation_ids = hiddenKnownOperation.capabilities.operation_ids
+    .filter((id) => id !== "svg-plan-json");
+  hiddenKnownOperation.resources.limits[0].operation_ids =
+    hiddenKnownOperation.resources.limits[0].operation_ids
+      .filter((id) => id !== "svg-plan-json");
+  const hiddenOperationFactory = transportFactory({
+    runtimeCatalogJson() {
+      return JSON.stringify(hiddenKnownOperation);
+    },
+  });
+  const hiddenOperationEngine = await createNodeEngine(
+    {},
+    { loadTransport: hiddenOperationFactory.loadTransport },
+  );
+  assert.throws(
+    () => hiddenOperationEngine.svgPlanJsonSync("flowchart TD\nA --> B"),
+    /not advertised by this artifact/i,
+  );
+  await hiddenOperationEngine.dispose();
+
+  const metadataSubset = runtimeCatalog();
+  metadataSubset.metadata_ids = ["supported-diagrams"];
+  const metadataSubsetFactory = transportFactory({
+    runtimeCatalogJson() {
+      return JSON.stringify(metadataSubset);
+    },
+  });
+  const metadataSubsetEngine = await createNodeEngine(
+    {},
+    { loadTransport: metadataSubsetFactory.loadTransport },
+  );
+  assert.deepEqual(metadataSubsetEngine.runtimeCatalog.metadata_ids, ["supported-diagrams"]);
+  assert.throws(
+    () => metadataSubsetEngine.metadataJson("supported-themes"),
+    /not callable through this SDK and artifact contract/i,
+  );
+  await metadataSubsetEngine.dispose();
 
   const invalidCatalogs = [];
   const missingRequiredPayload = runtimeCatalog();
@@ -947,16 +1082,137 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
   invalidCatalogs.push(wrongRequiredPayloadVersion);
 
   const missingKnownOptionGroup = runtimeCatalog();
-  missingKnownOptionGroup.option_group_ids = ["environment", "layout", "presentation"];
+  missingKnownOptionGroup.option_group_ids = missingKnownOptionGroup.option_group_ids.filter(
+    (id) => id !== "svg",
+  );
   invalidCatalogs.push(missingKnownOptionGroup);
 
   const unavailableKnownOptionGroup = runtimeCatalog();
-  unavailableKnownOptionGroup.option_group_ids.splice(3, 0, "lint");
+  unavailableKnownOptionGroup.option_group_ids.push("lint");
+  unavailableKnownOptionGroup.option_group_ids.sort();
   invalidCatalogs.push(unavailableKnownOptionGroup);
+
+  const unavailableKnownMetadata = runtimeCatalog();
+  unavailableKnownMetadata.metadata_ids.unshift("ascii-capabilities");
+  invalidCatalogs.push(unavailableKnownMetadata);
+
+  const missingImpliedCapability = runtimeCatalog();
+  missingImpliedCapability.capabilities.capability_ids = ["layout-elk"];
+  missingImpliedCapability.capabilities.output_ids = [];
+  missingImpliedCapability.capabilities.operation_ids = ["semantic-json"];
+  missingImpliedCapability.capabilities.text_measurement = null;
+  invalidCatalogs.push(missingImpliedCapability);
 
   const unsupportedKnownService = runtimeCatalog();
   unsupportedKnownService.constructor_service_ids = ["host-text-measurement"];
+  unsupportedKnownService.constructor_service_contracts = [{
+    id: "host-text-measurement",
+    provided_text_measurement_provider_ids: ["host-callback"],
+    resource_limits: [],
+  }];
+  unsupportedKnownService.capabilities.text_measurement.provider_ids = [
+    "host-callback",
+    "vendored",
+  ];
   invalidCatalogs.push(unsupportedKnownService);
+
+  const missingServiceContracts = runtimeCatalog();
+  delete missingServiceContracts.constructor_service_contracts;
+  invalidCatalogs.push(missingServiceContracts);
+
+  const orphanServiceContracts = runtimeCatalog();
+  delete orphanServiceContracts.constructor_service_ids;
+  invalidCatalogs.push(orphanServiceContracts);
+
+  const mismatchedServiceContracts = runtimeCatalog();
+  mismatchedServiceContracts.constructor_service_ids = ["future-service"];
+  mismatchedServiceContracts.constructor_service_contracts = [{
+    id: "different-future-service",
+    provided_text_measurement_provider_ids: [],
+    resource_limits: [],
+  }];
+  invalidCatalogs.push(mismatchedServiceContracts);
+
+  const malformedServiceLimit = runtimeCatalog();
+  malformedServiceLimit.constructor_service_ids = ["future-service"];
+  malformedServiceLimit.constructor_service_contracts = [{
+    id: "future-service",
+    provided_text_measurement_provider_ids: [],
+    resource_limits: [{
+      id: "future-limit",
+      phase: "construction",
+      unit: "items",
+      description: "Future limit.",
+      value: -1,
+    }],
+  }];
+  invalidCatalogs.push(malformedServiceLimit);
+
+  const unsafeServiceLimit = runtimeCatalog();
+  unsafeServiceLimit.constructor_service_ids = ["future-service"];
+  unsafeServiceLimit.constructor_service_contracts = [{
+    id: "future-service",
+    provided_text_measurement_provider_ids: [],
+    resource_limits: [{
+      id: "future-limit",
+      phase: "construction",
+      unit: "items",
+      description: "Future limit.",
+      value: Number.MAX_SAFE_INTEGER + 1,
+    }],
+  }];
+  invalidCatalogs.push(unsafeServiceLimit);
+
+  const duplicateProviderOwner = runtimeCatalog();
+  duplicateProviderOwner.constructor_service_ids = ["future-service-a", "future-service-b"];
+  duplicateProviderOwner.constructor_service_contracts = [
+    {
+      id: "future-service-a",
+      provided_text_measurement_provider_ids: ["future-provider"],
+      resource_limits: [],
+    },
+    {
+      id: "future-service-b",
+      provided_text_measurement_provider_ids: ["future-provider"],
+      resource_limits: [],
+    },
+  ];
+  duplicateProviderOwner.capabilities.text_measurement.provider_ids = [
+    "future-provider",
+    "vendored",
+  ];
+  invalidCatalogs.push(duplicateProviderOwner);
+
+  const pipelineProviderOwnedByService = runtimeCatalog();
+  pipelineProviderOwnedByService.constructor_service_ids = ["future-service"];
+  pipelineProviderOwnedByService.constructor_service_contracts = [{
+    id: "future-service",
+    provided_text_measurement_provider_ids: ["vendored"],
+    resource_limits: [],
+  }];
+  invalidCatalogs.push(pipelineProviderOwnedByService);
+
+  const invalidSystemFontIdentifier = runtimeCatalog();
+  invalidSystemFontIdentifier.output_contracts[0].system_fonts = {
+    source_id: "Bad ID",
+    discovery: "first-use",
+    cache_scope: "process-global",
+    host_dependent: true,
+    caller_configurable: false,
+    resource_bounded: false,
+  };
+  invalidCatalogs.push(invalidSystemFontIdentifier);
+
+  const invalidResourceLimitIdentifier = runtimeCatalog();
+  invalidResourceLimitIdentifier.resources.limits[0].id = "Bad ID";
+  invalidResourceLimitIdentifier.resources.profiles[0].limits = { "Bad ID": 1024 };
+  invalidResourceLimitIdentifier.resources.profiles[1].limits = { "Bad ID": null };
+  invalidCatalogs.push(invalidResourceLimitIdentifier);
+
+  const invalidResourceProfileIdentifier = runtimeCatalog();
+  invalidResourceProfileIdentifier.resources.profiles[0].id = "Bad ID";
+  invalidResourceProfileIdentifier.resources.general_binding_default_profile = "Bad ID";
+  invalidCatalogs.push(invalidResourceProfileIdentifier);
 
   for (const catalog of invalidCatalogs) {
     const factory = transportFactory({
@@ -1000,6 +1256,39 @@ test("runtime catalog transport boundary accepts JSON text only", async () => {
     createNodeEngine({}, { loadTransport: boundaryFactory.loadTransport }),
     /wire limit/i,
   );
+
+  const denseUnknownValueCount = 400_000;
+  const denseUnknownCatalog = `${catalogJson.slice(0, -1)},"future_values":[${"0,".repeat(
+    denseUnknownValueCount - 1,
+  )}0]}`;
+  assert.ok(
+    Buffer.byteLength(denseUnknownCatalog) < NODE_TRANSPORT_LIMITS.runtimeCatalogBytes,
+  );
+  const denseUnknownFactory = transportFactory({
+    runtimeCatalogJson() {
+      return denseUnknownCatalog;
+    },
+  });
+  const denseUnknownEngine = await createNodeEngine(
+    {},
+    { loadTransport: denseUnknownFactory.loadTransport },
+  );
+  assert.equal(denseUnknownEngine.runtimeCatalog.future_values.length, denseUnknownValueCount);
+  await denseUnknownEngine.dispose();
+
+  const roundedUnsafeInteger = JSON.stringify(runtimeCatalog()).replace(
+    '"diagram_family_count":35',
+    '"diagram_family_count":9007199254740991.1',
+  );
+  const roundedUnsafeIntegerFactory = transportFactory({
+    runtimeCatalogJson() {
+      return roundedUnsafeInteger;
+    },
+  });
+  await assert.rejects(
+    createNodeEngine({}, { loadTransport: roundedUnsafeIntegerFactory.loadTransport }),
+    /exact JSON-safe integers/i,
+  );
 });
 
 test("public TypeScript declarations cover the generic operation API", () => {
@@ -1029,6 +1318,10 @@ test("public TypeScript declarations cover the generic operation API", () => {
   assert.match(declarations, /options_schema_versions:\s*number\[\]/);
   assert.match(declarations, /option_group_ids:\s*string\[\]/);
   assert.match(declarations, /constructor_service_ids:\s*string\[\]/);
+  assert.match(
+    declarations,
+    /constructor_service_contracts:\s*MermanRuntimeConstructorServiceContract\[\]/,
+  );
   assert.match(declarations, /operation_ids:\s*string\[\]/);
   assert.match(declarations, /output_contracts:\s*MermanRuntimeOutputContract\[\]/);
   assert.match(declarations, /system_fonts:\s*MermanRuntimeSystemFontContract\s*\|\s*null/);
@@ -1076,8 +1369,8 @@ test("binding options preserve the shared profile vocabulary and reject host mea
 
 test("typed unknown-operation and missing-capability errors survive the JS boundary", async () => {
   for (const expected of [
-    { operationId: "bitmap", kind: "unknown-operation", capabilityId: null },
-    { operationId: "png", kind: "missing-capability", capabilityId: "png" },
+    { kind: "unknown-operation", capabilityId: null },
+    { kind: "missing-capability", capabilityId: "png" },
   ]) {
     const factory = transportFactory({
       async execute() {
@@ -1087,7 +1380,7 @@ test("typed unknown-operation and missing-capability errors survive the JS bound
     const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
     await assert.rejects(
       engine.executeOperation({
-        operationId: expected.operationId,
+        operationId: "svg",
         source: "flowchart TD\nA",
       }),
       (error) => {
@@ -1116,7 +1409,7 @@ test("direct transport execution failures normalize across async and sync calls"
     { loadTransport: typedFactory.loadTransport },
   );
   const request = {
-    operationId: "not-an-operation",
+    operationId: "svg",
     source: "flowchart TD\nA",
   };
   const assertTypedError = (error) => {

@@ -140,6 +140,7 @@ export interface RuntimeCapabilities {
 }
 
 export interface TextMeasurementCapabilities {
+  [key: string]: unknown;
   protocol_version: number;
   provider_ids: TextMeasurementProviderId[];
 }

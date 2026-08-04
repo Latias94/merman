@@ -3,6 +3,7 @@ use crate::capability::CapabilityKey;
 /// One stable catalog in the binding-owned metadata registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
+#[repr(u8)]
 pub enum MetadataKey {
     AsciiCapabilities,
     DiagramFamilyCapabilities,
@@ -29,7 +30,10 @@ impl MetadataKey {
 
     #[must_use]
     pub fn from_id(id: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|key| key.id() == id)
+        METADATA_SPECS
+            .iter()
+            .find(|spec| spec.id == id)
+            .map(|spec| spec.key)
     }
 
     #[must_use]
@@ -125,6 +129,32 @@ const METADATA_SPECS: &[MetadataSpec] = &[
     },
 ];
 
+const _: () = {
+    assert!(METADATA_SPECS.len() == MetadataKey::ALL.len());
+    let mut index = 0;
+    while index < METADATA_SPECS.len() {
+        assert!(METADATA_SPECS[index].key as usize == index);
+        index += 1;
+    }
+};
+
 pub(crate) const fn metadata_spec(key: MetadataKey) -> &'static MetadataSpec {
     key.spec()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_keys_specs_and_ids_are_bijective() {
+        for (index, key) in MetadataKey::ALL.iter().copied().enumerate() {
+            let spec = key.spec();
+            assert_eq!(key as usize, index);
+            assert_eq!(spec.key(), key);
+            assert_eq!(MetadataKey::from_id(spec.id()), Some(key));
+        }
+
+        assert_eq!(MetadataKey::from_id("future-metadata-catalog"), None);
+    }
 }

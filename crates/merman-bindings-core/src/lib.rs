@@ -8,6 +8,7 @@
 
 mod artifact_contract;
 mod capability;
+mod catalog_contract;
 mod common;
 mod engine;
 mod key_set;
@@ -24,6 +25,7 @@ mod services;
 mod svg_plan;
 #[cfg(feature = "svg")]
 mod text_measurement;
+mod transport_contract;
 
 #[cfg(feature = "ascii")]
 mod ascii;
@@ -35,6 +37,10 @@ pub use capability::{
     CAPABILITY_DESCRIPTOR_DIGEST, CAPABILITY_DESCRIPTOR_SCHEMA_VERSION, CapabilityDescriptor,
     CapabilityKey, OperationKey, OperationSpec, OutputDescriptor, OutputKey, TargetDescriptor,
     TargetKey, TransportCompiledExtensionKey,
+};
+pub use catalog_contract::{
+    RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN, RUNTIME_CATALOG_IDENTIFIER_PATTERN,
+    RUNTIME_CATALOG_MAX_SAFE_INTEGER,
 };
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError, BindingErrorKind,
@@ -123,6 +129,7 @@ pub use text_measurement::{
     HostTextMeasurementRecord, HostTextMeasurementResultKind, HostTextMeasurementTransportFields,
     decode_host_text_measurement, host_text_measurement_transport_fields,
 };
+pub use transport_contract::{BindingTransportExposureSpec, BindingTransportKey};
 
 #[cfg(not(feature = "ascii"))]
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
