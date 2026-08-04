@@ -328,8 +328,9 @@ struct WasmHostTextMeasureRequest<'a> {
 }
 
 #[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default)]
 struct WasmHostTextMeasureResult {
+    handled: Option<bool>,
     kind: Option<String>,
     width: Option<f64>,
     height: Option<f64>,
@@ -341,11 +342,116 @@ struct WasmHostTextMeasureResult {
 }
 
 #[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
+#[derive(Deserialize)]
+#[serde(field_identifier, rename_all = "snake_case")]
+enum WasmHostTextMeasureResultField {
+    Handled,
+    Kind,
+    Width,
+    Height,
+    Length,
+    LineCount,
+    BboxLeft,
+    BboxRight,
+    RawWidth,
+    #[serde(other)]
+    Other,
+}
+
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
+const WASM_HOST_TEXT_MEASURE_RESULT_FIELDS: &[&str] = &[
+    // serde-wasm-bindgen 0.6.5 ObjectAccess visits deserialize_struct's static field list in this
+    // order, independently of JavaScript property enumeration. Keep the disposition first so an
+    // explicit fallback never reads or interprets measurement payload fields. The Proxy transport
+    // smoke locks this dependency invariant for future serde-wasm-bindgen upgrades; do not replace
+    // this with map/Object.entries-style enumeration without preserving the early-return contract.
+    "handled",
+    "kind",
+    "width",
+    "height",
+    "length",
+    "line_count",
+    "bbox_left",
+    "bbox_right",
+    "raw_width",
+];
+
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
+struct WasmHostTextMeasureResultVisitor;
+
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
+impl<'de> serde::de::Visitor<'de> for WasmHostTextMeasureResultVisitor {
+    type Value = WasmHostTextMeasureResult;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a host text measurement callback result")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let mut result = WasmHostTextMeasureResult::default();
+        while let Some(field) = map.next_key()? {
+            match field {
+                WasmHostTextMeasureResultField::Handled => {
+                    result.handled = map.next_value()?;
+                    if result.handled == Some(false) {
+                        return Ok(result);
+                    }
+                }
+                WasmHostTextMeasureResultField::Kind => result.kind = map.next_value()?,
+                WasmHostTextMeasureResultField::Width => result.width = map.next_value()?,
+                WasmHostTextMeasureResultField::Height => result.height = map.next_value()?,
+                WasmHostTextMeasureResultField::Length => result.length = map.next_value()?,
+                WasmHostTextMeasureResultField::LineCount => {
+                    result.line_count = map.next_value()?;
+                }
+                WasmHostTextMeasureResultField::BboxLeft => {
+                    result.bbox_left = map.next_value()?;
+                }
+                WasmHostTextMeasureResultField::BboxRight => {
+                    result.bbox_right = map.next_value()?;
+                }
+                WasmHostTextMeasureResultField::RawWidth => {
+                    result.raw_width = map.next_value()?;
+                }
+                WasmHostTextMeasureResultField::Other => {
+                    map.next_value::<serde::de::IgnoredAny>()?;
+                }
+            }
+        }
+
+        Ok(result)
+    }
+}
+
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
+impl<'de> Deserialize<'de> for WasmHostTextMeasureResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_struct(
+            "WasmHostTextMeasureResult",
+            WASM_HOST_TEXT_MEASURE_RESULT_FIELDS,
+            WasmHostTextMeasureResultVisitor,
+        )
+    }
+}
+
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 fn decode_wasm_host_text_measurement(
     request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     result: WasmHostTextMeasureResult,
-) -> Result<merman_bindings_core::HostTextMeasurement, merman_bindings_core::HostTextMeasurementError>
-{
+) -> Result<
+    Option<merman_bindings_core::HostTextMeasurement>,
+    merman_bindings_core::HostTextMeasurementError,
+> {
+    if result.handled == Some(false) {
+        return Ok(None);
+    }
+
     merman_bindings_core::decode_host_text_measurement(
         request,
         merman_bindings_core::HostTextMeasurementRecord {
@@ -362,6 +468,7 @@ fn decode_wasm_host_text_measurement(
             raw_width: result.raw_width,
         },
     )
+    .map(Some)
 }
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -406,23 +513,11 @@ impl WasmHostTextMeasurer {
                 return Ok(None);
             }
 
-            #[derive(Deserialize)]
-            struct HostDisposition {
-                handled: Option<bool>,
-            }
-            let disposition: HostDisposition = serde_wasm_bindgen::from_value(value.clone())
-                .map_err(|err| {
-                    merman_bindings_core::HostTextMeasurementError::invalid_value(err.to_string())
-                })?;
-            if disposition.handled == Some(false) {
-                return Ok(None);
-            }
-
             let result: WasmHostTextMeasureResult =
                 serde_wasm_bindgen::from_value(value).map_err(|err| {
                     merman_bindings_core::HostTextMeasurementError::invalid_value(err.to_string())
                 })?;
-            decode_wasm_host_text_measurement(request, result).map(Some)
+            decode_wasm_host_text_measurement(request, result)
         })
     }
 }
@@ -552,7 +647,7 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn wasm_checked_decoder_rejects_missing_fields_and_oversized_counts() {
+    fn wasm_checked_decoder_preserves_fallback_and_rejects_invalid_results() {
         let style = merman_bindings_core::TextStyle::default();
         let request = merman_bindings_core::HostTextMeasurementRequest {
             operation: merman_bindings_core::TextMeasurementOperation::Measure,
@@ -563,6 +658,7 @@ mod tests {
             wrap_mode: merman_bindings_core::WrapMode::SvgLike,
         };
         let result = |height, line_count| WasmHostTextMeasureResult {
+            handled: None,
             kind: Some("metrics".to_string()),
             width: Some(1.0),
             height,
@@ -575,6 +671,42 @@ mod tests {
 
         assert!(decode_wasm_host_text_measurement(request, result(None, Some(1))).is_err());
         assert!(decode_wasm_host_text_measurement(request, result(Some(1.0), Some(3))).is_err());
+
+        let mut handled = result(Some(1.0), Some(1));
+        handled.handled = Some(true);
+        assert!(
+            decode_wasm_host_text_measurement(request, handled)
+                .unwrap()
+                .is_some()
+        );
+
+        let entries = vec![
+            (serde_json::json!("handled"), serde_json::json!(false)),
+            (serde_json::json!("kind"), serde_json::json!(17)),
+            (
+                serde_json::json!("width"),
+                serde_json::json!("not-a-number"),
+            ),
+            (serde_json::json!("height"), serde_json::json!({})),
+            (serde_json::json!("line_count"), serde_json::json!([])),
+            (
+                serde_json::json!("extra"),
+                serde_json::json!({"ignored": true}),
+            ),
+        ];
+        let mut map =
+            serde::de::value::MapDeserializer::<_, serde_json::Error>::new(entries.into_iter());
+        let unhandled =
+            serde::de::Visitor::visit_map(WasmHostTextMeasureResultVisitor, &mut map).unwrap();
+        assert_eq!(serde::de::MapAccess::size_hint(&map), Some(5));
+        assert!(matches!(
+            decode_wasm_host_text_measurement(request, unhandled),
+            Ok(None)
+        ));
+
+        assert!(
+            serde_json::from_str::<WasmHostTextMeasureResult>(r#"{"handled":"false"}"#).is_err()
+        );
     }
 
     #[cfg(feature = "svg")]

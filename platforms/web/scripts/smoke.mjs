@@ -658,6 +658,28 @@ User Testing    :c2, after c1, 5d`;
   assert.ok(measureCallCount > 0);
   assert.ok(measurementOperations.has("wrapped"));
 
+  let explicitHandledCallCount = 0;
+  const explicitHandledSvg = api.renderSvgWithTextMeasurer(
+    source,
+    (request) => {
+      explicitHandledCallCount += 1;
+      const result = hostTextMeasurementResult(request);
+      return result === undefined ? undefined : { handled: true, ...result };
+    },
+    options
+  );
+  assert.match(explicitHandledSvg, /<svg/);
+  assert.equal(
+    explicitHandledSvg,
+    measuredSvg,
+    "an explicit handled=true disposition must preserve the measured SVG"
+  );
+  assert.equal(
+    explicitHandledCallCount,
+    measureCallCount,
+    "an explicit handled=true disposition must not change callback cardinality"
+  );
+
   if (completeCytoscapeRenderSurface) {
     const architectureOperations = new Map();
     const architectureSvg = api.renderSvgWithTextMeasurer(
@@ -681,7 +703,22 @@ User Testing    :c2, after c1, 5d`;
 
   const measuredLayout = api.layoutJsonWithTextMeasurer(source, hostTextMeasurer, options);
   assert.equal(typeof JSON.parse(measuredLayout), "object");
+  const explicitHandledLayout = api.layoutJsonWithTextMeasurer(
+    source,
+    (request) => {
+      const result = hostTextMeasurementResult(request);
+      return result === undefined ? undefined : { handled: true, ...result };
+    },
+    options
+  );
+  assert.equal(
+    explicitHandledLayout,
+    measuredLayout,
+    "an explicit handled=true disposition must preserve the measured layout"
+  );
+  let fallbackReferenceSvg;
   for (const fallbackResult of [
+    null,
     undefined,
     { handled: false },
   ]) {
@@ -695,12 +732,100 @@ User Testing    :c2, after c1, 5d`;
       options
     );
     assert.match(fallbackSvg, /<svg/);
+    if (fallbackReferenceSvg === undefined) {
+      fallbackReferenceSvg = fallbackSvg;
+    } else {
+      assert.equal(
+        fallbackSvg,
+        fallbackReferenceSvg,
+        "all host fallback dispositions must preserve the same output"
+      );
+    }
     assert.ok(fallbackCallCount > 0);
   }
+
+  const resultFields = [
+    "handled",
+    "kind",
+    "width",
+    "height",
+    "length",
+    "line_count",
+    "bbox_left",
+    "bbox_right",
+    "raw_width",
+  ];
+  const unhandledAccesses = [];
+  const unhandledProxy = new Proxy(
+    { handled: false },
+    {
+      get(target, property, receiver) {
+        if (typeof property === "string" && resultFields.includes(property)) {
+          unhandledAccesses.push(property);
+          if (property !== "handled") {
+            throw new Error(`fallback result unexpectedly read ${property}`);
+          }
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    }
+  );
+  const proxyFallbackSvg = api.renderSvgWithTextMeasurer(
+    source,
+    () => unhandledProxy,
+    options
+  );
+  assert.match(proxyFallbackSvg, /<svg/);
+  assert.equal(
+    proxyFallbackSvg,
+    fallbackReferenceSvg,
+    "a proxied handled=false result must preserve fallback output"
+  );
+  assert.deepEqual(
+    unhandledAccesses,
+    Array(unhandledAccesses.length).fill("handled"),
+    "handled=false must not inspect payload getters"
+  );
+  assert.ok(unhandledAccesses.length > 0);
+
+  const handledAccesses = [];
+  const proxyMeasuredSvg = api.renderSvgWithTextMeasurer(
+    source,
+    (request) => {
+      const accesses = [];
+      handledAccesses.push(accesses);
+      return new Proxy(hostTextMeasurementResult(request), {
+        get(target, property, receiver) {
+          if (typeof property === "string" && resultFields.includes(property)) {
+            accesses.push(property);
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+    },
+    options
+  );
+  assert.match(proxyMeasuredSvg, /<svg/);
+  assert.equal(
+    proxyMeasuredSvg,
+    measuredSvg,
+    "a proxied handled result must preserve measured output"
+  );
+  assert.ok(handledAccesses.length > 0);
+  for (const accesses of handledAccesses) {
+    assert.deepEqual(
+      accesses,
+      resultFields,
+      "a handled result must deserialize each protocol field once in declaration order"
+    );
+  }
+
   for (const invalidResult of [
-    { width: Number.POSITIVE_INFINITY, height: 1 },
-    { width: -1, height: 1 },
-    { width: 1, height: 1, line_count: 0 },
+    { kind: "metrics", width: "1", height: 1, line_count: 1 },
+    { kind: "metrics", width: Number.POSITIVE_INFINITY, height: 1 },
+    { kind: "metrics", width: -1, height: 1 },
+    { kind: "metrics", width: 1, height: 1, line_count: 0 },
+    { kind: "metrics", width: 1, height: 1, line_count: 2 ** 32 },
   ]) {
     let fallbackCallCount = 0;
     const fallbackSvg = api.renderSvgWithTextMeasurer(
@@ -713,6 +838,11 @@ User Testing    :c2, after c1, 5d`;
     );
     assert.match(fallbackSvg, /<svg/);
     assert.match(fallbackSvg, /Hello/);
+    assert.equal(
+      fallbackSvg,
+      fallbackReferenceSvg,
+      "an invalid host result must preserve fallback output"
+    );
     assert.ok(fallbackCallCount > 0);
   }
   let throwingCallCount = 0;
@@ -726,6 +856,11 @@ User Testing    :c2, after c1, 5d`;
   );
   assert.match(throwingFallbackSvg, /<svg/);
   assert.match(throwingFallbackSvg, /Hello/);
+  assert.equal(
+    throwingFallbackSvg,
+    fallbackReferenceSvg,
+    "a throwing host callback must preserve fallback output"
+  );
   assert.ok(throwingCallCount > 0);
 
   assert.equal(typeof api.parseObject(source, deterministicTime), "object");
