@@ -273,6 +273,34 @@ fn rust_layout_fingerprint() -> u64 {
     hash_field!(hash, merman_ffi::MermanNativeApi, execute_collect);
     hash_field!(hash, merman_ffi::MermanNativeApi, result_free);
     hash_field!(hash, merman_ffi::MermanNativeApi, metadata_collect);
+    hash_field!(hash, merman_ffi::MermanNativeApi, engine_new_with_services);
+
+    hash_record!(hash, merman_ffi::MermanNativeIconPack);
+    hash_field!(hash, merman_ffi::MermanNativeIconPack, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeIconPack, json);
+    hash_field!(hash, merman_ffi::MermanNativeIconPack, registration_name);
+
+    hash_record!(hash, merman_ffi::MermanNativeEngineServicesConfig);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeEngineServicesConfig,
+        struct_size
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeEngineServicesConfig,
+        engine_config
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeEngineServicesConfig,
+        icon_packs
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeEngineServicesConfig,
+        icon_pack_count
+    );
 
     hash
 }

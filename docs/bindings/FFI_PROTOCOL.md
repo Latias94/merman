@@ -59,10 +59,11 @@ that capacity, and verifies every function pointer it calls. Merman never report
 partial appended slot; a host may reuse the returned value as the next discovery capacity. Do not
 reconstruct function names or dynamically look up per-operation exports.
 
-The current table appends `metadata_collect` at function-slot code `5`. It is not part of the
-frozen minimum. Before reading or calling an appended field, a host must verify that the complete
-prefix size reported in `api.struct_size` reaches the end of that field and that the function
-pointer is non-null. A compatible producer exposing only the five-slot minimum remains
+The current table appends `metadata_collect` at function-slot code `5` and
+`engine_new_with_services` at code `6`. Neither is part of the frozen minimum. Before reading or
+calling an appended field, a host must verify that the complete prefix size reported in
+`api.struct_size` reaches the generated field boundary and that the function pointer is non-null.
+A compatible producer exposing only the five-slot minimum or published six-slot prefix remains
 discoverable.
 
 The returned digests have separate roles:
@@ -176,6 +177,54 @@ storage, `out_engine`, and `out_result` must be pairwise disjoint; obvious overl
 `MERMAN_NATIVE_STATUS_INVALID_ARGUMENT` before Merman writes either output. A nonzero
 `out_engine` is likewise rejected and is not overwritten.
 
+### Constructor-Owned Icon Services
+
+The appended code-6 constructor combines the existing options/callback record with borrowed
+Iconify packs:
+
+```c
+static const uint8_t iconify_json[] =
+    "{\"prefix\":\"app\",\"icons\":{\"rocket\":{\"body\":\"<path d=\\\"M0 0H16V16H0z\\\"/>\"}}}";
+
+MermanNativeIconPack pack = {
+    .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeIconPack),
+    .json = {
+        .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice),
+        .data = iconify_json,
+        .len = sizeof(iconify_json) - 1,
+    },
+    .registration_name = {
+        .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice),
+    },
+};
+MermanNativeEngineServicesConfig services = {
+    .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineServicesConfig),
+    .engine_config = config,
+    .icon_packs = &pack,
+    .icon_pack_count = 1,
+};
+
+engine = 0;
+result = (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
+status = api.engine_new_with_services(&services, &engine, &result);
+api.result_free(&result);
+```
+
+`out_engine` must be zero and remains zero on every failure. The outer record, pack array, options,
+pack JSON, registration names, and both outputs follow the generated non-overlap rules. Structural
+record storage cannot overlap any nested byte slice; read-only byte slices may overlap each other,
+so multiple logical packs may reuse one JSON buffer with different registration names. The
+constructor checks the fixed 16-pack ceiling before array multiplication or access, validates all
+size tags and slice shapes before parsing, never invokes the host callback, and publishes no token
+until the complete immutable registry and engine are ready. Pack records and bytes are borrowed
+only until return and may be released immediately after success.
+
+An artifact exposing `svg` advertises the `icon-registry` constructor service in its runtime
+catalog and validates nonempty packs. An artifact without `svg` still accepts an empty services
+record, but may return typed `missing-capability` for any nonzero `icon_pack_count` without reading
+or validating the pack array or nested pack slices. There is intentionally no mutable registry
+handle and no registry-specific free function.
+
 Then select an operation with `MermanNativeOperationRequest.operation` and execute the same route
 for every operation:
 
@@ -246,6 +295,11 @@ nullable `capability_id`:
   "message": "SVG rendering requires the svg feature"
 }
 ```
+
+Icon-registry construction failures add `details.icon_registry` with a stable `kind_id`, optional
+`pack_index`, and a bounded registration name when safe to report. Fixed constructor ceilings also
+add `details.resource` with the stable limit ID, phase, actual value, maximum, and
+`constructor-fixed` profile. These are additive fields under the frozen five-kind error envelope.
 
 The ABI 3 error-kind vocabulary is frozen and closed: `generic`, `unknown-operation`,
 `missing-capability`, `reentrant-call`, and `busy`. Consumers should still treat an unknown kind as
@@ -338,12 +392,14 @@ function-pointer types are declared `noexcept` to make this contract visible to 
   snapshot only after the old frozen snapshot passes its digest and monotonic checks; the verifier
   then remains red until a maintainer reviews the diff and explicitly freezes the new digest.
   Regenerating snapshots therefore cannot silently legitimize a semantic mutation.
-- Treat appended slots as optional ABI capabilities. Check the returned initialized-prefix size and pointer
-  before calling `metadata_collect` or any future appended function.
+- Treat appended slots as optional ABI capabilities. Check the returned initialized-prefix size and
+  pointer before calling `metadata_collect`, `engine_new_with_services`, or any future appended
+  function.
 - Result ownership, token-domain/free behavior, callback non-local-exit prohibition, nonblocking
-  close semantics, `engine_new` storage separation and zero-output precondition, caller-memory
-  obligations, `NONE` handling, status-kind mappings, and the closed error-kind vocabulary are
-  frozen ABI 3 semantics. The descriptor verifier rejects changes to these semantic projections.
+  close semantics, both constructors' storage separation and zero-output precondition,
+  constructor-service ownership, caller-memory obligations, `NONE` handling, status-kind mappings,
+  and the closed error-kind vocabulary are frozen ABI 3 semantics. The descriptor verifier rejects
+  changes to these semantic projections.
 - Except for the API table's capacity negotiation, records require exact generated sizes. The
   package's C smoke tests compile and run the current header plus frozen five-slot and published
   six-slot consumers; applications do not need to duplicate a runtime offset probe.

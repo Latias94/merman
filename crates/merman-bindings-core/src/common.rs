@@ -243,6 +243,61 @@ impl BindingError {
         }
     }
 
+    /// Creates the canonical structured failure for UTF-8 rejected before registry ingestion.
+    #[cfg(feature = "svg")]
+    pub fn icon_registry_invalid_utf8(pack_index: usize, message: impl Into<String>) -> Self {
+        Self::icon_registry_preflight_failure(
+            merman::svg::IconRegistryBuildErrorKind::InvalidUtf8,
+            Some(pack_index),
+            None,
+            message,
+        )
+    }
+
+    /// Creates the canonical structured failure for a registry limit rejected before ingestion.
+    #[cfg(feature = "svg")]
+    pub fn icon_registry_resource_limit(
+        limit: crate::IconRegistryResourceLimitId,
+        actual: u64,
+        pack_index: Option<usize>,
+        message: impl Into<String>,
+    ) -> Self {
+        let descriptor = limit.descriptor();
+        Self::icon_registry_preflight_failure(
+            merman::svg::IconRegistryBuildErrorKind::ResourceLimitExceeded,
+            pack_index,
+            Some(BindingResourceErrorDetails {
+                limit_id: descriptor.stable_id,
+                phase: descriptor.phase,
+                actual,
+                max: limit.fixed_value(),
+                profile: "constructor-fixed",
+            }),
+            message,
+        )
+    }
+
+    #[cfg(feature = "svg")]
+    fn icon_registry_preflight_failure(
+        kind: merman::svg::IconRegistryBuildErrorKind,
+        pack_index: Option<usize>,
+        resource: Option<BindingResourceErrorDetails>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            status: icon_registry_error_status(kind),
+            kind: BindingErrorKind::Generic,
+            capability_id: None,
+            resource,
+            icon_registry: Some(BindingIconRegistryErrorDetails {
+                kind_id: kind.stable_id(),
+                pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
+                registration_name: None,
+            }),
+            message: message.into(),
+        }
+    }
+
     pub const fn status(&self) -> BindingStatus {
         self.status
     }

@@ -102,6 +102,10 @@
     {
       "id": "caller_memory_validity",
       "description": "For the complete duration of a call, every caller record and every storage range reachable through it must be readable, live, and immutable except for declared writable outputs, which must remain writable and live. Runtime validation detects only representable shape, size, alignment, range, and documented overlap errors; dangling, unreadable, concurrently mutated, or otherwise invalid memory remains a caller contract violation and is not promised a typed status."
+    },
+    {
+      "id": "engine_services_constructor_memory",
+      "description": "For engine_new_with_services, out_engine and out_result must be disjoint from each other and from the outer config, the pack record array, embedded options, JSON bytes, and registration-name bytes. Structural record storage must not overlap any nested byte slice it describes. Read-only options, JSON, and registration-name slices may overlap each other, including multiple logical packs reusing the same bytes; each logical pack is still charged independently. out_engine must be initialized to zero and remains zero on every failure. In artifacts exposing the icon-registry constructor service, the implementation validates icon_pack_count against the fixed pack ceiling before checked multiplication or array access and rejects nonzero count with a null or misaligned array. Artifacts without the svg capability may return missing-capability for any nonzero icon_pack_count without dereferencing or validating the pack array or nested pack slices. The code-6 constructor requires text_measure_user_data to be null when text_measure is null without changing the code-1 engine_new contract."
     }
   ],
   "error_kinds": [
@@ -260,6 +264,20 @@
         { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
       ],
       "description": "Collect one named binding metadata document. The UTF-8 metadata_id is borrowed for the call. Success writes JSON to metadata_or_error_json with operation none; every written success or failure result owns a nonzero allocation token and must be released with result_free."
+    },
+    {
+      "id": "engine_new_with_services",
+      "c_name": "MermanNativeEngineNewWithServicesFn",
+      "rust_name": "MermanNativeEngineNewWithServicesFn",
+      "code": 6,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "config", "c_type": "const MermanNativeEngineServicesConfig *", "rust_type": "*const MermanNativeEngineServicesConfig" },
+        { "name": "out_engine", "c_type": "MermanNativeEngineToken *", "rust_type": "*mut MermanNativeEngineToken" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Create a reusable engine from one size-tagged service configuration. The embedded engine_config preserves the code-1 configuration record, icon pack records and nested slices are borrowed only until return, and successful construction retains only the immutable registry plus any host callback state. The caller initializes out_engine to zero. All structural inputs and nested slices must be disjoint from writable outputs; read-only payload slices may overlap each other."
     }
   ],
   "records": [
@@ -394,6 +412,29 @@
         { "name": "capability_catalog_digest", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static capability catalog provenance digest" },
         { "name": "package_version", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static package version bytes" }
       ]
+    },
+    {
+      "id": "icon_pack",
+      "c_name": "MermanNativeIconPack",
+      "rust_name": "MermanNativeIconPack",
+      "description": "One size-tagged borrowed IconifyJSON collection for transactional engine construction. A zero-length registration_name means no override; a non-empty UTF-8 registration name replaces the JSON prefix for this logical pack.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeIconPack)" },
+        { "name": "json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed only until engine_new_with_services returns" },
+        { "name": "registration_name", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "optional UTF-8 override borrowed only until engine_new_with_services returns; zero length means absent" }
+      ]
+    },
+    {
+      "id": "engine_services_config",
+      "c_name": "MermanNativeEngineServicesConfig",
+      "rust_name": "MermanNativeEngineServicesConfig",
+      "description": "A size-tagged reusable-engine configuration that embeds the published engine configuration and optionally borrows a contiguous array of Iconify packs for one transactional immutable registry build.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeEngineServicesConfig)" },
+        { "name": "engine_config", "c_type": "MermanNativeEngineConfig", "rust_type": "MermanNativeEngineConfig", "ownership": "embedded published engine configuration; options are borrowed for the call and callback state is retained only by a successfully published engine" },
+        { "name": "icon_packs", "c_type": "const MermanNativeIconPack *", "rust_type": "*const MermanNativeIconPack", "ownership": "borrowed contiguous record array for the call; null only when icon_pack_count is zero" },
+        { "name": "icon_pack_count", "c_type": "size_t", "rust_type": "usize", "ownership": "number of logical pack records; zero installs no icon-registry service" }
+      ]
     }
   ],
   "ownership_rules": [
@@ -401,6 +442,7 @@
     { "id": "borrowed_slices", "description": "Input, media-type, and callback slices are borrowed. Hosts must not retain their pointers after the enclosing call or callback returns." },
     { "id": "engine_tokens", "description": "Engine tokens are opaque u64 values. engine_try_close never waits: callback-active returns reentrant-call, another active operation returns busy with the token still valid, and quiescent success permanently closes admission before retiring the token. A transport reference acquired before successful close cannot enter afterwards. Callback and user_data are immutable constructor-owned state and may be released after successful close." },
     { "id": "host_callbacks", "description": "Host callbacks are synchronous and borrowed for the call. They MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local exit across the ABI boundary. Merman converts returned status values only; it cannot catch foreign exceptions." },
-    { "id": "disabled_capabilities", "description": "A known operation whose backend is absent is rejected before backend work with unsupported_operation, kind missing-capability, and the canonical capability_id. An unknown operation code returns the same status with kind unknown-operation and a null capability_id. Both failures are written results with nonzero allocation_token values and must be released with result_free." }
+    { "id": "disabled_capabilities", "description": "A known operation whose backend is absent is rejected before backend work with unsupported_operation, kind missing-capability, and the canonical capability_id. An unknown operation code returns the same status with kind unknown-operation and a null capability_id. Both failures are written results with nonzero allocation_token values and must be released with result_free." },
+    { "id": "engine_services", "description": "engine_new_with_services borrows the outer configuration, embedded options, pack records, IconifyJSON bytes, and registration names only until return and never invokes the host callback during construction. A successful engine owns the fully validated immutable registry without retaining pack pointers; callback and user_data follow the existing quiescent-close lifetime. Any validation, registry, service-conflict, engine, token, result-allocation, or panic failure publishes no caller-visible engine. If publication must be rolled back, the token is retired under lock and the complete engine and service graph are destroyed only after all registry and admission locks are released." }
   ]
 }

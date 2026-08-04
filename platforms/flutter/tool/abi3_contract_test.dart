@@ -58,6 +58,10 @@ void projectsFrozenAbi3MinimumPrefix() {
     'metadata_collect must occupy the first appended function slot',
   );
   _expect(
+    native.MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES == 6,
+    'engine_new_with_services must append after metadata_collect',
+  );
+  _expect(
     ffi.sizeOf<native.MermanNativeApi>() >
         native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
     'metadata_collect must remain an appended slot outside the frozen prefix',
@@ -76,6 +80,20 @@ void projectsFrozenAbi3MinimumPrefix() {
         ffi.sizeOf<native.MermanNativeApi>(),
     'metadata_collect availability must depend on its own field boundary',
   );
+  _expect(
+    !ffi_transport.nativeApiHasEngineServicesConstructorForTesting(
+          native.MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
+        ) &&
+        ffi_transport.nativeApiHasEngineServicesConstructorForTesting(
+          native.MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE,
+        ),
+    'consumers must not inspect engine_new_with_services before its complete prefix',
+  );
+  _expect(
+    native.MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE ==
+        ffi.sizeOf<native.MermanNativeApi>(),
+    'engine_new_with_services must define the current complete table boundary',
+  );
 
   final request = calloc<native.MermanNativeApiRequest>();
   final api = calloc<native.MermanNativeApi>();
@@ -91,6 +109,24 @@ void projectsFrozenAbi3MinimumPrefix() {
       api.ref.metadata_collect.address == 0,
       'zeroed ABI table should expose the appended metadata_collect slot',
     );
+    _expect(
+      api.ref.engine_new_with_services.address == 0,
+      'zeroed ABI table should expose the appended service constructor slot',
+    );
+    final iconPack = calloc<native.MermanNativeIconPack>();
+    final servicesConfig = calloc<native.MermanNativeEngineServicesConfig>();
+    try {
+      iconPack.ref.struct_size = ffi.sizeOf<native.MermanNativeIconPack>();
+      servicesConfig.ref.struct_size =
+          ffi.sizeOf<native.MermanNativeEngineServicesConfig>();
+      _expect(
+        iconPack.ref.struct_size > 0 && servicesConfig.ref.struct_size > 0,
+        'generated Dart ABI must project both service-constructor records',
+      );
+    } finally {
+      calloc.free(iconPack);
+      calloc.free(servicesConfig);
+    }
     result.ref.allocation_token = 1;
     _expect(
       result.ref.allocation_token == 1,

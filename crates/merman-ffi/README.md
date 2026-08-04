@@ -85,15 +85,25 @@ violation and is not promised a typed error.
 Every operation follows the same path:
 
 1. Call `merman_get_native_api`.
-2. Create an engine token with `api.engine_new`.
+2. Create an engine token with `api.engine_new`, or use `api.engine_new_with_services` when the
+   engine owns Iconify packs.
 3. Set `MermanNativeOperationRequest.operation` to the requested operation enum.
 4. Call `api.execute_collect`.
 5. Release every result with `api.result_free`, then close the token with `api.engine_try_close`.
 
-Initialize the `out_engine` value to zero before `engine_new`; a nonzero value is rejected without
-being overwritten. `MERMAN_NATIVE_OPERATION_NONE` is a defined metadata/result sentinel and is not
-executable: `execute_collect` returns invalid argument with the generic error kind. Unknown numeric
-operation codes continue to return unsupported operation with `unknown-operation`.
+Initialize the `out_engine` value to zero before either constructor; a nonzero value is rejected
+without being overwritten. `MERMAN_NATIVE_OPERATION_NONE` is a defined metadata/result sentinel
+and is not executable: `execute_collect` returns invalid argument with the generic error kind.
+Unknown numeric operation codes continue to return unsupported operation with
+`unknown-operation`.
+
+`api.engine_new_with_services` embeds the existing `MermanNativeEngineConfig` in a
+`MermanNativeEngineServicesConfig` and optionally accepts a contiguous array of
+`MermanNativeIconPack` records. Each pack borrows IconifyJSON bytes and an optional UTF-8
+registration-name override only until construction returns. Success retains one immutable,
+validated registry; the caller can immediately release all pack records and byte buffers. The
+constructor never invokes the text-measurement callback. Artifacts without `svg` accept an empty
+service list and return typed `missing-capability` for nonempty icon packs without reading them.
 
 Engine options select runtime state explicitly. Omitting `runtime_policy` uses Merman's deterministic clock, UTC time zone, and fixed random seed, even when native adapters are compiled. Set `{ "runtime_policy": "native" }` only when the operation should consult the compiled system clock, time-zone, and random adapters. If one is unavailable, engine creation returns the typed unsupported-operation status. Successful generic operation metadata includes `"runtime_policy":"deterministic"` or `"runtime_policy":"native"`.
 
@@ -105,7 +115,9 @@ Include [`include/merman_resource_contract.h`](include/merman_resource_contract.
 
 The generic operation enums cover SVG, PNG, JPEG, PDF, ASCII, semantic JSON, layout JSON, analysis, validation, and URI-requiring document analysis. An unavailable operation returns the typed `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` result rather than exposing a separate phantom API. Failure JSON schema `1` distinguishes `unknown-operation`, `missing-capability`, `reentrant-call`, and `busy` from `generic`; only `missing-capability` carries a non-null descriptor `capability_id`.
 
-[`examples/render_svg.c`](examples/render_svg.c) is the minimal discovery-and-render program. [`examples/render_svg_engine.c`](examples/render_svg_engine.c) also shows a host text-measurement callback installed when the engine is created.
+[`examples/render_svg.c`](examples/render_svg.c) is the minimal discovery-and-render program.
+[`examples/render_svg_engine.c`](examples/render_svg_engine.c) shows one engine constructed with
+both a host text-measurement callback and a borrowed Iconify pack.
 
 ## Ownership And Callbacks
 

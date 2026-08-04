@@ -31,7 +31,7 @@ const ABI3_CURRENT_SEMANTIC_PROJECTION_PATH: &str = "abi/merman-v3-current-full.
 const ABI3_FROZEN_PUBLISHED_SEMANTIC_DIGEST: &str =
     "sha256:e753816ac4cbdcfe1430755a7e6abb73a303a7055cb8a55b70fcdb44f7d574fe";
 const ABI3_FROZEN_CURRENT_SEMANTIC_DIGEST: &str =
-    "sha256:eafa75e32738b0cf4577dba06d8d7e14fc91be2c55e76be465dac740753cc96f";
+    "sha256:0f67695140b2fdf74efa3ef4cfec852065fa7bbca659887441f1f90f2eeb54c9";
 const ABI3_FROZEN_MINIMUM_SEMANTICS: [&str; 10] = [
     "written-results-own-nonzero-allocation-tokens",
     "result-free-authorizes-by-token-and-clears-the-record",
@@ -489,6 +489,21 @@ fn validate_contiguous_codes(
     }
 }
 
+fn validate_codes_in_descriptor_order(
+    values: impl IntoIterator<Item = i32>,
+    context: &str,
+) -> Result<(), String> {
+    for (expected, actual) in values.into_iter().enumerate() {
+        let expected = i32::try_from(expected).expect("descriptor count fits i32");
+        if actual != expected {
+            return Err(descriptor_error(format!(
+                "{context} must appear in code order; descriptor index {expected} contains code {actual}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn validate_code_descriptors(
     values: &[CodeDescriptor],
     id_context: &str,
@@ -503,6 +518,7 @@ fn validate_code_descriptors(
         &format!("{id_context} C names"),
     )?;
     validate_contiguous_codes(values.iter().map(|value| value.code), id_context)?;
+    validate_codes_in_descriptor_order(values.iter().map(|value| value.code), id_context)?;
     for value in values {
         validate_identifier(&value.id, id_context)?;
         if !value.c_name.starts_with(c_prefix) || !is_ascii_identifier(&value.c_name) {
@@ -989,6 +1005,13 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .map(|operation| operation.code),
         "native ABI operation codes",
     )?;
+    validate_codes_in_descriptor_order(
+        descriptor
+            .operation_codes
+            .iter()
+            .map(|operation| operation.code),
+        "native ABI operation codes",
+    )?;
     if descriptor.operation_codes.len() < minimum_prefix.operation_code_count {
         return Err(descriptor_error(
             "native ABI operation vocabulary is shorter than the frozen minimum prefix",
@@ -1079,6 +1102,10 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         descriptor.callbacks.iter().map(|callback| callback.code),
         "native ABI callbacks",
     )?;
+    validate_codes_in_descriptor_order(
+        descriptor.callbacks.iter().map(|callback| callback.code),
+        "native ABI callbacks",
+    )?;
     for callback in &descriptor.callbacks {
         validate_callable(callback, "native ABI callback", true)?;
     }
@@ -1098,6 +1125,10 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         "native ABI function slot C names",
     )?;
     validate_contiguous_codes(
+        descriptor.function_slots.iter().map(|slot| slot.code),
+        "native ABI function slots",
+    )?;
+    validate_codes_in_descriptor_order(
         descriptor.function_slots.iter().map(|slot| slot.code),
         "native ABI function slots",
     )?;
@@ -2782,6 +2813,54 @@ mod tests {
                 "execute_collect",
                 "result_free",
                 "metadata_collect",
+                "engine_new_with_services",
+            ]
+        );
+        assert_eq!(
+            descriptor
+                .records
+                .iter()
+                .map(|record| record.id.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "slice",
+                "buffer",
+                "text_measure_request",
+                "text_measure_result",
+                "engine_config",
+                "operation_request",
+                "result",
+                "api_request",
+                "api",
+                "icon_pack",
+                "engine_services_config",
+            ]
+        );
+        assert_eq!(
+            descriptor
+                .caller_memory_rules
+                .iter()
+                .map(|rule| rule.id.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "record_pointer_alignment",
+                "caller_memory_validity",
+                "engine_services_constructor_memory",
+            ]
+        );
+        assert_eq!(
+            descriptor
+                .ownership_rules
+                .iter()
+                .map(|rule| rule.id.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "result_buffers",
+                "borrowed_slices",
+                "engine_tokens",
+                "host_callbacks",
+                "disabled_capabilities",
+                "engine_services",
             ]
         );
         assert_eq!(descriptor.status_codes.last().unwrap().id, "busy");
@@ -2853,6 +2932,43 @@ mod tests {
         let mut descriptor = committed_descriptor();
         descriptor.function_slots[5].description = "Reworded metadata collection.".to_string();
         assert!(validate_descriptor(&descriptor).is_ok());
+
+        let mut descriptor = committed_descriptor();
+        descriptor.function_slots.swap(5, 6);
+        assert!(validate_descriptor(&descriptor).is_err());
+
+        let mut descriptor = committed_descriptor();
+        let mut duplicate = descriptor
+            .operation_codes
+            .last()
+            .cloned()
+            .expect("operation vocabulary is non-empty");
+        duplicate.id = "duplicate_terminal_code".to_string();
+        duplicate.c_name = "MERMAN_NATIVE_OPERATION_DUPLICATE_TERMINAL_CODE".to_string();
+        descriptor.operation_codes.push(duplicate);
+        assert!(validate_descriptor(&descriptor).is_err());
+
+        let mut descriptor = committed_descriptor();
+        descriptor.operation_codes.swap(12, 13);
+        assert!(validate_descriptor(&descriptor).is_err());
+
+        let mut descriptor = committed_descriptor();
+        descriptor.records.swap(8, 9);
+        let root = crate::cmd::workspace_root();
+        let operations = resolve_operations(&root, &descriptor).unwrap();
+        let frozen = semantic_projection(
+            &committed_descriptor(),
+            &operations,
+            SemanticProjectionScope::CurrentFull,
+        );
+        let reordered = semantic_projection(
+            &descriptor,
+            &operations,
+            SemanticProjectionScope::CurrentFull,
+        );
+        assert!(
+            validate_semantic_evolution(&frozen, &reordered, &descriptor.append_points).is_err()
+        );
 
         let mut descriptor = committed_descriptor();
         descriptor.operation_codes[1].id = "missing_operation".to_string();

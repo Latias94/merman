@@ -22,7 +22,7 @@ extern "C" {
 
 #define MERMAN_NATIVE_ABI_VERSION 3u
 #define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110"
-#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:a97675e38eaffb001c55d8b89159ef14d6cb5746b58d849e103c881a1be5e73a"
+#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:dd141016448b431d74dbdecb09248a62c21d1ee716803db4f930d5c5b7c364bb"
 #define MERMAN_NATIVE_RESULT_SCHEMA_VERSION 1u
 #define MERMAN_NATIVE_ERROR_KIND_BUSY "busy"
 #define MERMAN_NATIVE_ERROR_KIND_GENERIC "generic"
@@ -150,7 +150,8 @@ enum {
     MERMAN_NATIVE_FUNCTION_ENGINE_TRY_CLOSE = 2,
     MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT = 3,
     MERMAN_NATIVE_FUNCTION_RESULT_FREE = 4,
-    MERMAN_NATIVE_FUNCTION_METADATA_COLLECT = 5
+    MERMAN_NATIVE_FUNCTION_METADATA_COLLECT = 5,
+    MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES = 6
 };
 
 typedef uint64_t MermanNativeEngineToken;
@@ -164,6 +165,8 @@ typedef struct MermanNativeOperationRequest MermanNativeOperationRequest;
 typedef struct MermanNativeResult MermanNativeResult;
 typedef struct MermanNativeApiRequest MermanNativeApiRequest;
 typedef struct MermanNativeApi MermanNativeApi;
+typedef struct MermanNativeIconPack MermanNativeIconPack;
+typedef struct MermanNativeEngineServicesConfig MermanNativeEngineServicesConfig;
 
 typedef MermanNativeStatus (*MermanNativeTextMeasureCallback)(const MermanNativeTextMeasureRequest *request, MermanNativeTextMeasureResult *out_result, void *user_data) MERMAN_NATIVE_NOEXCEPT;
 
@@ -173,6 +176,7 @@ typedef MermanNativeStatus (*MermanNativeEngineTryCloseFn)(MermanNativeEngineTok
 typedef MermanNativeStatus (*MermanNativeExecuteCollectFn)(MermanNativeEngineToken engine, const MermanNativeOperationRequest *request, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
 typedef void (*MermanNativeResultFreeFn)(MermanNativeResult *result) MERMAN_NATIVE_NOEXCEPT;
 typedef MermanNativeStatus (*MermanNativeMetadataCollectFn)(MermanNativeSlice metadata_id, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeEngineNewWithServicesFn)(const MermanNativeEngineServicesConfig *config, MermanNativeEngineToken *out_engine, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
 
 struct MermanNativeSlice {
     uint32_t struct_size;
@@ -264,11 +268,26 @@ struct MermanNativeApi {
     MermanNativeExecuteCollectFn execute_collect;
     MermanNativeResultFreeFn result_free;
     MermanNativeMetadataCollectFn metadata_collect;
+    MermanNativeEngineNewWithServicesFn engine_new_with_services;
+};
+
+struct MermanNativeIconPack {
+    uint32_t struct_size;
+    MermanNativeSlice json;
+    MermanNativeSlice registration_name;
+};
+
+struct MermanNativeEngineServicesConfig {
+    uint32_t struct_size;
+    MermanNativeEngineConfig engine_config;
+    const MermanNativeIconPack *icon_packs;
+    size_t icon_pack_count;
 };
 
 #define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, result_free) + sizeof(((MermanNativeApi *)0)->result_free)))
 
 #define MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, metadata_collect) + sizeof(((MermanNativeApi *)0)->metadata_collect)))
+#define MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, engine_new_with_services) + sizeof(((MermanNativeApi *)0)->engine_new_with_services)))
 
 /*
  * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability
@@ -320,6 +339,14 @@ struct MermanNativeApi {
  *   unknown operation code returns the same status with kind unknown-operation and a null
  *   capability_id. Both failures are written results with nonzero allocation_token values and must
  *   be released with result_free.
+ * - engine_services: engine_new_with_services borrows the outer configuration, embedded options,
+ *   pack records, IconifyJSON bytes, and registration names only until return and never invokes the
+ *   host callback during construction. A successful engine owns the fully validated immutable
+ *   registry without retaining pack pointers; callback and user_data follow the existing
+ *   quiescent-close lifetime. Any validation, registry, service-conflict, engine, token,
+ *   result-allocation, or panic failure publishes no caller-visible engine. If publication must be
+ *   rolled back, the token is retired under lock and the complete engine and service graph are
+ *   destroyed only after all registry and admission locks are released.
  * - engine_tokens: Engine tokens are opaque u64 values. engine_try_close never waits:
  *   callback-active returns reentrant-call, another active operation returns busy with the token
  *   still valid, and quiescent success permanently closes admission before retiring the token. A
@@ -359,6 +386,19 @@ struct MermanNativeApi {
  *   representable shape, size, alignment, range, and documented overlap errors; dangling,
  *   unreadable, concurrently mutated, or otherwise invalid memory remains a caller contract
  *   violation and is not promised a typed status.
+ * - engine_services_constructor_memory: For engine_new_with_services, out_engine and out_result
+ *   must be disjoint from each other and from the outer config, the pack record array, embedded
+ *   options, JSON bytes, and registration-name bytes. Structural record storage must not overlap
+ *   any nested byte slice it describes. Read-only options, JSON, and registration-name slices may
+ *   overlap each other, including multiple logical packs reusing the same bytes; each logical pack
+ *   is still charged independently. out_engine must be initialized to zero and remains zero on
+ *   every failure. In artifacts exposing the icon-registry constructor service, the implementation
+ *   validates icon_pack_count against the fixed pack ceiling before checked multiplication or array
+ *   access and rejects nonzero count with a null or misaligned array. Artifacts without the svg
+ *   capability may return missing-capability for any nonzero icon_pack_count without dereferencing
+ *   or validating the pack array or nested pack slices. The code-6 constructor requires
+ *   text_measure_user_data to be null when text_measure is null without changing the code-1
+ *   engine_new contract.
  */
 MermanNativeStatus merman_get_native_api(const MermanNativeApiRequest *request, MermanNativeApi *out_api) MERMAN_NATIVE_NOEXCEPT;
 

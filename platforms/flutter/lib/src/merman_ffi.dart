@@ -1917,6 +1917,12 @@ class _NativeApi {
         metadataCollect = table.metadata_collect
             .asFunction<native.DartMermanNativeMetadataCollectFnFunction>();
       }
+      if (_nativeApiHasEngineServicesConstructorSlot(table.struct_size)) {
+        _requireFunctionPointer(
+          table.engine_new_with_services,
+          'engine_new_with_services',
+        );
+      }
 
       return _NativeApi._(
         packageVersion: packageVersion,
@@ -2190,8 +2196,17 @@ void validateNativeResultForTesting(
 bool nativeApiHasMetadataCollectForTesting(int producerTableSize) =>
     _nativeApiHasMetadataCollectSlot(producerTableSize);
 
+/// Reports whether a producer-written ABI table includes the appended
+/// constructor-services slot without reading beyond that complete prefix.
+bool nativeApiHasEngineServicesConstructorForTesting(int producerTableSize) =>
+    _nativeApiHasEngineServicesConstructorSlot(producerTableSize);
+
 bool _nativeApiHasMetadataCollectSlot(int producerTableSize) =>
     producerTableSize >= native.MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE;
+
+bool _nativeApiHasEngineServicesConstructorSlot(int producerTableSize) =>
+    producerTableSize >=
+    native.MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE;
 
 void _requireNativeResultWritten(
   native.MermanNativeResult result,

@@ -149,6 +149,18 @@ uint64_t merman_c_layout_fingerprint(void) {
     HASH_FIELD(hash, MermanNativeApi, execute_collect);
     HASH_FIELD(hash, MermanNativeApi, result_free);
     HASH_FIELD(hash, MermanNativeApi, metadata_collect);
+    HASH_FIELD(hash, MermanNativeApi, engine_new_with_services);
+
+    HASH_RECORD(hash, MermanNativeIconPack);
+    HASH_FIELD(hash, MermanNativeIconPack, struct_size);
+    HASH_FIELD(hash, MermanNativeIconPack, json);
+    HASH_FIELD(hash, MermanNativeIconPack, registration_name);
+
+    HASH_RECORD(hash, MermanNativeEngineServicesConfig);
+    HASH_FIELD(hash, MermanNativeEngineServicesConfig, struct_size);
+    HASH_FIELD(hash, MermanNativeEngineServicesConfig, engine_config);
+    HASH_FIELD(hash, MermanNativeEngineServicesConfig, icon_packs);
+    HASH_FIELD(hash, MermanNativeEngineServicesConfig, icon_pack_count);
 
     return hash;
 }
@@ -163,6 +175,11 @@ int merman_c_consumer_smoke(
     int require_complete_artifact
 ) {
     static const uint8_t source[] = "flowchart TD\nA --> B";
+    static const uint8_t icon_source[] =
+        "flowchart TD\nA@{ icon: \"smoke:rocket\", label: \"A\" } --> B";
+    static const uint8_t icon_pack_json[] =
+        "{\"prefix\":\"smoke\",\"icons\":{\"rocket\":{\"body\":"
+        "\"<path data-icon=\\\"c-service-registry\\\" d=\\\"M0 0H16V16H0z\\\"/>\"}}}";
     static const uint8_t request_options[] =
         "{\"svg\":{\"diagram_id\":\"c-request\"}}";
     static const char *metadata_ids[] = {
@@ -178,6 +195,8 @@ int merman_c_consumer_smoke(
     MermanNativeApi api;
     MermanNativeResult result;
     MermanNativeEngineConfig config;
+    MermanNativeIconPack icon_pack;
+    MermanNativeEngineServicesConfig services_config;
     MermanNativeEngineToken engine = 0;
     MermanNativeOperationRequest request;
     MermanNativeStatus status;
@@ -205,7 +224,8 @@ int merman_c_consumer_smoke(
         api.engine_try_close == NULL ||
         api.execute_collect == NULL ||
         api.result_free == NULL ||
-        api.metadata_collect == NULL
+        api.metadata_collect == NULL ||
+        api.engine_new_with_services == NULL
     ) {
         return 2;
     }
@@ -319,9 +339,22 @@ int merman_c_consumer_smoke(
     }
     api.result_free(&result);
 
+    memset(&icon_pack, 0, sizeof(icon_pack));
+    icon_pack.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeIconPack);
+    icon_pack.json = borrowed_slice(icon_pack_json, sizeof(icon_pack_json) - 1);
+    icon_pack.registration_name = borrowed_slice(NULL, 0);
+
+    memset(&services_config, 0, sizeof(services_config));
+    services_config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineServicesConfig);
+    services_config.engine_config = config;
+    if (require_complete_artifact) {
+        services_config.icon_packs = &icon_pack;
+        services_config.icon_pack_count = 1;
+    }
+
     engine = 0;
     result = empty_result();
-    status = api.engine_new(&config, &engine, &result);
+    status = api.engine_new_with_services(&services_config, &engine, &result);
     if (
         status != MERMAN_NATIVE_STATUS_OK ||
         result.status != MERMAN_NATIVE_STATUS_OK ||
@@ -340,6 +373,7 @@ int merman_c_consumer_smoke(
 
     if (require_complete_artifact) {
         request.operation = MERMAN_NATIVE_OPERATION_SVG;
+        request.source = borrowed_slice(icon_source, sizeof(icon_source) - 1);
         request.options_json = borrowed_slice(
             request_options,
             sizeof(request_options) - 1
@@ -352,6 +386,11 @@ int merman_c_consumer_smoke(
             result.operation != MERMAN_NATIVE_OPERATION_SVG ||
             !bytes_contain(result.data.data, result.data.len, "<svg") ||
             !bytes_contain(result.data.data, result.data.len, "id=\"c-request\"") ||
+            !bytes_contain(
+                result.data.data,
+                result.data.len,
+                "data-icon=\"c-service-registry\""
+            ) ||
             !bytes_contain(
                 result.metadata_or_error_json.data,
                 result.metadata_or_error_json.len,
@@ -368,6 +407,7 @@ int merman_c_consumer_smoke(
             return 5;
         }
         api.result_free(&result);
+        request.source = borrowed_slice(source, sizeof(source) - 1);
         request.options_json = borrowed_slice(NULL, 0);
 
         request.operation = MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON;

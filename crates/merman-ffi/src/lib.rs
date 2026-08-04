@@ -6,14 +6,16 @@
 //! function table and execute every operation through the shared binding operation path. No raw Rust
 //! allocation or Rust object pointer crosses this boundary.
 
-#[cfg(feature = "svg")]
-use merman_bindings_core::HostMeasurementResult;
 use merman_bindings_core::{
     ArtifactContractSpec, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError,
     BindingEngineAdmissionMode, BindingEngineServices, BindingError, BindingErrorKind,
-    BindingOperationRequest, BindingPayloadSchemaKey, BindingResourceErrorDetails, BindingStatus,
-    CapabilityKey, ConstructorServiceKey, OperationKey, RuntimePolicyExposure, TargetKey,
-    ValidatedArtifactContract,
+    BindingIconRegistryErrorDetails, BindingOperationRequest, BindingPayloadSchemaKey,
+    BindingResourceErrorDetails, BindingStatus, CapabilityKey, ConstructorServiceKey, OperationKey,
+    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+};
+#[cfg(feature = "svg")]
+use merman_bindings_core::{
+    HostMeasurementResult, IconPack, IconRegistryResourceLimitId, build_icon_registry,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -26,6 +28,13 @@ include!("generated/text_measurement_abi.rs");
 include!("generated/abi3.rs");
 
 const PACKAGE_VERSION: &[u8] = env!("CARGO_PKG_VERSION").as_bytes();
+#[cfg(feature = "svg")]
+const NATIVE_ICON_PACK_RECORD_LIMIT: usize = 16;
+
+#[cfg(feature = "svg")]
+const _: () = assert!(
+    NATIVE_ICON_PACK_RECORD_LIMIT == IconRegistryResourceLimitId::MaxPacks.fixed_value() as usize
+);
 
 #[derive(Debug)]
 struct NativeFailure {
@@ -33,6 +42,7 @@ struct NativeFailure {
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
     resource: Option<BindingResourceErrorDetails>,
+    icon_registry: Option<BindingIconRegistryErrorDetails>,
     message: String,
 }
 
@@ -78,6 +88,7 @@ impl NativeFailure {
             kind,
             capability_id,
             resource,
+            icon_registry: None,
             message: message.into(),
         }
     }
@@ -129,6 +140,18 @@ impl NativeEngineRegistry {
         ));
         let previous = self.engines.insert(token, engine);
         debug_assert!(previous.is_none(), "native engine tokens are never reused");
+    }
+
+    fn try_publish(
+        &mut self,
+        engine: Arc<NativeEngineState>,
+    ) -> Result<MermanNativeEngineToken, (NativeFailure, Arc<NativeEngineState>)> {
+        let token = match self.issue_token() {
+            Ok(token) => token,
+            Err(failure) => return Err((failure, engine)),
+        };
+        self.publish(token, engine);
+        Ok(token)
     }
 
     fn acquire(&self, token: MermanNativeEngineToken) -> Option<Arc<NativeEngineState>> {
@@ -203,6 +226,8 @@ static RUNTIME_CATALOG_DIGEST: OnceLock<Box<[u8]>> = OnceLock::new();
 const NATIVE_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
     #[cfg(feature = "svg")]
     ConstructorServiceKey::HostTextMeasurement,
+    #[cfg(feature = "svg")]
+    ConstructorServiceKey::IconRegistry,
 ];
 const NATIVE_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
@@ -342,8 +367,18 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
         "capability_id": failure.capability_id,
         "message": failure.message.as_str(),
     });
-    if let Some(resource) = failure.resource {
-        payload["details"] = serde_json::json!({ "resource": resource });
+    if failure.resource.is_some() || failure.icon_registry.is_some() {
+        let mut details = serde_json::Map::new();
+        if let Some(resource) = failure.resource {
+            details.insert("resource".to_string(), serde_json::json!(resource));
+        }
+        if let Some(icon_registry) = &failure.icon_registry {
+            details.insert(
+                "icon_registry".to_string(),
+                serde_json::json!(icon_registry),
+            );
+        }
+        payload["details"] = serde_json::Value::Object(details);
     }
     serde_json::to_vec(&payload)
     .unwrap_or_else(|_| {
@@ -379,13 +414,16 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         BindingStatus::ResourceLimitExceeded => MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
         BindingStatus::Busy => MERMAN_NATIVE_STATUS_BUSY,
     };
-    NativeFailure::classified(
+    let icon_registry = error.icon_registry_details().cloned();
+    let mut failure = NativeFailure::classified(
         status,
         error.kind(),
         error.capability_id(),
         error.resource_details(),
         error.message(),
-    )
+    );
+    failure.icon_registry = icon_registry;
+    failure
 }
 
 fn native_artifact_contract() -> &'static ValidatedArtifactContract {
@@ -815,6 +853,122 @@ unsafe fn read_engine_config(
     Ok(unsafe { ptr::read(config) })
 }
 
+#[cfg(any(feature = "svg", test))]
+fn checked_record_array_byte_len<T>(count: usize, name: &str) -> Result<usize, NativeFailure> {
+    let byte_len = count.checked_mul(size_of::<T>()).ok_or_else(|| {
+        NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{name} byte length overflows usize"),
+        )
+    })?;
+    if byte_len > isize::MAX as usize {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{name} byte length must not exceed isize::MAX"),
+        ));
+    }
+    Ok(byte_len)
+}
+
+#[cfg(any(feature = "svg", test))]
+fn validate_record_array_range<T>(
+    records: *const T,
+    count: usize,
+    name: &str,
+) -> Result<usize, NativeFailure> {
+    if count == 0 {
+        return Ok(0);
+    }
+    if records.is_null() {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{name} must not be null when its count is non-zero"),
+        ));
+    }
+    let byte_len = checked_record_array_byte_len::<T>(count, name)?;
+    if records.addr().checked_add(byte_len).is_none() {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{name} address range overflows usize"),
+        ));
+    }
+    Ok(byte_len)
+}
+
+#[cfg(test)]
+fn validate_record_array_shape<T>(
+    records: *const T,
+    count: usize,
+    name: &str,
+) -> Result<usize, NativeFailure> {
+    let byte_len = validate_record_array_range(records, count, name)?;
+    if count != 0 {
+        validate_pointer_alignment(records, name)?;
+    }
+    Ok(byte_len)
+}
+
+fn validate_declared_record_array_disjoint<T>(
+    records: *const T,
+    count: usize,
+    records_name: &str,
+    other: *const u8,
+    other_len: usize,
+    other_name: &str,
+) -> Result<(), NativeFailure> {
+    if records.is_null() || count == 0 || other_len == 0 {
+        return Ok(());
+    }
+    let element_size = size_of::<T>();
+    debug_assert_ne!(element_size, 0, "native record arrays never contain ZSTs");
+    let records_start = records.addr();
+    let other_start = other.addr();
+    let other_end = other_start.checked_add(other_len).ok_or_else(|| {
+        NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{other_name} address range overflows usize"),
+        )
+    })?;
+    let overlaps = if records_start >= other_end {
+        false
+    } else if records_start >= other_start {
+        true
+    } else {
+        let distance = other_start - records_start;
+        count > distance / element_size
+    };
+    if overlaps {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{records_name} and {other_name} must not overlap"),
+        ));
+    }
+    Ok(())
+}
+
+fn defer_first_failure(slot: &mut Option<NativeFailure>, failure: NativeFailure) {
+    if slot.is_none() {
+        *slot = Some(failure);
+    }
+}
+
+unsafe fn read_engine_services_config(
+    config: *const MermanNativeEngineServicesConfig,
+) -> Result<MermanNativeEngineServicesConfig, NativeFailure> {
+    if config.is_null() {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "config must not be null",
+        ));
+    }
+    validate_pointer_alignment(config, "config")?;
+    validate_struct_size::<MermanNativeEngineServicesConfig>(
+        unsafe { read_record_struct_size(config) },
+        "config",
+    )?;
+    Ok(unsafe { ptr::read(config) })
+}
+
 struct NativeOperationRequest<'a> {
     operation: MermanNativeOperationCode,
     source: &'a [u8],
@@ -1183,6 +1337,7 @@ unsafe fn get_native_api_impl(
             execute_collect: Some(native_execute_collect),
             result_free: Some(native_result_free),
             metadata_collect: Some(native_metadata_collect),
+            engine_new_with_services: Some(native_engine_new_with_services),
         };
         let initialized_size = MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES
             .iter()
@@ -1410,81 +1565,527 @@ unsafe fn engine_new_impl(
     let outcome = (|| {
         let options_json =
             unsafe { native_slice_bytes(config.options_json, "config.options_json") }?;
-        let admission = BindingEngineAdmission::new(if config.text_measure.is_some() {
-            BindingEngineAdmissionMode::HostCallback
-        } else {
-            BindingEngineAdmissionMode::Concurrent
-        });
-        #[cfg(feature = "svg")]
-        let services = if let Some(callback) = config.text_measure {
-            let measurer = NativeHostTextMeasurer::new(
-                callback,
-                config.text_measure_user_data,
-                Arc::clone(&admission),
-            );
-            BindingEngineServices::new().with_host_text_measurer(Arc::new(measurer))
-        } else {
-            BindingEngineServices::new()
-        };
-
-        #[cfg(not(feature = "svg"))]
-        let services = {
-            if config.text_measure.is_some() {
-                return Err(NativeFailure::missing_capability(
-                    "svg",
-                    "host text measurement requires an artifact with the svg capability",
-                ));
-            }
-            BindingEngineServices::new()
-        };
-        let engine = native_artifact_contract()
-            .create_engine_with_services(options_json, services)
-            .map_err(native_failure_from_binding)?;
-
-        let state = Arc::new(NativeEngineState { engine, admission });
-        let token = {
-            let mut registry = engine_registry()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let token = registry.issue_token()?;
-            registry.publish(token, state);
-            token
-        };
-        Ok(token)
+        let state = create_native_engine_state(config, options_json, BindingEngineServices::new())?;
+        unsafe { publish_native_engine_result(state, out_engine, out_result, "engine-new") }
     })();
 
     match outcome {
-        Ok(token) => {
-            let result_status = unsafe {
-                write_native_result(
-                    out_result,
-                    MERMAN_NATIVE_STATUS_OK,
-                    MERMAN_NATIVE_OPERATION_NONE,
-                    None,
-                    Vec::new(),
-                    native_success_json("engine-new"),
-                )
-            };
-            if result_status != MERMAN_NATIVE_STATUS_OK {
-                let retired = {
-                    let mut registry = engine_registry()
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    if let Some(state) = registry.acquire(token) {
-                        let _ = state.admission.try_close();
-                    }
-                    registry.retire(token)
-                };
-                drop(retired);
-                return result_status;
-            }
-            unsafe { ptr::write(out_engine, token) };
-            result_status
-        }
+        Ok(status) => status,
         Err(failure) => unsafe {
             write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
         },
     }
+}
+
+unsafe extern "C" fn native_engine_new_with_services(
+    config: *const MermanNativeEngineServicesConfig,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    unsafe {
+        result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
+            engine_new_with_services_impl(config, out_engine, out_result)
+        })
+    }
+}
+
+unsafe fn engine_new_with_services_impl(
+    config: *const MermanNativeEngineServicesConfig,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    let config_ptr = config;
+    if let Err(failure) = unsafe { result_is_writable(out_result) } {
+        return failure.status;
+    }
+    if out_engine.is_null() {
+        return MERMAN_NATIVE_STATUS_INVALID_ARGUMENT;
+    }
+
+    let fixed_storage_validation = (|| {
+        validate_disjoint_storage(
+            out_engine.cast::<u8>(),
+            size_of::<MermanNativeEngineToken>(),
+            "out_engine",
+            out_result.cast::<u8>(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        )?;
+        validate_disjoint_storage(
+            config.cast::<u8>(),
+            size_of::<MermanNativeEngineServicesConfig>(),
+            "config",
+            out_engine.cast::<u8>(),
+            size_of::<MermanNativeEngineToken>(),
+            "out_engine",
+        )?;
+        validate_disjoint_storage(
+            config.cast::<u8>(),
+            size_of::<MermanNativeEngineServicesConfig>(),
+            "config",
+            out_result.cast::<u8>(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        )
+    })();
+    if let Err(failure) = fixed_storage_validation {
+        return failure.status;
+    }
+    if let Err(failure) = validate_pointer_alignment(out_engine, "out_engine") {
+        return failure.status;
+    }
+
+    let config = match unsafe { read_engine_services_config(config_ptr) } {
+        Ok(config) => config,
+        Err(failure) => return failure.status,
+    };
+    let engine_config = config.engine_config;
+
+    let options_storage_validation = (|| {
+        validate_disjoint_storage(
+            config_ptr.cast::<u8>(),
+            size_of::<MermanNativeEngineServicesConfig>(),
+            "config",
+            engine_config.options_json.data,
+            engine_config.options_json.len,
+            "config.engine_config.options_json",
+        )?;
+        validate_disjoint_storage(
+            engine_config.options_json.data,
+            engine_config.options_json.len,
+            "config.engine_config.options_json",
+            out_engine.cast::<u8>(),
+            size_of::<MermanNativeEngineToken>(),
+            "out_engine",
+        )?;
+        validate_disjoint_storage(
+            engine_config.options_json.data,
+            engine_config.options_json.len,
+            "config.engine_config.options_json",
+            out_result.cast::<u8>(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        )
+    })();
+    if let Err(failure) = options_storage_validation {
+        return failure.status;
+    }
+    let mut deferred_failure = None;
+    if let Err(failure) = validate_struct_size::<MermanNativeEngineConfig>(
+        engine_config.struct_size,
+        "config.engine_config",
+    ) {
+        defer_first_failure(&mut deferred_failure, failure);
+    }
+    if let Err(failure) = validate_native_slice_shape(
+        engine_config.options_json,
+        "config.engine_config.options_json",
+    ) {
+        defer_first_failure(&mut deferred_failure, failure);
+    }
+
+    let declared_array_storage_validation = (|| {
+        validate_declared_record_array_disjoint(
+            config.icon_packs,
+            config.icon_pack_count,
+            "config.icon_packs",
+            config_ptr.cast::<u8>(),
+            size_of::<MermanNativeEngineServicesConfig>(),
+            "config",
+        )?;
+        validate_declared_record_array_disjoint(
+            config.icon_packs,
+            config.icon_pack_count,
+            "config.icon_packs",
+            engine_config.options_json.data,
+            engine_config.options_json.len,
+            "config.engine_config.options_json",
+        )?;
+        validate_declared_record_array_disjoint(
+            config.icon_packs,
+            config.icon_pack_count,
+            "config.icon_packs",
+            out_engine.cast::<u8>(),
+            size_of::<MermanNativeEngineToken>(),
+            "out_engine",
+        )?;
+        validate_declared_record_array_disjoint(
+            config.icon_packs,
+            config.icon_pack_count,
+            "config.icon_packs",
+            out_result.cast::<u8>(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        )
+    })();
+    if let Err(failure) = declared_array_storage_validation {
+        return failure.status;
+    }
+
+    #[cfg(not(feature = "svg"))]
+    {
+        if let Some(failure) = deferred_failure.take() {
+            return unsafe {
+                write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+            };
+        }
+        if config.icon_pack_count != 0 {
+            let failure = NativeFailure::missing_capability(
+                "svg",
+                "icon registry construction requires an artifact with the svg capability",
+            );
+            return unsafe {
+                write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+            };
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    let icon_packs = {
+        let mut deferred_failure_is_writable = true;
+        if config.icon_pack_count > NATIVE_ICON_PACK_RECORD_LIMIT {
+            defer_first_failure(
+                &mut deferred_failure,
+                native_icon_pack_count_limit_failure(config.icon_pack_count),
+            );
+        }
+
+        let mut native_packs = Vec::new();
+        if config.icon_pack_count <= NATIVE_ICON_PACK_RECORD_LIMIT {
+            let icon_pack_byte_len = match validate_record_array_range(
+                config.icon_packs,
+                config.icon_pack_count,
+                "config.icon_packs",
+            ) {
+                Ok(byte_len) => byte_len,
+                Err(failure) => return failure.status,
+            };
+            let icon_pack_array = config.icon_packs.cast::<u8>();
+            if config.icon_pack_count != 0 {
+                if let Err(failure) =
+                    validate_pointer_alignment(config.icon_packs, "config.icon_packs")
+                {
+                    return failure.status;
+                }
+            }
+
+            native_packs.reserve(config.icon_pack_count);
+            for index in 0..config.icon_pack_count {
+                let pack_ptr = unsafe { config.icon_packs.add(index) };
+                match validate_struct_size::<MermanNativeIconPack>(
+                    unsafe { read_record_struct_size(pack_ptr) },
+                    &format!("config.icon_packs[{index}]"),
+                ) {
+                    Ok(()) => native_packs.push(Some(unsafe { ptr::read(pack_ptr) })),
+                    Err(failure) => {
+                        defer_first_failure(&mut deferred_failure, failure);
+                        deferred_failure_is_writable = false;
+                        native_packs.push(None);
+                    }
+                }
+            }
+
+            for (index, pack) in native_packs.iter().enumerate() {
+                let Some(pack) = pack else {
+                    continue;
+                };
+                for (slice, name) in [
+                    (pack.json, format!("config.icon_packs[{index}].json")),
+                    (
+                        pack.registration_name,
+                        format!("config.icon_packs[{index}].registration_name"),
+                    ),
+                ] {
+                    let slice_storage_validation = (|| {
+                        validate_disjoint_storage(
+                            config_ptr.cast::<u8>(),
+                            size_of::<MermanNativeEngineServicesConfig>(),
+                            "config",
+                            slice.data,
+                            slice.len,
+                            &name,
+                        )?;
+                        validate_disjoint_storage(
+                            icon_pack_array,
+                            icon_pack_byte_len,
+                            "config.icon_packs",
+                            slice.data,
+                            slice.len,
+                            &name,
+                        )?;
+                        validate_disjoint_storage(
+                            slice.data,
+                            slice.len,
+                            &name,
+                            out_engine.cast::<u8>(),
+                            size_of::<MermanNativeEngineToken>(),
+                            "out_engine",
+                        )?;
+                        validate_disjoint_storage(
+                            slice.data,
+                            slice.len,
+                            &name,
+                            out_result.cast::<u8>(),
+                            size_of::<MermanNativeResult>(),
+                            "out_result",
+                        )
+                    })();
+                    if let Err(failure) = slice_storage_validation {
+                        return failure.status;
+                    }
+                    if let Err(failure) = validate_native_slice_shape(slice, &name) {
+                        defer_first_failure(&mut deferred_failure, failure);
+                    }
+                }
+            }
+        }
+
+        if let Some(failure) = deferred_failure.take() {
+            if !deferred_failure_is_writable {
+                return failure.status;
+            }
+            return unsafe {
+                write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+            };
+        }
+
+        let mut packs = Vec::with_capacity(native_packs.len());
+        for (index, pack) in native_packs.into_iter().enumerate() {
+            let pack = pack.expect("validated native icon-pack records are complete");
+            let json = match unsafe {
+                native_slice_bytes(pack.json, &format!("config.icon_packs[{index}].json"))
+            } {
+                Ok(json) => json,
+                Err(failure) => {
+                    return unsafe {
+                        write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+                    };
+                }
+            };
+            let registration_name_bytes = match unsafe {
+                native_slice_bytes(
+                    pack.registration_name,
+                    &format!("config.icon_packs[{index}].registration_name"),
+                )
+            } {
+                Ok(bytes) => bytes,
+                Err(failure) => {
+                    return unsafe {
+                        write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+                    };
+                }
+            };
+            let registration_name = if registration_name_bytes.is_empty() {
+                None
+            } else {
+                match std::str::from_utf8(registration_name_bytes) {
+                    Ok(name) => Some(name),
+                    Err(error) => {
+                        let failure = native_failure_from_binding(
+                            BindingError::icon_registry_invalid_utf8(
+                                index,
+                                format!(
+                                    "config.icon_packs[{index}].registration_name must be valid UTF-8: {error}"
+                                ),
+                            ),
+                        );
+                        return unsafe {
+                            write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+                        };
+                    }
+                }
+            };
+            let pack = match registration_name {
+                Some(name) => IconPack::new(json).with_registration_name(name),
+                None => IconPack::new(json),
+            };
+            packs.push(pack);
+        }
+        packs
+    };
+
+    if unsafe { ptr::read(out_engine) } != 0 {
+        let failure = NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "out_engine must be initialized to zero",
+        );
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    }
+    if engine_config.text_measure.is_none() && !engine_config.text_measure_user_data.is_null() {
+        let failure = NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "config.engine_config.text_measure_user_data must be null when text_measure is null",
+        );
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    }
+
+    let outcome = (|| {
+        let options_json = unsafe {
+            native_slice_bytes(
+                engine_config.options_json,
+                "config.engine_config.options_json",
+            )
+        }?;
+        let services = BindingEngineServices::new();
+        #[cfg(feature = "svg")]
+        let services = if icon_packs.is_empty() {
+            services
+        } else {
+            let icon_registry =
+                build_icon_registry(icon_packs).map_err(native_failure_from_binding)?;
+            services.with_icon_registry(icon_registry)
+        };
+        let state = create_native_engine_state(engine_config, options_json, services)?;
+        unsafe {
+            publish_native_engine_result(state, out_engine, out_result, "engine-new-with-services")
+        }
+    })();
+
+    match outcome {
+        Ok(status) => status,
+        Err(failure) => unsafe {
+            write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+        },
+    }
+}
+
+#[cfg(feature = "svg")]
+fn native_icon_pack_count_limit_failure(actual: usize) -> NativeFailure {
+    let limit = IconRegistryResourceLimitId::MaxPacks;
+    native_failure_from_binding(BindingError::icon_registry_resource_limit(
+        limit,
+        u64::try_from(actual).unwrap_or(u64::MAX),
+        None,
+        format!(
+            "icon registry pack count {actual} exceeds the fixed limit {}",
+            limit.fixed_value()
+        ),
+    ))
+}
+
+fn create_native_engine_state(
+    config: MermanNativeEngineConfig,
+    options_json: &[u8],
+    mut services: BindingEngineServices,
+) -> Result<Arc<NativeEngineState>, NativeFailure> {
+    let admission = BindingEngineAdmission::new(if config.text_measure.is_some() {
+        BindingEngineAdmissionMode::HostCallback
+    } else {
+        BindingEngineAdmissionMode::Concurrent
+    });
+
+    #[cfg(feature = "svg")]
+    if let Some(callback) = config.text_measure {
+        let measurer = NativeHostTextMeasurer::new(
+            callback,
+            config.text_measure_user_data,
+            Arc::clone(&admission),
+        );
+        services = services.with_host_text_measurer(Arc::new(measurer));
+    }
+
+    #[cfg(not(feature = "svg"))]
+    {
+        let _ = &mut services;
+        if config.text_measure.is_some() {
+            return Err(NativeFailure::missing_capability(
+                "svg",
+                "host text measurement requires an artifact with the svg capability",
+            ));
+        }
+    }
+
+    let engine = native_artifact_contract()
+        .create_engine_with_services(options_json, services)
+        .map_err(native_failure_from_binding)?;
+    Ok(Arc::new(NativeEngineState { engine, admission }))
+}
+
+struct PendingNativeEngine {
+    token: Option<MermanNativeEngineToken>,
+}
+
+impl PendingNativeEngine {
+    fn publish(state: Arc<NativeEngineState>) -> Result<Self, NativeFailure> {
+        let publication = {
+            let mut registry = engine_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            registry.try_publish(state)
+        };
+        let token = match publication {
+            Ok(token) => token,
+            Err((failure, state)) => {
+                drop(state);
+                return Err(failure);
+            }
+        };
+        Ok(Self { token: Some(token) })
+    }
+
+    fn token(&self) -> MermanNativeEngineToken {
+        self.token
+            .expect("a pending native engine owns one published token")
+    }
+
+    fn commit(mut self) {
+        self.token = None;
+    }
+}
+
+impl Drop for PendingNativeEngine {
+    fn drop(&mut self) {
+        let Some(token) = self.token.take() else {
+            return;
+        };
+        let retired = {
+            let mut registry = engine_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(state) = registry.acquire(token) {
+                let _ = state.admission.try_close();
+            }
+            registry.retire(token)
+        };
+        drop(retired);
+    }
+}
+
+unsafe fn publish_native_engine_result(
+    state: Arc<NativeEngineState>,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+    success_operation: &str,
+) -> Result<MermanNativeStatus, NativeFailure> {
+    unsafe {
+        publish_native_engine_result_with_writer(state, out_engine, out_result, |out_result| {
+            write_native_result(
+                out_result,
+                MERMAN_NATIVE_STATUS_OK,
+                MERMAN_NATIVE_OPERATION_NONE,
+                None,
+                Vec::new(),
+                native_success_json(success_operation),
+            )
+        })
+    }
+}
+
+unsafe fn publish_native_engine_result_with_writer(
+    state: Arc<NativeEngineState>,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+    write_success: impl FnOnce(*mut MermanNativeResult) -> MermanNativeStatus,
+) -> Result<MermanNativeStatus, NativeFailure> {
+    let pending = PendingNativeEngine::publish(state)?;
+    let token = pending.token();
+    let status = write_success(out_result);
+    if status != MERMAN_NATIVE_STATUS_OK {
+        return Ok(status);
+    }
+    unsafe { ptr::write(out_engine, token) };
+    pending.commit();
+    Ok(status)
 }
 
 unsafe extern "C" fn native_engine_try_close(
@@ -1591,6 +2192,12 @@ mod tests {
         struct_size: u32,
     }
 
+    #[repr(C, align(16))]
+    #[cfg(feature = "svg")]
+    struct AlignedStructSizeOnly {
+        struct_size: u32,
+    }
+
     /// The ABI 3 table shape before the append-only `metadata_collect` slot.
     ///
     /// This deliberately does not use `MermanNativeApi`: a real older consumer owns only this
@@ -1633,6 +2240,12 @@ mod tests {
         trailing_guard: [u8; 16],
     }
 
+    #[repr(C)]
+    struct Abi3PublishedSixApiBuffer {
+        api: Abi3PublishedSixApi,
+        trailing_guard: [u8; 16],
+    }
+
     fn empty_api() -> MermanNativeApi {
         MermanNativeApi {
             struct_size: native_struct_size::<MermanNativeApi>(),
@@ -1647,6 +2260,7 @@ mod tests {
             execute_collect: None,
             result_free: None,
             metadata_collect: None,
+            engine_new_with_services: None,
         }
     }
 
@@ -1770,6 +2384,31 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "svg")]
+    fn native_icon_pack(json: &[u8], registration_name: &[u8]) -> MermanNativeIconPack {
+        MermanNativeIconPack {
+            struct_size: native_struct_size::<MermanNativeIconPack>(),
+            json: borrowed_slice(json),
+            registration_name: borrowed_slice(registration_name),
+        }
+    }
+
+    fn native_services_config(
+        engine_config: MermanNativeEngineConfig,
+        icon_packs: &[MermanNativeIconPack],
+    ) -> MermanNativeEngineServicesConfig {
+        MermanNativeEngineServicesConfig {
+            struct_size: native_struct_size::<MermanNativeEngineServicesConfig>(),
+            engine_config,
+            icon_packs: if icon_packs.is_empty() {
+                ptr::null()
+            } else {
+                icon_packs.as_ptr()
+            },
+            icon_pack_count: icon_packs.len(),
+        }
+    }
+
     fn native_request(
         operation: MermanNativeOperationCode,
         source: &[u8],
@@ -1813,6 +2452,27 @@ mod tests {
     struct CrossThreadReentrantTextMeasureContext {
         token: MermanNativeEngineToken,
         nested_status: MermanNativeStatus,
+    }
+
+    #[cfg(feature = "svg")]
+    struct CountingTextMeasureContext {
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    #[cfg(feature = "svg")]
+    unsafe extern "C" fn counting_text_measure_callback(
+        _request: *const MermanNativeTextMeasureRequest,
+        out_result: *mut MermanNativeTextMeasureResult,
+        user_data: *mut std::ffi::c_void,
+    ) -> MermanNativeStatus {
+        let context = unsafe { &*(user_data.cast::<CountingTextMeasureContext>()) };
+        context
+            .calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if !out_result.is_null() {
+            unsafe { (*out_result).handled = 0 };
+        }
+        MERMAN_NATIVE_STATUS_OK
     }
 
     #[cfg(feature = "svg")]
@@ -1936,6 +2596,7 @@ mod tests {
         assert!(api.execute_collect.is_some());
         assert!(api.result_free.is_some());
         assert!(api.metadata_collect.is_some());
+        assert!(api.engine_new_with_services.is_some());
     }
 
     #[test]
@@ -1968,11 +2629,16 @@ mod tests {
             native_struct_size::<MermanNativeApi>()
         );
         assert!(MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE < native_struct_size::<MermanNativeApi>());
+        assert!(
+            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE
+                < MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE
+        );
         assert_eq!(
-            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
+            MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE,
             native_struct_size::<MermanNativeApi>()
         );
         assert!(buffer.api.metadata_collect.is_some());
+        assert!(buffer.api.engine_new_with_services.is_some());
         assert_eq!(buffer.suffix, [0xa5; 32]);
         let prefix_digest = unsafe {
             std::slice::from_raw_parts(
@@ -2000,6 +2666,7 @@ mod tests {
             &[
                 MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
                 MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
+                MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE,
             ]
         );
 
@@ -2023,6 +2690,39 @@ mod tests {
         assert!(minimum.api.runtime_catalog.is_some());
         assert!(minimum.api.result_free.is_some());
         assert_eq!(minimum.trailing_guard, [0xa5; 16]);
+
+        assert_eq!(
+            size_of::<Abi3PublishedSixApi>() as u32,
+            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE
+        );
+        let mut published_six = Abi3PublishedSixApiBuffer {
+            api: empty_published_six_api(),
+            trailing_guard: [0xa5; 16],
+        };
+        let published_six_api = ptr::addr_of_mut!(published_six.api).cast::<MermanNativeApi>();
+        assert_eq!(
+            unsafe { merman_get_native_api(&request, published_six_api) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            published_six.api.struct_size,
+            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE
+        );
+        assert!(published_six.api.metadata_collect.is_some());
+        assert_eq!(published_six.trailing_guard, [0xa5; 16]);
+
+        let mut partial_services = empty_api();
+        partial_services.struct_size = MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE + 1;
+        assert_eq!(
+            unsafe { merman_get_native_api(&request, &mut partial_services) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            partial_services.struct_size,
+            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE
+        );
+        assert!(partial_services.metadata_collect.is_some());
+        assert!(partial_services.engine_new_with_services.is_none());
 
         // The returned prefix size is itself safe input capacity. Older consumers do not need to
         // retain a second hidden copy of their allocation size before rediscovery.
@@ -2100,6 +2800,19 @@ mod tests {
         unsafe { api.result_free.unwrap()(&mut result) };
 
         assert_eq!(
+            unsafe {
+                api.engine_new_with_services.unwrap()(
+                    (&prefix as *const StructSizeOnly).cast::<MermanNativeEngineServicesConfig>(),
+                    &mut token,
+                    &mut result,
+                )
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(token, 0);
+        assert_eq!(result.allocation_token, 0);
+
+        assert_eq!(
             unsafe { api.engine_new.unwrap()(&native_config(), &mut token, &mut result) },
             MERMAN_NATIVE_STATUS_OK
         );
@@ -2167,6 +2880,15 @@ mod tests {
         );
         assert_eq!(token, 0);
         unsafe { api.result_free.unwrap()(&mut result) };
+
+        let (_services_storage, services) =
+            misaligned_record(native_services_config(native_config(), &[]));
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(services, &mut token, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(token, 0);
+        assert_eq!(result.allocation_token, 0);
 
         let (_result_storage, misaligned_result) = misaligned_record(native_result());
         assert_eq!(
@@ -2381,6 +3103,552 @@ mod tests {
     }
 
     #[test]
+    fn service_constructor_is_strict_without_retroactively_breaking_legacy_engine_new() {
+        let api = api_table();
+        let orphan_user_data = ptr::NonNull::<u8>::dangling().as_ptr().cast();
+
+        let mut legacy_config = native_config();
+        legacy_config.text_measure_user_data = orphan_user_data;
+        let mut legacy_engine = 0;
+        let mut legacy_result = native_result();
+        assert_eq!(
+            unsafe {
+                api.engine_new.unwrap()(&legacy_config, &mut legacy_engine, &mut legacy_result)
+            },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_ne!(legacy_engine, 0);
+        unsafe { api.result_free.unwrap()(&mut legacy_result) };
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(legacy_engine) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+
+        let services_config = native_services_config(legacy_config, &[]);
+        let mut services_engine = 0;
+        let mut services_result = native_result();
+        assert_eq!(
+            unsafe {
+                api.engine_new_with_services.unwrap()(
+                    &services_config,
+                    &mut services_engine,
+                    &mut services_result,
+                )
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(services_engine, 0);
+        assert_eq!(
+            result_json(&services_result)["message"],
+            "config.engine_config.text_measure_user_data must be null when text_measure is null"
+        );
+        unsafe { api.result_free.unwrap()(&mut services_result) };
+    }
+
+    #[test]
+    fn empty_service_constructor_uses_the_same_engine_contract() {
+        let api = api_table();
+        let config = native_services_config(native_config(), &[]);
+        let mut engine = 0;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_ne!(engine, 0);
+        assert_eq!(
+            result_json(&result)["operation"],
+            "engine-new-with-services"
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let request = native_request(
+            MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+            b"flowchart TD\nA --> B",
+        );
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(engine) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[test]
+    fn icon_pack_array_arithmetic_is_checked_before_typed_access() {
+        let failure =
+            checked_record_array_byte_len::<MermanNativeIconPack>(usize::MAX, "config.icon_packs")
+                .expect_err("record-array multiplication must not wrap");
+        assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert!(failure.message.contains("overflows usize"));
+
+        let aligned_near_max = usize::MAX & !(align_of::<MermanNativeIconPack>() - 1);
+        let failure = validate_record_array_shape::<MermanNativeIconPack>(
+            ptr::without_provenance(aligned_near_max),
+            1,
+            "config.icon_packs",
+        )
+        .expect_err("record-array address ranges must not wrap");
+        assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert!(failure.message.contains("address range overflows usize"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn service_constructor_checks_the_fixed_pack_limit_before_reading_the_array() {
+        let api = api_table();
+        let mut config = native_services_config(native_config(), &[]);
+        config.icon_packs = ptr::NonNull::<MermanNativeIconPack>::dangling().as_ptr();
+        config.icon_pack_count = NATIVE_ICON_PACK_RECORD_LIMIT + 1;
+        let mut engine = 0;
+        let mut result = native_result();
+
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED
+        );
+        assert_eq!(engine, 0);
+        let error = result_json(&result);
+        assert_eq!(
+            error["details"]["resource"]["limit_id"],
+            IconRegistryResourceLimitId::MaxPacks.stable_id()
+        );
+        assert_eq!(
+            error["details"]["resource"]["actual"],
+            u64::try_from(NATIVE_ICON_PACK_RECORD_LIMIT + 1).unwrap()
+        );
+        assert_eq!(
+            error["details"]["resource"]["max"],
+            IconRegistryResourceLimitId::MaxPacks.fixed_value()
+        );
+        assert_eq!(
+            error["details"]["icon_registry"]["kind_id"],
+            "resource_limit_exceeded"
+        );
+        assert!(error["details"]["icon_registry"]["pack_index"].is_null());
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn service_constructor_accepts_the_exact_pack_limit_and_rejects_malformed_records() {
+        let api = api_table();
+        let json = (0..NATIVE_ICON_PACK_RECORD_LIMIT)
+            .map(|index| format!(r#"{{"prefix":"p{index}","icons":{{}}}}"#).into_bytes())
+            .collect::<Vec<_>>();
+        let packs = json
+            .iter()
+            .map(|json| native_icon_pack(json, &[]))
+            .collect::<Vec<_>>();
+        let config = native_services_config(native_config(), &packs);
+        let mut engine = 0;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(engine) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+
+        let mut malformed_nested = native_services_config(native_config(), &[]);
+        malformed_nested.engine_config.struct_size -= 1;
+        engine = 0;
+        assert_eq!(
+            unsafe {
+                api.engine_new_with_services.unwrap()(&malformed_nested, &mut engine, &mut result)
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let mut malformed_pack = native_icon_pack(br#"{"prefix":"test","icons":{}}"#, &[]);
+        malformed_pack.struct_size -= 1;
+        let config = native_services_config(native_config(), std::slice::from_ref(&malformed_pack));
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let pack_prefix = AlignedStructSizeOnly {
+            struct_size: native_struct_size::<AlignedStructSizeOnly>(),
+        };
+        let config = MermanNativeEngineServicesConfig {
+            struct_size: native_struct_size::<MermanNativeEngineServicesConfig>(),
+            engine_config: native_config(),
+            icon_packs: ptr::from_ref(&pack_prefix).cast::<MermanNativeIconPack>(),
+            icon_pack_count: 1,
+        };
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let pack = native_icon_pack(br#"{"prefix":"test","icons":{}}"#, &[]);
+        let (_pack_storage, misaligned_pack) = misaligned_record(pack);
+        let config = MermanNativeEngineServicesConfig {
+            struct_size: native_struct_size::<MermanNativeEngineServicesConfig>(),
+            engine_config: native_config(),
+            icon_packs: misaligned_pack,
+            icon_pack_count: 1,
+        };
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let invalid_utf8_name = [0xff];
+        let pack = native_icon_pack(br#"{"prefix":"test","icons":{}}"#, &invalid_utf8_name);
+        let config = native_services_config(native_config(), std::slice::from_ref(&pack));
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_UTF8_ERROR
+        );
+        assert_eq!(engine, 0);
+        let error = result_json(&result);
+        assert_eq!(error["details"]["icon_registry"]["kind_id"], "invalid_utf8");
+        assert_eq!(error["details"]["icon_registry"]["pack_index"], 0);
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn service_constructor_allows_overlapping_read_only_pack_bytes_and_owns_the_registry() {
+        let api = api_table();
+        let context = Box::new(CountingTextMeasureContext {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let engine;
+        {
+            let shared_pack = br#"{
+                "prefix":"ignored",
+                "icons":{
+                    "rocket":{"body":"<path data-icon=\"service-rocket\" d=\"M0 0H16V16H0z\"/>"},
+                    "ship":{"body":"<circle data-icon=\"service-ship\" cx=\"8\" cy=\"8\" r=\"8\"/>"}
+                }
+            }"#
+            .to_vec();
+            let packs = [
+                native_icon_pack(&shared_pack, b"alpha"),
+                native_icon_pack(&shared_pack, b"fleet"),
+            ];
+            let mut engine_config = native_config();
+            engine_config.text_measure = Some(counting_text_measure_callback);
+            engine_config.text_measure_user_data = (&*context as *const CountingTextMeasureContext)
+                .cast_mut()
+                .cast();
+            let config = native_services_config(engine_config, &packs);
+            let mut candidate = 0;
+            let mut result = native_result();
+            assert_eq!(
+                unsafe {
+                    api.engine_new_with_services.unwrap()(&config, &mut candidate, &mut result)
+                },
+                MERMAN_NATIVE_STATUS_OK
+            );
+            assert_eq!(
+                context.calls.load(std::sync::atomic::Ordering::Relaxed),
+                0,
+                "construction must retain, but never invoke, the callback"
+            );
+            unsafe { api.result_free.unwrap()(&mut result) };
+            engine = candidate;
+        }
+
+        let request = native_request(
+            MERMAN_NATIVE_OPERATION_SVG,
+            br#"flowchart TD
+A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"#,
+        );
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        let svg = unsafe { std::slice::from_raw_parts(result.data.data, result.data.len) };
+        let svg = std::str::from_utf8(svg).expect("SVG output is UTF-8");
+        assert!(svg.contains(r#"data-icon="service-rocket""#), "{svg}");
+        assert!(svg.contains(r#"data-icon="service-ship""#), "{svg}");
+        assert!(
+            context.calls.load(std::sync::atomic::Ordering::Relaxed) > 0,
+            "rendering must be able to invoke the retained callback"
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(engine) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn service_constructor_preserves_structured_icon_registry_failures() {
+        let api = api_table();
+        let invalid_xml = br#"{"prefix":"test","icons":{"rocket":{"body":"<path>"}}}"#;
+        let pack = native_icon_pack(invalid_xml, &[]);
+        let config = native_services_config(native_config(), std::slice::from_ref(&pack));
+        let mut engine = 0;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        let error = result_json(&result);
+        assert_eq!(error["details"]["icon_registry"]["kind_id"], "invalid_xml");
+        assert_eq!(error["details"]["icon_registry"]["pack_index"], 0);
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let registration_name = vec![b'a'; 65];
+        let pack = native_icon_pack(br#"{"prefix":"test","icons":{}}"#, &registration_name);
+        let config = native_services_config(native_config(), std::slice::from_ref(&pack));
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED
+        );
+        assert_eq!(engine, 0);
+        let error = result_json(&result);
+        assert_eq!(
+            error["details"]["resource"]["limit_id"],
+            IconRegistryResourceLimitId::MaxPrefixBytes.stable_id()
+        );
+        assert_eq!(
+            error["details"]["icon_registry"]["kind_id"],
+            "resource_limit_exceeded"
+        );
+        assert_eq!(error["details"]["icon_registry"]["pack_index"], 0);
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn service_constructor_rejects_structural_and_output_aliasing_before_pack_reads() {
+        let api = api_table();
+
+        let mut overlapping_array = native_services_config(native_config(), &[]);
+        overlapping_array.icon_packs =
+            ptr::addr_of!(overlapping_array).cast::<MermanNativeIconPack>();
+        overlapping_array.icon_pack_count = 1;
+        let mut engine = 0;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe {
+                api.engine_new_with_services.unwrap()(&overlapping_array, &mut engine, &mut result)
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        assert_eq!(result.allocation_token, 0);
+
+        let mut misaligned_output_array = native_services_config(native_config(), &[]);
+        misaligned_output_array.icon_packs = unsafe {
+            ptr::addr_of!(result)
+                .cast::<u8>()
+                .add(1)
+                .cast::<MermanNativeIconPack>()
+        };
+        misaligned_output_array.icon_pack_count = 1;
+        assert_eq!(
+            unsafe {
+                api.engine_new_with_services.unwrap()(
+                    &misaligned_output_array,
+                    &mut engine,
+                    &mut result,
+                )
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        assert_eq!(result.allocation_token, 0);
+
+        let mut early_semantic_error = native_services_config(native_config(), &[]);
+        early_semantic_error.engine_config.text_measure_user_data =
+            ptr::NonNull::<u8>::dangling().as_ptr().cast();
+        early_semantic_error.engine_config.options_json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(result).cast::<u8>(),
+            len: 1,
+        };
+        assert_eq!(
+            unsafe {
+                api.engine_new_with_services.unwrap()(
+                    &early_semantic_error,
+                    &mut engine,
+                    &mut result,
+                )
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        assert_eq!(result.allocation_token, 0);
+
+        let mut oversized_output_array = native_services_config(native_config(), &[]);
+        oversized_output_array.icon_packs = ptr::addr_of!(result).cast::<MermanNativeIconPack>();
+        oversized_output_array.icon_pack_count = NATIVE_ICON_PACK_RECORD_LIMIT + 1;
+        assert_eq!(
+            unsafe {
+                api.engine_new_with_services.unwrap()(
+                    &oversized_output_array,
+                    &mut engine,
+                    &mut result,
+                )
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        assert_eq!(result.allocation_token, 0);
+
+        let aliasing_config = ptr::addr_of!(result).cast::<MermanNativeEngineServicesConfig>();
+        assert_eq!(
+            unsafe {
+                api.engine_new_with_services.unwrap()(aliasing_config, ptr::null_mut(), &mut result)
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(result.allocation_token, 0);
+
+        let pack = MermanNativeIconPack {
+            struct_size: native_struct_size::<MermanNativeIconPack>(),
+            json: MermanNativeSlice {
+                struct_size: native_struct_size::<MermanNativeSlice>(),
+                data: ptr::addr_of!(result).cast::<u8>(),
+                len: 1,
+            },
+            registration_name: borrowed_slice(&[]),
+        };
+        let config = native_services_config(native_config(), std::slice::from_ref(&pack));
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        assert_eq!(result.allocation_token, 0);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn service_constructor_completes_detectable_alias_preflight_before_writing_failures() {
+        let api = api_table();
+        let mut engine = 0;
+        let mut result = native_result();
+
+        let mut malformed_nested = native_services_config(native_config(), &[]);
+        malformed_nested.engine_config.struct_size -= 1;
+        malformed_nested.icon_packs = ptr::addr_of!(result).cast::<MermanNativeIconPack>();
+        malformed_nested.icon_pack_count = 1;
+        assert_eq!(
+            unsafe {
+                api.engine_new_with_services.unwrap()(&malformed_nested, &mut engine, &mut result)
+            },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        assert_eq!(result.allocation_token, 0);
+        assert_eq!(result.status, 0);
+
+        let mut malformed_alias = native_icon_pack(br#"{"prefix":"self-alias","icons":{}}"#, &[]);
+        malformed_alias.struct_size -= 1;
+        malformed_alias.json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(result).cast::<u8>(),
+            len: 1,
+        };
+        let config =
+            native_services_config(native_config(), std::slice::from_ref(&malformed_alias));
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        assert_eq!(result.allocation_token, 0);
+        assert_eq!(result.status, 0);
+
+        let mut malformed_record = native_icon_pack(br#"{"prefix":"bad-record","icons":{}}"#, &[]);
+        malformed_record.struct_size -= 1;
+        let mut later_alias = native_icon_pack(br#"{"prefix":"later-alias","icons":{}}"#, &[]);
+        later_alias.json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(result).cast::<u8>(),
+            len: 1,
+        };
+        let packs = [malformed_record, later_alias];
+        let config = native_services_config(native_config(), &packs);
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        assert_eq!(result.allocation_token, 0);
+        assert_eq!(result.status, 0);
+
+        let mut malformed_slice = native_icon_pack(br#"{"prefix":"bad-slice","icons":{}}"#, &[]);
+        malformed_slice.json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::null(),
+            len: 1,
+        };
+        let mut later_alias = native_icon_pack(br#"{"prefix":"later-alias","icons":{}}"#, &[]);
+        later_alias.registration_name = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(result).cast::<u8>(),
+            len: 1,
+        };
+        let packs = [malformed_slice, later_alias];
+        let config = native_services_config(native_config(), &packs);
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(engine, 0);
+        assert_eq!(result.allocation_token, 0);
+        assert_eq!(result.status, 0);
+    }
+
+    #[cfg(not(feature = "svg"))]
+    #[test]
+    fn service_constructor_requires_svg_only_when_icon_packs_are_requested() {
+        let api = api_table();
+        let config = native_services_config(native_config(), &[]);
+        let mut engine = 0;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(engine) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+
+        let mut config = native_services_config(native_config(), &[]);
+        config.icon_pack_count = 1;
+        config.icon_packs = ptr::null();
+        engine = 0;
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+        );
+        assert_eq!(engine, 0);
+        let error = result_json(&result);
+        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
+        assert_eq!(error["capability_id"], "svg");
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+
+    #[test]
     fn runtime_catalog_is_the_flat_artifact_owned_contract() {
         let api = api_table();
         let mut result = native_result();
@@ -2457,6 +3725,13 @@ mod tests {
                     .collect::<Vec<_>>()
             )
         );
+        #[cfg(feature = "svg")]
+        assert_eq!(
+            catalog["constructor_service_ids"],
+            serde_json::json!(["host-text-measurement", "icon-registry"])
+        );
+        #[cfg(not(feature = "svg"))]
+        assert_eq!(catalog["constructor_service_ids"], serde_json::json!([]));
         assert_eq!(
             catalog["constructor_service_contracts"],
             serde_json::to_value(
@@ -2887,6 +4162,74 @@ mod tests {
         assert!(i64::try_from(final_result).is_ok());
         assert!(engines.issue_token().is_err());
         assert!(results.issue_token().is_err());
+    }
+
+    #[test]
+    fn engine_token_exhaustion_returns_state_for_lock_free_destruction() {
+        let state = Arc::new(NativeEngineState {
+            engine: native_artifact_contract()
+                .create_engine(&[])
+                .expect("test engine"),
+            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
+        });
+        let weak = Arc::downgrade(&state);
+        let mut registry = NativeEngineRegistry {
+            last_counter: MERMAN_NATIVE_TOKEN_COUNTER_MAX,
+            engines: BTreeMap::new(),
+        };
+
+        let (failure, returned_state) = registry
+            .try_publish(state)
+            .expect_err("exhausted engine token space must reject publication");
+        assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
+        assert!(registry.engines.is_empty());
+        assert!(weak.upgrade().is_some());
+        drop(returned_state);
+        assert!(
+            weak.upgrade().is_none(),
+            "the caller can destroy the complete engine graph after releasing the registry lock"
+        );
+    }
+
+    #[test]
+    fn engine_publication_rolls_back_result_failure_and_panic_before_exposure() {
+        let state = Arc::new(NativeEngineState {
+            engine: native_artifact_contract()
+                .create_engine(&[])
+                .expect("test engine"),
+            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
+        });
+        let weak = Arc::downgrade(&state);
+        let mut token = 0;
+        let mut result = native_result();
+        let status = unsafe {
+            publish_native_engine_result_with_writer(state, &mut token, &mut result, |_| {
+                MERMAN_NATIVE_STATUS_INTERNAL_ERROR
+            })
+        }
+        .expect("a result-writer status is not a constructor failure");
+        assert_eq!(status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
+        assert_eq!(token, 0);
+        assert_eq!(result.allocation_token, 0);
+        assert!(weak.upgrade().is_none());
+
+        let state = Arc::new(NativeEngineState {
+            engine: native_artifact_contract()
+                .create_engine(&[])
+                .expect("test engine"),
+            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
+        });
+        let weak = Arc::downgrade(&state);
+        let unwind = catch_unwind(AssertUnwindSafe(|| unsafe {
+            let _ =
+                publish_native_engine_result_with_writer(state, &mut token, &mut result, |_| {
+                    panic!("synthetic result writer panic")
+                });
+        }));
+        assert!(unwind.is_err());
+        assert_eq!(token, 0);
+        assert_eq!(result.allocation_token, 0);
+        assert!(weak.upgrade().is_none());
     }
 
     #[test]

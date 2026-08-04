@@ -6,7 +6,7 @@ pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
     "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:a97675e38eaffb001c55d8b89159ef14d6cb5746b58d849e103c881a1be5e73a";
+    "sha256:dd141016448b431d74dbdecb09248a62c21d1ee716803db4f930d5c5b7c364bb";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -350,6 +350,7 @@ pub const MERMAN_NATIVE_FUNCTION_ENGINE_TRY_CLOSE: MermanNativeFunctionSlot = 2;
 pub const MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT: MermanNativeFunctionSlot = 3;
 pub const MERMAN_NATIVE_FUNCTION_RESULT_FREE: MermanNativeFunctionSlot = 4;
 pub const MERMAN_NATIVE_FUNCTION_METADATA_COLLECT: MermanNativeFunctionSlot = 5;
+pub const MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES: MermanNativeFunctionSlot = 6;
 
 pub type MermanNativeEngineToken = u64;
 pub(crate) const MERMAN_NATIVE_TOKEN_DOMAIN_MASK: u64 = 3;
@@ -481,6 +482,30 @@ pub struct MermanNativeApi {
     pub execute_collect: Option<MermanNativeExecuteCollectFn>,
     pub result_free: Option<MermanNativeResultFreeFn>,
     pub metadata_collect: Option<MermanNativeMetadataCollectFn>,
+    pub engine_new_with_services: Option<MermanNativeEngineNewWithServicesFn>,
+}
+
+/// One size-tagged borrowed IconifyJSON collection for transactional engine construction. A
+/// zero-length registration_name means no override; a non-empty UTF-8 registration name replaces
+/// the JSON prefix for this logical pack.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MermanNativeIconPack {
+    pub struct_size: u32,
+    pub json: MermanNativeSlice,
+    pub registration_name: MermanNativeSlice,
+}
+
+/// A size-tagged reusable-engine configuration that embeds the published engine configuration and
+/// optionally borrows a contiguous array of Iconify packs for one transactional immutable registry
+/// build.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MermanNativeEngineServicesConfig {
+    pub struct_size: u32,
+    pub engine_config: MermanNativeEngineConfig,
+    pub icon_packs: *const MermanNativeIconPack,
+    pub icon_pack_count: usize,
 }
 
 pub type MermanNativeTextMeasureCallback = unsafe extern "C" fn(
@@ -508,6 +533,11 @@ pub type MermanNativeMetadataCollectFn = unsafe extern "C" fn(
     metadata_id: MermanNativeSlice,
     out_result: *mut MermanNativeResult,
 ) -> MermanNativeStatus;
+pub type MermanNativeEngineNewWithServicesFn = unsafe extern "C" fn(
+    config: *const MermanNativeEngineServicesConfig,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus;
 
 pub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, result_free)
@@ -517,9 +547,14 @@ pub const MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, metadata_collect)
         + std::mem::size_of::<Option<MermanNativeMetadataCollectFn>>()) as u32;
 
+pub const MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE: u32 =
+    (std::mem::offset_of!(MermanNativeApi, engine_new_with_services)
+        + std::mem::size_of::<Option<MermanNativeEngineNewWithServicesFn>>()) as u32;
+
 pub const MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES: &[u32] = &[
     MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
     MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
+    MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE,
 ];
 
 pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
@@ -530,6 +565,10 @@ pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
     (
         "disabled_capabilities",
         "A known operation whose backend is absent is rejected before backend work with unsupported_operation, kind missing-capability, and the canonical capability_id. An unknown operation code returns the same status with kind unknown-operation and a null capability_id. Both failures are written results with nonzero allocation_token values and must be released with result_free.",
+    ),
+    (
+        "engine_services",
+        "engine_new_with_services borrows the outer configuration, embedded options, pack records, IconifyJSON bytes, and registration names only until return and never invokes the host callback during construction. A successful engine owns the fully validated immutable registry without retaining pack pointers; callback and user_data follow the existing quiescent-close lifetime. Any validation, registry, service-conflict, engine, token, result-allocation, or panic failure publishes no caller-visible engine. If publication must be rolled back, the token is retired under lock and the complete engine and service graph are destroyed only after all registry and admission locks are released.",
     ),
     (
         "engine_tokens",

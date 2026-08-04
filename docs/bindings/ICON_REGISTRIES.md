@@ -32,6 +32,25 @@ Bindings must use `build_icon_registry`; they cannot construct a wrapper around 
 renderer value or mutate a published registry. Cloning the wrapper shares the immutable parsed
 state.
 
+## Native C Constructor
+
+Native ABI 3 appends `engine_new_with_services` after the published six-slot prefix. Its
+`MermanNativeEngineServicesConfig` embeds the existing `MermanNativeEngineConfig` by value and
+optionally points to a contiguous array of `MermanNativeIconPack` records. Each record carries
+borrowed IconifyJSON plus an optional UTF-8 registration-name override; a zero-length name keeps
+the JSON prefix.
+
+Callers must first confirm that `MermanNativeApi.struct_size` reaches
+`MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE` and that the function pointer is non-null.
+Initialize `out_engine` to zero. On every failure it remains zero; success returns one engine token
+that owns the validated registry and any configured callback. No callback is invoked during
+construction, and no pack pointer is retained after return.
+
+The C transport deliberately exposes no registry handle, mutation operation, or registry-specific
+free function. Empty services work in every artifact. A non-SVG artifact may reject any nonempty
+pack request as `missing-capability` without reading the array; an SVG artifact applies the same
+fixed constructor limits and structured icon/resource errors as `build_icon_registry`.
+
 ## Input And Lifetime
 
 - Each `IconPack` contains borrowed JSON bytes plus an optional registration-name override.

@@ -36,6 +36,114 @@ fn c_abi_consumes_shared_semantic_operation_fixtures() {
     );
 }
 
+#[test]
+fn c_abi_constructors_share_the_authoritative_13_operation_matrix() {
+    let api = api_table();
+    let expectations = merman_bindings_core::binding_operation_expectations();
+    assert_eq!(
+        expectations.len(),
+        13,
+        "the native matrix must stay complete"
+    );
+
+    for use_services in [false, true] {
+        let token = create_engine(&api, use_services);
+        for expectation in expectations {
+            let operation = native_operation(expectation.operation_id());
+            let uri = expectation
+                .requires_uri()
+                .then_some(b"file:///ffi-operation-matrix.mmd".as_slice())
+                .unwrap_or_default();
+            let request = MermanNativeOperationRequest {
+                struct_size: size_of::<MermanNativeOperationRequest>() as u32,
+                operation,
+                source: borrowed_slice(b"flowchart TD\nA --> B"),
+                uri: borrowed_slice(uri),
+                options_json: borrowed_slice(&[]),
+            };
+            let mut result = native_result();
+            let status = unsafe { api.execute_collect.unwrap()(token, &request, &mut result) };
+            let label = format!(
+                "{} constructor operation `{}`",
+                if use_services { "services" } else { "legacy" },
+                expectation.operation_id()
+            );
+
+            if expectation.compiled() {
+                assert_eq!(status, MERMAN_NATIVE_STATUS_OK, "{label}");
+                assert_eq!(result.status, MERMAN_NATIVE_STATUS_OK, "{label}");
+                assert_eq!(result.operation, operation, "{label}");
+                assert_eq!(
+                    native_slice(&result.media_type),
+                    expectation.media_type().as_bytes(),
+                    "{label}"
+                );
+                let metadata: Value =
+                    serde_json::from_slice(native_buffer(&result.metadata_or_error_json))
+                        .unwrap_or_else(|error| panic!("{label} metadata is not JSON: {error}"));
+                assert_eq!(
+                    metadata["operation_id"].as_str(),
+                    Some(expectation.operation_id()),
+                    "{label}"
+                );
+            } else {
+                let unavailable = expectation
+                    .unavailable()
+                    .expect("every optional native operation has a capability failure");
+                assert_eq!(
+                    status, MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+                    "{label}"
+                );
+                assert_eq!(result.status, status, "{label}");
+                let error: Value =
+                    serde_json::from_slice(native_buffer(&result.metadata_or_error_json))
+                        .unwrap_or_else(|error| panic!("{label} error is not JSON: {error}"));
+                assert_eq!(
+                    error["kind"].as_str(),
+                    Some(unavailable.error_kind()),
+                    "{label}"
+                );
+                assert_eq!(
+                    error["capability_id"].as_str(),
+                    Some(unavailable.capability_id()),
+                    "{label}"
+                );
+            }
+            unsafe { api.result_free.unwrap()(&mut result) };
+        }
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+}
+
+fn create_engine(api: &MermanNativeApi, use_services: bool) -> MermanNativeEngineToken {
+    let engine_config = MermanNativeEngineConfig {
+        struct_size: size_of::<MermanNativeEngineConfig>() as u32,
+        options_json: borrowed_slice(&[]),
+        text_measure: None,
+        text_measure_user_data: ptr::null_mut(),
+    };
+    let mut token = 0;
+    let mut result = native_result();
+    let status = if use_services {
+        let services = MermanNativeEngineServicesConfig {
+            struct_size: size_of::<MermanNativeEngineServicesConfig>() as u32,
+            engine_config,
+            icon_packs: ptr::null(),
+            icon_pack_count: 0,
+        };
+        unsafe { api.engine_new_with_services.unwrap()(&services, &mut token, &mut result) }
+    } else {
+        unsafe { api.engine_new.unwrap()(&engine_config, &mut token, &mut result) }
+    };
+    assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
+    assert_ne!(token, 0);
+    unsafe { api.result_free.unwrap()(&mut result) };
+    token
+}
+
 fn run_case(
     api: &MermanNativeApi,
     token: MermanNativeEngineToken,
@@ -93,13 +201,11 @@ fn run_case(
 }
 
 fn native_operation(operation_id: &str) -> MermanNativeOperationCode {
-    match operation_id {
-        "semantic-json" => MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
-        "svg" => MERMAN_NATIVE_OPERATION_SVG,
-        "analysis-json" => MERMAN_NATIVE_OPERATION_ANALYSIS_JSON,
-        "document-analysis-json" => MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON,
-        other => panic!("C fixture owner has no local operation mapping for `{other}`"),
-    }
+    MERMAN_NATIVE_OPERATION_DESCRIPTORS
+        .iter()
+        .find(|descriptor| descriptor.operation_id == Some(operation_id))
+        .map(|descriptor| descriptor.code)
+        .unwrap_or_else(|| panic!("generated native ABI has no operation `{operation_id}`"))
 }
 
 fn assert_success_invariants(
@@ -167,6 +273,7 @@ fn api_table() -> MermanNativeApi {
         execute_collect: None,
         result_free: None,
         metadata_collect: None,
+        engine_new_with_services: None,
     };
     let request = MermanNativeApiRequest {
         struct_size: size_of::<MermanNativeApiRequest>() as u32,
