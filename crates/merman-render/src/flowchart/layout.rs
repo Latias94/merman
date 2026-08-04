@@ -26,6 +26,8 @@ use super::{
     flowchart_label_metrics_for_layout,
 };
 
+type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
+
 struct DagreOperationWorkControl {
     meter: Arc<OperationWorkMeter>,
     rejection: std::cell::RefCell<Option<ResourceLimitExceeded>>,
@@ -156,7 +158,7 @@ fn effective_cluster_dir(sg: &FlowSubgraph, parent_dir: &str, inherit_dir: bool)
 
 fn compute_effective_dir_by_id(
     subgraphs_in_order: &[FlowSubgraph],
-    subgraphs_by_id: &HashMap<String, FlowSubgraph>,
+    subgraphs_by_id: &FlowSubgraphIndex<'_>,
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     diagram_dir: &str,
     inherit_dir: bool,
@@ -164,7 +166,7 @@ fn compute_effective_dir_by_id(
 ) -> Result<HashMap<String, String>> {
     fn compute_one_iterative(
         id: &str,
-        subgraphs_by_id: &HashMap<String, FlowSubgraph>,
+        subgraphs_by_id: &FlowSubgraphIndex<'_>,
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         diagram_dir: &str,
         inherit_dir: bool,
@@ -204,7 +206,7 @@ fn compute_effective_dir_by_id(
             }
 
             let dir = subgraphs_by_id
-                .get(&node)
+                .get(node.as_str())
                 .map(|sg| effective_cluster_dir(sg, &parent_dir, inherit_dir))
                 .unwrap_or_else(|| toggled_dir(&parent_dir));
             memo.insert(node, dir.clone());
@@ -428,79 +430,6 @@ fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
         .as_deref()
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false)
-}
-
-pub(super) fn first_parent_cycle_assignment<'a, I>(
-    order: I,
-    parent_by_id: &HashMap<String, String>,
-) -> Option<(String, String)>
-where
-    I: IntoIterator<Item = &'a str>,
-{
-    fn intern(
-        id: &str,
-        index_by_id: &mut HashMap<String, usize>,
-        parents: &mut Vec<usize>,
-        ranks: &mut Vec<u8>,
-    ) -> usize {
-        if let Some(&index) = index_by_id.get(id) {
-            return index;
-        }
-        let index = parents.len();
-        parents.push(index);
-        ranks.push(0);
-        index_by_id.insert(id.to_string(), index);
-        index
-    }
-
-    fn find(parents: &mut [usize], mut index: usize) -> usize {
-        let mut root = index;
-        while parents[root] != root {
-            root = parents[root];
-        }
-        while parents[index] != index {
-            let next = parents[index];
-            parents[index] = root;
-            index = next;
-        }
-        root
-    }
-
-    let mut index_by_id = HashMap::new();
-    let mut parents = Vec::new();
-    let mut ranks = Vec::new();
-    let mut assigned = HashSet::new();
-
-    // FlowDB exposes one final parent per child. Under that functional-parent invariant, adding a
-    // child-parent link closes an undirected component exactly when it closes a directed parent
-    // cycle; this union-find check must not be generalized to arbitrary DAG edges.
-    for child in order {
-        let Some(parent) = parent_by_id.get(child) else {
-            continue;
-        };
-        // Repeated subgraph ids re-apply the same final FlowDB parent assignment and are a no-op.
-        if !assigned.insert(child.to_string()) {
-            continue;
-        }
-
-        let child_index = intern(child, &mut index_by_id, &mut parents, &mut ranks);
-        let parent_index = intern(parent, &mut index_by_id, &mut parents, &mut ranks);
-        let child_root = find(&mut parents, child_index);
-        let parent_root = find(&mut parents, parent_index);
-        if child_root == parent_root {
-            return Some((child.to_string(), parent.clone()));
-        }
-        if ranks[child_root] < ranks[parent_root] {
-            parents[child_root] = parent_root;
-        } else {
-            parents[parent_root] = child_root;
-            if ranks[child_root] == ranks[parent_root] {
-                ranks[child_root] = ranks[child_root].saturating_add(1);
-            }
-        }
-    }
-
-    None
 }
 
 fn lowest_common_parent(
@@ -1378,13 +1307,16 @@ fn copy_cluster(
 
 fn extract_clusters_recursively(
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
+    subgraphs_by_id: &FlowSubgraphIndex<'_>,
     external_connections_by_id: &std::collections::HashMap<String, bool>,
     extracted: &mut std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
     extracted_order: &mut Vec<String>,
     _depth: usize,
     work_control: &mut DagreOperationWorkControl,
 ) -> Result<()> {
+    // Mermaid's recursive JavaScript extractor stops after depth 10 as a stack-safety bailout.
+    // Merman intentionally replaces that fixed cutoff with an explicit stack plus the shared work
+    // limit, preserving extraction semantics for deeper valid graphs without unbounded recursion.
     struct ExtractFrame {
         id: String,
         graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -1395,7 +1327,7 @@ fn extract_clusters_recursively(
 
     fn extract_one_level(
         graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
+        subgraphs_by_id: &FlowSubgraphIndex<'_>,
         external_connections_by_id: &std::collections::HashMap<String, bool>,
         work_control: &mut DagreOperationWorkControl,
     ) -> Result<Vec<ExtractedCluster>> {
@@ -1454,7 +1386,7 @@ fn extract_clusters_recursively(
             // - `clusterData.dir` when explicitly set for the subgraph
             // - otherwise: toggle relative to the current graph's rankdir (TB<->LR)
             let dir = subgraphs_by_id
-                .get(&id)
+                .get(id.as_str())
                 .and_then(|sg| sg.dir.as_deref())
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
@@ -1677,18 +1609,15 @@ fn layout_flowchart_with_model(
 
     let diagram_direction = normalize_dir(model.direction.as_deref().unwrap_or("TB"));
     let has_subgraphs = !model.subgraphs.is_empty();
-    let mut subgraphs_by_id: std::collections::HashMap<String, FlowSubgraph> =
-        std::collections::HashMap::new();
     work_control.charge_adapter(model.subgraphs.len())?;
-    for sg in &model.subgraphs {
-        subgraphs_by_id.insert(sg.id.clone(), sg.clone());
-    }
+    let subgraphs_by_id: FlowSubgraphIndex<'_> = model
+        .subgraphs
+        .iter()
+        .map(|subgraph| (subgraph.id.as_str(), subgraph))
+        .collect();
     work_control.charge_adapter(model.subgraphs.len())?;
     let subgraph_ids: std::collections::HashSet<&str> =
         model.subgraphs.iter().map(|sg| sg.id.as_str()).collect();
-    work_control.charge_adapter(model.subgraphs.len())?;
-    let subgraph_id_set: std::collections::HashSet<String> =
-        model.subgraphs.iter().map(|sg| sg.id.clone()).collect();
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         // Mermaid's Dagre adapter always enables `compound: true`, even if there are no explicit
@@ -1907,18 +1836,6 @@ fn layout_flowchart_with_model(
             for child in &sg.nodes {
                 parent_by_id.insert(child.clone(), sg.id.clone());
             }
-        }
-
-        // Cyclic subgraph membership such as `A contains B` and `B contains A` is valid syntax but
-        // cannot be represented in Graphlib's compound parent tree. Detect it before calling
-        // `set_parent`, but keep Mermaid-compatible error wording for the offending assignment.
-        if let Some((child, parent)) = first_parent_cycle_assignment(
-            model.subgraphs.iter().rev().map(|sg| sg.id.as_str()),
-            &parent_by_id,
-        ) {
-            return Err(Error::InvalidModel {
-                message: format!("Setting {parent} as parent of {child} would create a cycle"),
-            });
         }
 
         let insert_with_parent = |id: &str,
@@ -2232,7 +2149,7 @@ fn layout_flowchart_with_model(
     type Rect = merman_core::geom::Box2;
 
     struct ClusterTitleMetricsContext<'a> {
-        subgraphs_by_id: &'a std::collections::HashMap<String, FlowSubgraph>,
+        subgraphs_by_id: &'a FlowSubgraphIndex<'a>,
         class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
         measurer: &'a dyn TextMeasurer,
         text_style: &'a TextStyle,
@@ -2278,7 +2195,7 @@ fn layout_flowchart_with_model(
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         title_total_margin: f64,
         extracted: &std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-        subgraph_id_set: &std::collections::HashSet<String>,
+        subgraph_id_set: &std::collections::HashSet<&str>,
         title_metrics_ctx: &ClusterTitleMetricsContext<'_>,
         cluster_padding: f64,
         work_control: &mut DagreOperationWorkControl,
@@ -2286,7 +2203,7 @@ fn layout_flowchart_with_model(
         fn graph_content_rect(
             g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
             extracted: &std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-            subgraph_id_set: &std::collections::HashSet<String>,
+            subgraph_id_set: &std::collections::HashSet<&str>,
             title_total_margin: f64,
             title_metrics_ctx: &ClusterTitleMetricsContext<'_>,
             cluster_padding: f64,
@@ -2304,7 +2221,7 @@ fn layout_flowchart_with_model(
                 let mut height = n.height;
                 let is_cluster_node = extracted.contains_key(&id) && g.child_count(&id) == 0;
                 let is_non_recursive_cluster =
-                    subgraph_id_set.contains(&id) && g.child_count(&id) != 0;
+                    subgraph_id_set.contains(id.as_str()) && g.child_count(&id) != 0;
 
                 // Mermaid increases cluster node height by `subGraphTitleTotalMargin` *after* Dagre
                 // layout (just before rendering), and `updateNodeBounds(...)` measures the DOM
@@ -2368,7 +2285,7 @@ fn layout_flowchart_with_model(
     fn apply_mermaid_subgraph_title_shifts(
         graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
         extracted: &std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-        subgraph_id_set: &std::collections::HashSet<String>,
+        subgraph_id_set: &std::collections::HashSet<&str>,
         y_shift: f64,
     ) {
         if y_shift.abs() < 1e-9 {
@@ -2386,7 +2303,7 @@ fn layout_flowchart_with_model(
             let is_cluster_node = extracted.contains_key(&id) && graph.child_count(&id) == 0;
             let delta_y = if is_cluster_node {
                 y_shift * 2.0
-            } else if subgraph_id_set.contains(&id) && graph.child_count(&id) != 0 {
+            } else if subgraph_id_set.contains(id.as_str()) && graph.child_count(&id) != 0 {
                 0.0
             } else {
                 y_shift
@@ -2418,7 +2335,7 @@ fn layout_flowchart_with_model(
     struct RecursiveLayoutContext<'a> {
         extracted:
             &'a mut std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-        subgraph_id_set: &'a std::collections::HashSet<String>,
+        subgraph_id_set: &'a std::collections::HashSet<&'a str>,
         y_shift: f64,
         cluster_node_labels: &'a std::collections::HashMap<String, NodeLabel>,
         title_total_margin: f64,
@@ -2433,10 +2350,9 @@ fn layout_flowchart_with_model(
         _depth: usize,
         ctx: &mut RecursiveLayoutContext<'_>,
     ) -> Result<()> {
-        #[derive(Clone)]
         struct LayoutFrame {
             cluster_id: Option<String>,
-            expanded: bool,
+            child_ids: Option<Vec<String>>,
         }
 
         fn recursive_child_ids(
@@ -2514,13 +2430,11 @@ fn layout_flowchart_with_model(
 
         fn update_child_cluster_bounds(
             graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            ids: &[String],
             ctx: &mut RecursiveLayoutContext<'_>,
         ) -> Result<()> {
-            let snapshot_work = node_id_snapshot_work_upper_bound(graph, ctx.work_control)?;
-            ctx.work_control.charge_adapter(snapshot_work)?;
-            let ids = recursive_child_ids(graph, ctx.extracted);
             for id in ids {
-                let Some(child) = ctx.extracted.get(&id) else {
+                let Some(child) = ctx.extracted.get(id) else {
                     continue;
                 };
                 // In Mermaid, `updateNodeBounds(...)` measures the recursively rendered `<g
@@ -2536,12 +2450,12 @@ fn layout_flowchart_with_model(
                     ctx.cluster_padding,
                     ctx.work_control,
                 )? {
-                    if let Some(n) = graph.node_mut(&id) {
+                    if let Some(n) = graph.node_mut(id) {
                         n.width = r.width().max(1.0);
                         n.height = r.height().max(1.0);
                     }
-                } else if let Some(n_child) = child.node(&id)
-                    && let Some(n) = graph.node_mut(&id)
+                } else if let Some(n_child) = child.node(id)
+                    && let Some(n) = graph.node_mut(id)
                 {
                     n.width = n_child.width.max(1.0);
                     n.height = n_child.height.max(1.0);
@@ -2556,6 +2470,12 @@ fn layout_flowchart_with_model(
         ) -> Result<()> {
             if let Err(error) = dugong::layout_controlled(graph, &mut *ctx.work_control) {
                 return Err(ctx.work_control.map_dugong_error(error));
+            }
+            // The pinned Mermaid title-shift pass is a strict no-op at the default zero margin.
+            // Avoid materializing point counts and graph snapshots that the mutation would never
+            // consume.
+            if ctx.y_shift.abs() < 1e-9 {
+                return Ok(());
             }
             ctx.work_control.charge_adapter(graph.edge_slot_count())?;
             let point_work = graph.edges().try_fold(0usize, |total, edge_key| {
@@ -2582,21 +2502,26 @@ fn layout_flowchart_with_model(
             Ok(())
         }
 
+        if ctx.extracted.is_empty() {
+            return layout_one_graph(graph, ctx);
+        }
+
         let mut stack = vec![LayoutFrame {
             cluster_id: graph_cluster_id.map(str::to_string),
-            expanded: false,
+            child_ids: None,
         }];
 
         while let Some(frame) = stack.pop() {
-            if !frame.expanded {
-                let graph_snapshot_work = match &frame.cluster_id {
+            let Some(child_ids) = frame.child_ids else {
+                let cluster_id = frame.cluster_id;
+                let graph_snapshot_work = match &cluster_id {
                     Some(id) => ctx.extracted.get(id).map_or(Ok(0), |graph| {
                         node_id_snapshot_work_upper_bound(graph, ctx.work_control)
                     })?,
                     None => node_id_snapshot_work_upper_bound(graph, ctx.work_control)?,
                 };
                 ctx.work_control.charge_adapter(graph_snapshot_work)?;
-                let Some((child_ids, parent_nodesep, parent_ranksep)) = (match &frame.cluster_id {
+                let Some((child_ids, parent_nodesep, parent_ranksep)) = (match &cluster_id {
                     Some(id) => ctx.extracted.get(id).map(|g| {
                         (
                             recursive_child_ids(g, ctx.extracted),
@@ -2613,11 +2538,7 @@ fn layout_flowchart_with_model(
                     continue;
                 };
 
-                stack.push(LayoutFrame {
-                    cluster_id: frame.cluster_id,
-                    expanded: true,
-                });
-
+                let mut child_frames = Vec::with_capacity(child_ids.len());
                 for child_id in child_ids.iter().rev() {
                     // Match Mermaid `recursiveRender` behavior: before laying out a recursively
                     // rendered cluster graph, override `nodesep` to the parent graph spacing and
@@ -2627,24 +2548,29 @@ fn layout_flowchart_with_model(
                         child.graph_mut().nodesep = parent_nodesep;
                         child.graph_mut().ranksep = parent_ranksep + 25.0;
                     }
-                    stack.push(LayoutFrame {
+                    child_frames.push(LayoutFrame {
                         cluster_id: Some(child_id.clone()),
-                        expanded: false,
+                        child_ids: None,
                     });
                 }
+                stack.push(LayoutFrame {
+                    cluster_id,
+                    child_ids: Some(child_ids),
+                });
+                stack.extend(child_frames);
                 continue;
-            }
+            };
 
             if let Some(cluster_id) = frame.cluster_id {
                 let Some(mut current) = ctx.extracted.remove(&cluster_id) else {
                     continue;
                 };
-                update_child_cluster_bounds(&mut current, ctx)?;
+                update_child_cluster_bounds(&mut current, &child_ids, ctx)?;
                 inject_parent_cluster(&mut current, &cluster_id, ctx)?;
                 layout_one_graph(&mut current, ctx)?;
                 ctx.extracted.insert(cluster_id, current);
             } else {
-                update_child_cluster_bounds(graph, ctx)?;
+                update_child_cluster_bounds(graph, &child_ids, ctx)?;
                 layout_one_graph(graph, ctx)?;
             }
         }
@@ -2665,7 +2591,7 @@ fn layout_flowchart_with_model(
         };
         let mut recursive_layout_ctx = RecursiveLayoutContext {
             extracted: &mut extracted_graphs,
-            subgraph_id_set: &subgraph_id_set,
+            subgraph_id_set: &subgraph_ids,
             y_shift,
             cluster_node_labels: &cluster_node_labels,
             title_total_margin,
@@ -3200,7 +3126,7 @@ fn layout_flowchart_with_model(
     work_control.charge_adapter(cluster_work)?;
 
     struct ClusterRectContext<'a> {
-        subgraphs_by_id: &'a std::collections::HashMap<String, FlowSubgraph>,
+        subgraphs_by_id: &'a FlowSubgraphIndex<'a>,
         class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
         leaf_rects: &'a std::collections::HashMap<String, Rect>,
         extra_children: &'a std::collections::HashMap<String, Vec<String>>,
@@ -3256,7 +3182,7 @@ fn layout_flowchart_with_model(
                     });
                 }
 
-                let Some(sg) = ctx.subgraphs_by_id.get(&frame.id) else {
+                let Some(sg) = ctx.subgraphs_by_id.get(frame.id.as_str()) else {
                     return Err(Error::InvalidModel {
                         message: format!("missing subgraph definition for {}", frame.id),
                     });
@@ -3267,7 +3193,7 @@ fn layout_flowchart_with_model(
                     expanded: true,
                 });
                 for member in sg.nodes.iter().rev() {
-                    if ctx.subgraphs_by_id.contains_key(member)
+                    if ctx.subgraphs_by_id.contains_key(member.as_str())
                         && !state.cluster_rects.contains_key(member)
                     {
                         stack.push(ClusterRectFrame {
@@ -3279,7 +3205,7 @@ fn layout_flowchart_with_model(
                 continue;
             }
 
-            let Some(sg) = ctx.subgraphs_by_id.get(&frame.id) else {
+            let Some(sg) = ctx.subgraphs_by_id.get(frame.id.as_str()) else {
                 return Err(Error::InvalidModel {
                     message: format!("missing subgraph definition for {}", frame.id),
                 });
@@ -3289,7 +3215,7 @@ fn layout_flowchart_with_model(
             for member in &sg.nodes {
                 let member_rect = if let Some(r) = ctx.leaf_rects.get(member).copied() {
                     Some(r)
-                } else if ctx.subgraphs_by_id.contains_key(member) {
+                } else if ctx.subgraphs_by_id.contains_key(member.as_str()) {
                     Some(state.cluster_rects.get(member).copied().ok_or_else(|| {
                         Error::InvalidModel {
                             message: format!("missing computed subgraph rect for {member}"),
@@ -4412,28 +4338,45 @@ mod tests {
     }
 
     #[test]
-    fn parent_cycle_detection_handles_a_long_acyclic_chain_without_parent_walks() {
+    fn parent_batch_handles_a_long_acyclic_chain_without_parent_walks() {
         let count = 8_192usize;
-        let ids = (0..count)
-            .map(|index| format!("n{index}"))
-            .collect::<Vec<_>>();
-        let mut parent_by_id = HashMap::new();
-        parent_by_id.insert(ids[0].clone(), "root".to_string());
-        for index in 1..count {
-            parent_by_id.insert(ids[index].clone(), ids[index - 1].clone());
+        let mut graph = compound_graph();
+        graph.set_node("root", NodeLabel::default());
+        for index in 0..count {
+            graph.set_node(format!("n{index}"), NodeLabel::default());
         }
+        let root_ix = graph.node_ix("root").unwrap();
+        let assignments = (0..count)
+            .map(|index| {
+                let child_ix = graph.node_ix(&format!("n{index}")).unwrap();
+                let parent_ix = if index == 0 {
+                    root_ix
+                } else {
+                    graph.node_ix(&format!("n{}", index - 1)).unwrap()
+                };
+                (child_ix, parent_ix)
+            })
+            .collect::<Vec<_>>();
+        let mut work_control = DagreOperationWorkControl::new(Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )));
 
-        assert_eq!(
-            first_parent_cycle_assignment(ids.iter().map(String::as_str), &parent_by_id),
-            None
-        );
+        apply_unparented_parent_assignments(
+            &mut graph,
+            &assignments,
+            UnparentedParentBatchShape::default(),
+            &mut work_control,
+        )
+        .expect("the deep functional-parent chain is acyclic");
+        assert_eq!(graph.parent("n0"), Some("root"));
+        assert_eq!(graph.parent(&format!("n{}", count - 1)), Some("n8190"));
     }
 
     #[test]
-    fn parent_cycle_detection_matches_mermaid_graphlib_assignment_order() {
+    fn parent_batch_matches_mermaid_graphlib_assignment_order() {
         // Mermaid applies the final FlowDB parents through Graphlib `setParent` in this order.
-        // Merman validates before mutation, but must identify the same offending assignment so
-        // the source-backed error names the same child and parent.
+        // The atomic Graphlib batch must identify the same offending assignment so the
+        // source-backed error names the same child and parent without a duplicate preflight.
         fn sequential_parent_walk_reference(
             order: &[&str],
             parent_by_id: &HashMap<String, String>,
@@ -4487,11 +4430,52 @@ mod tests {
                 .into_iter()
                 .map(|(child, parent)| (child.to_string(), parent.to_string()))
                 .collect::<HashMap<_, _>>();
-            assert_eq!(
-                first_parent_cycle_assignment(order.iter().copied(), &parent_by_id),
-                sequential_parent_walk_reference(&order, &parent_by_id),
-                "cycle assignment mismatch for order {order:?}"
+            let expected = sequential_parent_walk_reference(&order, &parent_by_id);
+            let mut graph = compound_graph();
+            for id in order
+                .iter()
+                .copied()
+                .chain(parent_by_id.values().map(String::as_str))
+            {
+                graph.set_node(id, NodeLabel::default());
+            }
+            let mut assigned = HashSet::new();
+            let parent_assignments = order
+                .iter()
+                .copied()
+                .filter_map(|child| {
+                    let parent = parent_by_id.get(child)?;
+                    assigned.insert(child).then(|| {
+                        (
+                            graph.node_ix(child).unwrap(),
+                            graph.node_ix(parent).unwrap(),
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+            let mut work_control = DagreOperationWorkControl::new(Arc::new(
+                OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+            ));
+            let actual = apply_unparented_parent_assignments(
+                &mut graph,
+                &parent_assignments,
+                UnparentedParentBatchShape::default(),
+                &mut work_control,
             );
+
+            match expected {
+                None => actual.expect("the reference parent sequence is acyclic"),
+                Some((child, parent)) => {
+                    let Error::InvalidModel { message } = actual.unwrap_err() else {
+                        panic!("expected InvalidModel for order {order:?}");
+                    };
+                    assert_eq!(
+                        message,
+                        format!("Setting {parent} as parent of {child} would create a cycle"),
+                        "cycle assignment mismatch for order {order:?}"
+                    );
+                }
+            }
         }
     }
 
@@ -4630,8 +4614,7 @@ mod tests {
                 let deep_subgraphs = deep_subgraphs(DEEP_SUBGRAPH_DEPTH);
                 let deep_subgraphs_by_id = deep_subgraphs
                     .iter()
-                    .cloned()
-                    .map(|subgraph| (subgraph.id.clone(), subgraph))
+                    .map(|subgraph| (subgraph.id.as_str(), subgraph))
                     .collect();
                 let dirs = compute_effective_dir_by_id(
                     &deep_subgraphs,
