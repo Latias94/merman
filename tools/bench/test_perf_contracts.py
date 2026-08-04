@@ -37,6 +37,9 @@ from corpus_utils import (
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS_PATH = ROOT / "tools" / "bench" / "corpus.json"
 BINDING_REQUEST_CORPUS_PATH = ROOT / "tools" / "bench" / "binding_request_corpus.json"
+PIPELINE_EXECUTABLE = (
+    "pipeline-deadbeef.exe" if os.name == "nt" else "pipeline-deadbeef"
+)
 
 
 class CorpusContractsTest(unittest.TestCase):
@@ -1313,23 +1316,23 @@ class CompareSelfContractsTest(unittest.TestCase):
                     json_value=str(target),
                 )
 
-    def test_case_alias_detected_after_json_write_preserves_json(self) -> None:
+    def test_alias_detected_after_json_write_preserves_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            probe = root / "CaseProbe"
-            probe.write_text("probe", encoding="utf-8")
-            case_insensitive = (root / "caseprobe").exists()
-            probe.unlink()
-            if not case_insensitive:
-                self.skipTest("filesystem is case-sensitive")
-
             base = root / "base"
             head = root / "head"
             base.mkdir()
             head.mkdir()
-            markdown = root / "Evidence"
-            structured = root / "evidence"
-            with mock.patch.object(compare_self, "_execute_comparison"):
+            markdown = root / "evidence.md"
+            structured = root / "evidence.json"
+            with (
+                mock.patch.object(compare_self, "_execute_comparison"),
+                mock.patch.object(
+                    compare_self,
+                    "_same_existing_file",
+                    side_effect=[False, True],
+                ),
+            ):
                 result = compare_self.main(
                     [
                         "--base-dir",
@@ -1600,7 +1603,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 / "perf-frozen"
                 / "reuse-test"
                 / ("base-" + "a" * 40 + f"-{executable_sha256}")
-                / "pipeline-deadbeef"
+                / PIPELINE_EXECUTABLE
             )
             executable.parent.mkdir(parents=True)
             executable.write_bytes(executable_bytes)
@@ -2190,7 +2193,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target_dir = root / "target"
-            artifact = target_dir / "debug" / "deps" / "pipeline-deadbeef"
+            artifact = target_dir / "debug" / "deps" / PIPELINE_EXECUTABLE
             artifact.parent.mkdir(parents=True)
             artifact.write_bytes(b"base executable")
             artifact.chmod(0o755)
@@ -2264,7 +2267,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             bench_source.parent.mkdir()
             bench_source.write_text("fn main() {}\n", encoding="utf-8")
             target_dir = root / "target"
-            cargo_artifact = target_dir / "debug" / "deps" / "pipeline-deadbeef"
+            cargo_artifact = target_dir / "debug" / "deps" / PIPELINE_EXECUTABLE
             cargo_artifact.parent.mkdir(parents=True)
             cargo_artifact.write_bytes(b"bench executable")
             cargo_artifact.chmod(0o755)
@@ -2401,7 +2404,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target_dir = root / "target"
-            artifact = target_dir / "debug" / "deps" / "pipeline-deadbeef"
+            artifact = target_dir / "debug" / "deps" / PIPELINE_EXECUTABLE
             artifact.parent.mkdir(parents=True)
             artifact.write_bytes(b"original executable")
             artifact.chmod(0o755)
@@ -2442,8 +2445,57 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     build_sequence=1,
                 )
 
-            frozen_files = list((target_dir / "perf-frozen").rglob("pipeline-deadbeef"))
+            frozen_files = list((target_dir / "perf-frozen").rglob(PIPELINE_EXECUTABLE))
             self.assertEqual(frozen_files, [])
+
+    def test_shared_target_freeze_cleans_failed_read_only_publication(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target_dir = root / "target"
+            artifact = target_dir / "debug" / "deps" / PIPELINE_EXECUTABLE
+            artifact.parent.mkdir(parents=True)
+            artifact.write_bytes(b"bench executable")
+            artifact.chmod(0o755)
+            recipe = self._recipe(
+                label="base",
+                checkout=root / "base",
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain=None,
+                target_dir=target_dir,
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            plan = compare_self.SharedTargetFreezePlan(
+                target_dir=target_dir,
+                context="failed-publication-test",
+            )
+            digest = compare_self.hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+            with (
+                mock.patch.object(
+                    compare_self,
+                    "_path_sha256",
+                    side_effect=[digest, digest, digest, "0" * 64],
+                ),
+                self.assertRaisesRegex(
+                    compare_self.ContractViolation,
+                    "published frozen executable digest differs",
+                ),
+            ):
+                compare_self._freeze_bench_executable(
+                    artifact,
+                    recipe=recipe,
+                    git={"revision": "a" * 40, "tree": "b" * 40},
+                    plan=plan,
+                    build_sequence=1,
+                )
+
+            frozen_files = list((target_dir / "perf-frozen").rglob(PIPELINE_EXECUTABLE))
+            self.assertEqual(frozen_files, [])
+            freeze_context = target_dir / "perf-frozen" / "failed-publication-test"
+            self.assertEqual(list(freeze_context.iterdir()), [])
 
     def test_frozen_digest_drift_fails_before_round_sampling(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2616,7 +2668,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 target_dir=root / "target",
                 corpus=Path("tools/bench/corpus.json"),
             )
-            executable = root / "target" / "release" / "deps" / "pipeline-deadbeef"
+            executable = root / "target" / "release" / "deps" / PIPELINE_EXECUTABLE
             unrelated = {
                 "reason": "compiler-artifact",
                 "package_id": "path+file:///repo#merman@0.9.0",
@@ -2646,15 +2698,16 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 compare_self.parse_bench_executable(json.dumps(unrelated), recipe=recipe)
 
     def test_direct_criterion_command_uses_hidden_benchmark_mode_and_exact_filter(self) -> None:
+        executable = Path("target") / "release" / "deps" / PIPELINE_EXECUTABLE
         command = compare_self.criterion_command(
-            executable=Path("target/release/deps/pipeline-deadbeef"),
+            executable=executable,
             exact_bench="end_to_end/flowchart_medium",
             sample_size=30,
             warm_up_seconds=2,
             measurement_seconds=3,
         )
 
-        self.assertEqual(command[0], "target/release/deps/pipeline-deadbeef")
+        self.assertEqual(command[0], str(executable))
         self.assertIn("--bench", command)
         self.assertEqual(command[command.index("--color") + 1], "never")
         self.assertEqual(
