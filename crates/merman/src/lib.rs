@@ -163,6 +163,7 @@ pub fn render_svg(source: &str) -> std::result::Result<String, RenderSvgError> {
 /// Use this entry point when multiple outputs will be embedded in the same DOM.
 /// The id is normalized with the same rules as
 /// [`svg::HeadlessRenderer::with_diagram_id`].
+/// Callers must ensure supplied ids remain unique after [`svg::sanitize_svg_id`] normalization because distinct display labels can normalize to the same emitted id.
 #[cfg(feature = "svg")]
 pub fn render_svg_with_id(
     source: &str,
