@@ -2398,6 +2398,73 @@ async fn diagnostic_reprojection_does_not_commit_a_superseded_policy_epoch() {
     assert!(store.has_analysis_payload(&uri));
 }
 
+#[tokio::test]
+async fn completed_diagnostic_reprojection_cannot_commit_after_a_newer_policy_update() {
+    let mut store = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/completed-stale-reprojection.mmd").unwrap();
+
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let initial = store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    let generation = initial.snapshot.shared_analysis_generation();
+
+    let _ = store.begin_analyzer_options(
+        default_lsp_analysis_options().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                .unwrap(),
+        ),
+    );
+    let stale_request = reprojection_for(&store, &uri);
+    let stale_projection = store
+        .analysis_executor()
+        .execute_diagnostic_reprojection(stale_request.request())
+        .await
+        .expect("the older projection should finish before the next update");
+    let stale_generation = stale_projection.projected().diagnostic_generation();
+
+    let _ = store.begin_analyzer_options(
+        default_lsp_analysis_options().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Warning)
+                .unwrap(),
+        ),
+    );
+    let current_generation = store.diagnostic_generation;
+    assert_ne!(stale_generation, current_generation);
+    assert!(
+        store
+            .commit_diagnostic_reprojection_context(&stale_request, &stale_projection)
+            .is_none(),
+        "a completed projection from the superseded policy must remain request-stale"
+    );
+    assert!(store.has_snapshot(&uri));
+    assert!(!store.has_analysis_payload(&uri));
+
+    let current_request = reprojection_for(&store, &uri);
+    let current_projection = store
+        .analysis_executor()
+        .execute_diagnostic_reprojection(current_request.request())
+        .await
+        .expect("the newest projection should complete");
+    let current = store
+        .commit_diagnostic_reprojection_context(&current_request, &current_projection)
+        .expect("the newest projection should commit");
+
+    assert_eq!(current.diagnostic_generation(), current_generation);
+    assert!(store.has_analysis_payload(&uri));
+    assert!(Arc::ptr_eq(
+        &generation,
+        &current.snapshot.shared_analysis_generation()
+    ));
+}
+
 #[test]
 fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
     let mut store = SessionState::new();
@@ -3733,6 +3800,78 @@ fn diagnostic_preparation_touches_the_cache_once() {
     let after_commit = store.analysis_cache_statistics();
     assert_eq!(after_commit.hits, after_acquire.hits);
     assert_eq!(after_commit.misses, after_acquire.misses);
+}
+
+#[tokio::test]
+async fn evicted_projection_cannot_promote_a_reinserted_same_snapshot_incarnation() {
+    let a = Uri::from_str("file:///tmp/projection-aba-a.mmd").unwrap();
+    let b = Uri::from_str("file:///tmp/projection-aba-b.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+
+    let budget = estimated_snapshot_entry_weight(&a, text, DocumentKind::Diagram).max(
+        estimated_snapshot_entry_weight(&b, text, DocumentKind::Diagram),
+    );
+
+    let mut store = SessionState::with_analysis_cache_budget(budget);
+    store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    store.upsert_text(b.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let a_request = store.snapshot_build_request(&a).unwrap();
+    let a_snapshot = a_request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
+    drop(
+        store
+            .commit_built_snapshot_direct_for_test(&a_request, Arc::clone(&a_snapshot))
+            .expect("the original snapshot should enter the cache"),
+    );
+    let stale_ticket = reprojection_for(&store, &a);
+    assert!(Arc::ptr_eq(stale_ticket.snapshot(), &a_snapshot));
+    let stale_projection = store
+        .analysis_executor()
+        .execute_diagnostic_reprojection(stale_ticket.request())
+        .await
+        .expect("the original projection should finish before eviction");
+
+    let b_request = store.snapshot_build_request(&b).unwrap();
+    let b_snapshot = b_request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
+    drop(
+        store
+            .commit_built_snapshot_direct_for_test(&b_request, b_snapshot)
+            .expect("the second snapshot should evict the original incarnation"),
+    );
+    assert!(!store.has_snapshot(&a));
+    assert!(store.has_snapshot(&b));
+
+    drop(
+        store
+            .commit_built_snapshot_direct_for_test(&a_request, Arc::clone(&a_snapshot))
+            .expect("the same snapshot Arc should be admitted under a new incarnation"),
+    );
+    assert!(store.has_snapshot(&a));
+    assert!(!store.has_snapshot(&b));
+    assert!(!store.has_analysis_payload(&a));
+    let before = (
+        store.analysis_cache_total_weight(),
+        store.analysis_cache_statistics(),
+    );
+
+    let request_local = store
+        .commit_diagnostic_reprojection_context(&stale_ticket, &stale_projection)
+        .expect("the old projection may remain valid for its current requester");
+
+    assert!(Arc::ptr_eq(&request_local.snapshot, &a_snapshot));
+    assert!(store.has_snapshot(&a));
+    assert!(!store.has_analysis_payload(&a));
+    assert_eq!(
+        (
+            store.analysis_cache_total_weight(),
+            store.analysis_cache_statistics(),
+        ),
+        before,
+        "an old cache authority must not mutate the reinserted incarnation"
+    );
 }
 
 #[test]

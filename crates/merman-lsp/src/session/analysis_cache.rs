@@ -3,7 +3,8 @@ use super::analysis::AnalysisJobGeneration;
 use super::cache::WeightedCacheStatistics;
 use super::cache::{WeightedLru, WeightedReplaceOutcome, conservative_weighted_entry_bytes};
 use crate::snapshot::{
-    DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot, SnapshotGeneration,
+    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
+    SnapshotGeneration,
 };
 use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
@@ -108,12 +109,14 @@ impl AnalysisCache {
         &mut self,
         uri: &Uri,
         authority: AnalysisCacheAuthority,
+        target_diagnostic_generation: DiagnosticGeneration,
         context: Arc<DocumentAnalysisContext>,
     ) -> AnalysisCachePromotion {
         let Some(existing) = self.entries.peek(uri) else {
             return AnalysisCachePromotion::Stale;
         };
         if existing.incarnation != authority.0
+            || context.diagnostic_generation() != target_diagnostic_generation
             || existing.snapshot().generation_identity() != context.generation_identity()
             || !Arc::ptr_eq(existing.snapshot(), &context.snapshot)
         {
@@ -288,7 +291,6 @@ fn complete_entry_weight(uri: &Uri, context: &DocumentAnalysisContext) -> usize 
 mod tests {
     use super::super::analysis::request::{AnalysisBuildKey, AnalysisBuildRequest};
     use super::*;
-    use crate::snapshot::DiagnosticGeneration;
     use merman_analysis::{AnalysisCancellationToken, Analyzer};
     use merman_editor_core::DocumentKind;
     use std::str::FromStr;
@@ -323,12 +325,19 @@ mod tests {
     }
 
     fn test_context(snapshot: Arc<DocumentSnapshot>) -> Arc<DocumentAnalysisContext> {
+        test_context_for_generation(snapshot, DiagnosticGeneration(1))
+    }
+
+    fn test_context_for_generation(
+        snapshot: Arc<DocumentSnapshot>,
+        diagnostic_generation: DiagnosticGeneration,
+    ) -> Arc<DocumentAnalysisContext> {
         let analyzer = Analyzer::new();
         Arc::new(
             DocumentAnalysisContext::project_cancellable(
                 snapshot,
                 analyzer.options().diagnostic_policy(),
-                DiagnosticGeneration(1),
+                diagnostic_generation,
                 &AnalysisCancellationToken::new(),
             )
             .expect("test diagnostic projection should complete"),
@@ -359,7 +368,7 @@ mod tests {
         let before_statistics = cache.statistics();
 
         assert_eq!(
-            cache.promote(&a, authority, complete),
+            cache.promote(&a, authority, DiagnosticGeneration(1), complete),
             AnalysisCachePromotion::SnapshotRetained
         );
 
@@ -396,7 +405,12 @@ mod tests {
         let before_statistics = cache.statistics();
 
         assert_eq!(
-            cache.promote(&a, old_authority, test_context(Arc::clone(&snapshot))),
+            cache.promote(
+                &a,
+                old_authority,
+                DiagnosticGeneration(1),
+                test_context(Arc::clone(&snapshot)),
+            ),
             AnalysisCachePromotion::Stale
         );
 
@@ -432,7 +446,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            cache.promote(&uri, authority, test_context(equivalent)),
+            cache.promote(
+                &uri,
+                authority,
+                DiagnosticGeneration(1),
+                test_context(equivalent),
+            ),
             AnalysisCachePromotion::Stale
         );
         assert!(
@@ -442,6 +461,33 @@ mod tests {
                 .context()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn promotion_requires_the_target_diagnostic_generation() {
+        let uri = test_uri("diagnostic-generation");
+        let snapshot = test_snapshot(&uri);
+        let stale_context =
+            test_context_for_generation(Arc::clone(&snapshot), DiagnosticGeneration(1));
+        let mut cache = AnalysisCache::new(complete_entry_weight(&uri, &stale_context));
+        let authority = cache
+            .insert_snapshot(uri.clone(), test_stamp(), Arc::clone(&snapshot))
+            .unwrap();
+        let before_weight = cache.total_weight();
+        let before_statistics = cache.statistics();
+
+        assert_eq!(
+            cache.promote(&uri, authority, DiagnosticGeneration(2), stale_context,),
+            AnalysisCachePromotion::Stale
+        );
+
+        let current = cache
+            .current_without_touch(&uri, test_stamp())
+            .expect("the snapshot-only entry must remain resident");
+        assert!(Arc::ptr_eq(current.snapshot(), &snapshot));
+        assert!(current.context().is_none());
+        assert_eq!(cache.total_weight(), before_weight);
+        assert_eq!(cache.statistics(), before_statistics);
     }
 
     #[test]
@@ -457,7 +503,12 @@ mod tests {
             .insert_snapshot(uri.clone(), test_stamp(), snapshot)
             .unwrap();
         assert_eq!(
-            cache.promote(&uri, authority, Arc::clone(&context)),
+            cache.promote(
+                &uri,
+                authority,
+                DiagnosticGeneration(1),
+                Arc::clone(&context),
+            ),
             AnalysisCachePromotion::Committed
         );
         drop(context);

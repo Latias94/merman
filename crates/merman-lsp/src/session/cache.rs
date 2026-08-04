@@ -100,9 +100,12 @@ where
         self.remove(&key);
 
         let weight_u128 = weight as u128;
-        while self.retained.saturating_add(weight_u128) > self.budget as u128 {
-            self.evict_lru();
-        }
+        let projected_retained = self
+            .retained
+            .checked_add(weight_u128)
+            .expect("cache insertion weight must not overflow u128");
+        let victims = self.insertion_victims_for_budget(projected_retained);
+        self.evict(victims);
         let last_access = self.next_access();
         let previous = self.entries.insert(
             key,
@@ -141,42 +144,16 @@ where
         }
 
         let previous_weight = previous.weight;
-        let mut projected_retained = self
+        let projected_retained = self
             .retained
             .checked_sub(previous_weight as u128)
             .expect("replacement weight must match retained entries")
             .checked_add(weight as u128)
             .expect("replacement cache weight must not overflow u128");
-        let mut victims = Vec::new();
-        if projected_retained > self.budget as u128 {
-            let mut candidates = self
-                .entries
-                .iter()
-                .map(|(candidate, entry)| (entry.last_access, candidate.clone(), entry.weight))
-                .collect::<Vec<_>>();
-            candidates.sort_unstable_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
-            for (_, victim, victim_weight) in candidates {
-                if projected_retained <= self.budget as u128 {
-                    break;
-                }
-                if victim == *key {
-                    return WeightedReplaceOutcome::ReplacementWouldBeEvicted;
-                }
-                victims.push(victim);
-                projected_retained = projected_retained
-                    .checked_sub(victim_weight as u128)
-                    .expect("replacement victim weight must be retained");
-            }
-        }
-        debug_assert!(projected_retained <= self.budget as u128);
-
-        for victim in victims {
-            self.remove(&victim);
-            #[cfg(test)]
-            {
-                self.statistics.evictions = self.statistics.evictions.saturating_add(1);
-            }
-        }
+        let Some(victims) = self.lru_victims_for_budget(projected_retained, Some(key)) else {
+            return WeightedReplaceOutcome::ReplacementWouldBeEvicted;
+        };
+        self.evict(victims);
         let previous = self
             .entries
             .get_mut(key)
@@ -253,19 +230,67 @@ where
         access
     }
 
-    fn evict_lru(&mut self) {
-        let victim = self
+    fn lru_victims_for_budget(
+        &self,
+        mut projected_retained: u128,
+        protected: Option<&K>,
+    ) -> Option<Vec<K>> {
+        if projected_retained <= self.budget as u128 {
+            return Some(Vec::new());
+        }
+        let mut candidates = self
+            .entries
+            .iter()
+            .map(|(candidate, entry)| (entry.last_access, candidate.clone(), entry.weight))
+            .collect::<Vec<_>>();
+        candidates.sort_unstable();
+        let mut victims = Vec::new();
+        for (_, victim, victim_weight) in candidates {
+            if projected_retained <= self.budget as u128 {
+                break;
+            }
+            if protected.is_some_and(|protected| &victim == protected) {
+                return None;
+            }
+            victims.push(victim);
+            projected_retained = projected_retained
+                .checked_sub(victim_weight as u128)
+                .expect("eviction victim weight must be retained");
+        }
+        debug_assert!(projected_retained <= self.budget as u128);
+        Some(victims)
+    }
+
+    fn insertion_victims_for_budget(&self, projected_retained: u128) -> Vec<K> {
+        if projected_retained <= self.budget as u128 {
+            return Vec::new();
+        }
+        let (first, first_weight) = self
             .entries
             .iter()
             .min_by(|(left_key, left), (right_key, right)| {
                 (left.last_access, *left_key).cmp(&(right.last_access, *right_key))
             })
-            .map(|(key, _)| key.clone())
-            .expect("an over-budget cache must have an eviction victim");
-        self.remove(&victim);
-        #[cfg(test)]
+            .map(|(key, entry)| (key.clone(), entry.weight))
+            .expect("an over-budget insertion must have an eviction victim");
+        if projected_retained
+            .checked_sub(first_weight as u128)
+            .expect("the first insertion victim must be retained")
+            <= self.budget as u128
         {
-            self.statistics.evictions = self.statistics.evictions.saturating_add(1);
+            return vec![first];
+        }
+        self.lru_victims_for_budget(projected_retained, None)
+            .expect("an insertion without a protected entry must have an eviction plan")
+    }
+
+    fn evict(&mut self, victims: Vec<K>) {
+        for victim in victims {
+            self.remove(&victim);
+            #[cfg(test)]
+            {
+                self.statistics.evictions = self.statistics.evictions.saturating_add(1);
+            }
         }
     }
 
@@ -324,6 +349,23 @@ mod tests {
         assert!(cache.contains_key(&"a"));
         assert!(!cache.contains_key(&"b"));
         assert!(cache.contains_key(&"c"));
+    }
+
+    #[test]
+    fn insertion_evicts_multiple_entries_in_lru_order() {
+        let mut cache = WeightedLru::new(30);
+        assert!(cache.insert("a", 1, 10));
+        assert!(cache.insert("b", 2, 10));
+        assert!(cache.insert("c", 3, 10));
+
+        assert!(cache.insert("d", 4, 25));
+
+        assert!(!cache.contains_key(&"a"));
+        assert!(!cache.contains_key(&"b"));
+        assert!(!cache.contains_key(&"c"));
+        assert_eq!(cache.get(&"d"), Some(&4));
+        assert_eq!(cache.total_weight(), 25);
+        assert_eq!(cache.statistics().evictions, 3);
     }
 
     #[test]

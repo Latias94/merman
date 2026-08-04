@@ -86,6 +86,9 @@ impl SessionState {
         if projected.generation_identity() != key.generation_identity() {
             return None;
         }
+        if projected.diagnostic_generation() != key.target_diagnostic_generation() {
+            return None;
+        }
 
         let context = SnapshotContext::with_analysis(
             Arc::clone(&projected.snapshot),
@@ -95,9 +98,12 @@ impl SessionState {
             key.document_epoch(),
         );
         if let Some(authority) = cache_authority {
-            let _ = self
-                .analysis_cache
-                .promote(uri, authority, Arc::clone(projected));
+            let _ = self.analysis_cache.promote(
+                uri,
+                authority,
+                key.target_diagnostic_generation(),
+                Arc::clone(projected),
+            );
         }
         Some(context)
     }
