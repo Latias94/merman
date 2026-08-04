@@ -2,12 +2,13 @@ use super::*;
 
 // Shared Mermaid diagram CSS fragments (split from parity.rs).
 //
-// Keep Mermaid@11.12.2 ordering quirks to preserve DOM parity.
+// Keep Mermaid@11.16.0 ordering quirks to preserve DOM parity.
 
 #[derive(Clone, Copy)]
 struct MermaidBaseCss<'a> {
     font_family: &'a str,
-    font_size: f64,
+    font_size_css: &'a str,
+    normal_edge_stroke_width_css: &'a str,
     text_color: &'a str,
     line_color: &'a str,
     error_bkg: &'a str,
@@ -17,11 +18,8 @@ struct MermaidBaseCss<'a> {
 fn write_mermaid_base_css_prefix(out: &mut String, id: &str, css: MermaidBaseCss<'_>) {
     let _ = write!(
         out,
-        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        id,
-        css.font_family,
-        fmt(css.font_size),
-        css.text_color
+        r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
+        id, css.font_family, css.font_size_css, css.text_color
     );
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -38,8 +36,8 @@ fn write_mermaid_base_css_prefix(out: &mut String, id: &str, css: MermaidBaseCss
     );
     let _ = write!(
         out,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
+        r#"#{} .edge-thickness-normal{{stroke-width:{};}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        id, css.normal_edge_stroke_width_css, id, id, id, id, id
     );
     let _ = write!(
         out,
@@ -48,11 +46,87 @@ fn write_mermaid_base_css_prefix(out: &mut String, id: &str, css: MermaidBaseCss
     );
     let _ = write!(
         out,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
-        id,
-        css.font_family,
-        fmt(css.font_size),
+        r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
+        id, css.font_family, css.font_size_css, id
+    );
+}
+
+fn mermaid_stroke_width_px(effective_config: &serde_json::Value) -> String {
+    let value = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "strokeWidth"],
+    )
+    .unwrap_or_else(|| "1".to_string());
+    let value = value.trim();
+    if value.parse::<f64>().is_ok() {
+        format!("{value}px")
+    } else {
+        value.to_string()
+    }
+}
+
+fn write_mermaid_common_neo_css(out: &mut String, id: &str, effective_config: &serde_json::Value) {
+    let node_border = theme_token(effective_config, "nodeBorder", "#9370DB");
+    let use_gradient =
+        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
+    let neo_stroke = if use_gradient {
+        format!("url(#{id}-gradient)")
+    } else {
+        node_border.clone()
+    };
+    let drop_shadow = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "dropShadow"],
+    )
+    .unwrap_or_else(|| "none".to_string())
+    .replace("url(#drop-shadow)", &format!("url(#{id}-drop-shadow)"));
+    let stroke_width = mermaid_stroke_width_px(effective_config);
+
+    let _ = write!(out, r#"#{} .node .neo-node{{stroke:{};}}"#, id, node_border);
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].node rect,#{} [data-look="neo"].cluster rect,#{} [data-look="neo"].node polygon{{stroke:{};filter:{};}}"#,
+        id, id, id, neo_stroke, drop_shadow
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].swimlane.cluster rect{{filter:none;}}"#,
         id
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
+        id, neo_stroke, stroke_width
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].node .outer-path{{filter:{};}}"#,
+        id, drop_shadow
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].node .neo-line path{{stroke:{};filter:none;}}"#,
+        id, node_border
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].node circle{{stroke:{};filter:{};}}"#,
+        id, neo_stroke, drop_shadow
+    );
+    let _ = write!(
+        out,
+        r##"#{} [data-look="neo"].node circle .state-start{{fill:#000000;}}"##,
+        id
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].icon-shape .icon{{fill:{};filter:{};}}"#,
+        id, neo_stroke, drop_shadow
+    );
+    let _ = write!(
+        out,
+        r#"#{} [data-look="neo"].icon-shape .icon-neo path{{stroke:{};filter:{};}}"#,
+        id, neo_stroke, drop_shadow
     );
 }
 
@@ -68,13 +142,15 @@ pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
         &id,
         MermaidBaseCss {
             font_family: font,
-            font_size: 16.0,
+            font_size_css: "16px",
+            normal_edge_stroke_width_css: "1px",
             text_color: "#333",
             line_color: "#333333",
             error_bkg: "#552222",
             error_text: "#552222",
         },
     );
+    write_mermaid_common_neo_css(out, &id, &serde_json::Value::Null);
     out.push_str(&mermaid_base_css_root_rule(&id, font));
 }
 
@@ -90,6 +166,7 @@ pub(super) struct InfoCssParts {
 enum InfoCssFontSizeSource {
     ThemeThenTopLevel,
     ThemeOnly,
+    RawTheme,
 }
 
 pub(super) fn info_css_parts_with_config(
@@ -114,6 +191,17 @@ pub(super) fn info_css_parts_with_theme_font_size_only(
     )
 }
 
+pub(super) fn info_css_parts_with_raw_theme_font_size(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> InfoCssParts {
+    info_css_parts_with_font_size_source(
+        diagram_id,
+        effective_config,
+        InfoCssFontSizeSource::RawTheme,
+    )
+}
+
 fn info_css_parts_with_font_size_source(
     diagram_id: &str,
     effective_config: &serde_json::Value,
@@ -122,16 +210,22 @@ fn info_css_parts_with_font_size_source(
     let id = escape_xml(diagram_id);
 
     let font_family = crate::config::config_font_family_css(effective_config);
-    let font_size = match font_size_source {
+    let font_size_css = match font_size_source {
         InfoCssFontSizeSource::ThemeThenTopLevel => {
             crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
+                .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
         }
         InfoCssFontSizeSource::ThemeOnly => {
             config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+                .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
         }
+        InfoCssFontSizeSource::RawTheme => crate::config::config_css_number_or_string(
+            effective_config,
+            &["themeVariables", "fontSize"],
+        ),
     }
-    .unwrap_or(16.0)
-    .max(1.0);
+    .unwrap_or_else(|| "16px".to_string());
+    let normal_edge_stroke_width_css = mermaid_stroke_width_px(effective_config);
 
     let text_color = theme_token(effective_config, "textColor", "#333");
     let line_color = theme_token(effective_config, "lineColor", "#333333");
@@ -144,7 +238,8 @@ fn info_css_parts_with_font_size_source(
         &id,
         MermaidBaseCss {
             font_family: &font_family,
-            font_size,
+            font_size_css: &font_size_css,
+            normal_edge_stroke_width_css: &normal_edge_stroke_width_css,
             text_color: &text_color,
             line_color: &line_color,
             error_bkg: &error_bkg,
@@ -152,7 +247,9 @@ fn info_css_parts_with_font_size_source(
         },
     );
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
-    let root_rule = mermaid_base_css_root_rule(&id, &font_family);
+    let mut root_rule = String::new();
+    write_mermaid_common_neo_css(&mut root_rule, &id, effective_config);
+    root_rule.push_str(&mermaid_base_css_root_rule(&id, &font_family));
 
     InfoCssParts {
         css_prefix: out,
@@ -193,6 +290,8 @@ pub(super) fn architecture_css_parts_with_config(
     let font_size =
         crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
             .max(1.0);
+    let font_size_css = format!("{}px", fmt(font_size));
+    let normal_edge_stroke_width_css = mermaid_stroke_width_px(effective_config);
 
     let text_color = theme_token(effective_config, "textColor", "#333");
     let line_color = theme_token(effective_config, "lineColor", "#333333");
@@ -225,14 +324,14 @@ pub(super) fn architecture_css_parts_with_config(
         &id,
         MermaidBaseCss {
             font_family: &font_family,
-            font_size,
+            font_size_css: &font_size_css,
+            normal_edge_stroke_width_css: &normal_edge_stroke_width_css,
             text_color: &text_color,
             line_color: &line_color,
             error_bkg: &error_bkg,
             error_text: &error_text,
         },
     );
-
     let _ = write!(
         &mut out,
         r#"#{} .edge{{stroke-width:{};stroke:{};fill:none;}}"#,
@@ -259,6 +358,7 @@ pub(super) fn architecture_css_parts_with_config(
         id
     );
 
+    write_mermaid_common_neo_css(&mut out, &id, effective_config);
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
     out.push_str(&mermaid_base_css_root_rule(&id, &font_family));
     ArchitectureCssParts {
@@ -321,20 +421,6 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
     } else {
         "1px".to_string()
     };
-    let neo_node_stroke_width = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "strokeWidth"],
-    )
-    .map(|value| {
-        let value = value.trim().to_string();
-        if value.parse::<f64>().is_ok() {
-            format!("{value}px")
-        } else {
-            value
-        }
-    })
-    .unwrap_or_else(|| "1px".to_string());
-
     let _ = write!(
         &mut out,
         r#"#{} marker{{fill:{};stroke:{};}}#{} marker.cross{{stroke:{};}}"#,
@@ -381,13 +467,6 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
         id,
         requirement_edge_label_background
     );
-    if look.is_neo() {
-        let _ = write!(
-            &mut out,
-            r#"#{} .node .neo-node{{stroke:{};}}#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
-            id, node_border, id, node_border, neo_node_stroke_width
-        );
-    }
     out.push_str(&parts.root_rule);
     out
 }
@@ -429,13 +508,16 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
     } else {
         "1px".to_string()
     };
+    let font_size_css = format!("{}px", fmt(font_size));
+    let normal_edge_stroke_width_css = mermaid_stroke_width_px(effective_config);
     let mut out = String::new();
     write_mermaid_base_css_prefix(
         &mut out,
         &id,
         MermaidBaseCss {
             font_family: &font,
-            font_size,
+            font_size_css: &font_size_css,
+            normal_edge_stroke_width_css: &normal_edge_stroke_width_css,
             text_color: &text_color,
             line_color: &line_color,
             error_bkg: &error_bkg,
@@ -494,6 +576,7 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
         r#"#{} .marker{{fill:none!important;stroke:{}!important;stroke-width:1;}}"#,
         id, line_color
     );
+    write_mermaid_common_neo_css(&mut out, &id, effective_config);
     out.push_str(&mermaid_base_css_root_rule(&id, &font));
     Ok(out)
 }

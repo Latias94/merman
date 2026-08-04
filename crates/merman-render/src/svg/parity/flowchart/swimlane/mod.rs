@@ -305,6 +305,7 @@ mod tests {
         points: Vec<crate::model::LayoutPoint>,
     ) -> FlowchartEdgePathCacheEntry {
         let path_length = svg_path_length_from_d(d);
+        let label_path_points = points.clone();
         FlowchartEdgePathCacheEntry {
             origin_x: 0.0,
             origin_y: 0.0,
@@ -317,7 +318,9 @@ mod tests {
                 original_path_length: path_length,
                 path_length,
                 line_hop_applied: false,
-                label_position: None,
+                label_path_points,
+                label_path_was_explicitly_updated: false,
+                emitted_d_for_label: None,
                 bounds_skipped_for_viewbox: false,
             },
         }
@@ -361,12 +364,14 @@ mod tests {
         assert!(!vertical.line_hop_applied);
         assert_eq!(vertical.d, "M0,-10L0,10");
         assert_points_eq(&vertical.data_points, &vertical_points);
+        assert_points_eq(&vertical.label_path_points, &vertical_points);
         assert_eq!(vertical.data_points_b64, "vertical-points");
 
         let horizontal = &cache["horizontal"].geom;
         assert!(horizontal.line_hop_applied);
         assert!(horizontal.d.contains("A6,6 0 0 1"), "{}", horizontal.d);
         assert_points_eq(&horizontal.data_points, &horizontal_points);
+        assert_points_eq(&horizontal.label_path_points, &horizontal_points);
         assert_eq!(horizontal.data_points_b64, "horizontal-points");
         assert!(
             horizontal.path_length.expect("post-processed path length")

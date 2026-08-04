@@ -24,6 +24,7 @@ mod class;
 mod css;
 mod curve;
 mod cynefin;
+mod edge_label_geometry;
 mod emitted_bounds;
 mod er;
 mod error;

@@ -4,28 +4,20 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Bike",
-          "x": 734.303,
-          "y": 283.0,
-          "width": 154.883,
-          "height": 120.0,
-          "is_cluster": false
+          "id": "Shapes",
+          "x": 205.531,
+          "y": 392.5,
+          "width": 411.062,
+          "height": 395.0,
+          "is_cluster": true
         },
         {
-          "id": "Car",
-          "x": 536.462,
-          "y": 283.0,
-          "width": 140.8,
-          "height": 120.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Circle",
-          "x": 118.861,
-          "y": 505.0,
-          "width": 133.842,
-          "height": 120.0,
-          "is_cluster": false
+          "id": "Vehicles",
+          "x": 638.903,
+          "y": 185.5,
+          "width": 415.682,
+          "height": 371.0,
+          "is_cluster": true
         },
         {
           "id": "Shape",
@@ -36,12 +28,12 @@
           "is_cluster": false
         },
         {
-          "id": "Shapes",
-          "x": 205.531,
-          "y": 392.5,
-          "width": 411.062,
-          "height": 395.0,
-          "is_cluster": true
+          "id": "Circle",
+          "x": 118.861,
+          "y": 505.0,
+          "width": 133.842,
+          "height": 120.0,
+          "is_cluster": false
         },
         {
           "id": "Square",
@@ -60,12 +52,20 @@
           "is_cluster": false
         },
         {
-          "id": "Vehicles",
-          "x": 638.903,
-          "y": 185.5,
-          "width": 415.682,
-          "height": 371.0,
-          "is_cluster": true
+          "id": "Car",
+          "x": 536.462,
+          "y": 283.0,
+          "width": 140.8,
+          "height": 120.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Bike",
+          "x": 734.303,
+          "y": 283.0,
+          "width": 154.883,
+          "height": 120.0,
+          "is_cluster": false
         }
       ],
       "edges": [

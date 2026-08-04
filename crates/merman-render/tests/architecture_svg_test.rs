@@ -486,8 +486,8 @@ fn architecture_group_rect_uses_configured_padding_for_small_icons() {
 
     let left = group_rect(&svg, "architecture-padding-group-left");
     assert!(
-        (left.2 - 162.0).abs() <= 1.0e-9,
-        "custom architecture.padding should follow Cytoscape label, border, and final-bbox phases, got width {}",
+        (left.2 - 160.0).abs() <= 1.0e-9,
+        "custom architecture.padding should follow Cytoscape compound child, parent border, and final-bbox phases, got width {}",
         left.2
     );
 }
@@ -510,7 +510,7 @@ fn architecture_vertical_edge_label_bounds_use_create_text_y_offsets() {
     );
     assert!(
         group.3 > 171.5 && group.3 < 171.6,
-        "compound label bottom should follow architecture.fontSize + 1px for custom font sizes, got group height {}",
+        "compound sizing should union expanded body bounds with node-label margin bounds before the parent phase, got group height {}",
         group.3
     );
 

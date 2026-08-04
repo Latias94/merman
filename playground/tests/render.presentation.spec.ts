@@ -50,6 +50,13 @@ if (!C4_CONTAINER_EXAMPLE) {
   throw new Error("Missing the C4 container Playground example.");
 }
 
+const C4_DYNAMIC_EXAMPLE = GENERATED_EXAMPLES.find(
+  (example) => example.id === "c4-dynamic-banking"
+);
+if (!C4_DYNAMIC_EXAMPLE) {
+  throw new Error("Missing the C4 dynamic Playground example.");
+}
+
 test("Compare keeps Mermaid JS failures owned by the Mermaid pane", async ({
   page,
   isMobile,
@@ -251,6 +258,38 @@ test("C4 uses the same browser layout environment in both compare panes", async 
       message: "Merman and Mermaid JS C4 viewBoxes",
     })
     .toBe(true);
+  errors.assertNone();
+});
+
+test("C4 relation labels and lines match Mermaid computed presentation", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+
+  for (const source of [
+    C4_DYNAMIC_EXAMPLE.source,
+    `${fontOnlyConfig("forest")}\n${C4_DYNAMIC_EXAMPLE.source}`,
+  ]) {
+    await renderSource(page, isMobile, source);
+    await page.getByRole("tab", { name: "Compare", exact: true }).click();
+
+    await expect
+      .poll(() => c4RelationPresentations(page, 2), {
+        message: "C4Dynamic relation 2 computed presentation",
+      })
+      .toMatchObject({
+        merman: {
+          text: { fill: "rgb(255, 0, 0)" },
+        },
+        mermaid: {
+          text: { fill: "rgb(255, 0, 0)" },
+        },
+        matches: true,
+      });
+  }
+
   errors.assertNone();
 });
 
@@ -476,6 +515,81 @@ async function compareViewBoxesMatch(page: Page): Promise<boolean | null> {
   if (viewBoxes.some((viewBox) => viewBox === null)) return null;
   const [left, right] = viewBoxes;
   return left?.every((value, index) => value === right?.[index]) ?? null;
+}
+
+type C4RelationPresentation = {
+  text: {
+    fill: string;
+    fontSize: string;
+    fontFamily: string;
+    fontWeight: string;
+    fontStyle: string;
+    textAnchor: string;
+    dominantBaseline: string;
+  };
+  line: {
+    fill: string;
+    stroke: string;
+    strokeWidth: string;
+  };
+};
+
+async function c4RelationPresentations(
+  page: Page,
+  relationIndex: number
+): Promise<{
+  merman: C4RelationPresentation;
+  mermaid: C4RelationPresentation;
+  matches: boolean;
+} | null> {
+  const read = async (
+    engine: "merman" | "mermaid"
+  ): Promise<C4RelationPresentation | null> => {
+    const host = page.locator(
+      `[data-merman-compare-engine="${engine}"] .preview-container > div`
+    );
+    return host.evaluate((preview, index) => {
+      const svg = preview.shadowRoot?.querySelector("svg");
+      const label = [...(svg?.querySelectorAll<SVGTextElement>("text") ?? [])].find(
+        (candidate) => candidate.textContent?.startsWith(`${index}: `)
+      );
+      const line = label?.previousElementSibling;
+      if (
+        !label ||
+        !line ||
+        !["line", "path"].includes(line.tagName.toLowerCase())
+      ) {
+        return null;
+      }
+
+      const textStyle = getComputedStyle(label);
+      const lineStyle = getComputedStyle(line);
+      return {
+        text: {
+          fill: textStyle.fill,
+          fontSize: textStyle.fontSize,
+          fontFamily: textStyle.fontFamily,
+          fontWeight: textStyle.fontWeight,
+          fontStyle: textStyle.fontStyle,
+          textAnchor: textStyle.textAnchor,
+          dominantBaseline: textStyle.dominantBaseline,
+        },
+        line: {
+          fill: lineStyle.fill,
+          stroke: lineStyle.stroke,
+          strokeWidth: lineStyle.strokeWidth,
+        },
+      };
+    }, relationIndex);
+  };
+
+  const [merman, mermaid] = await Promise.all([read("merman"), read("mermaid")]);
+  if (!merman || !mermaid) return null;
+  return {
+    merman,
+    mermaid,
+    matches: JSON.stringify(merman) === JSON.stringify(mermaid),
+  };
 }
 
 async function ganttTickOverlapCount(page: Page): Promise<number | null> {

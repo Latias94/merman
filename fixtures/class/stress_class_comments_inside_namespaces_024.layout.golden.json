@@ -4,10 +4,26 @@
     "ClassDiagramV2": {
       "nodes": [
         {
+          "id": "Outer",
+          "x": 96.44,
+          "y": 109.5,
+          "width": 192.88,
+          "height": 219.0,
+          "is_cluster": true
+        },
+        {
           "id": "Bar",
           "x": 298.079,
           "y": 311.0,
           "width": 47.359,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Outer.Foo",
+          "x": 96.44,
+          "y": 311.0,
+          "width": 88.953,
           "height": 84.0,
           "is_cluster": false
         },
@@ -17,22 +33,6 @@
           "y": 109.5,
           "width": 122.88,
           "height": 144.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Outer",
-          "x": 96.44,
-          "y": 109.5,
-          "width": 192.88,
-          "height": 219.0,
-          "is_cluster": true
-        },
-        {
-          "id": "Outer.Foo",
-          "x": 96.44,
-          "y": 311.0,
-          "width": 88.953,
-          "height": 84.0,
           "is_cluster": false
         }
       ],

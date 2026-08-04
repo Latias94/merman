@@ -4,6 +4,70 @@
     "ClassDiagramV2": {
       "nodes": [
         {
+          "id": "Root",
+          "x": 181.938,
+          "y": 306.5,
+          "width": 363.875,
+          "height": 613.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Root.A.A1",
+          "x": 459.555,
+          "y": 306.5,
+          "width": 91.359,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Root.B.B1.B1a",
+          "x": 459.555,
+          "y": 729.0,
+          "width": 121.281,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Root.A.A2",
+          "x": 630.836,
+          "y": 306.5,
+          "width": 91.359,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Root.B.B1.B1b",
+          "x": 630.836,
+          "y": 729.0,
+          "width": 121.281,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Root.A",
+          "x": 181.938,
+          "y": 127.0,
+          "width": 205.125,
+          "height": 184.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Root.B",
+          "x": 181.938,
+          "y": 423.5,
+          "width": 288.875,
+          "height": 309.0,
+          "is_cluster": true
+        },
+        {
+          "id": "B1a",
+          "x": 132.219,
+          "y": 423.5,
+          "width": 49.438,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
           "id": "A1",
           "x": 135.656,
           "y": 127.0,
@@ -20,62 +84,6 @@
           "is_cluster": false
         },
         {
-          "id": "B1a",
-          "x": 132.219,
-          "y": 423.5,
-          "width": 49.438,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "B1b",
-          "x": 231.656,
-          "y": 423.5,
-          "width": 49.438,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Root",
-          "x": 181.938,
-          "y": 306.5,
-          "width": 363.875,
-          "height": 613.0,
-          "is_cluster": true
-        },
-        {
-          "id": "Root.A",
-          "x": 181.938,
-          "y": 127.0,
-          "width": 205.125,
-          "height": 184.0,
-          "is_cluster": true
-        },
-        {
-          "id": "Root.A.A1",
-          "x": 459.555,
-          "y": 306.5,
-          "width": 91.359,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Root.A.A2",
-          "x": 630.836,
-          "y": 306.5,
-          "width": 91.359,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Root.B",
-          "x": 181.938,
-          "y": 423.5,
-          "width": 288.875,
-          "height": 309.0,
-          "is_cluster": true
-        },
-        {
           "id": "Root.B.B1",
           "x": 181.938,
           "y": 423.5,
@@ -84,18 +92,10 @@
           "is_cluster": true
         },
         {
-          "id": "Root.B.B1.B1a",
-          "x": 459.555,
-          "y": 729.0,
-          "width": 121.281,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Root.B.B1.B1b",
-          "x": 630.836,
-          "y": 729.0,
-          "width": 121.281,
+          "id": "B1b",
+          "x": 231.656,
+          "y": 423.5,
+          "width": 49.438,
           "height": 84.0,
           "is_cluster": false
         }

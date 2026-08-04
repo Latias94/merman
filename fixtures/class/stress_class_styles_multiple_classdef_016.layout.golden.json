@@ -4,18 +4,18 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "API",
-          "x": 383.202,
-          "y": 63.0,
-          "width": 246.72,
-          "height": 126.0,
-          "is_cluster": false
-        },
-        {
           "id": "Client",
           "x": 91.161,
           "y": 63.0,
           "width": 182.322,
+          "height": 126.0,
+          "is_cluster": false
+        },
+        {
+          "id": "API",
+          "x": 383.202,
+          "y": 63.0,
+          "width": 246.72,
           "height": 126.0,
           "is_cluster": false
         },

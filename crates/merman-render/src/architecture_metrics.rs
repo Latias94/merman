@@ -3,9 +3,10 @@ use crate::text::{TextMeasurer, TextStyle};
 
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
 pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
-pub(crate) const CYTOSCAPE_LABEL_BBOX_MARGIN_OF_ERROR_PX: f64 = 2.0;
-pub(crate) const CYTOSCAPE_PARENT_BORDER_WIDTH_PX: f64 = 1.0;
-pub(crate) const CYTOSCAPE_FINAL_BBOX_EXPANSION_PX: f64 = 1.0;
+const CYTOSCAPE_LEAF_BODY_BORDER_WIDTH_PX: f64 = 0.0;
+const CYTOSCAPE_NODE_LABEL_MARGIN_OF_ERROR_PX: f64 = 2.0;
+const CYTOSCAPE_PARENT_BODY_BORDER_WIDTH_PX: f64 = 1.0;
+const CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX: f64 = 1.0;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ArchitectureServiceBoundsEstimate {
@@ -21,6 +22,12 @@ pub(crate) struct ArchitectureServiceBoundsEstimate {
 pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
     pub(crate) width: f64,
     pub(crate) half_width: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ArchitectureCytoscapeEdgeLabelMetrics {
+    pub(crate) width: f64,
+    pub(crate) height: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -44,8 +51,10 @@ impl ArchitectureCytoscapeChildLabelBounds {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ArchitectureCytoscapeChildContributionBounds {
+    // Raw icon bounds are retained for the emitted SVG geometry.
     pub(crate) body_bounds: Bounds,
     pub(crate) label_bounds: Option<Bounds>,
+    // Compound sizing unions the cached body and label bounds without the final element expansion.
     pub(crate) union_bounds: Bounds,
 }
 
@@ -75,6 +84,17 @@ pub(crate) fn architecture_cytoscape_canvas_label_metrics(
     ArchitectureCytoscapeCanvasLabelMetrics { width, half_width }
 }
 
+pub(crate) fn architecture_cytoscape_edge_label_metrics(
+    label: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> ArchitectureCytoscapeEdgeLabelMetrics {
+    ArchitectureCytoscapeEdgeLabelMetrics {
+        width: architecture_cytoscape_canvas_label_metrics(label, measurer, style).width,
+        height: style.font_size.max(1.0),
+    }
+}
+
 pub(crate) fn architecture_create_text_middle_bbox_y_range_px(
     text: &str,
     style: &TextStyle,
@@ -90,12 +110,14 @@ pub(crate) fn architecture_create_text_middle_bbox_y_range_px(
     (min_y, min_y + height)
 }
 
-pub(crate) fn architecture_cytoscape_child_label_bottom_extension_px(font_size_px: f64) -> f64 {
-    font_size_px.max(1.0) + 1.0
+pub(crate) fn architecture_cytoscape_node_label_bottom_extension_px(font_size_px: f64) -> f64 {
+    font_size_px.max(1.0) + CYTOSCAPE_NODE_LABEL_MARGIN_OF_ERROR_PX
 }
 
 pub(crate) fn architecture_svg_group_bbox_padding_px(padding_px: f64) -> f64 {
-    padding_px.max(0.0) + CYTOSCAPE_PARENT_BORDER_WIDTH_PX / 2.0 + CYTOSCAPE_FINAL_BBOX_EXPANSION_PX
+    padding_px.max(0.0)
+        + CYTOSCAPE_PARENT_BODY_BORDER_WIDTH_PX / 2.0
+        + CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX
 }
 
 fn union_bounds(a: &Bounds, b: &Bounds) -> Bounds {
@@ -121,12 +143,12 @@ pub(crate) fn architecture_cytoscape_child_contribution_bounds(
     label_bounds: Option<&ArchitectureCytoscapeChildLabelBounds>,
 ) -> ArchitectureCytoscapeChildContributionBounds {
     let body_bounds = icon_bounds.clone();
+    let body_bbox_bounds = expand_bounds(&body_bounds, CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX);
     let label_bounds = label_bounds.map(|label| label.bounds_for_icon(&body_bounds));
-    let child_union_bounds = label_bounds
+    let union_bounds = label_bounds
         .as_ref()
-        .map(|label| union_bounds(&body_bounds, label))
-        .unwrap_or_else(|| body_bounds.clone());
-    let union_bounds = expand_bounds(&child_union_bounds, CYTOSCAPE_FINAL_BBOX_EXPANSION_PX);
+        .map(|label| union_bounds(&body_bbox_bounds, label))
+        .unwrap_or_else(|| body_bbox_bounds.clone());
 
     ArchitectureCytoscapeChildContributionBounds {
         body_bounds,
@@ -135,35 +157,16 @@ pub(crate) fn architecture_cytoscape_child_contribution_bounds(
     }
 }
 
-fn architecture_cytoscape_node_bbox_extra_contribution_bounds(
-    icon_size: f64,
-    border_px: f64,
+fn architecture_cytoscape_final_element_bounds(
+    icon_bounds: &Bounds,
     label_bounds: Option<&ArchitectureCytoscapeChildLabelBounds>,
-) -> ArchitectureCytoscapeChildContributionBounds {
-    let half_icon = icon_size / 2.0;
-    let body_bounds = Bounds {
-        min_x: -half_icon - border_px,
-        min_y: -half_icon - border_px,
-        max_x: half_icon + border_px,
-        max_y: half_icon + border_px,
-    };
-    let label_bounds = label_bounds.map(|label| Bounds {
-        min_x: -label.half_width - border_px,
-        min_y: -half_icon - border_px,
-        max_x: label.half_width + border_px,
-        max_y: half_icon + label.bottom_extension_px + border_px,
-    });
-    let child_union_bounds = label_bounds
+) -> Bounds {
+    let label_bounds = label_bounds.map(|label| label.bounds_for_icon(icon_bounds));
+    let element_bounds = label_bounds
         .as_ref()
-        .map(|label| union_bounds(&body_bounds, label))
-        .unwrap_or_else(|| body_bounds.clone());
-    let union_bounds = expand_bounds(&child_union_bounds, CYTOSCAPE_FINAL_BBOX_EXPANSION_PX);
-
-    ArchitectureCytoscapeChildContributionBounds {
-        body_bounds,
-        label_bounds,
-        union_bounds,
-    }
+        .map(|label| union_bounds(icon_bounds, label))
+        .unwrap_or_else(|| icon_bounds.clone());
+    expand_bounds(&element_bounds, CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX)
 }
 
 pub(crate) fn architecture_cytoscape_child_label_bounds(
@@ -176,35 +179,63 @@ pub(crate) fn architecture_cytoscape_child_label_bounds(
     let metrics = architecture_cytoscape_canvas_label_metrics(title, measurer, style);
     Some(ArchitectureCytoscapeChildLabelBounds {
         metrics,
-        half_width: metrics.half_width + CYTOSCAPE_LABEL_BBOX_MARGIN_OF_ERROR_PX,
-        bottom_extension_px: architecture_cytoscape_child_label_bottom_extension_px(font_size_px),
+        half_width: metrics.half_width + CYTOSCAPE_NODE_LABEL_MARGIN_OF_ERROR_PX,
+        bottom_extension_px: architecture_cytoscape_node_label_bottom_extension_px(font_size_px),
     })
 }
 
-pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
+pub(crate) fn architecture_measure_cytoscape_final_node_bbox_extras(
     title: Option<&str>,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     icon_size: f64,
     font_size_px: f64,
 ) -> ArchitectureNodeBBoxExtras {
-    let border = 1.0;
     let half_icon = icon_size / 2.0;
+    let half_leaf_border = CYTOSCAPE_LEAF_BODY_BORDER_WIDTH_PX / 2.0;
+    let body_bounds = Bounds {
+        min_x: -half_icon - half_leaf_border,
+        min_y: -half_icon - half_leaf_border,
+        max_x: half_icon + half_leaf_border,
+        max_y: half_icon + half_leaf_border,
+    };
     let label_bounds =
         architecture_cytoscape_child_label_bounds(title, measurer, style, font_size_px);
-    let contribution = architecture_cytoscape_node_bbox_extra_contribution_bounds(
-        icon_size,
-        border,
-        label_bounds.as_ref(),
-    );
-    let half_w = contribution
-        .union_bounds
-        .max_x
-        .abs()
-        .max(contribution.union_bounds.min_x.abs());
+    let element_bounds =
+        architecture_cytoscape_final_element_bounds(&body_bounds, label_bounds.as_ref());
+    architecture_cytoscape_bbox_extras(&element_bounds, half_icon)
+}
+
+pub(crate) fn architecture_measure_cytoscape_compound_child_bbox_extras(
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    icon_size: f64,
+    font_size_px: f64,
+) -> ArchitectureNodeBBoxExtras {
+    let half_icon = icon_size / 2.0;
+    let half_leaf_border = CYTOSCAPE_LEAF_BODY_BORDER_WIDTH_PX / 2.0;
+    let body_bounds = Bounds {
+        min_x: -half_icon - half_leaf_border,
+        min_y: -half_icon - half_leaf_border,
+        max_x: half_icon + half_leaf_border,
+        max_y: half_icon + half_leaf_border,
+    };
+    let label_bounds =
+        architecture_cytoscape_child_label_bounds(title, measurer, style, font_size_px);
+    let contribution =
+        architecture_cytoscape_child_contribution_bounds(&body_bounds, label_bounds.as_ref());
+    architecture_cytoscape_bbox_extras(&contribution.union_bounds, half_icon)
+}
+
+fn architecture_cytoscape_bbox_extras(
+    bounds: &Bounds,
+    half_icon: f64,
+) -> ArchitectureNodeBBoxExtras {
+    let half_w = bounds.max_x.abs().max(bounds.min_x.abs());
     let half_w = (half_w * 2.0).round() / 2.0;
-    let top = (-contribution.union_bounds.min_y - half_icon).max(0.0);
-    let bottom = (contribution.union_bounds.max_y - half_icon).max(0.0);
+    let top = (-bounds.min_y - half_icon).max(0.0);
+    let bottom = (bounds.max_y - half_icon).max(0.0);
 
     let extra_lr = (half_w - half_icon).max(0.0);
     ArchitectureNodeBBoxExtras {
@@ -302,6 +333,37 @@ pub(crate) fn architecture_estimate_service_bounds<TLine>(
 
 #[cfg(test)]
 mod tests {
+    struct CanvasProbe;
+
+    impl crate::text::TextMeasurer for CanvasProbe {
+        fn measure(
+            &self,
+            _text: &str,
+            _style: &crate::text::TextStyle,
+        ) -> crate::text::TextMetrics {
+            panic!("Architecture labels must use the Canvas2D operation")
+        }
+
+        fn measure_canvas_text_width_px(&self, text: &str, _style: &crate::text::TextStyle) -> f64 {
+            match text {
+                "edge" => 32.2,
+                "short" => 40.1,
+                "long" => 100.2,
+                "widest" => 94.2,
+                other => panic!("unexpected canvas probe: {other}"),
+            }
+        }
+    }
+
+    fn cytoscape_text_style(font_size: f64) -> crate::text::TextStyle {
+        crate::text::TextStyle {
+            font_family: Some("Helvetica Neue,Helvetica,sans-serif".to_string()),
+            font_size,
+            font_weight: None,
+            font_style: None,
+        }
+    }
+
     struct CreateTextVerticalProbe;
 
     impl crate::text::TextMeasurer for CreateTextVerticalProbe {
@@ -358,18 +420,19 @@ mod tests {
         assert!((multiline.0 - 5.1875).abs() < 1e-9);
         assert!((multiline.1 - 41.7875).abs() < 1e-9);
         assert_eq!(
-            super::architecture_cytoscape_child_label_bottom_extension_px(16.0),
-            17.0
+            super::architecture_cytoscape_node_label_bottom_extension_px(16.0),
+            18.0
         );
         assert_eq!(
-            super::architecture_cytoscape_child_label_bottom_extension_px(12.0),
-            13.0
+            super::architecture_cytoscape_node_label_bottom_extension_px(12.0),
+            14.0
         );
         assert_eq!(super::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, 18.0);
         assert_eq!(super::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, 200.0);
-        assert_eq!(super::CYTOSCAPE_LABEL_BBOX_MARGIN_OF_ERROR_PX, 2.0);
-        assert_eq!(super::CYTOSCAPE_PARENT_BORDER_WIDTH_PX, 1.0);
-        assert_eq!(super::CYTOSCAPE_FINAL_BBOX_EXPANSION_PX, 1.0);
+        assert_eq!(super::CYTOSCAPE_LEAF_BODY_BORDER_WIDTH_PX, 0.0);
+        assert_eq!(super::CYTOSCAPE_NODE_LABEL_MARGIN_OF_ERROR_PX, 2.0);
+        assert_eq!(super::CYTOSCAPE_PARENT_BODY_BORDER_WIDTH_PX, 1.0);
+        assert_eq!(super::CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX, 1.0);
     }
 
     #[test]
@@ -388,77 +451,49 @@ mod tests {
     }
 
     #[test]
-    fn architecture_node_bbox_extra_contribution_preserves_body_label_union_phases() {
-        let label_bounds = super::ArchitectureCytoscapeChildLabelBounds {
-            metrics: super::ArchitectureCytoscapeCanvasLabelMetrics {
-                width: 96.0,
-                half_width: 50.0,
-            },
-            half_width: 50.0,
-            bottom_extension_px: 17.0,
-        };
+    fn architecture_leaf_bbox_extras_keep_body_label_and_final_expansion_separate() {
+        let style = cytoscape_text_style(16.0);
 
-        let contribution = super::architecture_cytoscape_node_bbox_extra_contribution_bounds(
+        let no_label = super::architecture_measure_cytoscape_final_node_bbox_extras(
+            None,
+            &CanvasProbe,
+            &style,
             80.0,
-            1.0,
-            Some(&label_bounds),
+            16.0,
         );
+        assert_eq!(no_label.left, 1.0);
+        assert_eq!(no_label.right, 1.0);
+        assert_eq!(no_label.top, 1.0);
+        assert_eq!(no_label.bottom, 1.0);
 
-        assert_eq!(contribution.body_bounds.min_x, -41.0);
-        assert_eq!(contribution.body_bounds.max_x, 41.0);
-        assert_eq!(contribution.body_bounds.min_y, -41.0);
-        assert_eq!(contribution.body_bounds.max_y, 41.0);
-        let label = contribution
-            .label_bounds
-            .as_ref()
-            .expect("label phase is preserved");
-        assert_eq!(label.min_x, -51.0);
-        assert_eq!(label.max_x, 51.0);
-        assert_eq!(label.min_y, -41.0);
-        assert_eq!(label.max_y, 58.0);
-        assert_eq!(contribution.union_bounds.min_x, -52.0);
-        assert_eq!(contribution.union_bounds.max_x, 52.0);
-        assert_eq!(contribution.union_bounds.min_y, -42.0);
-        assert_eq!(contribution.union_bounds.max_y, 59.0);
+        let short_label = super::architecture_measure_cytoscape_final_node_bbox_extras(
+            Some("short"),
+            &CanvasProbe,
+            &style,
+            80.0,
+            16.0,
+        );
+        assert_eq!(short_label.left, 1.0);
+        assert_eq!(short_label.right, 1.0);
+        assert_eq!(short_label.top, 1.0);
+        assert_eq!(short_label.bottom, 19.0);
 
-        let extra_lr = contribution.union_bounds.max_x - 40.0;
-        let extra_bottom = contribution.union_bounds.max_y - 40.0;
-        assert_eq!(extra_lr, 12.0);
-        assert_eq!(extra_bottom, 19.0);
+        let long_label = super::architecture_measure_cytoscape_final_node_bbox_extras(
+            Some("long"),
+            &CanvasProbe,
+            &style,
+            80.0,
+            16.0,
+        );
+        assert_eq!(long_label.left, 13.5);
+        assert_eq!(long_label.right, 13.5);
+        assert_eq!(long_label.top, 1.0);
+        assert_eq!(long_label.bottom, 19.0);
     }
 
     #[test]
     fn architecture_canvas_label_metrics_use_canvas_width_and_cytoscape_ceiling() {
-        struct CanvasProbe;
-
-        impl crate::text::TextMeasurer for CanvasProbe {
-            fn measure(
-                &self,
-                _text: &str,
-                _style: &crate::text::TextStyle,
-            ) -> crate::text::TextMetrics {
-                panic!("Architecture labels must use the Canvas2D operation")
-            }
-
-            fn measure_canvas_text_width_px(
-                &self,
-                text: &str,
-                _style: &crate::text::TextStyle,
-            ) -> f64 {
-                match text {
-                    "short" => 40.1,
-                    "widest" => 94.2,
-                    other => panic!("unexpected canvas probe: {other}"),
-                }
-            }
-        }
-
-        let style = crate::text::TextStyle {
-            font_family: Some("Helvetica Neue,Helvetica,sans-serif".to_string()),
-            font_size: 16.0,
-            font_weight: None,
-            font_style: None,
-        };
+        let style = cytoscape_text_style(16.0);
         let metrics = super::architecture_cytoscape_canvas_label_metrics(
             "short\nwidest",
             &CanvasProbe,
@@ -466,6 +501,16 @@ mod tests {
         );
         assert_eq!(metrics.width, 95.0);
         assert_eq!(metrics.half_width, 47.5);
+    }
+
+    #[test]
+    fn architecture_edge_label_metrics_use_canvas_ceiling_and_single_line_height() {
+        let style = cytoscape_text_style(16.0);
+        let metrics =
+            super::architecture_cytoscape_edge_label_metrics("edge", &CanvasProbe, &style);
+
+        assert_eq!(metrics.width, 33.0);
+        assert_eq!(metrics.height, 16.0);
     }
 
     #[test]
@@ -491,9 +536,9 @@ mod tests {
         assert_eq!(label_bounds.metrics.width, direct_metrics.width);
         assert_eq!(
             label_bounds.half_width,
-            direct_metrics.half_width + super::CYTOSCAPE_LABEL_BBOX_MARGIN_OF_ERROR_PX
+            direct_metrics.half_width + super::CYTOSCAPE_NODE_LABEL_MARGIN_OF_ERROR_PX
         );
-        assert_eq!(label_bounds.bottom_extension_px, 13.0);
+        assert_eq!(label_bounds.bottom_extension_px, 14.0);
         assert!(
             super::architecture_cytoscape_child_label_bounds(Some("   "), &measurer, &style, 12.0)
                 .is_none()
@@ -505,10 +550,10 @@ mod tests {
         let label_bounds = super::ArchitectureCytoscapeChildLabelBounds {
             metrics: super::ArchitectureCytoscapeCanvasLabelMetrics {
                 width: 96.0,
-                half_width: 50.0,
+                half_width: 48.0,
             },
             half_width: 50.0,
-            bottom_extension_px: 17.0,
+            bottom_extension_px: 18.0,
         };
         let icon_bounds = crate::model::Bounds {
             min_x: 10.0,
@@ -521,7 +566,7 @@ mod tests {
         assert_eq!(bounds.min_x, 0.0);
         assert_eq!(bounds.min_y, 20.0);
         assert_eq!(bounds.max_x, 100.0);
-        assert_eq!(bounds.max_y, 117.0);
+        assert_eq!(bounds.max_y, 118.0);
     }
 
     #[test]
@@ -544,10 +589,10 @@ mod tests {
         let label_bounds = super::ArchitectureCytoscapeChildLabelBounds {
             metrics: super::ArchitectureCytoscapeCanvasLabelMetrics {
                 width: 96.0,
-                half_width: 50.0,
+                half_width: 48.0,
             },
             half_width: 50.0,
-            bottom_extension_px: 17.0,
+            bottom_extension_px: 18.0,
         };
         let with_label = super::architecture_cytoscape_child_contribution_bounds(
             &icon_bounds,
@@ -559,10 +604,88 @@ mod tests {
             .as_ref()
             .expect("label phase is preserved");
         assert_eq!(child_label.min_x, 0.0);
-        assert_eq!(child_label.max_y, 117.0);
+        assert_eq!(child_label.max_y, 118.0);
         assert_eq!(with_label.body_bounds.min_x, icon_bounds.min_x);
-        assert_eq!(with_label.union_bounds.min_x, -1.0);
+        assert_eq!(with_label.union_bounds.min_x, 0.0);
         assert_eq!(with_label.union_bounds.max_y, 118.0);
+    }
+
+    #[test]
+    fn architecture_compound_child_and_final_element_bounds_split_label_phases() {
+        let style = cytoscape_text_style(18.0);
+        let icon_bounds = crate::model::Bounds {
+            min_x: -20.0,
+            min_y: -20.0,
+            max_x: 20.0,
+            max_y: 20.0,
+        };
+
+        for (title, expected_child, expected_final, expected_child_extras) in [
+            (
+                None,
+                (-21.0, -21.0, 21.0, 21.0),
+                (-21.0, -21.0, 21.0, 21.0),
+                (1.0, 1.0, 1.0),
+            ),
+            (
+                Some("short"),
+                (-22.5, -21.0, 22.5, 40.0),
+                (-23.5, -21.0, 23.5, 41.0),
+                (2.5, 1.0, 20.0),
+            ),
+            (
+                Some("widest"),
+                (-49.5, -21.0, 49.5, 40.0),
+                (-50.5, -21.0, 50.5, 41.0),
+                (29.5, 1.0, 20.0),
+            ),
+        ] {
+            let label_bounds =
+                super::architecture_cytoscape_child_label_bounds(title, &CanvasProbe, &style, 18.0);
+            let child = super::architecture_cytoscape_child_contribution_bounds(
+                &icon_bounds,
+                label_bounds.as_ref(),
+            );
+            let final_element = super::architecture_cytoscape_final_element_bounds(
+                &icon_bounds,
+                label_bounds.as_ref(),
+            );
+
+            assert_eq!(
+                (
+                    child.union_bounds.min_x,
+                    child.union_bounds.min_y,
+                    child.union_bounds.max_x,
+                    child.union_bounds.max_y,
+                ),
+                expected_child,
+                "unexpected compound child bounds for {title:?}"
+            );
+            assert_eq!(
+                (
+                    final_element.min_x,
+                    final_element.min_y,
+                    final_element.max_x,
+                    final_element.max_y,
+                ),
+                expected_final,
+                "unexpected final element bounds for {title:?}"
+            );
+
+            let child_extras = super::architecture_measure_cytoscape_compound_child_bbox_extras(
+                title,
+                &CanvasProbe,
+                &style,
+                40.0,
+                18.0,
+            );
+            assert_eq!(
+                (child_extras.left, child_extras.top, child_extras.bottom,),
+                expected_child_extras,
+                "unexpected compound child extras for {title:?}"
+            );
+            assert_eq!(child_extras.right, child_extras.left);
+        }
     }
 
     #[test]

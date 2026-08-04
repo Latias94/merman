@@ -4,20 +4,20 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Square",
-          "x": 165.698,
-          "y": 131.0,
-          "width": 256.396,
-          "height": 192.0,
-          "is_cluster": false
-        },
-        {
           "id": "space",
           "x": 165.698,
           "y": 131.0,
           "width": 331.396,
           "height": 262.0,
           "is_cluster": true
+        },
+        {
+          "id": "Square",
+          "x": 165.698,
+          "y": 131.0,
+          "width": 256.396,
+          "height": 192.0,
+          "is_cluster": false
         }
       ],
       "edges": [],

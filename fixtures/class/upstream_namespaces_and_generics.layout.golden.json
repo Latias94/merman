@@ -4,14 +4,6 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Admin",
-          "x": 238.278,
-          "y": 367.5,
-          "width": 206.556,
-          "height": 150.0,
-          "is_cluster": false
-        },
-        {
           "id": "Company",
           "x": 449.197,
           "y": 267.5,
@@ -28,12 +20,12 @@
           "is_cluster": true
         },
         {
-          "id": "Company.Project.Module",
-          "x": 238.278,
-          "y": 267.5,
-          "width": 306.556,
-          "height": 420.0,
-          "is_cluster": true
+          "id": "User",
+          "x": 679.355,
+          "y": 367.5,
+          "width": 268.077,
+          "height": 174.0,
+          "is_cluster": false
         },
         {
           "id": "GenericClass",
@@ -44,12 +36,20 @@
           "is_cluster": false
         },
         {
-          "id": "User",
-          "x": 679.355,
+          "id": "Admin",
+          "x": 238.278,
           "y": 367.5,
-          "width": 268.077,
-          "height": 174.0,
+          "width": 206.556,
+          "height": 150.0,
           "is_cluster": false
+        },
+        {
+          "id": "Company.Project.Module",
+          "x": 238.278,
+          "y": 267.5,
+          "width": 306.556,
+          "height": 420.0,
+          "is_cluster": true
         }
       ],
       "edges": [

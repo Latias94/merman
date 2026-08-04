@@ -197,6 +197,11 @@ Additional Rust regression:
 - `crates/dugong-graphlib/tests/json_test.rs::json_with_defaults_can_collapse_missing_values_to_rust_defaults`
   protects the explicit default-collapsing fallback helpers without weakening the primary seam.
 
+Directed adjacency queries follow Graphlib node semantics: `predecessors` and `successors` return
+each adjacent node once even when several named multiedges connect the pair. `in_edges`,
+`out_edges`, and edge iteration retain every named edge. Consumers that need multiplicity must use
+the edge APIs rather than relying on duplicate node ids.
+
 ## Open API Shape Differences
 
 - Missing-node query methods: upstream JS returns `undefined` for several collection queries.

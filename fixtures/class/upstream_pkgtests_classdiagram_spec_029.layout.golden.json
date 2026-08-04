@@ -4,6 +4,14 @@
     "ClassDiagramV2": {
       "nodes": [
         {
+          "id": "Namespace1",
+          "x": 97.702,
+          "y": 198.0,
+          "width": 195.404,
+          "height": 396.0,
+          "is_cluster": true
+        },
+        {
           "id": "Class1",
           "x": 97.702,
           "y": 131.0,
@@ -18,14 +26,6 @@
           "width": 67.688,
           "height": 84.0,
           "is_cluster": false
-        },
-        {
-          "id": "Namespace1",
-          "x": 97.702,
-          "y": 198.0,
-          "width": 195.404,
-          "height": 396.0,
-          "is_cluster": true
         }
       ],
       "edges": [],

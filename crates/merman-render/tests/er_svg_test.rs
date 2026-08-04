@@ -80,8 +80,12 @@ fn er_svg_renders_entities_and_relationships() {
     assert!(svg.contains(r#"id="merman-drop-shadow""#));
     assert!(svg.contains("relationshipLine"));
     assert!(
-        !svg.contains(r#"style="undefined"#),
-        "relationship paths should not leak invalid style tokens"
+        Regex::new(
+            r#"<path[^>]*class="[^"]*relationshipLine[^"]*" style="undefined;;;undefined"[^>]*>"#
+        )
+        .expect("relationship path regex")
+        .is_match(&svg),
+        "relationship paths should preserve Mermaid's exact empty pathStyle serialization"
     );
     assert!(svg.contains("relationshipLabelBox"));
     assert!(
@@ -99,6 +103,35 @@ fn er_svg_renders_entities_and_relationships() {
     assert!(
         svg.contains("color: rgb(255, 255, 255) !important;"),
         "expected classDef text color to use the ER HTML label CSSOM path"
+    );
+}
+
+#[test]
+fn er_svg_recursive_relationship_keeps_three_segments_and_one_label() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("er")
+        .join(
+            "upstream_cypress_erdiagram_spec_should_render_an_er_diagram_with_a_recursive_relationship_002.mmd",
+        );
+    let text = std::fs::read_to_string(path).expect("fixture");
+
+    let svg = render_er_svg_from_text(&text, &SvgRenderOptions::default());
+
+    for edge_id in [
+        "entity-CUSTOMER-0-cyclic-special-1",
+        "entity-CUSTOMER-0-cyclic-special-mid",
+        "entity-CUSTOMER-0-cyclic-special-2",
+    ] {
+        assert!(
+            svg.contains(&format!(r#"data-id="{edge_id}""#)),
+            "missing recursive ER edge segment {edge_id}: {svg}"
+        );
+    }
+    assert_eq!(
+        svg.matches(">refers<").count(),
+        1,
+        "only the middle recursive segment should own the relationship label: {svg}"
     );
 }
 

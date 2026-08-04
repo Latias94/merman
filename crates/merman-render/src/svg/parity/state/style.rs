@@ -129,35 +129,43 @@ pub(super) fn state_css(
 ) -> String {
     fn normalize_decl(s: &str) -> Option<(String, String)> {
         let (k, v) = crate::mermaid_style::parse_safe_style_decl(s)?;
-        let key = k.to_string();
-        let mut val = v.to_string();
-        // Mermaid emits class styles with `!important` (no spaces).
-        if !val.to_lowercase().contains("!important") {
-            val.push_str("!important");
+        let key = if k.starts_with("--") {
+            k.to_string()
         } else {
-            val = val.replace(" !important", "!important");
-        }
-        Some((key, val))
+            k.to_ascii_lowercase()
+        };
+        let value = v.trim();
+        let value = value
+            .rsplit_once('!')
+            .filter(|(_, priority)| priority.trim().eq_ignore_ascii_case("important"))
+            .map(|(value, _)| value.trim_end())
+            .unwrap_or(value);
+        let value = if matches!(
+            key.as_str(),
+            "background"
+                | "background-color"
+                | "border-color"
+                | "color"
+                | "fill"
+                | "outline-color"
+                | "stroke"
+        ) {
+            super::super::util::cssom_color_value(value)
+        } else {
+            value.to_string()
+        };
+        Some((key, format!("{value}!important")))
     }
 
-    fn class_decl_block(styles: &[String], text_styles: &[String]) -> String {
+    fn class_decl_block(styles: &[String]) -> String {
         let mut out = String::new();
-        for raw in styles.iter().chain(text_styles.iter()) {
+        for raw in styles {
             let Some((k, v)) = normalize_decl(raw) else {
                 continue;
             };
-            // Mermaid tightens `prop: value` -> `prop:value`.
             let _ = write!(&mut out, "{}:{};", k, v);
         }
         out
-    }
-
-    fn should_duplicate_class_rules(styles: &[String], text_styles: &[String]) -> bool {
-        let has_fontish = |s: &str| {
-            let s = s.trim_start().to_lowercase();
-            s.starts_with("font-") || s.starts_with("text-")
-        };
-        styles.iter().any(|s| has_fontish(s)) || text_styles.iter().any(|s| has_fontish(s))
     }
 
     let theme = PresentationTheme::new(effective_config).state_diagram();
@@ -563,24 +571,28 @@ pub(super) fn state_css(
     );
 
     if !model.style_classes.is_empty() {
-        // Mermaid keeps classDef ordering stable and appends each class as:
-        //   `#id .class&gt;*{...}#id .class span{...}`
+        let html_labels = crate::state::StateConfigView::new(effective_config)
+            .render_settings()
+            .html_labels;
         for sc in model.style_classes.values() {
-            let decls = class_decl_block(&sc.styles, &sc.text_styles);
-            if decls.is_empty() {
-                continue;
+            let styles = class_decl_block(&sc.styles);
+            if !styles.is_empty() {
+                if html_labels {
+                    let _ = write!(
+                        &mut css,
+                        r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
+                        id, sc.id, styles, id, sc.id, styles
+                    );
+                } else {
+                    for element in ["rect", "polygon", "ellipse", "circle", "path"] {
+                        let _ = write!(&mut css, r#"#{} .{} {}{{{}}}"#, id, sc.id, element, styles);
+                    }
+                }
             }
-            let repeats = if should_duplicate_class_rules(&sc.styles, &sc.text_styles) {
-                2
-            } else {
-                1
-            };
-            for _ in 0..repeats {
-                let _ = write!(
-                    &mut css,
-                    r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-                    id, sc.id, decls, id, sc.id, decls
-                );
+
+            let text_styles = class_decl_block(&sc.text_styles);
+            if !text_styles.is_empty() {
+                let _ = write!(&mut css, r#"#{} .{} tspan{{{}}}"#, id, sc.id, text_styles);
             }
         }
     }
@@ -810,7 +822,71 @@ pub(super) fn state_svg_text_label(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::diagrams::state::StateDiagramRenderStyleClass;
     use serde_json::json;
+
+    fn model_with_hot_class() -> StateSvgModel {
+        let mut model = StateSvgModel::default();
+        model.style_classes.insert(
+            "hot".to_string(),
+            StateDiagramRenderStyleClass {
+                id: "hot".to_string(),
+                styles: vec![
+                    "fill:#ffdddd".to_string(),
+                    "stroke:#d33".to_string(),
+                    "stroke-width:2px".to_string(),
+                    "color:#222".to_string(),
+                ],
+                text_styles: vec!["fill:#222".to_string()],
+            },
+        );
+        model
+    }
+
+    #[test]
+    fn state_class_defs_keep_shape_and_text_styles_separate() {
+        let css = state_css("st", &model_with_hot_class(), &json!({}));
+
+        let declarations = "fill:rgb(255, 221, 221)!important;stroke:rgb(221, 51, 51)!important;stroke-width:2px!important;color:rgb(34, 34, 34)!important;";
+        assert!(css.ends_with(&format!(
+            "#st .hot&gt;*{{{declarations}}}#st .hot span{{{declarations}}}#st .hot tspan{{fill:rgb(34, 34, 34)!important;}}"
+        )));
+        assert_eq!(css.matches("#st .hot&gt;*").count(), 1);
+        assert!(!css.contains("color:rgb(34, 34, 34)!important;fill:rgb(34, 34, 34)!important"));
+    }
+
+    #[test]
+    fn state_class_defs_use_shape_selectors_without_html_labels() {
+        let css = state_css(
+            "st",
+            &model_with_hot_class(),
+            &json!({ "htmlLabels": false }),
+        );
+
+        for element in ["rect", "polygon", "ellipse", "circle", "path"] {
+            assert!(css.contains(&format!("#st .hot {element}{{")));
+        }
+        assert!(!css.contains("#st .hot&gt;*"));
+        assert!(!css.contains("#st .hot span{"));
+        assert_eq!(css.matches("#st .hot tspan{").count(), 1);
+    }
+
+    #[test]
+    fn state_class_defs_do_not_duplicate_font_rules() {
+        let mut model = StateSvgModel::default();
+        model.style_classes.insert(
+            "emphasis".to_string(),
+            StateDiagramRenderStyleClass {
+                id: "emphasis".to_string(),
+                styles: vec!["font-style:italic".to_string()],
+                text_styles: vec![],
+            },
+        );
+
+        let css = state_css("st", &model, &json!({}));
+        assert_eq!(css.matches("#st .emphasis&gt;*").count(), 1);
+        assert_eq!(css.matches("#st .emphasis span{").count(), 1);
+    }
 
     #[test]
     fn state_css_honors_mermaid_11_16_theme_options() {
