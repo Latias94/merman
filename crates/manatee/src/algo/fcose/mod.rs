@@ -92,16 +92,7 @@ impl FcoseIterationSchedule {
             .len()
             .checked_add(graph.compounds.len())
             .ok_or(WorkFailure::ArithmeticOverflow)?;
-        let edge_count = graph
-            .edges
-            .iter()
-            .filter(|edge| {
-                edge.source < graph.nodes.len()
-                    && edge.target < graph.nodes.len()
-                    && edge.source != edge.target
-            })
-            .count();
-        Self::from_options(configured, node_count, edge_count, rerun)
+        Self::from_options(configured, node_count, graph.edges.len(), rerun)
     }
 
     fn from_options(
@@ -196,6 +187,249 @@ impl FcoseIterationSchedule {
     }
 
     pub const fn maximum_work_units(self) -> usize {
+        self.maximum_work_units
+    }
+}
+
+/// Cardinalities that distinguish raw constraint input from the filtered runtime projection.
+///
+/// Mermaid/Cytoscape preserves alignment order and duplicates, so both remain part of the work
+/// shape even when they refer to the same node repeatedly.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct FcoseConstraintWorkShape {
+    input_group_count: usize,
+    input_member_count: usize,
+    input_relative_count: usize,
+    retained_group_count: usize,
+    retained_member_count: usize,
+    valid_axis_pair_count: usize,
+}
+
+impl FcoseConstraintWorkShape {
+    const fn from_counts(
+        input_group_count: usize,
+        input_member_count: usize,
+        input_relative_count: usize,
+        retained_group_count: usize,
+        retained_member_count: usize,
+        valid_axis_pair_count: usize,
+    ) -> Self {
+        Self {
+            input_group_count,
+            input_member_count,
+            input_relative_count,
+            retained_group_count,
+            retained_member_count,
+            valid_axis_pair_count,
+        }
+    }
+
+    fn input_headers(
+        opts: &IndexedFcoseOptions,
+    ) -> std::result::Result<(usize, usize), WorkFailure> {
+        let (horizontal, vertical) = opts
+            .alignment_constraint
+            .as_ref()
+            .map(|alignment| (alignment.horizontal.len(), alignment.vertical.len()))
+            .unwrap_or_default();
+        let groups = horizontal
+            .checked_add(vertical)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        Ok((groups, opts.relative_placement_constraint.len()))
+    }
+
+    fn input_member_count(opts: &IndexedFcoseOptions) -> std::result::Result<usize, WorkFailure> {
+        opts.alignment_constraint
+            .as_ref()
+            .map(|alignment| {
+                alignment
+                    .horizontal
+                    .iter()
+                    .chain(&alignment.vertical)
+                    .try_fold(0usize, |members, group| members.checked_add(group.len()))
+                    .ok_or(WorkFailure::ArithmeticOverflow)
+            })
+            .transpose()
+            .map(|members| members.unwrap_or_default())
+    }
+
+    fn from_indexed_options(
+        opts: &IndexedFcoseOptions,
+        node_count: usize,
+        input_group_count: usize,
+        input_member_count: usize,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let mut retained_group_count = 0usize;
+        let mut retained_member_count = 0usize;
+        if let Some(alignment) = opts.alignment_constraint.as_ref() {
+            for group in alignment.horizontal.iter().chain(&alignment.vertical) {
+                let valid_members = group.iter().filter(|idx| **idx < node_count).count();
+                if valid_members > 1 {
+                    retained_group_count = retained_group_count
+                        .checked_add(1)
+                        .ok_or(WorkFailure::ArithmeticOverflow)?;
+                    retained_member_count = retained_member_count
+                        .checked_add(valid_members)
+                        .ok_or(WorkFailure::ArithmeticOverflow)?;
+                }
+            }
+        }
+
+        let mut valid_axis_pair_count = 0usize;
+        for relative in &opts.relative_placement_constraint {
+            if relative
+                .left
+                .zip(relative.right)
+                .is_some_and(|(left, right)| left < node_count && right < node_count)
+            {
+                valid_axis_pair_count = valid_axis_pair_count
+                    .checked_add(1)
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+            }
+            if relative
+                .top
+                .zip(relative.bottom)
+                .is_some_and(|(top, bottom)| top < node_count && bottom < node_count)
+            {
+                valid_axis_pair_count = valid_axis_pair_count
+                    .checked_add(1)
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+            }
+        }
+
+        Ok(Self::from_counts(
+            input_group_count,
+            input_member_count,
+            opts.relative_placement_constraint.len(),
+            retained_group_count,
+            retained_member_count,
+            valid_axis_pair_count,
+        ))
+    }
+
+    fn input_work_units(self) -> std::result::Result<usize, WorkFailure> {
+        self.input_group_count
+            .checked_add(self.input_member_count)
+            .and_then(|units| units.checked_add(self.input_relative_count))
+            .ok_or(WorkFailure::ArithmeticOverflow)
+    }
+
+    fn run_work_units(self) -> std::result::Result<usize, WorkFailure> {
+        self.retained_group_count
+            .checked_add(self.retained_member_count)
+            .and_then(|units| units.checked_add(self.input_relative_count))
+            .ok_or(WorkFailure::ArithmeticOverflow)
+    }
+
+    fn iteration_work_units(self) -> std::result::Result<usize, WorkFailure> {
+        self.retained_group_count
+            .checked_add(self.retained_member_count)
+            .and_then(|units| units.checked_add(self.valid_axis_pair_count))
+            .ok_or(WorkFailure::ArithmeticOverflow)
+    }
+}
+
+/// Complete predictable FCoSE work admitted before simulation allocation.
+///
+/// Relative-placement ancestry clones are convergence/data-shape dependent and are charged
+/// exactly at their allocation sites, like spectral convergence tranches; they are deliberately
+/// excluded from this predictable maximum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FcoseWorkPlan {
+    schedule: FcoseIterationSchedule,
+    setup_work_units: usize,
+    run_setup_work_units: usize,
+    iteration_work_units: usize,
+    random_seed_offset_work_units: usize,
+    maximum_work_units: usize,
+}
+
+impl FcoseWorkPlan {
+    fn from_schedule(
+        schedule: FcoseIterationSchedule,
+        node_count: usize,
+        shape: FcoseConstraintWorkShape,
+        random_seed_offset: usize,
+        reset_seed_each_run: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let setup_work_units = schedule
+            .setup_work_units()
+            .checked_add(shape.input_work_units()?)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let constraint_run_work_units = shape.run_work_units()?;
+        let run_setup_work_units = if node_count > 0 && constraint_run_work_units > 0 {
+            constraint_run_work_units
+        } else {
+            0
+        };
+        let iteration_work_units = if node_count > 0 {
+            schedule
+                .iteration_work_units()
+                .checked_add(shape.iteration_work_units()?)
+                .ok_or(WorkFailure::ArithmeticOverflow)?
+        } else {
+            0
+        };
+        let executed_iterations_per_run = if node_count > 0 {
+            schedule
+                .effective_max_iterations()
+                .checked_sub(1)
+                .ok_or(WorkFailure::ArithmeticOverflow)?
+        } else {
+            0
+        };
+        let iteration_maximum = executed_iterations_per_run
+            .checked_mul(schedule.run_count())
+            .and_then(|iterations| iterations.checked_mul(iteration_work_units))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let run_setup_maximum = run_setup_work_units
+            .checked_mul(schedule.run_count())
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let random_reset_count = if reset_seed_each_run {
+            schedule.run_count()
+        } else {
+            1
+        };
+        let random_maximum = random_seed_offset
+            .checked_mul(random_reset_count)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let maximum_work_units = setup_work_units
+            .checked_add(run_setup_maximum)
+            .and_then(|units| units.checked_add(iteration_maximum))
+            .and_then(|units| units.checked_add(random_maximum))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+
+        Ok(Self {
+            schedule,
+            setup_work_units,
+            run_setup_work_units,
+            iteration_work_units,
+            random_seed_offset_work_units: random_seed_offset,
+            maximum_work_units,
+        })
+    }
+
+    const fn schedule(self) -> FcoseIterationSchedule {
+        self.schedule
+    }
+
+    const fn setup_work_units(self) -> usize {
+        self.setup_work_units
+    }
+
+    const fn run_setup_work_units(self) -> usize {
+        self.run_setup_work_units
+    }
+
+    const fn iteration_work_units(self) -> usize {
+        self.iteration_work_units
+    }
+
+    const fn random_seed_offset_work_units(self) -> usize {
+        self.random_seed_offset_work_units
+    }
+
+    const fn maximum_work_units(self) -> usize {
         self.maximum_work_units
     }
 }
@@ -571,14 +805,55 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
     random_policy: FcoseRandomPolicy,
     work_control: &mut W,
 ) -> Result<IndexedLayoutResult> {
+    let node_count = graph
+        .nodes
+        .len()
+        .checked_add(graph.compounds.len())
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let edge_count = graph.edges.len();
+    let (input_group_count, input_relative_count) = FcoseConstraintWorkShape::input_headers(opts)?;
+
+    // Check 1 protects graph validation and the group-header scan without inspecting any node,
+    // edge, alignment member, or relative endpoint. Checks are non-consuming by contract.
+    let header_scan_bound = node_count
+        .checked_add(edge_count)
+        .and_then(|units| units.checked_add(input_group_count))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    work_control.check(header_scan_bound)?;
+
     graph.validate()?;
 
-    let schedule = FcoseIterationSchedule::from_indexed_graph(opts.num_iter, graph, opts.rerun)?;
-    // The configured CoSE schedule is known before SimGraph allocation. Check it as one
-    // non-consuming tranche; convergence-dependent spectral work remains exactly charged by its
-    // owner before each topology, matrix, SVD, and power-iteration tranche.
-    work_control.check(schedule.maximum_work_units())?;
-    work_control.charge(schedule.setup_work_units())?;
+    let input_member_count = FcoseConstraintWorkShape::input_member_count(opts)?;
+    // Check 2 protects the member/endpoint projection used to derive retained runtime shape.
+    let input_scan_bound = header_scan_bound
+        .checked_add(input_member_count)
+        .and_then(|units| units.checked_add(input_relative_count))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    work_control.check(input_scan_bound)?;
+
+    let shape = FcoseConstraintWorkShape::from_indexed_options(
+        opts,
+        node_count,
+        input_group_count,
+        input_member_count,
+    )?;
+    let schedule =
+        FcoseIterationSchedule::from_options(opts.num_iter, node_count, edge_count, opts.rerun)?;
+    let random_seed_offset = random_policy
+        .seed_offset
+        .or(opts.random_seed_offset)
+        .unwrap_or(usize::from(opts.randomize));
+    let work_plan = FcoseWorkPlan::from_schedule(
+        schedule,
+        node_count,
+        shape,
+        random_seed_offset,
+        random_policy.reset_seed_each_run,
+    )?;
+    // Check 3 admits the complete predictable schedule before SimGraph/Constraints allocation.
+    // Spectral convergence and relative-projection clone work remain exact dynamic charges.
+    work_control.check(work_plan.maximum_work_units())?;
+    work_control.charge(work_plan.setup_work_units())?;
     let mut sim = SimGraph::from_indexed(graph);
 
     let constraints = Constraints::from_indexed_opts(&sim, opts);
@@ -595,16 +870,22 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
         None
     };
 
-    let random_seed_offset = random_policy
-        .seed_offset
-        .or(opts.random_seed_offset)
-        .unwrap_or(usize::from(opts.randomize));
     let mut rng = new_fcose_random(random_policy);
-    advance_random(&mut rng, random_seed_offset);
+    advance_random_with_work_control(
+        &mut rng,
+        work_plan.random_seed_offset_work_units(),
+        work_control,
+    )?;
     let mut owner_bounds = OwnerBounds::new(sim.nodes.len() + 1);
 
     for run_idx in 0..schedule.run_count() {
-        reset_fcose_random_for_run(&mut rng, random_policy, random_seed_offset, run_idx);
+        reset_fcose_random_for_run(
+            &mut rng,
+            random_policy,
+            run_idx,
+            work_plan.random_seed_offset_work_units(),
+            work_control,
+        )?;
         // Mirror upstream component center bookkeeping (`eles.boundingBox()` before layout) by
         // ensuring compound rects wrap their current children before we compute `orig_center`.
         let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
@@ -643,7 +924,7 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
         sim.run_spring_embedder(SpringEmbedderContext {
             constraints: &constraints,
             options: opts,
-            schedule,
+            work_plan,
             rng: &mut rng,
             owner_bounds: &mut owner_bounds,
             spectral_topology: spectral_topology.as_ref(),
@@ -1563,7 +1844,7 @@ struct OwnerBounds {
 struct SpringEmbedderContext<'a, W: WorkControl + ?Sized> {
     constraints: &'a Constraints,
     options: &'a IndexedFcoseOptions,
-    schedule: FcoseIterationSchedule,
+    work_plan: FcoseWorkPlan,
     rng: &'a mut FcoseRandom,
     owner_bounds: &'a mut OwnerBounds,
     spectral_topology: Option<&'a spectral::SpectralTopology>,
@@ -2360,12 +2641,13 @@ impl SimGraph {
         let SpringEmbedderContext {
             constraints,
             options: opts,
-            schedule,
+            work_plan,
             rng,
             owner_bounds,
             spectral_topology,
             work_control,
         } = context;
+        let schedule = work_plan.schedule();
 
         // `cytoscape-fcose` constructs a fresh CoSELayout for every `layout.run()`. Keep the
         // generation-based FR-grid deduplication scratch run-local as well; reusing markers while
@@ -2470,7 +2752,12 @@ impl SimGraph {
             || !constraints.align_vertical.is_empty()
             || !constraints.relative.is_empty();
         if has_constraints {
-            handle_constraints_pre_layout(&mut self.nodes[..self.leaf_count], constraints);
+            work_control.charge(work_plan.run_setup_work_units())?;
+            handle_constraints_pre_layout(
+                &mut self.nodes[..self.leaf_count],
+                constraints,
+                work_control,
+            )?;
         }
 
         let mut constraint_rt = ConstraintRuntime::new(&self.nodes, constraints);
@@ -2529,7 +2816,7 @@ impl SimGraph {
                     (initial_cooling_factor - cooling_adjustment).max(final_temperature);
             }
 
-            work_control.charge(schedule.iteration_work_units())?;
+            work_control.charge(work_plan.iteration_work_units())?;
 
             let mut total_displacement = 0.0f64;
 
@@ -3011,9 +3298,13 @@ impl SimGraph {
     }
 }
 
-fn handle_constraints_pre_layout(nodes: &mut [SimNode], c: &Constraints) {
+fn handle_constraints_pre_layout<W: WorkControl + ?Sized>(
+    nodes: &mut [SimNode],
+    c: &Constraints,
+    work_control: &mut W,
+) -> std::result::Result<(), WorkFailure> {
     if nodes.is_empty() {
-        return;
+        return Ok(());
     }
 
     let mut x: Vec<f64> = nodes.iter().map(|n| n.center_x()).collect();
@@ -3073,13 +3364,28 @@ fn handle_constraints_pre_layout(nodes: &mut [SimNode], c: &Constraints) {
 
     // Enforce relative placement constraints in position space.
     if !c.relative.is_empty() {
-        enforce_relative_placement(&mut x, &mut y, c);
+        enforce_relative_placement(&mut x, &mut y, c, work_control)?;
     }
 
     for (i, n) in nodes.iter_mut().enumerate() {
         n.left = x[i] - n.width / 2.0;
         n.top = y[i] - n.height / 2.0;
     }
+    Ok(())
+}
+
+fn charge_relative_projection_work<W: WorkControl + ?Sized>(
+    work_control: &mut W,
+    left: usize,
+    right: usize,
+) -> std::result::Result<(), WorkFailure> {
+    let units = left
+        .checked_add(right)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    if units > 0 {
+        work_control.charge(units)?;
+    }
+    Ok(())
 }
 
 fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstraint]) {
@@ -3451,7 +3757,12 @@ fn apply_reflection_for_relative_placement(x: &mut [f64], y: &mut [f64], rel: &[
     }
 }
 
-fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
+fn enforce_relative_placement<W: WorkControl + ?Sized>(
+    x: &mut [f64],
+    y: &mut [f64],
+    c: &Constraints,
+    work_control: &mut W,
+) -> std::result::Result<(), WorkFailure> {
     #[derive(Debug, Clone, Copy)]
     struct Neighbor {
         id: usize,
@@ -3460,15 +3771,16 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
 
     let n = x.len().min(y.len());
     if n == 0 {
-        return;
+        return Ok(());
     }
 
-    fn enforce_relative_placement_no_align_small(
+    fn enforce_relative_placement_no_align_small<W: WorkControl + ?Sized>(
         x: &mut [f64],
         y: &mut [f64],
         rel: &[RelConstraint],
         n: usize,
-    ) {
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
         use std::collections::VecDeque;
 
         fn build_axis_dag_keys(
@@ -3605,15 +3917,29 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
             out
         }
 
-        fn find_appropriate_positions(
-            keys: &[usize],
-            dag: &[Vec<Neighbor>],
+        struct SmallAxisProjection<'a> {
+            keys: &'a [usize],
+            dag: &'a [Vec<Neighbor>],
             axis: Axis,
-            n: usize,
-            x: &[f64],
-            y: &[f64],
-            sources: &[Vec<usize>],
-        ) -> Vec<f64> {
+            node_count: usize,
+            x: &'a [f64],
+            y: &'a [f64],
+            sources: &'a [Vec<usize>],
+        }
+
+        fn find_appropriate_positions<W: WorkControl + ?Sized>(
+            projection: SmallAxisProjection<'_>,
+            work_control: &mut W,
+        ) -> std::result::Result<Vec<f64>, WorkFailure> {
+            let SmallAxisProjection {
+                keys,
+                dag,
+                axis,
+                node_count: n,
+                x,
+                y,
+                sources,
+            } = projection;
             let mut in_deg: Vec<usize> = vec![0; n];
             for &src in keys {
                 for e in &dag[src] {
@@ -3661,6 +3987,11 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                         q.push_back(neigh.id);
                     }
 
+                    charge_relative_projection_work(
+                        work_control,
+                        past_order[cur].len(),
+                        past_order[neigh.id].len(),
+                    )?;
                     let mut merged_bits = past_bits[cur];
                     let mut merged_order: Vec<usize> = past_order[cur].clone();
                     for &v in &past_order[neigh.id] {
@@ -3690,7 +4021,15 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                 }
                 let first = past_order[k][0];
                 let first_bit = 1u64 << (first as u64);
+                if !comp_bits.is_empty() {
+                    work_control.charge(comp_bits.len())?;
+                }
                 if let Some(idx) = comp_bits.iter().position(|b| (*b & first_bit) != 0) {
+                    charge_relative_projection_work(
+                        work_control,
+                        comp_order[idx].len(),
+                        past_order[k].len(),
+                    )?;
                     let mut bits = comp_bits[idx];
                     let mut order = comp_order[idx].clone();
                     for &v in &past_order[k] {
@@ -3703,6 +4042,7 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                     comp_bits[idx] = bits;
                     comp_order[idx] = order;
                 } else {
+                    charge_relative_projection_work(work_control, past_order[k].len(), 0)?;
                     comp_bits.push(past_bits[k]);
                     comp_order.push(past_order[k].clone());
                 }
@@ -3727,15 +4067,25 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                 }
             }
 
-            position
+            Ok(position)
         }
 
         let (keys_h, dag_h) = build_axis_dag_keys(Axis::Horizontal, rel, n);
         if !keys_h.is_empty() {
             let rev_h = build_rev(&keys_h, &dag_h, n);
             let sources = component_sources(&keys_h, &dag_h, &rev_h, n);
-            let pos =
-                find_appropriate_positions(&keys_h, &dag_h, Axis::Horizontal, n, x, y, &sources);
+            let pos = find_appropriate_positions(
+                SmallAxisProjection {
+                    keys: &keys_h,
+                    dag: &dag_h,
+                    axis: Axis::Horizontal,
+                    node_count: n,
+                    x,
+                    y,
+                    sources: &sources,
+                },
+                work_control,
+            )?;
             for &k in &keys_h {
                 x[k] = pos[k];
             }
@@ -3745,17 +4095,28 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         if !keys_v.is_empty() {
             let rev_v = build_rev(&keys_v, &dag_v, n);
             let sources = component_sources(&keys_v, &dag_v, &rev_v, n);
-            let pos =
-                find_appropriate_positions(&keys_v, &dag_v, Axis::Vertical, n, x, y, &sources);
+            let pos = find_appropriate_positions(
+                SmallAxisProjection {
+                    keys: &keys_v,
+                    dag: &dag_v,
+                    axis: Axis::Vertical,
+                    node_count: n,
+                    x,
+                    y,
+                    sources: &sources,
+                },
+                work_control,
+            )?;
             for &k in &keys_v {
                 y[k] = pos[k];
             }
         }
+        Ok(())
     }
 
     if c.align_vertical.is_empty() && c.align_horizontal.is_empty() && n <= 64 {
-        enforce_relative_placement_no_align_small(x, y, &c.relative, n);
-        return;
+        enforce_relative_placement_no_align_small(x, y, &c.relative, n, work_control)?;
+        return Ok(());
     }
 
     // Dummy mappings for alignment constraints (per-axis, matching `ConstraintHandler`).
@@ -3899,16 +4260,31 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         }
     }
 
-    fn find_appropriate_positions(
-        dag: &IndexMap<usize, Vec<Neighbor>>,
+    struct AxisProjection<'a> {
+        dag: &'a IndexMap<usize, Vec<Neighbor>>,
         axis: Axis,
-        n: usize,
-        x: &[f64],
-        y: &[f64],
-        dummy_pos: &[f64],
-        component_sources: &[Vec<usize>],
-    ) -> IndexMap<usize, f64> {
+        node_count: usize,
+        x: &'a [f64],
+        y: &'a [f64],
+        dummy_pos: &'a [f64],
+        component_sources: &'a [Vec<usize>],
+    }
+
+    fn find_appropriate_positions<W: WorkControl + ?Sized>(
+        projection: AxisProjection<'_>,
+        work_control: &mut W,
+    ) -> std::result::Result<IndexMap<usize, f64>, WorkFailure> {
         use std::collections::VecDeque;
+
+        let AxisProjection {
+            dag,
+            axis,
+            node_count: n,
+            x,
+            y,
+            dummy_pos,
+            component_sources,
+        } = projection;
 
         let mut in_deg: IndexMap<usize, usize> = IndexMap::new();
         for (&k, _) in dag.iter() {
@@ -3959,6 +4335,11 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                 if *deg == 0 {
                     q.push_back(neigh.id);
                 }
+                charge_relative_projection_work(
+                    work_control,
+                    past[&cur].len(),
+                    past[&neigh.id].len(),
+                )?;
                 let mut merged: IndexSet<usize> = past[&cur].clone();
                 for v in past[&neigh.id].iter().copied() {
                     merged.insert(v);
@@ -3983,13 +4364,18 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
             let Some(&first) = set.iter().next() else {
                 continue;
             };
+            if !components.is_empty() {
+                work_control.charge(components.len())?;
+            }
             if let Some(idx) = components.iter().position(|c| c.contains(&first)) {
+                charge_relative_projection_work(work_control, components[idx].len(), set.len())?;
                 let mut merged = components[idx].clone();
                 for v in set.iter().copied() {
                     merged.insert(v);
                 }
                 components[idx] = merged;
             } else {
+                charge_relative_projection_work(work_control, set.len(), 0)?;
                 components.push(set.clone());
             }
         }
@@ -4013,21 +4399,24 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
             }
         }
 
-        position
+        Ok(position)
     }
 
     if !dag_h.is_empty() {
         let rev = dag_to_reversed(&dag_h);
         let sources = component_sources(&dag_h, &rev);
         let pos = find_appropriate_positions(
-            &dag_h,
-            Axis::Horizontal,
-            n,
-            x,
-            y,
-            &dummy_pos_for_vertical_alignment,
-            &sources,
-        );
+            AxisProjection {
+                dag: &dag_h,
+                axis: Axis::Horizontal,
+                node_count: n,
+                x,
+                y,
+                dummy_pos: &dummy_pos_for_vertical_alignment,
+                component_sources: &sources,
+            },
+            work_control,
+        )?;
         for (&key, &v) in pos.iter() {
             if key < n {
                 x[key] = v;
@@ -4045,14 +4434,17 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         let rev = dag_to_reversed(&dag_v);
         let sources = component_sources(&dag_v, &rev);
         let pos = find_appropriate_positions(
-            &dag_v,
-            Axis::Vertical,
-            n,
-            x,
-            y,
-            &dummy_pos_for_horizontal_alignment,
-            &sources,
-        );
+            AxisProjection {
+                dag: &dag_v,
+                axis: Axis::Vertical,
+                node_count: n,
+                x,
+                y,
+                dummy_pos: &dummy_pos_for_horizontal_alignment,
+                component_sources: &sources,
+            },
+            work_control,
+        )?;
         for (&key, &v) in pos.iter() {
             if key < n {
                 y[key] = v;
@@ -4065,6 +4457,7 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
             }
         }
     }
+    Ok(())
 }
 
 fn apply_constraints_to_displacements(
@@ -4197,17 +4590,36 @@ fn advance_random(rng: &mut FcoseRandom, count: usize) {
     }
 }
 
-fn reset_fcose_random_for_run(
+fn advance_random_with_work_control<W: WorkControl + ?Sized>(
+    rng: &mut FcoseRandom,
+    count: usize,
+    work_control: &mut W,
+) -> std::result::Result<(), WorkFailure> {
+    if count > 0 {
+        work_control.charge(count)?;
+    }
+    advance_random(rng, count);
+    Ok(())
+}
+
+fn reset_fcose_random_for_run<W: WorkControl + ?Sized>(
     rng: &mut FcoseRandom,
     policy: FcoseRandomPolicy,
-    seed_offset: usize,
     run_idx: usize,
-) {
+    seed_offset: usize,
+    work_control: &mut W,
+) -> std::result::Result<bool, WorkFailure> {
     if run_idx == 0 || !policy.reset_seed_each_run {
-        return;
+        return Ok(false);
+    }
+    // Admission precedes both resetting the stream and consuming the configured offset, so a
+    // rejected rerun cannot partially mutate caller-observable deterministic state.
+    if seed_offset > 0 {
+        work_control.charge(seed_offset)?;
     }
     *rng = new_fcose_random(policy);
     advance_random(rng, seed_offset);
+    Ok(true)
 }
 
 #[derive(Debug, Clone)]
@@ -4259,13 +4671,13 @@ impl Mulberry32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoundsExtras, Constraints, FcoseIterationSchedule, FcoseRandom, FcoseRandomPolicy,
-        FcoseRandomSource, IndexedAlignmentConstraint, IndexedCompound, IndexedEdge,
-        IndexedFcoseOptions, IndexedGraph, IndexedNode, IndexedRelativePlacementConstraint,
-        Mulberry32, RelConstraint, RepulsionGrid, SimGraph, SimNode, Vec2, WorkControl,
-        XorShift64Star, apply_reflection_for_relative_placement, layout, layout_indexed,
-        layout_indexed_with_random_policy_and_work_control, new_fcose_random,
-        procrustes_transform_for_alignments, reset_fcose_random_for_run,
+        BoundsExtras, Constraints, FcoseConstraintWorkShape, FcoseIterationSchedule, FcoseRandom,
+        FcoseRandomPolicy, FcoseRandomSource, FcoseWorkPlan, IndexedAlignmentConstraint,
+        IndexedCompound, IndexedEdge, IndexedFcoseOptions, IndexedGraph, IndexedNode,
+        IndexedRelativePlacementConstraint, Mulberry32, RelConstraint, RepulsionGrid, SimGraph,
+        SimNode, Vec2, WorkControl, XorShift64Star, apply_reflection_for_relative_placement,
+        layout, layout_indexed, layout_indexed_with_random_policy_and_work_control,
+        new_fcose_random, procrustes_transform_for_alignments, reset_fcose_random_for_run,
     };
     use crate::algo::{AlignmentConstraint, FcoseOptions, RelativePlacementConstraint};
     use crate::error::{Error, WorkFailure};
@@ -4290,16 +4702,30 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
     struct RejectingPreflight {
         checks: Vec<usize>,
         charges: Vec<usize>,
+        reject_on_check: usize,
+    }
+
+    impl Default for RejectingPreflight {
+        fn default() -> Self {
+            Self {
+                checks: Vec::new(),
+                charges: Vec::new(),
+                reject_on_check: 1,
+            }
+        }
     }
 
     impl WorkControl for RejectingPreflight {
         fn check(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
             self.checks.push(units);
-            Err(WorkFailure::Interrupted)
+            if self.checks.len() == self.reject_on_check {
+                Err(WorkFailure::Interrupted)
+            } else {
+                Ok(())
+            }
         }
 
         fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
@@ -4396,6 +4822,59 @@ mod tests {
     }
 
     #[test]
+    fn fcose_work_plan_uses_raw_input_and_filtered_runtime_cardinality() {
+        let schedule = FcoseIterationSchedule::from_normalized_counts(5, 2, 1, true).unwrap();
+        let shape = FcoseConstraintWorkShape::from_counts(2, 5, 3, 1, 3, 4);
+        let plan = FcoseWorkPlan::from_schedule(schedule, 2, shape, 7, true).unwrap();
+
+        assert_eq!(plan.setup_work_units(), 13);
+        assert_eq!(plan.run_setup_work_units(), 7);
+        assert_eq!(plan.iteration_work_units(), 11);
+        assert_eq!(plan.maximum_work_units(), 239);
+    }
+
+    #[test]
+    fn constraint_work_shape_preserves_duplicates_and_counts_both_axes() {
+        let options = IndexedFcoseOptions {
+            alignment_constraint: Some(IndexedAlignmentConstraint {
+                horizontal: vec![vec![0, 0, 1, 99], vec![2, 99], vec![99, 99]],
+                vertical: vec![vec![1, 1]],
+            }),
+            relative_placement_constraint: vec![
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(1),
+                    top: Some(0),
+                    bottom: Some(1),
+                    gap: 10.0,
+                },
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(99),
+                    top: Some(99),
+                    bottom: Some(1),
+                    gap: 10.0,
+                },
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(1),
+                    top: None,
+                    bottom: None,
+                    gap: 10.0,
+                },
+            ],
+            ..IndexedFcoseOptions::default()
+        };
+        let (groups, _) = FcoseConstraintWorkShape::input_headers(&options).unwrap();
+        let members = FcoseConstraintWorkShape::input_member_count(&options).unwrap();
+
+        assert_eq!(
+            FcoseConstraintWorkShape::from_indexed_options(&options, 3, groups, members).unwrap(),
+            FcoseConstraintWorkShape::from_counts(4, 10, 3, 2, 5, 3),
+        );
+    }
+
+    #[test]
     fn iteration_schedule_fails_closed_on_numeric_and_derived_overflow() {
         assert_eq!(
             FcoseIterationSchedule::from_configured_number(Some(f64::MAX), 1, 0, false),
@@ -4409,6 +4888,47 @@ mod tests {
             FcoseIterationSchedule::from_normalized_counts(usize::MAX, 1, 0, true),
             Err(WorkFailure::ArithmeticOverflow),
         );
+        let schedule = FcoseIterationSchedule::from_normalized_counts(5, 1, 0, false).unwrap();
+        assert_eq!(
+            FcoseWorkPlan::from_schedule(
+                schedule,
+                1,
+                FcoseConstraintWorkShape::from_counts(usize::MAX, 1, 0, 0, 0, 0),
+                0,
+                false,
+            ),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+        let rerun_schedule = FcoseIterationSchedule::from_normalized_counts(5, 1, 0, true).unwrap();
+        assert_eq!(
+            FcoseWorkPlan::from_schedule(
+                rerun_schedule,
+                1,
+                FcoseConstraintWorkShape::default(),
+                usize::MAX,
+                true,
+            ),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+    }
+
+    #[test]
+    fn work_plan_counts_seed_offset_for_each_rng_reset() {
+        let schedule = FcoseIterationSchedule::from_normalized_counts(5, 1, 0, true).unwrap();
+        let continuous = FcoseWorkPlan::from_schedule(
+            schedule,
+            1,
+            FcoseConstraintWorkShape::default(),
+            7,
+            false,
+        )
+        .unwrap();
+        let reset =
+            FcoseWorkPlan::from_schedule(schedule, 1, FcoseConstraintWorkShape::default(), 7, true)
+                .unwrap();
+
+        assert_eq!(continuous.maximum_work_units(), 16);
+        assert_eq!(reset.maximum_work_units(), 23);
     }
 
     #[test]
@@ -4445,7 +4965,7 @@ mod tests {
     }
 
     #[test]
-    fn controlled_layout_preflights_the_complete_schedule_before_kernel_allocation() {
+    fn controlled_layout_runs_three_non_consuming_preflight_checks() {
         let graph = IndexedGraph {
             nodes: vec![IndexedNode {
                 parent: None,
@@ -4463,7 +4983,10 @@ mod tests {
             num_iter: Some(5),
             ..IndexedFcoseOptions::default()
         };
-        let mut control = RejectingPreflight::default();
+        let mut control = RejectingPreflight {
+            reject_on_check: 3,
+            ..RejectingPreflight::default()
+        };
 
         let error = layout_indexed_with_random_policy_and_work_control(
             &graph,
@@ -4477,12 +5000,151 @@ mod tests {
             error,
             Error::WorkFailure(WorkFailure::Interrupted)
         ));
-        assert_eq!(control.checks, vec![5]);
+        assert_eq!(control.checks, vec![1, 1, 5]);
         assert!(control.charges.is_empty());
     }
 
     #[test]
-    fn indexed_graph_schedule_matches_the_kernel_self_edge_filter() {
+    fn controlled_layout_rejects_before_graph_validation() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: vec![IndexedEdge {
+                source: 0,
+                target: 99,
+                label_width: None,
+                label_height: None,
+                source_anchor: None,
+                target_anchor: None,
+                curve_style_segments: false,
+                ideal_length: 50.0,
+                elasticity: 0.45,
+            }],
+            compounds: Vec::new(),
+        };
+        let mut control = RejectingPreflight::default();
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &IndexedFcoseOptions::default(),
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.checks, vec![2]);
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn controlled_layout_preflight_includes_constraint_cardinality() {
+        let graph = IndexedGraph {
+            nodes: (0..2)
+                .map(|index| IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: index as f64 * 50.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                })
+                .collect(),
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            alignment_constraint: Some(IndexedAlignmentConstraint {
+                horizontal: vec![vec![0, 1]; 8],
+                vertical: Vec::new(),
+            }),
+            relative_placement_constraint: vec![
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(1),
+                    top: None,
+                    bottom: None,
+                    gap: 50.0,
+                };
+                8
+            ],
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RejectingPreflight {
+            reject_on_check: 3,
+            ..RejectingPreflight::default()
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.checks, vec![10, 34, 372]);
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn controlled_layout_preflight_includes_random_seed_offset() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            ..IndexedFcoseOptions::default()
+        };
+        let seed_offset = 7;
+        let mut control = RejectingPreflight {
+            reject_on_check: 3,
+            ..RejectingPreflight::default()
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1).with_seed_offset(seed_offset),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.checks, vec![1, 1, 12]);
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn indexed_graph_schedule_charges_every_edge_slot() {
         let graph = IndexedGraph {
             nodes: vec![IndexedNode {
                 parent: None,
@@ -4508,9 +5170,9 @@ mod tests {
 
         let schedule = FcoseIterationSchedule::from_indexed_graph(Some(5), &graph, false).unwrap();
 
-        assert_eq!(schedule.iteration_work_units(), 1);
-        assert_eq!(schedule.setup_work_units(), 1);
-        assert_eq!(schedule.maximum_work_units(), 5);
+        assert_eq!(schedule.iteration_work_units(), 2);
+        assert_eq!(schedule.setup_work_units(), 2);
+        assert_eq!(schedule.maximum_work_units(), 10);
     }
 
     #[test]
@@ -4550,6 +5212,63 @@ mod tests {
             Error::WorkFailure(WorkFailure::Interrupted)
         ));
         assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn relative_projection_clone_work_is_charged_before_allocation() {
+        let graph = IndexedGraph {
+            nodes: (0..3)
+                .map(|index| IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: index as f64 * 50.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                })
+                .collect(),
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            relative_placement_constraint: vec![
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(1),
+                    top: None,
+                    bottom: None,
+                    gap: 50.0,
+                },
+                IndexedRelativePlacementConstraint {
+                    left: Some(1),
+                    right: Some(2),
+                    top: None,
+                    bottom: None,
+                    gap: 50.0,
+                },
+            ],
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RecordingWorkControl {
+            charges: Vec::new(),
+            reject_after: Some(2),
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.charges, vec![5, 2]);
     }
 
     #[test]
@@ -5211,15 +5930,40 @@ mod tests {
         super::advance_random(&mut rng, policy.seed_offset().unwrap_or_default());
         let first_run = [rng.next_f64_unit(), rng.next_f64_unit()];
 
-        reset_fcose_random_for_run(
-            &mut rng,
-            policy,
-            policy.seed_offset().unwrap_or_default(),
-            1,
+        let mut work_control = super::NoopWorkControl;
+        assert!(
+            reset_fcose_random_for_run(
+                &mut rng,
+                policy,
+                1,
+                policy.seed_offset().unwrap_or_default(),
+                &mut work_control,
+            )
+            .unwrap()
         );
         let second_run = [rng.next_f64_unit(), rng.next_f64_unit()];
 
         assert_eq!(second_run, first_run);
+    }
+
+    #[test]
+    fn rejected_seed_offset_charge_does_not_mutate_the_random_stream() {
+        let policy = FcoseRandomPolicy::seeded(FcoseRandomSource::Mulberry32, 42)
+            .with_seed_offset(3)
+            .with_reset_seed_each_run(true);
+        let mut rng = new_fcose_random(policy);
+        let mut expected = rng.clone();
+        let mut control = RecordingWorkControl {
+            charges: Vec::new(),
+            reject_after: Some(0),
+        };
+
+        assert_eq!(
+            reset_fcose_random_for_run(&mut rng, policy, 1, 3, &mut control),
+            Err(WorkFailure::Interrupted),
+        );
+        assert_eq!(rng.next_f64_unit(), expected.next_f64_unit());
+        assert!(control.charges.is_empty());
     }
 
     #[test]
@@ -5422,7 +6166,8 @@ mod tests {
             "expected negative JS-compatible Procrustes skew, got {t:?}"
         );
 
-        super::handle_constraints_pre_layout(&mut nodes, &constraints);
+        let mut work_control = super::NoopWorkControl;
+        super::handle_constraints_pre_layout(&mut nodes, &constraints, &mut work_control).unwrap();
 
         let inner_top_after_update_bounds = nodes[0].top.min(nodes[1].top) - 40.0;
         let out1_bottom = nodes[2].top + nodes[2].height;

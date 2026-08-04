@@ -61,17 +61,81 @@ impl manatee::algo::fcose::WorkControl for ArchitectureManateeWorkControl<'_> {
     }
 }
 
-fn checked_architecture_adapter_work_units(model: &ArchitectureModelView<'_>) -> Option<usize> {
-    let hint_members = model
-        .layout_hints
-        .iter()
-        .try_fold(0usize, |total, hint| total.checked_add(hint.members.len()))?;
-    model
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ArchitectureDeclaredConstraintWork {
+    alignment_group_count: usize,
+    alignment_member_count: usize,
+    relative_constraint_count: usize,
+}
+
+impl ArchitectureDeclaredConstraintWork {
+    fn checked_work_units(self) -> Option<usize> {
+        self.alignment_group_count
+            .checked_add(self.alignment_member_count)?
+            .checked_add(self.relative_constraint_count)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ArchitectureAdapterWorkPlan {
+    work_units: usize,
+    declared_constraints: ArchitectureDeclaredConstraintWork,
+}
+
+fn checked_architecture_adapter_work_plan(
+    model: &ArchitectureModelView<'_>,
+) -> Option<ArchitectureAdapterWorkPlan> {
+    let (hint_members, alignment_groups, constraint_members, relative_constraints) =
+        model.layout_hints.iter().try_fold(
+            (0usize, 0usize, 0usize, 0usize),
+            |(members, groups, constrained_members, relative), hint| {
+                let hint_member_count = hint.members.len();
+                let members = members.checked_add(hint_member_count)?;
+                if hint_member_count < 2 {
+                    return Some((members, groups, constrained_members, relative));
+                }
+                Some((
+                    members,
+                    groups.checked_add(1)?,
+                    constrained_members.checked_add(hint_member_count)?,
+                    relative.checked_add(hint_member_count - 1)?,
+                ))
+            },
+        )?;
+    let work_units = model
         .nodes
         .len()
         .checked_add(model.groups.len())?
         .checked_add(model.edges.len())?
-        .checked_add(hint_members)
+        .checked_add(hint_members)?;
+
+    Some(ArchitectureAdapterWorkPlan {
+        work_units,
+        declared_constraints: ArchitectureDeclaredConstraintWork {
+            alignment_group_count: alignment_groups,
+            alignment_member_count: constraint_members,
+            relative_constraint_count: relative_constraints,
+        },
+    })
+}
+
+fn checked_architecture_fcose_work_upper_bound(
+    schedule: manatee::algo::fcose::FcoseIterationSchedule,
+    declared_constraints: ArchitectureDeclaredConstraintWork,
+) -> Option<usize> {
+    let constraint_work_units = declared_constraints.checked_work_units()?;
+    let run_count = schedule.run_count();
+    let executed_iterations = schedule.effective_max_iterations().checked_sub(1)?;
+    let run_setup_work_units = constraint_work_units.checked_mul(run_count)?;
+    let iteration_work_units = constraint_work_units
+        .checked_mul(executed_iterations)?
+        .checked_mul(run_count)?;
+
+    schedule
+        .maximum_work_units()
+        .checked_add(constraint_work_units)?
+        .checked_add(run_setup_work_units)?
+        .checked_add(iteration_work_units)
 }
 
 fn architecture_relative_placement_constraints<'a>(
@@ -326,6 +390,207 @@ fn dir_alignment(a: Option<char>, b: Option<char>) -> GroupAlignment {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct FlattenAlignmentsWorkPlan {
+    direction_bucket_count: usize,
+    group_count: usize,
+    source_member_count: usize,
+    pair_count: usize,
+    expanded_member_count: usize,
+    output_key_bound: usize,
+    sort_work_units: usize,
+    work_units: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct FlattenAlignmentsMetadata {
+    direction_bucket_count: usize,
+    group_count: usize,
+}
+
+impl FlattenAlignmentsMetadata {
+    fn checked_work_units(self) -> Option<usize> {
+        self.direction_bucket_count.checked_add(self.group_count)
+    }
+}
+
+fn checked_flatten_alignments_metadata(
+    alignment_obj: &IndexMap<i32, IndexMap<String, Vec<usize>>>,
+) -> Option<FlattenAlignmentsMetadata> {
+    let group_count = alignment_obj
+        .values()
+        .try_fold(0usize, |groups, bucket| groups.checked_add(bucket.len()))?;
+    Some(FlattenAlignmentsMetadata {
+        direction_bucket_count: alignment_obj.len(),
+        group_count,
+    })
+}
+
+fn checked_ceil_log2(value: usize) -> Option<usize> {
+    if value <= 1 {
+        return Some(0);
+    }
+    usize::BITS
+        .checked_sub((value - 1).leading_zeros())
+        .map(|bits| bits as usize)
+}
+
+fn checked_sort_work_units(item_count: usize) -> Option<usize> {
+    item_count.checked_mul(checked_ceil_log2(item_count)?)
+}
+
+fn checked_unordered_pair_count(item_count: usize) -> Option<usize> {
+    if item_count < 2 {
+        return Some(0);
+    }
+
+    let predecessor = item_count - 1;
+    if item_count.is_multiple_of(2) {
+        (item_count / 2).checked_mul(predecessor)
+    } else {
+        item_count.checked_mul(predecessor / 2)
+    }
+}
+
+fn checked_flatten_alignment_bucket_cardinality(
+    group_count: usize,
+    source_member_count: usize,
+) -> Option<(usize, usize, usize)> {
+    match group_count {
+        0 => Some((0, 0, 0)),
+        1 => Some((0, 0, 1)),
+        _ => {
+            let pair_count = checked_unordered_pair_count(group_count)?;
+            let expanded_member_count =
+                source_member_count.checked_mul(group_count.checked_sub(1)?)?;
+            let output_key_bound = pair_count.checked_mul(2)?;
+            Some((pair_count, expanded_member_count, output_key_bound))
+        }
+    }
+}
+
+impl FlattenAlignmentsWorkPlan {
+    fn checked(alignment_obj: &IndexMap<i32, IndexMap<String, Vec<usize>>>) -> Option<Self> {
+        let metadata = checked_flatten_alignments_metadata(alignment_obj)?;
+        Self::checked_with_metadata(alignment_obj, metadata)
+    }
+
+    fn checked_with_metadata(
+        alignment_obj: &IndexMap<i32, IndexMap<String, Vec<usize>>>,
+        metadata: FlattenAlignmentsMetadata,
+    ) -> Option<Self> {
+        let mut plan = Self {
+            direction_bucket_count: metadata.direction_bucket_count,
+            group_count: metadata.group_count,
+            ..Self::default()
+        };
+        let mut numeric_direction_count = 0usize;
+        let mut numeric_output_key_bound = 0usize;
+
+        for (&dir, alignments) in alignment_obj {
+            if dir >= 0 {
+                numeric_direction_count = numeric_direction_count.checked_add(1)?;
+                if !alignments.is_empty() {
+                    numeric_output_key_bound = numeric_output_key_bound.checked_add(1)?;
+                }
+            }
+
+            let (bucket_source_member_count, numeric_group_count) = alignments.iter().try_fold(
+                (0usize, 0usize),
+                |(members, numeric_groups), (key, group)| {
+                    Some((
+                        members.checked_add(group.len())?,
+                        if js_array_index_key(key).is_some() {
+                            numeric_groups.checked_add(1)?
+                        } else {
+                            numeric_groups
+                        },
+                    ))
+                },
+            )?;
+            plan.source_member_count = plan
+                .source_member_count
+                .checked_add(bucket_source_member_count)?;
+
+            let (pair_count, expanded_member_count, output_key_bound) =
+                checked_flatten_alignment_bucket_cardinality(
+                    alignments.len(),
+                    bucket_source_member_count,
+                )?;
+            plan.pair_count = plan.pair_count.checked_add(pair_count)?;
+            plan.expanded_member_count = plan
+                .expanded_member_count
+                .checked_add(expanded_member_count)?;
+            plan.output_key_bound = plan.output_key_bound.checked_add(output_key_bound)?;
+
+            plan.sort_work_units = plan
+                .sort_work_units
+                .checked_add(checked_sort_work_units(numeric_group_count)?)?;
+        }
+
+        plan.sort_work_units = plan
+            .sort_work_units
+            .checked_add(checked_sort_work_units(numeric_direction_count)?)?
+            .checked_add(checked_sort_work_units(numeric_output_key_bound)?)?;
+
+        plan.work_units = plan
+            .direction_bucket_count
+            .checked_add(plan.group_count)?
+            .checked_add(plan.source_member_count)?
+            .checked_add(plan.pair_count)?
+            .checked_add(plan.expanded_member_count)?
+            .checked_add(plan.output_key_bound)?
+            .checked_add(plan.sort_work_units)?;
+        Some(plan)
+    }
+}
+
+fn js_array_index_key(key: &str) -> Option<u32> {
+    if key == "0" {
+        return Some(0);
+    }
+    if key.is_empty() || key.starts_with('0') || !key.as_bytes().iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    key.parse::<u32>().ok().filter(|index| *index < u32::MAX)
+}
+
+fn js_object_i32_key_index_order<V>(obj: &IndexMap<i32, V>) -> Vec<usize> {
+    let mut array_indices: Vec<(i32, usize)> = Vec::new();
+    let mut other_indices: Vec<usize> = Vec::new();
+    for (index, (&key, _)) in obj.iter().enumerate() {
+        if key >= 0 {
+            array_indices.push((key, index));
+        } else {
+            other_indices.push(index);
+        }
+    }
+    array_indices.sort_unstable_by_key(|(key, _)| *key);
+    array_indices
+        .into_iter()
+        .map(|(_, index)| index)
+        .chain(other_indices)
+        .collect()
+}
+
+fn js_object_string_key_index_order<V>(obj: &IndexMap<String, V>) -> Vec<usize> {
+    let mut array_indices: Vec<(u32, usize)> = Vec::new();
+    let mut other_indices: Vec<usize> = Vec::new();
+    for (index, (key, _)) in obj.iter().enumerate() {
+        if let Some(array_index) = js_array_index_key(key) {
+            array_indices.push((array_index, index));
+        } else {
+            other_indices.push(index);
+        }
+    }
+    array_indices.sort_unstable_by_key(|(key, _)| *key);
+    array_indices
+        .into_iter()
+        .map(|(_, index)| index)
+        .chain(other_indices)
+        .collect()
+}
+
 fn flatten_alignments(
     alignment_obj: &IndexMap<i32, IndexMap<String, Vec<usize>>>,
     alignment_dir: GroupAlignment,
@@ -333,59 +598,51 @@ fn flatten_alignments(
         String,
         std::collections::BTreeMap<String, GroupAlignment>,
     >,
-) -> Vec<Vec<usize>> {
+    work_meter: &OperationWorkMeter,
+) -> Result<Vec<Vec<usize>>> {
     // Mirror Mermaid's `flattenAlignments(...)` + `Object.values(...)` ordering.
     //
     // Mermaid uses plain JS objects keyed by row/col number. Enumeration order puts
     // non-negative integer keys first (ascending), then other string keys (insertion
     // order). We reproduce that here to keep the first element of each alignment group
     // stable, since `cose-base` uses it to seed dummy-node positions.
-    fn js_object_dir_order(obj: &IndexMap<i32, IndexMap<String, Vec<usize>>>) -> Vec<i32> {
-        let mut non_neg: Vec<i32> = Vec::new();
-        let mut other: Vec<i32> = Vec::new();
-        for &k in obj.keys() {
-            if k >= 0 {
-                non_neg.push(k);
-            } else {
-                other.push(k);
-            }
-        }
-        non_neg.sort_unstable();
-        non_neg.extend(other);
-        non_neg
-    }
-
-    fn is_js_array_index_key(k: &str) -> Option<u32> {
-        if k.is_empty() {
-            return None;
-        }
-        if k.as_bytes().iter().all(|b| b.is_ascii_digit()) {
-            return k.parse::<u32>().ok();
-        }
-        None
-    }
+    // The scalar scan does not allocate or clone members. Charge its complete execution plan
+    // before creating ordered index vectors, output keys, or pair-expanded member arrays.
+    let metadata = checked_flatten_alignments_metadata(alignment_obj)
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    work_meter.preflight(
+        metadata
+            .checked_work_units()
+            .ok_or_else(|| work_meter.arithmetic_overflow())?,
+    )?;
+    let work_plan = FlattenAlignmentsWorkPlan::checked(alignment_obj)
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    work_meter.charge(work_plan.work_units)?;
 
     let mut prev: IndexMap<String, Vec<usize>> = IndexMap::new();
 
-    for dir in js_object_dir_order(alignment_obj) {
-        let Some(alignments) = alignment_obj.get(&dir) else {
-            continue;
-        };
+    for dir_index in js_object_i32_key_index_order(alignment_obj) {
+        let (&dir, alignments) = alignment_obj
+            .get_index(dir_index)
+            .expect("direction index came from this alignment object");
+        let group_order = js_object_string_key_index_order(alignments);
         let mut cnt = 0usize;
-        let mut arr: Vec<(String, Vec<usize>)> = alignments
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        if arr.len() == 1 {
-            if let Some((_, node_ids)) = arr.pop() {
-                prev.insert(dir.to_string(), node_ids);
-            }
+        let dir_key = dir.to_string();
+        if group_order.len() == 1 {
+            let (_, node_ids) = alignments
+                .get_index(group_order[0])
+                .expect("group index came from this alignment bucket");
+            prev.insert(dir_key, node_ids.clone());
             continue;
         }
-        for i in 0..arr.len().saturating_sub(1) {
-            for j in (i + 1)..arr.len() {
-                let (a_group_id, a_node_ids) = &arr[i];
-                let (b_group_id, b_node_ids) = &arr[j];
+        for i in 0..group_order.len().saturating_sub(1) {
+            for j in (i + 1)..group_order.len() {
+                let (a_group_id, a_node_ids) = alignments
+                    .get_index(group_order[i])
+                    .expect("group index came from this alignment bucket");
+                let (b_group_id, b_node_ids) = alignments
+                    .get_index(group_order[j])
+                    .expect("group index came from this alignment bucket");
                 let alignment = group_alignments
                     .get(a_group_id)
                     .and_then(|m| m.get(b_group_id))
@@ -395,12 +652,15 @@ fn flatten_alignments(
                     || a_group_id == "default"
                     || b_group_id == "default"
                 {
-                    prev.entry(dir.to_string())
-                        .or_default()
-                        .extend(a_node_ids.iter().cloned());
-                    prev.entry(dir.to_string())
-                        .or_default()
-                        .extend(b_node_ids.iter().cloned());
+                    if let Some(node_ids) = prev.get_mut(&dir_key) {
+                        node_ids.extend(a_node_ids.iter().copied());
+                        node_ids.extend(b_node_ids.iter().copied());
+                    } else {
+                        let mut node_ids = Vec::new();
+                        node_ids.extend(a_node_ids.iter().copied());
+                        node_ids.extend(b_node_ids.iter().copied());
+                        prev.insert(dir_key.clone(), node_ids);
+                    }
                 } else {
                     let key_a = format!("{dir}-{cnt}");
                     cnt += 1;
@@ -414,29 +674,22 @@ fn flatten_alignments(
     }
 
     // `Object.values(prev)` ordering.
-    let mut numeric_keys: Vec<(u32, String)> = Vec::new();
-    let mut other_keys: Vec<String> = Vec::new();
-    for k in prev.keys() {
-        if let Some(ix) = is_js_array_index_key(k.as_str()) {
-            numeric_keys.push((ix, k.clone()));
+    let output_len = prev.len();
+    let mut numeric_values: Vec<(u32, Vec<usize>)> = Vec::new();
+    let mut other_values: Vec<Vec<usize>> = Vec::new();
+    for (key, value) in prev {
+        if let Some(index) = js_array_index_key(&key) {
+            numeric_values.push((index, value));
         } else {
-            other_keys.push(k.clone());
+            other_values.push(value);
         }
     }
-    numeric_keys.sort_by_key(|(ix, _)| *ix);
+    numeric_values.sort_unstable_by_key(|(index, _)| *index);
 
-    let mut out: Vec<Vec<usize>> = Vec::new();
-    for (_, k) in numeric_keys {
-        if let Some(v) = prev.get(&k) {
-            out.push(v.clone());
-        }
-    }
-    for k in other_keys {
-        if let Some(v) = prev.get(&k) {
-            out.push(v.clone());
-        }
-    }
-    out
+    let mut out = Vec::with_capacity(output_len);
+    out.extend(numeric_values.into_iter().map(|(_, value)| value));
+    out.extend(other_values);
+    Ok(out)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -621,6 +874,7 @@ struct ArchitectureFcoseInputPlanInput<'m, 'a> {
     layout_nodes: &'m [LayoutNode],
     node_bounds_extras: &'m FxHashMap<&'a str, manatee::BoundsExtras>,
     text_measurer: &'m dyn TextMeasurer,
+    work_meter: &'m OperationWorkMeter,
     icon_size: f64,
     padding_px: f64,
     ideal_edge_length_multiplier: f64,
@@ -639,6 +893,7 @@ fn build_architecture_fcose_input_plan<'a>(
         layout_nodes,
         node_bounds_extras,
         text_measurer,
+        work_meter,
         icon_size,
         padding_px,
         ideal_edge_length_multiplier,
@@ -850,21 +1105,23 @@ fn build_architecture_fcose_input_plan<'a>(
             &horizontal_alignments,
             GroupAlignment::Horizontal,
             &group_alignments,
-        );
+            work_meter,
+        )?;
         let vert_map = flatten_alignments(
             &vertical_alignments,
             GroupAlignment::Vertical,
             &group_alignments,
-        );
+            work_meter,
+        )?;
 
-        for v in &horiz_map {
+        for v in horiz_map {
             if v.len() > 1 {
-                horizontal_all.push(v.clone());
+                horizontal_all.push(v);
             }
         }
-        for v in &vert_map {
+        for v in vert_map {
             if v.len() > 1 {
-                vertical_all.push(v.clone());
+                vertical_all.push(v);
             }
         }
     }
@@ -1279,7 +1536,11 @@ fn layout_architecture_diagram_model(
         config_f64(effective_config, &["architecture", "numIter"]),
     )
     .map_err(|_| work_meter.arithmetic_overflow())?;
-    let adapter_work_units = checked_architecture_adapter_work_units(model)
+    let fcose_random_policy = architecture_seed_policy(
+        value_at(effective_config, &["architecture", "seed"]),
+        operation_seed,
+    );
+    let adapter_work_plan = checked_architecture_adapter_work_plan(model)
         .ok_or_else(|| work_meter.arithmetic_overflow())?;
     let kernel_admission_units = if model.nodes.is_empty() {
         0
@@ -1289,24 +1550,25 @@ fn layout_architecture_diagram_model(
             .len()
             .checked_add(model.groups.len())
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
-        manatee::algo::fcose::FcoseIterationSchedule::from_normalized_counts(
+        let schedule = manatee::algo::fcose::FcoseIterationSchedule::from_normalized_counts(
             fcose_num_iter,
             indexed_node_upper_bound,
             model.edges.len(),
             true,
         )
-        .map_err(|_| work_meter.arithmetic_overflow())?
-        .maximum_work_units()
+        .map_err(|_| work_meter.arithmetic_overflow())?;
+        checked_architecture_fcose_work_upper_bound(
+            schedule,
+            adapter_work_plan.declared_constraints,
+        )
+        .ok_or_else(|| work_meter.arithmetic_overflow())?
     };
-    let admission_units = adapter_work_units
+    let admission_units = adapter_work_plan
+        .work_units
         .checked_add(kernel_admission_units)
         .ok_or_else(|| work_meter.arithmetic_overflow())?;
     work_meter.preflight(admission_units)?;
-    work_meter.charge(adapter_work_units)?;
-    let fcose_random_policy = architecture_seed_policy(
-        value_at(effective_config, &["architecture", "seed"]),
-        operation_seed,
-    );
+    work_meter.charge(adapter_work_plan.work_units)?;
 
     let node_bounds_extras =
         architecture_fcose_node_bounds_extras(ArchitectureFcoseNodeBoundsExtrasInput {
@@ -1341,6 +1603,7 @@ fn layout_architecture_diagram_model(
             layout_nodes: &nodes,
             node_bounds_extras: &node_bounds_extras,
             text_measurer,
+            work_meter,
             icon_size,
             padding_px,
             ideal_edge_length_multiplier,
@@ -1602,11 +1865,15 @@ mod tests {
         node_bounds_extras: &rustc_hash::FxHashMap<&'a str, manatee::BoundsExtras>,
     ) -> super::ArchitectureFcoseInputPlan<'a> {
         let measurer = crate::text::DeterministicTextMeasurer::default();
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
         super::build_architecture_fcose_input_plan(super::ArchitectureFcoseInputPlanInput {
             model,
             layout_nodes,
             node_bounds_extras,
             text_measurer: &measurer,
+            work_meter: &work_meter,
             icon_size: 80.0,
             padding_px: 40.0,
             ideal_edge_length_multiplier: 1.5,
@@ -1638,6 +1905,251 @@ mod tests {
         }
     }
 
+    fn flatten_alignment_object(
+        group_sizes: &[usize],
+    ) -> indexmap::IndexMap<i32, indexmap::IndexMap<String, Vec<usize>>> {
+        let mut next_member = 0usize;
+        let mut groups = indexmap::IndexMap::new();
+        for (group_index, &group_size) in group_sizes.iter().enumerate() {
+            let members = (next_member..next_member + group_size).collect();
+            next_member += group_size;
+            groups.insert(format!("group-{group_index}"), members);
+        }
+        indexmap::IndexMap::from([(0, groups)])
+    }
+
+    #[test]
+    fn flatten_alignment_work_plan_counts_pair_expansion() {
+        let alignment_obj = flatten_alignment_object(&[2, 3, 4]);
+
+        let plan = super::FlattenAlignmentsWorkPlan::checked(&alignment_obj)
+            .expect("flatten work plan should fit");
+
+        assert_eq!(plan.direction_bucket_count, 1);
+        assert_eq!(plan.group_count, 3);
+        assert_eq!(plan.source_member_count, 9);
+        assert_eq!(plan.pair_count, 3);
+        assert_eq!(plan.expanded_member_count, 18);
+        assert_eq!(plan.output_key_bound, 6);
+        assert_eq!(plan.sort_work_units, 0);
+        assert_eq!(plan.work_units, 40);
+    }
+
+    #[test]
+    fn flatten_alignment_metadata_and_sort_work_are_preflighted() {
+        use crate::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+        };
+
+        let mut numeric_groups = indexmap::IndexMap::new();
+        numeric_groups.insert("10".to_string(), vec![0, 1]);
+        numeric_groups.insert("2".to_string(), vec![2, 3, 4]);
+        numeric_groups.insert("1".to_string(), vec![5, 6, 7, 8]);
+        let alignment_obj = indexmap::IndexMap::from([(0, numeric_groups)]);
+        let metadata = super::checked_flatten_alignments_metadata(&alignment_obj)
+            .expect("flatten metadata should fit");
+        let work_plan =
+            super::FlattenAlignmentsWorkPlan::checked_with_metadata(&alignment_obj, metadata)
+                .expect("flatten work plan should fit");
+
+        assert_eq!(metadata.checked_work_units(), Some(4));
+        assert_eq!(work_plan.sort_work_units, 6);
+        assert_eq!(work_plan.work_units, 46);
+
+        let metadata_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 3)
+            .unwrap();
+        let metadata_meter = OperationWorkMeter::new(metadata_policy);
+        let metadata_error = super::flatten_alignments(
+            &alignment_obj,
+            super::GroupAlignment::Horizontal,
+            &Default::default(),
+            &metadata_meter,
+        )
+        .unwrap_err();
+        let crate::Error::ResourceLimitExceeded(metadata_error) = metadata_error else {
+            panic!("expected layout work resource error");
+        };
+        assert_eq!(metadata_error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(metadata_error.actual, 4);
+        assert_eq!(metadata_meter.used(), 0);
+
+        let linear_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                ResourceLimitId::MaxLayoutWorkUnits,
+                work_plan.work_units - work_plan.sort_work_units,
+            )
+            .unwrap();
+        let linear_meter = OperationWorkMeter::new(linear_policy);
+        let sort_error = super::flatten_alignments(
+            &alignment_obj,
+            super::GroupAlignment::Horizontal,
+            &Default::default(),
+            &linear_meter,
+        )
+        .unwrap_err();
+        let crate::Error::ResourceLimitExceeded(sort_error) = sort_error else {
+            panic!("expected layout work resource error");
+        };
+        assert_eq!(sort_error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(sort_error.actual, work_plan.work_units);
+        assert_eq!(linear_meter.used(), 0);
+    }
+
+    #[test]
+    fn flatten_alignment_budget_rejects_before_pair_expansion() {
+        use crate::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+        };
+
+        let alignment_obj = flatten_alignment_object(&[2, 3, 4]);
+        let original = alignment_obj.clone();
+        let work_plan = super::FlattenAlignmentsWorkPlan::checked(&alignment_obj)
+            .expect("flatten work plan should fit");
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                ResourceLimitId::MaxLayoutWorkUnits,
+                work_plan.work_units - 1,
+            )
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        let error = super::flatten_alignments(
+            &alignment_obj,
+            super::GroupAlignment::Horizontal,
+            &Default::default(),
+            &meter,
+        )
+        .unwrap_err();
+
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected layout work resource error");
+        };
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(error.actual, work_plan.work_units);
+        assert_eq!(error.max, work_plan.work_units - 1);
+        assert_eq!(meter.used(), 0);
+        assert_eq!(alignment_obj, original);
+    }
+
+    #[test]
+    fn flatten_alignments_preserves_javascript_key_order_and_duplicates() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+
+        let mut alignment_obj = indexmap::IndexMap::new();
+        let mut negative_groups = indexmap::IndexMap::new();
+        negative_groups.insert("10".to_string(), vec![10, 10]);
+        negative_groups.insert("2".to_string(), vec![2, 2]);
+        negative_groups.insert("01".to_string(), vec![1, 1]);
+        alignment_obj.insert(-1, negative_groups);
+        alignment_obj.insert(
+            2,
+            indexmap::IndexMap::from([("solo-two".to_string(), vec![20, 20])]),
+        );
+        alignment_obj.insert(
+            0,
+            indexmap::IndexMap::from([("solo-zero".to_string(), vec![0, 0])]),
+        );
+
+        let mut group_alignments = std::collections::BTreeMap::new();
+        group_alignments.insert(
+            "2".to_string(),
+            std::collections::BTreeMap::from([
+                ("10".to_string(), super::GroupAlignment::Horizontal),
+                ("01".to_string(), super::GroupAlignment::Horizontal),
+            ]),
+        );
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        let flattened = super::flatten_alignments(
+            &alignment_obj,
+            super::GroupAlignment::Horizontal,
+            &group_alignments,
+            &meter,
+        )
+        .expect("flatten alignments");
+
+        assert_eq!(
+            flattened,
+            vec![
+                vec![0, 0],
+                vec![20, 20],
+                vec![2, 2, 10, 10, 2, 2, 1, 1],
+                vec![10, 10],
+                vec![1, 1],
+            ]
+        );
+        assert_eq!(super::js_array_index_key("01"), None);
+        assert_eq!(super::js_array_index_key("4294967294"), Some(u32::MAX - 1));
+        assert_eq!(super::js_array_index_key("4294967295"), None);
+    }
+
+    #[test]
+    fn checked_architecture_and_flatten_work_helpers_reject_overflow() {
+        let schedule =
+            manatee::algo::fcose::FcoseIterationSchedule::from_normalized_counts(5, 1, 0, true)
+                .unwrap();
+        let declared_constraints = super::ArchitectureDeclaredConstraintWork {
+            alignment_group_count: usize::MAX,
+            alignment_member_count: 1,
+            relative_constraint_count: 0,
+        };
+
+        assert_eq!(
+            super::checked_architecture_fcose_work_upper_bound(schedule, declared_constraints),
+            None
+        );
+        assert_eq!(super::checked_unordered_pair_count(usize::MAX), None);
+        assert_eq!(
+            super::checked_flatten_alignment_bucket_cardinality(usize::MAX, 1),
+            None
+        );
+        assert_eq!(super::checked_sort_work_units(usize::MAX), None);
+    }
+
+    #[test]
+    fn architecture_declared_constraint_upper_bound_matches_kernel_formula() {
+        let model = super::ArchitectureModelView {
+            nodes: Vec::new(),
+            groups: Vec::new(),
+            edges: Vec::new(),
+            layout_hints: vec![
+                super::ArchitectureLayoutHintView {
+                    direction:
+                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Row,
+                    members: vec!["a", "b"],
+                },
+                super::ArchitectureLayoutHintView {
+                    direction:
+                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Column,
+                    members: vec!["c", "d", "e"],
+                },
+                super::ArchitectureLayoutHintView {
+                    direction:
+                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Row,
+                    members: vec!["f", "g", "h", "i"],
+                },
+            ],
+        };
+        let adapter = super::checked_architecture_adapter_work_plan(&model)
+            .expect("adapter work plan should fit");
+        let schedule =
+            manatee::algo::fcose::FcoseIterationSchedule::from_normalized_counts(5, 2, 1, true)
+                .unwrap();
+
+        assert_eq!(adapter.work_units, 9);
+        assert_eq!(adapter.declared_constraints.alignment_group_count, 3);
+        assert_eq!(adapter.declared_constraints.alignment_member_count, 9);
+        assert_eq!(adapter.declared_constraints.relative_constraint_count, 6);
+        assert_eq!(
+            super::checked_architecture_fcose_work_upper_bound(
+                schedule,
+                adapter.declared_constraints,
+            ),
+            Some(435)
+        );
+    }
+
     #[test]
     fn architecture_work_admission_is_exact_and_non_consuming_on_rejection() {
         use crate::resources::{
@@ -1649,12 +2161,12 @@ mod tests {
         let measurer = crate::text::DeterministicTextMeasurer::default();
 
         let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 10)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 18)
             .unwrap();
         let exact_meter = OperationWorkMeter::new(exact_policy);
         super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &exact_meter)
             .unwrap();
-        assert_eq!(exact_meter.used(), 10);
+        assert_eq!(exact_meter.used(), 18);
 
         let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 9)
@@ -1670,6 +2182,49 @@ mod tests {
         assert_eq!(error.actual, 10);
         assert_eq!(error.max, 9);
         assert_eq!(narrow_meter.used(), 0);
+    }
+
+    #[test]
+    fn architecture_rejects_repeated_constraint_work_before_adapter_materialization() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+        let model = super::ArchitectureModelView {
+            nodes: vec![
+                super::ArchitectureNodeView {
+                    id: "a",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: None,
+                    in_group: None,
+                },
+                super::ArchitectureNodeView {
+                    id: "b",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: None,
+                    in_group: None,
+                },
+            ],
+            groups: Vec::new(),
+            edges: Vec::new(),
+            layout_hints: (0..8)
+                .map(|_| super::ArchitectureLayoutHintView {
+                    direction:
+                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Row,
+                    members: vec!["a", "b"],
+                })
+                .collect(),
+        };
+        let config = serde_json::json!({"architecture": {"numIter": 5, "randomize": false}});
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 100)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        let error = super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &meter)
+            .unwrap_err();
+
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+        assert_eq!(meter.used(), 0);
     }
 
     #[test]
@@ -1761,12 +2316,16 @@ mod tests {
         };
         let layout_nodes = vec![layout_node("api", 80.0, 80.0)];
         let measurer = crate::text::DeterministicTextMeasurer::default();
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
         let plan =
             super::build_architecture_fcose_input_plan(super::ArchitectureFcoseInputPlanInput {
                 model: &model,
                 layout_nodes: &layout_nodes,
                 node_bounds_extras: &Default::default(),
                 text_measurer: &measurer,
+                work_meter: &work_meter,
                 icon_size: 80.0,
                 padding_px: 40.0,
                 ideal_edge_length_multiplier: 1.5,
