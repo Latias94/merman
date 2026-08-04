@@ -29,7 +29,7 @@ normalized descendants pass ordinary `parity`; the only `structure` descendant p
 Ishikawa hand-drawn fixture. Candidate generation rejects every other mismatch, so the catalog
 cannot absorb parser, semantic, DOM-order, label-wrapper, or compared descendant-geometry failures.
 
-The current candidate contains 1,633 observations across 25 family ids. Fixture-scoped Node KaTeX
+The current candidate contains 1,563 observations across 25 family ids. Fixture-scoped Node KaTeX
 renders are excluded from exact root approval because their local MathML viewport is measured by
 the host browser. Those fixtures still require successful rendered-output and browser-measurement
 evidence, ordinary `parity` for the complete normalized descendant tree, and a fail-closed root
@@ -50,7 +50,7 @@ a new mismatch appears, or descendants no longer satisfy their declared profile.
 
 | Evidence id | Kind | Entries | Families | Source-backed classification |
 | --- | --- | ---: | --- | --- |
-| `browser-root-bbox` | `browser-measurement` | 1,460 | Architecture 103; Class 207; ER 51; Event Modeling 1; Flowchart 543; GitGraph 209; Ishikawa 11; Kanban 1; Mindmap 95; Requirement 42; Sankey 3; State 177; Swimlane 2; Timeline 12; Treemap 3 | Pinned Mermaid derives the final root from `setupGraphViewbox()`, `setupViewPortForSVG()`, or a family-local SVG `getBBox()`. Those paths measure the rendered DOM, including text, strokes, transforms, fallback fonts, and the Chromium float lattice. Merman uses the same padding and sizing algorithms over deterministic emitted-content bounds. |
+| `browser-root-bbox` | `browser-measurement` | 1,390 | Architecture 33; Class 207; ER 51; Event Modeling 1; Flowchart 543; GitGraph 209; Ishikawa 11; Kanban 1; Mindmap 95; Requirement 42; Sankey 3; State 177; Swimlane 2; Timeline 12; Treemap 3 | Pinned Mermaid derives the final root from `setupGraphViewbox()`, `setupViewPortForSVG()`, or a family-local SVG `getBBox()`. Those paths measure the rendered DOM, including text, strokes, transforms, fallback fonts, and the Chromium float lattice. Merman uses the same padding and sizing algorithms over deterministic emitted-content bounds. |
 | `browser-derived-layout` | `browser-measurement` | 121 | Block 41; Journey 4; Pie 43; Railroad 6; Railroad ABNF 2; Railroad EBNF 3; Railroad PEG 2; Sequence 4; TreeView 16 | These families compute root values explicitly, but their upstream dimensions consume `getBBox()`, `getBoundingClientRect()`, or `getComputedTextLength()` earlier in layout. The root residual is therefore the propagated browser measurement, not a second root formula. |
 | `c4-headless-layout` | `source-backed-layout-approximation` | 51 | C4 51 | C4 computes its root from `screenBounds` rather than final SVG `getBBox()`. This evidence class covers the headless profile where no browser screen fact is supplied: Merman ports the pinned `Bounds` and `drawInsideBoundary()` algorithms, but replaces browser-dependent text and screen facts with deterministic measurement and explicit container dimensions. Browser hosts can separately project `screen.availWidth` for exact C4 wrapping. The root-only remainder is retained as the bounded headless-layout approximation. |
 | `ishikawa-roughjs` | `rough-js-implementation` | 1 | Ishikawa 1 | The hand-drawn fixture uses RoughJS geometry upstream. Descendants are intentionally compared with `structure`; the exact root bbox follows RoughJS path jitter and stroke bounds that Merman does not reproduce byte-for-byte. |
@@ -121,6 +121,22 @@ This review removed the browser-probed Sequence math observation
 from 1,634 to 1,633 entries. Five Mindmap signatures were also regenerated after their local root
 values changed; their input and upstream SVG hashes were unchanged, their descendants retained
 `parity`, and their existing `browser-root-bbox` classification still applies.
+
+## 2026-08-04 Architecture Bounds Review
+
+The full candidate was regenerated after the Architecture FCoSE adapter separated Cytoscape body,
+label, compound-child, and final-element bounding-box phases. The source-backed correction removed
+70 Architecture root residuals outright: those fixtures now match the pinned browser root at three
+decimals without catalog assistance.
+
+The remaining Architecture set contains 33 observations. Twenty-two signatures are unchanged and
+11 local signatures moved closer to the pinned result. There are no new fixture identities and no
+changes in any other family. Every remaining Architecture observation passes complete descendant
+`parity`; only root `style` or `viewBox` differs. The 11 changed signatures therefore retain the
+existing `browser-root-bbox` classification backed by the pinned Architecture
+`setupGraphViewbox()` call and its SVG `getBBox()` dependency. The catalog decreases from 1,633 to
+1,563 entries and Architecture decreases from 103 to 33 without changing schema, comparison
+revision, normalization, or production rendering.
 
 ## Production Boundary
 
