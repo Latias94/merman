@@ -185,10 +185,13 @@ function fakeDependencies(
       cancel(reason) {
         reasons.push(reason ?? "user");
       },
-      async run(request) {
+      start(request) {
         requests.push(request);
         started.resolve();
-        return run(request);
+        return {
+          completion: run(request),
+          runId: `fake-run-${requests.length}`,
+        };
       },
     },
     cancelReasons: () => reasons,

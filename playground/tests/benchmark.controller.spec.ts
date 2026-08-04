@@ -7,6 +7,7 @@ import { BENCHMARK_REPORT_SCHEMA_VERSION } from "../src/benchmark/report-schema"
 import {
   monitorBrowserErrors,
   openPlayground,
+  replaceEditorSource,
   waitForPreviewSvg,
 } from "./helpers/playground";
 
@@ -14,7 +15,7 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   page,
   isMobile,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const errors = monitorBrowserErrors(page);
   const requests: string[] = [];
   page.on("request", (request) => requests.push(request.url()));
@@ -52,6 +53,11 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   await dialog.getByRole("button", { name: "Run", exact: true }).click();
 
   await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect
+    .poll(() =>
+      dialog.evaluate((element) => element.contains(document.activeElement)),
+    )
+    .toBe(true);
   await expect(
     page.locator('iframe[data-merman-realm="benchmark"]').first(),
   ).toBeAttached();
@@ -62,6 +68,19 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   await expect(dialog).toContainText("6 retained samples");
   await expect(dialog).toContainText("Mermaid / Merman");
 
+  await dialog.getByRole("button", { name: "Change settings" }).click();
+  await expect(
+    dialog.getByRole("heading", { name: "Measurement mode" }),
+  ).toBeFocused();
+  await expect(
+    dialog.getByRole("button", { name: "Reused runtime" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.getByLabel("Measured blocks")).toHaveText("2");
+  await expect(dialog.getByLabel("Warmups per engine")).toHaveText("0");
+  await expect(dialog.getByRole("heading", { name: "Current source" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Back to result" }).click();
+  await expect(dialog.getByRole("heading", { name: "Complete" })).toBeFocused();
+
   const requestCount = requests.length;
   const downloadPromise = page.waitForEvent("download");
   await dialog.getByRole("button", { name: "Download JSON" }).click();
@@ -69,9 +88,10 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   const path = await download.path();
   expect(path).not.toBeNull();
   const report = JSON.parse(await readFile(path!, "utf8")) as {
+    input: { source: string };
     schemaVersion: number;
     terminalStatus: string;
-    run: { mode: string; iterations: number; warmups: number };
+    run: { mode: string; iterations: number; seed: number; warmups: number };
     samples: unknown[];
   };
   expect(report).toMatchObject({
@@ -81,10 +101,36 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   });
   expect(report.samples).toHaveLength(6);
   expect(requests).toHaveLength(requestCount);
+
+  await dialog.getByRole("button", { name: "Close benchmark" }).click();
+  const rerunSource = "flowchart LR\n  Before --> After";
+  if (isMobile) {
+    await page.getByRole("tab", { name: "Editor", exact: true }).click();
+  }
+  await replaceEditorSource(page, rerunSource);
+  await page.getByRole("button", { name: "Bench", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "Complete" })).toBeVisible();
+  await expect(dialog.getByText("Source changed", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Run again" }).click();
+  await expect(dialog.getByRole("heading", { name: "Complete" })).toBeVisible({
+    timeout: 90_000,
+  });
+
+  const rerunDownloadPromise = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download JSON" }).click();
+  const rerunDownload = await rerunDownloadPromise;
+  const rerunPath = await rerunDownload.path();
+  expect(rerunPath).not.toBeNull();
+  const rerunReport = JSON.parse(await readFile(rerunPath!, "utf8")) as {
+    input: { source: string };
+    run: { seed: number };
+  };
+  expect(rerunReport.input.source).toBe(rerunSource);
+  expect(rerunReport.run.seed).not.toBe(report.run.seed);
   errors.assertNone();
 });
 
-test("closing an active benchmark cancels it and removes every benchmark realm", async ({
+test("closing an active rerun preserves the last completed report and removes every realm", async ({
   page,
   isMobile,
 }) => {
@@ -99,8 +145,17 @@ test("closing an active benchmark cancels it and removes every benchmark realm",
   await page.getByRole("button", { name: "Bench", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Browser Benchmark" });
   await dialog.getByLabel("Measured blocks").click();
-  await page.getByRole("option", { name: "20", exact: true }).click();
+  await page.getByRole("option", { name: "2", exact: true }).click();
   await dialog.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "Complete" })).toBeVisible({
+    timeout: 45_000,
+  });
+
+  await dialog.getByRole("button", { name: "Change settings" }).click();
+  await dialog.getByLabel("Measured blocks").click();
+  await page.getByRole("option", { name: "20", exact: true }).click();
+  await dialog.getByRole("button", { name: "Back to result" }).click();
+  await dialog.getByRole("button", { name: "Run again" }).click();
   await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
 
   await dialog.getByRole("button", { name: "Close benchmark" }).click();
@@ -108,8 +163,25 @@ test("closing an active benchmark cancels it and removes every benchmark realm",
   await expect(page.locator('iframe[data-merman-realm="benchmark"]')).toHaveCount(0);
 
   await page.getByRole("button", { name: "Bench", exact: true }).click();
-  await expect(dialog.getByRole("heading", { name: "Cancelled" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Complete" })).toBeVisible();
+  await expect(dialog).toContainText(
+    "The latest run was cancelled. Showing the previous result.",
+  );
   await expect(dialog.getByRole("button", { name: "Run again" })).toBeEnabled();
+
+  const downloadPromise = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download JSON" }).click();
+  const download = await downloadPromise;
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const retained = JSON.parse(await readFile(path!, "utf8")) as {
+    terminalStatus: string;
+    run: { iterations: number };
+  };
+  expect(retained).toMatchObject({
+    terminalStatus: "success",
+    run: { iterations: 2 },
+  });
   errors.assertNone();
 });
 

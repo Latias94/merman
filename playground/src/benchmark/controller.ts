@@ -98,20 +98,36 @@ export interface BenchmarkProgress {
   readonly total: number;
 }
 
+export interface BenchmarkRetainedReport {
+  readonly report: BenchmarkReport;
+  readonly stale: boolean;
+}
+
+export interface BenchmarkCancellationNotice {
+  readonly report: BenchmarkReport;
+}
+
 export type BenchmarkControllerState =
   | {
+      readonly cancellation: null;
       readonly report: null;
+      readonly retained: null;
       readonly stale: false;
       readonly status: "idle";
     }
   | {
+      readonly activeRunId: string;
+      readonly cancellation: null;
       readonly progress: BenchmarkProgress;
       readonly report: null;
+      readonly retained: BenchmarkRetainedReport | null;
       readonly stale: boolean;
       readonly status: "running";
     }
   | {
+      readonly cancellation: BenchmarkCancellationNotice | null;
       readonly report: BenchmarkReport;
+      readonly retained: BenchmarkRetainedReport;
       readonly stale: boolean;
       readonly status: BenchmarkTerminalStatus;
     };
@@ -124,7 +140,12 @@ export interface BenchmarkController {
   cancel(reason?: string): void;
   dispose(): void;
   markStale(): void;
-  run(request: BenchmarkRunRequest): Promise<BenchmarkReport>;
+  start(request: BenchmarkRunRequest): BenchmarkRunHandle;
+}
+
+export interface BenchmarkRunHandle {
+  readonly completion: Promise<BenchmarkReport>;
+  readonly runId: string;
 }
 
 interface ActiveBenchmarkRun {
@@ -149,8 +170,10 @@ interface ActiveBenchmarkRun {
 }
 
 const IDLE_STATE: BenchmarkControllerState = Object.freeze({
+  cancellation: null,
   status: "idle",
   report: null,
+  retained: null,
   stale: false,
 });
 
@@ -278,9 +301,27 @@ export function createBenchmarkController(
       },
       status
     );
-    const stale = store.getState().stale;
+    const runningState = store.getState();
+    if (runningState.status !== "running") {
+      throw new RealmProtocolError("Benchmark run state was lost before settlement.");
+    }
+    const stale = runningState.stale;
+    const previousRetained = runningState.retained;
     if (active === run) active = null;
-    replaceState({ status, report, stale });
+    const retained =
+      status === "cancelled" && previousRetained
+        ? previousRetained
+        : createRetainedReport(report, stale);
+    replaceState({
+      cancellation:
+        status === "cancelled" && previousRetained
+          ? Object.freeze({ report })
+          : null,
+      report,
+      retained,
+      stale: retained.stale,
+      status,
+    });
     run.completion.resolve(report);
     return report;
   };
@@ -633,32 +674,23 @@ export function createBenchmarkController(
     }
   };
 
-  const run = (request: BenchmarkRunRequest): Promise<BenchmarkReport> => {
+  const start = (request: BenchmarkRunRequest): BenchmarkRunHandle => {
     if (disposed) {
-      return Promise.reject(new RealmProtocolError("Benchmark controller is disposed."));
+      throw new RealmProtocolError("Benchmark controller is disposed.");
     }
     if (active) {
-      return Promise.reject(
-        new RealmProtocolError("A benchmark run is already active.")
-      );
+      throw new RealmProtocolError("A benchmark run is already active.");
     }
     if (dependencies.getVisibilityState() !== "visible") {
-      return Promise.reject(
-        new RealmProtocolError(
-          "Benchmark cannot start while the document is hidden."
-        )
+      throw new RealmProtocolError(
+        "Benchmark cannot start while the document is hidden."
       );
     }
 
-    let validated: ValidatedBenchmarkRunRequest;
-    try {
-      validated = validateBenchmarkRunRequest(
-        request,
-        request.seed ?? dependencies.createSeed()
-      );
-    } catch (error) {
-      return Promise.reject(error);
-    }
+    const validated = validateBenchmarkRunRequest(
+      request,
+      request.seed ?? dependencies.createSeed()
+    );
 
     runSequence += 1;
     const startedAtMs = dependencies.now();
@@ -702,9 +734,15 @@ export function createBenchmarkController(
         transportFailure("timeout", "Benchmark controller run timed out.")
       );
     }, REALM_BUDGETS.runTimeoutMs);
+    const previousState = store.getState();
+    const retained =
+      previousState.status === "idle" ? null : previousState.retained;
     replaceState({
+      activeRunId: current.runId,
+      cancellation: null,
       status: "running",
       report: null,
+      retained,
       stale: false,
       progress: {
         stage: "pausing",
@@ -716,12 +754,15 @@ export function createBenchmarkController(
       },
     });
     void execute(current);
-    return current.completion.promise;
+    return Object.freeze({
+      completion: current.completion.promise,
+      runId: current.runId,
+    });
   };
 
   return {
     store,
-    run,
+    start,
     cancel(reason = "user") {
       if (!active) return;
       settle(
@@ -733,7 +774,18 @@ export function createBenchmarkController(
     markStale() {
       const state = store.getState();
       if (state.status === "idle" || state.stale) return;
-      replaceState({ ...state, stale: true });
+      if (state.status === "running") {
+        replaceState({
+          ...state,
+          stale: true,
+        });
+        return;
+      }
+      replaceState({
+        ...state,
+        retained: Object.freeze({ ...state.retained, stale: true }),
+        stale: true,
+      });
     },
     dispose() {
       if (disposed) return;
@@ -756,11 +808,15 @@ export function createBenchmarkController(
     blockIndex: number | null
   ) {
     if (run.settled || active !== run) return;
-    const stale = store.getState().stale;
+    const state = store.getState();
+    if (state.status !== "running") return;
     replaceState({
+      activeRunId: state.activeRunId,
+      cancellation: null,
       status: "running",
       report: null,
-      stale,
+      retained: state.retained,
+      stale: state.stale,
       progress: {
         stage,
         completed: run.completed,
@@ -771,6 +827,13 @@ export function createBenchmarkController(
       },
     });
   }
+}
+
+function createRetainedReport(
+  report: BenchmarkReport,
+  stale: boolean,
+): BenchmarkRetainedReport {
+  return Object.freeze({ report, stale });
 }
 
 function validateDetection(

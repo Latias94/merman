@@ -2,19 +2,24 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
+  useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
   Download,
   Gauge,
   Play,
   RotateCcw,
+  Settings2,
   Square,
   X,
 } from "lucide-react";
@@ -55,6 +60,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useAppStore } from "@/src/store";
 import { benchmarkController } from "@/src/benchmark/browser";
+import {
+  createBenchmarkDialogState,
+  reduceBenchmarkDialogState,
+} from "@/src/benchmark/dialog-state";
 import { downloadBenchmarkReport } from "@/src/benchmark/report";
 import type {
   BenchmarkControllerState,
@@ -140,15 +149,31 @@ export function BenchDialog() {
   );
   const facade = useMermanRuntime(selectMermanFacade);
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"realm-cold" | "warm">("realm-cold");
-  const [iterations, setIterations] = useState(6);
-  const [warmups, setWarmups] = useState(2);
+  const initialRetainedReport = state.retained?.report ?? null;
+  const [dialogState, dispatchDialog] = useReducer(
+    reduceBenchmarkDialogState,
+    createBenchmarkDialogState(
+      state.status,
+      initialRetainedReport
+        ? {
+            id: initialRetainedReport.run.id,
+            draft: {
+              iterations: initialRetainedReport.run.iterations,
+              mode: initialRetainedReport.run.mode,
+              warmups: initialRetainedReport.run.warmups,
+            },
+          }
+        : null,
+      state.status === "running" ? state.activeRunId : null,
+    ),
+  );
   const [visible, setVisible] = useState(
     () => document.visibilityState === "visible"
   );
   const [runFingerprint, setRunFingerprint] = useState<string | null>(null);
   const [runError, setRunError] = useState<ErrorProjection | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const phaseHeadingRef = useRef<HTMLHeadingElement>(null);
 
   const fingerprint = useMemo(
     () =>
@@ -168,7 +193,18 @@ export function BenchDialog() {
     ]
   );
   const running = state.status === "running";
-  const report = state.status === "idle" || running ? null : state.report;
+  const report = state.retained?.report ?? null;
+  const reportId = report?.run.id ?? null;
+  const phase = running
+    ? "running"
+    : dialogState.phase === "running"
+      ? report
+        ? "report"
+        : "configure"
+      : dialogState.phase === "report" && !report
+        ? "configure"
+        : dialogState.phase;
+  const { iterations, mode, warmups } = dialogState.draft;
   const canRun = Boolean(facade && code.trim() && visible && !running);
 
   useEffect(() => {
@@ -195,6 +231,14 @@ export function BenchDialog() {
     return () => window.clearInterval(timer);
   }, [running]);
 
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => {
+      phaseHeadingRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, phase]);
+
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen && benchmarkController.store.getState().status === "running") {
       benchmarkController.cancel("dialog-closed");
@@ -205,39 +249,72 @@ export function BenchDialog() {
   const handleRun = useCallback(() => {
     if (!facade || !code.trim() || !visible) return;
     setRunError(null);
-    setRunFingerprint(fingerprint);
     setElapsedMs(0);
-    const options = {
-      diagramFont,
-      textMeasurementMode,
-    } as const;
-    const detection = facade.detectDiagram(
-      code,
-      diagramTheme,
-      mermaidConfig,
-      options
-    );
-    const request: BenchmarkRunRequest = {
-      mode,
-      iterations,
-      warmups: mode === "warm" ? warmups : 0,
-      payload: {
-        source: code,
-        configJson: mermaidConfig,
-        theme: diagramTheme,
-        diagramFont,
-        externalRequirements: mermaidExternalRequirementsFor(detection),
-        viewport: PLAYGROUND_RENDER_VIEWPORT,
-      },
-      detection,
-      versions: {
-        merman: facade.packageVersion,
-        mermaid: MERMAID_JS_VERSION,
-      },
-    };
-    void benchmarkController.run(request).catch((error: unknown) => {
+    const rejectRun = (error: unknown) => {
       setRunError(projectError(error));
-    });
+    };
+    try {
+      const options = {
+        diagramFont,
+        textMeasurementMode,
+      } as const;
+      const detection = facade.detectDiagram(
+        code,
+        diagramTheme,
+        mermaidConfig,
+        options,
+      );
+      const request: BenchmarkRunRequest = {
+        mode,
+        iterations,
+        warmups: mode === "warm" ? warmups : 0,
+        payload: {
+          source: code,
+          configJson: mermaidConfig,
+          theme: diagramTheme,
+          diagramFont,
+          externalRequirements: mermaidExternalRequirementsFor(detection),
+          viewport: PLAYGROUND_RENDER_VIEWPORT,
+        },
+        detection,
+        versions: {
+          merman: facade.packageVersion,
+          mermaid: MERMAID_JS_VERSION,
+        },
+      };
+      const run = benchmarkController.start(request);
+      const startedState = benchmarkController.store.getState();
+      setRunFingerprint(fingerprint);
+      dispatchDialog({
+        type: "run-started",
+        runId: run.runId,
+        retainedReportId:
+          startedState.status === "running"
+            ? (startedState.retained?.report.run.id ?? null)
+            : null,
+      });
+      void run.completion.then(
+        () => {
+          const settledState = benchmarkController.store.getState();
+          const retainedReportId = settledState.retained?.report.run.id;
+          if (!retainedReportId) {
+            dispatchDialog({ type: "run-rejected", runId: run.runId });
+            return;
+          }
+          dispatchDialog({
+            type: "run-settled",
+            reportId: retainedReportId,
+            runId: run.runId,
+          });
+        },
+        (error: unknown) => {
+          rejectRun(error);
+          dispatchDialog({ type: "run-rejected", runId: run.runId });
+        },
+      );
+    } catch (error) {
+      rejectRun(error);
+    }
   }, [
     code,
     diagramFont,
@@ -252,11 +329,17 @@ export function BenchDialog() {
     warmups,
   ]);
 
+  const cancellation =
+    state.status !== "idle" && state.status !== "running"
+      ? state.cancellation
+      : null;
   const liveAnnouncement = running
     ? t(`bench.stages.${state.progress.stage}`)
-    : state.status === "idle"
-      ? ""
-      : t(`bench.states.${state.status}`);
+    : cancellation
+      ? t("bench.cancelledShowingPrevious")
+      : report
+        ? t(`bench.states.${report.terminalStatus}`)
+        : "";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -267,7 +350,7 @@ export function BenchDialog() {
               variant="ghost"
               size="sm"
               aria-label={t("toolbar.bench")}
-              className="w-8 px-0 lg:w-auto lg:px-2.5"
+              className="size-10 px-0 lg:h-8 lg:w-auto lg:px-2.5"
             >
               <Gauge className="size-4" />
               <span className="hidden lg:inline">{t("toolbar.bench")}</span>
@@ -279,26 +362,30 @@ export function BenchDialog() {
 
       <DialogContent
         showCloseButton={false}
-        className="grid max-h-[min(90dvh,56rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0"
+        className="grid grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0"
         style={{
-          width: "min(56rem, calc(100vw - 1.5rem))",
+          maxHeight:
+            "min(56rem, calc(100dvh - max(0.5rem, env(safe-area-inset-top)) - max(0.5rem, env(safe-area-inset-bottom))))",
+          width:
+            "min(56rem, calc(100vw - max(0.75rem, env(safe-area-inset-left)) - max(0.75rem, env(safe-area-inset-right))))",
           maxWidth: "none",
         }}
       >
-        <DialogHeader className="relative border-b px-5 py-4 pr-14 text-left sm:px-6">
+        <DialogHeader className="relative border-b px-5 py-3 pr-14 text-left sm:px-6 sm:py-4">
           <div className="flex flex-wrap items-center gap-2">
             <DialogTitle>{t("bench.title")}</DialogTitle>
-            <StatusBadge state={state} />
+            <StatusBadge
+              status={running ? "running" : (report?.terminalStatus ?? null)}
+            />
             {state.stale && (
               <Badge variant="outline">{t("bench.stale")}</Badge>
             )}
           </div>
-          <DialogDescription>{t("bench.description")}</DialogDescription>
           <DialogClose asChild>
             <Button
               variant="ghost"
-              size="icon-sm"
-              className="absolute right-4 top-4"
+              size="icon"
+              className="absolute top-2 right-3 size-10 sm:top-2.5 sm:right-4"
               aria-label={t("bench.close")}
             >
               <X className="size-4" />
@@ -306,25 +393,58 @@ export function BenchDialog() {
           </DialogClose>
         </DialogHeader>
 
-        <ScrollArea className="min-h-0">
-          <div className="space-y-6 px-5 py-5 sm:px-6">
+        <ScrollArea className="min-h-0 overscroll-contain">
+          <div className="space-y-6 px-4 py-5 sm:px-6">
             <div aria-live="polite" className="sr-only">
               {liveAnnouncement}
             </div>
 
-            {running ? (
-              <RunningView state={state} elapsedMs={elapsedMs} />
-            ) : report ? (
-              <ReportView report={report} />
+            <DialogDescription className="text-left">
+              {t("bench.description")}
+            </DialogDescription>
+
+            {cancellation && (
+              <div
+                role="status"
+                className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+              >
+                {t("bench.cancelledShowingPrevious")}
+              </div>
+            )}
+
+            {phase === "running" && running ? (
+              <RunningView
+                state={state}
+                elapsedMs={elapsedMs}
+                headingRef={phaseHeadingRef}
+              />
+            ) : phase === "report" && report ? (
+              <ReportView report={report} headingRef={phaseHeadingRef} />
             ) : (
               <PreRunView
                 code={code}
                 facadeVersion={facade?.packageVersion ?? null}
                 iterations={iterations}
+                headingRef={phaseHeadingRef}
                 mode={mode}
-                setIterations={setIterations}
-                setMode={setMode}
-                setWarmups={setWarmups}
+                setIterations={(value) =>
+                  dispatchDialog({
+                    type: "update-draft",
+                    draft: { iterations: value },
+                  })
+                }
+                setMode={(value) =>
+                  dispatchDialog({
+                    type: "update-draft",
+                    draft: { mode: value },
+                  })
+                }
+                setWarmups={(value) =>
+                  dispatchDialog({
+                    type: "update-draft",
+                    draft: { warmups: value },
+                  })
+                }
                 warmups={warmups}
               />
             )}
@@ -340,10 +460,11 @@ export function BenchDialog() {
           </div>
         </ScrollArea>
 
-        <DialogFooter className="border-t bg-muted/20 px-5 py-3 sm:px-6">
-          {running ? (
+        <DialogFooter className="flex-col border-t bg-muted/20 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] min-[30rem]:flex-row min-[30rem]:flex-wrap min-[30rem]:justify-end sm:px-6">
+          {phase === "running" && running ? (
             <Button
               variant="destructive"
+              className="min-h-10 w-full min-[30rem]:w-auto"
               onClick={() => benchmarkController.cancel("user")}
             >
               <Square className="size-4" />
@@ -351,9 +472,37 @@ export function BenchDialog() {
             </Button>
           ) : (
             <>
-              {report && (
+              {phase === "configure" && report && (
                 <Button
                   variant="outline"
+                  className="min-h-10 w-full min-[30rem]:w-auto"
+                  onClick={() => {
+                    if (reportId) {
+                      dispatchDialog({
+                        type: "back-to-report",
+                        reportId,
+                      });
+                    }
+                  }}
+                >
+                  <ArrowLeft className="size-4" />
+                  {t("bench.backToResult")}
+                </Button>
+              )}
+              {phase === "report" && report && (
+                <Button
+                  variant="outline"
+                  className="min-h-10 w-full min-[30rem]:w-auto"
+                  onClick={() => dispatchDialog({ type: "change-settings" })}
+                >
+                  <Settings2 className="size-4" />
+                  {t("bench.changeSettings")}
+                </Button>
+              )}
+              {phase === "report" && report && (
+                <Button
+                  variant="outline"
+                  className="min-h-10 w-full min-[30rem]:w-auto"
                   onClick={() => downloadBenchmarkReport(report)}
                 >
                   <Download className="size-4" />
@@ -362,15 +511,18 @@ export function BenchDialog() {
               )}
               <Button
                 variant="secondary"
+                className="min-h-10 w-full min-[30rem]:w-auto"
                 onClick={handleRun}
                 disabled={!canRun}
               >
-                {report ? (
+                {phase === "report" && report ? (
                   <RotateCcw className="size-4" />
                 ) : (
                   <Play className="size-4" />
                 )}
-                {report ? t("bench.runAgain") : t("bench.run")}
+                {phase === "report" && report
+                  ? t("bench.runAgain")
+                  : t("bench.run")}
               </Button>
             </>
           )}
@@ -383,6 +535,7 @@ export function BenchDialog() {
 function PreRunView({
   code,
   facadeVersion,
+  headingRef,
   iterations,
   mode,
   setIterations,
@@ -392,6 +545,7 @@ function PreRunView({
 }: {
   code: string;
   facadeVersion: string | null;
+  headingRef: RefObject<HTMLHeadingElement | null>;
   iterations: number;
   mode: "realm-cold" | "warm";
   setIterations(value: number): void;
@@ -404,7 +558,12 @@ function PreRunView({
     <>
       <section className="space-y-3" aria-labelledby="benchmark-mode-label">
         <div>
-          <h3 id="benchmark-mode-label" className="text-sm font-semibold">
+          <h3
+            ref={headingRef}
+            id="benchmark-mode-label"
+            tabIndex={-1}
+            className="text-sm font-semibold outline-none"
+          >
             {t("bench.mode")}
           </h3>
           <p className="text-muted-foreground mt-1 text-xs">
@@ -413,14 +572,18 @@ function PreRunView({
               : t("bench.warmDescription")}
           </p>
         </div>
-        <div className="inline-flex rounded-md border bg-muted/30 p-1">
+        <div
+          role="group"
+          aria-label={t("bench.mode")}
+          className="grid w-full grid-cols-2 rounded-md border bg-muted/30 p-1 sm:w-fit"
+        >
           {(["realm-cold", "warm"] as const).map((value) => (
             <button
               key={value}
               type="button"
               aria-pressed={mode === value}
               onClick={() => setMode(value)}
-              className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+              className={`min-h-10 rounded px-3 py-1.5 text-sm font-medium whitespace-normal transition-colors ${
                 mode === value
                   ? "bg-foreground text-background shadow-sm"
                   : "text-foreground hover:bg-background/70"
@@ -440,8 +603,8 @@ function PreRunView({
             value={String(iterations)}
             onValueChange={(value) => setIterations(Number(value))}
           >
-            <SelectTrigger id="bench-iterations" className="w-full">
-              <SelectValue />
+            <SelectTrigger id="bench-iterations" className="h-10 w-full">
+              <SelectValue>{iterations}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {ITERATION_OPTIONS.map((value) => (
@@ -458,8 +621,8 @@ function PreRunView({
             disabled={mode !== "warm"}
             onValueChange={(value) => setWarmups(Number(value))}
           >
-            <SelectTrigger id="bench-warmups" className="w-full">
-              <SelectValue />
+            <SelectTrigger id="bench-warmups" className="h-10 w-full">
+              <SelectValue>{warmups}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {WARMUP_OPTIONS.map((value) => (
@@ -485,8 +648,8 @@ function PreRunView({
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold">{t("bench.frozenSource")}</h3>
-        <pre className="bg-muted/40 max-h-36 overflow-auto rounded-md border p-3 font-mono text-xs whitespace-pre-wrap break-words">
+        <h3 className="text-sm font-semibold">{t("bench.currentSource")}</h3>
+        <pre className="bg-muted/40 rounded-md border p-3 font-mono text-xs whitespace-pre-wrap break-words">
           {code || t("bench.empty")}
         </pre>
       </section>
@@ -497,9 +660,11 @@ function PreRunView({
 function RunningView({
   state,
   elapsedMs,
+  headingRef,
 }: {
   state: Extract<BenchmarkControllerState, { status: "running" }>;
   elapsedMs: number;
+  headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
   const { t } = useTranslation();
   const progress = state.progress;
@@ -509,7 +674,12 @@ function RunningView({
     <section className="space-y-5 py-4" aria-labelledby="benchmark-running-title">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 id="benchmark-running-title" className="text-base font-semibold">
+          <h3
+            ref={headingRef}
+            id="benchmark-running-title"
+            tabIndex={-1}
+            className="text-base font-semibold outline-none"
+          >
             {t(`bench.stages.${progress.stage}`)}
           </h3>
           <p className="text-muted-foreground mt-1 text-sm">
@@ -555,7 +725,13 @@ function RunningView({
   );
 }
 
-function ReportView({ report }: { report: BenchmarkReport }) {
+function ReportView({
+  report,
+  headingRef,
+}: {
+  report: BenchmarkReport;
+  headingRef: RefObject<HTMLHeadingElement | null>;
+}) {
   const { t } = useTranslation();
   const metric: BenchmarkIntervalName =
     report.run.mode === "realm-cold"
@@ -580,7 +756,11 @@ function ReportView({ report }: { report: BenchmarkReport }) {
             <AlertTriangle className="mt-0.5 size-5 text-amber-600" />
           )}
           <div>
-            <h3 className="text-base font-semibold">
+            <h3
+              ref={headingRef}
+              tabIndex={-1}
+              className="text-base font-semibold outline-none"
+            >
               {t(`bench.states.${report.terminalStatus}`)}
             </h3>
             <p className="text-muted-foreground mt-1 text-sm">
@@ -873,7 +1053,7 @@ function RawSampleRow({ sample }: { sample: BenchmarkRecordedSample }) {
         </Badge>
       </summary>
       {open && (
-        <pre className="bg-muted/30 max-h-72 overflow-auto border-t p-3 font-mono text-[11px] whitespace-pre-wrap break-all">
+        <pre className="bg-muted/30 border-t p-3 font-mono text-[11px] whitespace-pre-wrap break-all">
           {JSON.stringify(sample, null, 2)}
         </pre>
       )}
@@ -911,7 +1091,7 @@ function BenchmarkFailureNotice({
           <summary className="cursor-pointer select-none">
             {t("preview.errorDetails")}
           </summary>
-          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono">
+          <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono">
             {detail}
           </pre>
         </details>
@@ -920,16 +1100,19 @@ function BenchmarkFailureNotice({
   );
 }
 
-function StatusBadge({ state }: { state: BenchmarkControllerState }) {
+function StatusBadge({
+  status,
+}: {
+  status: "running" | BenchmarkReport["terminalStatus"] | null;
+}) {
   const { t } = useTranslation();
-  if (state.status === "idle") return null;
-  const destructive =
-    state.status === "failed" || state.status === "invalidated";
+  if (!status) return null;
+  const destructive = status === "failed" || status === "invalidated";
   return (
     <Badge variant={destructive ? "destructive" : "secondary"}>
-      {state.status === "running"
+      {status === "running"
         ? t("bench.running")
-        : t(`bench.states.${state.status}`)}
+        : t(`bench.states.${status}`)}
     </Badge>
   );
 }

@@ -163,7 +163,7 @@ export interface BenchmarkCorpusRunRequest {
 }
 
 export interface BenchmarkCorpusDependencies {
-  readonly controller: Pick<BenchmarkController, "cancel" | "run">;
+  readonly controller: Pick<BenchmarkController, "cancel" | "start">;
   dateNow(): number;
   digest(bytes: Uint8Array): Promise<string>;
   now(): number;
@@ -473,7 +473,7 @@ async function executeMode(
 
   let report: BenchmarkReport;
   try {
-    report = await dependencies.controller.run(request);
+    report = await dependencies.controller.start(request).completion;
   } catch (error) {
     return active.abort.signal.aborted
       ? skippedMode(mode, seed, abortReason(active.abort.signal))

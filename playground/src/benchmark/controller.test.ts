@@ -31,7 +31,7 @@ import { BENCHMARK_PUBLICATION_CLOCK_BOUNDARY } from "./publication.ts";
 test("realm-cold runs deterministic balanced blocks with one fresh realm per sample", async () => {
   const harness = createHarness();
   const controller = createBenchmarkController(harness.dependencies);
-  const report = await controller.run(runRequest("realm-cold", 4, 0));
+  const report = await controller.start(runRequest("realm-cold", 4, 0)).completion;
 
   assert.equal(report.terminalStatus, "success");
   assert.equal(harness.createCount, 8);
@@ -69,7 +69,7 @@ test("realm-cold runs deterministic balanced blocks with one fresh realm per sam
 test("warm mode creates two engine realms, applies equal warmups, and reuses each realm", async () => {
   const harness = createHarness();
   const controller = createBenchmarkController(harness.dependencies);
-  const report = await controller.run(runRequest("warm", 4, 2));
+  const report = await controller.start(runRequest("warm", 4, 2)).completion;
 
   assert.equal(report.terminalStatus, "success");
   assert.equal(harness.createCount, 2);
@@ -112,7 +112,7 @@ test("realm failure remains raw evidence and fails every ratio closed", async ()
     return realmSuccess(input);
   });
   const controller = createBenchmarkController(harness.dependencies);
-  const report = await controller.run(runRequest("realm-cold", 4, 0));
+  const report = await controller.start(runRequest("realm-cold", 4, 0)).completion;
 
   assert.equal(report.terminalStatus, "complete-with-errors");
   assert.equal(report.samples.filter((sample) => sample.outcome === "failure").length, 1);
@@ -131,7 +131,7 @@ test("observed package version drift becomes retained protocol failure", async (
       : result;
   });
   const controller = createBenchmarkController(harness.dependencies);
-  const report = await controller.run(runRequest("realm-cold", 2, 0));
+  const report = await controller.start(runRequest("realm-cold", 2, 0)).completion;
 
   assert.equal(report.terminalStatus, "complete-with-errors");
   const drift = report.samples.find(
@@ -146,7 +146,7 @@ test("visibility invalidation is atomic, retains the transition, and releases al
   const pending = Promise.withResolvers<BenchmarkRealmSampleResult>();
   const harness = createHarness(() => pending.promise);
   const controller = createBenchmarkController(harness.dependencies);
-  const running = controller.run(runRequest("realm-cold", 4, 0));
+  const running = controller.start(runRequest("realm-cold", 4, 0)).completion;
   await waitFor(() => harness.sampleInputs.length === 1);
 
   harness.visibilityState = "hidden";
@@ -168,7 +168,7 @@ test("pagehide and freeze each invalidate without publishing a partial aggregate
       const pending = Promise.withResolvers<BenchmarkRealmSampleResult>();
       const harness = createHarness(() => pending.promise);
       const controller = createBenchmarkController(harness.dependencies);
-      const running = controller.run(runRequest("realm-cold", 4, 0));
+      const running = controller.start(runRequest("realm-cold", 4, 0)).completion;
       await waitFor(() => harness.sampleInputs.length === 1);
 
       if (kind === "pagehide") {
@@ -193,31 +193,85 @@ test("cancel closes active resources, rejects overlapping work, and permits a cl
     block ? pending.promise : realmSuccess(input)
   );
   const controller = createBenchmarkController(harness.dependencies);
-  const first = controller.run(runRequest("realm-cold", 4, 0));
+  const firstRun = controller.start(runRequest("realm-cold", 4, 0));
+  const first = firstRun.completion;
   await waitFor(() => harness.sampleInputs.length === 1);
+  const activeState = controller.store.getState();
+  assert.equal(activeState.status, "running");
+  assert.equal(activeState.activeRunId, firstRun.runId);
 
-  await assert.rejects(
-    controller.run(runRequest("realm-cold", 4, 0)),
-    /already active/
+  assert.throws(
+    () => controller.start(runRequest("realm-cold", 4, 0)),
+    /already active/,
   );
   controller.cancel("dialog-closed");
   const cancelled = await first;
   assert.equal(cancelled.terminalStatus, "cancelled");
   assert.equal(cancelled.aggregates, null);
+  const cancelledState = controller.store.getState();
+  assert.equal(cancelledState.status, "cancelled");
+  assert.equal(cancelledState.retained.report, cancelled);
+  assert.equal(cancelledState.cancellation, null);
   assert.equal(harness.liveRealms, 0);
   pending.reject(new Error("disposed"));
 
   block = false;
-  const rerun = await controller.run(runRequest("realm-cold", 4, 0));
+  const rerun = await controller.start(runRequest("realm-cold", 4, 0)).completion;
   assert.equal(rerun.terminalStatus, "success");
   assert.equal(harness.liveRealms, 0);
+});
+
+test("cancelling a rerun restores the retained report and its stale state", async () => {
+  const pending = Promise.withResolvers<BenchmarkRealmSampleResult>();
+  let block = false;
+  const harness = createHarness((input) =>
+    block ? pending.promise : realmSuccess(input)
+  );
+  const controller = createBenchmarkController(harness.dependencies);
+  const retained = await controller.start(runRequest("realm-cold", 2, 0)).completion;
+  controller.markStale();
+  const beforeRejectedStart = controller.store.getState();
+  const oversized = runRequest("realm-cold", 2, 0);
+  assert.throws(
+    () =>
+      controller.start({
+        ...oversized,
+        payload: {
+          ...oversized.payload,
+          source: "x".repeat(REALM_BUDGETS.sourceBytes + 1),
+        },
+      }),
+    /byte budget/,
+  );
+  assert.strictEqual(controller.store.getState(), beforeRejectedStart);
+
+  block = true;
+  const rerun = controller.start(runRequest("realm-cold", 4, 0)).completion;
+  await waitFor(() => harness.sampleInputs.length === 5);
+  const running = controller.store.getState();
+  assert.equal(running.status, "running");
+  assert.equal(running.retained?.report, retained);
+  assert.equal(running.retained?.stale, true);
+  assert.equal(running.stale, false);
+
+  controller.cancel("dialog-closed");
+  const cancelled = await rerun;
+  const restored = controller.store.getState();
+  assert.equal(restored.status, "cancelled");
+  assert.equal(restored.retained.report, retained);
+  assert.equal(restored.retained.stale, true);
+  assert.equal(restored.cancellation?.report, cancelled);
+
+  pending.reject(new Error("disposed"));
+  await Promise.resolve();
+  assert.strictEqual(controller.store.getState(), restored);
 });
 
 test("whole-run watchdog terminates cross-realm work and releases the coordinator", async () => {
   const pending = Promise.withResolvers<BenchmarkRealmSampleResult>();
   const harness = createHarness(() => pending.promise);
   const controller = createBenchmarkController(harness.dependencies);
-  const running = controller.run(runRequest("realm-cold", 4, 0));
+  const running = controller.start(runRequest("realm-cold", 4, 0)).completion;
   await waitFor(() => harness.sampleInputs.length === 1);
 
   harness.fireRunTimeout();
@@ -245,16 +299,17 @@ test("validation accepts exact cold limits and rejects overflow before pause or 
 
   const harness = createHarness();
   const controller = createBenchmarkController(harness.dependencies);
-  await assert.rejects(
-    controller.run({
-      ...exactRequest,
-      payload: { ...exactPayload, source: `${exactPayload.source}x` },
-    }),
-    /byte budget/
+  assert.throws(
+    () =>
+      controller.start({
+        ...exactRequest,
+        payload: { ...exactPayload, source: `${exactPayload.source}x` },
+      }),
+    /byte budget/,
   );
-  await assert.rejects(
-    controller.run(runRequest("warm", 1_000, 0)),
-    /retained sample budget/
+  assert.throws(
+    () => controller.start(runRequest("warm", 1_000, 0)),
+    /retained sample budget/,
   );
   assert.equal(harness.pauseCount, 0);
   assert.equal(harness.createCount, 0);
@@ -263,7 +318,7 @@ test("validation accepts exact cold limits and rejects overflow before pause or 
 test("stale state is external to the immutable retained report", async () => {
   const harness = createHarness();
   const controller = createBenchmarkController(harness.dependencies);
-  const report = await controller.run(runRequest("realm-cold", 2, 0));
+  const report = await controller.start(runRequest("realm-cold", 2, 0)).completion;
   controller.markStale();
 
   const state = controller.store.getState();
