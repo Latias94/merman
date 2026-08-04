@@ -179,16 +179,16 @@ export async function run(): Promise<void> {
       diagnostic.source === "merman" &&
       diagnosticCode(diagnostic) === "merman.authoring.flowchart.explicit_direction",
   )!;
-  const codeActions = await vscode.commands.executeCommand<
-    Array<vscode.CodeAction | vscode.Command> | undefined
-  >(
-    "vscode.executeCodeActionProvider",
-    editorDocument.uri,
-    directionDiagnostic.range,
-    vscode.CodeActionKind.QuickFix.value,
-  );
-  assert.ok(
-    codeActions?.some((action) => action.title === "Insert `TB` into the flowchart header"),
+  await eventually(
+    () =>
+      vscode.commands.executeCommand<Array<vscode.CodeAction | vscode.Command> | undefined>(
+        "vscode.executeCodeActionProvider",
+        editorDocument.uri,
+        directionDiagnostic.range,
+        vscode.CodeActionKind.QuickFix.value,
+      ),
+    (value) =>
+      value?.some((action) => action.title === "Insert `TB` into the flowchart header") ?? false,
     "expected quick fix from the diagnostic snapshot",
   );
   assert.equal(editorDocument.version, version, "language queries must not mutate the document");

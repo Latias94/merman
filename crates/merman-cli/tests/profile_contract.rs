@@ -1024,6 +1024,16 @@ fn workflow_completions() {
                     .map(|theme| (*theme).to_owned())
                     .collect()
             );
+
+            let presentation_profiles =
+                bash_completion_values(&script, "render", "--presentation-profile");
+            assert_eq!(
+                presentation_profiles,
+                merman::svg::presentation_profile_descriptors()
+                    .iter()
+                    .map(|descriptor| descriptor.id().to_owned())
+                    .collect()
+            );
         }
     }
     #[cfg(not(feature = "shell-completions"))]

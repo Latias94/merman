@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::resource_contract::{
@@ -275,7 +276,7 @@ pub(crate) struct BindingOptions {
     pub(crate) analysis: BindingAnalysisOptionsJson,
     pub(crate) parse: Option<ParseOptionsJson>,
     #[cfg(feature = "svg")]
-    pub(crate) host_theme: Option<HostThemeOptionsJson>,
+    pub(crate) presentation: Option<PresentationOptionsJson>,
     #[cfg(feature = "ascii")]
     pub(crate) ascii: Option<AsciiOptionsJson>,
     #[cfg(feature = "svg")]
@@ -389,6 +390,7 @@ pub(crate) struct AsciiThemeOptionsJson {
 pub(crate) struct LayoutOptionsJson {
     pub(crate) container_width: Option<f64>,
     pub(crate) container_height: Option<f64>,
+    pub(crate) screen_available_width: Option<f64>,
 }
 
 #[cfg(feature = "svg")]
@@ -459,55 +461,21 @@ pub(crate) enum PdfPageOptionsJson {
 #[cfg(feature = "svg")]
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HostThemeOptionsJson {
+pub(crate) struct PresentationOptionsJson {
+    pub(crate) profile: Option<String>,
+    pub(crate) theme: Option<PresentationThemeOptionsJson>,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PresentationThemeOptionsJson {
     pub(crate) preset: Option<String>,
     pub(crate) appearance: Option<String>,
     pub(crate) font_family: Option<String>,
     pub(crate) font_size: Option<String>,
-    pub(crate) roles: Option<HostThemeRolesJson>,
+    pub(crate) roles: Option<BTreeMap<String, String>>,
     pub(crate) series_palette: Option<Vec<String>>,
-    pub(crate) output: Option<HostThemeOutputJson>,
-    pub(crate) theme_variables: Option<serde_json::Map<String, serde_json::Value>>,
-    pub(crate) site_config: Option<serde_json::Value>,
-}
-
-#[cfg(feature = "svg")]
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct HostThemeRolesJson {
-    pub(crate) canvas: Option<String>,
-    pub(crate) surface: Option<String>,
-    pub(crate) surface_alt: Option<String>,
-    pub(crate) surface_muted: Option<String>,
-    pub(crate) text: Option<String>,
-    pub(crate) subtle_text: Option<String>,
-    pub(crate) border: Option<String>,
-    pub(crate) line: Option<String>,
-    pub(crate) edge_label_background: Option<String>,
-    pub(crate) cluster_background: Option<String>,
-    pub(crate) cluster_border: Option<String>,
-    pub(crate) note_background: Option<String>,
-    pub(crate) note_border: Option<String>,
-    pub(crate) note_text: Option<String>,
-    pub(crate) actor_background: Option<String>,
-    pub(crate) actor_border: Option<String>,
-    pub(crate) actor_text: Option<String>,
-    pub(crate) activation_background: Option<String>,
-    pub(crate) activation_border: Option<String>,
-    pub(crate) error: Option<String>,
-    pub(crate) warning: Option<String>,
-    pub(crate) success: Option<String>,
-}
-
-#[cfg(feature = "svg")]
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct HostThemeOutputJson {
-    pub(crate) pipeline: Option<String>,
-    pub(crate) css_override_policy: Option<String>,
-    pub(crate) root_background: Option<String>,
-    pub(crate) drop_native_duplicate_fallbacks: Option<bool>,
-    pub(crate) scoped_css: Option<String>,
 }
 
 pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8> {
@@ -647,6 +615,8 @@ pub(crate) fn parse_base_options(
 fn parse_options_value(value: &Value) -> Result<BindingOptions, BindingError> {
     validate_options_schema_version(value)?;
     reject_ambiguous_analysis_wrappers(value)?;
+    reject_removed_host_theme(value)?;
+    reject_null_presentation_values(value)?;
     reject_uncompiled_option_groups(value)?;
     #[cfg(feature = "svg")]
     reject_removed_layout_fields(value)?;
@@ -663,6 +633,54 @@ fn parse_options_value(value: &Value) -> Result<BindingOptions, BindingError> {
     options.analysis = binding_analysis_options_json_from_json_value(value)?;
     validate_resource_contract_ids(options.analysis.resources.as_ref())?;
     Ok(options)
+}
+
+fn reject_removed_host_theme(value: &Value) -> Result<(), BindingError> {
+    if value
+        .as_object()
+        .is_some_and(|options| options.contains_key("host_theme"))
+    {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "options group `host_theme` was removed; use `presentation.profile` for first-party profiles, `presentation.theme` for theme values, top-level `site_config` for Mermaid overrides, and `svg` for output policy",
+        ));
+    }
+    Ok(())
+}
+
+fn reject_null_presentation_values(value: &Value) -> Result<(), BindingError> {
+    let Some(presentation) = value.get("presentation") else {
+        return Ok(());
+    };
+    let Some(presentation) = presentation.as_object() else {
+        if presentation.is_null() {
+            return Err(BindingError::new(
+                BindingStatus::OptionsJsonError,
+                "options group `presentation` must be an object, not null",
+            ));
+        }
+        return Ok(());
+    };
+
+    for key in ["profile", "theme"] {
+        if presentation.get(key).is_some_and(Value::is_null) {
+            return Err(BindingError::new(
+                BindingStatus::OptionsJsonError,
+                format!("options field `presentation.{key}` must not be null"),
+            ));
+        }
+    }
+    if let Some(theme) = presentation.get("theme").and_then(Value::as_object) {
+        for (key, value) in theme {
+            if value.is_null() {
+                return Err(BindingError::new(
+                    BindingStatus::OptionsJsonError,
+                    format!("options field `presentation.theme.{key}` must not be null"),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_options_schema_version(value: &Value) -> Result<(), BindingError> {
@@ -734,7 +752,7 @@ fn reject_unknown_options_json_fields(value: &Value) -> Result<(), BindingError>
             || BINDING_ANALYSIS_OPTION_KEYS.contains(&key.as_str())
             || matches!(
                 key.as_str(),
-                "host_theme"
+                "presentation"
                     | "ascii"
                     | "layout"
                     | "environment"
@@ -833,7 +851,7 @@ fn reject_uncompiled_option_groups(value: &Value) -> Result<(), BindingError> {
     for (group, compiled) in [
         ("lint", cfg!(feature = "analysis")),
         ("ascii", cfg!(feature = "ascii")),
-        ("host_theme", cfg!(feature = "svg")),
+        ("presentation", cfg!(feature = "svg")),
         ("layout", cfg!(feature = "svg")),
         ("environment", cfg!(feature = "svg")),
         ("svg", cfg!(feature = "svg")),
@@ -1182,16 +1200,16 @@ pub(crate) fn binding_site_config(
 
 pub(crate) fn binding_fixed_today(
     options: &BindingOptions,
-) -> Result<Option<chrono::NaiveDate>, BindingError> {
+) -> Result<Option<merman::time::CivilDate>, BindingError> {
     let Some(today) = options.analysis.fixed_today.as_deref() else {
         return Ok(None);
     };
-    chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d")
+    merman::time::CivilDate::from_str(today)
         .map(Some)
         .map_err(|_| {
             BindingError::new(
                 BindingStatus::InvalidArgument,
-                "fixed_today must be a date in YYYY-MM-DD format",
+                "fixed_today must be a canonical civil date such as YYYY-MM-DD or +10000-MM-DD",
             )
         })
 }
@@ -1202,10 +1220,7 @@ pub(crate) fn binding_fixed_local_offset_minutes(
     let Some(offset_minutes) = options.analysis.fixed_local_offset_minutes else {
         return Ok(None);
     };
-    let valid = offset_minutes
-        .checked_mul(60)
-        .and_then(chrono::FixedOffset::east_opt)
-        .is_some();
+    let valid = merman::time::UtcOffset::from_minutes(offset_minutes).is_some();
     if !valid {
         return Err(BindingError::new(
             BindingStatus::InvalidArgument,
@@ -2441,9 +2456,9 @@ mod tests {
                 br#"{"version":2,"ascii":{}}"#.as_slice(),
             ),
             (
-                "host_theme",
+                "presentation",
                 cfg!(feature = "svg"),
-                br#"{"version":2,"host_theme":{}}"#.as_slice(),
+                br#"{"version":2,"presentation":{}}"#.as_slice(),
             ),
             (
                 "layout",

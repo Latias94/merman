@@ -5,7 +5,8 @@ import type {
   AsciiDiagramType,
   DiagramDetectionFacts,
   DiagramType,
-  HostThemePresetName,
+  PresentationCatalog,
+  SvgPlanResult,
   ThemeName,
   RuntimeCatalog,
   ValidationResult,
@@ -24,15 +25,42 @@ export type MermanLoadStage =
 
 export type MermanRecovery = "reload" | "retry";
 export type MermanRequestCache = "default" | "reload";
-export type MermanSvgPipeline = "parity" | "readable" | "resvg-safe";
+export const MERMAN_SVG_PIPELINES = [
+  "parity",
+  "readable",
+  "resvg-safe",
+] as const;
+export type MermanSvgPipeline = (typeof MERMAN_SVG_PIPELINES)[number];
 export type MermanTextMeasurementMode = "browser" | "headless";
 export type MermanRenderFailureStage = "render" | "svg-validation";
 
+export interface MermanLayoutEnvironment {
+  readonly containerHeight: number;
+  readonly containerWidth: number;
+  readonly screenAvailableWidth?: number;
+}
+
 export interface MermanRenderOptions {
   diagramFont?: DiagramFont;
-  hostThemePreset?: HostThemePresetName;
-  pipeline?: MermanSvgPipeline;
+  layoutEnvironment?: MermanLayoutEnvironment;
+  presentationProfileId?: string | null;
+  presentationThemePresetId?: string | null;
+  svgPipeline?: MermanSvgPipeline;
   textMeasurementMode?: MermanTextMeasurementMode;
+}
+
+export type MermanUserRenderOptions = Omit<
+  MermanRenderOptions,
+  "layoutEnvironment"
+>;
+
+export function isMermanSvgPipeline(
+  value: unknown
+): value is MermanSvgPipeline {
+  return (
+    typeof value === "string" &&
+    MERMAN_SVG_PIPELINES.some((pipeline) => pipeline === value)
+  );
 }
 
 export type MermanRenderResult =
@@ -64,6 +92,7 @@ export type MermanAsciiResult =
 
 export interface MermanDomainFacade {
   readonly packageVersion: string;
+  presentationCatalog(): PresentationCatalog;
   runtimeCatalog(): RuntimeCatalog;
   detectDiagram(
     code: string,
@@ -98,6 +127,12 @@ export interface MermanDomainFacade {
     theme?: string,
     configJson?: string
   ): MermanAsciiResult;
+  svgPlan(
+    code: string,
+    theme?: string,
+    configJson?: string,
+    options?: MermanRenderOptions
+  ): SvgPlanResult;
   validate(code: string): ValidationResult;
 }
 

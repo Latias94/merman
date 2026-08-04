@@ -339,8 +339,11 @@ fun runMermanSmoke() {
     check(MermanEngine.supportedThemesJson().contains("default")) {
         "themes smoke failed"
     }
-    check(MermanEngine.supportedHostThemePresetsJson().contains("one-dark")) {
-        "host theme presets smoke failed"
+    check(MermanEngine.presentationCatalogJson().contains("one-dark")) {
+        "presentation catalog theme preset smoke failed"
+    }
+    check(MermanEngine.presentationCatalogJson().contains("merman-modern")) {
+        "presentation catalog profile smoke failed"
     }
 
     var measureCalls = 0

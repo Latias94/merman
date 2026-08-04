@@ -327,9 +327,10 @@ async fn diagnostic_policy_reprojects_without_rebuilding_the_snapshot() {
     );
     assert_eq!(
         session.inner.state.lock().await.analysis_cache_len(),
-        0,
-        "a snapshot-only structure query must not enter the complete analysis cache"
+        1,
+        "a snapshot-only structure query must retain reusable parse evidence"
     );
+    assert!(!session.inner.state.lock().await.has_analysis_payload(&uri));
 
     let options = default_lsp_analysis_options().with_rule_config(
         AnalysisRuleConfig::default()
@@ -360,6 +361,32 @@ async fn diagnostic_policy_reprojects_without_rebuilding_the_snapshot() {
     assert_eq!(session.analysis_execution_count(), executions);
     assert_eq!(session.diagnostic_reprojection_count(), 1);
     assert_eq!(severity, DiagnosticSeverity::Hint);
+}
+
+#[tokio::test]
+async fn sequential_snapshot_queries_reuse_parse_evidence_without_diagnostics() {
+    let session = session();
+    let uri = uri("sequential-snapshot-reuse");
+    open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
+
+    let first = session.structure_snapshot(&uri).await.unwrap();
+    session
+        .query_semantic_tokens(&uri, None, |snapshot, _| {
+            assert!(std::ptr::eq(snapshot, first.as_ref()));
+            Ok(Some(((), None)))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let second = session.structure_snapshot(&uri).await.unwrap();
+
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(session.analysis_execution_count(), 1);
+    assert_eq!(session.diagnostic_reprojection_count(), 0);
+    let state = session.inner.state.lock().await;
+    assert_eq!(state.analysis_cache_len(), 1);
+    assert!(state.has_snapshot(&uri));
+    assert!(!state.has_analysis_payload(&uri));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -539,7 +566,11 @@ async fn diagnostic_policy_update_reclaims_capacity_after_queued_reprojection_wo
         .into_iter()
         .map(|request| {
             let executor = session.inner.analysis_executor.clone();
-            tokio::spawn(async move { executor.execute_diagnostic_reprojection(&request).await })
+            tokio::spawn(async move {
+                executor
+                    .execute_diagnostic_reprojection(request.request())
+                    .await
+            })
         })
         .collect::<Vec<_>>();
     wait_for_analysis_registry_state(

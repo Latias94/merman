@@ -1111,7 +1111,8 @@ fn metadata_collect_impl(
                 format!("metadata_id must be valid UTF-8: {error}"),
             )
         })?;
-        merman_bindings_core::binding_metadata_json(metadata_id)
+        let capability_surface = native_transport_capability_surface();
+        merman_bindings_core::binding_metadata_json_for(metadata_id, &capability_surface)
             .map_err(native_failure_from_binding)
     })();
 
@@ -2163,7 +2164,9 @@ mod tests {
         for metadata_id in merman_bindings_core::BINDING_METADATA_IDS {
             let mut result = native_result();
             let status = unsafe { collect(borrowed_slice(metadata_id.as_bytes()), &mut result) };
-            match merman_bindings_core::binding_metadata_json(metadata_id) {
+            let capability_surface = native_transport_capability_surface();
+            match merman_bindings_core::binding_metadata_json_for(metadata_id, &capability_surface)
+            {
                 Ok(expected) => {
                     assert_eq!(status, MERMAN_NATIVE_STATUS_OK, "{metadata_id}");
                     let actual = unsafe {

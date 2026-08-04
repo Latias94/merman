@@ -426,7 +426,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         .try_with_fixed_local_offset_minutes(0)
         .expect("valid UTC offset")
         .with_fixed_today(Some(
-            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+            merman_core::time::CivilDate::new(2026, 2, 15).expect("valid date"),
         ));
     let engine = merman::Engine::new().with_runtime_policy(runtime_policy);
 
@@ -535,7 +535,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
 
     // Render report.
     let mut report = String::new();
-    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let ts = crate::cmd::timestamps::current_utc_rfc3339_seconds();
     let _ = writeln!(&mut report, "# Gap Audit (Mermaid{baseline_label})\n");
     let _ = writeln!(&mut report, "- Generated: `{ts}`");
     let out_rel = out_path.strip_prefix(&workspace_root).unwrap_or(&out_path);

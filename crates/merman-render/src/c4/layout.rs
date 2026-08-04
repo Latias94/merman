@@ -742,6 +742,7 @@ pub(crate) fn layout_c4_diagram_typed(
     measurer: &dyn TextMeasurer,
     container_width: f64,
     container_height: f64,
+    screen_available_width: Option<f64>,
 ) -> Result<C4DiagramLayout> {
     let c4_cfg = C4ConfigView::new(effective_config);
     let conf = c4_cfg.layout_settings();
@@ -778,7 +779,7 @@ pub(crate) fn layout_c4_diagram_typed(
         conf.diagram_margin_y,
         conf.diagram_margin_y,
     );
-    screen_bounds.data.width_limit = container_width;
+    screen_bounds.data.width_limit = screen_available_width.unwrap_or(container_width);
 
     let root_boundaries = boundary_children.get("").cloned().unwrap_or_default();
     if root_boundaries.is_empty() {
@@ -946,6 +947,7 @@ pub(crate) fn layout_c4_diagram_typed(
         height,
         container_width,
         container_height,
+        screen_available_width,
         c4_type: model.c4_type.clone(),
         title: model.title.clone(),
         use_max_width: conf.use_max_width,

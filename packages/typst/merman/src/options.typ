@@ -152,6 +152,84 @@
   merge-dict(out, host-theme, "merman host-theme")
 }
 
+#let build-presentation-theme(theme) = {
+  let theme = dictionary-or-none(theme, "merman host-theme")
+  if theme == none {
+    none
+  } else {
+    let allowed = (
+      "preset",
+      "appearance",
+      "font-family",
+      "font_family",
+      "font-size",
+      "font_size",
+      "roles",
+      "series-palette",
+      "series_palette",
+    )
+    for key in theme.keys() {
+      if not allowed.contains(key) {
+        panic("unsupported merman host-theme key: " + key)
+      }
+    }
+
+    let font-family = if "font-family" in theme {
+      theme.at("font-family")
+    } else if "font_family" in theme {
+      theme.at("font_family")
+    } else {
+      none
+    }
+    let font-size = if "font-size" in theme {
+      theme.at("font-size")
+    } else if "font_size" in theme {
+      theme.at("font_size")
+    } else {
+      none
+    }
+    let series-palette = if "series-palette" in theme {
+      theme.at("series-palette")
+    } else if "series_palette" in theme {
+      theme.at("series_palette")
+    } else {
+      none
+    }
+
+    let out = (:)
+    let out = if "preset" in theme and theme.at("preset") != none {
+      (: ..out, preset: theme.at("preset"))
+    } else {
+      out
+    }
+    let out = if "appearance" in theme and theme.at("appearance") != none {
+      (: ..out, appearance: theme.at("appearance"))
+    } else {
+      out
+    }
+    let out = if font-family != none { (: ..out, font_family: font-family) } else { out }
+    let out = if font-size != none { (: ..out, font_size: font-size) } else { out }
+    let out = if "roles" in theme and theme.at("roles") != none {
+      (: ..out, roles: theme.at("roles"))
+    } else {
+      out
+    }
+    let out = if series-palette != none {
+      (: ..out, series_palette: series-palette)
+    } else {
+      out
+    }
+    if out.len() == 0 { none } else { out }
+  }
+}
+
+#let build-presentation-options(profile, theme) = {
+  let theme = build-presentation-theme(theme)
+  let out = if profile == none { (:) } else { (profile: profile) }
+  let out = if theme == none { out } else { (: ..out, theme: theme) }
+  if out.len() == 0 { none } else { out }
+}
+
 #let apply-theme-site-config(site-config, theme, theme-name, base-theme) = {
   let theme-name = choose-value(base-theme, theme-name)
   if theme == none and theme-name == none {
@@ -236,6 +314,7 @@
 #let mermaid-profile(
   options: none,
   site-config: none,
+  presentation-profile: none,
   host-theme: none,
   typography: none,
   theme: none,
@@ -261,6 +340,7 @@
   (
     options: options,
     site-config: site-config,
+    presentation-profile: presentation-profile,
     host-theme: host-theme,
     typography: typography,
     theme: theme,
@@ -291,6 +371,7 @@
   typography: none,
   context-host-theme: none,
   site-config: none,
+  presentation-profile: none,
   host-theme: none,
   theme: none,
   theme-name: none,
@@ -313,7 +394,8 @@
 ) = {
   let profile-options = profile-field(profile, "options")
   let profile-site-config = profile-field(profile, "site-config", alt: "site_config")
-  let profile-host-theme = profile-field(profile, "host-theme", alt: "host_theme")
+  let profile-presentation-profile = profile-field(profile, "presentation-profile")
+  let profile-host-theme = profile-field(profile, "host-theme")
   let profile-typography = profile-field(profile, "typography")
   let profile-layout = profile-field(profile, "layout")
   let profile-layout-container-width = layout-container-width(profile-layout)
@@ -363,6 +445,7 @@
     profile-field(profile, "fixed-local-offset-minutes", alt: "fixed_local_offset_minutes"),
     fixed-local-offset-minutes,
   )
+  let presentation-profile = choose-value(profile-presentation-profile, presentation-profile)
 
   let host-theme = merged-host-theme(
     context-host-theme,
@@ -371,17 +454,18 @@
     typography,
     host-theme,
   )
+  let presentation = build-presentation-options(presentation-profile, host-theme)
 
   let binding-options = if options != none {
     options
   } else if profile-options != none {
     profile-options
   } else {
-    (
+    let binding-options = (
+      version: 2,
       fixed_today: fixed-today,
       fixed_local_offset_minutes: fixed-local-offset-minutes,
       site_config: site-config,
-      host_theme: host-theme,
       layout: build-layout-options(
         layout,
         container-width,
@@ -407,6 +491,11 @@
         drop_native_duplicate_fallbacks: drop-native-duplicate-fallbacks,
       ),
     )
+    if presentation == none {
+      binding-options
+    } else {
+      (: ..binding-options, presentation: presentation)
+    }
   }
 
   (

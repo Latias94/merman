@@ -344,8 +344,11 @@ def main() -> None:
         raise RuntimeError("ASCII fallback capability smoke failed")
     if "default" not in engine.supported_themes():
         raise RuntimeError("themes smoke failed")
-    if "one-dark" not in engine.supported_host_theme_presets():
-        raise RuntimeError("host theme presets smoke failed")
+    presentation_catalog = json.loads(engine.presentation_catalog_json())
+    if not any(item["id"] == "one-dark" for item in presentation_catalog["theme_presets"]):
+        raise RuntimeError("presentation theme presets smoke failed")
+    if not any(item["id"] == "merman-modern" for item in presentation_catalog["profiles"]):
+        raise RuntimeError("presentation profiles smoke failed")
     if not any(
         item.diagram_type == "flowchart"
         and item.logical_family_kind == "flowchart"

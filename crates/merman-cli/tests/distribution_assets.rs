@@ -91,6 +91,17 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         .collect::<BTreeSet<_>>();
     assert_eq!(native_themes, expected_native_themes);
 
+    let native_presentation_profiles =
+        bash_option_values(&script, "render", "--presentation-profile");
+    let expected_presentation_profiles = merman::svg::presentation_profile_descriptors()
+        .iter()
+        .map(|descriptor| descriptor.id().to_owned())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(native_presentation_profiles, expected_presentation_profiles);
+
+    let mmdc_presentation_profiles = bash_option_values(&script, "mmdc", "--presentation-profile");
+    assert_eq!(mmdc_presentation_profiles, expected_presentation_profiles);
+
     let mmdc_themes = bash_option_values(&script, "mmdc", "--theme");
     assert_eq!(
         mmdc_themes,

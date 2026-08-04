@@ -49,6 +49,17 @@ class ReleaseLegalMaterialTests(unittest.TestCase):
             self.assertIn(
                 root / "platforms/web/THIRD_PARTY_LICENSES/mermaid/LICENSE", expected
             )
+            self.assertNotIn(
+                root
+                / "packages/typst/merman/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
+                expected,
+            )
+            self.assertFalse(
+                (
+                    root
+                    / "packages/typst/merman/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
+                ).exists()
+            )
             self.assertIn(
                 root / "platforms/android/src/main/resources/META-INF/LICENSE",
                 expected,

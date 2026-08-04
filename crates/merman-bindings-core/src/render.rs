@@ -225,7 +225,11 @@ mod tests {
     #[test]
     fn render_svg_accepts_options_json() {
         let options = br#"{
-            "layout": { "container_width": 640, "container_height": 480 },
+            "layout": {
+                "container_width": 640,
+                "container_height": 480,
+                "screen_available_width": 1280
+            },
             "environment": { "text_measurement": "deterministic" },
             "svg": { "diagram_id": "bindings core diagram", "pipeline": "readable" }
         }"#;
@@ -327,29 +331,31 @@ B -->|No| D[Debug]";
     }
 
     #[test]
-    fn render_svg_accepts_host_theme_profile() {
+    fn render_svg_accepts_presentation_theme_and_independent_svg_output() {
         let options = br##"{
-            "host_theme": {
-                "appearance": "dark",
-                "font_family": "system-ui",
-                "roles": {
-                    "canvas": "#0f172a",
-                    "surface": "#111827",
-                    "text": "#e5e7eb",
-                    "border": "#475569",
-                    "line": "#94a3b8",
-                    "note_background": "#422006",
-                    "note_border": "#f59e0b"
-                },
-                "series_palette": ["#60a5fa", "#34d399", "#f59e0b"],
-                "output": {
-                    "pipeline": "resvg-safe",
-                    "root_background": "canvas",
-                    "drop_native_duplicate_fallbacks": true,
-                    "css_override_policy": "strip-existing-important"
+            "presentation": {
+                "theme": {
+                    "appearance": "dark",
+                    "font_family": "system-ui",
+                    "roles": {
+                        "canvas": "#0f172a",
+                        "surface": "#111827",
+                        "text": "#e5e7eb",
+                        "border": "#475569",
+                        "line": "#94a3b8",
+                        "note-background": "#422006",
+                        "note-border": "#f59e0b"
+                    },
+                    "series_palette": ["#60a5fa", "#34d399", "#f59e0b"]
                 }
             },
-            "svg": { "diagram_id": "bindings host theme" }
+            "svg": {
+                "diagram_id": "bindings host theme",
+                "pipeline": "resvg-safe",
+                "root_background_color": "#0f172a",
+                "drop_native_duplicate_fallbacks": true,
+                "css_override_policy": "strip-existing-important"
+            }
         }"##;
         let svg = String::from_utf8(
             render_svg(
@@ -375,13 +381,15 @@ B -->|No| D[Debug]";
     }
 
     #[test]
-    fn explicit_site_config_overrides_host_theme_profile_variables() {
+    fn explicit_site_config_overrides_presentation_theme_variables() {
         let options = br##"{
-            "host_theme": {
-                "roles": {
-                    "surface": "#111111",
-                    "text": "#eeeeee",
-                    "border": "#222222"
+            "presentation": {
+                "theme": {
+                    "roles": {
+                        "surface": "#111111",
+                        "text": "#eeeeee",
+                        "border": "#222222"
+                    }
                 }
             },
             "site_config": {
@@ -399,7 +407,7 @@ B -->|No| D[Debug]";
     }
 
     #[test]
-    fn empty_host_theme_profile_is_noop_for_theme_config() {
+    fn empty_presentation_is_noop_for_theme_config() {
         let plain = String::from_utf8(
             render_svg(
                 b"flowchart TD\nA[Host]",
@@ -412,7 +420,7 @@ B -->|No| D[Debug]";
             render_svg(
                 b"flowchart TD\nA[Host]",
                 br##"{
-                    "host_theme": {},
+                    "presentation": {},
                     "svg": { "diagram_id": "bindings empty host theme" }
                 }"##,
             )
@@ -422,20 +430,23 @@ B -->|No| D[Debug]";
 
         assert_eq!(
             themed, plain,
-            "empty host_theme should not force theme=base or mutate SVG output"
+            "empty presentation should not force theme=base or mutate SVG output"
         );
     }
 
     #[test]
-    fn host_theme_preset_applies_common_editor_theme() {
+    fn presentation_theme_preset_applies_common_editor_theme() {
         let svg = String::from_utf8(
             render_svg(
                 b"flowchart TD\nA[One Dark] --> B[Readable]",
                 br##"{
-                    "host_theme": {
-                        "preset": "one-dark"
+                    "presentation": {
+                        "theme": { "preset": "one-dark" }
                     },
-                    "svg": { "diagram_id": "bindings one dark" }
+                    "svg": {
+                        "diagram_id": "bindings one dark",
+                        "root_background_color": "#282c34"
+                    }
                 }"##,
             )
             .unwrap(),
@@ -452,19 +463,154 @@ B -->|No| D[Debug]";
     }
 
     #[test]
-    fn host_theme_preset_allows_role_overrides() {
+    fn json_presentation_matches_the_equivalent_rust_presentation() {
+        let source = "flowchart TD\nA[One Dark] --> B[Modern]";
+        let options = br##"{
+            "presentation": {
+                "profile": "merman-modern",
+                "theme": { "preset": "one-dark" }
+            },
+            "site_config": {
+                "flowchart": { "defaultRenderer": "dagre-wrapper" }
+            },
+            "svg": { "diagram_id": "presentation equivalence" }
+        }"##;
+        let binding_svg = String::from_utf8(render_svg(source.as_bytes(), options).unwrap())
+            .expect("binding SVG should be UTF-8");
+
+        let renderer = merman::svg::HeadlessRenderer::new()
+            .with_presentation(
+                merman::svg::Presentation::new()
+                    .with_profile(merman::svg::PresentationProfile::MermanModern)
+                    .with_theme(merman::svg::HostTheme::from_preset(
+                        merman::svg::HostThemePreset::OneDark,
+                    )),
+            )
+            .with_site_config(merman::MermaidConfig::from_value(serde_json::json!({
+                "flowchart": { "defaultRenderer": "dagre-wrapper" },
+            })))
+            .with_diagram_id("presentation equivalence");
+        let rust_svg = renderer
+            .render_svg_sync(source)
+            .expect("Rust rendering should succeed")
+            .expect("Flowchart should be detected");
+        assert_eq!(binding_svg, rust_svg);
+
+        let binding_plan: Value = serde_json::from_slice(
+            &crate::svg_plan_json(source.as_bytes(), options).expect("binding plan should succeed"),
+        )
+        .expect("binding plan should be JSON");
+        let rust_plan = renderer
+            .plan_svg_sync(source)
+            .expect("Rust planning should succeed")
+            .expect("Flowchart should be detected");
+        let rust_aspects = rust_plan
+            .presentation_aspects()
+            .iter()
+            .map(|aspect| {
+                serde_json::json!({
+                    "id": aspect.id(),
+                    "state": aspect.state().as_str(),
+                    "required_capability_id": aspect.required_capability_id(),
+                })
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            binding_plan["presentation_profile_id"],
+            serde_json::json!(rust_plan.presentation_profile_id())
+        );
+        assert_eq!(
+            binding_plan["presentation_aspects"],
+            serde_json::json!(rust_aspects)
+        );
+        assert_eq!(binding_plan["ready"], rust_plan.is_ready());
+    }
+
+    #[test]
+    fn modern_profile_defers_elk_availability_to_flowchart_admission() {
+        let profile = br##"{ "presentation": { "profile": "merman-modern" } }"##;
+        let sequence = render_svg(b"sequenceDiagram\nA->>B: Hello", profile);
+        assert!(
+            sequence.is_ok(),
+            "non-Flowchart families do not require ELK"
+        );
+
+        let dagre = render_svg(
+            b"flowchart TD\nA --> B",
+            br##"{
+                "presentation": { "profile": "merman-modern" },
+                "site_config": {
+                    "flowchart": { "defaultRenderer": "dagre-wrapper" }
+                }
+            }"##,
+        );
+        assert!(
+            dagre.is_ok(),
+            "an explicit available renderer should override the profile default"
+        );
+
+        let default_flowchart = render_svg(b"flowchart TD\nA --> B", profile);
+        if merman::svg::layout_elk_available() {
+            assert!(default_flowchart.is_ok());
+        } else {
+            let error = default_flowchart.expect_err("missing ELK should block admission");
+            assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+            assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+            assert_eq!(error.capability_id(), Some("layout-elk"));
+        }
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn merman_modern_profile_renders_neo_elk_flowcharts() {
+        let svg = String::from_utf8(
+            render_svg(
+                b"flowchart LR\nA[Start] -->|Continue| B[Finish]",
+                br##"{
+                    "presentation": { "profile": "merman-modern" },
+                    "svg": { "diagram_id": "bindings merman modern" }
+                }"##,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(svg.contains(r#"data-look="neo""#), "{svg}");
+        assert!(svg.contains(r#"rx="12" ry="12""#), "{svg}");
+        assert!(
+            svg.contains("fill:#F8FAFC;stroke:#64748B;stroke-width:2px;"),
+            "{svg}"
+        );
+        assert!(svg.contains("stroke:#64748B"), "{svg}");
+        assert!(
+            svg.contains("stroke-linecap:round;stroke-linejoin:round;"),
+            "{svg}"
+        );
+        assert!(svg.contains(".edgeLabel rect{opacity:1;}"), "{svg}");
+        assert!(svg.contains(r#"rx="4" ry="4""#), "{svg}");
+        assert!(svg.contains("bindings-merman-modern-drop-shadow"), "{svg}");
+    }
+
+    #[test]
+    fn presentation_theme_preset_allows_role_overrides() {
         let svg = String::from_utf8(
             render_svg(
                 b"flowchart TD\nA[Override]",
                 br##"{
-                    "host_theme": {
-                        "preset": "ayu-dark",
-                        "roles": {
-                            "canvas": "#101010",
-                            "line": "#ff00aa"
+                    "presentation": {
+                        "theme": {
+                            "preset": "ayu-dark",
+                            "roles": {
+                                "canvas": "#101010",
+                                "line": "#ff00aa"
+                            }
                         }
                     },
-                    "svg": { "diagram_id": "bindings ayu override" }
+                    "svg": {
+                        "diagram_id": "bindings ayu override",
+                        "root_background_color": "#101010"
+                    }
                 }"##,
             )
             .unwrap(),
@@ -481,50 +627,80 @@ B -->|No| D[Debug]";
     }
 
     #[test]
-    fn invalid_host_theme_preset_returns_invalid_argument() {
+    fn invalid_presentation_theme_preset_returns_invalid_argument() {
         let err = render_svg(
             b"flowchart TD\nA[Host]",
-            br##"{ "host_theme": { "preset": "solarized-maybe" } }"##,
+            br##"{ "presentation": { "theme": { "preset": "solarized-maybe" } } }"##,
         )
         .unwrap_err();
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("host_theme.preset"));
+        assert!(err.message().contains("presentation.theme.preset"));
     }
 
     #[test]
-    fn host_theme_rejects_removed_camel_case_theme_variables_alias() {
+    fn invalid_presentation_profile_and_role_return_invalid_argument() {
+        for (options, field) in [
+            (
+                br##"{ "presentation": { "profile": "future-modern" } }"##.as_slice(),
+                "presentation.profile",
+            ),
+            (
+                br##"{ "presentation": { "theme": { "roles": { "future-role": "#fff" } } } }"##
+                    .as_slice(),
+                "presentation.theme.roles",
+            ),
+        ] {
+            let err = render_svg(b"flowchart TD\nA[Host]", options).unwrap_err();
+            assert_eq!(err.status(), BindingStatus::InvalidArgument);
+            assert!(err.message().contains(field), "{err:?}");
+        }
+    }
+
+    #[test]
+    fn presentation_rejects_null_and_mixed_owner_fields() {
+        for (options, field) in [
+            (r#"{ "presentation": null }"#, "presentation"),
+            (
+                r#"{ "presentation": { "theme": { "output": {} } } }"#,
+                "output",
+            ),
+            (
+                r#"{ "presentation": { "theme": { "theme_variables": {} } } }"#,
+                "theme_variables",
+            ),
+            (
+                r#"{ "presentation": { "theme": { "site_config": {} } } }"#,
+                "site_config",
+            ),
+        ] {
+            let err = render_svg(b"flowchart TD\nA[Host]", options.as_bytes()).unwrap_err();
+            assert_eq!(err.status(), BindingStatus::OptionsJsonError);
+            assert!(err.message().contains(field), "{err:?}");
+        }
+    }
+
+    #[test]
+    fn removed_host_theme_reports_the_presentation_migration() {
         let err = render_svg(
             b"flowchart TD\nA[Host]",
-            br##"{ "host_theme": { "themeVariables": { "nodeBorder": "#abcdef" } } }"##,
+            br##"{ "host_theme": { "preset": "one-dark" } }"##,
         )
         .unwrap_err();
 
         assert_eq!(err.status(), BindingStatus::OptionsJsonError);
-        assert!(
-            err.message().contains("themeVariables"),
-            "{}",
-            err.message()
-        );
-        assert!(
-            err.message().contains("theme_variables"),
-            "{}",
-            err.message()
-        );
+        assert!(err.message().contains("presentation.profile"));
+        assert!(err.message().contains("presentation.theme"));
+        assert!(err.message().contains("site_config"));
+        assert!(err.message().contains("svg"));
     }
 
     #[test]
-    fn svg_css_override_policy_can_preserve_after_host_theme_strip_default() {
+    fn svg_css_override_policy_is_owned_only_by_svg_options() {
         let options = parse_options(
             br##"{
-                "host_theme": {
-                    "appearance": "dark",
-                    "output": {
-                        "pipeline": "resvg-safe",
-                        "css_override_policy": "strip-existing-important"
-                    }
-                },
                 "svg": {
+                    "pipeline": "resvg-safe",
                     "css_override_policy": "preserve"
                 }
             }"##,
@@ -540,32 +716,32 @@ B -->|No| D[Debug]";
 
         assert!(
             out.contains("!important"),
-            "explicit svg.css_override_policy=preserve should override host output stripping: {out}"
+            "svg.css_override_policy=preserve should retain existing important declarations: {out}"
         );
     }
 
     #[test]
-    fn invalid_host_theme_color_returns_invalid_argument() {
+    fn invalid_presentation_theme_color_returns_invalid_argument() {
         let err = render_svg(
             b"flowchart TD\nA[Host]",
-            br##"{ "host_theme": { "roles": { "canvas": "white; color: red" } } }"##,
+            br##"{ "presentation": { "theme": { "roles": { "canvas": "white; color: red" } } } }"##,
         )
         .unwrap_err();
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("host_theme.roles.canvas"));
+        assert!(err.message().contains("presentation.theme.roles.canvas"));
     }
 
     #[test]
-    fn invalid_host_theme_success_color_returns_invalid_argument() {
+    fn invalid_presentation_theme_success_color_returns_invalid_argument() {
         let err = render_svg(
             b"flowchart TD\nA[Host]",
-            br##"{ "host_theme": { "roles": { "success": "#00ff00; color: red" } } }"##,
+            br##"{ "presentation": { "theme": { "roles": { "success": "#00ff00; color: red" } } } }"##,
         )
         .unwrap_err();
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("host_theme.roles.success"));
+        assert!(err.message().contains("presentation.theme.roles.success"));
     }
 
     #[test]
@@ -921,14 +1097,21 @@ Missing ref: id2,after missing,1d
 
     #[test]
     fn invalid_option_value_returns_invalid_argument() {
-        let err = render_svg(
-            b"flowchart TD\nA",
-            br#"{ "layout": { "container_width": -1 } }"#,
-        )
-        .unwrap_err();
+        for (options, field) in [
+            (
+                br#"{ "layout": { "container_width": -1 } }"#.as_slice(),
+                "layout.container_width",
+            ),
+            (
+                br#"{ "layout": { "screen_available_width": 0 } }"#.as_slice(),
+                "layout.screen_available_width",
+            ),
+        ] {
+            let err = render_svg(b"flowchart TD\nA", options).unwrap_err();
 
-        assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("layout.container_width"));
+            assert_eq!(err.status(), BindingStatus::InvalidArgument);
+            assert!(err.message().contains(field), "{err:?}");
+        }
     }
 
     #[test]
@@ -1052,20 +1235,16 @@ Missing ref: id2,after missing,1d
                 "svg.css_override_policy",
             ),
             (
-                r#"{ "host_theme": { "output": { "pipeline": "resvg_safe" } } }"#,
-                "host_theme.output.pipeline",
+                r#"{ "presentation": { "theme": { "preset": "editor_light" } } }"#,
+                "presentation.theme.preset",
             ),
             (
-                r#"{ "host_theme": { "output": { "css_override_policy": "strip_existing_important" } } }"#,
-                "host_theme.output.css_override_policy",
+                r#"{ "presentation": { "theme": { "preset": "onedark" } } }"#,
+                "presentation.theme.preset",
             ),
             (
-                r#"{ "host_theme": { "preset": "editor_light" } }"#,
-                "host_theme.preset",
-            ),
-            (
-                r#"{ "host_theme": { "preset": "onedark" } }"#,
-                "host_theme.preset",
+                r##"{ "presentation": { "theme": { "roles": { "surface_alt": "#fff" } } } }"##,
+                "presentation.theme.roles",
             ),
         ];
 

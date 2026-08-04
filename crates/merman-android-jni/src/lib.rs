@@ -447,7 +447,10 @@ pub extern "system" fn native_metadata_json(
         };
         Ok(result_to_java_string(
             env,
-            merman_bindings_core::binding_metadata_json(&id),
+            merman_bindings_core::binding_metadata_json_for(
+                &id,
+                &android_transport_capability_surface(),
+            ),
         ))
     })
 }

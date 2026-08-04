@@ -647,6 +647,210 @@ class MermanLintRuleCatalogEntry {
       );
 }
 
+/// Artifact-owned presentation theme and profile metadata.
+class MermanPresentationCatalog {
+  const MermanPresentationCatalog({
+    required this.schemaVersion,
+    required this.themePresets,
+    required this.profiles,
+  });
+
+  final int schemaVersion;
+  final List<MermanPresentationThemePreset> themePresets;
+  final List<MermanPresentationProfile> profiles;
+
+  factory MermanPresentationCatalog.fromJson(Map<String, Object?> json) {
+    final schemaVersion = _requiredInt(json, 'schema_version');
+    if (schemaVersion != 1) {
+      throw MermanException.contract(
+        'unsupported presentation catalog schema $schemaVersion',
+      );
+    }
+    final rawThemePresets = json['theme_presets'];
+    if (rawThemePresets is! List) {
+      throw MermanException.contract(
+        'presentation catalog.theme_presets must be an array',
+      );
+    }
+    final rawProfiles = json['profiles'];
+    if (rawProfiles is! List) {
+      throw MermanException.contract(
+        'presentation catalog.profiles must be an array',
+      );
+    }
+    return MermanPresentationCatalog(
+      schemaVersion: schemaVersion,
+      themePresets: List.unmodifiable(
+        rawThemePresets.indexed.map(
+          (entry) => MermanPresentationThemePreset.fromJson(
+            _asObject(
+              entry.$2,
+              'presentation catalog.theme_presets[${entry.$1}]',
+            ),
+          ),
+        ),
+      ),
+      profiles: List.unmodifiable(
+        rawProfiles.indexed.map(
+          (entry) => MermanPresentationProfile.fromJson(
+            _asObject(entry.$2, 'presentation catalog.profiles[${entry.$1}]'),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One built-in host/editor presentation theme advertised by the artifact.
+class MermanPresentationThemePreset {
+  const MermanPresentationThemePreset({
+    required this.id,
+    required this.appearance,
+    required this.fullyAvailable,
+    required this.missingCapabilityIds,
+  });
+
+  final String id;
+  final String appearance;
+  final bool fullyAvailable;
+  final List<String> missingCapabilityIds;
+
+  factory MermanPresentationThemePreset.fromJson(Map<String, Object?> json) =>
+      MermanPresentationThemePreset(
+        id: _requiredString(json, 'id', 'presentation theme preset'),
+        appearance: _requiredString(
+          json,
+          'appearance',
+          'presentation theme preset',
+        ),
+        fullyAvailable: _requiredBool(
+          json,
+          'fully_available',
+          'presentation theme preset',
+        ),
+        missingCapabilityIds: List.unmodifiable(
+          _requiredStringList(
+            json,
+            'missing_capability_ids',
+            'presentation theme preset.missing_capability_ids',
+          ),
+        ),
+      );
+}
+
+/// One Merman-owned presentation profile advertised by the artifact.
+class MermanPresentationProfile {
+  const MermanPresentationProfile({
+    required this.id,
+    required this.fullyAvailable,
+    required this.missingCapabilityIds,
+    required this.aspects,
+  });
+
+  final String id;
+  final bool fullyAvailable;
+  final List<String> missingCapabilityIds;
+  final List<MermanPresentationAspect> aspects;
+
+  factory MermanPresentationProfile.fromJson(Map<String, Object?> json) {
+    final rawAspects = json['aspects'];
+    if (rawAspects is! List) {
+      throw MermanException.contract(
+        'presentation profile.aspects must be an array',
+      );
+    }
+    return MermanPresentationProfile(
+      id: _requiredString(json, 'id', 'presentation profile'),
+      fullyAvailable: _requiredBool(
+        json,
+        'fully_available',
+        'presentation profile',
+      ),
+      missingCapabilityIds: List.unmodifiable(
+        _requiredStringList(
+          json,
+          'missing_capability_ids',
+          'presentation profile.missing_capability_ids',
+        ),
+      ),
+      aspects: List.unmodifiable(
+        rawAspects.indexed.map(
+          (entry) => MermanPresentationAspect.fromJson(
+            _asObject(entry.$2, 'presentation profile.aspects[${entry.$1}]'),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One independently applicable part of a presentation profile.
+class MermanPresentationAspect {
+  const MermanPresentationAspect({
+    required this.id,
+    required this.applicability,
+    required this.requiredCapabilityId,
+    required this.available,
+    required this.missingCapabilityIds,
+  });
+
+  final String id;
+  final MermanPresentationAspectApplicability applicability;
+  final String? requiredCapabilityId;
+  final bool available;
+  final List<String> missingCapabilityIds;
+
+  factory MermanPresentationAspect.fromJson(Map<String, Object?> json) {
+    final requiredCapabilityId = json['required_capability_id'];
+    if (requiredCapabilityId != null && requiredCapabilityId is! String) {
+      throw MermanException.contract(
+        'presentation aspect.required_capability_id must be a string or null',
+      );
+    }
+    return MermanPresentationAspect(
+      id: _requiredString(json, 'id', 'presentation aspect'),
+      applicability: MermanPresentationAspectApplicability.fromJson(
+        _requiredObject(json, 'applicability'),
+      ),
+      requiredCapabilityId: requiredCapabilityId as String?,
+      available: _requiredBool(json, 'available', 'presentation aspect'),
+      missingCapabilityIds: List.unmodifiable(
+        _requiredStringList(
+          json,
+          'missing_capability_ids',
+          'presentation aspect.missing_capability_ids',
+        ),
+      ),
+    );
+  }
+}
+
+/// Scope in which a presentation aspect applies.
+class MermanPresentationAspectApplicability {
+  const MermanPresentationAspectApplicability({
+    required this.kind,
+    required this.familyId,
+  });
+
+  final String kind;
+  final String? familyId;
+
+  factory MermanPresentationAspectApplicability.fromJson(
+    Map<String, Object?> json,
+  ) {
+    final familyId = json['family_id'];
+    if (familyId != null && familyId is! String) {
+      throw MermanException.contract(
+        'presentation aspect applicability.family_id must be a string or null',
+      );
+    }
+    return MermanPresentationAspectApplicability(
+      kind: _requiredString(json, 'kind', 'presentation aspect applicability'),
+      familyId: familyId as String?,
+    );
+  }
+}
+
 /// A Dart view of one synchronous text-measurement request.
 class MermanTextMeasureRequest {
   MermanTextMeasureRequest._(native.MermanNativeTextMeasureRequest request)
@@ -1256,7 +1460,7 @@ class Merman {
   List<MermanDiagramFamilyCapability>? _diagramFamilyCapabilitiesCache;
   List<MermanLintRuleCatalogEntry>? _lintRuleCatalogCache;
   List<String>? _supportedThemesCache;
-  List<String>? _supportedHostThemePresetsCache;
+  MermanPresentationCatalog? _presentationCatalogCache;
 
   /// Native package version reported by the discovered table.
   String get packageVersion => _native.packageVersion;
@@ -1395,13 +1599,13 @@ class Merman {
     );
   }
 
-  /// Returns built-in host/editor theme preset names.
-  List<String> supportedHostThemePresets() {
+  /// Returns artifact-owned presentation theme and profile metadata.
+  MermanPresentationCatalog presentationCatalog() {
     _ensureOpen();
-    return _supportedHostThemePresetsCache ??= List.unmodifiable(
-      _decodeJsonStringList(
-        _native.collectMetadata('supported-host-theme-presets'),
-        'supported host theme presets',
+    return _presentationCatalogCache ??= MermanPresentationCatalog.fromJson(
+      _decodeJsonObject(
+        _native.collectMetadata('presentation-catalog'),
+        'presentation catalog',
       ),
     );
   }

@@ -17,6 +17,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Changed `lintRuleCatalog()` and `configurableLintRuleCatalog()` to throwing generated methods so feature-slim artifacts report a typed `analysis` missing-capability error instead of an empty catalog.
 - Added `optionsJson` to reusable convenience methods. Pass `nil` to inherit the engine baseline, or pass request-local options to deeply merge them for one operation; request options cannot change the constructor-owned runtime policy.
 - Replaced the incompatible prerelease options grammar with Options JSON schema `2`. The generated `resourceOptionsJson(profile:overrides:)` API now accepts a `nil` profile for request overlays that inherit their constructor ceiling, and its override records use `MermanResourceOverrideId`.
+- Removed the prerelease `supportedHostThemePresets()` method. Decode `presentationCatalogJson()` for open-ended, artifact-aware theme preset and presentation profile discovery.
 
 ### Added
 
@@ -26,6 +27,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Added generated `resourceOptionsJson(profile:overrides:)` so Swift callers can select
   `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input` without
   duplicating limit tables.
+- Added generated `presentationCatalogJson()` without changing the UniFFI API 3 version.
 
 ### Changed
 

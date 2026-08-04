@@ -3,7 +3,7 @@ use super::{
     RootBackgroundPostprocessor, ScopedCssPostprocessor, SvgPipeline, SvgPipelinePreset,
 };
 
-/// Canonical consumer-facing SVG output policy shared by host themes, bindings, and CLI exports.
+/// Canonical consumer-facing SVG output policy shared by presentation, bindings, and CLI exports.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SvgOutputPolicy {
     pub preset: SvgPipelinePreset,

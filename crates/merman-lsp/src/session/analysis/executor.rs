@@ -1,21 +1,18 @@
+use super::AnalysisJobGeneration;
 use crate::session::analysis::request::{
-    AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, AnalysisJobGeneration,
-    DiagnosticProjectionOrigin, DiagnosticReprojectionKey, DiagnosticReprojectionRequest,
-    DiagnosticReprojectionResult,
+    AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, DiagnosticReprojectionKey,
+    DiagnosticReprojectionRequest, DiagnosticReprojectionResult,
 };
-use crate::snapshot::{
-    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
-    SnapshotGeneration,
-};
+#[cfg(test)]
+use crate::snapshot::{DiagnosticGeneration, DocumentEpoch, SnapshotGeneration};
+use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot};
 use crate::sync::lock_recovering_poison;
 use merman_analysis::AnalysisCancellationToken;
 #[cfg(test)]
 use merman_analysis::Analyzer;
 use std::collections::HashMap;
 use std::fmt;
-#[cfg(test)]
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 use tower_lsp_server::ls_types::Uri;
@@ -233,8 +230,28 @@ struct PendingAnalysis {
 
 #[derive(Clone)]
 enum AnalysisWorkOutput {
-    Build(Arc<DocumentSnapshot>),
+    Build(Arc<AnalysisBuildOutput>),
     Reproject(Arc<DiagnosticReprojectionResult>),
+}
+
+struct AnalysisBuildOutput {
+    snapshot: Arc<DocumentSnapshot>,
+    cache_admission_claimed: AtomicBool,
+}
+
+impl AnalysisBuildOutput {
+    fn new(snapshot: Arc<DocumentSnapshot>) -> Self {
+        Self {
+            snapshot,
+            cache_admission_claimed: AtomicBool::new(false),
+        }
+    }
+
+    fn claim_cache_admission(&self) -> bool {
+        self.cache_admission_claimed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
 }
 
 impl AnalysisRegistry {
@@ -354,7 +371,7 @@ impl AnalysisWaiter {
 }
 
 pub(in crate::session) struct AnalysisExecutionLease {
-    snapshot: Arc<DocumentSnapshot>,
+    output: Arc<AnalysisBuildOutput>,
     _waiter: AnalysisWaiter,
 }
 
@@ -362,20 +379,23 @@ impl fmt::Debug for AnalysisExecutionLease {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("AnalysisExecutionLease")
-            .field("snapshot", &self.snapshot)
+            .field("snapshot", &self.output.snapshot)
             .finish_non_exhaustive()
     }
 }
 
 impl AnalysisExecutionLease {
     pub(in crate::session) fn snapshot(&self) -> &Arc<DocumentSnapshot> {
-        &self.snapshot
+        &self.output.snapshot
+    }
+
+    pub(in crate::session) fn claim_cache_admission(&self) -> bool {
+        self.output.claim_cache_admission()
     }
 }
 
 pub(in crate::session) struct DiagnosticReprojectionLease {
     result: Arc<DiagnosticReprojectionResult>,
-    origin: DiagnosticProjectionOrigin,
     _waiter: AnalysisWaiter,
 }
 
@@ -389,36 +409,12 @@ impl fmt::Debug for DiagnosticReprojectionLease {
 }
 
 impl DiagnosticReprojectionLease {
-    pub(in crate::session) fn uri(&self) -> &Uri {
-        self.result.uri()
-    }
-
-    pub(in crate::session) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
-        self.result.analysis_job_generation()
-    }
-
-    pub(in crate::session) fn document_epoch(&self) -> DocumentEpoch {
-        self.result.document_epoch()
-    }
-
-    pub(in crate::session) fn snapshot_generation(&self) -> SnapshotGeneration {
-        self.result.snapshot_generation()
-    }
-
-    pub(in crate::session) fn target_diagnostic_generation(&self) -> DiagnosticGeneration {
-        self.result.target_diagnostic_generation()
-    }
-
-    pub(in crate::session) fn generation_identity(&self) -> usize {
-        self.result.generation_identity()
+    pub(in crate::session) fn key(&self) -> &DiagnosticReprojectionKey {
+        self.result.key()
     }
 
     pub(in crate::session) fn projected(&self) -> &Arc<DocumentAnalysisContext> {
         self.result.projected()
-    }
-
-    pub(in crate::session) fn origin(&self) -> DiagnosticProjectionOrigin {
-        self.origin
     }
 
     #[cfg(test)]
@@ -577,7 +573,7 @@ impl AnalysisExecutor {
             ));
         };
         Ok(AnalysisExecutionLease {
-            snapshot: context,
+            output: context,
             _waiter: waiter,
         })
     }
@@ -598,7 +594,6 @@ impl AnalysisExecutor {
         };
         Ok(DiagnosticReprojectionLease {
             result,
-            origin: request.origin(),
             _waiter: waiter,
         })
     }
@@ -851,6 +846,8 @@ impl AnalysisExecutor {
                         match work {
                             AnalysisWork::Build(request) => request
                                 .build_cancellable(&cancellation)
+                                .map(AnalysisBuildOutput::new)
+                                .map(Arc::new)
                                 .map(AnalysisWorkOutput::Build)
                                 .map_err(AnalysisWorkError::Build),
                             AnalysisWork::Reproject(request) => request
@@ -1186,7 +1183,6 @@ mod tests {
                 context.as_ref(),
             ),
             context,
-            DiagnosticProjectionOrigin::FreshBuild,
         )
     }
 
@@ -1969,8 +1965,7 @@ mod tests {
         assert_eq!(executor.execution_count(), 0);
         assert_eq!(executor.reprojection_count(), 0);
         drop(cpu_permits);
-        wait_for_available_cpu_permits(&executor, LSP_ANALYSIS_CONCURRENCY).await;
-        assert_eq!(executor.registry_state(), (0, 0, LSP_ANALYSIS_CONCURRENCY));
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

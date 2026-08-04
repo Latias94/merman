@@ -1,15 +1,17 @@
-use super::{StdioService, StdioTermination};
-use crate::session::ProtocolMessageShape;
+use super::{StdioAdmissionService, StdioTermination};
+use crate::session::{ClassifiedRequest, ProtocolMessageShape};
 use futures::future::BoxFuture;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use tokio::sync::Notify;
-use tower_lsp_server::jsonrpc::{Error, Request, Response};
+use tower_lsp_server::jsonrpc::{Error, Response};
 
 const RUNNING: u8 = 0;
 const SHUTDOWN_COMPLETED: u8 = 1;
-const EXIT_WITHOUT_SHUTDOWN: u8 = 2;
-const EXIT_AFTER_SHUTDOWN: u8 = 3;
+const EXIT_RECEIVED_WITHOUT_SHUTDOWN: u8 = 2;
+const EXIT_RECEIVED_AFTER_SHUTDOWN: u8 = 3;
+const EXIT_OBSERVED_WITHOUT_SHUTDOWN: u8 = 4;
+const EXIT_OBSERVED_AFTER_SHUTDOWN: u8 = 5;
 
 #[derive(Debug, Default)]
 pub(super) struct ProtocolLifecycleState {
@@ -27,27 +29,75 @@ impl ProtocolLifecycleState {
         );
     }
 
+    fn record_exit_receipt(&self) {
+        let mut current = self.state.load(Ordering::Acquire);
+        loop {
+            let next = match current {
+                RUNNING => EXIT_RECEIVED_WITHOUT_SHUTDOWN,
+                SHUTDOWN_COMPLETED => EXIT_RECEIVED_AFTER_SHUTDOWN,
+                EXIT_RECEIVED_WITHOUT_SHUTDOWN
+                | EXIT_RECEIVED_AFTER_SHUTDOWN
+                | EXIT_OBSERVED_WITHOUT_SHUTDOWN
+                | EXIT_OBSERVED_AFTER_SHUTDOWN => return,
+                _ => unreachable!("invalid protocol lifecycle state"),
+            };
+            match self.state.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return,
+                Err(observed) => current = observed,
+            }
+        }
+    }
+
     fn observe_exit(&self) {
-        let next = if self.state.load(Ordering::Acquire) == SHUTDOWN_COMPLETED {
-            EXIT_AFTER_SHUTDOWN
-        } else {
-            EXIT_WITHOUT_SHUTDOWN
-        };
-        self.state.store(next, Ordering::Release);
-        self.exit_signal.notify_waiters();
+        self.record_exit_receipt();
+        let mut current = self.state.load(Ordering::Acquire);
+        loop {
+            let next = match current {
+                EXIT_RECEIVED_WITHOUT_SHUTDOWN => EXIT_OBSERVED_WITHOUT_SHUTDOWN,
+                EXIT_RECEIVED_AFTER_SHUTDOWN => EXIT_OBSERVED_AFTER_SHUTDOWN,
+                EXIT_OBSERVED_WITHOUT_SHUTDOWN | EXIT_OBSERVED_AFTER_SHUTDOWN => return,
+                RUNNING | SHUTDOWN_COMPLETED => {
+                    self.record_exit_receipt();
+                    current = self.state.load(Ordering::Acquire);
+                    continue;
+                }
+                _ => unreachable!("invalid protocol lifecycle state"),
+            };
+            match self.state.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    self.exit_signal.notify_waiters();
+                    return;
+                }
+                Err(observed) => current = observed,
+            }
+        }
     }
 
     fn has_exited(&self) -> bool {
         matches!(
             self.state.load(Ordering::Acquire),
-            EXIT_WITHOUT_SHUTDOWN | EXIT_AFTER_SHUTDOWN
+            EXIT_OBSERVED_WITHOUT_SHUTDOWN | EXIT_OBSERVED_AFTER_SHUTDOWN
         )
     }
 
     pub(super) fn termination(&self) -> StdioTermination {
         match self.state.load(Ordering::Acquire) {
-            EXIT_AFTER_SHUTDOWN => StdioTermination::ExitAfterShutdown,
-            EXIT_WITHOUT_SHUTDOWN => StdioTermination::ExitWithoutShutdown,
+            EXIT_RECEIVED_AFTER_SHUTDOWN | EXIT_OBSERVED_AFTER_SHUTDOWN => {
+                StdioTermination::ExitAfterShutdown
+            }
+            EXIT_RECEIVED_WITHOUT_SHUTDOWN | EXIT_OBSERVED_WITHOUT_SHUTDOWN => {
+                StdioTermination::ExitWithoutShutdown
+            }
             _ => StdioTermination::InputClosed,
         }
     }
@@ -72,26 +122,32 @@ pub(super) struct ProtocolLifecycleService<S> {
 
 impl<S> ProtocolLifecycleService<S>
 where
-    S: StdioService,
+    S: StdioAdmissionService,
     S::Future: Send + 'static,
 {
-    fn admit_with_lifecycle(
+    fn admit_deferred_with_lifecycle(
         &mut self,
-        request: Request,
+        request: ClassifiedRequest,
     ) -> BoxFuture<'static, Result<Option<Response>, S::Error>> {
-        match ProtocolMessageShape::classify(&request) {
+        match request.shape() {
             ProtocolMessageShape::ShutdownNotification => {
                 tracing::warn!("ignoring shutdown notification; shutdown must be a request");
                 Box::pin(async { Ok(None) })
             }
-            ProtocolMessageShape::ExitRequest(id) => {
+            ProtocolMessageShape::ExitRequest => {
+                let (_, id, _) = request.into_request().into_parts();
+                let id = id.expect("classified exit request must carry an ID");
                 tracing::warn!("rejecting exit request; exit must be a notification");
                 Box::pin(
                     async move { Ok(Some(Response::from_error(id, Error::invalid_request()))) },
                 )
             }
+            ProtocolMessageShape::InvalidExitNotification => {
+                tracing::warn!("ignoring exit notification with unexpected parameters");
+                Box::pin(async { Ok(None) })
+            }
             ProtocolMessageShape::ShutdownRequest => {
-                let future = self.inner.admit(request);
+                let future = self.inner.admit_deferred(request);
                 let lifecycle = Arc::clone(&self.lifecycle);
                 Box::pin(async move {
                     let response = tokio::select! {
@@ -109,12 +165,15 @@ where
                 })
             }
             ProtocolMessageShape::ExitNotification => {
-                let future = self.inner.admit(request);
-                self.lifecycle.observe_exit();
-                Box::pin(future)
+                let future = self.inner.admit_deferred(request);
+                let lifecycle = Arc::clone(&self.lifecycle);
+                Box::pin(async move {
+                    lifecycle.observe_exit();
+                    future.await
+                })
             }
-            ProtocolMessageShape::Ordinary => {
-                let future = self.inner.admit(request);
+            ProtocolMessageShape::CancellationNotification | ProtocolMessageShape::Ordinary => {
+                let future = self.inner.admit_deferred(request);
                 let lifecycle = Arc::clone(&self.lifecycle);
                 Box::pin(async move {
                     tokio::select! {
@@ -128,15 +187,33 @@ where
     }
 }
 
-impl<S> StdioService for ProtocolLifecycleService<S>
+impl<S> StdioAdmissionService for ProtocolLifecycleService<S>
 where
-    S: StdioService,
+    S: StdioAdmissionService,
     S::Future: Send + 'static,
 {
     type Error = S::Error;
     type Future = BoxFuture<'static, Result<Option<Response>, S::Error>>;
 
-    fn admit(&mut self, request: Request) -> Self::Future {
-        self.admit_with_lifecycle(request)
+    fn admit_immediate_control(&mut self, request: ClassifiedRequest) -> Self::Future {
+        debug_assert!(request.shape().is_exact_control_notification());
+        let exits = request.shape().is_exit_notification();
+        let future = self.inner.admit_immediate_control(request);
+        if exits {
+            self.lifecycle.record_exit_receipt();
+            self.lifecycle.observe_exit();
+        }
+        Box::pin(future)
+    }
+
+    fn admit_deferred(&mut self, request: ClassifiedRequest) -> Self::Future {
+        self.admit_deferred_with_lifecycle(request)
+    }
+
+    fn deferred_published(&mut self, shape: ProtocolMessageShape) {
+        if shape.is_exit_notification() {
+            self.lifecycle.record_exit_receipt();
+        }
+        self.inner.deferred_published(shape);
     }
 }

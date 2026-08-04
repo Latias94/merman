@@ -1,13 +1,13 @@
 use std::str::FromStr;
 
 use crate::session::{DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES};
-#[cfg(test)]
-use merman_analysis::analysis_options_from_json_value;
 use merman_analysis::{
     ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS, AnalysisRuleProfile, DiagnosticSeverity,
     MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
 };
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
+#[cfg(test)]
+use merman_analysis::{analysis_options_from_json_value, analysis_options_json_from_json_value};
 use merman_core::EditorRenamePolicy;
 use merman_editor_core::{
     DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
@@ -21,6 +21,14 @@ pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 1;
 pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 1;
 pub const RULE_CATALOG_METHOD: &str = "merman/ruleCatalog";
 pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
+pub const FIXED_TODAY_SCHEMA_PATTERN: &str = concat!(
+    r"^(?:\d{4}|\+(?:[1-9]\d{4,8}|1\d{9}|20\d{8}|21[0-3]\d{7}|214[0-6]\d{6}|",
+    r"2147[0-3]\d{5}|21474[0-7]\d{4}|214748[0-2]\d{3}|2147483[0-5]\d{2}|",
+    r"21474836[0-3]\d|214748364[0-7])|-(?:000[1-9]|00[1-9]\d|0[1-9]\d{2}|",
+    r"[1-9]\d{3}|[1-9]\d{4,8}|1\d{9}|20\d{8}|21[0-3]\d{7}|214[0-6]\d{6}|",
+    r"2147[0-3]\d{5}|21474[0-7]\d{4}|214748[0-2]\d{3}|2147483[0-5]\d{2}|",
+    r"21474836[0-3]\d|214748364[0-8]))-\d{2}-\d{2}$",
+);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceEditEncoding {
@@ -228,8 +236,8 @@ fn analysis_options_schema(
                 "properties": {
                     "fixed_today": {
                         "type": "string",
-                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-                        "description": "Fixed local date used by time-sensitive analysis in YYYY-MM-DD format."
+                        "pattern": FIXED_TODAY_SCHEMA_PATTERN,
+                        "description": "Canonical fixed local civil date. Years 0000 through 9999 use YYYY-MM-DD; later years use +YEAR-MM-DD and negative years use -YEAR-MM-DD. The date and its local-midnight instant are validated when the configuration is applied."
                     },
                     "fixed_local_offset_minutes": {
                         "type": "integer",
@@ -483,6 +491,46 @@ mod tests {
                 ["properties"]["max_document_diagrams"]["default"],
             json!(DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS)
         );
+        assert_eq!(
+            response.schema["$defs"]["analysisOptions"]["properties"]["fixed_today"]["pattern"],
+            json!(FIXED_TODAY_SCHEMA_PATTERN)
+        );
+        for fixed_today in [
+            "0000-01-01",
+            "9999-12-31",
+            "+10000-01-01",
+            "+2147483647-12-31",
+            "-0001-01-01",
+            "-10000-01-01",
+            "-2147483648-01-01",
+        ] {
+            let options = analysis_options_json_from_json_value(&json!({
+                "fixed_today": fixed_today
+            }))
+            .expect("fixed_today must deserialize as a string");
+            assert!(
+                options.fixed_today().is_ok(),
+                "canonical date must parse: {fixed_today}"
+            );
+        }
+        for fixed_today in [
+            "+9999-01-01",
+            "+010000-01-01",
+            "+2147483648-01-01",
+            "-0000-01-01",
+            "-010000-01-01",
+            "-2147483649-01-01",
+            "10000-01-01",
+        ] {
+            let options = analysis_options_json_from_json_value(&json!({
+                "fixed_today": fixed_today
+            }))
+            .expect("fixed_today must deserialize as a string");
+            assert!(
+                options.fixed_today().is_err(),
+                "non-canonical or out-of-domain date must be rejected: {fixed_today}"
+            );
+        }
         let descriptor = ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
             .iter()
             .find(|descriptor| descriptor.stable_id == MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
@@ -544,6 +592,12 @@ mod tests {
         collect_vscode_analysis_setting_keys(&package_json, &mut vscode_keys);
 
         assert_eq!(vscode_keys, schema_keys);
+        let expected_fixed_today_pattern = format!("^$|{FIXED_TODAY_SCHEMA_PATTERN}");
+        assert_eq!(
+            vscode_analysis_setting(&package_json, "merman.analysis.fixed_today")
+                .and_then(|setting| setting["pattern"].as_str()),
+            Some(expected_fixed_today_pattern.as_str())
+        );
     }
 
     fn collect_analysis_schema_leaf_keys(
@@ -587,5 +641,12 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn vscode_analysis_setting<'a>(package_json: &'a Value, key: &str) -> Option<&'a Value> {
+        package_json["contributes"]["configuration"]
+            .as_array()?
+            .iter()
+            .find_map(|section| section["properties"].get(key))
     }
 }

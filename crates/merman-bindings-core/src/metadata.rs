@@ -14,6 +14,7 @@ mod capability_descriptor {
 
 /// First public schema for the artifact-owned runtime catalog.
 pub const RUNTIME_CATALOG_SCHEMA_VERSION: u32 = 1;
+pub const PRESENTATION_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK: &str = "host-callback";
 pub const TEXT_MEASUREMENT_PROVIDER_VENDORED: &str = "vendored";
 pub const BINDING_METADATA_IDS: [&str; 6] = [
@@ -22,7 +23,7 @@ pub const BINDING_METADATA_IDS: [&str; 6] = [
     "diagram-family-capabilities",
     "lint-rule-catalog",
     "supported-themes",
-    "supported-host-theme-presets",
+    "presentation-catalog",
 ];
 
 #[cfg(feature = "svg")]
@@ -35,7 +36,6 @@ static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
-static SUPPORTED_HOST_THEME_PRESETS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static RUNTIME_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 #[cfg(feature = "analysis")]
@@ -585,6 +585,44 @@ pub struct RuleCatalogEntry {
     pub fixable: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct BindingPresentationCatalog {
+    schema_version: u32,
+    theme_presets: Vec<BindingPresentationThemePreset>,
+    profiles: Vec<BindingPresentationProfile>,
+}
+
+#[derive(Debug, Serialize)]
+struct BindingPresentationThemePreset {
+    id: &'static str,
+    appearance: &'static str,
+    fully_available: bool,
+    missing_capability_ids: Vec<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+struct BindingPresentationProfile {
+    id: &'static str,
+    fully_available: bool,
+    missing_capability_ids: Vec<&'static str>,
+    aspects: Vec<BindingPresentationAspect>,
+}
+
+#[derive(Debug, Serialize)]
+struct BindingPresentationAspect {
+    id: &'static str,
+    applicability: BindingPresentationApplicability,
+    required_capability_id: Option<&'static str>,
+    available: bool,
+    missing_capability_ids: Vec<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+struct BindingPresentationApplicability {
+    kind: &'static str,
+    family_id: Option<&'static str>,
+}
+
 /// Reports the exact capability surface compiled into the shared binding facade.
 ///
 /// This is the Rust owner's complete compiled fact set, including adapters selectable only through
@@ -886,14 +924,90 @@ pub fn supported_themes() -> &'static [&'static str] {
     merman::supported_themes()
 }
 
-pub fn supported_host_theme_presets() -> &'static [&'static str] {
+fn presentation_catalog_for(
+    capability_surface: &ArtifactCapabilitySurface,
+) -> BindingPresentationCatalog {
+    if capability_surface
+        .capability_ids
+        .binary_search(&"svg")
+        .is_err()
+    {
+        return BindingPresentationCatalog {
+            schema_version: PRESENTATION_CATALOG_SCHEMA_VERSION,
+            theme_presets: Vec::new(),
+            profiles: Vec::new(),
+        };
+    }
+
     #[cfg(feature = "svg")]
     {
-        merman::supported_host_theme_presets()
+        let theme_presets = merman::svg::theme_preset_descriptors()
+            .iter()
+            .map(|descriptor| BindingPresentationThemePreset {
+                id: descriptor.id(),
+                appearance: descriptor.appearance().as_str(),
+                fully_available: true,
+                missing_capability_ids: Vec::new(),
+            })
+            .collect();
+        let profiles = merman::svg::presentation_profile_descriptors()
+            .iter()
+            .map(|descriptor| {
+                let aspects = descriptor
+                    .aspects()
+                    .iter()
+                    .map(|aspect| {
+                        let applicability = aspect.applicability();
+                        let required_capability_id = aspect.required_capability_id();
+                        let available = required_capability_id.is_none_or(|capability_id| {
+                            capability_surface
+                                .capability_ids
+                                .binary_search(&capability_id)
+                                .is_ok()
+                        });
+                        BindingPresentationAspect {
+                            id: aspect.id(),
+                            applicability: BindingPresentationApplicability {
+                                kind: applicability.kind_id(),
+                                family_id: applicability.family_id(),
+                            },
+                            required_capability_id,
+                            available,
+                            missing_capability_ids: required_capability_id
+                                .filter(|_| !available)
+                                .into_iter()
+                                .collect(),
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let mut missing_capability_ids = aspects
+                    .iter()
+                    .flat_map(|aspect| aspect.missing_capability_ids.iter().copied())
+                    .collect::<Vec<_>>();
+                missing_capability_ids.sort_unstable();
+                missing_capability_ids.dedup();
+                BindingPresentationProfile {
+                    id: descriptor.id(),
+                    fully_available: missing_capability_ids.is_empty(),
+                    missing_capability_ids,
+                    aspects,
+                }
+            })
+            .collect();
+        BindingPresentationCatalog {
+            schema_version: PRESENTATION_CATALOG_SCHEMA_VERSION,
+            theme_presets,
+            profiles,
+        }
     }
+
     #[cfg(not(feature = "svg"))]
     {
-        &[]
+        BindingPresentationCatalog {
+            schema_version: PRESENTATION_CATALOG_SCHEMA_VERSION,
+            theme_presets: Vec::new(),
+            profiles: Vec::new(),
+        }
     }
 }
 
@@ -964,11 +1078,15 @@ pub fn supported_themes_json() -> Result<Vec<u8>, BindingError> {
     cached_json(&SUPPORTED_THEMES_JSON, supported_themes)
 }
 
-pub fn supported_host_theme_presets_json() -> Result<Vec<u8>, BindingError> {
-    cached_json(
-        &SUPPORTED_HOST_THEME_PRESETS_JSON,
-        supported_host_theme_presets,
-    )
+pub fn presentation_catalog_json() -> Result<Vec<u8>, BindingError> {
+    let capability_surface = binding_transport_capability_surface();
+    presentation_catalog_json_for(&capability_surface)
+}
+
+pub fn presentation_catalog_json_for(
+    capability_surface: &ArtifactCapabilitySurface,
+) -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(&presentation_catalog_for(capability_surface)).map_err(internal_json_error)
 }
 
 pub fn lint_rule_catalog() -> Result<Vec<RuleCatalogEntry>, BindingError> {
@@ -1061,13 +1179,22 @@ pub fn diagram_family_capabilities_json() -> Result<Vec<u8>, BindingError> {
 
 /// Returns one transport-neutral binding metadata catalog by its stable identifier.
 pub fn binding_metadata_json(id: &str) -> Result<Vec<u8>, BindingError> {
+    let capability_surface = binding_transport_capability_surface();
+    binding_metadata_json_for(id, &capability_surface)
+}
+
+/// Returns one transport-neutral binding metadata catalog projected to an artifact surface.
+pub fn binding_metadata_json_for(
+    id: &str,
+    capability_surface: &ArtifactCapabilitySurface,
+) -> Result<Vec<u8>, BindingError> {
     match id {
         "supported-diagrams" => supported_diagrams_json(),
         "ascii-capabilities" => ascii_capabilities_json(),
         "diagram-family-capabilities" => diagram_family_capabilities_json(),
         "lint-rule-catalog" => lint_rule_catalog_json(),
         "supported-themes" => supported_themes_json(),
-        "supported-host-theme-presets" => supported_host_theme_presets_json(),
+        "presentation-catalog" => presentation_catalog_json_for(capability_surface),
         _ => Err(BindingError::new(
             crate::BindingStatus::InvalidArgument,
             format!("unknown binding metadata catalog `{id}`"),
@@ -1713,22 +1840,126 @@ mod tests {
     }
 
     #[test]
-    fn supported_host_theme_presets_exposes_render_theme_surface() {
-        if cfg!(feature = "svg") {
+    fn presentation_catalog_projects_the_artifact_surface() {
+        let analysis_surface =
+            ArtifactCapabilitySurface::new(vec!["analysis"], vec![], vec![], None)
+                .expect("analysis-only artifact surface");
+        let empty: Value =
+            serde_json::from_slice(&presentation_catalog_json_for(&analysis_surface).unwrap())
+                .unwrap();
+        assert_eq!(
+            empty,
+            serde_json::json!({
+                "schema_version": PRESENTATION_CATALOG_SCHEMA_VERSION,
+                "theme_presets": [],
+                "profiles": [],
+            })
+        );
+
+        #[cfg(feature = "svg")]
+        {
+            let no_elk = ArtifactCapabilitySurface::new(
+                vec!["svg"],
+                vec!["svg"],
+                vec![],
+                Some(
+                    TextMeasurementCapabilities::new(vec![TEXT_MEASUREMENT_PROVIDER_VENDORED])
+                        .expect("vendored SVG measurement surface"),
+                ),
+            )
+            .expect("SVG surface without ELK");
+            let no_elk: Value =
+                serde_json::from_slice(&presentation_catalog_json_for(&no_elk).unwrap()).unwrap();
             assert_eq!(
-                supported_host_theme_presets(),
-                &[
+                no_elk["schema_version"],
+                PRESENTATION_CATALOG_SCHEMA_VERSION
+            );
+            assert_eq!(
+                no_elk["theme_presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|preset| preset["id"].as_str().unwrap())
+                    .collect::<Vec<_>>(),
+                vec![
                     "editor-light",
                     "editor-dark",
                     "one-dark",
                     "gruvbox-light",
                     "gruvbox-dark",
                     "ayu-light",
-                    "ayu-dark"
+                    "ayu-dark",
                 ]
             );
-        } else {
-            assert!(supported_host_theme_presets().is_empty());
+            assert!(
+                no_elk["theme_presets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|preset| preset["fully_available"] == true
+                        && preset["missing_capability_ids"] == serde_json::json!([]))
+            );
+            let profile = &no_elk["profiles"][0];
+            assert_eq!(profile["id"], "merman-modern");
+            assert_eq!(profile["fully_available"], false);
+            assert_eq!(
+                profile["missing_capability_ids"],
+                serde_json::json!(["layout-elk"])
+            );
+            assert_eq!(
+                profile["aspects"],
+                serde_json::json!([
+                    {
+                        "id": "global-defaults",
+                        "applicability": {
+                            "kind": "all-diagrams",
+                            "family_id": null,
+                        },
+                        "required_capability_id": null,
+                        "available": true,
+                        "missing_capability_ids": [],
+                    },
+                    {
+                        "id": "flowchart-svg",
+                        "applicability": {
+                            "kind": "family",
+                            "family_id": "flowchart",
+                        },
+                        "required_capability_id": null,
+                        "available": true,
+                        "missing_capability_ids": [],
+                    },
+                    {
+                        "id": "flowchart-elk-default",
+                        "applicability": {
+                            "kind": "family",
+                            "family_id": "flowchart",
+                        },
+                        "required_capability_id": "layout-elk",
+                        "available": false,
+                        "missing_capability_ids": ["layout-elk"],
+                    },
+                ])
+            );
+
+            let full = ArtifactCapabilitySurface::new(
+                vec!["layout-elk", "svg"],
+                vec!["svg"],
+                vec![],
+                Some(
+                    TextMeasurementCapabilities::new(vec![TEXT_MEASUREMENT_PROVIDER_VENDORED])
+                        .expect("vendored SVG measurement surface"),
+                ),
+            )
+            .expect("SVG surface with ELK");
+            let full: Value =
+                serde_json::from_slice(&presentation_catalog_json_for(&full).unwrap()).unwrap();
+            assert_eq!(full["profiles"][0]["fully_available"], true);
+            assert_eq!(
+                full["profiles"][0]["missing_capability_ids"],
+                serde_json::json!([])
+            );
+            assert_eq!(full["profiles"][0]["aspects"][2]["available"], true);
         }
     }
 
@@ -1834,8 +2065,8 @@ mod tests {
         let ascii_capabilities: Value =
             serde_json::from_slice(&ascii_capabilities_json().unwrap()).unwrap();
         let themes: Value = serde_json::from_slice(&supported_themes_json().unwrap()).unwrap();
-        let host_presets: Value =
-            serde_json::from_slice(&supported_host_theme_presets_json().unwrap()).unwrap();
+        let presentation_catalog: Value =
+            serde_json::from_slice(&presentation_catalog_json().unwrap()).unwrap();
         let family_capabilities: Value =
             serde_json::from_slice(&diagram_family_capabilities_json().unwrap()).unwrap();
         assert!(
@@ -1868,15 +2099,12 @@ mod tests {
                 .unwrap()
                 .contains(&Value::String("default".to_string()))
         );
-        assert!(host_presets.is_array());
-        if cfg!(feature = "svg") {
-            assert!(
-                host_presets
-                    .as_array()
-                    .unwrap()
-                    .contains(&Value::String("one-dark".to_string()))
-            );
-        }
+        assert_eq!(
+            presentation_catalog["schema_version"],
+            PRESENTATION_CATALOG_SCHEMA_VERSION
+        );
+        assert!(presentation_catalog["theme_presets"].is_array());
+        assert!(presentation_catalog["profiles"].is_array());
         let flowchart = family_capabilities
             .as_array()
             .unwrap()
@@ -1946,7 +2174,8 @@ mod tests {
 
     #[test]
     fn binding_metadata_json_dispatches_the_six_public_catalogs() {
-        let cases: [(&str, fn() -> Result<Vec<u8>, BindingError>); 6] = [
+        type MetadataProvider = fn() -> Result<Vec<u8>, BindingError>;
+        let cases: [(&str, MetadataProvider); 6] = [
             ("supported-diagrams", supported_diagrams_json),
             ("ascii-capabilities", ascii_capabilities_json),
             (
@@ -1955,10 +2184,7 @@ mod tests {
             ),
             ("lint-rule-catalog", lint_rule_catalog_json),
             ("supported-themes", supported_themes_json),
-            (
-                "supported-host-theme-presets",
-                supported_host_theme_presets_json,
-            ),
+            ("presentation-catalog", presentation_catalog_json),
         ];
         assert_eq!(cases.map(|(id, _)| id), BINDING_METADATA_IDS);
 
@@ -1980,8 +2206,47 @@ mod tests {
     }
 
     #[test]
+    fn presentation_metadata_dispatch_is_surface_specific_without_global_cache() {
+        let analysis_surface =
+            ArtifactCapabilitySurface::new(vec!["analysis"], vec![], vec![], None)
+                .expect("analysis-only artifact surface");
+        let empty: Value = serde_json::from_slice(
+            &binding_metadata_json_for("presentation-catalog", &analysis_surface).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(empty["theme_presets"], serde_json::json!([]));
+        assert_eq!(empty["profiles"], serde_json::json!([]));
+
+        #[cfg(feature = "svg")]
+        {
+            let svg_surface = ArtifactCapabilitySurface::new(
+                vec!["svg"],
+                vec!["svg"],
+                vec![],
+                Some(
+                    TextMeasurementCapabilities::new(vec![TEXT_MEASUREMENT_PROVIDER_VENDORED])
+                        .expect("vendored SVG measurement surface"),
+                ),
+            )
+            .expect("SVG artifact surface");
+            let svg: Value = serde_json::from_slice(
+                &binding_metadata_json_for("presentation-catalog", &svg_surface).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(svg["theme_presets"].as_array().unwrap().len(), 7);
+            assert_eq!(svg["profiles"][0]["id"], "merman-modern");
+
+            let empty_again: Value = serde_json::from_slice(
+                &binding_metadata_json_for("presentation-catalog", &analysis_surface).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(empty_again, empty);
+        }
+    }
+
+    #[test]
     fn binding_metadata_json_rejects_unknown_catalogs() {
-        let error = binding_metadata_json("unknown-catalog").unwrap_err();
+        let error = binding_metadata_json("supported-host-theme-presets").unwrap_err();
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert_eq!(error.kind(), crate::BindingErrorKind::Generic);

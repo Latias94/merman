@@ -53,10 +53,10 @@ const stableWrapperOnlyExports = new Set([
   "isAsciiDiagramType",
   "isBindingErrorPayload",
   "isBindingStatusCodeName",
+  "isBundledThemePresetName",
   "isDiagramType",
-  "isHostThemePresetName",
   "isThemeName",
-  "normalizeHostThemePresetName",
+  "normalizeBundledThemePresetName",
   "normalizeThemeName",
 ]);
 const stablePublicTypes = new Set([
@@ -310,6 +310,7 @@ const expectedRuntimeStateProperties = new Set([
   "supportedDiagramsCache",
   "diagramFamilyCapabilitiesCache",
   "runtimeCatalogCache",
+  "presentationCatalogCache",
   "supportedThemesCache",
 ]);
 failed ||= reportMissing(
@@ -337,6 +338,15 @@ failed ||= reportPolicyFailure(
   contract
     .exportedTypePropertyNames(publicEntry, "AnalysisBindingOptions")
     .has("parse"),
+);
+failed ||= reportPolicyFailure(
+  "check-contracts: SVG options must use presentation instead of the removed host_theme group",
+  contract
+    .exportedTypePropertyNames(publicEntry, "SvgBindingOptions")
+    .has("host_theme") ||
+    !contract
+      .exportedTypePropertyNames(publicEntry, "SvgBindingOptions")
+      .has("presentation"),
 );
 failed ||= reportPolicyFailure(
   "check-contracts: legacy single-document workspace symbol names must be removed",

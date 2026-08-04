@@ -6,6 +6,7 @@ import {
   replaceEditorSource,
   waitForPreviewSvg,
 } from "./helpers/playground";
+import { GENERATED_EXAMPLES } from "../src/generated/examples.ts";
 
 const UPSTREAM_C_SCALE_0 = {
   default: "hsl(240, 100%, 76.2745098039%)",
@@ -34,6 +35,20 @@ const UPSTREAM_KANBAN_SECTION_1 = {
 } as const;
 
 type ThemeName = keyof typeof UPSTREAM_C_SCALE_0;
+
+const BLOCK_SYSTEM_ARCHITECTURE_EXAMPLE = GENERATED_EXAMPLES.find(
+  (example) => example.id === "block-system-architecture"
+);
+if (!BLOCK_SYSTEM_ARCHITECTURE_EXAMPLE) {
+  throw new Error("Missing the Block system architecture Playground example.");
+}
+
+const C4_CONTAINER_EXAMPLE = GENERATED_EXAMPLES.find(
+  (example) => example.id === "c4-container-banking"
+);
+if (!C4_CONTAINER_EXAMPLE) {
+  throw new Error("Missing the C4 container Playground example.");
+}
 
 test("Compare keeps Mermaid JS failures owned by the Mermaid pane", async ({
   page,
@@ -189,6 +204,53 @@ test("Block circle edges contact the browser-visible shape boundary", async ({
   );
 
   await expect.poll(() => blockCircleEndpointError(page)).toBeLessThanOrEqual(0.01);
+  errors.assertNone();
+});
+
+test("Block class definitions match Mermaid computed fills", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await renderSource(page, isMobile, BLOCK_SYSTEM_ARCHITECTURE_EXAMPLE.source);
+
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  const expected = {
+    front: await browserComputedFill(page, "#696"),
+    back: [
+      await browserComputedFill(page, "#969"),
+      await browserComputedFill(page, "#969"),
+    ],
+  };
+
+  await expect
+    .poll(() => blockClassDefinitionFills(page, "merman"), {
+      message: "Merman Block classDef computed fills",
+    })
+    .toEqual(expected);
+  await expect
+    .poll(() => blockClassDefinitionFills(page, "mermaid"), {
+      message: "Mermaid JS Block classDef computed fills",
+    })
+    .toEqual(expected);
+  errors.assertNone();
+});
+
+test("C4 uses the same browser layout environment in both compare panes", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await renderSource(page, isMobile, C4_CONTAINER_EXAMPLE.source);
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+
+  await expect
+    .poll(() => compareViewBoxesMatch(page), {
+      message: "Merman and Mermaid JS C4 viewBoxes",
+    })
+    .toBe(true);
   errors.assertNone();
 });
 
@@ -366,6 +428,54 @@ async function blockCircleEndpointError(page: Page): Promise<number> {
     const radius = circle.r.baseVal.value;
     return Math.abs(Math.hypot(localStart.x - centerX, localStart.y - centerY) - radius);
   });
+}
+
+async function blockClassDefinitionFills(
+  page: Page,
+  engine: "merman" | "mermaid"
+): Promise<{ front: string | null; back: Array<string | null> } | null> {
+  const host = page.locator(
+    `[data-merman-compare-engine="${engine}"] .preview-container > div`
+  );
+  return host.evaluate((preview) => {
+    const svg = preview.shadowRoot?.querySelector("svg");
+    if (!svg) return null;
+
+    const shapeFill = (node: Element): string | null => {
+      const shape = node.querySelector<SVGGraphicsElement>(
+        ":scope > rect, :scope > circle, :scope > ellipse, :scope > polygon, :scope > path"
+      );
+      return shape ? getComputedStyle(shape).fill : null;
+    };
+    const front = svg.querySelector("g.node.front");
+    const back = [...svg.querySelectorAll("g.node.back")];
+    if (!front || back.length !== 2) return null;
+
+    return {
+      front: shapeFill(front),
+      back: back.map(shapeFill),
+    };
+  });
+}
+
+async function compareViewBoxesMatch(page: Page): Promise<boolean | null> {
+  const viewBoxes = await Promise.all(
+    (["merman", "mermaid"] as const).map((engine) =>
+      page
+        .locator(
+          `[data-merman-compare-engine="${engine}"] .preview-container > div`
+        )
+        .evaluate((host) => {
+          const svg = host.shadowRoot?.querySelector<SVGSVGElement>("svg");
+          if (!svg) return null;
+          const viewBox = svg.viewBox.baseVal;
+          return [viewBox.x, viewBox.y, viewBox.width, viewBox.height];
+        })
+    )
+  );
+  if (viewBoxes.some((viewBox) => viewBox === null)) return null;
+  const [left, right] = viewBoxes;
+  return left?.every((value, index) => value === right?.[index]) ?? null;
 }
 
 async function ganttTickOverlapCount(page: Page): Promise<number | null> {

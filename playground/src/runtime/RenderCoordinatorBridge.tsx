@@ -13,16 +13,20 @@ export function RenderCoordinatorBridge() {
     code,
     diagramFont,
     diagramTheme,
-    hostThemePreset,
     mermaidConfig,
+    presentationProfileId,
+    presentationThemePresetId,
+    svgPipeline,
     textMeasurementMode,
   } = useAppStore(
     useShallow((state) => ({
       code: state.code,
       diagramFont: state.diagramFont,
       diagramTheme: state.diagramTheme,
-      hostThemePreset: state.hostThemePreset,
       mermaidConfig: state.mermaidConfig,
+      presentationProfileId: state.presentationProfileId,
+      presentationThemePresetId: state.presentationThemePresetId,
+      svgPipeline: state.svgPipeline,
       textMeasurementMode: state.textMeasurementMode,
     }))
   );
@@ -30,11 +34,18 @@ export function RenderCoordinatorBridge() {
   const options = useMemo(
     () => ({
       diagramFont,
-      hostThemePreset:
-        hostThemePreset === "none" ? undefined : hostThemePreset,
+      presentationProfileId,
+      presentationThemePresetId,
+      svgPipeline,
       textMeasurementMode,
     }),
-    [diagramFont, hostThemePreset, textMeasurementMode]
+    [
+      diagramFont,
+      presentationProfileId,
+      presentationThemePresetId,
+      svgPipeline,
+      textMeasurementMode,
+    ]
   );
 
   useEffect(() => {

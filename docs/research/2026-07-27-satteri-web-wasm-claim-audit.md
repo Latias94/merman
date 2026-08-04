@@ -286,8 +286,8 @@ The current repository provides strong evidence for **major** color customizatio
 - [`theme.rs`](../../crates/merman-core/src/theme.rs) checks all 11 default snapshots and generated
   override-oracle cases;
 - the renderability smoke covers visible theme signals in 26 representative families; and
-- `site_config`, `host_theme.theme_variables`, `themeCSS`, and scoped CSS remain public binding
-  paths.
+- semantic `presentation.theme`, top-level `site_config` including Mermaid `themeVariables` and
+  `themeCSS`, and scoped SVG CSS remain public binding paths.
 
 It would still be incorrect to promise that every visible color in every family is semantically
 overrideable:
