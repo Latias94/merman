@@ -162,8 +162,8 @@
           "merman.analysis.fixed_today": {
             "type": "string",
             "default": "",
-            "pattern": "^$|^\\d{4}-\\d{2}-\\d{2}$",
-            "markdownDescription": "Optional deterministic local date forwarded to `merman-lsp` analysis options in `YYYY-MM-DD` format.",
+            "pattern": "^$|^(?:\\d{4}|\\+(?:[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-7])|-(?:000[1-9]|00[1-9]\\d|0[1-9]\\d{2}|[1-9]\\d{3}|[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-8]))-\\d{2}-\\d{2}$",
+            "markdownDescription": "Optional canonical deterministic local civil date forwarded to `merman-lsp`. Years 0000 through 9999 use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The date and its local-midnight instant are validated when the configuration is applied.",
             "scope": "window",
             "order": 10
           },

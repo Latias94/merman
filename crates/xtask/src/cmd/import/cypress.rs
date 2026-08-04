@@ -1939,7 +1939,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         }
         let header = format!(
             "# import-upstream-cypress report (Mermaid{baseline_label})\n# generated_at={}\n",
-            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z")
+            crate::cmd::timestamps::current_local_report_timestamp_milliseconds()
         );
         let mut out = String::new();
         out.push_str(&header);

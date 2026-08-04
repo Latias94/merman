@@ -157,7 +157,7 @@ Every field is optional.
 | --- | --- | --- | --- |
 | `version` | integer | `2` | Options-schema version. Version `1` is the incompatible alpha.3 grammar and is rejected. Omitting the field uses the current schema-2 grammar for convenience callers; durable SDK integrations should send `2` explicitly. |
 | `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
-| `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date in `YYYY-MM-DD` format for time-dependent diagrams such as Gantt. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
+| `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date with a canonical signed-32-bit civil date. Years `0000` through `9999` use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
 | `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
 | `presentation` | object | none | Optional first-party presentation profile plus independent host semantic theme data. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
@@ -253,9 +253,12 @@ Current authoring rule ids are `merman.authoring.config.prefer_init_directive`,
 `merman.authoring.config.prefer_frontmatter_config`, and
 `merman.authoring.flowchart.explicit_direction`.
 
-`fixed_today` must be a `YYYY-MM-DD` date. `fixed_local_offset_minutes` must be an integer offset
-accepted by the fixed-offset timezone model, currently `-1439` through `1439`. Invalid values return
-`MERMAN_INVALID_ARGUMENT`.
+`fixed_today` must use Merman's canonical civil-date spelling. Years `0000` through `9999` use
+exactly four unsigned digits. Later years use a leading `+`; negative years use `-` and at least
+four digits. Signed years do not admit unnecessary leading zeroes, and the year must fit an `i32`.
+Examples include `2026-02-15`, `+10000-01-01`, and `-10000-01-01`.
+`fixed_local_offset_minutes` must be an integer offset accepted by the fixed-offset timezone model,
+currently `-1439` through `1439`. Invalid values return `MERMAN_INVALID_ARGUMENT`.
 
 ## Site Config
 

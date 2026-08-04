@@ -248,7 +248,7 @@ fn analysis_generation_releases_parse_only_site_config_storage() {
     let analyzer = Analyzer::with_options(
         AnalysisOptions::default()
             .with_site_config(site_config.clone())
-            .with_fixed_today(chrono::NaiveDate::from_ymd_opt(2026, 7, 30)),
+            .with_fixed_today(merman_core::time::CivilDate::new(2026, 7, 30)),
     );
     let generation = analyzer
         .analyze_generation("flowchart TD\nA-->B\n")

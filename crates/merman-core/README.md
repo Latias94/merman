@@ -41,9 +41,16 @@ fn main() -> Result<(), merman_core::Error> {
 - Typed render models via `Engine::parse_diagram_for_render_model_sync`.
 - Parser-backed editor facts and family capability metadata.
 - Metadata-only parsing for integrations that only need type, title, and effective config.
+- Project-owned civil and offset time types that preserve Mermaid's wide year domain.
 - Runtime-agnostic async APIs plus synchronous helpers.
 
 `merman-core` has no default Cargo features. Mermaid parsing, configuration, sanitization, detection, and family facts are unconditional; optional `system-*` features only make explicit host runtime adapters available.
+
+## Deterministic Time
+
+Use `time::CivilDate` for date-only runtime controls such as `Engine::with_fixed_today`. Its canonical text syntax uses four unsigned digits for years `0000` through `9999`, a leading `+` for later years, and `-` plus at least four digits for negative years. The signed 32-bit year domain includes Mermaid's `+10000` and `-10000` boundaries. `time::CivilDateTime`, `time::UtcOffset`, and `time::OffsetDateTime` provide checked calendar and instant conversions without exposing a third-party time type in the public API.
+
+System clock and named time-zone access remain opt-in through the corresponding `system-*` features. Named-zone rules are implemented with Jiff internally, while deterministic and fixed-offset profiles do not pull Jiff into their dependency closure.
 
 ## Skip Detection When The Type Is Known
 

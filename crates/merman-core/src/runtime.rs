@@ -1,4 +1,6 @@
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+#[cfg(test)]
+use crate::time::UtcOffset;
+use crate::time::{CivilDate, CivilDateTime, OffsetDateTime};
 use std::cell::RefCell;
 use std::num::NonZeroU64;
 
@@ -67,7 +69,7 @@ pub enum RuntimePolicyError {
     #[error("runtime instant {0} is outside the supported calendar range")]
     InstantOutOfRange(i64),
     #[error("fixed_today local datetime {0}T00:00:00 cannot be resolved in the selected time zone")]
-    FixedLocalMidnightOutOfRange(NaiveDate),
+    FixedLocalMidnightOutOfRange(CivilDate),
     #[error("system random adapter failed: {0}")]
     SystemRandom(String),
 }
@@ -117,7 +119,7 @@ enum SystemTimingAuthority {}
 pub struct RuntimePolicy {
     clock: ClockPolicy,
     local_time_zone: crate::time::LocalTimeZone,
-    fixed_today_local: Option<NaiveDate>,
+    fixed_today_local: Option<CivilDate>,
     seed: SeedPolicy,
     timing: TimingPolicy,
 }
@@ -191,7 +193,7 @@ impl RuntimePolicy {
         Ok(self)
     }
 
-    pub fn with_fixed_today(mut self, today: Option<NaiveDate>) -> Self {
+    pub fn with_fixed_today(mut self, today: Option<CivilDate>) -> Self {
         self.fixed_today_local = today;
         self
     }
@@ -204,11 +206,11 @@ impl RuntimePolicy {
     /// boundary.
     pub fn try_with_fixed_today_at_local_midnight(
         mut self,
-        today: NaiveDate,
+        today: CivilDate,
     ) -> Result<Self, RuntimePolicyError> {
         let local = self
             .local_time_zone
-            .datetime_from_naive_local(today.and_time(NaiveTime::MIN))
+            .resolve_local(today.at_midnight())
             .ok_or(RuntimePolicyError::FixedLocalMidnightOutOfRange(today))?;
         self.clock = ClockPolicy::Fixed(local.timestamp_millis());
         self.fixed_today_local = Some(today);
@@ -306,7 +308,7 @@ impl RuntimePolicy {
 pub struct OperationContext {
     unix_millis: i64,
     clock_source: RuntimeValueSource,
-    today_local: NaiveDate,
+    today_local: CivilDate,
     today_is_fixed: bool,
     local_time_zone: crate::time::LocalTimeZone,
     seed: u64,
@@ -364,7 +366,7 @@ impl OperationContext {
         self.clock_source
     }
 
-    pub const fn today_local(&self) -> NaiveDate {
+    pub const fn today_local(&self) -> CivilDate {
         self.today_local
     }
 
@@ -469,12 +471,10 @@ fn system_timing_authority() -> Result<SystemTimingAuthority, RuntimePolicyError
 fn local_date_at(
     unix_millis: i64,
     time_zone: &crate::time::LocalTimeZone,
-) -> Result<NaiveDate, RuntimePolicyError> {
-    let utc = DateTime::<Utc>::from_timestamp_millis(unix_millis)
-        .ok_or(RuntimePolicyError::InstantOutOfRange(unix_millis))?;
+) -> Result<CivilDate, RuntimePolicyError> {
     time_zone
-        .datetime_to_local_fixed(utc.fixed_offset())
-        .map(|local| local.date_naive())
+        .at_instant(unix_millis)
+        .map(|local| local.local_datetime().date())
         .ok_or(RuntimePolicyError::InstantOutOfRange(unix_millis))
 }
 
@@ -532,25 +532,25 @@ pub(crate) fn with_operation_context<R>(context: &OperationContext, f: impl FnOn
     })
 }
 
-pub(crate) fn today_naive_local() -> NaiveDate {
+pub(crate) fn today_local() -> CivilDate {
     active_operation_context().today_local
 }
 
-pub(crate) fn datetime_from_naive_local(naive: NaiveDateTime) -> Option<DateTime<FixedOffset>> {
+pub(crate) fn resolve_local_datetime(local: CivilDateTime) -> Option<OffsetDateTime> {
     active_operation_context()
         .local_time_zone
-        .datetime_from_naive_local(naive)
+        .resolve_local(local)
 }
 
-pub(crate) fn datetime_to_local_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffset> {
+pub(crate) fn datetime_to_local(datetime: OffsetDateTime) -> OffsetDateTime {
     active_operation_context()
         .local_time_zone
-        .datetime_to_local_fixed(dt)
-        .unwrap_or(dt)
+        .at_instant(datetime.timestamp_millis())
+        .unwrap_or(datetime)
 }
 
-pub(crate) fn datetime_to_naive_local(dt: DateTime<FixedOffset>) -> NaiveDateTime {
-    datetime_to_local_fixed(dt).naive_local()
+pub(crate) fn datetime_to_local_civil(datetime: OffsetDateTime) -> CivilDateTime {
+    datetime_to_local(datetime).local_datetime()
 }
 
 pub(crate) fn generated_id_hex(domain: &str, counter: u64, len: usize) -> String {
@@ -612,14 +612,18 @@ fn active_operation_context() -> OperationContext {
 mod tests {
     use super::*;
 
+    fn date(year: i32, month: u32, day: u32) -> CivilDate {
+        CivilDate::new(year, month, day).expect("valid test date")
+    }
+
     #[test]
     fn operation_context_restores_after_panic() {
         let outer = RuntimePolicy::deterministic()
-            .with_fixed_today(Some(NaiveDate::from_ymd_opt(2026, 7, 18).unwrap()))
+            .with_fixed_today(Some(date(2026, 7, 18)))
             .begin_operation()
             .unwrap();
         let inner = RuntimePolicy::deterministic()
-            .with_fixed_today(Some(NaiveDate::from_ymd_opt(2030, 1, 2).unwrap()))
+            .with_fixed_today(Some(date(2030, 1, 2)))
             .begin_operation()
             .unwrap();
 
@@ -628,7 +632,7 @@ mod tests {
                 with_operation_context(&inner, || panic!("test panic"));
             });
             assert!(panic.is_err());
-            assert_eq!(today_naive_local(), outer.today_local());
+            assert_eq!(today_local(), outer.today_local());
         });
     }
 
@@ -637,10 +641,7 @@ mod tests {
         let context = RuntimePolicy::deterministic().begin_operation().unwrap();
 
         assert_eq!(context.unix_millis(), 0);
-        assert_eq!(
-            context.today_local(),
-            NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()
-        );
+        assert_eq!(context.today_local(), date(1970, 1, 1));
         assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(0));
         assert_eq!(context.seed(), DETERMINISTIC_OPERATION_SEED);
         assert_eq!(context.clock_source(), RuntimeValueSource::Fixed);
@@ -650,15 +651,18 @@ mod tests {
 
     #[test]
     fn fixed_today_local_midnight_rejects_unrepresentable_offset_boundary() {
+        let earliest_day = OffsetDateTime::from_unix_millis(i64::MIN, UtcOffset::UTC)
+            .utc_datetime()
+            .date();
         let error = RuntimePolicy::deterministic()
             .try_with_fixed_local_offset_minutes(1439)
             .expect("valid fixed offset")
-            .try_with_fixed_today_at_local_midnight(NaiveDate::MIN)
+            .try_with_fixed_today_at_local_midnight(earliest_day)
             .expect_err("minimum date at eastern boundary must be rejected");
 
         assert_eq!(
             error,
-            RuntimePolicyError::FixedLocalMidnightOutOfRange(NaiveDate::MIN)
+            RuntimePolicyError::FixedLocalMidnightOutOfRange(earliest_day)
         );
     }
 
@@ -682,13 +686,10 @@ mod tests {
             .unwrap()
             .begin_operation()
             .unwrap();
-        assert_eq!(
-            recomputed.today_local(),
-            NaiveDate::from_ymd_opt(1969, 12, 31).unwrap()
-        );
+        assert_eq!(recomputed.today_local(), date(1969, 12, 31));
         assert!(!recomputed.today_is_fixed());
 
-        let fixed_today = NaiveDate::from_ymd_opt(2026, 7, 22).unwrap();
+        let fixed_today = date(2026, 7, 22);
         let fixed = RuntimePolicy::deterministic()
             .with_fixed_today(Some(fixed_today))
             .begin_operation()
@@ -809,14 +810,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(west.unix_millis(), utc.unix_millis());
-        assert_eq!(
-            west.today_local(),
-            NaiveDate::from_ymd_opt(1969, 12, 31).unwrap()
-        );
-        assert_eq!(
-            utc.today_local(),
-            NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()
-        );
+        assert_eq!(west.today_local(), date(1969, 12, 31));
+        assert_eq!(utc.today_local(), date(1970, 1, 1));
     }
 
     #[cfg(feature = "system-timing")]

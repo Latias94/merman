@@ -1217,7 +1217,7 @@ fn raw_task_to_render_task(t: RawTask) -> Result<GanttRenderTask> {
     })
 }
 
-fn task_time_ms(task: &RawTask, field: &str, value: Option<DateTimeFixed>) -> Result<i64> {
+fn task_time_ms(task: &RawTask, field: &str, value: Option<OffsetDateTime>) -> Result<i64> {
     value.map(|d| d.timestamp_millis()).ok_or_else(|| {
         Error::diagram_parse_fallback(
             "gantt".to_string(),

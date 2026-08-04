@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
-use chrono::NaiveDate;
 use merman::Engine;
+use merman::time::CivilDate;
 use merman::svg::{
     HeadlessRenderer, RenderEnvironment, RenderResourcePolicy, ResourceLimitId, RuntimePolicy,
     finalize_resvg_svg,
@@ -23,7 +23,7 @@ pub fn deterministic_engine() -> Engine {
     let policy = RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(0)
         .expect("valid UTC offset")
-        .with_fixed_today(NaiveDate::from_ymd_opt(2025, 1, 1))
+        .with_fixed_today(CivilDate::new(2025, 1, 1))
         .with_fixed_unix_millis(1_735_689_600_000);
     Engine::new().with_runtime_policy(policy)
 }

@@ -12,6 +12,7 @@ use std::process::Command;
 use merman::{
     Engine, ParseOptions, RenderSemanticModel,
     svg::{HeadlessRenderer, RenderEnvironment, RuntimePolicy},
+    time::CivilDate,
 };
 
 const CHILD_PROCESS: &str = "MERMAN_DST_TEST_CHILD";
@@ -48,15 +49,14 @@ fn assert_new_york_winter_semantics() {
         .with_fixed_unix_millis(1_784_390_400_000);
     let winter_midnight = runtime_policy
         .local_time_zone()
-        .datetime_from_naive_local(
-            chrono::NaiveDate::from_ymd_opt(2026, 1, 15)
+        .resolve_local(
+            CivilDate::new(2026, 1, 15)
                 .expect("valid winter date")
-                .and_hms_opt(0, 0, 0)
-                .expect("valid winter midnight"),
+                .at_midnight(),
         )
         .expect("resolve New York winter midnight");
     assert_eq!(winter_midnight.timestamp_millis(), 1_768_453_200_000);
-    assert_eq!(winter_midnight.offset().local_minus_utc() / 60, -5 * 60);
+    assert_eq!(winter_midnight.offset().minutes(), -5 * 60);
 
     let environment =
         RenderEnvironment::deterministic().with_runtime_policy(runtime_policy.clone());
@@ -156,27 +156,21 @@ fn emit_timezone_provenance(expected_identifier: &str) {
     let session = environment.begin_session().expect("capture timezone rules");
     let report = session.report();
     assert_eq!(report.local_time_zone().identifier(), expected_identifier);
-    let summer = chrono::NaiveDate::from_ymd_opt(2026, 7, 15)
+    let summer = CivilDate::new(2026, 7, 15)
         .expect("valid summer date")
-        .and_hms_opt(0, 0, 0)
-        .expect("valid midnight");
+        .at_midnight();
     let summer_offset = session
         .local_time_zone()
-        .datetime_from_naive_local(summer)
+        .resolve_local(summer)
         .expect("summer midnight")
         .offset()
-        .local_minus_utc();
-    let captured_instant =
-        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(session.unix_millis())
-            .expect("captured instant")
-            .fixed_offset();
+        .seconds();
     let captured_offset = session
         .local_time_zone()
-        .datetime_to_local_fixed(captured_instant)
+        .at_instant(session.unix_millis())
         .expect("captured local instant")
         .offset()
-        .local_minus_utc()
-        / 60;
+        .minutes();
     println!(
         "MERMAN_TIME_ZONE_EVIDENCE|{}|{}:{}:{}|{}|{}",
         report.local_time_zone().identifier(),

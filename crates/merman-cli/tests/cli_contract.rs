@@ -461,7 +461,7 @@ fn invalid_render_configuration_precedes_primary_input_acquisition() {
             &[
                 "render",
                 "missing.mmd",
-                "--fixed-today=-262143-01-01",
+                "--fixed-today=-2147483648-01-01",
                 "--fixed-local-offset-minutes",
                 "1439",
             ],
@@ -540,7 +540,7 @@ fn invalid_render_configuration_does_not_wait_for_stdin() {
             &[
                 "render",
                 "-",
-                "--fixed-today=-262143-01-01",
+                "--fixed-today=-2147483648-01-01",
                 "--fixed-local-offset-minutes",
                 "1439",
             ],

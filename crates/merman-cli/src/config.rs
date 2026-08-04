@@ -473,7 +473,7 @@ mod tests {
     #[test]
     fn boundary_fixed_today_returns_invalid_input_instead_of_panicking() {
         let args = RuntimeCliArgs {
-            fixed_today: Some(chrono::NaiveDate::MIN),
+            fixed_today: Some(merman::time::CivilDate::new(i32::MIN, 1, 1).unwrap()),
             fixed_local_offset_minutes: Some(1439),
             ..Default::default()
         };

@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::resource_contract::{
@@ -1199,16 +1200,16 @@ pub(crate) fn binding_site_config(
 
 pub(crate) fn binding_fixed_today(
     options: &BindingOptions,
-) -> Result<Option<chrono::NaiveDate>, BindingError> {
+) -> Result<Option<merman::time::CivilDate>, BindingError> {
     let Some(today) = options.analysis.fixed_today.as_deref() else {
         return Ok(None);
     };
-    chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d")
+    merman::time::CivilDate::from_str(today)
         .map(Some)
         .map_err(|_| {
             BindingError::new(
                 BindingStatus::InvalidArgument,
-                "fixed_today must be a date in YYYY-MM-DD format",
+                "fixed_today must be a canonical civil date such as YYYY-MM-DD or +10000-MM-DD",
             )
         })
 }
@@ -1219,10 +1220,7 @@ pub(crate) fn binding_fixed_local_offset_minutes(
     let Some(offset_minutes) = options.analysis.fixed_local_offset_minutes else {
         return Ok(None);
     };
-    let valid = offset_minutes
-        .checked_mul(60)
-        .and_then(chrono::FixedOffset::east_opt)
-        .is_some();
+    let valid = merman::time::UtcOffset::from_minutes(offset_minutes).is_some();
     if !valid {
         return Err(BindingError::new(
             BindingStatus::InvalidArgument,

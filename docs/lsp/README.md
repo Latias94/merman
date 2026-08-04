@@ -62,7 +62,7 @@ The session cache has one weighted strong-reference entry per current URI stamp.
 - Snapshot-affecting configuration clears snapshot-dependent state.
 - Diagnostic-only rule changes refresh diagnostics without rebuilding semantic snapshots.
 
-Initialization and workspace settings can provide deterministic `fixed_today` and `fixed_local_offset_minutes` values. The LSP does not expose a native runtime selector or forward the facade's `system-*` Cargo features.
+Initialization and workspace settings can provide deterministic `fixed_today` and `fixed_local_offset_minutes` values. `fixed_today` uses the canonical `CivilDate` spelling: years `0000` through `9999` use `YYYY-MM-DD`, later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The LSP does not expose a native runtime selector or forward the facade's `system-*` Cargo features.
 
 ## Semantic Ownership
 

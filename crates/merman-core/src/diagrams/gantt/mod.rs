@@ -1,9 +1,10 @@
-use crate::{Error, ParseMetadata, Result, utils};
-use chrono::{Datelike, Duration, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Timelike};
+use crate::{
+    Error, ParseMetadata, Result,
+    time::{CivilDate, CivilDateTime, OffsetDateTime, UtcOffset},
+    utils,
+};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-
-type DateTimeFixed = chrono::DateTime<FixedOffset>;
 
 mod date;
 mod datetime;
@@ -73,7 +74,7 @@ fn validate_excludes_leave_a_working_weekday(db: &GanttDb) -> Result<()> {
     Ok(())
 }
 
-fn is_invalid_date(db: &GanttDb, date: DateTimeFixed, date_format: &str) -> bool {
+fn is_invalid_date(db: &GanttDb, date: OffsetDateTime, date_format: &str) -> bool {
     let formatted = format_dayjs_like(date, date_format);
     let date_only = format_dayjs_like(date, "YYYY-MM-DD");
 
@@ -90,15 +91,17 @@ fn is_invalid_date(db: &GanttDb, date: DateTimeFixed, date_format: &str) -> bool
             "friday" => 5u32,
             _ => 6u32,
         };
-        let local = crate::runtime::datetime_to_local_fixed(date);
+        let local = crate::runtime::datetime_to_local_civil(date);
         let iso = local.weekday().number_from_monday(); // 1..=7
         if iso == weekend_start || iso == weekend_start + 1 {
             return true;
         }
     }
 
-    let weekday =
-        weekday_full_name(crate::runtime::datetime_to_local_fixed(date).weekday()).to_lowercase();
+    let weekday = crate::runtime::datetime_to_local_civil(date)
+        .weekday()
+        .full_name()
+        .to_lowercase();
     if db.excludes.iter().any(|v| v == &weekday) {
         return true;
     }
@@ -110,14 +113,14 @@ fn is_invalid_date(db: &GanttDb, date: DateTimeFixed, date_format: &str) -> bool
 
 fn fix_task_dates(
     db: &GanttDb,
-    mut start_time: DateTimeFixed,
-    mut end_time: DateTimeFixed,
+    mut start_time: OffsetDateTime,
+    mut end_time: OffsetDateTime,
     date_format: &str,
-) -> Result<(DateTimeFixed, Option<DateTimeFixed>)> {
+) -> Result<(OffsetDateTime, Option<OffsetDateTime>)> {
     validate_excludes_leave_a_working_weekday(db)?;
 
     let mut invalid = false;
-    let mut render_end_time: Option<DateTimeFixed> = None;
+    let mut render_end_time: Option<OffsetDateTime> = None;
     let mut consecutive_invalid_days = 0usize;
     while start_time <= end_time {
         if !invalid {

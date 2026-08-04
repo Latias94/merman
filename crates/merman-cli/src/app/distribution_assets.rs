@@ -142,9 +142,9 @@ fn manpage_normalization_removes_only_the_mangen_empty_break_pair() {
 
 #[test]
 fn manpage_date_is_a_real_iso_calendar_date() {
-    let parsed = chrono::NaiveDate::parse_from_str(CLI_MANPAGE_DATE, "%Y-%m-%d")
+    let parsed = <merman::time::CivilDate as std::str::FromStr>::from_str(CLI_MANPAGE_DATE)
         .expect("CLI_MANPAGE_DATE must be a valid YYYY-MM-DD date");
-    assert_eq!(parsed.format("%Y-%m-%d").to_string(), CLI_MANPAGE_DATE);
+    assert_eq!(parsed.to_string(), CLI_MANPAGE_DATE);
 }
 
 fn manifest_dir() -> PathBuf {
