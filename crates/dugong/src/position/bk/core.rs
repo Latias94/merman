@@ -620,6 +620,10 @@ impl<'a> BkWorkspace<'a> {
         let mut successor_sort_work_acc = Ok(0usize);
 
         if g.is_directed() {
+            // Graphlib exposes predecessor and successor *nodes*, not edge instances. Named
+            // parallel edges therefore contribute one BK neighbor even though the slot-backed
+            // scan still visits and charges every edge slot.
+            let mut seen_adjacencies: HashSet<(usize, usize)> = HashSet::default();
             g.for_each_edge_ix(|from_graph_ix, to_graph_ix, _, _| {
                 let to_local = graph_to_local
                     .get(to_graph_ix)
@@ -628,6 +632,9 @@ impl<'a> BkWorkspace<'a> {
                 let Some(to_local) = to_local else {
                     return;
                 };
+                if !seen_adjacencies.insert((from_graph_ix, to_graph_ix)) {
+                    return;
+                }
                 let from_local = graph_to_local
                     .get(from_graph_ix)
                     .copied()
@@ -1861,6 +1868,53 @@ mod tests {
         let (g, layering) = fanout_graph(&[3, 5, 7]);
 
         assert_workspace_alignment_matches_public(&g, &layering, true);
+    }
+
+    #[test]
+    fn named_parallel_edges_contribute_one_bk_neighbor() {
+        let mut graph = Graph::new(GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: false,
+        });
+        graph.set_graph(GraphLabel::default());
+        for (id, rank, order) in [("a", 0, 0), ("b", 0, 1), ("target", 1, 0)] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(rank),
+                    order: Some(order),
+                    ..Default::default()
+                },
+            );
+        }
+        graph.set_edge_named("a", "target", Some("first"), Some(EdgeLabel::default()));
+        graph.set_edge_named("a", "target", Some("second"), Some(EdgeLabel::default()));
+        graph.set_edge_named("b", "target", Some("third"), Some(EdgeLabel::default()));
+        let layering = vec![
+            vec!["a".to_string(), "b".to_string()],
+            vec!["target".to_string()],
+        ];
+
+        let workspace = BkWorkspace::new(&graph, &layering);
+        let target = workspace
+            .nodes
+            .iter()
+            .position(|node| graph.node_id_by_ix(node.graph_ix) == Some("target"))
+            .expect("target workspace node");
+        let predecessor_ids = workspace.predecessors[target]
+            .iter()
+            .map(|&node| {
+                graph
+                    .node_id_by_ix(workspace.nodes[node].graph_ix)
+                    .expect("predecessor workspace node")
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(predecessor_ids, ["a", "b"]);
+        assert_eq!(workspace.predecessor_entries, 2);
+        assert_eq!(workspace.successor_entries, 2);
+        assert_workspace_alignment_matches_public(&graph, &layering, true);
     }
 
     #[test]
