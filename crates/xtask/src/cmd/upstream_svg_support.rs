@@ -826,7 +826,7 @@ pub(crate) fn ensure_upstream_svg_puppeteer_config() -> Result<PathBuf, XtaskErr
 mod tests {
     use super::*;
     use std::io::Write as _;
-    use std::net::{SocketAddr, TcpListener};
+    use std::net::{AddrParseError, SocketAddr, TcpListener};
     use std::process::Stdio;
 
     fn exact_test_name(name: &str) -> String {
@@ -841,6 +841,141 @@ mod tests {
         crate::cmd::target_root()
             .join("xtask-tests")
             .join(format!("{label}-{}-{sequence}", std::process::id()))
+    }
+
+    fn publish_ready_file_atomically(path: &Path, contents: &str) -> std::io::Result<()> {
+        let parent = path.parent().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("readiness path has no parent: {}", path.display()),
+            )
+        })?;
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("ready");
+        let sequence = CONTENT_ADDRESSED_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let temp_path = parent.join(format!(
+            ".{file_name}.{}.{}.tmp",
+            std::process::id(),
+            sequence
+        ));
+
+        // Keep the staging file beside the destination so rename publishes one complete payload
+        // without exposing the empty/truncated write window that triggered the Windows failure.
+        let result = (|| {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temp_path)?;
+            file.write_all(contents.as_bytes())?;
+            file.flush()?;
+            drop(file);
+            fs::rename(&temp_path, path)
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temp_path);
+        }
+        result
+    }
+
+    fn readiness_failure(
+        child: &mut Child,
+        process_tree: &mut Option<CapturedProcessTree>,
+        error: std::io::Error,
+    ) -> std::io::Error {
+        terminate_captured_process_tree(child, process_tree);
+        error
+    }
+
+    fn readiness_timeout_error(
+        ready_path: &Path,
+        last_parse_error: Option<&AddrParseError>,
+    ) -> std::io::Error {
+        let detail = last_parse_error.map_or_else(
+            || "the readiness file was never published".to_string(),
+            |err| format!("the last readiness payload was invalid: {err}"),
+        );
+        std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!(
+                "timed out waiting for a valid listener address in {}: {detail}",
+                ready_path.display()
+            ),
+        )
+    }
+
+    fn wait_for_managed_listener_address(
+        child: &mut Child,
+        ready_path: &Path,
+        timeout: Duration,
+    ) -> std::io::Result<SocketAddr> {
+        let started = Instant::now();
+        let mut process_tree = Some(CapturedProcessTree::capture(child));
+        let mut last_parse_error = None;
+
+        loop {
+            if remaining_timeout(started, timeout).is_none() {
+                let error = readiness_timeout_error(ready_path, last_parse_error.as_ref());
+                return Err(readiness_failure(child, &mut process_tree, error));
+            }
+
+            match fs::read_to_string(ready_path) {
+                Ok(contents) => match contents.trim().parse() {
+                    Ok(address) => {
+                        if remaining_timeout(started, timeout).is_some() {
+                            return Ok(address);
+                        }
+                        let error = readiness_timeout_error(ready_path, last_parse_error.as_ref());
+                        return Err(readiness_failure(child, &mut process_tree, error));
+                    }
+                    Err(err) => last_parse_error = Some(err),
+                },
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => {
+                    return Err(readiness_failure(child, &mut process_tree, err));
+                }
+            }
+
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    let error = std::io::Error::new(
+                        std::io::ErrorKind::BrokenPipe,
+                        format!(
+                            "managed process exited with {status} before publishing a valid listener address to {}",
+                            ready_path.display()
+                        ),
+                    );
+                    return Err(readiness_failure(child, &mut process_tree, error));
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    return Err(readiness_failure(child, &mut process_tree, err));
+                }
+            }
+
+            let Some(remaining) = remaining_timeout(started, timeout) else {
+                let error = readiness_timeout_error(ready_path, last_parse_error.as_ref());
+                return Err(readiness_failure(child, &mut process_tree, error));
+            };
+            std::thread::sleep(remaining.min(Duration::from_millis(20)));
+        }
+    }
+
+    fn wait_for_listener_release(address: SocketAddr) {
+        let release_deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match TcpListener::bind(address) {
+                Ok(listener) => {
+                    drop(listener);
+                    return;
+                }
+                Err(_) if Instant::now() < release_deadline => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(err) => panic!("managed listener remained alive after cleanup: {err}"),
+            }
+        }
     }
 
     #[test]
@@ -969,9 +1104,9 @@ mod tests {
         };
         let listener =
             TcpListener::bind("127.0.0.1:0").expect("bind inherited-pipe grandchild listener");
-        fs::write(
-            ready_path,
-            listener
+        publish_ready_file_atomically(
+            Path::new(&ready_path),
+            &listener
                 .local_addr()
                 .expect("inherited-pipe grandchild address")
                 .to_string(),
@@ -989,7 +1124,7 @@ mod tests {
         };
         let executable = std::env::current_exe().expect("current test executable");
         let grandchild_test = exact_test_name("inherited_pipe_grandchild_helper");
-        let grandchild = Command::new(executable)
+        let mut grandchild = Command::new(executable)
             .args(["--exact", grandchild_test.as_str(), "--nocapture"])
             .env(
                 "MERMAN_XTASK_SUPPORT_INHERITED_PIPE_GRANDCHILD_READY",
@@ -998,15 +1133,35 @@ mod tests {
             .spawn()
             .expect("spawn inherited-pipe grandchild");
 
-        let ready_deadline = Instant::now() + Duration::from_secs(1);
-        while !Path::new(&ready_path).is_file() && Instant::now() < ready_deadline {
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        assert!(
-            Path::new(&ready_path).is_file(),
-            "inherited-pipe grandchild did not become ready"
-        );
+        wait_for_managed_listener_address(
+            &mut grandchild,
+            Path::new(&ready_path),
+            Duration::from_secs(1),
+        )
+        .expect("inherited-pipe grandchild did not become ready");
         drop(grandchild);
+    }
+
+    #[test]
+    fn delayed_ready_child_helper() {
+        let Some(ready_path) = std::env::var_os("MERMAN_XTASK_SUPPORT_DELAYED_READY") else {
+            return;
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed-ready listener");
+        // Deliberately model the old non-atomic producer so the reader regression covers the
+        // original empty-file race instead of relying only on the corrected publisher.
+        fs::write(&ready_path, "").expect("publish empty readiness placeholder");
+        std::thread::sleep(Duration::from_millis(150));
+        fs::write(
+            &ready_path,
+            listener
+                .local_addr()
+                .expect("delayed-ready listener address")
+                .to_string(),
+        )
+        .expect("write delayed readiness payload");
+        std::thread::sleep(Duration::from_secs(30));
+        drop(listener);
     }
 
     #[test]
@@ -1017,14 +1172,23 @@ mod tests {
         };
         let listener =
             TcpListener::bind("127.0.0.1:0").expect("bind process-tree grandchild listener");
-        fs::write(
-            ready_path,
-            listener
-                .local_addr()
-                .expect("grandchild listener address")
-                .to_string(),
-        )
-        .expect("write process-tree ready file");
+        let address = listener
+            .local_addr()
+            .expect("grandchild listener address")
+            .to_string();
+        if let Some(bound_ready_path) = std::env::var_os("MERMAN_XTASK_SUPPORT_TREE_BOUND_READY") {
+            publish_ready_file_atomically(Path::new(&bound_ready_path), &address)
+                .expect("publish process-tree bound address");
+        }
+        if std::env::var_os("MERMAN_XTASK_SUPPORT_TREE_SKIP_READY").is_none() {
+            let payload = if std::env::var_os("MERMAN_XTASK_SUPPORT_TREE_INVALID_READY").is_some() {
+                "not-a-listener-address".to_string()
+            } else {
+                address
+            };
+            publish_ready_file_atomically(Path::new(&ready_path), &payload)
+                .expect("write process-tree ready file");
+        }
         std::thread::sleep(Duration::from_secs(30));
         drop(listener);
     }
@@ -1063,14 +1227,9 @@ mod tests {
         let mut child =
             spawn_timeout_managed_child(&mut command).expect("spawn process-tree child");
 
-        let ready_deadline = Instant::now() + Duration::from_secs(5);
-        while !ready_path.is_file() && Instant::now() < ready_deadline {
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        let address: SocketAddr = fs::read_to_string(&ready_path)
-            .expect("read process-tree ready file")
-            .parse()
-            .expect("parse grandchild listener address");
+        let address =
+            wait_for_managed_listener_address(&mut child, &ready_path, Duration::from_secs(5))
+                .expect("wait for process-tree grandchild listener");
 
         let error = wait_with_timeout(&mut child, Duration::from_millis(100))
             .expect_err("managed process tree must time out");
@@ -1083,21 +1242,213 @@ mod tests {
             "timed-out child must be reaped"
         );
 
-        let release_deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            match TcpListener::bind(address) {
-                Ok(listener) => {
-                    drop(listener);
-                    break;
-                }
-                Err(_) if Instant::now() < release_deadline => {
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-                Err(err) => panic!("grandchild listener remained alive after timeout: {err}"),
-            }
-        }
+        wait_for_listener_release(address);
         fs::remove_file(&ready_path).expect("remove process-tree ready file");
         fs::remove_dir(&root).expect("remove process-tree test root");
+    }
+
+    #[test]
+    fn readiness_wait_retries_an_empty_file_until_it_is_parseable() {
+        let root = unique_test_root("upstream-svg-support-delayed-ready");
+        fs::create_dir_all(&root).expect("create delayed-ready test root");
+        let ready_path = root.join("listener-ready.txt");
+        let executable = std::env::current_exe().expect("current test executable");
+        let child_test = exact_test_name("delayed_ready_child_helper");
+        let mut command = Command::new(executable);
+        command
+            .args(["--exact", child_test.as_str(), "--nocapture"])
+            .env("MERMAN_XTASK_SUPPORT_DELAYED_READY", &ready_path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut child =
+            spawn_timeout_managed_child(&mut command).expect("spawn delayed-ready child");
+
+        let address =
+            wait_for_managed_listener_address(&mut child, &ready_path, Duration::from_secs(5))
+                .expect("wait through the empty readiness window");
+
+        assert!(
+            child
+                .try_wait()
+                .expect("query delayed-ready child")
+                .is_none(),
+            "a transient empty readiness file must not terminate a healthy child"
+        );
+        terminate_child_process_tree(&mut child);
+        assert!(child.try_wait().expect("query terminated child").is_some());
+        wait_for_listener_release(address);
+        fs::remove_file(&ready_path).expect("remove delayed-ready file");
+        fs::remove_dir(&root).expect("remove delayed-ready test root");
+    }
+
+    #[test]
+    fn readiness_read_failure_terminates_and_reaps_the_managed_child() {
+        let root = unique_test_root("upstream-svg-support-readiness-read-failure");
+        let ready_path = root.join("ready-is-a-directory");
+        fs::create_dir_all(&ready_path).expect("create invalid readiness directory");
+        let executable = std::env::current_exe().expect("current test executable");
+        let child_test = exact_test_name("timeout_child_helper");
+        let mut command = Command::new(executable);
+        command
+            .args(["--exact", child_test.as_str(), "--nocapture"])
+            .env("MERMAN_XTASK_SUPPORT_TIMEOUT_CHILD", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut child = spawn_timeout_managed_child(&mut command).expect("spawn readiness child");
+
+        wait_for_managed_listener_address(&mut child, &ready_path, Duration::from_secs(5))
+            .expect_err("a readiness read failure must be reported");
+
+        assert!(
+            child
+                .try_wait()
+                .expect("query read-failure child")
+                .is_some(),
+            "a readiness read failure must reap the managed child"
+        );
+        fs::remove_dir(&ready_path).expect("remove invalid readiness directory");
+        fs::remove_dir(&root).expect("remove readiness read-failure root");
+    }
+
+    #[test]
+    fn readiness_child_exit_is_reported_and_reaped() {
+        let root = unique_test_root("upstream-svg-support-readiness-child-exit");
+        fs::create_dir_all(&root).expect("create readiness child-exit root");
+        let ready_path = root.join("never-created.txt");
+        let executable = std::env::current_exe().expect("current test executable");
+        let child_test = exact_test_name("timeout_child_helper");
+        let mut command = Command::new(executable);
+        command
+            .args(["--exact", child_test.as_str(), "--nocapture"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut child = spawn_timeout_managed_child(&mut command).expect("spawn exiting child");
+
+        let error =
+            wait_for_managed_listener_address(&mut child, &ready_path, Duration::from_secs(5))
+                .expect_err("an exited child cannot publish readiness");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
+        assert!(child.try_wait().expect("query exited child").is_some());
+        assert!(!ready_path.exists());
+        fs::remove_dir(&root).expect("remove readiness child-exit root");
+    }
+
+    #[test]
+    fn readiness_payload_after_deadline_is_rejected_and_reaped() {
+        let root = unique_test_root("upstream-svg-support-late-readiness");
+        fs::create_dir_all(&root).expect("create late-readiness root");
+        let ready_path = root.join("listener-ready.txt");
+        let executable = std::env::current_exe().expect("current test executable");
+        let child_test = exact_test_name("delayed_ready_child_helper");
+        let mut command = Command::new(executable);
+        command
+            .args(["--exact", child_test.as_str(), "--nocapture"])
+            .env("MERMAN_XTASK_SUPPORT_DELAYED_READY", &ready_path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut child = spawn_timeout_managed_child(&mut command).expect("spawn late-ready child");
+
+        let error =
+            wait_for_managed_listener_address(&mut child, &ready_path, Duration::from_millis(50))
+                .expect_err("readiness published after the hard deadline must be rejected");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert!(child.try_wait().expect("query late-ready child").is_some());
+        if ready_path.exists() {
+            fs::remove_file(&ready_path).expect("remove late readiness file");
+        }
+        fs::remove_dir(&root).expect("remove late-readiness root");
+    }
+
+    #[test]
+    fn readiness_timeout_terminates_the_tree_and_releases_the_grandchild_port() {
+        let root = unique_test_root("upstream-svg-support-readiness-timeout");
+        fs::create_dir_all(&root).expect("create readiness-timeout test root");
+        let ready_path = root.join("never-ready.txt");
+        let bound_ready_path = root.join("listener-bound.txt");
+        let executable = std::env::current_exe().expect("current test executable");
+        let child_test = exact_test_name("process_tree_child_helper");
+        let mut command = Command::new(executable);
+        command
+            .args(["--exact", child_test.as_str(), "--nocapture"])
+            .env("MERMAN_XTASK_SUPPORT_TREE_CHILD_READY", &ready_path)
+            .env("MERMAN_XTASK_SUPPORT_TREE_BOUND_READY", &bound_ready_path)
+            .env("MERMAN_XTASK_SUPPORT_TREE_SKIP_READY", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut child =
+            spawn_timeout_managed_child(&mut command).expect("spawn never-ready process tree");
+
+        let observed_address = wait_for_managed_listener_address(
+            &mut child,
+            &bound_ready_path,
+            Duration::from_secs(5),
+        )
+        .expect("wait for the never-ready grandchild to bind");
+
+        let error =
+            wait_for_managed_listener_address(&mut child, &ready_path, Duration::from_millis(250))
+                .expect_err("the process tree must never publish readiness");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert!(
+            child.try_wait().expect("query never-ready child").is_some(),
+            "a readiness timeout must reap the managed parent"
+        );
+        wait_for_listener_release(observed_address);
+        assert!(!ready_path.exists());
+        fs::remove_file(&bound_ready_path).expect("remove bound readiness file");
+        fs::remove_dir(&root).expect("remove readiness-timeout test root");
+    }
+
+    #[test]
+    fn invalid_readiness_terminates_the_tree_and_releases_the_grandchild_port() {
+        let root = unique_test_root("upstream-svg-support-invalid-readiness");
+        fs::create_dir_all(&root).expect("create invalid-readiness test root");
+        let ready_path = root.join("invalid-ready.txt");
+        let bound_ready_path = root.join("listener-bound.txt");
+        let executable = std::env::current_exe().expect("current test executable");
+        let child_test = exact_test_name("process_tree_child_helper");
+        let mut command = Command::new(executable);
+        command
+            .args(["--exact", child_test.as_str(), "--nocapture"])
+            .env("MERMAN_XTASK_SUPPORT_TREE_CHILD_READY", &ready_path)
+            .env("MERMAN_XTASK_SUPPORT_TREE_BOUND_READY", &bound_ready_path)
+            .env("MERMAN_XTASK_SUPPORT_TREE_INVALID_READY", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut child =
+            spawn_timeout_managed_child(&mut command).expect("spawn invalid-ready process tree");
+
+        let observed_address = wait_for_managed_listener_address(
+            &mut child,
+            &bound_ready_path,
+            Duration::from_secs(5),
+        )
+        .expect("wait for the invalid-ready grandchild to bind");
+
+        let error =
+            wait_for_managed_listener_address(&mut child, &ready_path, Duration::from_millis(250))
+                .expect_err("the invalid readiness payload must never be accepted");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert!(
+            error
+                .to_string()
+                .contains("last readiness payload was invalid")
+        );
+        assert!(
+            child
+                .try_wait()
+                .expect("query invalid-ready child")
+                .is_some(),
+            "an invalid readiness payload must reap the managed parent"
+        );
+        wait_for_listener_release(observed_address);
+        fs::remove_file(&ready_path).expect("remove invalid readiness file");
+        fs::remove_file(&bound_ready_path).expect("remove bound readiness file");
+        fs::remove_dir(&root).expect("remove invalid-readiness test root");
     }
 
     #[test]
@@ -1185,21 +1536,7 @@ mod tests {
             .expect("read inherited-pipe ready file")
             .parse()
             .expect("parse inherited-pipe grandchild address");
-        let release_deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            match TcpListener::bind(address) {
-                Ok(listener) => {
-                    drop(listener);
-                    break;
-                }
-                Err(_) if Instant::now() < release_deadline => {
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-                Err(err) => {
-                    panic!("inherited-pipe grandchild remained alive after deadline: {err}")
-                }
-            }
-        }
+        wait_for_listener_release(address);
         fs::remove_file(&ready_path).expect("remove inherited-pipe ready file");
         fs::remove_dir(&root).expect("remove inherited-pipe test root");
     }
