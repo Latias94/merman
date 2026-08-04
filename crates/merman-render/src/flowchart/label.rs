@@ -671,32 +671,73 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
     }
 }
 
-pub(super) fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
-    let mut pts: Vec<(f64, f64)> = Vec::new();
+fn compute_bounds_impl<E>(
+    nodes: &[LayoutNode],
+    edges: &[LayoutEdge],
+    mut charge: impl FnMut(usize) -> std::result::Result<(), E>,
+) -> std::result::Result<Option<Bounds>, E> {
+    fn include(bounds: &mut Option<Bounds>, x: f64, y: f64) {
+        let Some(bounds) = bounds.as_mut() else {
+            *bounds = Some(Bounds {
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            });
+            return;
+        };
+        bounds.min_x = bounds.min_x.min(x);
+        bounds.min_y = bounds.min_y.min(y);
+        bounds.max_x = bounds.max_x.max(x);
+        bounds.max_y = bounds.max_y.max(y);
+    }
+
+    let mut bounds = None;
     for n in nodes {
+        charge(2)?;
         let hw = n.width / 2.0;
         let hh = n.height / 2.0;
-        pts.push((n.x - hw, n.y - hh));
-        pts.push((n.x + hw, n.y + hh));
+        include(&mut bounds, n.x - hw, n.y - hh);
+        include(&mut bounds, n.x + hw, n.y + hh);
     }
     for e in edges {
+        charge(1)?;
+        charge(e.points.len())?;
         for p in &e.points {
-            pts.push((p.x, p.y));
+            include(&mut bounds, p.x, p.y);
         }
         if let Some(l) = &e.label {
+            charge(2)?;
             let hw = l.width / 2.0;
             let hh = l.height / 2.0;
-            pts.push((l.x - hw, l.y - hh));
-            pts.push((l.x + hw, l.y + hh));
+            include(&mut bounds, l.x - hw, l.y - hh);
+            include(&mut bounds, l.x + hw, l.y + hh);
         }
     }
-    Bounds::from_points(pts)
+    Ok(bounds)
+}
+
+#[cfg(feature = "layout-elk")]
+pub(super) fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
+    match compute_bounds_impl(nodes, edges, |_| Ok::<(), std::convert::Infallible>(())) {
+        Ok(bounds) => bounds,
+        Err(never) => match never {},
+    }
+}
+
+pub(super) fn compute_bounds_controlled(
+    nodes: &[LayoutNode],
+    edges: &[LayoutEdge],
+    charge: impl FnMut(usize) -> crate::Result<()>,
+) -> crate::Result<Option<Bounds>> {
+    compute_bounds_impl(nodes, edges, charge)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::math::MathRenderer;
+    use crate::model::{LayoutLabel, LayoutPoint};
 
     #[derive(Debug)]
     struct PreciseMathRenderer;
@@ -751,5 +792,64 @@ mod tests {
 
         assert!((metrics.width - 12.01).abs() < 1e-12, "{metrics:?}");
         assert!((metrics.height - 20.008).abs() < 1e-12, "{metrics:?}");
+    }
+
+    #[test]
+    fn controlled_bounds_streams_geometry_and_charges_each_visited_item() {
+        let nodes = vec![LayoutNode {
+            id: "node".to_string(),
+            x: 10.0,
+            y: 20.0,
+            width: 8.0,
+            height: 6.0,
+            is_cluster: false,
+            label_width: None,
+            label_height: None,
+        }];
+        let edges = vec![LayoutEdge {
+            id: "edge".to_string(),
+            from: "node".to_string(),
+            to: "node".to_string(),
+            from_cluster: None,
+            to_cluster: None,
+            points: vec![
+                LayoutPoint { x: -5.0, y: 1.0 },
+                LayoutPoint { x: 7.0, y: 30.0 },
+                LayoutPoint { x: 14.0, y: 18.0 },
+            ],
+            label: Some(LayoutLabel {
+                x: 4.0,
+                y: 5.0,
+                width: 4.0,
+                height: 2.0,
+            }),
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        }];
+        let mut tranches = Vec::new();
+
+        let bounds = compute_bounds_controlled(&nodes, &edges, |units| {
+            tranches.push(units);
+            Ok(())
+        })
+        .expect("the accounting callback accepts every tranche")
+        .expect("the geometry is non-empty");
+
+        assert_eq!(tranches, vec![2, 1, 3, 2]);
+        assert_eq!(tranches.iter().sum::<usize>(), 8);
+        assert_eq!(
+            bounds,
+            Bounds {
+                min_x: -5.0,
+                min_y: 1.0,
+                max_x: 14.0,
+                max_y: 30.0,
+            }
+        );
     }
 }
