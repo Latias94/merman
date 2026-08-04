@@ -15,7 +15,7 @@ use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, Flowcha
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
-use super::layout::{first_parent_cycle_assignment, flowchart_svg_plain_computed_width_px};
+use super::layout::flowchart_svg_plain_computed_width_px;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{
     FlowchartLabelMetricsRequest, flowchart_apply_html_node_class_box_metrics,
@@ -989,17 +989,118 @@ fn parent_by_id(
         }
     }
 
-    charge_adapter_work(work_control, model.subgraphs.len())?;
-    if let Some((child, parent)) = first_parent_cycle_assignment(
-        model.subgraphs.iter().rev().map(|sg| sg.id.as_str()),
-        &parent_by_id,
-    ) {
+    if let Some((child, parent)) =
+        first_elk_parent_cycle_assignment(model, &parent_by_id, work_control)?
+    {
         return Err(Error::InvalidModel {
             message: format!("Setting {parent} as parent of {child} would create a cycle"),
         });
     }
 
     Ok(parent_by_id)
+}
+
+fn first_elk_parent_cycle_assignment(
+    model: &FlowchartModel,
+    parent_by_id: &HashMap<String, String>,
+    work_control: &mut Option<&mut ElkOperationWorkControl>,
+) -> Result<Option<(String, String)>> {
+    // ELK does not materialize a Graphlib compound graph, so it must validate the final FlowDB
+    // parent map itself. Preserve Mermaid's reverse-subgraph assignment order, but keep this check
+    // local to the ELK adapter instead of restoring Dagre's obsolete duplicate preflight.
+    charge_adapter_work(work_control, model.subgraphs.len())?;
+    let mut assigned = HashSet::with_capacity(model.subgraphs.len());
+    let mut assignments = Vec::with_capacity(model.subgraphs.len());
+    for child in model
+        .subgraphs
+        .iter()
+        .rev()
+        .map(|subgraph| subgraph.id.as_str())
+    {
+        let Some(parent) = parent_by_id.get(child) else {
+            continue;
+        };
+        if assigned.insert(child) {
+            assignments.push((child, parent.as_str()));
+        }
+    }
+    if assignments.is_empty() {
+        return Ok(None);
+    }
+
+    let node_capacity = checked_adapter_mul(work_control, assignments.len(), 2)?;
+    let height = if node_capacity <= 1 {
+        0
+    } else {
+        usize::BITS as usize - (node_capacity - 1).leading_zeros() as usize
+    };
+    let find_work = checked_adapter_mul(
+        work_control,
+        checked_adapter_add(work_control, height, 1)?,
+        4,
+    )?;
+    let union_work = checked_adapter_mul(work_control, assignments.len(), find_work)?;
+    let linear_work = checked_adapter_add(
+        work_control,
+        checked_adapter_mul(work_control, node_capacity, 6)?,
+        checked_adapter_mul(work_control, assignments.len(), 2)?,
+    )?;
+    charge_adapter_work(
+        work_control,
+        checked_adapter_add(work_control, union_work, linear_work)?,
+    )?;
+
+    fn intern<'a>(
+        id: &'a str,
+        index_by_id: &mut HashMap<&'a str, usize>,
+        parents: &mut Vec<usize>,
+        ranks: &mut Vec<u8>,
+    ) -> usize {
+        if let Some(&index) = index_by_id.get(id) {
+            return index;
+        }
+        let index = parents.len();
+        parents.push(index);
+        ranks.push(0);
+        index_by_id.insert(id, index);
+        index
+    }
+
+    fn find(parents: &mut [usize], mut index: usize) -> usize {
+        let mut root = index;
+        while parents[root] != root {
+            root = parents[root];
+        }
+        while parents[index] != index {
+            let next = parents[index];
+            parents[index] = root;
+            index = next;
+        }
+        root
+    }
+
+    let mut index_by_id = HashMap::with_capacity(node_capacity);
+    let mut parents = Vec::with_capacity(node_capacity);
+    let mut ranks = Vec::with_capacity(node_capacity);
+    for (child, parent) in assignments {
+        let child_index = intern(child, &mut index_by_id, &mut parents, &mut ranks);
+        let parent_index = intern(parent, &mut index_by_id, &mut parents, &mut ranks);
+        let child_root = find(&mut parents, child_index);
+        let parent_root = find(&mut parents, parent_index);
+        if child_root == parent_root {
+            return Ok(Some((child.to_string(), parent.to_string())));
+        }
+        if ranks[child_root] < ranks[parent_root] {
+            parents[child_root] = parent_root;
+        } else {
+            parents[parent_root] = child_root;
+            if ranks[child_root] == ranks[parent_root] {
+                ranks[child_root] = ranks[child_root].saturating_add(1);
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 // Heavy-light decomposition keeps hierarchy preprocessing and retained memory linear while making
@@ -2152,6 +2253,28 @@ mod tests {
         assert_eq!(cluster.direction, Some(elk::Direction::Right));
         assert_eq!(child.parent.as_deref(), Some("cluster"));
         assert_eq!(outside.parent, None);
+    }
+
+    #[test]
+    fn flowchart_elk_parent_validation_reports_mermaids_first_assignment_cycle() {
+        let mut model = model(Vec::new(), Vec::new());
+        model.subgraphs = [("A", "B"), ("B", "A"), ("C", "D"), ("D", "C")]
+            .into_iter()
+            .map(|(parent, child)| subgraph(parent.to_string(), vec![child.to_string()]))
+            .collect();
+
+        let error = build_flowchart_elk_graph(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap_err();
+
+        let Error::InvalidModel { message } = error else {
+            panic!("expected InvalidModel");
+        };
+        assert_eq!(message, "Setting D as parent of C would create a cycle");
     }
 
     #[test]
