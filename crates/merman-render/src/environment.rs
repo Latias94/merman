@@ -1604,6 +1604,7 @@ impl RenderSession {
                 .provenance()
                 .clone(),
             resource_policy: self.resource_policy,
+            layout_work_units: self.work_meter.used(),
         }
     }
 }
@@ -1616,6 +1617,7 @@ pub struct RenderSessionReport {
     operation_context: OperationContext,
     local_time_zone: LocalTimeZoneProvenance,
     resource_policy: RenderResourcePolicy,
+    layout_work_units: usize,
 }
 
 impl RenderSessionReport {
@@ -1649,6 +1651,14 @@ impl RenderSessionReport {
 
     pub const fn resource_policy(&self) -> RenderResourcePolicy {
         self.resource_policy
+    }
+
+    /// Returns the deterministic owner-accounted layout and geometry work consumed so far.
+    ///
+    /// This value is useful for resource-policy calibration. It is not elapsed time, an
+    /// instruction count, or a portable latency estimate.
+    pub const fn layout_work_units(&self) -> usize {
+        self.layout_work_units
     }
 }
 

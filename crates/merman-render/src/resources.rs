@@ -234,8 +234,10 @@ const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
     [Some(24 * MIB), Some(12 * MIB), Some(128 * MIB), None],
     [Some(250_000), Some(125_000), Some(1_000_000), None],
     // A policy budget, not a Mermaid limit. Families charge deterministic
-    // units for derived geometry and inspected layout candidates.
-    [Some(250_000), Some(125_000), Some(1_000_000), None],
+    // units for derived geometry and inspected layout candidates. The interactive
+    // ceiling admits the repository's normal large public fixtures with calibration
+    // headroom while the constrained profile remains the untrusted-input boundary.
+    [Some(800_000), Some(125_000), Some(1_000_000), None],
 ];
 
 pub const GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE: RenderResourceProfile =
@@ -647,7 +649,6 @@ impl OperationWorkMeter {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn used(&self) -> usize {
         self.used.load(std::sync::atomic::Ordering::Relaxed)
     }

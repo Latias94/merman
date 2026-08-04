@@ -40,6 +40,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### New and changed
 
 - Added root-level `merman::render_svg` and `render_svg_with_id` one-shot facades for the default deterministic SVG workflow, with typed `RenderSvgError::NoDiagram` handling; `HeadlessRenderer` remains the configured and reusable path. Reworked the Rust example catalog into self-contained, task-named files with no shared support module.
+- Added completed-operation `layout_work_units()` evidence so hosts can calibrate public work ceilings from the same deterministic owner accounting that enforces them.
 - Separated oversized-output policy by format: SVG retains vector-specific limits, PNG/JPEG preflight final pixmap and embedded-image budgets, PDF owns page and filter-bitmap budgets, and Markdown batches reserve aggregate scheduling weight. The CLI exposes scoped raster, PDF, embedded-image, and batch-concurrency controls.
 - Centralized built-in SVG root emission around source-backed bounds, responsive/fixed sizing, accessibility metadata, escaping, and deferred finalization; fixture-scoped viewport pins and exact-label production tables are removed. #22
 - Added a generated 35-family Playground example catalog with source provenance and search, plus isolated Compare and Bench realms that expose explicit failures and downloadable local benchmark evidence.
@@ -54,6 +55,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Fixed Mermaid 11.16 rendering and parsing edge cases across Flowchart and State self-loops, Sequence blocks and wrapping, TreeView icons and bounds, centered Railroad choices, Cynefin inline syntax, Packet accessibility descriptions, Architecture ids and seeds, XYChart labels, Pie highlighting, and Ishikawa structure. #21 #22 #23 #24
 - Applied Mermaid's staged theme calculation consistently across Radar, Kanban, Mindmap, Timeline, Cynefin, and QuadrantChart, including font-only and partial overrides and valid resvg-safe fallbacks.
 - Fixed Block `classDef` styles and connectors at browser-visible shape boundaries, projected browser `screen.availWidth` separately from container geometry for C4 parity, enforced Flowchart limits before Dagre/ELK/Swimlane dispatch, and preserved target-date daylight-saving semantics for Gantt without overflow at fixed-offset boundaries.
+- Calibrated the `interactive` layout-work ceiling to 800,000 owner-accounted units from the completed public benchmark-fixture corpus, including 15% rounded headroom above `flowchart_large`; the stricter `constrained` profile remains unchanged.
 - Fixed `initMerman({ wasm })` to accept a URL, `Response`, byte buffer, or compiled `WebAssembly.Module`; callers no longer need wasm-bindgen's deprecated `{ module_or_path }` envelope.
 - Prevented valid diagram ids from colliding with deferred root `viewBox` or `max-width` placeholders during SVG emission.
 - Polished the Playground with persistent editor/config/preview state, generated example search, keyboard-correct tabs and dialogs, synchronized system theme, safe-area and dynamic-viewport sizing, local Monaco assets, and accessible focus behavior.

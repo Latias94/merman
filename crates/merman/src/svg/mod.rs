@@ -932,6 +932,8 @@ mod svg_pipeline_tests {
 
         assert!(readable.svg().contains("data-merman-foreignobject"));
         assert!(wrapped_count(&readable) > wrapped_count(&plain));
+        assert!(plain.report().layout_work_units() > 0);
+        assert!(readable.report().layout_work_units() >= plain.report().layout_work_units());
         assert_eq!(
             readable_renderer.render_svg_sync(source).unwrap().unwrap(),
             readable.svg(),
