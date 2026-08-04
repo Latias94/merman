@@ -118,13 +118,22 @@ fn generate(args: Args) -> Result<(), Box<dyn std::error::Error>> {
 
 fn require_stable_python_surface(module_dir: &Path) -> io::Result<()> {
     let bindings = fs::read_to_string(module_dir.join(PYTHON_BINDINGS_MODULE))?;
-    validate_stable_python_surface(&bindings)
+    validate_stable_python_surface(&bindings)?;
+    validate_stable_python_object_model(&bindings)
 }
 
 fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
     for required in [
+        "class Merman(",
+        "class MermanEngine(",
+        "class MermanEngineServices(",
+        "class MermanIconPack(",
+        "class MermanIconRegistry(",
+        "class MermanIconRegistryErrorDetails:",
         "class MermanTextMeasurer(",
         "class MermanOperationRequest:",
+        "class MermanOperationMetadata:",
+        "class MermanOutputPlan:",
         "class MermanResourceErrorDetails:",
         "class MermanResourceOverrideId(",
         "id:MermanResourceOverrideId",
@@ -133,7 +142,15 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         "UNKNOWN_OPERATION",
         "def execute(self, request: MermanOperationRequest) -> MermanOperationResult:",
         "def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:",
-        "def reusable_engine_with_text_measurer(",
+        "def render_png_result(",
+        "def analysis_facts_json(",
+        "def svg_plan_json(",
+        "def close(self",
+        "def from_packs(",
+        "def json(self",
+        "def registration_name(self",
+        "self.metadata = metadata",
+        "self.icon_registry = icon_registry",
     ] {
         if !bindings.contains(required) {
             return Err(io::Error::new(
@@ -163,6 +180,12 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         "def supported_host_theme_presets(",
         "class MermanResourceLimitId(",
         "id:MermanResourceLimitId",
+        "class MermanReusableEngine",
+        "def reusable_engine(",
+        "def reusable_engine_with_text_measurer(",
+        "def with_text_measurer(",
+        "self.metadata_json = metadata_json",
+        "self.json = json",
     ] {
         if bindings.contains(removed) {
             return Err(io::Error::new(
@@ -172,6 +195,165 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+fn validate_stable_python_object_model(bindings: &str) -> io::Result<()> {
+    let merman = python_object_block(bindings, "Merman")?;
+    require_single_python_constructor(merman, "Merman", "def__init__(self,):")?;
+    require_python_methods(
+        merman,
+        "Merman",
+        &[
+            "binding_api_version",
+            "package_version",
+            "runtime_catalog_json",
+            "metadata_json",
+            "execute",
+            "render_svg",
+            "render_png_result",
+            "analysis_facts_json",
+            "svg_plan_json",
+        ],
+    )?;
+    for forbidden in [
+        "close",
+        "reusable_engine",
+        "reusable_engine_with_text_measurer",
+    ] {
+        if python_block_has_method(merman, forbidden) {
+            return Err(invalid_python_object_model(format!(
+                "Merman must not expose `{forbidden}`"
+            )));
+        }
+    }
+
+    let engine = python_object_block(bindings, "MermanEngine")?;
+    require_single_python_constructor(
+        engine,
+        "MermanEngine",
+        "def__init__(self,options_json:typing.Optional[str],services:typing.Optional[MermanEngineServices]):",
+    )?;
+    require_python_methods(
+        engine,
+        "MermanEngine",
+        &[
+            "execute",
+            "render_svg",
+            "render_png_result",
+            "analysis_facts_json",
+            "svg_plan_json",
+            "close",
+        ],
+    )?;
+    for forbidden in ["runtime_catalog_json", "metadata_json"] {
+        if python_block_has_method(engine, forbidden) {
+            return Err(invalid_python_object_model(format!(
+                "MermanEngine must not expose discovery method `{forbidden}`"
+            )));
+        }
+    }
+
+    let services = python_object_block(bindings, "MermanEngineServices")?;
+    require_single_python_constructor(
+        services,
+        "MermanEngineServices",
+        "def__init__(self,icon_registry:typing.Optional[MermanIconRegistry],text_measurer:typing.Optional[MermanTextMeasurer]):",
+    )?;
+
+    let icon_pack = python_object_block(bindings, "MermanIconPack")?;
+    require_single_python_constructor(
+        icon_pack,
+        "MermanIconPack",
+        "def__init__(self,json:str,registration_name:typing.Optional[str]):",
+    )?;
+    require_python_methods(icon_pack, "MermanIconPack", &["json", "registration_name"])?;
+    for mutable_field in ["self.json =", "self.registration_name ="] {
+        if icon_pack.contains(mutable_field) {
+            return Err(invalid_python_object_model(format!(
+                "MermanIconPack retains mutable field assignment `{mutable_field}`"
+            )));
+        }
+    }
+
+    let icon_registry = python_object_block(bindings, "MermanIconRegistry")?;
+    require_python_methods(
+        icon_registry,
+        "MermanIconRegistry",
+        &["from_packs", "len", "is_empty"],
+    )?;
+    if icon_registry.matches("def from_packs(").count() != 1 {
+        return Err(invalid_python_object_model(
+            "MermanIconRegistry must expose exactly one from_packs factory",
+        ));
+    }
+
+    Ok(())
+}
+
+fn python_object_block<'a>(bindings: &'a str, name: &str) -> io::Result<&'a str> {
+    let start = format!("class {name}(");
+    let end = format!("class _UniffiFfiConverterType{name}");
+    let (_, suffix) = bindings
+        .split_once(&start)
+        .ok_or_else(|| invalid_python_object_model(format!("missing {name} class")))?;
+    let (block, _) = suffix
+        .split_once(&end)
+        .ok_or_else(|| invalid_python_object_model(format!("missing {name} converter")))?;
+    Ok(block)
+}
+
+fn require_single_python_constructor(
+    block: &str,
+    name: &str,
+    expected_compact: &str,
+) -> io::Result<()> {
+    let constructors = block
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("def __init__("))
+        .collect::<Vec<_>>();
+    if constructors.len() != 1 {
+        return Err(invalid_python_object_model(format!(
+            "{name} must expose exactly one generated constructor"
+        )));
+    }
+    let actual_compact = constructors[0]
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>();
+    if actual_compact != expected_compact {
+        return Err(invalid_python_object_model(format!(
+            "{name} constructor drifted: `{}`",
+            constructors[0]
+        )));
+    }
+    Ok(())
+}
+
+fn require_python_methods(block: &str, owner: &str, methods: &[&str]) -> io::Result<()> {
+    for method in methods {
+        if !python_block_has_method(block, method) {
+            return Err(invalid_python_object_model(format!(
+                "{owner} is missing method `{method}`"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn python_block_has_method(block: &str, method: &str) -> bool {
+    let prefix = format!("def {method}(");
+    block.lines().any(|line| line.trim().starts_with(&prefix))
+}
+
+fn invalid_python_object_model(message: impl Into<String>) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!(
+            "generated Python UniFFI object model is invalid: {}",
+            message.into()
+        ),
+    )
 }
 
 fn ensure_init_file(module_dir: &Path) -> io::Result<()> {
@@ -267,14 +449,20 @@ const PYTHON_PACKAGE_INIT_BASE_IMPORTS: &str = concat!(
     "        MermanAsciiCapability,\n",
     "        MermanAsciiCapabilityEvidence,\n",
     "        MermanDiagramFamilyCapability,\n",
+    "        Merman,\n",
     "        MermanEngine,\n",
+    "        MermanEngineServices,\n",
     "        MermanError,\n",
     "        MermanErrorKind,\n",
+    "        MermanIconPack,\n",
+    "        MermanIconRegistry,\n",
+    "        MermanIconRegistryErrorDetails,\n",
     "        MermanLintRuleCatalogEntry,\n",
+    "        MermanOperationMetadata,\n",
     "        MermanOperationRequest,\n",
     "        MermanOperationResult,\n",
+    "        MermanOutputPlan,\n",
     "        MermanResourceErrorDetails,\n",
-    "        MermanReusableEngine,\n",
 );
 
 const PYTHON_PACKAGE_INIT_TEXT_MEASUREMENT_IMPORTS: &str = concat!(
@@ -305,14 +493,20 @@ const PYTHON_PACKAGE_INIT_IMPORT_SUFFIX: &str = concat!(
     "    \"MermanAsciiCapability\",\n",
     "    \"MermanAsciiCapabilityEvidence\",\n",
     "    \"MermanDiagramFamilyCapability\",\n",
+    "    \"Merman\",\n",
     "    \"MermanEngine\",\n",
+    "    \"MermanEngineServices\",\n",
     "    \"MermanError\",\n",
     "    \"MermanErrorKind\",\n",
+    "    \"MermanIconPack\",\n",
+    "    \"MermanIconRegistry\",\n",
+    "    \"MermanIconRegistryErrorDetails\",\n",
     "    \"MermanLintRuleCatalogEntry\",\n",
+    "    \"MermanOperationMetadata\",\n",
     "    \"MermanOperationRequest\",\n",
     "    \"MermanOperationResult\",\n",
+    "    \"MermanOutputPlan\",\n",
     "    \"MermanResourceErrorDetails\",\n",
-    "    \"MermanReusableEngine\",\n",
     "    \"ResourceLimitId\",\n",
     "    \"ResourceOverrideId\",\n",
     "    \"ResourceOptions\",\n",
@@ -472,6 +666,7 @@ mod tests {
         for name in [
             "MermanError",
             "MermanErrorKind",
+            "MermanIconRegistryErrorDetails",
             "MermanResourceErrorDetails",
         ] {
             assert!(
@@ -487,23 +682,50 @@ mod tests {
 
     #[test]
     fn generated_binding_surface_requires_stable_public_api() {
-        let incomplete = validate_stable_python_surface("class MermanEngine:\n    pass\n")
-            .expect_err("feature-slim bindings must not omit the stable callback API");
+        let incomplete = validate_stable_python_surface(
+            "class Merman(MermanProtocol):\n    pass\n\
+             class MermanEngine(MermanEngineProtocol):\n    pass\n\
+             class MermanEngineServices(MermanEngineServicesProtocol):\n    pass\n\
+             class MermanIconPack(MermanIconPackProtocol):\n    pass\n\
+             class MermanIconRegistry(MermanIconRegistryProtocol):\n    pass\n\
+             class MermanIconRegistryErrorDetails:\n    pass\n",
+        )
+        .expect_err("feature-slim bindings must not omit the stable callback API");
         assert!(incomplete.to_string().contains("MermanTextMeasurer"));
 
-        let stable_surface = "class MermanTextMeasurer(abc.ABC):\n\
+        let stable_surface = "class Merman(MermanProtocol):\n    pass\n\
+             class MermanEngine(MermanEngineProtocol):\n    pass\n\
+             class MermanEngineServices(MermanEngineServicesProtocol):\n    pass\n\
+             class MermanIconPack(MermanIconPackProtocol):\n    pass\n\
+             class MermanIconRegistry(MermanIconRegistryProtocol):\n    pass\n\
+             class MermanIconRegistryErrorDetails:\n    pass\n\
+             class MermanOperationMetadata:\n    pass\n\
+             class MermanOutputPlan:\n    pass\n\
+             class MermanTextMeasurer(abc.ABC):\n\
              class MermanOperationRequest:\n    pass\n\
              class MermanResourceErrorDetails:\n    pass\n\
              class MermanResourceOverrideId(str):\n    pass\n\
              id:MermanResourceOverrideId\n\
              self.operation_id = operation_id\n\
              self.options_json = options_json\n\
+             self.metadata = metadata\n\
+             self.icon_registry = icon_registry\n\
              UNKNOWN_OPERATION\n\
              def execute(self, request: MermanOperationRequest) -> MermanOperationResult:\n    pass\n\
              def presentation_catalog_json(self, ) -> str:\n    pass\n\
              def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
-             def reusable_engine_with_text_measurer(self):\n    pass\n";
-        validate_stable_python_surface(stable_surface).expect("stable callback API");
+             def render_png_result(self):\n    pass\n\
+             def analysis_facts_json(self):\n    pass\n\
+             def svg_plan_json(self):\n    pass\n\
+             def close(self):\n    pass\n\
+             def from_packs(cls):\n    pass\n";
+        let stable_surface = stable_surface.replace(
+            "def from_packs(cls):\n    pass\n",
+            "def from_packs(cls):\n    pass\n\
+             def json(self):\n    pass\n\
+             def registration_name(self):\n    pass\n",
+        );
+        validate_stable_python_surface(&stable_surface).expect("stable callback API");
         validate_stable_python_surface(&stable_surface.replace(
             "def presentation_catalog_json(self, ) -> str:",
             "def presentation_catalog_json(self) -> str:",

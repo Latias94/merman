@@ -194,16 +194,32 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         "kind: MermanErrorKind",
         "capabilityId: String?",
         "struct MermanResourceErrorDetails",
+        "struct MermanIconRegistryErrorDetails",
         "enum MermanResourceOverrideId",
         "public var id: MermanResourceOverrideId",
         "func resourceOptionsJson(profile: MermanResourceProfile?",
         "resource: MermanResourceErrorDetails?",
+        "iconRegistry: MermanIconRegistryErrorDetails?",
+        "open class Merman:",
+        "open class MermanEngine:",
+        "open class MermanEngineServices:",
+        "open class MermanIconRegistry:",
+        "open class MermanIconPack:",
+        "struct MermanOperationMetadata",
+        "enum MermanOutputPlan",
         "public var operationId: String",
         "public var optionsJson: String?",
+        "public var metadata: MermanOperationMetadata",
         "func execute(request: MermanOperationRequest) throws",
         "func presentationCatalogJson() throws",
         "func renderSvg(source: String, optionsJson: String?) throws",
-        "func reusableEngineWithTextMeasurer(",
+        "func renderPngResult(",
+        "func analysisFactsJson(",
+        "func svgPlanJson(",
+        "func close() throws",
+        "static func fromPacks(packs: [MermanIconPack])",
+        "func json()",
+        "func registrationName()",
         "private final class VTableStorage: @unchecked Sendable",
     ] {
         if !source.contains(required) {
@@ -226,6 +242,12 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         "enum MermanResourceLimitId",
         "public var id: MermanResourceLimitId",
         "func resourceOptionsJson(profile: MermanResourceProfile,",
+        "MermanReusableEngine",
+        "func reusableEngine(",
+        "func reusableEngineWithTextMeasurer(",
+        "func withTextMeasurer(",
+        "public var metadataJson: String",
+        "struct MermanIconPack",
     ] {
         if source.contains(removed) {
             return Err(format!(
@@ -235,7 +257,166 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
             .into());
         }
     }
+    validate_stable_swift_object_model(&source)?;
     Ok(())
+}
+
+fn validate_stable_swift_object_model(source: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let merman = swift_object_block(source, "Merman")?;
+    require_single_swift_constructor(merman, "Merman", "publicconvenienceinit(){")?;
+    require_swift_methods(
+        merman,
+        "Merman",
+        &[
+            "bindingApiVersion",
+            "packageVersion",
+            "runtimeCatalogJson",
+            "metadataJson",
+            "execute",
+            "renderSvg",
+            "renderPngResult",
+            "analysisFactsJson",
+            "svgPlanJson",
+        ],
+    )?;
+    for forbidden in ["close", "reusableEngine", "reusableEngineWithTextMeasurer"] {
+        if swift_block_has_method(merman, forbidden) {
+            return Err(invalid_swift_object_model(format!(
+                "Merman must not expose `{forbidden}`"
+            )));
+        }
+    }
+
+    let engine = swift_object_block(source, "MermanEngine")?;
+    require_single_swift_constructor(
+        engine,
+        "MermanEngine",
+        "publicconvenienceinit(optionsJson:String?,services:MermanEngineServices?)throws{",
+    )?;
+    require_swift_methods(
+        engine,
+        "MermanEngine",
+        &[
+            "execute",
+            "renderSvg",
+            "renderPngResult",
+            "analysisFactsJson",
+            "svgPlanJson",
+            "close",
+        ],
+    )?;
+    for forbidden in ["runtimeCatalogJson", "metadataJson"] {
+        if swift_block_has_method(engine, forbidden) {
+            return Err(invalid_swift_object_model(format!(
+                "MermanEngine must not expose discovery method `{forbidden}`"
+            )));
+        }
+    }
+
+    let services = swift_object_block(source, "MermanEngineServices")?;
+    require_single_swift_constructor(
+        services,
+        "MermanEngineServices",
+        "publicconvenienceinit(iconRegistry:MermanIconRegistry?,textMeasurer:MermanTextMeasurer?){",
+    )?;
+
+    let icon_pack = swift_object_block(source, "MermanIconPack")?;
+    require_single_swift_constructor(
+        icon_pack,
+        "MermanIconPack",
+        "publicconvenienceinit(json:String,registrationName:String?){",
+    )?;
+    require_swift_methods(icon_pack, "MermanIconPack", &["json", "registrationName"])?;
+    for mutable_field in ["public var json", "public var registrationName"] {
+        if icon_pack.contains(mutable_field) {
+            return Err(invalid_swift_object_model(format!(
+                "MermanIconPack retains mutable field `{mutable_field}`"
+            )));
+        }
+    }
+
+    let icon_registry = swift_object_block(source, "MermanIconRegistry")?;
+    require_swift_methods(icon_registry, "MermanIconRegistry", &["len", "isEmpty"])?;
+    if icon_registry
+        .matches("public static func fromPacks(")
+        .count()
+        != 1
+    {
+        return Err(invalid_swift_object_model(
+            "MermanIconRegistry must expose exactly one fromPacks factory",
+        ));
+    }
+
+    Ok(())
+}
+
+fn swift_object_block<'a>(
+    source: &'a str,
+    name: &str,
+) -> Result<&'a str, Box<dyn std::error::Error>> {
+    let start = format!("open class {name}:");
+    let end = format!("public struct FfiConverterType{name}:");
+    let (_, suffix) = source
+        .split_once(&start)
+        .ok_or_else(|| invalid_swift_object_model(format!("missing {name} class")))?;
+    let (block, _) = suffix
+        .split_once(&end)
+        .ok_or_else(|| invalid_swift_object_model(format!("missing {name} converter")))?;
+    Ok(block)
+}
+
+fn require_single_swift_constructor(
+    block: &str,
+    name: &str,
+    expected_compact_prefix: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if block.matches("public convenience init(").count() != 1 {
+        return Err(invalid_swift_object_model(format!(
+            "{name} must expose exactly one domain constructor"
+        )));
+    }
+    let compact = block
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>();
+    if !compact.contains(expected_compact_prefix) {
+        return Err(invalid_swift_object_model(format!(
+            "{name} constructor drifted"
+        )));
+    }
+    Ok(())
+}
+
+fn require_swift_methods(
+    block: &str,
+    owner: &str,
+    methods: &[&str],
+) -> Result<(), Box<dyn std::error::Error>> {
+    for method in methods {
+        if !swift_block_has_method(block, method) {
+            return Err(invalid_swift_object_model(format!(
+                "{owner} is missing method `{method}`"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn swift_block_has_method(block: &str, method: &str) -> bool {
+    let instance_prefix = format!("open func {method}(");
+    let static_prefix = format!("public static func {method}(");
+    block.lines().any(|line| {
+        let line = line.trim();
+        line.starts_with(&instance_prefix) || line.starts_with(&static_prefix)
+    })
+}
+
+fn invalid_swift_object_model(message: impl Into<String>) -> Box<dyn std::error::Error> {
+    format!(
+        "generated Swift UniFFI object model is invalid: {}",
+        message.into()
+    )
+    .into()
 }
 
 #[cfg(test)]

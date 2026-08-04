@@ -11,6 +11,7 @@ Corresponds to merman workspace release `0.8.0-alpha.4`.
 ### Breaking changes
 
 - Replaced the prerelease UniFFI ABI 2 surface with direct UniFFI binding API 3. It is independent from the native C ABI and text-measurement protocol; regenerate and deploy the generated Python package with its exact native library rather than mixing releases.
+- Renamed the discovery/one-shot facade to `Merman` and the reusable type to `MermanEngine`. Reusable engines now have one direct `MermanEngine(options_json, services)` constructor; the obsolete `MermanReusableEngine` name, facade factories, and callback-specialized constructors are removed.
 - Introduced runtime-contract schema 1 with stable capability, operation, output, system-adapter, and optional text-measurement provider IDs. Python validates these against the engine-owned runtime catalog and rejects unknown, duplicate, unsorted, or incoherent IDs.
 - Replaced the prerelease text-measurement callback records in place: requests now carry both a routing phase and one of 19 exact operations, and handled callbacks must return that operation's tagged result kind instead of only `width`/`height`/`line_count`; upgrade the Python wheel and bundled native library together and update custom measurers for operations `0..18`.
 - Made `MermanTextMeasurer` immutable after reusable-engine construction and removed `set_text_measurer()` / `clear_text_measurer()`. Callback-free engines admit concurrent operations; callback engines raise typed `BUSY` or `REENTRANT_CALL` errors without waiting.
@@ -18,10 +19,12 @@ Corresponds to merman workspace release `0.8.0-alpha.4`.
 - Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the legacy Flowchart ELK backend selector; update any serialized `options_json` before upgrading.
 - Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, semantic host colors to `presentation.theme`, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `host_theme` group and the old `layout.text_measurer` / `layout.math_renderer` fields are rejected.
 - Removed underscore and shorthand binding enum aliases plus `supported_host_theme_presets()`. Use documented kebab-case values and decode `presentation_catalog_json()` for open-ended theme/profile discovery.
-- Removed generated `ABI_VERSION` and `require_abi_version()` helpers. Use `MermanEngine.binding_api_version()` for the UniFFI transport version, `get_runtime_catalog()` for a validated runtime catalog, and the separate text-measurement protocol helper for callback compatibility.
+- Removed generated `ABI_VERSION` and `require_abi_version()` helpers. Use `Merman.binding_api_version()` for the UniFFI transport version, `get_runtime_catalog()` for a validated runtime catalog, and the separate text-measurement protocol helper for callback compatibility.
 - Removed split `runtime_contract_json()` and `runtime_capability_vocabulary_json()` discovery. Use the one atomic `runtime_catalog_json()` endpoint and `get_runtime_catalog()` decoder.
 - Moved generic operation options into `MermanOperationRequest.options_json`; call `engine.execute(request)` without a parallel options argument. Reusable operation options now deeply merge over the engine baseline but cannot change its constructor-owned runtime policy.
 - Added `options_json` to reusable convenience methods. Pass `None` to inherit the engine baseline or provide a request-local override for that operation.
+- Replaced raw generic-result metadata JSON with `MermanOperationMetadata`, typed raster/PDF output plans, preserved raw schema-1 JSON, result-returning binary helpers, and named analysis-facts/SVG-plan helpers.
+- Added immutable `MermanIconPack`, transactional reusable `MermanIconRegistry.from_packs()`, and `MermanEngineServices` for constructor-owned icon registries and optional text measurement. Reusable engines now expose retryable, idempotent `close()`.
 - Replaced the incompatible prerelease options grammar with Options JSON schema `2`. New resource helpers emit version `2`, omit `resources.profile` when a request should inherit its constructor ceiling, and accept only generated `ResourceOverrideId` values for overridable limits.
 
 ### Added

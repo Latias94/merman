@@ -37,13 +37,18 @@ def valid_catalog():
             "svg",
             "version",
         ],
-        "constructor_service_ids": ["host-text-measurement"],
+        "constructor_service_ids": ["host-text-measurement", "icon-registry"],
         "constructor_service_contracts": [
             {
                 "id": "host-text-measurement",
                 "provided_text_measurement_provider_ids": ["host-callback"],
                 "resource_limits": [],
-            }
+            },
+            {
+                "id": "icon-registry",
+                "provided_text_measurement_provider_ids": [],
+                "resource_limits": [],
+            },
         ],
         "capabilities": {
             "capability_ids": ["analysis", "ascii", "svg", "system-clock"],
@@ -355,33 +360,26 @@ class RuntimeCatalogTest(unittest.TestCase):
                 ):
                     merman.get_runtime_catalog(FakeEngine(catalog))
 
-    def test_rejects_known_constructor_service_missing_from_python_facade(self):
-        catalog = valid_catalog()
-        catalog["constructor_service_ids"] = ["icon-registry"]
-        catalog["constructor_service_contracts"] = [
-            {
-                "id": "icon-registry",
-                "provided_text_measurement_provider_ids": [],
-                "resource_limits": [],
-            }
+    def test_rejects_present_known_constructor_service_subsets(self):
+        icon_only = valid_catalog()
+        icon_only["constructor_service_ids"] = ["icon-registry"]
+        icon_only["constructor_service_contracts"] = [
+            icon_only["constructor_service_contracts"][1]
         ]
-        catalog["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
+        icon_only["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
 
-        with self.assertRaisesRegex(
-            merman.MermanRuntimeCatalogError,
-            "unavailable through this Python facade",
-        ):
-            merman.get_runtime_catalog(FakeEngine(catalog))
+        empty = valid_catalog()
+        empty["constructor_service_ids"] = []
+        empty["constructor_service_contracts"] = []
+        empty["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
 
-    def test_accepts_explicit_constructor_service_subset(self):
-        catalog = valid_catalog()
-        catalog["constructor_service_ids"] = []
-        catalog["constructor_service_contracts"] = []
-        catalog["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
-
-        parsed = merman.get_runtime_catalog(FakeEngine(catalog))
-        self.assertEqual(parsed["constructor_service_ids"], [])
-        self.assertEqual(parsed["constructor_service_contracts"], [])
+        for catalog in [icon_only, empty]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "do not match the transport exposure",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
 
     def test_rejects_invalid_constructor_service_provider_ownership(self):
         missing_owner = valid_catalog()
@@ -393,6 +391,7 @@ class RuntimeCatalogTest(unittest.TestCase):
         wrong_owner["constructor_service_ids"] = [
             "future-service",
             "host-text-measurement",
+            "icon-registry",
         ]
         wrong_owner["constructor_service_contracts"].insert(
             0,

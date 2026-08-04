@@ -344,7 +344,7 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
     {
         "id": "uniffi",
         "payload_schema_ids": ("binding-result", "operation-metadata"),
-        "constructor_service_candidate_ids": ("host-text-measurement",),
+        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry"),
     },
     {
         "id": "web",

@@ -697,7 +697,8 @@ export const BINDING_TRANSPORT_EXPOSURE_SPECS = [
       "operation-metadata"
     ],
     "constructor_service_candidate_ids": [
-      "host-text-measurement"
+      "host-text-measurement",
+      "icon-registry"
     ]
   },
   {

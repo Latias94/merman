@@ -6,34 +6,44 @@ import Merman
 struct MermanAppleSmoke {
     static func main() throws {
         let source = "flowchart TD\nA[Hello] --> B[World]"
-        let engine = MermanEngine()
+        let client = Merman()
 
-        guard engine.bindingApiVersion() == 3 else {
+        guard client.bindingApiVersion() == 3 else {
             throw SmokeError.failed("expected UniFFI binding API 3")
         }
-        guard !engine.packageVersion().isEmpty else {
+        guard !client.packageVersion().isEmpty else {
             throw SmokeError.failed("package version was empty")
         }
 
-        try validateRuntimeCatalog(try jsonObject(engine.runtimeCatalogJson()), engine: engine)
+        let operationIDs = try validateRuntimeCatalog(
+            try jsonObject(client.runtimeCatalogJson()),
+            client: client
+        )
+        try validateOperationMatrix(operationIDs, client: client, source: source)
 
         let constrainedOptions = try resourceOptionsJson(profile: .constrained, overrides: [])
-        let svg = try engine.renderSvg(source: source, optionsJson: constrainedOptions)
+        let svg = try client.renderSvg(source: source, optionsJson: constrainedOptions)
         guard svg.contains("<svg"), svg.contains("Hello"), svg.contains("World") else {
             throw SmokeError.failed("SVG smoke failed")
         }
 
-        let png = try engine.renderPng(source: source, optionsJson: constrainedOptions)
+        let png = try client.renderPng(source: source, optionsJson: constrainedOptions)
         guard png.starts(with: Data([0x89, 0x50, 0x4E, 0x47])) else {
             throw SmokeError.failed("PNG smoke failed")
         }
+        let pngResult = try client.renderPngResult(source: source, optionsJson: constrainedOptions)
+        guard pngResult.data == png,
+              pngResult.metadata.byteLength == UInt64(png.count),
+              case .some(.raster) = pngResult.metadata.outputPlan else {
+            throw SmokeError.failed("typed PNG result smoke failed")
+        }
 
-        let jpeg = try engine.renderJpeg(source: source, optionsJson: constrainedOptions)
+        let jpeg = try client.renderJpeg(source: source, optionsJson: constrainedOptions)
         guard jpeg.starts(with: Data([0xFF, 0xD8, 0xFF])) else {
             throw SmokeError.failed("JPEG smoke failed")
         }
 
-        let pdf = try engine.renderPdf(source: source, optionsJson: constrainedOptions)
+        let pdf = try client.renderPdf(source: source, optionsJson: constrainedOptions)
         guard pdf.starts(with: Data("%PDF-".utf8)) else {
             throw SmokeError.failed("PDF smoke failed")
         }
@@ -44,11 +54,12 @@ struct MermanAppleSmoke {
             uri: nil,
             optionsJson: #"{"runtime_policy":"native","svg":{"diagram_id":"swift-one-shot"}}"#
         )
-        let genericResult = try engine.execute(request: operation)
+        let genericResult = try client.execute(request: operation)
         guard genericResult.operationId == "svg",
               genericResult.mediaType == "image/svg+xml",
               String(data: genericResult.data, encoding: .utf8)?.contains("id=\"swift-one-shot\"") == true,
-              genericResult.metadataJson.contains("\"runtime_policy\":\"native\"") else {
+              genericResult.metadata.runtimePolicy == "native",
+              genericResult.metadata.rawJson.contains("\"runtime_policy\":\"native\"") else {
             throw SmokeError.failed("generic operation smoke failed")
         }
 
@@ -59,11 +70,11 @@ struct MermanAppleSmoke {
                 uri: nil,
                 optionsJson: constrainedOptions
             )
-            _ = try engine.execute(request: unknownOperation)
+            _ = try client.execute(request: unknownOperation)
             throw SmokeError.failed("unknown operation did not return a binding error")
         } catch let error as MermanError {
             switch error {
-            case let .Binding(_, _, kind, capabilityId, _, _):
+            case let .Binding(_, _, kind, capabilityId, _, _, _):
                 guard kind == .unknownOperation, capabilityId == nil else {
                     throw SmokeError.failed("unknown operation lost its machine-readable error fields")
                 }
@@ -71,14 +82,14 @@ struct MermanAppleSmoke {
         }
 
         do {
-            _ = try engine.renderSvg(
+            _ = try client.renderSvg(
                 source: source,
                 optionsJson: #"{"version":2,"resources":{"profile":"constrained","limits":{"max_source_bytes":8}}}"#
             )
             throw SmokeError.failed("resource failure did not return a binding error")
         } catch let error as MermanError {
             switch error {
-            case let .Binding(_, codeName, _, _, resource, _):
+            case let .Binding(_, codeName, _, _, resource, _, _):
                 guard codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED",
                       resource?.limitId == "max_source_bytes",
                       resource?.phase == "source",
@@ -89,7 +100,7 @@ struct MermanAppleSmoke {
             }
         }
 
-        let reusable = try engine.reusableEngine(optionsJson: constrainedOptions)
+        let reusable = try MermanEngine(optionsJson: constrainedOptions, services: nil)
         let reusableOperation = MermanOperationRequest(
             operationId: "svg",
             source: source,
@@ -103,30 +114,38 @@ struct MermanAppleSmoke {
         }
 
         let measurer = FallbackTextMeasurer()
-        let measuredReusable = try engine.reusableEngineWithTextMeasurer(
+        let measuredServices = MermanEngineServices(
+            iconRegistry: nil,
+            textMeasurer: measurer
+        )
+        let measuredReusable = try MermanEngine(
             optionsJson: constrainedOptions,
-            measurer: measurer
+            services: measuredServices
         )
         let measuredSvg = try measuredReusable.renderSvg(source: source, optionsJson: nil)
         guard measuredSvg.contains("<svg"), measurer.callCount > 0 else {
             throw SmokeError.failed("generated text-measurement callback smoke failed")
         }
 
-        let semanticJSON = try engine.parseJson(source: source, optionsJson: constrainedOptions)
+        try measuredReusable.close()
+        try measuredReusable.close()
+        try reusable.close()
+
+        let semanticJSON = try client.parseJson(source: source, optionsJson: constrainedOptions)
         guard semanticJSON.contains("flowchart-v2") else {
             throw SmokeError.failed("semantic JSON smoke failed")
         }
 
-        let validation = try engine.validate(source: source, optionsJson: constrainedOptions)
+        let validation = try client.validate(source: source, optionsJson: constrainedOptions)
         guard validation.valid else {
             throw SmokeError.failed("validation smoke failed")
         }
 
-        guard engine.supportedDiagrams().contains("flowchart") else {
+        guard client.supportedDiagrams().contains("flowchart") else {
             throw SmokeError.failed("supported diagrams smoke failed")
         }
 
-        print("merman Apple UniFFI smoke passed (\(engine.packageVersion()))")
+        print("merman Apple UniFFI smoke passed (\(client.packageVersion()))")
     }
 }
 
@@ -143,15 +162,15 @@ private func integer(_ value: Any?) -> Int? {
     return CFGetTypeID(number) == CFBooleanGetTypeID() ? nil : number.intValue
 }
 
-private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngine) throws {
+private func validateRuntimeCatalog(_ catalog: [String: Any], client: Merman) throws -> [String] {
     let requiredCatalogKeys: Set<String> = [
         "schema_version", "transport_api_version", "package_version", "capabilities", "output_contracts",
         "registry", "resources",
     ]
     guard requiredCatalogKeys.isSubset(of: Set(catalog.keys)),
           integer(catalog["schema_version"]) == 1,
-          (integer(catalog["transport_api_version"]) ?? -1) == engine.bindingApiVersion(),
-          catalog["package_version"] as? String == engine.packageVersion(),
+          (integer(catalog["transport_api_version"]) ?? -1) == client.bindingApiVersion(),
+          catalog["package_version"] as? String == client.packageVersion(),
           let capabilities = catalog["capabilities"] as? [String: Any],
           let outputContracts = catalog["output_contracts"] as? [[String: Any]],
           let registry = catalog["registry"] as? [String: Any],
@@ -180,14 +199,9 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngi
         "system-clock", "system-random", "system-timezone",
     ]
     let expectedOutputs: Set<String> = ["ascii", "jpeg", "pdf", "png", "svg"]
-    let expectedOperations: Set<String> = [
-        "analysis-facts-json", "analysis-json", "ascii", "document-analysis-facts-json",
-        "document-analysis-json", "jpeg", "layout-json", "pdf", "png", "semantic-json", "svg",
-        "svg-plan-json", "validation-json",
-    ]
     guard expectedCapabilities == Set(capabilityIDs),
           expectedOutputs == Set(outputIDs),
-          expectedOperations == Set(operationIDs),
+          operationIDs.count == 13,
           Set(systemAdapterIDs) == [
               "system-clock", "system-random", "system-timezone",
           ],
@@ -251,6 +265,32 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngi
     let resourceIDs = Set(limits.compactMap { $0["id"] as? String })
     guard requiredResourceIDs.isSubset(of: resourceIDs) else {
         throw SmokeError.failed("runtime catalog omitted a native SDK resource limit")
+    }
+    return operationIDs
+}
+
+private func validateOperationMatrix(
+    _ operationIDs: [String],
+    client: Merman,
+    source: String
+) throws {
+    for operationID in operationIDs {
+        let request = MermanOperationRequest(
+            operationId: operationID,
+            source: source,
+            uri: operationID.hasPrefix("document-") ? "file:///tmp/example.mmd" : nil,
+            optionsJson: nil
+        )
+        let result = try client.execute(request: request)
+        let rawMetadata = try jsonObject(result.metadata.rawJson)
+        guard result.operationId == operationID,
+              result.metadata.operationId == operationID,
+              result.metadata.mediaType == result.mediaType,
+              result.metadata.version == 1,
+              result.metadata.byteLength == UInt64(result.data.count),
+              rawMetadata["operation_id"] as? String == operationID else {
+            throw SmokeError.failed("shared operation matrix drifted for \(operationID)")
+        }
     }
 }
 

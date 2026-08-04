@@ -165,7 +165,7 @@ def main() -> None:
     else:
         raise RuntimeError("expected mismatched text-measurement protocol to be rejected")
 
-    engine = merman.MermanEngine()
+    engine = merman.Merman()
     if not engine.package_version():
         raise RuntimeError("empty package version")
     if engine.binding_api_version() != 3:
@@ -184,6 +184,31 @@ def main() -> None:
         raise RuntimeError("runtime catalog schema smoke failed")
 
     source = "---\ntitle: Host measurement phases\n---\nflowchart TD\nA[Hello] --> B[World]"
+    operation_ids = runtime_capabilities["operation_ids"]
+    if len(operation_ids) != 13:
+        raise RuntimeError("runtime catalog did not expose the shared operation matrix")
+    for operation_id in operation_ids:
+        result = engine.execute(
+            merman.MermanOperationRequest(
+                operation_id=operation_id,
+                source=source,
+                uri=(
+                    "file:///tmp/example.mmd"
+                    if operation_id.startswith("document-")
+                    else None
+                ),
+                options_json=None,
+            )
+        )
+        if (
+            result.operation_id != operation_id
+            or result.metadata.operation_id != operation_id
+            or result.metadata.media_type != result.media_type
+            or result.metadata.version != 1
+            or result.metadata.byte_length != len(result.data)
+            or json.loads(result.metadata.raw_json).get("operation_id") != operation_id
+        ):
+            raise RuntimeError(f"operation matrix drifted for {operation_id}")
 
     resource_options = (
         merman.ResourceOptionsBuilder()
@@ -219,8 +244,10 @@ def main() -> None:
         generic_semantic.operation_id != "semantic-json"
         or generic_semantic.media_type != "application/json"
         or b"flowchart-v2" not in generic_semantic.data
-        or json.loads(generic_semantic.metadata_json).get("runtime_policy")
-        != "native"
+        or generic_semantic.metadata.operation_id != "semantic-json"
+        or generic_semantic.metadata.media_type != "application/json"
+        or generic_semantic.metadata.runtime_policy != "native"
+        or json.loads(generic_semantic.metadata.raw_json).get("runtime_policy") != "native"
     ):
         raise RuntimeError("generic operation smoke failed")
 
@@ -269,6 +296,13 @@ def main() -> None:
     png = engine.render_png(source, None)
     if not png.startswith(b"\x89PNG\r\n\x1a\n"):
         raise RuntimeError("PNG smoke failed")
+    png_result = engine.render_png_result(source, None)
+    if (
+        png_result.data != png
+        or png_result.metadata.byte_length != len(png)
+        or not png_result.metadata.output_plan.is_raster()
+    ):
+        raise RuntimeError("typed PNG result smoke failed")
     jpeg = engine.render_jpeg(source, None)
     if not jpeg.startswith(b"\xff\xd8\xff"):
         raise RuntimeError("JPEG smoke failed")
@@ -391,6 +425,37 @@ def main() -> None:
     if not all(rule.configurable for rule in configurable_rules):
         raise RuntimeError("configurable lint rule catalog smoke failed")
 
+    icon_registry = merman.MermanIconRegistry.from_packs(
+        [
+            merman.MermanIconPack(
+                json=json.dumps(
+                    {
+                        "icons": {
+                            "rocket": {
+                                "body": '<path data-icon="python-registry" d="M0 0H16V16H0z"/>'
+                            }
+                        }
+                    }
+                ),
+                registration_name="smoke",
+            )
+        ]
+    )
+    if icon_registry.len() != 1 or icon_registry.is_empty():
+        raise RuntimeError("icon registry construction smoke failed")
+    icon_services = merman.MermanEngineServices(icon_registry, None)
+    icon_source = 'flowchart TD\nA@{ icon: "smoke:rocket", label: "A" }'
+    icon_engines = [
+        merman.MermanEngine(None, icon_services),
+        merman.MermanEngine(None, icon_services),
+    ]
+    for icon_engine in icon_engines:
+        if 'data-icon="python-registry"' not in icon_engine.render_svg(
+            icon_source, None
+        ):
+            raise RuntimeError("shared icon registry smoke failed")
+        icon_engine.close()
+
     @dataclass
     class Measurer(merman.MermanTextMeasurer):
         calls: int = 0
@@ -410,7 +475,8 @@ def main() -> None:
             return text_measurement_result(request.operation, width, height)
 
     measurer = Measurer()
-    reusable = engine.reusable_engine_with_text_measurer(None, measurer)
+    measured_services = merman.MermanEngineServices(None, measurer)
+    reusable = merman.MermanEngine(None, measured_services)
     if "Hello" not in reusable.render_svg(source, None):
         raise RuntimeError("reusable engine smoke failed")
     if measurer.calls == 0:
@@ -422,8 +488,10 @@ def main() -> None:
     if "WRAPPED" not in operation_names:
         raise RuntimeError(f"expected concrete measurement operations, got {operation_names}")
 
-    reusable = engine.reusable_engine(
-        '{"svg":{"diagram_id":"python-baseline","pipeline":"readable"}}'
+    reusable.close()
+    reusable = merman.MermanEngine(
+        '{"svg":{"diagram_id":"python-baseline","pipeline":"readable"}}',
+        None,
     )
     reusable_result = reusable.execute(
         merman.MermanOperationRequest(
@@ -486,9 +554,14 @@ def main() -> None:
         def measure(self, request):
             raise RuntimeError("host measurer failed")
 
-    failing = engine.reusable_engine_with_text_measurer(None, FailingMeasurer())
+    failing_services = merman.MermanEngineServices(None, FailingMeasurer())
+    failing = merman.MermanEngine(None, failing_services)
     if "Hello" not in failing.render_svg(source, None):
         raise RuntimeError("failing text measurer did not use vendored fallback")
+    failing.close()
+
+    reusable.close()
+    reusable.close()
 
     try:
         engine.render_svg(source, "{")

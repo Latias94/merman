@@ -21,27 +21,31 @@ Published wheels currently target CPython-compatible Python `3.9+` on macOS arm6
 ```python
 import merman
 
-engine = merman.MermanEngine()
+client = merman.Merman()
 
 source = "flowchart TD\nA[Hello] --> B[World]"
-svg = engine.render_svg(source, None)
+svg = client.render_svg(source, None)
 print(svg[:4])  # <svg
 ```
 
-The same engine exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. `MermanOperationRequest` plus `engine.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and operation metadata. Generic options belong in `MermanOperationRequest.options_json`; `execute()` has no separate options argument.
+The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. `MermanOperationRequest` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequest.options_json`; `execute()` has no separate options argument.
 
 ## Reuse An Engine
 
-Use a reusable engine when calls share baseline options:
+Construct `MermanEngine` directly when calls share baseline options:
 
 ````python
-reusable = engine.reusable_engine('{"svg":{"pipeline":"readable"}}')
-svg = reusable.render_svg(source, '{"svg":{"diagram_id":"preview"}}')
-facts = reusable.analyze_document_facts_json(
+engine = merman.MermanEngine(
+    options_json='{"svg":{"pipeline":"readable"}}',
+    services=None,
+)
+svg = engine.render_svg(source, '{"svg":{"diagram_id":"preview"}}')
+facts = engine.analyze_document_facts_json(
     "```mermaid\n" + source + "\n```",
     None,
     "file:///workspace/README.md",
 )
+engine.close()
 ````
 
 `options_json` is optional and follows the versioned [binding options schema](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). Invalid options and engine failures raise typed `MermanError` variants. Reusable request options deeply merge over the construction baseline for one operation without mutating it. They cannot change the constructor-owned `runtime_policy`. `MermanError.Binding.kind` distinguishes `UNKNOWN_OPERATION` from `MISSING_CAPABILITY`; only the latter carries a non-null, descriptor-owned `capability_id`.
@@ -60,12 +64,12 @@ resource_options = (
     .build()
     .to_options_json()
 )
-svg = engine.render_svg(source, resource_options)
+svg = client.render_svg(source, resource_options)
 ```
 
 Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is for cooperative local editing. Leave the profile unset when a reusable request must inherit its constructor ceiling. The native CLI's default is intentionally separate (`trusted-native`).
 
-Call `engine.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `engine.presentation_catalog_json()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog. `merman.get_runtime_catalog(engine)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `3` and is independent from native C ABI and the text-measurement protocol version.
+Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.presentation_catalog_json()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `3` and is independent from native C ABI and the text-measurement protocol version.
 
 Diagnostics and parser facts both use their final schema `1`, independently of UniFFI binding API `3`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape must migrate to parser-backed items and explicit unavailable bodies.
 
@@ -73,7 +77,7 @@ Diagnostics and parser facts both use their final schema `1`, independently of U
 
 Merman owns a deterministic vendored text measurer by default. Keep it for servers, CLIs, CI, and documentation builds.
 
-GUI, browser automation, and WebView hosts can implement `MermanTextMeasurer` and pass it to `reusable_engine_with_text_measurer(...)` at construction. The callback is immutable for that reusable engine; construct a different engine to change or remove it. Text-measurement protocol 1 exposes 19 exact operations (`0..18`), and each handled `MermanTextMeasureResult` must use the `MermanTextMeasurementResultKind` required by `request.operation`. Return `None` for operations that cannot be measured synchronously and faithfully. Invalid results and Python exceptions delivered through UniFFI's generated callback trampoline fall back for that operation; Merman does not claim to catch arbitrary foreign unwinds outside that generated boundary.
+GUI, browser automation, and WebView hosts can implement `MermanTextMeasurer`, place it in immutable `MermanEngineServices`, and pass that service bundle to `MermanEngine(options_json, services)`. The callback is immutable for that engine; construct a different engine to change or remove it. Text-measurement protocol 1 exposes 19 exact operations (`0..18`), and each handled `MermanTextMeasureResult` must use the `MermanTextMeasurementResultKind` required by `request.operation`. Return `None` for operations that cannot be measured synchronously and faithfully. Invalid results and Python exceptions delivered through UniFFI's generated callback trampoline fall back for that operation; Merman does not claim to catch arbitrary foreign unwinds outside that generated boundary.
 
 Use a real font API from the surface that displays the SVG rather than estimating width from character counts. Keep callbacks fast and do not re-enter the same reusable engine while its callback is active. Callback-free engines allow concurrent operations; callback engines serialize admission and report typed `BUSY` to a competing caller, while same-engine callback reentry reports `REENTRANT_CALL`. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md) documents every operation and fallback; the repository's [Python smoke example](https://github.com/Latias94/merman/blob/main/platforms/python/merman/examples/smoke.py) exercises all generated callback shapes for contract testing.
 

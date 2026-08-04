@@ -443,6 +443,21 @@ def _validate_constructor_services(
         "runtime constructor service IDs",
     )
     uses_svg_pipeline = bool(provider_ids)
+    expected_known_ids = sorted(
+        spec["id"]
+        for spec in CONSTRUCTOR_SERVICE_SPECS
+        if spec["id"] in _CONSTRUCTOR_SERVICE_CANDIDATE_IDS
+        and (not spec["requires_svg_pipeline"] or uses_svg_pipeline)
+    )
+    actual_known_ids = [
+        service_id
+        for service_id in service_ids
+        if service_id in _CONSTRUCTOR_SERVICE_SPEC_BY_ID
+    ]
+    if actual_known_ids != expected_known_ids:
+        raise MermanRuntimeCatalogError(
+            "runtime constructor service IDs do not match the transport exposure"
+        )
     for service_id in service_ids:
         service_spec = _CONSTRUCTOR_SERVICE_SPEC_BY_ID.get(service_id)
         if service_spec is None:

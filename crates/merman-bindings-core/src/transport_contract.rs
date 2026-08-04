@@ -151,7 +151,7 @@ define_binding_transports! {
         id: "uniffi",
         targets: NATIVE_TARGET,
         payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
-        constructor_service_candidates: HOST_TEXT_MEASUREMENT_SERVICE,
+        constructor_service_candidates: RUST_SERVICES,
     },
     Web => {
         id: "web",

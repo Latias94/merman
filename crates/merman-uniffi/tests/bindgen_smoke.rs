@@ -24,12 +24,48 @@ fn generates_python_binding_from_cdylib_metadata() {
 
     let generated = fs::read_to_string(&python_files[0]).expect("read generated Python binding");
     assert!(
-        generated.contains("class MermanEngine"),
-        "generated binding should expose MermanEngine"
+        generated.contains("class Merman("),
+        "generated binding should expose the one-shot Merman facade"
     );
     assert!(
-        generated.contains("class MermanReusableEngine"),
-        "generated binding should expose MermanReusableEngine"
+        generated.contains("class MermanEngine"),
+        "generated binding should expose the reusable MermanEngine"
+    );
+    assert!(
+        !generated.contains("MermanReusableEngine"),
+        "generated binding should delete the obsolete reusable-engine name"
+    );
+    for expected in [
+        "class MermanEngineServices",
+        "class MermanIconPack(",
+        "class MermanIconRegistry",
+        "class MermanIconRegistryErrorDetails",
+        "class MermanOperationMetadata",
+        "class MermanOutputPlan",
+    ] {
+        assert!(
+            generated.contains(expected),
+            "generated binding should expose {expected}"
+        );
+    }
+    assert!(
+        generated.contains("def from_packs"),
+        "generated binding should expose the transactional icon registry factory"
+    );
+    let icon_pack = generated
+        .split_once("class MermanIconPack(")
+        .and_then(|(_, suffix)| {
+            suffix
+                .split_once("class _UniffiFfiConverterTypeMermanIconPack")
+                .map(|(class, _)| class)
+        })
+        .expect("generated binding should contain the complete icon-pack object");
+    assert!(
+        icon_pack.contains("def json(self")
+            && icon_pack.contains("def registration_name(self")
+            && !icon_pack.contains("self.json = json")
+            && !icon_pack.contains("self.registration_name = registration_name"),
+        "generated icon packs must be immutable after construction"
     );
     assert!(
         generated.contains("class MermanTextMeasurer"),
@@ -128,13 +164,12 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose lint_rule_catalog"
     );
     assert!(
-        generated.contains("def reusable_engine_with_text_measurer"),
-        "generated binding should expose reusable_engine_with_text_measurer"
-    );
-    assert!(
-        !generated.contains("def set_text_measurer")
+        !generated.contains("def reusable_engine(")
+            && !generated.contains("def reusable_engine_with_text_measurer")
+            && !generated.contains("def with_text_measurer(")
+            && !generated.contains("def set_text_measurer")
             && !generated.contains("def clear_text_measurer"),
-        "generated bindings must keep host callbacks immutable after construction"
+        "generated bindings must expose one direct immutable service constructor"
     );
     assert!(
         generated.contains("def binding_api_version"),
@@ -163,10 +198,12 @@ fn generates_python_binding_from_cdylib_metadata() {
     assert!(
         generated.contains("class MermanErrorKind")
             && generated.contains("class MermanResourceErrorDetails")
+            && generated.contains("class MermanIconRegistryErrorDetails")
             && generated.contains("UNKNOWN_OPERATION")
             && !generated.contains("UNKNOWN_OUTPUT")
             && generated.contains("capability_id")
             && generated.contains("self.resource")
+            && generated.contains("self.icon_registry")
             && generated.contains("self.kind"),
         "generated binding should expose machine-readable binding error fields"
     );
@@ -209,6 +246,8 @@ fn generates_python_binding_from_cdylib_metadata() {
     assert!(
         operation_result.contains("operation_id")
             && operation_result.contains("self.operation_id = operation_id")
+            && operation_result.contains("self.metadata = metadata")
+            && !operation_result.contains("metadata_json")
             && !operation_result.contains("output_id"),
         "generated operation results should expose operation_id without the old alias"
     );
@@ -236,6 +275,19 @@ fn generates_python_binding_from_cdylib_metadata() {
         generated.contains("def render_pdf"),
         "generated binding should expose PDF bytes when the profile enables PDF"
     );
+    for expected in [
+        "def render_png_result",
+        "def render_jpeg_result",
+        "def render_pdf_result",
+        "def analysis_facts_json",
+        "def svg_plan_json",
+        "def close",
+    ] {
+        assert!(
+            generated.contains(expected),
+            "generated binding should expose {expected}"
+        );
+    }
 }
 
 #[test]
@@ -347,7 +399,7 @@ import merman
 
 with open(os.environ["MERMAN_ARTIFACT_PROFILES"], encoding="utf-8") as source:
     profiles = json.load(source)["profiles"]
-catalog = json.loads(merman.MermanEngine().runtime_catalog_json())
+catalog = json.loads(merman.Merman().runtime_catalog_json())
 capabilities = catalog["capabilities"]
 
 profile_id = "python-uniffi-native"
