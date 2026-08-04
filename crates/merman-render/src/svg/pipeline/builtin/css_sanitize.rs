@@ -1,7 +1,7 @@
 use crate::Result;
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserInput, ParserState,
-    QualifiedRuleParser, StyleSheetParser, ToCss, Token,
+    QualifiedRuleParser, SourcePosition, StyleSheetParser, ToCss, Token,
 };
 use std::borrow::Cow;
 use std::fmt;
@@ -131,6 +131,7 @@ enum CssViolation {
     MarkerReference,
     NestingLimit,
     RootSelector,
+    UnclosedBlock,
     UnsafeUrl,
     UnsupportedAtRule(String),
 }
@@ -154,6 +155,7 @@ impl fmt::Display for CssViolation {
             Self::RootSelector => {
                 f.write_str(":root rules are not part of the resvg-safe contract")
             }
+            Self::UnclosedBlock => f.write_str("unclosed CSS block or function"),
             Self::UnsafeUrl => f.write_str("unsafe CSS URL"),
             Self::UnsupportedAtRule(name) => {
                 write!(f, "@{name} is not part of the resvg-safe contract")
@@ -439,6 +441,7 @@ fn rewrite_component_values<'i, 't>(
                         rewrite_component_values(nested, mode, nested_depth)
                     }
                 })?;
+                ensure_source_closed_block(input, token_start, ')')?;
                 output.push_str(&nested);
                 output.push(')');
             }
@@ -448,19 +451,76 @@ fn rewrite_component_values<'i, 't>(
                 let nested = input.parse_nested_block(|nested| {
                     rewrite_component_values(nested, mode, nested_depth)
                 })?;
-                output.push_str(&nested);
-                output.push(match token {
+                let close = match token {
                     Token::ParenthesisBlock => ')',
                     Token::SquareBracketBlock => ']',
                     Token::CurlyBracketBlock => '}',
                     _ => unreachable!(),
-                });
+                };
+                ensure_source_closed_block(input, token_start, close)?;
+                output.push_str(&nested);
+                output.push(close);
             }
             Token::BadUrl(_) | Token::BadString(_) => {
                 return Err(input.new_custom_error(CssViolation::BadToken));
             }
             _ => output.push_str(input.slice(token_start..token_end)),
         }
+    }
+}
+
+fn ensure_source_closed_block<'i, 't>(
+    input: &Parser<'i, 't>,
+    token_start: SourcePosition,
+    close: char,
+) -> std::result::Result<(), ParseError<'i, CssViolation>> {
+    let raw_block = input.slice(token_start..input.position());
+    if raw_block.trim_end().ends_with(close) && source_closes_initial_block(raw_block, close) {
+        return Ok(());
+    }
+
+    Err(input.new_custom_error(CssViolation::UnclosedBlock))
+}
+
+fn source_closes_initial_block(raw_block: &str, close: char) -> bool {
+    const SENTINEL: &str = "__merman_css_closed_block_sentinel__";
+
+    let mut probe = String::with_capacity(raw_block.len() + SENTINEL.len() + 1);
+    probe.push_str(raw_block);
+    probe.push(' ');
+    probe.push_str(SENTINEL);
+
+    let mut input = ParserInput::new(&probe);
+    let mut parser = Parser::new(&mut input);
+    let Ok(token) = parser.next_including_whitespace().cloned() else {
+        return false;
+    };
+    if !opening_token_matches_close(&token, close) {
+        return false;
+    }
+
+    if parser
+        .parse_nested_block(|nested| {
+            while nested.next_including_whitespace().is_ok() {}
+            Ok::<_, ParseError<'_, CssViolation>>(())
+        })
+        .is_err()
+    {
+        return false;
+    }
+
+    matches!(
+        parser.next(),
+        Ok(Token::Ident(name)) if name.as_ref() == SENTINEL
+    )
+}
+
+fn opening_token_matches_close(token: &Token<'_>, close: char) -> bool {
+    match token {
+        Token::Function(_) | Token::ParenthesisBlock => close == ')',
+        Token::SquareBracketBlock => close == ']',
+        Token::CurlyBracketBlock => close == '}',
+        _ => false,
     }
 }
 
@@ -677,6 +737,13 @@ mod tests {
                 .as_deref(),
             Some(r##"rotate(0.5) \"45deg\" url(#a45deg) foo45deg 90deg-foo"##)
         );
+    }
+
+    #[test]
+    fn css_sanitize_rejects_unclosed_component_value_blocks() {
+        assert_eq!(sanitize_css_value("5rl('file:///{animatiEtroke:#333"), None);
+        assert_eq!(sanitize_css_value("rotate(45deg"), None);
+        assert_eq!(sanitize_css_value("outer((red)"), None);
     }
 
     #[test]
