@@ -364,6 +364,54 @@ impl VendoredFontMetricsTextMeasurer {
         None
     }
 
+    pub(crate) fn unwrapped_html_width_table(
+        style: &TextStyle,
+    ) -> Option<&'static FontMetricsTable> {
+        Self::default().lookup_table(style)
+    }
+
+    /// Extends the exact raw HTML line-width state used by the qualified built-in route.
+    ///
+    /// `line_width_px` calls the same scalar helper below, so the streaming planner cannot drift
+    /// into a different kerning/trigram or floating-point accumulation order.
+    #[inline]
+    pub(crate) fn accumulate_unwrapped_html_char_em(
+        table: &'static FontMetricsTable,
+        em: &mut f64,
+        prevprev: &mut Option<char>,
+        prev: &mut Option<char>,
+        ch: char,
+    ) {
+        let profile = Self::metric_profile(table);
+        Self::accumulate_line_char_em(profile, em, prevprev, prev, ch);
+    }
+
+    #[inline]
+    fn accumulate_line_char_em(
+        profile: FontMetricProfile<'_>,
+        em: &mut f64,
+        prevprev: &mut Option<char>,
+        prev: &mut Option<char>,
+        ch: char,
+    ) {
+        let ch = Self::normalize_profile_char(profile.entries, ch);
+        *em += Self::lookup_char_em(profile.entries, profile.default_em, ch);
+        if let Some(previous) = *prev {
+            *em += Self::lookup_profile_kern_em(profile, previous, ch);
+        }
+        if let (Some(a), Some(b)) = (*prevprev, *prev) {
+            if b == ' ' {
+                if !(a.is_whitespace() || ch.is_whitespace()) {
+                    *em += Self::lookup_space_trigram_em(profile.space_trigrams, a, ch);
+                }
+            } else if !(a.is_whitespace() || b.is_whitespace() || ch.is_whitespace()) {
+                *em += Self::lookup_trigram_em(profile.trigrams, a, b, ch);
+            }
+        }
+        *prevprev = *prev;
+        *prev = Some(ch);
+    }
+
     fn approximate_vendored_svg_vertical_height_px(
         &self,
         shape: SvgVerticalDomShape,
@@ -824,24 +872,7 @@ impl VendoredFontMetricsTextMeasurer {
         let mut prevprev: Option<char> = None;
         let mut prev: Option<char> = None;
         for ch in text.chars() {
-            let ch = Self::normalize_profile_char(profile.entries, ch);
-            em += Self::lookup_char_em(profile.entries, profile.default_em, ch);
-            if let Some(p) = prev {
-                em += Self::lookup_profile_kern_em(profile, p, ch);
-            }
-            if let (Some(a), Some(b)) = (prevprev, prev) {
-                if b == ' ' {
-                    if !(a.is_whitespace() || ch.is_whitespace()) {
-                        let space_delta =
-                            Self::lookup_space_trigram_em(profile.space_trigrams, a, ch);
-                        em += space_delta;
-                    }
-                } else if !(a.is_whitespace() || b.is_whitespace() || ch.is_whitespace()) {
-                    em += Self::lookup_trigram_em(profile.trigrams, a, b, ch);
-                }
-            }
-            prevprev = prev;
-            prev = Some(ch);
+            Self::accumulate_line_char_em(profile, &mut em, &mut prevprev, &mut prev, ch);
         }
         em * font_size
     }

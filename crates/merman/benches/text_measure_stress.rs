@@ -1,4 +1,5 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
 use merman_render::text::{
     TextMeasurer, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
     measure_html_with_inline_styles,
@@ -69,6 +70,10 @@ fn rich_inline_html(visible_bytes: usize, run_count: usize, break_count: usize) 
 
 fn bench_text_measure_stress(c: &mut Criterion) {
     let measurer = VendoredFontMetricsTextMeasurer::default();
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("deterministic benchmark session");
+    let inline_measurer = session.text_measurer(TextMeasurementPhase::Wrap);
     let styles = [
         ("plain", flowchart_style(None)),
         ("bold", flowchart_style(Some("bold"))),
@@ -125,6 +130,53 @@ fn bench_text_measure_stress(c: &mut Criterion) {
                             black_box(html),
                             black_box(&style),
                             black_box(Some(180.0)),
+                            WrapMode::HtmlLike,
+                        ));
+                    });
+                },
+            );
+        }
+    }
+
+    for run_count in [1, 32, 128] {
+        for segment_count in [16, 32, 64, 128] {
+            let html = rich_inline_html(FIXED_VISIBLE_BYTES, run_count, segment_count - 1);
+            let natural_width = measure_html_with_inline_styles(
+                &inline_measurer,
+                &html,
+                &style,
+                None,
+                WrapMode::HtmlLike,
+            )
+            .width;
+            // The public width is quantized to 1/64 px. Subtract a full pixel so the internal raw
+            // natural width is guaranteed to exceed the benchmark limit instead of accidentally
+            // taking the no-wrap fast path after rounding.
+            let max_width = (natural_width - 1.0).max(1.0);
+            let active_line_probe = measure_html_with_inline_styles(
+                &inline_measurer,
+                &html,
+                &style,
+                Some(max_width),
+                WrapMode::HtmlLike,
+            );
+            assert!(
+                active_line_probe.line_count > 1,
+                "active-line benchmark must exercise rollback and wrapping"
+            );
+            group.bench_with_input(
+                BenchmarkId::new(
+                    "rich_inline_active_line_matrix",
+                    format!("r{run_count}_k{segment_count}"),
+                ),
+                &html,
+                |b, html| {
+                    b.iter(|| {
+                        black_box(measure_html_with_inline_styles(
+                            black_box(&inline_measurer),
+                            black_box(html),
+                            black_box(&style),
+                            black_box(Some(max_width)),
                             WrapMode::HtmlLike,
                         ));
                     });
