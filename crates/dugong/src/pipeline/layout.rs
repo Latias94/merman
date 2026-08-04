@@ -47,10 +47,7 @@ fn build_layout_graph(
     layout.set_default_node_label(NodeLabel::default);
     layout.set_default_edge_label(EdgeLabel::default);
 
-    for id in input.nodes() {
-        let Some(node) = input.node(id) else {
-            continue;
-        };
+    input.for_each_node(|id, node| {
         layout.set_node(
             id,
             NodeLabel {
@@ -62,7 +59,7 @@ fn build_layout_graph(
         if let Some(parent) = input.parent(id) {
             layout.set_parent_ref(id, parent);
         }
-    }
+    });
     input.for_each_edge(|key, edge| {
         layout.set_edge_key(
             key.clone(),

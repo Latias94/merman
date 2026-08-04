@@ -172,13 +172,7 @@ pub fn find_type2_conflicts(
                 continue;
             }
 
-            let mut first: Option<&str> = None;
-            g.for_each_predecessor(v, |u| {
-                if first.is_none() {
-                    first = Some(u);
-                }
-            });
-            if let Some(u) = first {
+            if let Some(u) = g.first_predecessor(v) {
                 boundaries.push(Type2Boundary {
                     south_index,
                     north_order: g.node(u).and_then(|n| n.order).map(|n| n as isize),

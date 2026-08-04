@@ -1292,16 +1292,16 @@ where
             return self.adjacent_nodes(v);
         }
         let mut out: Vec<&str> = Vec::new();
-        for w in self.successors(v) {
+        self.for_each_successor(v, |w| {
             if !out.iter().any(|x| x == &w) {
                 out.push(w);
             }
-        }
-        for u in self.predecessors(v) {
+        });
+        self.for_each_predecessor(v, |u| {
             if !out.iter().any(|x| x == &u) {
                 out.push(u);
             }
-        }
+        });
         out
     }
 
@@ -1750,7 +1750,7 @@ where
         self.nodes
             .iter()
             .filter_map(|n| n.as_ref())
-            .filter(|n| self.in_edges(&n.id, None).is_empty())
+            .filter(|n| self.first_predecessor(&n.id).is_none())
             .map(|n| n.id.as_str())
             .collect()
     }
@@ -1762,7 +1762,7 @@ where
         self.nodes
             .iter()
             .filter_map(|n| n.as_ref())
-            .filter(|n| self.out_edges(&n.id, None).is_empty())
+            .filter(|n| self.first_successor(&n.id).is_none())
             .map(|n| n.id.as_str())
             .collect()
     }
@@ -1772,7 +1772,7 @@ where
             return false;
         }
         if self.options.directed {
-            return self.successors(v).is_empty();
+            return self.first_successor(v).is_none();
         }
         self.neighbors(v).is_empty()
     }

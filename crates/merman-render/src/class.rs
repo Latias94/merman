@@ -2152,69 +2152,6 @@ fn layout_class_diagram_typed_inner(
         }
     }
 
-    if g.options().compound {
-        for &id in &namespace_ids {
-            let Some(parent) = model
-                .namespaces
-                .get(id)
-                .and_then(|ns| ns.parent.as_deref())
-                .map(str::trim)
-                .filter(|parent| !parent.is_empty())
-            else {
-                continue;
-            };
-            if model.namespaces.contains_key(parent) {
-                g.set_parent(id.to_string(), parent.to_string());
-            }
-        }
-
-        // Mermaid assigns parents based on the class' `parent` field (see upstream
-        // `addClasses(..., parent)` + `g.setParent(vertex.id, parent)`).
-        for c in model.classes.values() {
-            if let Some(parent) = c
-                .parent
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                && model.namespaces.contains_key(parent)
-            {
-                g.set_parent(c.id.clone(), parent.to_string());
-            }
-        }
-
-        for note in &model.notes {
-            let Some(parent) = note
-                .parent
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-            else {
-                continue;
-            };
-            if model.namespaces.contains_key(parent) {
-                g.set_parent(note.id.clone(), parent.to_string());
-            }
-        }
-
-        // Keep interface nodes inside the same namespace cluster as their owning class.
-        for iface in &model.interfaces {
-            let Some(cls) = model.classes.get(iface.class_id.as_str()) else {
-                continue;
-            };
-            let Some(parent) = cls
-                .parent
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-            else {
-                continue;
-            };
-            if model.namespaces.contains_key(parent) {
-                g.set_parent(iface.id.clone(), parent.to_string());
-            }
-        }
-    }
-
     // Note attachments precede class relations in Mermaid's layout edge array. Their IDs use the
     // note declaration index, including unattached notes, rather than the relation count.
     for (i, note) in model.notes.iter().enumerate() {

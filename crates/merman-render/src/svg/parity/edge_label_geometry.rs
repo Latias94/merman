@@ -101,14 +101,11 @@ pub(super) fn position_edge_label(
     rendered_d: &str,
     points_were_explicitly_updated: bool,
 ) -> LayoutPoint {
-    let midpoint_missing_from_path = label_path_points
-        .get(label_path_points.len() / 2)
-        .is_some_and(|midpoint| !is_label_coordinate_in_path(midpoint, rendered_d));
-    position_edge_label_for_path(
-        dagre_anchor,
-        label_path_points,
-        points_were_explicitly_updated || midpoint_missing_from_path,
-    )
+    let path_was_updated = points_were_explicitly_updated
+        || label_path_points
+            .get(label_path_points.len() / 2)
+            .is_some_and(|midpoint| !is_label_coordinate_in_path(midpoint, rendered_d));
+    position_edge_label_for_path(dagre_anchor, label_path_points, path_was_updated)
 }
 
 fn position_edge_label_for_path(
