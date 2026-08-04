@@ -4,10 +4,26 @@
     "ClassDiagramV2": {
       "nodes": [
         {
+          "id": "Vehicle",
+          "x": 396.641,
+          "y": 434.0,
+          "width": 185.76,
+          "height": 288.0,
+          "is_cluster": false
+        },
+        {
           "id": "Car",
           "x": 120.8,
           "y": 772.0,
           "width": 241.6,
+          "height": 192.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Truck",
+          "x": 396.641,
+          "y": 772.0,
+          "width": 210.083,
           "height": 192.0,
           "is_cluster": false
         },
@@ -25,22 +41,6 @@
           "y": 108.0,
           "width": 257.359,
           "height": 216.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Truck",
-          "x": 396.641,
-          "y": 772.0,
-          "width": 210.083,
-          "height": 192.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Vehicle",
-          "x": 396.641,
-          "y": 434.0,
-          "width": 185.76,
-          "height": 288.0,
           "is_cluster": false
         }
       ],

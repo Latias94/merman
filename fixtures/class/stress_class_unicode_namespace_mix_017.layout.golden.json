@@ -4,36 +4,12 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Alpha",
-          "x": 108.64,
-          "y": 109.5,
-          "width": 147.279,
-          "height": 144.0,
-          "is_cluster": false
-        },
-        {
           "id": "Core",
           "x": 108.64,
           "y": 109.5,
           "width": 217.279,
           "height": 219.0,
           "is_cluster": true
-        },
-        {
-          "id": "Core.Alpha",
-          "x": 108.64,
-          "y": 580.0,
-          "width": 93.438,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note0",
-          "x": 108.64,
-          "y": 714.0,
-          "width": 98.563,
-          "height": 84.0,
-          "is_cluster": false
         },
         {
           "id": "支付",
@@ -44,11 +20,35 @@
           "is_cluster": true
         },
         {
+          "id": "Core.Alpha",
+          "x": 108.64,
+          "y": 714.0,
+          "width": 93.438,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
           "id": "支付.订单",
           "x": 328.237,
           "y": 647.0,
           "width": 66.875,
           "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note0",
+          "x": 108.64,
+          "y": 580.0,
+          "width": 98.563,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Alpha",
+          "x": 108.64,
+          "y": 109.5,
+          "width": 147.279,
+          "height": 144.0,
           "is_cluster": false
         },
         {
@@ -62,14 +62,14 @@
       ],
       "edges": [
         {
-          "id": "0",
-          "from": "Core.Alpha",
+          "id": "edgeNote0",
+          "from": "note0",
           "to": "支付.订单",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 155.358,
+              "x": 157.921,
               "y": 580.0
             },
             {
@@ -81,12 +81,7 @@
               "y": 615.97
             }
           ],
-          "label": {
-            "x": 256.039,
-            "y": 580.0,
-            "width": 27.52,
-            "height": 24.0
-          },
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
           "end_label_left": null,
@@ -96,14 +91,14 @@
           "stroke_dasharray": null
         },
         {
-          "id": "edgeNote2",
-          "from": "note0",
+          "id": "0",
+          "from": "Core.Alpha",
           "to": "支付.订单",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 157.921,
+              "x": 155.358,
               "y": 714.0
             },
             {
@@ -115,7 +110,12 @@
               "y": 678.03
             }
           ],
-          "label": null,
+          "label": {
+            "x": 256.039,
+            "y": 714.0,
+            "width": 27.52,
+            "height": 24.0
+          },
           "start_label_left": null,
           "start_label_right": null,
           "end_label_left": null,

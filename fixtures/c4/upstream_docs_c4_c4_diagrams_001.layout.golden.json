@@ -640,8 +640,8 @@
             "x": 549.592,
             "y": 1226.0
           },
-          "offset_x": -10.0,
-          "offset_y": null,
+          "offset_x": null,
+          "offset_y": -10.0,
           "label": {
             "text": "Uses",
             "y": 0.0,
@@ -664,8 +664,8 @@
             "x": 418.16,
             "y": 1412.0
           },
-          "offset_x": -40.0,
-          "offset_y": -50.0,
+          "offset_x": -50.0,
+          "offset_y": -40.0,
           "label": {
             "text": "Sends e-mails",
             "y": 0.0,

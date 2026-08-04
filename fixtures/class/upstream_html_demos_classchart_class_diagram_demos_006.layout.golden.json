@@ -4,25 +4,33 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Cat",
-          "x": 296.156,
-          "y": 242.0,
-          "width": 47.359,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
           "id": "Dog",
           "x": 296.156,
-          "y": 75.0,
+          "y": 225.0,
           "width": 92.0,
           "height": 150.0,
           "is_cluster": false
         },
         {
+          "id": "Cat",
+          "x": 296.156,
+          "y": 58.0,
+          "width": 47.359,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note0",
+          "x": 100.078,
+          "y": 18.0,
+          "width": 200.156,
+          "height": 36.0,
+          "is_cluster": false
+        },
+        {
           "id": "interface0",
           "x": 100.078,
-          "y": 75.0,
+          "y": 225.0,
           "width": 44.8,
           "height": 24.0,
           "is_cluster": false
@@ -30,21 +38,42 @@
         {
           "id": "interface1",
           "x": 100.078,
-          "y": 195.5,
+          "y": 104.5,
           "width": 44.8,
           "height": 24.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note0",
-          "x": 100.078,
-          "y": 282.0,
-          "width": 200.156,
-          "height": 36.0,
           "is_cluster": false
         }
       ],
       "edges": [
+        {
+          "id": "edgeNote0",
+          "from": "note0",
+          "to": "Cat",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 200.156,
+              "y": 18.0
+            },
+            {
+              "x": 225.156,
+              "y": 18.0
+            },
+            {
+              "x": 272.476,
+              "y": 44.659
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
         {
           "id": "0",
           "from": "interface0",
@@ -54,15 +83,15 @@
           "points": [
             {
               "x": 122.478,
-              "y": 75.0
+              "y": 225.0
             },
             {
               "x": 225.156,
-              "y": 75.0
+              "y": 225.0
             },
             {
               "x": 250.156,
-              "y": 75.0
+              "y": 225.0
             }
           ],
           "label": null,
@@ -83,44 +112,15 @@
           "points": [
             {
               "x": 122.478,
-              "y": 195.5
+              "y": 104.5
             },
             {
               "x": 225.156,
-              "y": 195.5
+              "y": 104.5
             },
             {
               "x": 272.476,
-              "y": 226.491
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edgeNote3",
-          "from": "note0",
-          "to": "Cat",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 200.156,
-              "y": 282.0
-            },
-            {
-              "x": 225.156,
-              "y": 282.0
-            },
-            {
-              "x": 272.476,
-              "y": 255.341
+              "y": 73.509
             }
           ],
           "label": null,

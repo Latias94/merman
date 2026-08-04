@@ -4,19 +4,19 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Parser",
-          "x": 601.484,
-          "y": 87.0,
-          "width": 414.0,
-          "height": 174.0,
-          "is_cluster": false
-        },
-        {
           "id": "Result",
           "x": 1017.526,
           "y": 87.0,
           "width": 221.763,
           "height": 168.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Parser",
+          "x": 601.484,
+          "y": 87.0,
+          "width": 414.0,
+          "height": 174.0,
           "is_cluster": false
         },
         {
@@ -29,6 +29,35 @@
         }
       ],
       "edges": [
+        {
+          "id": "edgeNote0",
+          "from": "note0",
+          "to": "Parser",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 344.484,
+              "y": 87.0
+            },
+            {
+              "x": 369.484,
+              "y": 87.0
+            },
+            {
+              "x": 394.484,
+              "y": 87.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
         {
           "id": "0",
           "from": "Parser",
@@ -55,35 +84,6 @@
             "width": 48.16,
             "height": 24.0
           },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edgeNote2",
-          "from": "note0",
-          "to": "Parser",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 344.484,
-              "y": 87.0
-            },
-            {
-              "x": 369.484,
-              "y": 87.0
-            },
-            {
-              "x": 394.484,
-              "y": 87.0
-            }
-          ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
           "end_label_left": null,

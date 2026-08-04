@@ -4,14 +4,6 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Admin",
-          "x": 397.738,
-          "y": 234.5,
-          "width": 206.556,
-          "height": 174.0,
-          "is_cluster": false
-        },
-        {
           "id": "Company",
           "x": 394.899,
           "y": 396.0,
@@ -26,6 +18,14 @@
           "width": 714.797,
           "height": 722.0,
           "is_cluster": true
+        },
+        {
+          "id": "Admin",
+          "x": 397.738,
+          "y": 234.5,
+          "width": 206.556,
+          "height": 174.0,
+          "is_cluster": false
         },
         {
           "id": "Company.Project.Module",
