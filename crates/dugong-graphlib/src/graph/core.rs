@@ -1971,9 +1971,12 @@ where
             root
         }
 
-        fn union(parents: &mut [usize], ranks: &mut [u8], left: usize, right: usize) {
-            let left_root = find(parents, left);
-            let right_root = find(parents, right);
+        fn union_roots(
+            parents: &mut [usize],
+            ranks: &mut [u8],
+            left_root: usize,
+            right_root: usize,
+        ) {
             if left_root == right_root {
                 return;
             }
@@ -1985,6 +1988,12 @@ where
                     ranks[left_root] = ranks[left_root].saturating_add(1);
                 }
             }
+        }
+
+        fn union(parents: &mut [usize], ranks: &mut [u8], left: usize, right: usize) {
+            let left_root = find(parents, left);
+            let right_root = find(parents, right);
+            union_roots(parents, ranks, left_root, right_root);
         }
 
         let slot_count = self.nodes.len();
@@ -2026,7 +2035,9 @@ where
                     parent_ix,
                 });
             }
-            union(
+            // The cycle check already resolved both component roots. Merge those roots directly
+            // instead of repeating two zero-depth `find` calls for every accepted assignment.
+            union_roots(
                 &mut component_parents,
                 &mut component_ranks,
                 child_root,
