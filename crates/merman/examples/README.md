@@ -1,103 +1,116 @@
 # Merman Rust Examples
 
-Run these commands from the repository root.
+Every user-facing example in this directory is a self-contained Rust file. It declares its own Mermaid source, uses no shared `support` module, and can be copied into another crate's `examples/` directory.
 
-Every command below disables the `merman` facade's default `complete-svg` feature and selects the smallest capability set required by that example. Remove `--no-default-features` when evaluating the default complete SVG experience instead.
+Run commands below from the Merman repository root. Start with the default complete SVG build:
 
-Examples `01` through `08`, plus `11`, `12`, and `13`, accept Mermaid source on stdin. If stdin is an interactive terminal, they do not wait for input: they print a short note to stderr and render a built-in example. Pipe source or redirect a `.mmd` file to replace that input.
-
-## Parse And Inspect
-
-These examples need only the always-available parser and semantic model:
-
-```bash
-cargo run -p merman --no-default-features --example example_02_semantic_json
-cargo run -p merman --no-default-features --example example_08_deterministic_gantt
+```sh
+cargo run -p merman --example render_svg > diagram.svg
 ```
 
-## Basic SVG And Layout
+## Choose The Right Entry Point
 
-The `svg` leaf provides the basic renderer without Cytoscape, ELK, or RaTeX:
+| Your task | Start with | Why |
+| --- | --- | --- |
+| Render one source string to SVG | [`render_svg.rs`](render_svg.rs) | Uses the root `merman::render_svg` convenience API and turns "no diagram" into a typed error. |
+| Embed several SVGs in one HTML document | [`embed_multiple_svgs.rs`](embed_multiple_svgs.rs) | Uses `render_svg_with_id` with caller-owned IDs that remain unique after normalization. |
+| Render many independent files with one policy | [`render_many.rs`](render_many.rs) | Reuses one configured `HeadlessRenderer` across operations. |
+| Export a bounded PNG | [`render_png.rs`](render_png.rs) | Selects a fit box, scale, background, and allocation limits before rasterization. |
+| Render for terminals or logs | [`render_terminal.rs`](render_terminal.rs) | Selects Unicode or ASCII-only output explicitly. |
+| Inspect the parsed semantic model | [`inspect_semantics.rs`](inspect_semantics.rs) | Uses `Engine` without requiring SVG rendering. |
+| Inspect computed geometry and routes | [`inspect_layout.rs`](inspect_layout.rs) | Stops after typed layout and serializes the result. |
+| Apply application-wide Mermaid defaults | [`configure_mermaid.rs`](configure_mermaid.rs) | Keeps host configuration outside user-authored diagram source. |
+| Make relative dates deterministic | [`deterministic_gantt.rs`](deterministic_gantt.rs) | Pins "today" and the local offset for snapshots and reproducible builds. |
+| Apply a ready-made product presentation | [`presentation_profile.rs`](presentation_profile.rs) | Combines the `merman-modern` profile with a semantic editor theme. |
+| Map an application's own theme tokens | [`custom_presentation_theme.rs`](custom_presentation_theme.rs) | Builds a `HostTheme` from semantic roles instead of family-specific CSS. |
+| Control consumer SVG cleanup and styling | [`custom_svg_pipeline.rs`](custom_svg_pipeline.rs) | Builds an explicit resvg-safe, background, and scoped-CSS pipeline. |
 
-```bash
-cargo run -p merman --no-default-features --features svg \
-  --example example_01_svg_basic > out.svg
-cargo run -p merman --no-default-features --features svg \
-  --example example_03_layout_json
-cargo run -p merman --no-default-features --features svg \
-  --example example_06_svg_pipeline > pipeline.svg
-cargo run -p merman --no-default-features --features svg \
-  --example example_07_theme_css > themed.svg
-cargo run -p merman --no-default-features --features svg \
-  --example example_09_multiple_diagrams
+Use the one-shot root functions for ordinary SVG calls. `render_svg_with_id` normalizes IDs with `merman::svg::sanitize_svg_id`, so dynamic integrations should use stable ASCII keys and ensure the normalized results are unique rather than deriving IDs only from display titles. Reach for `HeadlessRenderer` only when an application needs reusable configuration, another output type, layout data, presentation policy, resource policy, or an SVG pipeline.
+
+## Run By Task
+
+Render one standalone SVG or one HTML document containing multiple SVGs:
+
+```sh
+cargo run -p merman --example render_svg > diagram.svg
+cargo run -p merman --example embed_multiple_svgs > diagrams.html
 ```
 
-## Terminal And Binary Output
+Reuse one renderer for several independent SVG files:
 
-Output features imply the lower-level capabilities they require:
-
-```bash
-cargo run -p merman --no-default-features --features ascii \
-  --example example_04_ascii_output
-cargo run -p merman --no-default-features --features png \
-  --example example_05_raster_output -- target/example.png
+```sh
+cargo run -p merman --example render_many -- target/example-svgs
 ```
 
-Pass `-- --ascii` to `example_04_ascii_output` for ASCII-only output.
+Render PNG and terminal output. These capabilities are intentionally outside the default SVG feature set:
 
-## Host Output And Themes
-
-These examples use only the basic SVG path. They demonstrate a custom output pipeline, a reusable host theme profile, and a stylized built-in host theme:
-
-```bash
-cargo run -p merman --no-default-features --features svg \
-  --example example_11_custom_output_environment > host-preview.svg
-cargo run -p merman --no-default-features --features svg \
-  --example example_12_host_theme_profile > host-theme.svg
-cargo run -p merman --no-default-features --features svg \
-  --example example_13_stylized_theme_showcase > showcase.svg
+```sh
+cargo run -p merman --features png --example render_png -- target/diagram.png
+cargo run -p merman --features ascii --example render_terminal
+cargo run -p merman --features ascii --example render_terminal -- --ascii
 ```
 
-## Custom Input
+Inspect parser and layout results:
 
-Pipe a Mermaid string:
-
-```bash
-printf "flowchart LR\nA --> B\n" | \
-  cargo run -p merman --no-default-features --features svg \
-    --example example_01_svg_basic > out.svg
+```sh
+cargo run -p merman --example inspect_semantics
+cargo run -p merman --example inspect_layout
+cargo run -p merman --example deterministic_gantt
 ```
 
-Redirect a Mermaid file:
+Configure host defaults, presentation, and output policy:
 
-```bash
-cargo run -p merman --no-default-features --features svg \
-  --example example_06_svg_pipeline < fixtures/flowchart/basic.mmd > pipeline.svg
+```sh
+cargo run -p merman --example configure_mermaid > configured.svg
+cargo run -p merman --example presentation_profile > presentation.svg
+cargo run -p merman --example custom_presentation_theme > custom-theme.svg
+cargo run -p merman --example custom_svg_pipeline > consumer-safe.svg
 ```
 
-Render custom PNG output:
+## Copy Into An Application
 
-```bash
-printf "flowchart LR\nA --> B\n" | \
-  cargo run -p merman --no-default-features --features png \
-    --example example_05_raster_output -- target/example.png
+The alpha.4 candidate is not published yet, so use the repository source while evaluating these APIs:
+
+```toml
+[dependencies]
+merman = { git = "https://github.com/Latias94/merman" }
 ```
 
-## Output Paths
+Copy the relevant `.rs` file into your application's `examples/` directory and run it by filename:
 
-- `example_01`, `example_06`, `example_07`, `example_12`, and `example_13` write SVG to stdout.
-- `example_11` writes host-controlled resvg-safe SVG to stdout.
-- `example_02`, `example_03`, and `example_08` write JSON to stdout.
-- `example_04` writes terminal text to stdout.
-- `example_05` writes PNG to `target/merman-raster-example.png` by default, or to the path passed after `--`.
-- `example_09` writes SVG files to `target/merman-multiple-diagrams/`.
-- `profile_render` writes a profiling summary to stderr and is intended for CPU profilers.
+```sh
+cargo run --example render_svg
+```
+
+Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["ascii"]` when copying `render_terminal`. Add `serde_json = "1"` when copying `inspect_semantics`, `inspect_layout`, `configure_mermaid`, or `deterministic_gantt`. After alpha.4 is published, replace the Git dependency with the released crate version. Pin Git integrations with `rev = "FULL_COMMIT_SHA"` before using them in a reproducible build.
+
+## Minimize Features Later
+
+The commands above favor a successful first run. Once the workflow is known, disable defaults and compile only the observable capabilities it needs:
+
+| Examples | Minimal selection |
+| --- | --- |
+| `inspect_semantics`, `deterministic_gantt` | No Merman features |
+| `render_svg`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `custom_presentation_theme`, `custom_svg_pipeline` | `svg` |
+| `presentation_profile` | `layout-elk` (also enables `svg`) |
+| `render_terminal` | `ascii` |
+| `render_png` | `png` (also enables `svg`) |
+
+For example:
+
+```sh
+cargo run -p merman --no-default-features --features svg --example render_svg > diagram.svg
+cargo run -p merman --no-default-features --example inspect_semantics
+cargo run -p merman --no-default-features --features png --example render_png
+```
+
+A minimal SVG build returns a typed `missing-capability` error when an input needs an optional layout engine or math renderer. It never silently substitutes a different semantic result. See the [capability guide](../../../docs/FEATURES.md) for dependency declarations and feature forwarding.
 
 ## Profiling
 
-Use `profile_render` when a profiler needs a long, single-stage loop instead of a Criterion benchmark harness. The example parses and lays out the input once for `--stage render`, then keeps the CPU inside SVG rendering for the requested duration.
+`profile_render.rs` is a maintainer tool rather than a learning example. It keeps the CPU inside a selected render stage for profilers:
 
-```bash
+```sh
 CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph \
   --profile bench \
   -p merman \
@@ -110,5 +123,3 @@ CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph \
   --stage render \
   --seconds 20
 ```
-
-The Architecture fixture requires `layout-cytoscape`, which already implies `svg`. For another fixture, select its actual optional layout or math leaf instead of relying on the facade default.

@@ -23,7 +23,9 @@ export function StatusBar() {
   const {
     code,
     diagramTheme,
-    hostThemePreset,
+    presentationProfileId,
+    presentationThemePresetId,
+    svgPipeline,
     textMeasurementMode,
     diagramFont,
   } = useAppStore(
@@ -31,7 +33,9 @@ export function StatusBar() {
       code: state.code,
       diagramFont: state.diagramFont,
       diagramTheme: state.diagramTheme,
-      hostThemePreset: state.hostThemePreset,
+      presentationProfileId: state.presentationProfileId,
+      presentationThemePresetId: state.presentationThemePresetId,
+      svgPipeline: state.svgPipeline,
       textMeasurementMode: state.textMeasurementMode,
     }))
   );
@@ -136,15 +140,32 @@ export function StatusBar() {
         )}
         <span className="hidden shrink-0 lg:inline">
           {t("status.theme")}:{" "}
-          {hostThemePreset === "none"
-            ? t(`themes.${diagramTheme}`)
-            : t(`hostThemes.${hostThemePreset}`)}
+          {t(`themes.${diagramTheme}`, { defaultValue: diagramTheme })}
         </span>
-        <span className="hidden xl:inline">
+        <span className="hidden shrink-0 xl:inline">
+          {t("status.presentationTheme")}:{" "}
+          {presentationThemePresetId
+            ? t(`presentationThemes.${presentationThemePresetId}`, {
+                defaultValue: presentationThemePresetId,
+              })
+            : t("presentationThemes.none")}
+        </span>
+        <span className="hidden shrink-0 xl:inline">
+          {t("status.presentationProfile")}:{" "}
+          {presentationProfileId
+            ? t(`presentationProfiles.${presentationProfileId}`, {
+                defaultValue: presentationProfileId,
+              })
+            : t("presentationProfiles.none")}
+        </span>
+        <span className="hidden shrink-0 xl:inline">
+          {t("status.svgOutput")}: {t(`svgPipelines.${svgPipeline}`)}
+        </span>
+        <span className="hidden 2xl:inline">
           {t("status.measurement")}:{" "}
           {t(`textMeasurement.${textMeasurementMode}`)}
         </span>
-        <span className="hidden xl:inline">
+        <span className="hidden 2xl:inline">
           {t("status.font")}: {t(`diagramFonts.${diagramFont}`)}
         </span>
       </div>

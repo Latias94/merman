@@ -28,10 +28,13 @@ choice, explicit feature set, build target, and expected capability/output repor
 release-state field, documentation path, evidence prose, package bundle, or wire-layout copy.
 
 Closure evidence remains owned by its verifier rather than the artifact descriptor. A `host` recipe
-builds on the executing host, but its frozen normal-dependency closure is explicitly the
-`x86_64-unknown-linux-gnu` reference closure and excludes build and proc-macro edges. That evidence
-is not a full clean-build cost metric, a macOS/Windows closure union, or a support promise. A
-`target-set` recipe must prove each descriptor-owned target separately.
+builds on the executing host, but its normal-dependency probe uses
+`x86_64-unknown-linux-gnu` as the reference target and excludes build and proc-macro edges. The
+verifier enforces readable required-package, forbidden-package, forbidden-feature, and declared
+product-boundary claims rather than an opaque digest of the complete closure or a requirement that
+incidental transitive packages remain present. Exact versions remain owned by `Cargo.lock`, while
+legal reports, advisory policy, and artifact measurements retain their own evidence. A `target-set`
+recipe must prove each descriptor-owned target separately.
 
 Cargo manifests remain hand-written. Each protocol keeps its natural authority: the native ABI
 descriptor and header own C layouts and symbols; UniFFI definitions own generated language

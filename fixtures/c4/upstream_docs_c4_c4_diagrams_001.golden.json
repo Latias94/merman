@@ -277,7 +277,7 @@
         "wrap": false,
         "textColor": "blue",
         "lineColor": "blue",
-        "offsetX": -10
+        "offsetY": -10
       },
       {
         "type": "rel",
@@ -295,8 +295,8 @@
         "wrap": false,
         "textColor": "blue",
         "lineColor": "blue",
-        "offsetX": -40,
-        "offsetY": -50
+        "offsetX": -50,
+        "offsetY": -40
       },
       {
         "type": "rel",

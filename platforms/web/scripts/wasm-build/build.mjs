@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -13,8 +13,10 @@ import {
   WASM_INPUT_MANIFEST_NAME,
   buildWasmInputManifest,
   cargoMetadataForPreset,
+  cargoRepositoryMetadata,
   collectWasmInputEntries,
   currentWasmBuildToolVersions,
+  rustcWasmInputPaths,
 } from "./input-manifest.mjs";
 import {
   acquireOutputLock,
@@ -51,6 +53,8 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
   }
 
   try {
+    const repositoryMetadata = cargoRepositoryMetadata({ repoRoot: repositoryRoot });
+    const toolVersions = currentWasmBuildToolVersions(repositoryRoot);
     for (const descriptor of selected) {
       buildWasm({
         outputDir: resolvePackageSubdir(
@@ -59,6 +63,8 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
           `package ${descriptor.id} output`,
         ),
         descriptor,
+        repositoryMetadata,
+        toolVersions,
       });
     }
   } catch (error) {
@@ -70,13 +76,20 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
   }
 }
 
-export function buildWasm({ outputDir, descriptor }) {
+export function buildWasm({
+  outputDir,
+  descriptor,
+  repositoryMetadata = null,
+  toolVersions = null,
+}) {
   const profile = wasmArtifactProfile(descriptor);
   const outputRoot = outputDir.absolute;
   const releaseLock = acquireOutputLock(outputRoot);
   let stageRoot = null;
 
   try {
+    const lockedRepositoryMetadata =
+      repositoryMetadata ?? cargoRepositoryMetadata({ repoRoot: repositoryRoot });
     recoverOutputTransaction(outputRoot);
     stageRoot = createOutputStage(outputRoot);
     console.log(
@@ -88,9 +101,13 @@ export function buildWasm({ outputDir, descriptor }) {
       ].join(" "),
     );
 
-    const buildMetadata = cargoMetadataForPreset({ preset: profile, repoRoot: repositoryRoot });
+    const buildMetadata = cargoMetadataForPreset({
+      preset: profile,
+      repoRoot: repositoryRoot,
+      repositoryMetadata: lockedRepositoryMetadata,
+    });
     const inputSnapshot = collectWasmInputEntries({ metadata: buildMetadata, repoRoot: repositoryRoot });
-    const toolVersions = currentWasmBuildToolVersions(repositoryRoot);
+    const buildToolVersions = toolVersions ?? currentWasmBuildToolVersions(repositoryRoot);
 
     const releaseBuildLock = acquireWorkspaceWasmBuildLock(repositoryRoot);
     try {
@@ -98,19 +115,38 @@ export function buildWasm({ outputDir, descriptor }) {
     } finally {
       releaseBuildLock();
     }
-    writePackageMetadata(stageRoot);
+    writePackageMetadata(buildMetadata, stageRoot);
     cleanPackageOutput(stageRoot);
     writeArtifactProfileManifest(descriptor, stageRoot);
 
+    const postBuildInputs = collectWasmInputEntries({
+      metadata: buildMetadata,
+      repoRoot: repositoryRoot,
+    });
+    if (JSON.stringify(postBuildInputs) !== JSON.stringify(inputSnapshot)) {
+      throw new Error("WASM source inputs changed during the build; rerun the same build command.");
+    }
+    const compilerInputs = rustcWasmInputPaths({
+      metadata: lockedRepositoryMetadata,
+      repoRoot: repositoryRoot,
+    });
+    const compiledInputSnapshot = collectWasmInputEntries({
+      additionalInputs: compilerInputs,
+      metadata: buildMetadata,
+      repoRoot: repositoryRoot,
+    });
     const manifest = buildWasmInputManifest({
-      metadata: cargoMetadataForPreset({ preset: profile, repoRoot: repositoryRoot }),
+      compilerInputs,
+      metadata: buildMetadata,
       outputRoot: stageRoot,
       preset: profile,
       repoRoot: repositoryRoot,
-      toolVersions,
+      toolVersions: buildToolVersions,
     });
-    if (JSON.stringify(manifest.inputs) !== JSON.stringify(inputSnapshot)) {
-      throw new Error("WASM source inputs changed during the build; rerun the same build command.");
+    if (JSON.stringify(manifest.inputs) !== JSON.stringify(compiledInputSnapshot)) {
+      throw new Error(
+        "Compiler-reported WASM inputs changed after compilation; rerun the same build command.",
+      );
     }
     writeFileSync(
       path.join(stageRoot, WASM_INPUT_MANIFEST_NAME),
@@ -206,38 +242,39 @@ function writeArtifactProfileManifest(descriptor, outputRoot) {
   );
 }
 
-function writePackageMetadata(outputRoot) {
+function writePackageMetadata(metadata, outputRoot) {
   mkdirSync(outputRoot, { recursive: true });
-  const workspaceCargo = readFileSync(path.join(repositoryRoot, "Cargo.toml"), "utf8");
-  const wasmCargo = readFileSync(path.join(repositoryRoot, "crates", "merman-wasm", "Cargo.toml"), "utf8");
+  const manifestPath = path.resolve(repositoryRoot, "crates", "merman-wasm", "Cargo.toml");
+  const packageInfo = metadata.packages.find(
+    (item) => path.resolve(item.manifest_path) === manifestPath,
+  );
+  if (!packageInfo) {
+    throw new Error(`Cargo metadata is missing the merman-wasm package: ${manifestPath}`);
+  }
+  for (const field of ["description", "license", "repository", "homepage"]) {
+    if (typeof packageInfo[field] !== "string" || packageInfo[field].length === 0) {
+      throw new Error(`Cargo metadata field merman-wasm.${field} is missing.`);
+    }
+  }
+  if (!Array.isArray(packageInfo.authors) || !Array.isArray(packageInfo.keywords)) {
+    throw new Error("Cargo metadata fields merman-wasm.authors and keywords must be arrays.");
+  }
   const packageJson = {
     name: "merman-wasm-build-artifact",
     type: "module",
-    collaborators: tomlStringArray(workspaceCargo, "authors"),
-    description: tomlString(wasmCargo, "description"),
-    version: tomlString(workspaceCargo, "version"),
-    license: tomlString(workspaceCargo, "license"),
-    repository: { type: "git", url: tomlString(workspaceCargo, "repository") },
+    collaborators: packageInfo.authors,
+    description: packageInfo.description,
+    version: packageInfo.version,
+    license: packageInfo.license,
+    repository: { type: "git", url: packageInfo.repository },
     files: ["merman_wasm_bg.wasm", "merman_wasm.js", "merman_wasm.d.ts"],
     main: "merman_wasm.js",
-    homepage: tomlString(workspaceCargo, "homepage"),
+    homepage: packageInfo.homepage,
     types: "merman_wasm.d.ts",
     sideEffects: ["./snippets/*"],
-    keywords: tomlStringArray(wasmCargo, "keywords"),
+    keywords: packageInfo.keywords,
   };
   writeFileSync(path.join(outputRoot, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
-}
-
-function tomlString(source, key) {
-  const match = source.match(new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, "m"));
-  if (!match) throw new Error(`Missing TOML string field: ${key}`);
-  return match[1];
-}
-
-function tomlStringArray(source, key) {
-  const match = source.match(new RegExp(`^${key}\\s*=\\s*\\[([^\\]]*)\\]`, "m"));
-  if (!match) throw new Error(`Missing TOML string array field: ${key}`);
-  return [...match[1].matchAll(/"([^"]*)"/g)].map((item) => item[1]);
 }
 
 function run(command, args) {

@@ -16,6 +16,7 @@ import {
   buildWasmInputManifest,
   cargoMetadataForPreset,
   collectWasmInputEntries,
+  rustcWasmInputPaths,
   verifyWasmInputManifest,
 } from "./wasm-input-manifest.mjs";
 
@@ -111,6 +112,40 @@ describe("WASM input manifest", () => {
       "--manifest-path",
       probeObserved.manifestPath,
     ]);
+  });
+
+  it("reuses repository metadata across profile probes", () => {
+    const fixture = createFixture();
+    const repositoryMetadata = {
+      packages: [{ id: "merman-wasm", name: "merman-wasm", version: "0.8.0-alpha.4" }],
+      resolve: { root: "workspace", nodes: [] },
+    };
+    const expected = {
+      packages: [
+        {
+          id: "merman-wasm-freshness-probe",
+          name: "merman-wasm-freshness-probe",
+          version: "0.0.0",
+        },
+        { id: "merman-wasm", name: "merman-wasm", version: "0.8.0-alpha.4" },
+      ],
+      resolve: { root: "merman-wasm-freshness-probe", nodes: [] },
+    };
+    let calls = 0;
+
+    const metadata = cargoMetadataForPreset({
+      preset: preset(),
+      repoRoot: fixture.repoRoot,
+      repositoryMetadata,
+      capture(_command, args) {
+        calls += 1;
+        assert.equal(args.includes("--offline"), true);
+        return JSON.stringify(expected);
+      },
+    });
+
+    assert.deepEqual(metadata, expected);
+    assert.equal(calls, 1);
   });
 
   it("rejects an offline probe package absent from the locked repository graph", () => {
@@ -269,17 +304,20 @@ describe("WASM input manifest", () => {
     );
   });
 
-  it("fails closed when an embedded Rust input does not use a supported literal", () => {
+  it("accepts package-declared inputs without parsing Rust macro syntax", () => {
     const fixture = createFixture();
+    fixture.compilerInputs = [];
     write(
       fixture,
       "crates/merman-core/src/lib.rs",
       'pub const ACTOR: &str = include_str!(concat!("../assets/", "actor.svg"));\n',
     );
 
-    assert.throws(
-      () => buildManifest(fixture),
-      /cannot resolve include_str!.*crates\/merman-core\/src\/lib\.rs/i,
+    assert.equal(
+      buildManifest(fixture).inputs.some(
+        (entry) => entry.path === "crates/merman-core/assets/zenuml/actor.svg",
+      ),
+      true,
     );
   });
 
@@ -295,14 +333,17 @@ describe("WASM input manifest", () => {
       "crates/merman-core/src/lib.rs",
       'pub const SECRET: &str = include_str!("../assets/external/secret.svg");\n',
     );
+    fixture.compilerInputs.push(path.join(link, "secret.svg"));
 
     assert.throws(
       () => buildManifest(fixture),
-      /resolves outside its repository root/i,
+      /symbolic link|resolves outside its repository root/i,
     );
   });
 
-  it("captures the renderer assets embedded outside its Rust source tree", () => {
+  it("captures root-crate compiler dep-info inputs outside Rust source trees", () => {
+    const targetDirectory = mkdtempSync(path.join(os.tmpdir(), "merman-wasm-dep-info-"));
+    roots.push(targetDirectory);
     const manifestPath = path.join(
       repositoryRoot,
       "crates",
@@ -310,6 +351,7 @@ describe("WASM input manifest", () => {
       "Cargo.toml",
     );
     const metadata = {
+      target_directory: targetDirectory,
       packages: [
         {
           id: "merman-render",
@@ -328,23 +370,32 @@ describe("WASM input manifest", () => {
         nodes: [{ id: "merman-render", deps: [] }],
       },
     };
+    const compilerInputs = [
+      path.join(repositoryRoot, "playground/examples/manifest.json"),
+      "/registry/example/src/lib.rs",
+    ];
+    const depInfoPath = path.join(
+      targetDirectory,
+      "wasm32-unknown-unknown",
+      "wasm-size",
+      "merman_wasm.d",
+    );
+    mkdirSync(path.dirname(depInfoPath), { recursive: true });
+    writeFileSync(
+      depInfoPath,
+      `${escapeMakefilePath(path.join(targetDirectory, "merman_wasm.wasm"))}: ${compilerInputs.map(escapeMakefilePath).join(" ")}\n`,
+    );
     const paths = new Set(
-      collectWasmInputEntries({ metadata, repoRoot: repositoryRoot }).map(
-        (entry) => entry.path,
-      ),
+      collectWasmInputEntries({
+        additionalInputs: rustcWasmInputPaths({ metadata, repoRoot: repositoryRoot }),
+        metadata,
+        repoRoot: repositoryRoot,
+      }).map((entry) => entry.path),
     );
 
     assert.equal(
-      paths.has("crates/merman-render/assets/zenuml/actor.svg"),
+      paths.has("playground/examples/manifest.json"),
       true,
-    );
-    assert.equal(
-      paths.has("crates/merman-render/assets/zenuml/fragment-loop.svg"),
-      true,
-    );
-    assert.equal(
-      paths.has("crates/merman-render/assets/katex_flowchart_probe.cjs"),
-      false,
     );
   });
 });
@@ -411,6 +462,7 @@ function createFixture() {
         id: "merman-core",
         name: "merman-core",
         manifest_path: path.join(repoRoot, "crates", "merman-core", "Cargo.toml"),
+        metadata: { merman: { "wasm-inputs": ["assets"] } },
         source: null,
       },
       {
@@ -485,7 +537,16 @@ function createFixture() {
   })) {
     write({ repoRoot }, relative, contents);
   }
-  return { metadata, outputRoot, packageRoot, repoRoot };
+  return {
+    compilerInputs: [
+      path.join(repoRoot, "crates/merman-core/assets/zenuml/actor.svg"),
+      path.join(repoRoot, "crates/merman-core/assets/font-profile.bin"),
+    ],
+    metadata,
+    outputRoot,
+    packageRoot,
+    repoRoot,
+  };
 }
 
 function resolve(fixture, relative) {
@@ -504,4 +565,13 @@ function read(fixture, relative) {
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function escapeMakefilePath(value) {
+  return value
+    .replaceAll("$", "$$")
+    .replaceAll("\\", "\\\\")
+    .replaceAll(" ", "\\ ")
+    .replaceAll("#", "\\#")
+    .replaceAll(":", "\\:");
 }

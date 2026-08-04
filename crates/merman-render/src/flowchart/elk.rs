@@ -1511,6 +1511,7 @@ fn node_dimensions_and_label(
         layout_direction: ctx.diagram_direction_text,
         metrics,
         padding: ctx.node_padding,
+        look_is_neo: crate::config::mermaid_config_diagram_look(ctx.effective_config).is_neo(),
         state_padding: ctx.state_padding,
         node_icon: node.icon.as_deref(),
         node_img: node.img.as_deref(),

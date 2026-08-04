@@ -652,6 +652,11 @@ public protocol MermanEngineProtocol: AnyObject, Sendable {
 
     func parseJson(source: String, optionsJson: String?) throws  -> String
 
+    /**
+     * Returns the presentation catalog projected to this native artifact.
+     */
+    func presentationCatalogJson() throws  -> String
+
     func renderAscii(source: String, optionsJson: String?) throws  -> String
 
     func renderJpeg(source: String, optionsJson: String?) throws  -> Data
@@ -679,8 +684,6 @@ public protocol MermanEngineProtocol: AnyObject, Sendable {
     func runtimeCatalogJson() throws  -> String
 
     func supportedDiagrams()  -> [String]
-
-    func supportedHostThemePresets()  -> [String]
 
     func supportedThemes()  -> [String]
 
@@ -872,6 +875,18 @@ open func parseJson(source: String, optionsJson: String?)throws  -> String  {
 })
 }
 
+    /**
+     * Returns the presentation catalog projected to this native artifact.
+     */
+open func presentationCatalogJson()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_mermanengine_presentation_catalog_json(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+
 open func renderAscii(source: String, optionsJson: String?)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
@@ -971,15 +986,6 @@ open func supportedDiagrams() -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_mermanengine_supported_diagrams(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
-}
-
-open func supportedHostThemePresets() -> [String]  {
-    return try!  FfiConverterSequenceString.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_mermanengine_supported_host_theme_presets(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -3692,6 +3698,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_mermanengine_parse_json() != 63832) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_merman_uniffi_checksum_method_mermanengine_presentation_catalog_json() != 29658) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_render_ascii() != 21079) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3717,9 +3726,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_supported_diagrams() != 44912) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_merman_uniffi_checksum_method_mermanengine_supported_host_theme_presets() != 36881) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_supported_themes() != 49402) {

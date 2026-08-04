@@ -45,8 +45,13 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
     }
 
     let fixture = fixture.ok_or(XtaskError::Usage)?;
-    if diagram != "state" {
+    if !matches!(diagram.as_str(), "state" | "class") {
         return Err(XtaskError::Usage);
+    }
+    if diagram != "state" && cluster.is_some() {
+        return Err(XtaskError::DebugSvgFailed(
+            "--cluster is only supported for State Dagre extraction".to_string(),
+        ));
     }
 
     let workspace_root = crate::cmd::workspace_root();
@@ -78,20 +83,30 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
             }
             Err(err) => return Err(XtaskError::DebugSvgFailed(format!("parse failed: {err}"))),
         };
-    let RenderSemanticModel::State(model) = parsed.model() else {
-        return Err(XtaskError::DebugSvgFailed(format!(
-            "expected State render model, got {}",
-            parsed.model().kind()
-        )));
-    };
-
     let measurer = merman_render::text::VendoredFontMetricsTextMeasurer::default();
-    let mut g = merman_render::state::debug_build_state_diagram_dagre_graph(
-        model,
-        parsed.metadata().effective_config.as_value(),
-        &measurer,
-    )
-    .map_err(|e| XtaskError::DebugSvgFailed(format!("build dagre graph failed: {e}")))?;
+    let mut g = match (diagram.as_str(), parsed.model()) {
+        ("state", RenderSemanticModel::State(model)) => {
+            merman_render::state::debug_build_state_diagram_dagre_graph(
+                model,
+                parsed.metadata().effective_config.as_value(),
+                &measurer,
+            )
+        }
+        ("class", RenderSemanticModel::Class(model)) => {
+            merman_render::class::debug_build_class_diagram_dagre_graph(
+                model,
+                &parsed.metadata().effective_config,
+                &measurer,
+            )
+        }
+        (expected, actual) => {
+            return Err(XtaskError::DebugSvgFailed(format!(
+                "expected {expected} render model, got {}",
+                actual.kind()
+            )));
+        }
+    }
+    .map_err(|e| XtaskError::DebugSvgFailed(format!("build Dagre graph failed: {e}")))?;
 
     fn inject_root_cluster_node(g: &mut DagreLayoutGraph, root_id: &str) -> Result<(), XtaskError> {
         if !g.has_node(root_id) {
@@ -205,6 +220,21 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
             "  js-only edges: {}",
             comparison.js_only_edge_ids.join(", ")
         );
+    }
+
+    const MATCH_TOLERANCE: f64 = 1e-6;
+    if !comparison.matches_within(MATCH_TOLERANCE) {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "Dagre output diverged for {diagram}/{fixture}: graph=({:.6},{:.6}) max-node={:.6} max-edge={:.6} identity=(nodes {}+{}, edges {}+{})",
+            comparison.graph_width_delta,
+            comparison.graph_height_delta,
+            comparison.max_node_delta,
+            comparison.max_edge_delta,
+            comparison.rust_only_node_ids.len(),
+            comparison.js_only_node_ids.len(),
+            comparison.rust_only_edge_ids.len(),
+            comparison.js_only_edge_ids.len(),
+        )));
     }
 
     Ok(())

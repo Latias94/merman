@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use merman_core::time::CivilDate;
 use merman_core::{
     EditorLexemeKind, EditorLexemeProducerKind, EditorSemanticCompleteness, EditorSemanticFacts,
     Engine, Error, MermaidConfig, SourceSpan, diagram_family_capabilities,
@@ -115,7 +115,7 @@ fn formal_fixture_corpus_keeps_supported_editor_facts_available() {
         .collect::<BTreeMap<_, _>>();
     let base = Engine::new()
         .with_fixed_today(Some(
-            NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed fixture date"),
+            CivilDate::new(2026, 2, 15).expect("valid fixed fixture date"),
         ))
         .try_with_fixed_local_offset_minutes(0)
         .expect("UTC is a valid fixed offset");

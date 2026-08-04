@@ -145,6 +145,30 @@ fn read_utf8(path: &Path, kind: &str) -> Result<String, XtaskError> {
     })
 }
 
+fn normalize_example_source(source: &str) -> String {
+    let common_indent = source
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.bytes().take_while(|byte| *byte == b' ').count())
+        .min()
+        .unwrap_or(0);
+    if common_indent == 0 {
+        return source.to_string();
+    }
+
+    let prefix = " ".repeat(common_indent);
+    let mut normalized = String::with_capacity(source.len());
+    for line in source.split_inclusive('\n') {
+        if let Some(content) = line.strip_suffix('\n') {
+            normalized.push_str(content.strip_prefix(&prefix).unwrap_or(content));
+            normalized.push('\n');
+        } else {
+            normalized.push_str(line.strip_prefix(&prefix).unwrap_or(line));
+        }
+    }
+    normalized
+}
+
 fn read_manifest(path: &Path) -> Result<PlaygroundManifest, XtaskError> {
     let source = read_utf8(path, "manifest")?;
     serde_json::from_str(&source).map_err(|error| {
@@ -363,7 +387,7 @@ fn validate_manifest(
             .push((entry.order, entry.evidence.clone()));
 
         let fixture_path = validate_fixture_path(workspace_root, &canonical_fixtures_root, &entry)?;
-        let source = read_utf8(&fixture_path, "fixture")?;
+        let source = normalize_example_source(&read_utf8(&fixture_path, "fixture")?);
         let metadata = engine.parse_metadata_sync(&source).map_err(|error| {
             catalog_error(format!(
                 "example `{}` fixture `{}` failed canonical detection: {error}",
@@ -684,7 +708,8 @@ mod tests {
     use super::{
         DEFAULT_MANIFEST, DEFAULT_OUTPUT, MANIFEST_SCHEMA_VERSION, ManifestEvidence,
         ManifestExample, PlaygroundManifest, VariantEvidenceKind, build_committed_catalog,
-        parse_paths, read_utf8, render_typescript, validate_manifest, verify_output,
+        normalize_example_source, parse_paths, read_utf8, render_typescript, validate_manifest,
+        verify_output,
     };
     use merman_core::baseline::PINNED_MERMAID_BASELINE_TAG;
     use std::collections::{BTreeMap, BTreeSet};
@@ -730,6 +755,24 @@ mod tests {
     }
 
     #[test]
+    fn source_projection_removes_only_common_outer_spaces() {
+        assert_eq!(
+            normalize_example_source(
+                "    sequenceDiagram\r\n        box API\r\n            A\r\n        end\r\n"
+            ),
+            "sequenceDiagram\r\n    box API\r\n        A\r\n    end\r\n"
+        );
+        assert_eq!(
+            normalize_example_source("mindmap\n  root\n    child\n"),
+            "mindmap\n  root\n    child\n"
+        );
+        assert_eq!(
+            normalize_example_source("\n    C4Container\n\n"),
+            "\nC4Container\n\n"
+        );
+    }
+
+    #[test]
     fn committed_manifest_is_exact_typed_and_renderable() {
         let workspace_root = crate::cmd::workspace_root();
         let manifest = workspace_root.join(DEFAULT_MANIFEST);
@@ -766,6 +809,22 @@ mod tests {
                 .examples
                 .windows(2)
                 .all(|pair| pair[0].order < pair[1].order)
+        );
+        let indented_examples = catalog
+            .examples
+            .iter()
+            .filter_map(|example| {
+                example
+                    .source
+                    .lines()
+                    .find(|line| !line.trim().is_empty())
+                    .filter(|line| line.trim_start() != *line)
+                    .map(|_| example.id.as_str())
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            indented_examples.is_empty(),
+            "Playground examples must start their diagram header at column zero: {indented_examples:?}"
         );
         let typescript = render_typescript(&catalog).unwrap();
         assert!(typescript.contains("import type { DiagramType } from \"@mermanjs/web\";"));

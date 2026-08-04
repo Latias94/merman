@@ -1,0 +1,7 @@
+flowchart LR
+    LOOKUP[Lookup record] --> HIT{Cache hit?}
+    HIT -->|Fresh value| RETURN([Return cached result])
+    HIT -->|Missing or expired| LOAD[Load from origin]
+    LOAD -->|Success| UPDATE[Update cache]
+    LOAD -->|Failure| FALLBACK[Return fallback]
+    UPDATE --> RETURN

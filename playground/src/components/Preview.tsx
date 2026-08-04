@@ -297,7 +297,7 @@ export function Preview({ className }: PreviewProps) {
           snapshot.source,
           snapshot.theme,
           snapshot.configJson,
-          { ...snapshot.options, pipeline: "resvg-safe" }
+          { ...snapshot.options, svgPipeline: "resvg-safe" }
         );
         if (!pngResult || pngResult.status === "failure") {
           throw new Error(

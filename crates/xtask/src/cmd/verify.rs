@@ -2,7 +2,7 @@ use crate::XtaskError;
 use crate::cmd;
 use std::process::Command;
 
-const STRICT_WEB_SCRIPTS: [&str; 4] = ["build", "test", "smoke", "verify:packages"];
+const STRICT_WEB_SCRIPTS: [&str; 3] = ["build", "test", "smoke"];
 
 #[derive(Debug, Default)]
 struct VerifyOptions {
@@ -293,7 +293,13 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         }
 
         println!("\n== Playground package and browsers ==");
-        for script in ["test", "lint", "build", "test:browser:chromium"] {
+        for script in [
+            "prepare:browser-runtime",
+            "test:prepared",
+            "lint",
+            "build:prepared",
+            "test:browser:chromium",
+        ] {
             run_npm_script(&workspace_root, "playground", script, &mut run_checked)?;
         }
 

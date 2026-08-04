@@ -69,7 +69,6 @@ export function acquireDirectoryLock(
 
     if (created) {
       return claimDirectoryLock(lockDirectory, {
-        now,
         processId,
       });
     }
@@ -90,10 +89,9 @@ export function acquireDirectoryLock(
   }
 }
 
-function claimDirectoryLock(lockDirectory, { now, processId }) {
+function claimDirectoryLock(lockDirectory, { processId }) {
   const owner = {
     pid: processId,
-    started_at_ms: now(),
     token: randomUUID(),
   };
 
@@ -175,8 +173,6 @@ function parseOwner(contents) {
       typeof owner !== "object" ||
       !Number.isInteger(owner.pid) ||
       owner.pid <= 0 ||
-      !Number.isSafeInteger(owner.started_at_ms) ||
-      owner.started_at_ms < 0 ||
       typeof owner.token !== "string" ||
       owner.token.length === 0
     ) {

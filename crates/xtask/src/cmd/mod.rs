@@ -22,6 +22,7 @@ pub(crate) mod resource_contract;
 pub(crate) mod snapshots;
 pub(crate) mod text_measurement;
 pub(crate) mod theme_snapshot;
+pub(crate) mod timestamps;
 pub(crate) mod typst_artifact;
 pub(crate) mod typst_package;
 pub(crate) mod typst_plugin_smoke;

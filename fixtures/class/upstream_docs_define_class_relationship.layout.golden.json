@@ -12,18 +12,18 @@
           "is_cluster": false
         },
         {
-          "id": "Car",
-          "x": 153.836,
-          "y": 176.0,
-          "width": 47.359,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
           "id": "Vehicle",
           "x": 153.836,
           "y": 42.0,
           "width": 70.078,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Car",
+          "x": 153.836,
+          "y": 176.0,
+          "width": 47.359,
           "height": 84.0,
           "is_cluster": false
         }

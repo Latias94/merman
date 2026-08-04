@@ -30,11 +30,12 @@ struct WeightedEntry<V> {
     last_access: u64,
 }
 
-#[derive(Debug)]
-pub(crate) struct WeightedReplacement<K, V> {
-    pub(crate) key: K,
-    pub(crate) value: V,
-    pub(crate) weight: usize,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WeightedReplaceOutcome {
+    Replaced,
+    MissingOrMismatch,
+    Oversized,
+    ReplacementWouldBeEvicted,
 }
 
 impl<K, V> WeightedLru<K, V>
@@ -92,16 +93,19 @@ where
     }
 
     pub(crate) fn insert(&mut self, key: K, value: V, weight: usize) -> bool {
-        self.remove(&key);
         if self.is_oversized(weight) {
             self.record_oversized_entry();
             return false;
         }
+        self.remove(&key);
 
         let weight_u128 = weight as u128;
-        while self.retained.saturating_add(weight_u128) > self.budget as u128 {
-            self.evict_lru();
-        }
+        let projected_retained = self
+            .retained
+            .checked_add(weight_u128)
+            .expect("cache insertion weight must not overflow u128");
+        let victims = self.insertion_victims_for_budget(projected_retained);
+        self.evict(victims);
         let last_access = self.next_access();
         let previous = self.entries.insert(
             key,
@@ -121,38 +125,50 @@ where
         true
     }
 
-    pub(crate) fn replace_batch_preserving_recency(
+    pub(crate) fn replace_if_preserving_recency(
         &mut self,
-        mut replacements: Vec<WeightedReplacement<K, V>>,
-    ) {
-        replacements.sort_by(|left, right| left.key.cmp(&right.key));
-        for replacement in replacements {
-            let Some(previous) = self.entries.remove(&replacement.key) else {
-                continue;
-            };
-            self.subtract_weight(previous.weight);
-            if self.is_oversized(replacement.weight) {
-                self.record_oversized_entry();
-                continue;
-            }
-            self.retained = self
-                .retained
-                .checked_add(replacement.weight as u128)
-                .expect("replacement cache weight must not overflow u128");
-            self.entries.insert(
-                replacement.key,
-                WeightedEntry {
-                    value: replacement.value,
-                    weight: replacement.weight,
-                    last_access: previous.last_access,
-                },
-            );
+        key: &K,
+        matches: impl FnOnce(&V) -> bool,
+        value: V,
+        weight: usize,
+    ) -> WeightedReplaceOutcome {
+        let Some(previous) = self.entries.get(key) else {
+            return WeightedReplaceOutcome::MissingOrMismatch;
+        };
+        if !matches(&previous.value) {
+            return WeightedReplaceOutcome::MissingOrMismatch;
         }
-        while self.retained > self.budget as u128 {
-            self.evict_lru();
+        if self.is_oversized(weight) {
+            self.record_oversized_entry();
+            return WeightedReplaceOutcome::Oversized;
         }
+
+        let previous_weight = previous.weight;
+        let projected_retained = self
+            .retained
+            .checked_sub(previous_weight as u128)
+            .expect("replacement weight must match retained entries")
+            .checked_add(weight as u128)
+            .expect("replacement cache weight must not overflow u128");
+        let Some(victims) = self.lru_victims_for_budget(projected_retained, Some(key)) else {
+            return WeightedReplaceOutcome::ReplacementWouldBeEvicted;
+        };
+        self.evict(victims);
+        let previous = self
+            .entries
+            .get_mut(key)
+            .expect("matched replacement entry must still exist");
+        previous.value = value;
+        previous.weight = weight;
+        self.retained = self
+            .retained
+            .checked_sub(previous_weight as u128)
+            .expect("replacement weight must match retained entries")
+            .checked_add(weight as u128)
+            .expect("replacement cache weight must not overflow u128");
         self.record_retained_weight();
         self.assert_within_budget();
+        WeightedReplaceOutcome::Replaced
     }
 
     pub(crate) fn remove(&mut self, key: &K) -> Option<V> {
@@ -168,7 +184,6 @@ where
         self.record_retained_weight();
     }
 
-    #[cfg(test)]
     pub(crate) fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.entries.iter().map(|(key, entry)| (key, &entry.value))
     }
@@ -215,19 +230,67 @@ where
         access
     }
 
-    fn evict_lru(&mut self) {
-        let victim = self
+    fn lru_victims_for_budget(
+        &self,
+        mut projected_retained: u128,
+        protected: Option<&K>,
+    ) -> Option<Vec<K>> {
+        if projected_retained <= self.budget as u128 {
+            return Some(Vec::new());
+        }
+        let mut candidates = self
+            .entries
+            .iter()
+            .map(|(candidate, entry)| (entry.last_access, candidate.clone(), entry.weight))
+            .collect::<Vec<_>>();
+        candidates.sort_unstable();
+        let mut victims = Vec::new();
+        for (_, victim, victim_weight) in candidates {
+            if projected_retained <= self.budget as u128 {
+                break;
+            }
+            if protected.is_some_and(|protected| &victim == protected) {
+                return None;
+            }
+            victims.push(victim);
+            projected_retained = projected_retained
+                .checked_sub(victim_weight as u128)
+                .expect("eviction victim weight must be retained");
+        }
+        debug_assert!(projected_retained <= self.budget as u128);
+        Some(victims)
+    }
+
+    fn insertion_victims_for_budget(&self, projected_retained: u128) -> Vec<K> {
+        if projected_retained <= self.budget as u128 {
+            return Vec::new();
+        }
+        let (first, first_weight) = self
             .entries
             .iter()
             .min_by(|(left_key, left), (right_key, right)| {
                 (left.last_access, *left_key).cmp(&(right.last_access, *right_key))
             })
-            .map(|(key, _)| key.clone())
-            .expect("an over-budget cache must have an eviction victim");
-        self.remove(&victim);
-        #[cfg(test)]
+            .map(|(key, entry)| (key.clone(), entry.weight))
+            .expect("an over-budget insertion must have an eviction victim");
+        if projected_retained
+            .checked_sub(first_weight as u128)
+            .expect("the first insertion victim must be retained")
+            <= self.budget as u128
         {
-            self.statistics.evictions = self.statistics.evictions.saturating_add(1);
+            return vec![first];
+        }
+        self.lru_victims_for_budget(projected_retained, None)
+            .expect("an insertion without a protected entry must have an eviction plan")
+    }
+
+    fn evict(&mut self, victims: Vec<K>) {
+        for victim in victims {
+            self.remove(&victim);
+            #[cfg(test)]
+            {
+                self.statistics.evictions = self.statistics.evictions.saturating_add(1);
+            }
         }
     }
 
@@ -289,6 +352,23 @@ mod tests {
     }
 
     #[test]
+    fn insertion_evicts_multiple_entries_in_lru_order() {
+        let mut cache = WeightedLru::new(30);
+        assert!(cache.insert("a", 1, 10));
+        assert!(cache.insert("b", 2, 10));
+        assert!(cache.insert("c", 3, 10));
+
+        assert!(cache.insert("d", 4, 25));
+
+        assert!(!cache.contains_key(&"a"));
+        assert!(!cache.contains_key(&"b"));
+        assert!(!cache.contains_key(&"c"));
+        assert_eq!(cache.get(&"d"), Some(&4));
+        assert_eq!(cache.total_weight(), 25);
+        assert_eq!(cache.statistics().evictions, 3);
+    }
+
+    #[test]
     fn zero_budget_and_saturated_weight_are_never_retained() {
         let mut zero = WeightedLru::new(0);
         assert!(!zero.insert("zero", 1, 0));
@@ -324,6 +404,28 @@ mod tests {
     }
 
     #[test]
+    fn oversized_same_key_insert_preserves_the_resident_entry() {
+        let mut cache = WeightedLru::new(10);
+        assert!(cache.insert("a", 1, 10));
+        let before = cache.statistics();
+
+        assert!(!cache.insert("a", 2, 11));
+
+        assert_eq!(cache.peek(&"a"), Some(&1));
+        assert_eq!(cache.total_weight(), 10);
+        assert_eq!(cache.statistics().evictions, before.evictions);
+        assert_eq!(cache.statistics().current_weight, before.current_weight);
+        assert_eq!(
+            cache.statistics().high_water_weight,
+            before.high_water_weight
+        );
+        assert_eq!(
+            cache.statistics().oversized_entries,
+            before.oversized_entries + 1
+        );
+    }
+
+    #[test]
     fn statistics_cover_lookup_admission_and_retained_high_water() {
         let mut cache = WeightedLru::new(20);
         assert_eq!(cache.get(&"missing"), None);
@@ -347,43 +449,59 @@ mod tests {
     }
 
     #[test]
-    fn batch_replacement_is_order_independent_and_reweighs_before_eviction() {
-        fn run(replacements: Vec<WeightedReplacement<&'static str, usize>>) -> Vec<&'static str> {
-            let mut cache = WeightedLru::new(20);
-            cache.insert("a", 1, 10);
-            cache.insert("b", 2, 10);
-            cache.replace_batch_preserving_recency(replacements);
-            let mut keys = cache.iter().map(|(key, _)| *key).collect::<Vec<_>>();
-            keys.sort_unstable();
-            assert!(cache.total_weight() <= 20);
-            keys
-        }
-        let forward = vec![
-            WeightedReplacement {
-                key: "a",
-                value: 10,
-                weight: 15,
-            },
-            WeightedReplacement {
-                key: "b",
-                value: 20,
-                weight: 5,
-            },
-        ];
-        let reverse = vec![
-            WeightedReplacement {
-                key: "b",
-                value: 20,
-                weight: 5,
-            },
-            WeightedReplacement {
-                key: "a",
-                value: 10,
-                weight: 15,
-            },
-        ];
+    fn conditional_replacement_preserves_recency_and_evicts_only_older_entries() {
+        let mut cache = WeightedLru::new(25);
+        assert!(cache.insert("a", 1, 5));
+        assert!(cache.insert("b", 2, 10));
+        assert!(cache.insert("c", 3, 10));
+        assert_eq!(cache.get(&"a"), Some(&1));
 
-        assert_eq!(run(forward), run(reverse));
+        assert_eq!(
+            cache.replace_if_preserving_recency(&"a", |value| *value == 1, 10, 15),
+            WeightedReplaceOutcome::Replaced
+        );
+
+        assert!(cache.contains_key(&"a"));
+        assert!(!cache.contains_key(&"b"));
+        assert!(cache.contains_key(&"c"));
+        assert_eq!(cache.get(&"a"), Some(&10));
+        assert_eq!(cache.total_weight(), 25);
+    }
+
+    #[test]
+    fn replacement_that_would_evict_itself_leaves_all_entries_unchanged() {
+        let mut cache = WeightedLru::new(20);
+        assert!(cache.insert("a", 1, 10));
+        assert!(cache.insert("b", 2, 10));
+        let before = cache.statistics();
+
+        assert_eq!(
+            cache.replace_if_preserving_recency(&"a", |value| *value == 1, 10, 15),
+            WeightedReplaceOutcome::ReplacementWouldBeEvicted
+        );
+
+        assert_eq!(cache.peek(&"a"), Some(&1));
+        assert_eq!(cache.peek(&"b"), Some(&2));
+        assert_eq!(cache.total_weight(), 20);
+        assert_eq!(cache.statistics(), before);
+    }
+
+    #[test]
+    fn oversized_or_mismatched_replacement_leaves_the_resident_unchanged() {
+        let mut cache = WeightedLru::new(10);
+        assert!(cache.insert("a", 1, 10));
+
+        assert_eq!(
+            cache.replace_if_preserving_recency(&"a", |value| *value == 2, 2, 5),
+            WeightedReplaceOutcome::MissingOrMismatch
+        );
+        assert_eq!(
+            cache.replace_if_preserving_recency(&"a", |value| *value == 1, 2, 11),
+            WeightedReplaceOutcome::Oversized
+        );
+
+        assert_eq!(cache.get(&"a"), Some(&1));
+        assert_eq!(cache.total_weight(), 10);
     }
 
     #[test]

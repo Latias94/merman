@@ -32,7 +32,6 @@ layout-elk = ["svg", "merman/layout-elk"]
 math = ["svg", "merman/math"]
 
 [dependencies]
-chrono.workspace = true
 merman-analysis = { workspace = true, optional = true }
 merman.workspace = true
 serde.workspace = true

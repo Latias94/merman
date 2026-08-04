@@ -1,11 +1,11 @@
-# Class Diagram Minimum Slice (Phase 1)
+# Class Diagram Admission Contract
 
-This document defines the initial, test-driven minimum slice for `classDiagram` parsing in
-`merman`.
+This document defines the admitted `classDiagram` parser, model, Dagre/ELK layout, and SVG contract.
 
 ## Baseline
 
-Upstream baseline: `mermaid@11.12.3` (see `docs/adr/0001-upstream-baseline.md`).
+Upstream baseline: Mermaid `11.16.0` at
+`7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
 
 ## Supported (current)
 
@@ -54,14 +54,24 @@ Upstream baseline: `mermaid@11.12.3` (see `docs/adr/0001-upstream-baseline.md`).
   - tooltips and other user-visible strings are sanitized like Mermaid `common.sanitizeText`
     (baseline parity; full DOMPurify parity is tracked as a gap)
 
-## Not yet implemented (Mermaid-supported)
+## Layout And SVG Admission
+
+- Namespace, class, note, lollipop interface, note-edge, and relation insertion order follows
+  Mermaid `ClassDB.getData()` and the shared Dagre renderer.
+- `compare-dagre-layout --diagram class` captures the production graph before layout and compares
+  graph dimensions, node positions, edge-label anchors, routed points, and stable identities with
+  pinned `dagre-d3-es`.
+- Edge labels use shared updated-path geometry while cardinality terminal labels retain their
+  Class-specific marker offsets.
+- The complete embedded stylesheet is tested byte-for-byte after scope-id normalization. Common
+  CSS, Class rules, marker order, icon rules, Neo rules, theme `strokeWidth`, and final `:root`
+  order are part of the contract.
+- `stress_class_many_relations_labels_020` is the signed semantic-label canary; nested namespaces
+  are additionally covered by `stress_class_nested_namespaces_cross_edges_008`.
+
+## Remaining Gaps
 
 - Remaining interactivity parity:
   - Full DOMPurify parity (and `dompurifyConfig` option coverage) for HTML labels/tooltips.
 - Full name/label token parity (unicode tokenization, punctuation edge cases) with Mermaid Jison.
 - Full error surface parity (token/loc/expected) with Mermaid Jison errors.
-
-## Alignment goal
-
-This is an incremental slice. The ultimate goal is full Mermaid `classDiagram` grammar and
-behavior compatibility at the pinned baseline tag.

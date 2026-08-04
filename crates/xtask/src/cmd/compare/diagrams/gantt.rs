@@ -308,7 +308,7 @@ mod tests {
         assert_eq!(session.local_time_zone().fixed_offset_minutes(), Some(480));
         assert_eq!(
             session.local_date(),
-            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).unwrap()
+            merman_core::time::CivilDate::new(2026, 2, 15).unwrap()
         );
     }
 

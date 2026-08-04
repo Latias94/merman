@@ -4,12 +4,36 @@
     "ClassDiagramV2": {
       "nodes": [
         {
+          "id": "Core",
+          "x": 673.798,
+          "y": 403.0,
+          "width": 483.68,
+          "height": 214.0,
+          "is_cluster": true
+        },
+        {
           "id": "API",
           "x": 566.678,
           "y": 138.0,
           "width": 1133.357,
           "height": 276.0,
           "is_cluster": true
+        },
+        {
+          "id": "CoreResult",
+          "x": 537.958,
+          "y": 403.0,
+          "width": 162.0,
+          "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "CoreError",
+          "x": 807.878,
+          "y": 403.0,
+          "width": 165.52,
+          "height": 144.0,
+          "is_cluster": false
         },
         {
           "id": "ApiClient",
@@ -33,30 +57,6 @@
           "y": 170.0,
           "width": 102.719,
           "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Core",
-          "x": 673.798,
-          "y": 403.0,
-          "width": 483.68,
-          "height": 214.0,
-          "is_cluster": true
-        },
-        {
-          "id": "CoreError",
-          "x": 807.878,
-          "y": 403.0,
-          "width": 165.52,
-          "height": 144.0,
-          "is_cluster": false
-        },
-        {
-          "id": "CoreResult",
-          "x": 537.958,
-          "y": 403.0,
-          "width": 162.0,
-          "height": 144.0,
           "is_cluster": false
         }
       ],

@@ -1,8 +1,10 @@
 use clap::builder::{PossibleValue, PossibleValuesParser, TypedValueParser};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
+use merman::time::{CivilDate, UtcOffset};
 #[cfg(feature = "analysis")]
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptor};
 use std::path::PathBuf;
+use std::str::FromStr;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -566,11 +568,11 @@ pub(crate) struct RuntimeCliArgs {
     /// Override the local "today" date for time-dependent diagrams.
     #[arg(
         long = "fixed-today",
-        value_parser = parse_naive_date,
+        value_parser = parse_civil_date,
         help_heading = "Runtime policy",
         hide_short_help = true
     )]
-    pub(crate) fixed_today: Option<chrono::NaiveDate>,
+    pub(crate) fixed_today: Option<CivilDate>,
 
     /// Override the local timezone offset in minutes for time-dependent diagrams.
     #[arg(
@@ -597,6 +599,16 @@ pub(crate) enum RuntimePolicyKind {
 #[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, Default, ClapArgs)]
 pub(crate) struct RenderCliArgs {
+    #[cfg(feature = "svg")]
+    /// First-party presentation profile applied below explicit Mermaid configuration.
+    #[arg(
+        long = "presentation-profile",
+        value_parser = presentation_profile_value_parser(),
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
+    )]
+    pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
+
     #[cfg(feature = "svg")]
     /// Text measurement strategy.
     #[arg(
@@ -698,6 +710,7 @@ pub(crate) struct LayoutRenderCliArgs {
 impl LayoutRenderCliArgs {
     pub(crate) fn into_render_args(self) -> RenderCliArgs {
         RenderCliArgs {
+            presentation_profile: None,
             text_measurer: Some(self.text_measurer),
             math_renderer: self.math_renderer,
             container_width: self.container_width,
@@ -744,14 +757,8 @@ pub(crate) struct MmdcParseCliArgs {
     pub(crate) config_file: Option<PathBuf>,
 
     /// Theme of the chart.
-    #[arg(
-        short = 't',
-        long,
-        value_enum,
-        default_value_t = MmdcTheme::Default,
-        help_heading = "mmdc-compatible export"
-    )]
-    pub(crate) theme: MmdcTheme,
+    #[arg(short = 't', long, value_enum, help_heading = "mmdc-compatible export")]
+    pub(crate) theme: Option<MmdcTheme>,
 
     #[command(flatten)]
     pub(crate) runtime: RuntimeCliArgs,
@@ -760,6 +767,15 @@ pub(crate) struct MmdcParseCliArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct MmdcRenderCliArgs {
+    /// First-party presentation profile applied below explicit Mermaid configuration.
+    #[arg(
+        long = "presentation-profile",
+        value_parser = presentation_profile_value_parser(),
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
+    )]
+    pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
+
     /// Text measurement strategy.
     #[arg(
         long = "text-measurer",
@@ -823,6 +839,7 @@ pub(crate) struct MmdcRenderCliArgs {
 impl Default for MmdcRenderCliArgs {
     fn default() -> Self {
         Self {
+            presentation_profile: None,
             text_measurer: TextMeasurerKind::Vendored,
             math_renderer: None,
             container_width: 800.0,
@@ -1454,6 +1471,20 @@ fn theme_value_parser() -> impl TypedValueParser<Value = String> {
     PossibleValuesParser::new(merman::supported_themes().iter().copied())
 }
 
+#[cfg(feature = "svg")]
+fn presentation_profile_value_parser()
+-> impl TypedValueParser<Value = merman::svg::PresentationProfile> {
+    PossibleValuesParser::new(
+        merman::svg::presentation_profile_descriptors()
+            .iter()
+            .map(|descriptor| descriptor.id()),
+    )
+    .map(|id| {
+        merman::svg::PresentationProfile::from_id(&id)
+            .expect("possible values come from the presentation profile descriptors")
+    })
+}
+
 fn parse_resource_limit_override(value: &str) -> Result<ResourceLimitOverride, String> {
     let Some((stable_id, raw_value)) = value.split_once('=') else {
         return Err("expected STABLE_ID=POSITIVE_U64".to_string());
@@ -1845,19 +1876,17 @@ fn parse_mmdc_positive_integer(value: &str) -> Result<f64, String> {
     Ok(parsed as f64)
 }
 
-fn parse_naive_date(value: &str) -> Result<chrono::NaiveDate, String> {
-    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
-        .map_err(|_| "expected a date in YYYY-MM-DD format".to_string())
+fn parse_civil_date(value: &str) -> Result<CivilDate, String> {
+    CivilDate::from_str(value).map_err(|_| {
+        "expected a canonical civil date such as YYYY-MM-DD or +10000-MM-DD".to_string()
+    })
 }
 
 fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
     let parsed = value
         .parse::<i32>()
         .map_err(|_| "expected a timezone offset in minutes".to_string())?;
-    let Some(seconds) = parsed.checked_mul(60) else {
-        return Err("expected a timezone offset in minutes between -1439 and 1439".to_string());
-    };
-    if chrono::FixedOffset::east_opt(seconds).is_none() {
+    if UtcOffset::from_minutes(parsed).is_none() {
         return Err("expected a timezone offset in minutes between -1439 and 1439".to_string());
     }
     Ok(parsed)

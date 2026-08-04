@@ -132,7 +132,7 @@ hand-written capability table. The returned JSON is not wrapped in a native-only
 `api.metadata_collect` accepts one borrowed UTF-8 metadata ID and writes its JSON document to
 `MermanNativeResult.metadata_or_error_json`. The current IDs are `supported-diagrams`,
 `ascii-capabilities`, `diagram-family-capabilities`, `lint-rule-catalog`, `supported-themes`, and
-`supported-host-theme-presets`. This generic appended slot restores catalog access without adding
+`presentation-catalog`. This generic appended slot restores catalog access without adding
 direct exports or placing large detail catalogs in the runtime catalog.
 
 A successful metadata result uses operation `MERMAN_NATIVE_OPERATION_NONE`, has empty `data`, and

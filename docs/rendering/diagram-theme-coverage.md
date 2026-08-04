@@ -1,14 +1,14 @@
 # Diagram Theme Coverage
 
-This ledger tracks how supported SVG diagram families consume Mermaid theme variables and host theme profile roles. It is intentionally semantic: tests should assert visible SVG theme signals or document why a family cannot be covered through generic roles yet.
+This ledger tracks how supported SVG diagram families consume Mermaid theme variables and presentation theme roles. It is intentionally semantic: tests should assert visible SVG theme signals or document why a family cannot be covered through generic roles yet.
 
-Default parity output remains unchanged. Host profile behavior is opt-in.
+Default parity output remains unchanged. Host theme behavior is opt-in.
 
 Field-level config merge and parser-entry evidence live in `docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md`.
 This ledger only records the SVG/theme consumption layer and the visible residuals for admitted
 families.
 
-| Diagram family | Current theme path | Host profile status | Residual / follow-up |
+| Diagram family | Current theme path | Presentation theme status | Residual / follow-up |
 | --- | --- | --- | --- |
 | Flowchart | `PresentationTheme::node_diagram()` via `crates/merman-render/src/svg/parity/flowchart/css.rs` | Covered for node, text, border, line, cluster, edge label roles. | KaTeX and some special-shape details still have local hard-coded defaults. |
 | Block | Reuses node diagram theme in `crates/merman-render/src/svg/parity/block.rs` | Covered for node, edge, cluster roles, and resvg-safe fallback label text inheritance. | Cluster background follows Mermaid's fade semantics (`rgba(..., 0.5)`) rather than emitting the raw role color. |
@@ -18,7 +18,7 @@ families.
 | ER | Shared ER CSS and resolved `theme_token` reads | Covered for entity box, relationship line, text, and border signals. | Needs an `er_diagram()` view for marker, row fill, and shadow roles. |
 | Requirement | Shared requirement CSS and visible node attrs in `crates/merman-render/src/svg/parity/requirement.rs` | Covered for requirement node surface, border, text, and relationship line roles. | Requirement-specific status/risk decorations may need additional semantic roles later. |
 | Architecture | Architecture CSS reads `archEdge*` and `archGroup*` variables | Covered for edge and group border roles. | Built-in icon foreground/background is not fully themeable. |
-| C4 | C4 renderer reads `c4.*` config defaults | Partially covered by profile-generated `c4.*_bg_color` and `*_border_color`. | C4 needs dedicated profile roles for external/container/component text and boundary styling. |
+| C4 | C4 renderer reads `c4.*` config defaults | Partially covered by theme-generated `c4.*_bg_color` and `*_border_color`. | C4 needs dedicated semantic roles for external/container/component text and boundary styling. |
 | Mindmap | Final resolved `git*` and `cScale*` token reads | Covered through series palette bridge. | Family rendering projects the core-resolved scale without deriving a second palette. |
 | Kanban | Local `git*` and `cScale*` palette reads | Covered through series palette bridge and common roles. | Disabled states and root background remain local defaults. |
 | Timeline | `PresentationTheme::timeline()` | Covered through `cScale*`, `git*`, text, and line variables. | Some visible line attrs still have local black defaults. |
@@ -26,18 +26,18 @@ families.
 | XY Chart | `PresentationTheme::xychart()` and `xyChart.plotColorPalette` | Covered through `xyChart.plotColorPalette`, axis roles, and text roles. | Data label color has a separate fallback path. |
 | Quadrant Chart | `PresentationTheme::quadrantchart()` during layout | Covered through quadrant fill/text/border variables. | SVG stage is layout-driven and does not carry a separate theme view. |
 | Pie | Pie CSS and final resolved `pie1..pie12` theme variables | Covered through series palette bridge and pie text/border roles. | Layout and legend consume one resolved scale; the renderer does not derive another palette. |
-| Sankey | `sankey.*` config and default Tableau palette | Not generically covered by series palette. | Node colors are keyed by node id; use raw `sankey.nodeColors` or host postprocessing. |
+| Sankey | `sankey.*` config and default Tableau palette | Not generically covered by series palette. | Node colors are keyed by node id; use raw `sankey.nodeColors` or SVG postprocessing. |
 | Radar | Local `SvgTheme` reads `radar.*` and `cScale*` | Covered through generated `radar.*`, series palette, and common roles. | Needs a `RadarTheme` view in `PresentationTheme` to reduce local reads. |
 | Treemap | `treemap.*` config and `cScale*` labels | Covered through generated `treemap.*` and common roles. | Needs a `TreemapTheme` view to reduce local reads. |
 | Venn | Local `venn*` and text variables | Covered through series palette bridge and common text roles. | Needs a `VennTheme` view for text and fill readability. |
 | Gantt | Shared Gantt CSS variables | Covered for task, done, critical, section, text, and grid roles. | Needs a `GanttTheme` view and visible axis attr cleanup. |
 | Journey | Local `fillType*` and `actor*` reads | Covered through series palette bridge and common roles. | Activity line and actor stroke still include fixed colors. |
 | Packet | `packet.*` diagram config | Covered through generated packet text, block, and byte colors. | Packet base CSS does not yet use common theme roles directly. |
-| Tree View | `PresentationTheme::tree_view()` | Covered through nested `themeVariables.treeView.labelColor` and `lineColor`. | No fallback from common `textColor` without host profile mapping. |
+| Tree View | `PresentationTheme::tree_view()` | Covered through nested `themeVariables.treeView.labelColor` and `lineColor`. | No fallback from common `textColor` without semantic theme mapping. |
 | Ishikawa | `PresentationTheme::ishikawa()` | Covered for line, fill, text, font roles. | Theme surface is intentionally narrow. |
-| EventModeling | `PresentationTheme::eventmodeling()` | Covered through common and `em*` roles for lanes, UI, command, event, read model, and relations. | Host profile should grow more explicit eventmodeling role mapping if needed. |
+| EventModeling | `PresentationTheme::eventmodeling()` | Covered through common and `em*` roles for lanes, UI, command, event, read model, and relations. | The theme compiler should grow more explicit Event Modeling role mapping if needed. |
 | Info | Static informational SVG plus common CSS | Low coverage required. | Include in common smoke only. |
-| Error | Internal diagnostic diagram | Not in first host profile scope. | Consider diagnostic dark-theme readability separately. |
+| Error | Internal diagnostic diagram | Not in current bundled theme coverage. | Consider diagnostic dark-theme readability separately. |
 
 ## Gates
 

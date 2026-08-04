@@ -27,13 +27,15 @@ Pinned Mermaid uses `screen.availWidth` as the root C4 `widthLimit`.
 
 In a headless Rust context there is no DOM or `screen`. The operation supplies
 `LayoutOptions::container_width` and `LayoutOptions::container_height`, which default to `800px` and
-`600px`. C4 maps `container_width` to Mermaid's root `widthLimit` and carries both container
-dimensions in compatibility layout output. Binding callers set the same values through
-`layout.container_width` and `layout.container_height`.
+`600px`, plus optional `LayoutOptions::screen_available_width`. C4 maps the explicit screen value to
+Mermaid's root `widthLimit`; when it is absent, deterministic headless rendering falls back to the
+container width. Binding callers use `layout.screen_available_width` when they host rendering in a
+browser and need to project `screen.availWidth` exactly.
 
-This is a breaking API contract. Compatibility layout JSON contains `container_width` and
-`container_height`; `viewportWidth` and `viewportHeight` do not exist. The removed binding names
-`layout.viewport_width` and `layout.viewport_height` are rejected rather than treated as aliases.
+Compatibility layout JSON always contains `container_width` and `container_height`, and includes
+`screen_available_width` when the host supplied it. `viewportWidth` and `viewportHeight` do not
+exist. The removed binding names `layout.viewport_width` and `layout.viewport_height` are rejected
+rather than treated as aliases.
 
 ## Required layout snapshot fields
 
@@ -50,6 +52,7 @@ Minimum fields:
   - `width` / `height` (including `diagramMarginX/Y`)
   - `use_max_width`
   - `container_width` / `container_height` (operation layout-container dimensions)
+  - optional `screen_available_width` (browser `screen.availWidth` projection)
   - `c4_type` and optional `title`
 - Shapes:
   - `alias`, `parent_boundary`, `type_c4_shape`
@@ -64,11 +67,15 @@ Minimum fields:
   - text blocks: `label`, optional `ty`, optional `descr`:
     `{ text, y, width, height, line_count }`
 - Relationships (`rels`):
-  - `from`, `to`, `rel_type`
+  - source-order identity, `from`, `to`, `rel_type`
   - `start_point`, `end_point`
-  - optional `offset_x`, `offset_y`
+  - optional `offset_x`, `offset_y`, resolved by their named keys rather than positional sparsity
   - text blocks: `label`, optional `techn`, optional `descr`:
     `{ text, y, width, height, line_count }`
+
+The SVG admission layer keeps relation identity, label role, line geometry, and explicit
+presentation together. A DOM-order or text-only match is insufficient; see
+`SEMANTIC_LABEL_PARITY.md`.
 
 ## Known Mermaid quirks to match
 

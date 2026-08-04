@@ -69,22 +69,102 @@ test("freezes one configured input for detection, parse, layout, and render", ()
     "flowchart TD\n  A --> B\n",
     "forest",
     '{"layout":"elk"}',
-    { diagramFont: "arial", pipeline: "resvg-safe" },
+    {
+      diagramFont: "arial",
+      layoutEnvironment: {
+        containerWidth: 800,
+        containerHeight: 600,
+        screenAvailableWidth: 1280,
+      },
+      presentationProfileId: "merman-modern",
+      presentationThemePresetId: "editor-light",
+      svgPipeline: "resvg-safe",
+    },
   );
 
   assert.equal(Object.isFrozen(input), true);
   assert.match(
     input.source,
-    /%%\{init: \{"layout":"elk","theme":"forest"\}\}%%/,
+    /%%\{init: \{"layout":"elk","theme":"forest","fontFamily":"Arial, Helvetica, sans-serif","themeVariables":\{"fontFamily":"Arial, Helvetica, sans-serif"\}\}\}%%/,
   );
   assert.match(input.source, /flowchart TD/);
   assert.deepEqual(input.bindingOptions, {
-    site_config: {
-      fontFamily: "Arial, Helvetica, sans-serif",
-      themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
+    version: 2,
+    presentation: {
+      profile: "merman-modern",
+      theme: {
+        preset: "editor-light",
+      },
+    },
+    layout: {
+      container_width: 800,
+      container_height: 600,
+      screen_available_width: 1280,
     },
     svg: { pipeline: "resvg-safe" },
   });
+  assert.equal("host_theme" in (input.bindingOptions ?? {}), false);
+});
+
+test("keeps headless layout distinct from an observed browser screen", () => {
+  const input = configuredMermanOperationInput(
+    "C4Context\nPerson(customer, Customer)",
+    "default",
+    "{}",
+    {
+      layoutEnvironment: {
+        containerWidth: 800,
+        containerHeight: 600,
+      },
+    },
+  );
+
+  assert.deepEqual(input.bindingOptions.layout, {
+    container_width: 800,
+    container_height: 600,
+  });
+});
+
+test("keeps the default font in Mermaid config without enabling a presentation theme", () => {
+  const input = configuredMermanOperationInput(
+    "flowchart TD\nA",
+    "default",
+    "{}",
+    { diagramFont: "trebuchet" },
+  );
+
+  assert.match(input.source, /trebuchet ms/);
+  assert.deepEqual(input.bindingOptions, { version: 2 });
+});
+
+test("keeps presentation theme, profile, and SVG pipeline independent", () => {
+  const plain = configuredMermanOperationInput("flowchart TD\nA", "default", "{}", undefined);
+  const themeOnly = configuredMermanOperationInput("flowchart TD\nA", "dark", "{}", {
+    presentationThemePresetId: "future-theme",
+  });
+  const profileOnly = configuredMermanOperationInput("flowchart TD\nA", "forest", "{}", {
+    presentationProfileId: "future-profile",
+  });
+  const pipelineOnly = configuredMermanOperationInput("flowchart TD\nA", "neutral", "{}", {
+    svgPipeline: "readable",
+  });
+
+  assert.deepEqual(plain.bindingOptions, { version: 2 });
+  assert.deepEqual(themeOnly.bindingOptions, {
+    version: 2,
+    presentation: { theme: { preset: "future-theme" } },
+  });
+  assert.deepEqual(profileOnly.bindingOptions, {
+    version: 2,
+    presentation: { profile: "future-profile" },
+  });
+  assert.deepEqual(pipelineOnly.bindingOptions, {
+    version: 2,
+    svg: { pipeline: "readable" },
+  });
+  assert.match(themeOnly.source, /"theme":"dark"/);
+  assert.match(profileOnly.source, /"theme":"forest"/);
+  assert.match(pipelineOnly.source, /"theme":"neutral"/);
 });
 
 test("coalesces callers and starts module import and WASM fetch together", async () => {

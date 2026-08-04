@@ -1,11 +1,5 @@
-import {
-  currentRuntimeState,
-  encodeOptions,
-  getMerman,
-} from "./runtime-core.js";
-import { isHostThemePresetName } from "./public-catalog.js";
+import { encodeOptions, getMerman } from "./runtime-core.js";
 import { assertSafeSvgForDom } from "./svg-safety.js";
-import type { HostThemePresetName } from "./public-catalog.js";
 import type {
   BrowserTextMeasurementSession,
   HostTextMeasureRequest,
@@ -15,12 +9,6 @@ import type {
   SvgBindingOptions,
   SvgPlanResult,
 } from "./public-types.js";
-import type { MermanRuntimeState } from "./runtime-state.js";
-
-const supportedHostThemePresetCaches = new WeakMap<
-  MermanRuntimeState,
-  HostThemePresetName[]
->();
 
 export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
   return getMerman().renderSvg(source, encodeOptions(options));
@@ -31,25 +19,6 @@ export function svgPlanJson(
   options?: SvgBindingOptions | string
 ): SvgPlanResult {
   return getMerman().svgPlanJson(source, encodeOptions(options));
-}
-
-export function supportedHostThemePresets(): HostThemePresetName[] {
-  const state = currentRuntimeState();
-  let presets = supportedHostThemePresetCaches.get(state);
-  if (!presets) {
-    presets = getMerman()
-      .supportedHostThemePresets()
-      .map(assertHostThemePresetName);
-    supportedHostThemePresetCaches.set(state, presets);
-  }
-  return [...presets];
-}
-
-function assertHostThemePresetName(preset: string): HostThemePresetName {
-  if (isHostThemePresetName(preset)) {
-    return preset;
-  }
-  throw new Error(`Merman WASM returned unknown host theme preset: ${preset}`);
 }
 
 export function renderSvgWithTextMeasurer(

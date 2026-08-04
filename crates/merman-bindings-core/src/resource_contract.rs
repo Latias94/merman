@@ -313,10 +313,10 @@ fn is_ascii_limit(stable_id: &str) -> bool {
 fn is_render_limit(stable_id: &str) -> bool {
     #[cfg(feature = "svg")]
     {
-        return matches!(
+        matches!(
             merman::svg::ResourceLimitId::from_stable_id(stable_id),
             Some(merman::svg::ResourceLimitId::Render(_))
-        );
+        )
     }
     #[cfg(not(feature = "svg"))]
     {

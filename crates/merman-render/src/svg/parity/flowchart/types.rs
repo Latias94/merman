@@ -24,6 +24,10 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_border_color: String,
     pub(in crate::svg::parity::flowchart) node_fill_color: String,
+    pub(in crate::svg::parity::flowchart) node_corner_radius: f64,
+    pub(in crate::svg::parity::flowchart) edge_corner_radius: f64,
+    pub(in crate::svg::parity::flowchart) edge_label_padding: f64,
+    pub(in crate::svg::parity::flowchart) compact_edge_corners: bool,
     pub(in crate::svg::parity::flowchart) default_edge_interpolate: String,
     pub(in crate::svg::parity::flowchart) default_edge_style: Vec<String>,
     pub(in crate::svg::parity::flowchart) trace_edge_id: Option<&'a str>,
@@ -107,7 +111,11 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     pub(in crate::svg::parity::flowchart) original_path_length: Option<f64>,
     pub(in crate::svg::parity::flowchart) path_length: Option<f64>,
     pub(in crate::svg::parity::flowchart) line_hop_applied: bool,
-    pub(in crate::svg::parity::flowchart) label_position: Option<crate::model::LayoutPoint>,
+    /// Label polyline after endpoint/cluster clipping and before curve preprocessing.
+    pub(in crate::svg::parity::flowchart) label_path_points: Vec<crate::model::LayoutPoint>,
+    pub(in crate::svg::parity::flowchart) label_path_was_explicitly_updated: bool,
+    /// Actual path emitted by `insertEdge`; hand-drawn edges differ from the logical curve `d`.
+    pub(in crate::svg::parity::flowchart) emitted_d_for_label: Option<String>,
     pub(in crate::svg::parity::flowchart) bounds_skipped_for_viewbox: bool,
 }
 

@@ -61,7 +61,7 @@ Convenience methods are projections over `execute` and cover SVG, PNG, JPEG, PDF
 
 ## Inspect Native Metadata
 
-The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and host theme-preset catalogs. Results are copied into Dart-owned immutable lists and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer.
+The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and presentation catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Presentation IDs remain open strings so compatible producers can add presets, profiles, and aspects without requiring a Dart enum update.
 
 ```dart
 final diagrams = merman.supportedDiagrams();
@@ -69,7 +69,7 @@ final ascii = merman.asciiCapabilities();
 final families = merman.diagramFamilyCapabilities();
 final lintRules = merman.lintRuleCatalog();
 final themes = merman.supportedThemes();
-final hostPresets = merman.supportedHostThemePresets();
+final presentation = merman.presentationCatalog();
 ```
 
 All six methods use the appended ABI 3 `metadata_collect` table slot. `Merman.open()` requires that slot because the bundled Dart and native package versions are exact peers. `Merman.openPath(...)` deliberately keeps minimum-prefix compatibility with older ABI 3 producers and reports a contract error only if one of these metadata methods is called without the appended slot.

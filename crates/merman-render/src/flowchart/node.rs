@@ -2,6 +2,7 @@ fn node_render_dimensions(
     layout_shape: Option<&str>,
     metrics: crate::text::TextMetrics,
     padding: f64,
+    look_is_neo: bool,
 ) -> (f64, f64) {
     // This function mirrors pinned Mermaid node shape sizing rules at the "rendering-elements"
     // layer, but uses our headless `TextMeasurer` metrics instead of DOM `getBBox()`.
@@ -159,9 +160,12 @@ fn node_render_dimensions(
 
         // Default flowchart process node.
         "squareRect" | "rect" | "proc" | "process" | "rectangle" => {
-            (text_w + 4.0 * p, text_h + 2.0 * p)
+            if look_is_neo {
+                (text_w + 32.0, text_h + 24.0)
+            } else {
+                (text_w + 4.0 * p, text_h + 2.0 * p)
+            }
         }
-
         "data-store" | "datastore" => (text_w + 4.0 * p, text_h + 2.0 * p),
 
         // Mermaid uses a few aliases for the same rounded-rectangle shape across layers.
@@ -189,26 +193,27 @@ fn node_render_dimensions(
 
         // Stadium/terminator.
         "stadium" | "terminal" | "pill" => {
-            let h = text_h + p;
-            let w = text_w + h / 4.0 + p;
+            let h = text_h + if look_is_neo { 24.0 } else { p };
+            let w = text_w + h / 4.0 + if look_is_neo { 40.0 } else { p };
             (w, h)
         }
 
         // Subroutine/subprocess (framed rectangle): adds an 8px "frame" on both sides.
         "subroutine" | "fr-rect" | "subproc" | "subprocess" | "framed-rectangle" => {
-            let w = text_w + p;
-            let h = text_h + p;
+            let w = text_w + if look_is_neo { 28.0 } else { p };
+            let h = text_h + if look_is_neo { 12.0 } else { p };
             (w + 16.0, h)
         }
 
         // Cylinder/database.
         "cylinder" | "cyl" | "db" | "database" => {
-            let w = text_w + p;
+            let label_padding = if look_is_neo { 24.0 } else { p };
+            let w = text_w + label_padding;
             let rx = w / 2.0;
             let ry = rx / (2.5 + w / 50.0);
             // Mermaid's cylinder path height ends up including two extra `ry` from the ellipses.
             // See `createCylinderPathD` + `translate(..., -(h/2 + ry))`.
-            let height = text_h + p + 3.0 * ry;
+            let height = text_h + label_padding + 3.0 * ry;
             (w, height)
         }
 
@@ -940,8 +945,60 @@ pub(crate) fn flowchart_node_render_dimensions(
     layout_shape: Option<&str>,
     metrics: crate::text::TextMetrics,
     padding: f64,
+    look_is_neo: bool,
 ) -> (f64, f64) {
-    node_render_dimensions(layout_shape, metrics, padding)
+    node_render_dimensions(layout_shape, metrics, padding, look_is_neo)
+}
+
+#[cfg(test)]
+mod render_dimension_tests {
+    use super::*;
+
+    fn metrics() -> crate::text::TextMetrics {
+        crate::text::TextMetrics {
+            width: 100.0,
+            height: 20.0,
+            line_count: 1,
+        }
+    }
+
+    #[test]
+    fn neo_uses_pinned_shape_specific_content_padding() {
+        assert_eq!(
+            node_render_dimensions(Some("squareRect"), metrics(), 15.0, true),
+            (132.0, 44.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("stadium"), metrics(), 15.0, true),
+            (151.0, 44.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("subroutine"), metrics(), 15.0, true),
+            (144.0, 32.0)
+        );
+
+        let (cylinder_w, cylinder_h) =
+            node_render_dimensions(Some("cylinder"), metrics(), 15.0, true);
+        let expected_ry = 62.0 / (2.5 + 124.0 / 50.0);
+        assert_eq!(cylinder_w, 124.0);
+        assert!((cylinder_h - (44.0 + 3.0 * expected_ry)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn classic_shape_padding_remains_unchanged() {
+        assert_eq!(
+            node_render_dimensions(Some("squareRect"), metrics(), 15.0, false),
+            (160.0, 50.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("stadium"), metrics(), 15.0, false),
+            (123.75, 35.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("subroutine"), metrics(), 15.0, false),
+            (131.0, 35.0)
+        );
+    }
 }
 
 pub(crate) struct NodeLayoutDimensionsRequest<'a> {
@@ -949,6 +1006,7 @@ pub(crate) struct NodeLayoutDimensionsRequest<'a> {
     pub(crate) layout_direction: &'a str,
     pub(crate) metrics: crate::text::TextMetrics,
     pub(crate) padding: f64,
+    pub(crate) look_is_neo: bool,
     pub(crate) state_padding: f64,
     pub(crate) node_icon: Option<&'a str>,
     pub(crate) node_img: Option<&'a str>,
@@ -963,6 +1021,7 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
         layout_direction,
         metrics,
         padding,
+        look_is_neo,
         state_padding,
         node_icon,
         node_img,
@@ -1055,7 +1114,7 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
         return (render_w + extra, render_h + extra);
     }
 
-    let (render_w, render_h) = node_render_dimensions(Some(shape), metrics, padding);
+    let (render_w, render_h) = node_render_dimensions(Some(shape), metrics, padding, look_is_neo);
 
     // Mermaid flowchart-v2 renders nodes using the "rendering-elements" layer:
     // 1) it generates SVG paths (roughjs-based even for non-handDrawn look),

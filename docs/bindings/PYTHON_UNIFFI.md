@@ -89,7 +89,7 @@ validation = engine.validate("flowchart TD\nA[Hello] --> B[World]", None)
 diagrams = engine.supported_diagrams()
 ascii_capabilities = engine.ascii_capabilities()
 themes = engine.supported_themes()
-host_presets = engine.supported_host_theme_presets()
+presentation_catalog = json.loads(engine.presentation_catalog_json())
 family_capabilities = engine.diagram_family_capabilities()
 lint_rules = engine.lint_rule_catalog()
 

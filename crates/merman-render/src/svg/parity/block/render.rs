@@ -205,7 +205,64 @@ pub(crate) fn render_block_diagram_svg_model(
         }
     }
 
-    fn block_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
+    fn block_class_css(
+        diagram_id: &str,
+        class_defs: &indexmap::IndexMap<
+            String,
+            merman_core::diagrams::block::BlockClassDefRenderModel,
+        >,
+    ) -> String {
+        fn important_declarations(styles: &[String]) -> String {
+            let mut out = String::new();
+            for style in styles {
+                let Some((key, value)) = parse_style_decl(style) else {
+                    continue;
+                };
+                let _ = write!(&mut out, "{key}:{}!important;", escape_xml(value));
+            }
+            out
+        }
+
+        let id = escape_xml(diagram_id);
+        let mut out = String::new();
+        for class_def in class_defs.values() {
+            let class = escape_xml(&class_def.id);
+            let shape_style = important_declarations(&class_def.styles);
+            if !shape_style.is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
+                    id.as_str(),
+                    class.as_str(),
+                    shape_style,
+                    id.as_str(),
+                    class.as_str(),
+                    shape_style
+                );
+            }
+
+            let text_style = important_declarations(&class_def.text_styles);
+            if !text_style.is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"#{} .{} tspan{{{}}}"#,
+                    id.as_str(),
+                    class.as_str(),
+                    text_style
+                );
+            }
+        }
+        out
+    }
+
+    fn block_css(
+        diagram_id: &str,
+        effective_config: &serde_json::Value,
+        class_defs: &indexmap::IndexMap<
+            String,
+            merman_core::diagrams::block::BlockClassDefRenderModel,
+        >,
+    ) -> Result<String> {
         let id = escape_xml(diagram_id);
         let theme = PresentationTheme::new(effective_config).node_diagram();
         let font_family = theme.common.font_family_css.as_str();
@@ -320,6 +377,7 @@ pub(crate) fn render_block_diagram_svg_model(
             id.as_str(),
             font_family
         );
+        out.push_str(&block_class_css(diagram_id, class_defs));
         Ok(out)
     }
 
@@ -351,7 +409,7 @@ pub(crate) fn render_block_diagram_svg_model(
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Block, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str("<style>");
-    out.push_str(&block_css(diagram_id, effective_config)?);
+    out.push_str(&block_css(diagram_id, effective_config, &model.class_defs)?);
     out.push_str("</style><g/>");
 
     let _ = write!(

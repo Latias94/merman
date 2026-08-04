@@ -4,11 +4,11 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Bike",
-          "x": 252.882,
-          "y": 72.0,
-          "width": 131.203,
-          "height": 144.0,
+          "id": "Student",
+          "x": 160.761,
+          "y": 278.0,
+          "width": 153.277,
+          "height": 120.0,
           "is_cluster": false
         },
         {
@@ -20,11 +20,11 @@
           "is_cluster": false
         },
         {
-          "id": "Student",
-          "x": 160.761,
-          "y": 278.0,
-          "width": 153.277,
-          "height": 120.0,
+          "id": "Bike",
+          "x": 252.882,
+          "y": 72.0,
+          "width": 131.203,
+          "height": 144.0,
           "is_cluster": false
         }
       ],

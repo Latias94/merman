@@ -517,6 +517,81 @@ pub fn assemble_processors_for_graph(graph: &LGraph) -> Vec<ProcessorSlot> {
     )
 }
 
+fn is_source_ported_processor(kind: ProcessorKind) -> bool {
+    matches!(
+        kind,
+        ProcessorKind::DirectionPreprocessor
+            | ProcessorKind::EdgeAndLayerConstraintEdgeReverser
+            | ProcessorKind::InteractiveExternalPortPositioner
+            | ProcessorKind::GreedyCycleBreaker
+            | ProcessorKind::DepthFirstCycleBreaker
+            | ProcessorKind::InteractiveCycleBreaker
+            | ProcessorKind::ModelOrderCycleBreaker
+            | ProcessorKind::GreedyModelOrderCycleBreaker
+            | ProcessorKind::LayerConstraintPreprocessor
+            | ProcessorKind::NetworkSimplexLayerer
+            | ProcessorKind::LabelDummyInserter
+            | ProcessorKind::SelfLoopPreProcessor
+            | ProcessorKind::LayerConstraintPostprocessor
+            | ProcessorKind::LongEdgeSplitter
+            | ProcessorKind::PortSideProcessor
+            | ProcessorKind::InvertedPortProcessor
+            | ProcessorKind::PortListSorter
+            | ProcessorKind::SortByInputModelProcessor
+            | ProcessorKind::HierarchicalPortConstraintProcessor
+            | ProcessorKind::LayerSweepCrossingMinimizerBarycenter
+            | ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch
+            | ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch
+            | ProcessorKind::NoCrossingMinimizer
+            | ProcessorKind::InLayerConstraintProcessor
+            | ProcessorKind::LabelAndNodeSizeProcessor
+            | ProcessorKind::InnermostNodeMarginCalculator
+            | ProcessorKind::EndLabelPreprocessor
+            | ProcessorKind::LabelSideSelector
+            | ProcessorKind::HyperedgeDummyMerger
+            | ProcessorKind::HierarchicalPortDummySizeProcessor
+            | ProcessorKind::BKNodePlacer
+            | ProcessorKind::SimpleNodePlacer
+            | ProcessorKind::LinearSegmentsNodePlacer
+            | ProcessorKind::NetworkSimplexPlacer
+            | ProcessorKind::LayerSizeAndGraphHeightCalculator
+            | ProcessorKind::HierarchicalPortPositionProcessor
+            | ProcessorKind::OrthogonalEdgeRouter
+            | ProcessorKind::LongEdgeJoiner
+            | ProcessorKind::LabelDummyRemover
+            | ProcessorKind::EndLabelSorter
+            | ProcessorKind::ReversedEdgeRestorer
+            | ProcessorKind::EndLabelPostprocessor
+            | ProcessorKind::HierarchicalNodeResizer
+            | ProcessorKind::DirectionPostprocessor
+            | ProcessorKind::SelfLoopPortRestorer
+            | ProcessorKind::SelfLoopRouter
+            | ProcessorKind::SelfLoopPostProcessor
+            | ProcessorKind::LabelDummySwitcher
+            | ProcessorKind::HierarchicalPortOrthogonalEdgeRouter
+    )
+}
+
+fn validate_ported_processors(processors: &[ProcessorSlot]) -> PipelineResult<()> {
+    if let Some(slot) = processors
+        .iter()
+        .find(|slot| !is_source_ported_processor(slot.kind))
+    {
+        return Err(PipelineError::UnsupportedProcessor { kind: slot.kind });
+    }
+    Ok(())
+}
+
+fn validate_ported_graph_processors(graph: &LGraph) -> PipelineResult<()> {
+    validate_ported_processors(&assemble_processors_for_graph(graph))?;
+    for node in &graph.layerless_nodes {
+        if let Some(nested_graph) = node.nested_graph.as_deref() {
+            validate_ported_graph_processors(nested_graph)?;
+        }
+    }
+    Ok(())
+}
+
 /// Execute the source-backed layered pipeline until the requested phase completes.
 ///
 /// This follows the processor sequence assembled from Eclipse ELK's `GraphConfigurator` and phase
@@ -585,8 +660,8 @@ pub fn execute_processors_until_processor_with_work_control(
 /// Execute all currently source-ported processors assembled for this graph.
 ///
 /// This is the library equivalent of `ElkLayered.layout(...)`: it uses the same assembled
-/// processor list as the phase-limited runner, fails at the first unsupported processor, and leaves
-/// the graph in the post-processor state produced by the ported pipeline.
+/// processor list as the phase-limited runner and rejects unsupported processors before mutating
+/// the graph.
 pub fn execute_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<ProcessorKind>> {
     let mut work_control = NoopWorkControl;
     execute_ported_processors_with_work_control(graph, &mut work_control)
@@ -597,7 +672,7 @@ pub fn execute_ported_processors_with_work_control(
     work_control: &mut dyn WorkControl,
 ) -> PipelineResult<Vec<ProcessorKind>> {
     let mut executed = Vec::new();
-    let processors = prepare_single_graph_processors(graph, work_control)?;
+    let processors = prepare_full_single_graph_processors(graph, work_control)?;
 
     for slot in processors {
         execute_processor_with_work_control(graph, slot.kind, work_control)?;
@@ -605,6 +680,22 @@ pub fn execute_ported_processors_with_work_control(
     }
 
     Ok(executed)
+}
+
+fn prepare_full_single_graph_processors(
+    graph: &mut LGraph,
+    work_control: &mut dyn WorkControl,
+) -> PipelineResult<Vec<ProcessorSlot>> {
+    // The full runner must reject unsupported strategies before mutating the caller graph. Charge
+    // the same hierarchy preflight first, then configure a clone for validation and only configure
+    // the original graph after the complete processor list is known to be source-ported.
+    charge_hierarchy_work(graph, work_control)?;
+    let mut validation_graph = graph.clone();
+    configure_graph_properties(&mut validation_graph)?;
+    let processors = assemble_processors_for_graph(&validation_graph);
+    validate_ported_processors(&processors)?;
+    configure_graph_properties(graph)?;
+    Ok(assemble_processors_for_graph(graph))
 }
 
 fn prepare_single_graph_processors(
@@ -734,6 +825,9 @@ fn execute_ported_compound_processors_to(
     work_control: &mut dyn WorkControl,
 ) -> PipelineResult<Vec<GraphExecution>> {
     charge_hierarchy_work(graph, work_control)?;
+    if stop.is_none() {
+        validate_ported_graph_processors(graph)?;
+    }
     charge_compound_preprocess_work(graph, work_control)?;
     preprocess_source_ported_compound_graph(graph);
     charge_hierarchy_work(graph, work_control)?;
@@ -743,6 +837,11 @@ fn execute_ported_compound_processors_to(
 
     let mut arena = build_compound_graph_arena_with_work_control(graph, work_control)?;
     const ROOT_GRAPH: usize = 0;
+    if stop.is_none() {
+        for algorithm in &arena.algorithms {
+            validate_ported_processors(&algorithm.processors)?;
+        }
+    }
 
     while arena.algorithms[ROOT_GRAPH].next_processor
         < arena.algorithms[ROOT_GRAPH].processors.len()
@@ -2598,8 +2697,9 @@ mod tests {
     use crate::graph::{LLabel, LNode, LNodeKind, LPort, Layer, PortSide, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
     use crate::options::{
-        CycleBreakingStrategy, ElkDirection, FixedAlignment, GreedySwitchType, LayeredOptions,
-        NodePlacementStrategy, OrderingStrategy, PortConstraints,
+        CrossingMinimizationStrategy, CycleBreakingStrategy, EdgeRouting, ElkDirection,
+        FixedAlignment, GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy,
+        OrderingStrategy, PortConstraints, WrappingStrategy,
     };
     use crate::p3order::{counting::CrossingsCounter, process_port_sides, sort_port_lists};
 
@@ -2615,61 +2715,6 @@ mod tests {
             .into_iter()
             .map(|slot| slot.kind)
             .collect()
-    }
-
-    fn is_source_ported_processor(kind: ProcessorKind) -> bool {
-        matches!(
-            kind,
-            ProcessorKind::DirectionPreprocessor
-                | ProcessorKind::EdgeAndLayerConstraintEdgeReverser
-                | ProcessorKind::InteractiveExternalPortPositioner
-                | ProcessorKind::GreedyCycleBreaker
-                | ProcessorKind::DepthFirstCycleBreaker
-                | ProcessorKind::InteractiveCycleBreaker
-                | ProcessorKind::ModelOrderCycleBreaker
-                | ProcessorKind::GreedyModelOrderCycleBreaker
-                | ProcessorKind::LayerConstraintPreprocessor
-                | ProcessorKind::NetworkSimplexLayerer
-                | ProcessorKind::LabelDummyInserter
-                | ProcessorKind::SelfLoopPreProcessor
-                | ProcessorKind::LayerConstraintPostprocessor
-                | ProcessorKind::LongEdgeSplitter
-                | ProcessorKind::PortSideProcessor
-                | ProcessorKind::InvertedPortProcessor
-                | ProcessorKind::PortListSorter
-                | ProcessorKind::SortByInputModelProcessor
-                | ProcessorKind::HierarchicalPortConstraintProcessor
-                | ProcessorKind::LayerSweepCrossingMinimizerBarycenter
-                | ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch
-                | ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch
-                | ProcessorKind::NoCrossingMinimizer
-                | ProcessorKind::InLayerConstraintProcessor
-                | ProcessorKind::LabelAndNodeSizeProcessor
-                | ProcessorKind::InnermostNodeMarginCalculator
-                | ProcessorKind::EndLabelPreprocessor
-                | ProcessorKind::LabelSideSelector
-                | ProcessorKind::HyperedgeDummyMerger
-                | ProcessorKind::HierarchicalPortDummySizeProcessor
-                | ProcessorKind::BKNodePlacer
-                | ProcessorKind::SimpleNodePlacer
-                | ProcessorKind::LinearSegmentsNodePlacer
-                | ProcessorKind::NetworkSimplexPlacer
-                | ProcessorKind::LayerSizeAndGraphHeightCalculator
-                | ProcessorKind::HierarchicalPortPositionProcessor
-                | ProcessorKind::OrthogonalEdgeRouter
-                | ProcessorKind::LongEdgeJoiner
-                | ProcessorKind::LabelDummyRemover
-                | ProcessorKind::EndLabelSorter
-                | ProcessorKind::ReversedEdgeRestorer
-                | ProcessorKind::EndLabelPostprocessor
-                | ProcessorKind::HierarchicalNodeResizer
-                | ProcessorKind::DirectionPostprocessor
-                | ProcessorKind::SelfLoopPortRestorer
-                | ProcessorKind::SelfLoopRouter
-                | ProcessorKind::SelfLoopPostProcessor
-                | ProcessorKind::LabelDummySwitcher
-                | ProcessorKind::HierarchicalPortOrthogonalEdgeRouter
-        )
     }
 
     fn assert_processors_are_source_ported(case: &str, processors: Vec<ProcessorKind>) {
@@ -3651,6 +3696,93 @@ mod tests {
         assert_eq!(
             processor_work_units(&graph, ProcessorKind::NetworkSimplexLayerer),
             Err(WorkError::ArithmeticOverflow)
+        );
+    }
+
+    #[test]
+    fn full_runner_rejects_unported_strategies_before_mutating_graph() {
+        let cases = [
+            (
+                LayeredOptions {
+                    layering_strategy: LayeringStrategy::LongestPath,
+                    ..LayeredOptions::default()
+                },
+                ProcessorKind::LongestPathLayerer,
+            ),
+            (
+                LayeredOptions {
+                    crossing_minimization_strategy: CrossingMinimizationStrategy::Interactive,
+                    ..LayeredOptions::default()
+                },
+                ProcessorKind::InteractiveCrossingMinimizer,
+            ),
+            (
+                LayeredOptions {
+                    node_placement_strategy: NodePlacementStrategy::Interactive,
+                    ..LayeredOptions::default()
+                },
+                ProcessorKind::InteractiveNodePlacer,
+            ),
+            (
+                LayeredOptions {
+                    edge_routing: EdgeRouting::Polyline,
+                    ..LayeredOptions::default()
+                },
+                ProcessorKind::PolylineEdgeRouter,
+            ),
+            (
+                LayeredOptions {
+                    wrapping_strategy: WrappingStrategy::SingleEdge,
+                    ..LayeredOptions::default()
+                },
+                ProcessorKind::SingleEdgeGraphWrapper,
+            ),
+        ];
+
+        for (options, expected) in cases {
+            let mut graph = import_graph(&ElkInputGraph {
+                id: "root".to_string(),
+                options,
+                nodes: vec![node("A"), node("B")],
+                edges: vec![edge("A-B", "A", "B")],
+            })
+            .unwrap();
+            let before = graph.clone();
+
+            let result = execute_ported_processors(&mut graph);
+
+            assert_eq!(
+                result,
+                Err(PipelineError::UnsupportedProcessor { kind: expected })
+            );
+            assert_eq!(
+                graph, before,
+                "{expected:?} mutated the graph before failing"
+            );
+        }
+    }
+
+    #[test]
+    fn full_runner_reports_first_unported_processor_in_pipeline_order() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                layering_strategy: LayeringStrategy::LongestPath,
+                node_placement_strategy: NodePlacementStrategy::Interactive,
+                edge_routing: EdgeRouting::Splines,
+                wrapping_strategy: WrappingStrategy::MultiEdge,
+                ..LayeredOptions::default()
+            },
+            nodes: vec![node("A"), node("B")],
+            edges: vec![edge("A-B", "A", "B")],
+        })
+        .unwrap();
+
+        assert_eq!(
+            execute_ported_processors(&mut graph),
+            Err(PipelineError::UnsupportedProcessor {
+                kind: ProcessorKind::LongestPathLayerer,
+            })
         );
     }
 

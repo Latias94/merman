@@ -153,6 +153,10 @@ impl DocumentSnapshot {
         self.analysis_generation() as *const AnalysisGeneration as usize
     }
 
+    pub(crate) fn estimated_owned_weight(&self) -> usize {
+        self.generation_weight.saturating_add(self.snapshot_weight)
+    }
+
     #[cfg(test)]
     pub(crate) fn shared_analysis_generation(&self) -> Arc<AnalysisGeneration> {
         self.editor.shared_analysis_generation()

@@ -269,6 +269,50 @@ fn block_svg_normalizes_khroma_colors_and_preserves_css_tokens() {
 }
 
 #[test]
+fn block_svg_applies_class_definitions_to_assigned_nodes() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  Frontend Backend Database[("Database")]
+
+  classDef front fill:#696,stroke:#333;
+  classDef back fill:#969,stroke:#333;
+  class Frontend front
+  class Backend,Database back
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"class="node default front flowchart-label""#),
+        "expected the Frontend node to retain its assigned class: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#merman .front&gt;*{fill:#696!important;stroke:#333!important;}"#),
+        "expected the front class definition to style Block shapes: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#merman .back&gt;*{fill:#969!important;stroke:#333!important;}"#),
+        "expected the back class definition to style Block shapes: {svg}"
+    );
+}
+
+#[test]
+fn block_svg_xml_escapes_class_definition_values() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["Alpha"]
+  classDef branded font-family:"A&B",fill:#696
+  class A branded
+"#,
+    );
+
+    roxmltree::Document::parse(&svg).expect("classDef CSS must remain well-formed XML");
+    assert!(
+        svg.contains(r#"font-family:&quot;A&amp;B&quot;!important;"#),
+        "expected classDef values to be XML escaped inside the style element: {svg}"
+    );
+}
+
+#[test]
 fn block_circle_edge_starts_on_the_rendered_circle_boundary() {
     let svg = render_block_svg_from_text(
         r##"block-beta

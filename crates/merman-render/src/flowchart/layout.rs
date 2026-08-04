@@ -1591,6 +1591,7 @@ fn layout_flowchart_with_model(
         text_style,
         html_label_text_style,
     } = FlowchartConfigView::new(effective_config_value).layout_settings();
+    let look_is_neo = crate::config::config_diagram_look(effective_config_value).is_neo();
     let node_label_base_style = if node_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
     } else {
@@ -1717,6 +1718,7 @@ fn layout_flowchart_with_model(
             layout_direction: &diagram_direction,
             metrics,
             padding: node_padding,
+            look_is_neo,
             state_padding,
             node_icon: n.icon.as_deref(),
             node_img: n.img.as_deref(),
@@ -1771,6 +1773,7 @@ fn layout_flowchart_with_model(
             layout_direction: &diagram_direction,
             metrics,
             padding: cluster_padding,
+            look_is_neo: false,
             state_padding,
             node_icon: None,
             node_img: None,

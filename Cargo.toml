@@ -96,7 +96,6 @@ icu_collator = { version = "2.2.1", default-features = false, features = ["compi
 icu_locale_core = { version = "2.2.0", default-features = false, features = ["alloc"] }
 lol_html = "3.0"
 url = "2.5.4"
-chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 cssparser = "0.36.0"
 jiff = { version = "0.2.34", default-features = false }
 clap = { version = "4.6", features = ["derive"] }

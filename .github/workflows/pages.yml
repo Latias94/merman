@@ -84,22 +84,19 @@ jobs:
       - name: Install wasm-tools
         uses: taiki-e/install-action@wasm-tools
 
-      - name: Install WASM tools
-        run: |
-          cargo install wasm-bindgen-cli --version 0.2.108 --locked
-          cargo install wasm-pack --version 0.15.0 --locked
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
 
-      - name: Verify generated browser contracts
+      - name: Verify deployable browser projections
+        if: github.event_name != 'pull_request'
         run: |
-          python3 scripts/sync-release-legal-materials.py --check
-          cargo run -p xtask -- verify-mermaid-reference
-          cargo run -p xtask -- verify-editor-token-descriptor
-          cargo run -p xtask -- verify-text-measurement-protocol
-          cargo run -p xtask -- verify-web-diagram-catalog
-          cargo run -p xtask -- verify-playground-example-catalog
-
-      - name: Check exact Web WASM size budgets
-        run: cargo run --locked -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
+          cargo run --locked -p xtask -- verify-mermaid-reference
+          cargo run --locked -p xtask -- verify-capability-surface
+          cargo run --locked -p xtask -- verify-editor-token-descriptor
+          cargo run --locked -p xtask -- verify-text-measurement-protocol
+          cargo run --locked -p xtask -- verify-web-diagram-catalog
+          cargo run --locked -p xtask -- verify-resource-contract
+          cargo run --locked -p xtask -- verify-playground-example-catalog
 
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web
@@ -107,11 +104,15 @@ jobs:
       - name: Build web package
         run: npm run build --prefix platforms/web
 
-      - name: Verify web package
-        run: npm run verify:packages --prefix platforms/web
-
-      - name: Smoke web package
+      - name: Verify and smoke web package
         run: npm run smoke --prefix platforms/web
+
+      - name: Check final Web package WASM size budgets
+        run: |
+          cargo run --locked -p xtask -- wasm-size-matrix \
+            --surface web \
+            --web-package-root platforms/web/packages \
+            --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Install playground dependencies
         run: npm ci --prefix playground
@@ -125,20 +126,20 @@ jobs:
       - name: Install playground browsers
         run: npm run install:browsers --prefix playground/tests
 
-      - name: Test playground
-        run: npm test --prefix playground
+      - name: Prepare playground browser runtime
+        run: npm run prepare:browser-runtime --prefix playground
+
+      - name: Test prepared playground
+        run: npm run test:prepared --prefix playground
 
       - name: Lint playground
         run: npm run lint --prefix playground
 
-      - name: Build playground
-        run: npm run build --prefix playground
+      - name: Build prepared playground
+        run: npm run build:prepared --prefix playground
 
-      - name: Verify playground dist
-        run: npm run verify:dist --prefix playground
-
-      - name: Smoke playground in supported browsers
-        run: npm run test:browser:smoke:built --prefix playground
+      - name: Smoke playground in Firefox and WebKit
+        run: npm run test:browser:smoke:non-chromium:built --prefix playground
 
       - name: Test playground in Chromium
         run: npm run test:browser:chromium --prefix playground

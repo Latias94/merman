@@ -192,6 +192,10 @@ permissive with `additionalProperties` so alpha clients are not broken by future
 should use it for settings completion, settings validation hints, and profile/rule pickers, then
 use `merman/ruleCatalog` for the richer rule explanations and evidence metadata.
 
+`fixed_today` uses the canonical signed-32-bit `CivilDate` spelling. Years `0000` through `9999`
+use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. Signed years
+do not admit unnecessary leading zeroes.
+
 ## Standard LSP Pairing
 
 - Clients that do not negotiate pull diagnostics receive standard

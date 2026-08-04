@@ -4,35 +4,19 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "AveryLongClass",
-          "x": 110.88,
-          "y": 422.0,
-          "width": 128.0,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "C2",
-          "x": 934.163,
-          "y": 780.0,
-          "width": 42.563,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "C3",
-          "x": 566.322,
-          "y": 422.0,
-          "width": 42.563,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
           "id": "Class01",
           "x": 110.88,
           "y": 132.0,
           "width": 221.76,
           "height": 264.0,
+          "is_cluster": false
+        },
+        {
+          "id": "AveryLongClass",
+          "x": 110.88,
+          "y": 422.0,
+          "width": 128.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
@@ -92,11 +76,27 @@
           "is_cluster": false
         },
         {
-          "id": "Class10",
-          "x": 926.644,
+          "id": "C2",
+          "x": 934.163,
+          "y": 780.0,
+          "width": 42.563,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C3",
+          "x": 566.322,
           "y": 422.0,
-          "width": 94.56,
-          "height": 168.0,
+          "width": 42.563,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Class12",
+          "x": 1304.964,
+          "y": 422.0,
+          "width": 76.641,
+          "height": 84.0,
           "is_cluster": false
         },
         {
@@ -108,11 +108,11 @@
           "is_cluster": false
         },
         {
-          "id": "Class12",
-          "x": 1304.964,
+          "id": "Class10",
+          "x": 926.644,
           "y": 422.0,
-          "width": 76.641,
-          "height": 84.0,
+          "width": 94.56,
+          "height": 168.0,
           "is_cluster": false
         },
         {
@@ -133,6 +133,35 @@
         }
       ],
       "edges": [
+        {
+          "id": "edgeNote1",
+          "from": "note1",
+          "to": "Class10",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 926.644,
+              "y": 162.0
+            },
+            {
+              "x": 926.644,
+              "y": 301.0
+            },
+            {
+              "x": 926.644,
+              "y": 338.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
         {
           "id": "0",
           "from": "Class01",
@@ -506,35 +535,6 @@
             "width": 62.72,
             "height": 24.0
           },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edgeNote12",
-          "from": "note1",
-          "to": "Class10",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 926.644,
-              "y": 162.0
-            },
-            {
-              "x": 926.644,
-              "y": 301.0
-            },
-            {
-              "x": 926.644,
-              "y": 338.0
-            }
-          ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
           "end_label_left": null,

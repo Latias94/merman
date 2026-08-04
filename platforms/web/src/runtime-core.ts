@@ -26,6 +26,10 @@ import type {
   CommonBindingOptions,
   MermanInitInput,
   MermanWasmModule,
+  PresentationAspectCatalogEntry,
+  PresentationCatalog,
+  PresentationProfileCatalogEntry,
+  PresentationThemePresetCatalogEntry,
   RuntimeCatalog,
   RuntimeEmbeddedImageLimits,
   ResourceOptions,
@@ -99,6 +103,14 @@ export function runtimeCatalog(): RuntimeCatalog {
   const state = currentRuntimeState();
   state.runtimeCatalogCache ??= normalizeRuntimeCatalog(getMerman().runtimeCatalog());
   return structuredCloneValue(state.runtimeCatalogCache);
+}
+
+export function presentationCatalog(): PresentationCatalog {
+  const state = currentRuntimeState();
+  state.presentationCatalogCache ??= normalizePresentationCatalog(
+    getMerman().presentationCatalog()
+  );
+  return structuredCloneValue(state.presentationCatalogCache);
 }
 
 export function supportedDiagrams(): DiagramType[] {
@@ -360,6 +372,165 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
       new Set(capabilities.operation_ids)
     ),
   };
+}
+
+function normalizePresentationCatalog(value: unknown): PresentationCatalog {
+  if (!isRecord(value) || value.schema_version !== 1) {
+    throw new Error("Merman WASM returned an unsupported presentation catalog schema.");
+  }
+  assertRequiredRecordKeys(
+    value,
+    ["profiles", "schema_version", "theme_presets"],
+    "Merman WASM presentation catalog"
+  );
+  if (!Array.isArray(value.theme_presets) || !Array.isArray(value.profiles)) {
+    throw new Error("Merman WASM returned an invalid presentation catalog.");
+  }
+  return {
+    schema_version: 1,
+    theme_presets: normalizePresentationThemePresets(value.theme_presets),
+    profiles: normalizePresentationProfiles(value.profiles),
+  };
+}
+
+function normalizePresentationThemePresets(
+  value: unknown[]
+): PresentationThemePresetCatalogEntry[] {
+  const seen = new Set<string>();
+  return value.map((entry) => {
+    if (!isRecord(entry)) {
+      throw new Error("Merman WASM returned an invalid presentation theme preset.");
+    }
+    assertRequiredRecordKeys(
+      entry,
+      ["appearance", "fully_available", "id", "missing_capability_ids"],
+      "Merman WASM presentation theme preset"
+    );
+    const id = assertUniquePresentationId(entry.id, seen, "theme preset");
+    return {
+      id,
+      appearance: assertRuntimeIdentifier(
+        entry.appearance,
+        `presentation theme preset ${id} appearance`
+      ),
+      fully_available: assertBooleanField(
+        entry.fully_available,
+        `presentation theme preset ${id} availability`
+      ),
+      missing_capability_ids: normalizeSortedIdentifierIds(
+        entry.missing_capability_ids,
+        `presentation theme preset ${id} missing capability IDs`
+      ),
+    };
+  });
+}
+
+function normalizePresentationProfiles(value: unknown[]): PresentationProfileCatalogEntry[] {
+  const seen = new Set<string>();
+  return value.map((entry) => {
+    if (!isRecord(entry)) {
+      throw new Error("Merman WASM returned an invalid presentation profile.");
+    }
+    assertRequiredRecordKeys(
+      entry,
+      ["aspects", "fully_available", "id", "missing_capability_ids"],
+      "Merman WASM presentation profile"
+    );
+    if (!Array.isArray(entry.aspects)) {
+      throw new Error("Merman WASM returned invalid presentation profile aspects.");
+    }
+    const id = assertUniquePresentationId(entry.id, seen, "profile");
+    return {
+      id,
+      fully_available: assertBooleanField(
+        entry.fully_available,
+        `presentation profile ${id} availability`
+      ),
+      missing_capability_ids: normalizeSortedIdentifierIds(
+        entry.missing_capability_ids,
+        `presentation profile ${id} missing capability IDs`
+      ),
+      aspects: normalizePresentationAspects(id, entry.aspects),
+    };
+  });
+}
+
+function normalizePresentationAspects(
+  profileId: string,
+  value: unknown[]
+): PresentationAspectCatalogEntry[] {
+  const seen = new Set<string>();
+  return value.map((entry) => {
+    if (!isRecord(entry) || !isRecord(entry.applicability)) {
+      throw new Error("Merman WASM returned an invalid presentation profile aspect.");
+    }
+    assertRequiredRecordKeys(
+      entry,
+      [
+        "applicability",
+        "available",
+        "id",
+        "missing_capability_ids",
+        "required_capability_id",
+      ],
+      "Merman WASM presentation profile aspect"
+    );
+    assertRequiredRecordKeys(
+      entry.applicability,
+      ["family_id", "kind"],
+      "Merman WASM presentation aspect applicability"
+    );
+    const id = assertUniquePresentationId(
+      entry.id,
+      seen,
+      `profile ${profileId} aspect`
+    );
+    const familyId = entry.applicability.family_id;
+    return {
+      id,
+      applicability: {
+        kind: assertRuntimeIdentifier(
+          entry.applicability.kind,
+          `presentation aspect ${id} applicability kind`
+        ),
+        family_id:
+          familyId === null
+            ? null
+            : assertRuntimeIdentifier(
+                familyId,
+                `presentation aspect ${id} family ID`
+              ),
+      },
+      required_capability_id:
+        entry.required_capability_id === null
+          ? null
+          : assertRuntimeIdentifier(
+              entry.required_capability_id,
+              `presentation aspect ${id} required capability ID`
+            ),
+      available: assertBooleanField(
+        entry.available,
+        `presentation aspect ${id} availability`
+      ),
+      missing_capability_ids: normalizeSortedIdentifierIds(
+        entry.missing_capability_ids,
+        `presentation aspect ${id} missing capability IDs`
+      ),
+    };
+  });
+}
+
+function assertUniquePresentationId(
+  value: unknown,
+  seen: Set<string>,
+  label: string
+): string {
+  const id = assertRuntimeIdentifier(value, `presentation ${label} ID`);
+  if (seen.has(id)) {
+    throw new Error(`Merman WASM presentation ${label} IDs must be unique.`);
+  }
+  seen.add(id);
+  return id;
 }
 
 function normalizeRuntimePayloadSchemas(value: unknown): RuntimeCatalog["payload_schemas"] {

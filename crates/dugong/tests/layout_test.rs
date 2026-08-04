@@ -1006,6 +1006,114 @@ fn layout_can_layout_a_graph_with_subgraphs() {
 }
 
 #[test]
+fn layout_matches_mermaid_for_state_recursive_regions_with_implicit_parent_order() {
+    const ROOT_START: &str = "state-root_start-0";
+    const RUNNING: &str = "state-Running-5";
+    const DIVIDER_1: &str = "state-divider-id-1-1";
+    const DIVIDER_1_START: &str = "state-divider-id-1_start-1";
+    const R1: &str = "state-r1-5";
+    const DIVIDER_2: &str = "state-divider-id-2-2";
+    const DIVIDER_2_START: &str = "state-divider-id-2_start-2";
+    const R2: &str = "state-r2-5";
+    const DIVIDER_3: &str = "state-divider-id-3-3";
+    const DIVIDER_3_START: &str = "state-divider-id-3_start-3";
+    const R3: &str = "state-r3-5";
+    const REGION: &str = "state-id-38dvt516gkfs-1-4";
+    const REGION_START: &str = "state-id-38dvt516gkfs-1_start-4";
+    const R4: &str = "state-r4-5";
+    const ROOT_END: &str = "state-root_end-5";
+
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        directed: true,
+    });
+    g.set_graph(GraphLabel {
+        marginx: 8.0,
+        marginy: 8.0,
+        ..Default::default()
+    });
+
+    // The source declares REGION after r1-r3. Interleaved setParent calls insert the unseen parent
+    // immediately after r1, matching Mermaid's State graph construction.
+    for (id, width, height, parent) in [
+        (ROOT_START, 14.0, 14.0, None),
+        (RUNNING, 1.0, 1.0, None),
+        (DIVIDER_1, 1.0, 1.0, Some(RUNNING)),
+        (DIVIDER_1_START, 14.0, 14.0, Some(DIVIDER_1)),
+        (R1, 216.0, 64.0, Some(REGION)),
+        (DIVIDER_2, 1.0, 1.0, Some(RUNNING)),
+        (DIVIDER_2_START, 14.0, 14.0, Some(DIVIDER_2)),
+        (R2, 216.0, 64.0, Some(REGION)),
+        (DIVIDER_3, 1.0, 1.0, Some(RUNNING)),
+        (DIVIDER_3_START, 14.0, 14.0, Some(DIVIDER_3)),
+        (R3, 145.875, 40.0, Some(REGION)),
+        (REGION, 1.0, 1.0, Some(RUNNING)),
+        (REGION_START, 14.0, 14.0, Some(REGION)),
+        (R4, 125.453125, 40.0, Some(REGION)),
+        (ROOT_END, 14.0, 14.0, None),
+    ] {
+        g.set_node(
+            id,
+            NodeLabel {
+                width,
+                height,
+                ..Default::default()
+            },
+        );
+        if let Some(parent) = parent {
+            g.set_parent(id, parent);
+        }
+    }
+
+    let edge = EdgeLabel {
+        labelpos: LabelPos::C,
+        labeloffset: 10.0,
+        weight: 1.0,
+        ..Default::default()
+    };
+    for (name, from, to) in [
+        ("edge1", DIVIDER_1_START, R1),
+        ("edge2", DIVIDER_2_START, R2),
+        ("edge3", DIVIDER_3_START, R3),
+        ("edge4", REGION_START, R4),
+        ("edge0", ROOT_START, DIVIDER_1_START),
+        ("edge5", DIVIDER_1_START, ROOT_END),
+    ] {
+        g.set_edge_named(from, to, Some(name), Some(edge.clone()));
+    }
+
+    assert_eq!(
+        g.node_ids(),
+        [
+            ROOT_START,
+            RUNNING,
+            DIVIDER_1,
+            DIVIDER_1_START,
+            R1,
+            REGION,
+            DIVIDER_2,
+            DIVIDER_2_START,
+            R2,
+            DIVIDER_3,
+            DIVIDER_3_START,
+            R3,
+            REGION_START,
+            R4,
+            ROOT_END,
+        ]
+    );
+
+    layout(&mut g);
+
+    assert_eq!((g.graph().width, g.graph().height), (1349.328125, 333.0));
+    assert_eq!(g.node(R1).and_then(|node| node.x), Some(333.0));
+    assert_eq!(g.node(R2).and_then(|node| node.x), Some(774.453125));
+    assert_eq!(g.node(R3).and_then(|node| node.x), Some(1005.390625));
+    assert_eq!(g.node(R4).and_then(|node| node.x), Some(553.7265625));
+}
+
+#[test]
 fn layout_minimizes_the_height_of_subgraphs() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,

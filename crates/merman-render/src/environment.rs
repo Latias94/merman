@@ -1494,7 +1494,7 @@ impl RenderSession {
         self.operation_context.unix_millis()
     }
 
-    pub const fn local_date(&self) -> chrono::NaiveDate {
+    pub const fn local_date(&self) -> merman_core::time::CivilDate {
         self.operation_context.today_local()
     }
 
@@ -1565,7 +1565,7 @@ impl RenderSessionReport {
         self.operation_context.unix_millis()
     }
 
-    pub const fn local_date(&self) -> chrono::NaiveDate {
+    pub const fn local_date(&self) -> merman_core::time::CivilDate {
         self.operation_context.today_local()
     }
 

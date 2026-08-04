@@ -109,9 +109,7 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let layout = layout_flowchart_render_model(
         parsed.clone(),
         &layout_options,
@@ -175,9 +173,7 @@ fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions {
-        ..Default::default()
-    };
+    let layout_options = LayoutOptions::default();
     let svg = render_flowchart_artifact(parsed, &layout_options, _session).expect("render svg");
 
     let node_start = svg.find(r#"<g class="node default""#).expect("node group");

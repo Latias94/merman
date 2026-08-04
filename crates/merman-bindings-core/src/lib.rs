@@ -34,22 +34,22 @@ pub use lifecycle::{
 };
 pub use metadata::{
     ArtifactCapabilitySurface, BINDING_METADATA_IDS, BindingAsciiCapability,
-    BindingAsciiCapabilityEvidence, BindingDiagramFamilyCapability, RUNTIME_CATALOG_SCHEMA_VERSION,
-    RuleCatalogEntry, RuntimeCapabilities, RuntimeCatalog, RuntimeEmbeddedImageContract,
-    RuntimeEmbeddedImageLimits, RuntimeOutputContract, RuntimePayloadSchema,
-    RuntimeRegistryContract, RuntimeResourceContract, RuntimeResourceLimit, RuntimeResourceProfile,
-    RuntimeSystemFontContract, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
-    TEXT_MEASUREMENT_PROVIDER_VENDORED, TextMeasurementCapabilities,
-    TextMeasurementProviderProjection, ascii_capabilities, ascii_capabilities_json,
-    ascii_supported_diagrams, ascii_supported_diagrams_json, binding_metadata_json,
-    binding_transport_capability_surface, compiled_runtime_capabilities,
-    compiled_runtime_capability_surface, configurable_lint_rule_catalog,
-    configurable_lint_rule_catalog_json, diagram_family_capabilities,
-    diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
+    BindingAsciiCapabilityEvidence, BindingDiagramFamilyCapability,
+    PRESENTATION_CATALOG_SCHEMA_VERSION, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,
+    RuntimeCapabilities, RuntimeCatalog, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
+    RuntimeOutputContract, RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract,
+    RuntimeResourceLimit, RuntimeResourceProfile, RuntimeSystemFontContract,
+    TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK, TEXT_MEASUREMENT_PROVIDER_VENDORED,
+    TextMeasurementCapabilities, TextMeasurementProviderProjection, ascii_capabilities,
+    ascii_capabilities_json, ascii_supported_diagrams, ascii_supported_diagrams_json,
+    binding_metadata_json, binding_metadata_json_for, binding_transport_capability_surface,
+    compiled_runtime_capabilities, compiled_runtime_capability_surface,
+    configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,
+    diagram_family_capabilities, diagram_family_capabilities_json, lint_rule_catalog,
+    lint_rule_catalog_json, presentation_catalog_json, presentation_catalog_json_for,
     runtime_capabilities_json, runtime_capabilities_json_for, runtime_catalog, runtime_catalog_for,
     runtime_catalog_json, runtime_catalog_json_for, supported_diagrams, supported_diagrams_json,
-    supported_host_theme_presets, supported_host_theme_presets_json, supported_themes,
-    supported_themes_json,
+    supported_themes, supported_themes_json,
 };
 pub use operation::{
     BINDING_OPERATION_SCHEMA_VERSION, BindingOperationKind, BindingOperationRequest,
@@ -59,7 +59,9 @@ pub use resource_contract::{
     BindingResourceContract, BindingResourceLimitDescriptor, BindingResourceProfileDescriptor,
     binding_resource_contract,
 };
-pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
+pub use svg_plan::{
+    SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, SvgPlanPresentationAspect, svg_plan_json,
+};
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {

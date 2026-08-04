@@ -3196,6 +3196,21 @@ mod tests {
     }
 
     #[test]
+    fn source_ported_layout_rejects_unported_routing_before_layout() {
+        let mut graph = flat_graph(vec![leaf("A"), leaf("B")], vec![edge("A-B", "A", "B")]);
+        graph.options.layered.edge_routing = EdgeRouting::Polyline;
+
+        assert!(matches!(
+            layout(&graph),
+            Err(Error::SourcePipeline(
+                source_port::PipelineError::UnsupportedProcessor {
+                    kind: source_port::ProcessorKind::PolylineEdgeRouter,
+                }
+            ))
+        ));
+    }
+
+    #[test]
     fn source_backed_layout_excludes_empty_group_labels_from_elk_geometry() {
         let empty_group = Node {
             id: "B".to_string(),

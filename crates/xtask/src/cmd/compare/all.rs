@@ -380,6 +380,7 @@ impl CompareAllInvocationOptions<'_> {
             } else {
                 AcceptedResidualPolicy::None
             },
+            defer_root_residual_policy_to_caller: self.root_parity_policy_enabled,
         };
 
         DiagramCompareInvocation {
@@ -510,6 +511,13 @@ mod tests {
                 .accepted_residual_policy,
             AcceptedResidualPolicy::RootParityExact
         );
+        assert!(
+            global
+                .invocation_options()
+                .for_diagram("flowchart", Path::new("target/compare"))
+                .request
+                .defer_root_residual_policy_to_caller
+        );
 
         let targeted = CompareAllOptions {
             only_diagrams: vec!["flowchart".to_string()],
@@ -522,6 +530,13 @@ mod tests {
             ..global
         };
         assert!(!filtered.root_parity_policy_enabled());
+        assert!(
+            !filtered
+                .invocation_options()
+                .for_diagram("flowchart", Path::new("target/compare"))
+                .request
+                .defer_root_residual_policy_to_caller
+        );
     }
 
     #[test]

@@ -4,6 +4,14 @@
     "ClassDiagramV2": {
       "nodes": [
         {
+          "id": "Status",
+          "x": 458.76,
+          "y": 96.0,
+          "width": 144.24,
+          "height": 192.0,
+          "is_cluster": false
+        },
+        {
           "id": "IService",
           "x": 51.36,
           "y": 96.0,
@@ -17,14 +25,6 @@
           "y": 96.0,
           "width": 135.76,
           "height": 126.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Status",
-          "x": 458.76,
-          "y": 96.0,
-          "width": 144.24,
-          "height": 192.0,
           "is_cluster": false
         }
       ],

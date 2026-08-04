@@ -231,115 +231,6 @@ fn parse_px_f64(v: &str) -> Option<f64> {
     raw.parse::<f64>().ok()
 }
 
-fn is_label_coordinate_in_path(point: crate::model::LayoutPoint, d_attr: &str) -> bool {
-    // Mermaid `@11.12.2`:
-    // - `packages/mermaid/src/utils.ts:isLabelCoordinateInPath`
-    // - `packages/mermaid/src/rendering-util/rendering-elements/edges.js`
-    //
-    // This is intentionally a very rough heuristic: it rounds the mid point and checks whether
-    // either the rounded x or y shows up in the rounded SVG path `d` string.
-    let rounded_x = point.x.round() as i64;
-    let rounded_y = point.y.round() as i64;
-
-    let sanitized_d = round_decimal_numbers_in_path(d_attr);
-
-    sanitized_d.contains(&rounded_x.to_string()) || sanitized_d.contains(&rounded_y.to_string())
-}
-
-fn round_decimal_numbers_in_path(d_attr: &str) -> String {
-    let mut out = String::new();
-    let mut copied_until = 0usize;
-    let mut cursor = 0usize;
-    let mut changed = false;
-
-    while cursor < d_attr.len() {
-        if let Some(end) = decimal_number_match_end_at(d_attr, cursor) {
-            if !changed {
-                out = String::with_capacity(d_attr.len());
-                changed = true;
-            }
-            out.push_str(&d_attr[copied_until..cursor]);
-            let v = d_attr[cursor..end].parse::<f64>().unwrap_or(0.0);
-            out.push_str(&(v.round() as i64).to_string());
-            copied_until = end;
-            cursor = end;
-            continue;
-        }
-
-        let Some(ch) = d_attr[cursor..].chars().next() else {
-            break;
-        };
-        cursor += ch.len_utf8();
-    }
-
-    if changed {
-        out.push_str(&d_attr[copied_until..]);
-        out
-    } else {
-        d_attr.to_string()
-    }
-}
-
-fn decimal_number_match_end_at(s: &str, start: usize) -> Option<usize> {
-    let digit_start = start;
-    let mut cursor = consume_ascii_digits_in_path(s, start);
-    if cursor == digit_start || !s.get(cursor..)?.starts_with('.') {
-        return None;
-    }
-
-    let fraction_start = cursor + 1;
-    cursor = consume_ascii_digits_in_path(s, fraction_start);
-    if cursor == fraction_start {
-        return None;
-    }
-
-    Some(cursor)
-}
-
-fn consume_ascii_digits_in_path(s: &str, mut cursor: usize) -> usize {
-    while let Some(b) = s.as_bytes().get(cursor) {
-        if !b.is_ascii_digit() {
-            break;
-        }
-        cursor += 1;
-    }
-    cursor
-}
-
-fn calc_label_position(points: &[crate::model::LayoutPoint]) -> Option<(f64, f64)> {
-    if points.is_empty() {
-        return None;
-    }
-    if points.len() == 1 {
-        return Some((points[0].x, points[0].y));
-    }
-
-    let mut total = 0.0;
-    for i in 1..points.len() {
-        let dx = points[i].x - points[i - 1].x;
-        let dy = points[i].y - points[i - 1].y;
-        total += (dx * dx + dy * dy).sqrt();
-    }
-    let mut remaining = total / 2.0;
-    for i in 1..points.len() {
-        let p0 = &points[i - 1];
-        let p1 = &points[i];
-        let dx = p1.x - p0.x;
-        let dy = p1.y - p0.y;
-        let seg = (dx * dx + dy * dy).sqrt();
-        if seg == 0.0 {
-            continue;
-        }
-        if seg < remaining {
-            remaining -= seg;
-            continue;
-        }
-        let t = (remaining / seg).clamp(0.0, 1.0);
-        return Some((p0.x + t * dx, p0.y + t * dy));
-    }
-    Some((points.last()?.x, points.last()?.y))
-}
-
 pub(crate) fn render_er_diagram_svg_model(
     layout: &ErDiagramLayout,
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
@@ -697,7 +588,7 @@ pub(crate) fn render_er_diagram_svg_model(
 
             let _ = write!(
                 &mut out,
-                r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
+                r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
                 escape_xml(&d),
                 escape_xml(&edge_svg_id),
                 escape_xml(&line_classes),
@@ -760,29 +651,27 @@ pub(crate) fn render_er_diagram_svg_model(
                         y: p.y + translate_y,
                     })
                     .collect();
-                if !shifted.is_empty() {
-                    let mid_idx = shifted.len() / 2;
-                    let mid = shifted[mid_idx].clone();
-                    let mut curve_points = shifted.clone();
-                    if curve_points.len() == 2 {
-                        let a = &curve_points[0];
-                        let b = &curve_points[1];
-                        curve_points.insert(
-                            1,
-                            crate::model::LayoutPoint {
-                                x: (a.x + b.x) / 2.0,
-                                y: (a.y + b.y) / 2.0,
-                            },
-                        );
-                    }
-                    let d = curve_basis_path_d(&curve_points);
-                    if !is_label_coordinate_in_path(mid, &d)
-                        && let Some((x, y)) = calc_label_position(&shifted)
-                    {
-                        cx = x;
-                        cy = y;
-                    }
+                let mut curve_points = shifted.clone();
+                if curve_points.len() == 2 {
+                    let a = &curve_points[0];
+                    let b = &curve_points[1];
+                    curve_points.insert(
+                        1,
+                        crate::model::LayoutPoint {
+                            x: (a.x + b.x) / 2.0,
+                            y: (a.y + b.y) / 2.0,
+                        },
+                    );
                 }
+                let rendered_d = curve_basis_path_d(&curve_points);
+                let position = super::super::edge_label_geometry::position_edge_label(
+                    crate::model::LayoutPoint { x: cx, y: cy },
+                    &shifted,
+                    &rendered_d,
+                    false,
+                );
+                cx = position.x;
+                cy = position.y;
             }
 
             if has_label_text && w > 0.0 && h > 0.0 {
@@ -1791,18 +1680,5 @@ mod tests {
             .as_deref(),
             Some(r#""IBM Plex Sans",Arial,sans-serif"#)
         );
-    }
-
-    #[test]
-    fn er_label_coordinate_path_decimal_rounding_without_regex() {
-        assert_eq!(
-            super::round_decimal_numbers_in_path("M-10.5 20.6 .5 10. 3.4.5"),
-            "M-11 21 .5 10. 3.5"
-        );
-
-        assert!(super::is_label_coordinate_in_path(
-            crate::model::LayoutPoint { x: -11.0, y: 99.0 },
-            "M-10.5 20.6"
-        ));
     }
 }

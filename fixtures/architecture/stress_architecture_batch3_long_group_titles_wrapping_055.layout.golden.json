@@ -65,16 +65,16 @@
             "min_x": -127.093,
             "min_y": 17.0,
             "max_x": -9.093,
-            "max_y": 114.0
+            "max_y": 115.0
           },
           "label_metrics": {
             "text_width": 114.0,
             "half_width": 57.0
           },
           "union_bounds": {
-            "min_x": -128.093,
+            "min_x": -127.093,
             "min_y": 16.0,
-            "max_x": -8.093,
+            "max_x": -9.093,
             "max_y": 115.0
           }
         },
@@ -91,16 +91,16 @@
             "min_x": 89.093,
             "min_y": 17.0,
             "max_x": 176.093,
-            "max_y": 114.0
+            "max_y": 115.0
           },
           "label_metrics": {
             "text_width": 83.0,
             "half_width": 41.5
           },
           "union_bounds": {
-            "min_x": 88.093,
+            "min_x": 89.093,
             "min_y": 16.0,
-            "max_x": 177.093,
+            "max_x": 176.093,
             "max_y": 115.0
           }
         }

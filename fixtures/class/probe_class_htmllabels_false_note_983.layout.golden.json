@@ -22,7 +22,7 @@
       ],
       "edges": [
         {
-          "id": "edgeNote1",
+          "id": "edgeNote0",
           "from": "note0",
           "to": "A",
           "from_cluster": null,

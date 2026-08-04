@@ -167,6 +167,7 @@ fn mmdc_help_owns_the_pinned_compatibility_options() {
         "--pdfFit",
         "--iconPacks",
         "--iconPacksNamesAndUrls",
+        "--presentation-profile",
     ] {
         assert!(
             stdout.contains(flag),
@@ -233,6 +234,159 @@ fn native_theme_values_match_the_compiled_runtime_catalog() {
         accepted.status.success(),
         "compiled runtime theme should be accepted: {}",
         String::from_utf8_lossy(&accepted.stderr)
+    );
+}
+
+#[test]
+fn presentation_profile_values_match_the_compiled_runtime_catalog() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    for command in ["render", "mmdc"] {
+        let mut rejected = Command::new(exe);
+        rejected.args([command, "--presentation-profile", "not-a-runtime-profile"]);
+        if command == "mmdc" {
+            rejected.args(["-i", "missing.mmd"]);
+        } else {
+            rejected.arg("missing.mmd");
+        }
+        let rejected = rejected.output().expect("run cli");
+
+        assert_eq!(support::exit_code(rejected.status), 2);
+        assert!(
+            rejected.stdout.is_empty(),
+            "failure must not write a payload"
+        );
+        let stderr = String::from_utf8(rejected.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains("not-a-runtime-profile") && !stderr.contains("missing.mmd:"),
+            "profile validation must precede input acquisition:\n{stderr}"
+        );
+        for descriptor in merman::svg::presentation_profile_descriptors() {
+            assert!(
+                stderr.contains(descriptor.id()),
+                "profile validation should list `{}`:\n{stderr}",
+                descriptor.id()
+            );
+        }
+    }
+
+    let accepted = run_with_stdin(
+        &[
+            "render",
+            "--presentation-profile",
+            "merman-modern",
+            "--format",
+            "svg",
+            "-",
+        ],
+        "flowchart LR\nA-->B\n",
+    );
+    assert!(
+        accepted.status.success(),
+        "compiled presentation profile should be accepted: {}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let svg = String::from_utf8(accepted.stdout).expect("stdout should be utf8");
+    assert!(
+        svg.contains(
+            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
+        ),
+        "the profile should activate its typed Flowchart presentation policy: {svg}"
+    );
+
+    let mmdc = run_with_stdin(
+        &[
+            "mmdc",
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--presentation-profile",
+            "merman-modern",
+        ],
+        "flowchart LR\nA-->B\n",
+    );
+    assert!(
+        mmdc.status.success(),
+        "mmdc presentation profile should be accepted: {}",
+        String::from_utf8_lossy(&mmdc.stderr)
+    );
+    let svg = String::from_utf8(mmdc.stdout).expect("stdout should be utf8");
+    assert!(
+        svg.contains("fill:#F8FAFC")
+            && svg.contains(
+                r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
+            ),
+        "implicit mmdc defaults must not override an explicit presentation profile: {svg}"
+    );
+}
+
+#[test]
+fn presentation_profile_composes_with_config_regardless_of_argument_order() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config = tmp.path().join("mermaid.json");
+    fs::write(
+        &config,
+        r##"{
+  "theme": "base",
+  "look": "classic",
+  "flowchart": {"defaultRenderer": "dagre-wrapper"},
+  "themeVariables": {
+    "mainBkg": "#123456",
+    "nodeBorder": "#654321"
+  }
+}"##,
+    )
+    .expect("write config");
+    let path = config.to_string_lossy();
+    let source = "flowchart LR\nA-->|label|B\n";
+
+    let profile_first = run_with_stdin(
+        &[
+            "render",
+            "--presentation-profile",
+            "merman-modern",
+            "--config-file",
+            path.as_ref(),
+            "--format",
+            "svg",
+            "-",
+        ],
+        source,
+    );
+    let config_first = run_with_stdin(
+        &[
+            "render",
+            "--config-file",
+            path.as_ref(),
+            "--presentation-profile",
+            "merman-modern",
+            "--format",
+            "svg",
+            "-",
+        ],
+        source,
+    );
+
+    assert!(
+        profile_first.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&profile_first.stderr)
+    );
+    assert!(
+        config_first.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&config_first.stderr)
+    );
+    assert_eq!(profile_first.stdout, config_first.stdout);
+    let svg = String::from_utf8(profile_first.stdout).expect("stdout should be utf8");
+    assert!(svg.contains("#123456"), "explicit config should win: {svg}");
+    assert!(
+        !svg.contains(r#"data-look="neo""#),
+        "explicit Mermaid look should override the profile default: {svg}"
+    );
+    assert!(
+        svg.contains(r#"rx="4" ry="4""#),
+        "the independent private Flowchart aspect should remain active: {svg}"
     );
 }
 
@@ -307,7 +461,7 @@ fn invalid_render_configuration_precedes_primary_input_acquisition() {
             &[
                 "render",
                 "missing.mmd",
-                "--fixed-today=-262143-01-01",
+                "--fixed-today=-2147483648-01-01",
                 "--fixed-local-offset-minutes",
                 "1439",
             ],
@@ -386,7 +540,7 @@ fn invalid_render_configuration_does_not_wait_for_stdin() {
             &[
                 "render",
                 "-",
-                "--fixed-today=-262143-01-01",
+                "--fixed-today=-2147483648-01-01",
                 "--fixed-local-offset-minutes",
                 "1439",
             ],
@@ -558,6 +712,11 @@ fn native_render_rejects_each_irrelevant_output_option_before_input_acquisition(
             &["--text-measurer", "deterministic"],
         ),
         (
+            "presentation profile on text",
+            "ascii",
+            &["--presentation-profile", "merman-modern"],
+        ),
+        (
             "math renderer on text",
             "ascii",
             &["--math-renderer", "none"],
@@ -624,6 +783,10 @@ fn raw_svg_rejects_each_mermaid_only_option_before_input_acquisition() {
             &["--fixed-local-offset-minutes", "480"],
         ),
         ("text measurer", &["--text-measurer", "deterministic"]),
+        (
+            "presentation profile",
+            &["--presentation-profile", "merman-modern"],
+        ),
         ("math renderer", &["--math-renderer", "none"]),
         ("container width", &["--width", "100"]),
         ("container height", &["--height", "100"]),

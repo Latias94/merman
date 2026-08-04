@@ -1,3 +1,6 @@
+mod line_index;
+
+use self::line_index::LineIndex;
 use crate::payload::{DiagnosticSpan, LspRange, SourcePosition, Utf16Position};
 use crate::retained_weight::{
     ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
@@ -9,6 +12,10 @@ use std::sync::{Arc, Mutex};
 
 pub type LineCol = SourcePosition;
 
+/// An immutable UTF-8 slice that retains one shared source allocation.
+///
+/// Cloning and subslicing do not copy source bytes. Use [`SharedTextSlice::to_owned_text`] only
+/// when the caller explicitly needs an independent `String`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SharedTextSlice {
     source: Arc<str>,
@@ -17,6 +24,7 @@ pub struct SharedTextSlice {
 }
 
 impl SharedTextSlice {
+    /// Covers the complete shared source allocation.
     pub fn whole(source: Arc<str>) -> Self {
         let end = source.len();
         Self {
@@ -26,6 +34,7 @@ impl SharedTextSlice {
         }
     }
 
+    /// Creates a shared slice when both bounds are ordered, in range, and UTF-8 boundaries.
     pub fn from_range(source: Arc<str>, start: usize, end: usize) -> Option<Self> {
         if start > end
             || end > source.len()
@@ -42,14 +51,17 @@ impl SharedTextSlice {
             .expect("document extraction should produce valid UTF-8 slice bounds")
     }
 
+    /// Borrows the selected UTF-8 text.
     pub fn as_str(&self) -> &str {
         &self.source[self.start..self.end]
     }
 
+    /// Clones the owning `Arc` without copying source bytes.
     pub fn source_arc(&self) -> Arc<str> {
         Arc::clone(&self.source)
     }
 
+    /// Copies the selected text into a new owned `String`.
     pub fn to_owned_text(&self) -> String {
         self.as_str().to_owned()
     }
@@ -92,10 +104,14 @@ pub enum SourceMapError {
     ReversedRange { start: usize, end: usize },
 }
 
+/// Source-position mapping backed by a private adaptive line index.
+///
+/// Callers query line and position behavior; the compact retained representation is deliberately
+/// not exposed.
 #[derive(Debug, Clone)]
 pub struct SourceMap {
     source: SharedTextSlice,
-    line_starts: Arc<[usize]>,
+    line_index: Arc<LineIndex>,
     line_metrics: Arc<Mutex<LineMetricCache>>,
 }
 
@@ -103,13 +119,17 @@ pub struct SourceMap {
 pub(crate) const SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES: usize = 256 * 1024;
 
 impl SourceMap {
+    /// Builds a complete source map synchronously.
+    ///
+    /// This convenience constructor scans the full source before returning. Cooperative
+    /// cancellation is reserved for the crate's analysis pipelines.
     pub fn new(source: impl Into<Arc<str>>) -> Self {
         Self::from_shared_text(SharedTextSlice::whole(source.into()))
     }
 
     pub(crate) fn from_shared_text(source: SharedTextSlice) -> Self {
-        let line_starts = line_starts(source.as_str());
-        Self::from_source_and_line_starts(source, line_starts)
+        let line_index = LineIndex::build(source.as_str());
+        Self::from_source_and_line_index(source, line_index)
     }
 
     pub(crate) fn new_cancellable(
@@ -123,15 +143,15 @@ impl SourceMap {
         source: SharedTextSlice,
         cancellation: &crate::AnalysisCancellationToken,
     ) -> Result<Self, crate::AnalysisCancelled> {
-        let line_starts = line_starts_cancellable(source.as_str(), cancellation)?;
+        let line_index = LineIndex::build_cancellable(source.as_str(), cancellation)?;
         cancellation.checkpoint()?;
-        Ok(Self::from_source_and_line_starts(source, line_starts))
+        Ok(Self::from_source_and_line_index(source, line_index))
     }
 
-    fn from_source_and_line_starts(source: SharedTextSlice, line_starts: Vec<usize>) -> Self {
+    fn from_source_and_line_index(source: SharedTextSlice, line_index: LineIndex) -> Self {
         Self {
             source,
-            line_starts: Arc::from(line_starts.into_boxed_slice()),
+            line_index: Arc::new(line_index),
             line_metrics: Arc::new(Mutex::new(LineMetricCache::new(
                 SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES,
             ))),
@@ -142,6 +162,7 @@ impl SourceMap {
         self.source.as_str()
     }
 
+    /// Returns the shared source view retained by this map.
     pub fn shared_source(&self) -> &SharedTextSlice {
         &self.source
     }
@@ -150,14 +171,20 @@ impl SourceMap {
         self.source.as_str().len()
     }
 
-    pub fn line_starts(&self) -> &[usize] {
-        &self.line_starts
+    /// Returns the number of logical source lines, including a trailing empty line.
+    pub fn line_count(&self) -> usize {
+        self.line_index.line_count()
+    }
+
+    /// Returns the byte offset at which the requested logical line starts.
+    pub fn line_start(&self, line_index: usize) -> Option<usize> {
+        self.line_index.line_start(line_index)
     }
 
     pub(crate) fn estimated_owned_heap_bytes_excluding_source(&self) -> usize {
         let mut weight = RetainedWeight::default();
         weight.add(ARC_ALLOCATION_OVERHEAD);
-        weight.add_array::<usize>(self.line_starts.len());
+        weight.add(self.line_index.estimated_owned_heap_bytes());
         weight.add(ARC_ALLOCATION_OVERHEAD);
         weight.add(size_of::<Mutex<LineMetricCache>>());
         weight.add(SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES);
@@ -228,13 +255,10 @@ impl SourceMap {
         self.span_cancellable(0, self.source_len(), cancellation)
     }
 
+    /// Returns the content byte bounds for a logical line, excluding its line terminator.
     pub fn line_bounds(&self, line_index: usize) -> Option<(usize, usize)> {
-        let start = *self.line_starts.get(line_index)?;
-        let next_start = self
-            .line_starts
-            .get(line_index + 1)
-            .copied()
-            .unwrap_or(self.source_len());
+        let start = self.line_start(line_index)?;
+        let next_start = self.line_start(line_index + 1).unwrap_or(self.source_len());
         Some((
             start,
             line_content_end(self.source().as_bytes(), start, next_start),
@@ -260,11 +284,7 @@ impl SourceMap {
     }
 
     fn line_index_for_offset(&self, offset: usize) -> usize {
-        match self.line_starts.binary_search(&offset) {
-            Ok(index) => index,
-            Err(0) => 0,
-            Err(index) => index - 1,
-        }
+        self.line_index.line_index_for_offset(offset)
     }
 
     fn offset_metrics(&self, offset: usize) -> Result<OffsetMetrics, SourceMapError> {
@@ -367,18 +387,14 @@ impl SourceMap {
         mut checkpoint: impl FnMut() -> Result<(), E>,
     ) -> Result<Option<Arc<LineMetric>>, E> {
         checkpoint()?;
-        let Some(&start) = self.line_starts.get(line_index) else {
+        let Some(start) = self.line_start(line_index) else {
             return Ok(None);
         };
         if let Some(metric) = self.line_metric_cache().get(line_index) {
             return Ok(Some(metric));
         }
 
-        let next_start = self
-            .line_starts
-            .get(line_index + 1)
-            .copied()
-            .unwrap_or(self.source_len());
+        let next_start = self.line_start(line_index + 1).unwrap_or(self.source_len());
         let computed = Arc::new(line_metric_with_checkpoint(
             self.source(),
             start,
@@ -897,55 +913,6 @@ fn byte_range_span_without_source_copy_with_checkpoint<E>(
     ))
 }
 
-fn line_starts(source: &str) -> Vec<usize> {
-    line_starts_with_checkpoint(source, |_| Ok::<_, std::convert::Infallible>(()))
-        .expect("infallible line-start scan")
-}
-
-fn line_starts_cancellable(
-    source: &str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<Vec<usize>, crate::AnalysisCancelled> {
-    line_starts_with_checkpoint(source, |_| {
-        cancellation.checkpoint()?;
-        Ok(())
-    })
-}
-
-fn line_starts_with_checkpoint<E>(
-    source: &str,
-    mut checkpoint: impl FnMut(usize) -> Result<(), E>,
-) -> Result<Vec<usize>, E> {
-    let mut starts = vec![0];
-    let bytes = source.as_bytes();
-    let mut idx = 0usize;
-    let mut next_checkpoint = 0usize;
-    while idx < bytes.len() {
-        if idx >= next_checkpoint {
-            checkpoint(idx)?;
-            next_checkpoint = idx.saturating_add(4096);
-        }
-        match bytes[idx] {
-            b'\r' => {
-                idx += 1;
-                if bytes.get(idx) == Some(&b'\n') {
-                    idx += 1;
-                }
-                starts.push(idx);
-            }
-            b'\n' => {
-                idx += 1;
-                starts.push(idx);
-            }
-            _ => {
-                idx += 1;
-            }
-        }
-    }
-    checkpoint(idx)?;
-    Ok(starts)
-}
-
 fn line_metric_with_checkpoint<E>(
     source: &str,
     start: usize,
@@ -1020,6 +987,71 @@ fn line_content_end(bytes: &[u8], start: usize, next_start: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_text_slice_range_and_ownership_contract_is_table_driven() {
+        let source = Arc::<str>::from("a🤓b");
+        let source_len = source.len();
+        let whole = SharedTextSlice::whole(Arc::clone(&source));
+        let cases = [
+            ("full", 0, source_len, Some("a🤓b")),
+            ("empty start", 0, 0, Some("")),
+            ("empty middle", 1, 1, Some("")),
+            ("empty end", source_len, source_len, Some("")),
+            ("ASCII prefix", 0, 1, Some("a")),
+            ("astral scalar", 1, 5, Some("🤓")),
+            ("ASCII suffix", 5, source_len, Some("b")),
+            ("reversed", 5, 1, None),
+            ("end out of bounds", 0, source_len + 1, None),
+            (
+                "start and end out of bounds",
+                source_len + 1,
+                source_len + 1,
+                None,
+            ),
+            ("start inside scalar", 2, 5, None),
+            ("end inside scalar", 1, 2, None),
+        ];
+
+        for (name, start, end, expected) in cases {
+            let actual = SharedTextSlice::from_range(Arc::clone(&source), start, end);
+            let Some(expected) = expected else {
+                assert!(actual.is_none(), "{name}");
+                continue;
+            };
+            let slice = actual.unwrap_or_else(|| panic!("{name}"));
+
+            assert_eq!(slice.as_str(), expected, "{name}");
+            assert_eq!(&*slice, expected, "{name}");
+            assert_eq!(slice.as_ref(), expected, "{name}");
+            assert_eq!(slice.start(), start, "{name}");
+            assert_eq!(slice.end(), end, "{name}");
+            assert!(slice.shares_source_allocation_with(&whole), "{name}");
+            assert!(Arc::ptr_eq(&slice.source_arc(), &source), "{name}");
+
+            let mut copied = slice.to_owned_text();
+            copied.push('!');
+            assert_eq!(slice.as_str(), expected, "{name}");
+            assert_eq!(copied, format!("{expected}!"), "{name}");
+        }
+    }
+
+    #[test]
+    fn public_line_queries_cover_empty_terminal_and_mixed_newline_lines() {
+        let empty = SourceMap::new("");
+        assert_eq!(empty.line_count(), 1);
+        assert_eq!(empty.line_start(0), Some(0));
+        assert_eq!(empty.line_start(1), None);
+
+        let map = SourceMap::new("a\r\nb\rc\n");
+        assert_eq!(map.line_count(), 4);
+        assert_eq!(
+            (0..map.line_count())
+                .map(|line| map.line_start(line).unwrap())
+                .collect::<Vec<_>>(),
+            vec![0, 3, 5, 7]
+        );
+    }
 
     #[test]
     fn maps_ascii_offsets_to_one_based_cli_positions() {
@@ -1219,7 +1251,7 @@ mod tests {
         let source = "\n".repeat(100_000);
         let map = SourceMap::new(source);
 
-        assert_eq!(map.line_starts().len(), 100_001);
+        assert_eq!(map.line_count(), 100_001);
         assert_eq!(map.cached_line_metric_count(), 0);
         assert_eq!(map.line_bounds(99_999), Some((99_999, 99_999)));
         assert_eq!(map.cached_line_metric_count(), 0);
@@ -1496,6 +1528,8 @@ mod tests {
         let map = SourceMap::new("a\né");
         let clone = map.clone();
 
+        assert!(Arc::ptr_eq(&map.line_index, &clone.line_index));
+
         assert_eq!(
             clone.utf16_position(4).unwrap(),
             Utf16Position {
@@ -1738,5 +1772,120 @@ mod tests {
                 .unwrap(),
             SourceMap::new(source).span(start, end).unwrap()
         );
+    }
+
+    #[test]
+    fn generated_mixed_newline_sources_match_the_one_pass_mapping_oracle() {
+        fn line_starts(source: &str) -> Vec<usize> {
+            let mut starts = vec![0];
+            let bytes = source.as_bytes();
+            let mut offset = 0usize;
+            while offset < bytes.len() {
+                match bytes[offset] {
+                    b'\r' => {
+                        offset += 1;
+                        if bytes.get(offset) == Some(&b'\n') {
+                            offset += 1;
+                        }
+                        starts.push(offset);
+                    }
+                    b'\n' => {
+                        offset += 1;
+                        starts.push(offset);
+                    }
+                    _ => offset += 1,
+                }
+            }
+            starts
+        }
+
+        let atoms = ["a", "\r", "\n", "é", "🤓"];
+        let mut sources = vec![String::new()];
+        let mut frontier = vec![String::new()];
+        for _ in 0..5 {
+            let mut next = Vec::with_capacity(frontier.len() * atoms.len());
+            for prefix in &frontier {
+                for atom in atoms {
+                    let mut source = prefix.clone();
+                    source.push_str(atom);
+                    next.push(source);
+                }
+            }
+            sources.extend(next.iter().cloned());
+            frontier = next;
+        }
+
+        for source in sources {
+            let map = SourceMap::new(source.as_str());
+            let starts = line_starts(&source);
+            assert_eq!(map.line_count(), starts.len(), "source {source:?}");
+            for (line, &start) in starts.iter().enumerate() {
+                assert_eq!(map.line_start(line), Some(start), "source {source:?}");
+                let next_start = starts.get(line + 1).copied().unwrap_or(source.len());
+                assert_eq!(
+                    map.line_bounds(line),
+                    Some((
+                        start,
+                        line_content_end(source.as_bytes(), start, next_start),
+                    )),
+                    "source {source:?}"
+                );
+            }
+            assert_eq!(map.line_start(starts.len()), None, "source {source:?}");
+            assert_eq!(map.line_bounds(starts.len()), None, "source {source:?}");
+
+            let mut boundaries = source
+                .char_indices()
+                .map(|(offset, _)| offset)
+                .collect::<Vec<_>>();
+            boundaries.push(source.len());
+            boundaries.dedup();
+            for (start_index, &start) in boundaries.iter().enumerate() {
+                let point = byte_range_span_without_source_copy_with_checkpoint(
+                    &source,
+                    start..start,
+                    || Ok::<_, std::convert::Infallible>(()),
+                )
+                .expect("oracle scan is infallible");
+                assert_eq!(
+                    map.line_col(start).unwrap(),
+                    LineCol::new(point.line, point.column),
+                    "source {source:?}, offset {start}"
+                );
+                assert_eq!(
+                    map.utf16_position(start).unwrap(),
+                    point.lsp_range.start,
+                    "source {source:?}, offset {start}"
+                );
+                let content_end = map.line_bounds(point.lsp_range.start.line).unwrap().1;
+                assert_eq!(
+                    map.byte_offset_for_utf16_position(point.lsp_range.start),
+                    Some(start.min(content_end)),
+                    "source {source:?}, offset {start}"
+                );
+
+                for &end in &boundaries[start_index..] {
+                    let expected = byte_range_span_without_source_copy_with_checkpoint(
+                        &source,
+                        start..end,
+                        || Ok::<_, std::convert::Infallible>(()),
+                    )
+                    .expect("oracle scan is infallible");
+                    assert_eq!(
+                        map.span(start, end).unwrap(),
+                        expected,
+                        "source {source:?}, range {start}..{end}"
+                    );
+                }
+            }
+
+            let expected_whole = byte_range_span_without_source_copy_with_checkpoint(
+                &source,
+                0..source.len(),
+                || Ok::<_, std::convert::Infallible>(()),
+            )
+            .expect("oracle scan is infallible");
+            assert_eq!(map.whole_source_span().unwrap(), expected_whole);
+        }
     }
 }

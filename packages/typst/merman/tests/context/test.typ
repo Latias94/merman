@@ -14,6 +14,28 @@
 )
 #let inferred-width-config = config-with-context-width(render-config(), typst-length-to-css-px(72pt))
 #assert.eq(inferred-width-config.binding_options.layout.container_width, 96)
+#assert.eq(inferred-width-config.binding_options.version, 2)
+#assert(not "presentation" in inferred-width-config.binding_options)
+#let presentation-config = render-config(
+  presentation-profile: "merman-modern",
+  host-theme: (preset: "ayu-dark", font-family: "Presentation Sans"),
+  pipeline: "readable",
+)
+#assert.eq(presentation-config.binding_options.presentation.profile, "merman-modern")
+#assert.eq(presentation-config.binding_options.presentation.theme.preset, "ayu-dark")
+#assert.eq(presentation-config.binding_options.presentation.theme.font_family, "Presentation Sans")
+#assert.eq(presentation-config.binding_options.svg.pipeline, "readable")
+#assert(not "host_theme" in presentation-config.binding_options)
+#let profile-presentation-config = render-config(
+  profile: mermaid-profile(
+    presentation-profile: "merman-modern",
+    host-theme: (font-family: "Profile Presentation Sans"),
+    pipeline: "parity",
+  ),
+)
+#assert.eq(profile-presentation-config.binding_options.presentation.profile, "merman-modern")
+#assert.eq(profile-presentation-config.binding_options.presentation.theme.font_family, "Profile Presentation Sans")
+#assert.eq(profile-presentation-config.binding_options.svg.pipeline, "parity")
 #let profile-layout-width-config = config-with-context-width(
   render-config(profile: mermaid-profile(layout: (container_width: 333))),
   typst-length-to-css-px(72pt),

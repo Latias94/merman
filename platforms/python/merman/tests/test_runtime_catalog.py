@@ -18,8 +18,8 @@ def valid_catalog():
             "ascii-capabilities",
             "diagram-family-capabilities",
             "lint-rule-catalog",
+            "presentation-catalog",
             "supported-diagrams",
-            "supported-host-theme-presets",
             "supported-themes",
         ],
         "capabilities": {

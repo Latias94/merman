@@ -129,15 +129,23 @@ void main(List<String> args) {
     final diagramFamilies = merman.diagramFamilyCapabilities();
     final lintRules = merman.lintRuleCatalog();
     final supportedThemes = merman.supportedThemes();
-    final hostThemePresets = merman.supportedHostThemePresets();
+    final presentationCatalog = merman.presentationCatalog();
     _expect(
       supportedDiagrams.isNotEmpty &&
           asciiCapabilities.isNotEmpty &&
           diagramFamilies.isNotEmpty &&
           lintRules.isNotEmpty &&
-          supportedThemes.isNotEmpty &&
-          hostThemePresets.isNotEmpty,
+          supportedThemes.isNotEmpty,
       'typed native metadata catalogs must be available',
+    );
+    _expect(
+      presentationCatalog.themePresets.any(
+            (preset) => preset.id == 'one-dark',
+          ) &&
+          presentationCatalog.profiles.any(
+            (profile) => profile.id == 'merman-modern',
+          ),
+      'presentation catalog must expose bundled themes and profiles',
     );
     _expect(
       identical(supportedDiagrams, merman.supportedDiagrams()) &&
@@ -145,7 +153,7 @@ void main(List<String> args) {
           identical(diagramFamilies, merman.diagramFamilyCapabilities()) &&
           identical(lintRules, merman.lintRuleCatalog()) &&
           identical(supportedThemes, merman.supportedThemes()) &&
-          identical(hostThemePresets, merman.supportedHostThemePresets()),
+          identical(presentationCatalog, merman.presentationCatalog()),
       'typed native metadata catalogs must be cached',
     );
 

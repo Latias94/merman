@@ -268,7 +268,7 @@ impl RequestedTokenRange {
             return Err(TokenPlanError::ReversedRange { range });
         }
 
-        let line_count = source_map.line_starts().len();
+        let line_count = source_map.line_count();
         let start_line =
             validate_range_position(source_map, range, RangeEndpoint::Start, line_count)?;
         let end_line = validate_range_position(source_map, range, RangeEndpoint::End, line_count)?;

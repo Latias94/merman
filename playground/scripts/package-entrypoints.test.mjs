@@ -30,7 +30,8 @@ test("dev, build, and test fail closed on the complete browser package", () => {
       /^npm run prepare:browser-runtime(?: && |$)/u
     );
   }
-  assert.match(packageJson.scripts.build, /npm run verify:dist$/u);
+  assert.match(packageJson.scripts.build, /npm run build:prepared$/u);
+  assert.match(packageJson.scripts["build:prepared"], /npm run verify:dist$/u);
   assert.match(packageJson.scripts["verify:wasm-inputs"], /verify-wasm-inputs\.mjs/);
   assert.match(packageJson.scripts["verify:wasm-inputs"], /--package full/);
   assert.deepEqual(

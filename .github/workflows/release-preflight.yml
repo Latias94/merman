@@ -38,30 +38,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
-          tag_re="^v${semver_re#^}"
           fail() {
             echo "::error::$1" >&2
             exit 1
           }
 
-          VERSION="$DISPATCH_VERSION"
+          if ! VERSION="$(python3 scripts/release-version.py canonical --version "$DISPATCH_VERSION")"; then
+            fail "version must match X.Y.Z or X.Y.Z-alpha.N/beta.N/rc.N."
+          fi
+          [[ "$VERSION" == "$DISPATCH_VERSION" ]] || fail "version must not use a v prefix."
           RELEASE_TAG="v$VERSION"
           SOURCE_REF="$DISPATCH_SOURCE_REF"
 
-          [[ "$VERSION" =~ $semver_re ]] || fail "version must match X.Y.Z or X.Y.Z-alpha.N/beta.N/rc.N."
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
           validated_source_ref="$SOURCE_REF"
           if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             :
           elif [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
+          elif [[ "$SOURCE_REF" == "$RELEASE_TAG" || "$SOURCE_REF" == "refs/tags/$RELEASE_TAG" ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
-            [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match version."
             validated_source_ref="refs/tags/$source_tag"
           else
-            fail "source_ref must be an immutable lowercase commit SHA, main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
+            fail "source_ref tag must match version; source_ref must be an immutable lowercase commit SHA, main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
           fi
 
           {
@@ -101,6 +100,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-linux-android,wasm32-unknown-unknown
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -125,6 +126,9 @@ jobs:
 
       - name: Verify target-scoped artifact dependency closures
         run: python3 scripts/verify_artifact_dependency_closures.py
+
+      - name: Verify exhaustive Cargo feature and artifact recipes
+        run: cargo run --locked -p xtask -- verify-feature-matrix --strict
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
@@ -408,10 +412,8 @@ jobs:
       - name: Install wasm-tools
         uses: taiki-e/install-action@wasm-tools
 
-      - name: Install WASM tools
-        run: |
-          cargo install wasm-bindgen-cli --version 0.2.108 --locked
-          cargo install wasm-pack --version 0.15.0 --locked
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Verify generated Web contracts
         run: |
@@ -420,20 +422,21 @@ jobs:
           cargo run --locked -p xtask -- verify-text-measurement-protocol
           cargo run --locked -p xtask -- verify-web-diagram-catalog
 
-      - name: Check exact Web WASM size budgets
-        run: cargo run --locked -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
-
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web
 
       - name: Build web package
         run: npm run build --prefix platforms/web
 
-      - name: Verify web package
-        run: npm run verify:packages --prefix platforms/web
-
-      - name: Smoke web package
+      - name: Verify and smoke web package
         run: npm run smoke --prefix platforms/web
+
+      - name: Check final Web package WASM size budgets
+        run: |
+          cargo run --locked -p xtask -- wasm-size-matrix \
+            --surface web \
+            --web-package-root platforms/web/packages \
+            --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Pack and verify Web package group dry-run
         shell: bash

@@ -1,6 +1,9 @@
 use crate::architecture_metrics::{
     architecture_cytoscape_child_contribution_bounds, architecture_cytoscape_child_label_bounds,
-    architecture_measure_cytoscape_node_bbox_extras, architecture_node_bbox_extras_to_manatee,
+    architecture_cytoscape_edge_label_metrics,
+    architecture_measure_cytoscape_compound_child_bbox_extras,
+    architecture_measure_cytoscape_final_node_bbox_extras,
+    architecture_node_bbox_extras_to_manatee,
 };
 use crate::config::{config_f64, json_f64, value_at};
 use crate::model::{
@@ -564,9 +567,7 @@ fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
 
 fn architecture_cytoscape_edge_text_style() -> TextStyle {
     TextStyle {
-        // Mermaid's Architecture Cytoscape stylesheet sets `font-size` only on `node[label]`;
-        // `edge[label]` keeps Cytoscape's default 16px sans-serif label style.
-        font_family: Some("sans-serif".to_string()),
+        font_family: Some(CYTOSCAPE_DEFAULT_FONT_FAMILY.to_string()),
         ..TextStyle::default()
     }
 }
@@ -574,9 +575,9 @@ fn architecture_cytoscape_edge_text_style() -> TextStyle {
 fn architecture_fcose_node_bounds_extras<'a>(
     input: ArchitectureFcoseNodeBoundsExtrasInput<'_, 'a>,
 ) -> FxHashMap<&'a str, manatee::BoundsExtras> {
-    // Capture per-node service label extents for the FCoSE port. These extras do not change
-    // layout node size, but they let manatee approximate Cytoscape's
-    // `compound-sizing-wrt-labels: include` behavior when computing compound and element bboxes.
+    // Capture Cytoscape's custom compound-child bbox for grouped leaves and its final element bbox
+    // for top-level leaves without changing layout node size. Manatee consumes the selected extras
+    // for compound sizing and relocation.
     //
     // Relocation-centering stays inside manatee's indexed graph adapter; keeping it out of this
     // renderer-side helper avoids a second, unused pre-layout bbox model.
@@ -591,13 +592,23 @@ fn architecture_fcose_node_bounds_extras<'a>(
     let mut node_bounds_extras: FxHashMap<&str, manatee::BoundsExtras> = FxHashMap::default();
     node_bounds_extras.reserve(model.nodes.len().saturating_mul(2));
     for n in &model.nodes {
-        let bounds_extras = architecture_measure_cytoscape_node_bbox_extras(
-            n.title,
-            text_measurer,
-            &text_style,
-            icon_size,
-            font_size_px,
-        );
+        let bounds_extras = if n.in_group.is_some() {
+            architecture_measure_cytoscape_compound_child_bbox_extras(
+                n.title,
+                text_measurer,
+                &text_style,
+                icon_size,
+                font_size_px,
+            )
+        } else {
+            architecture_measure_cytoscape_final_node_bbox_extras(
+                n.title,
+                text_measurer,
+                &text_style,
+                icon_size,
+                font_size_px,
+            )
+        };
         node_bounds_extras.insert(
             n.id,
             architecture_node_bbox_extras_to_manatee(bounds_extras),
@@ -1016,12 +1027,12 @@ fn build_architecture_fcose_input_plan<'a>(
 
         let (label_width, label_height) = match e.title.map(str::trim).filter(|t| !t.is_empty()) {
             Some(label) => {
-                let m = text_measurer.measure(label, &edge_text_style);
-                let w = m.width.max(0.0);
-                // Cytoscape edge label bounding boxes are slightly taller than the measured
-                // font metrics height (roughly `fontSize + 1px` at Mermaid defaults).
-                let h = (m.height + 1.0).max(0.0);
-                (Some(w), Some(h))
+                let metrics = architecture_cytoscape_edge_label_metrics(
+                    label,
+                    text_measurer,
+                    &edge_text_style,
+                );
+                (Some(metrics.width), Some(metrics.height))
             }
             None => (None, None),
         };
@@ -2092,12 +2103,20 @@ mod tests {
     #[test]
     fn architecture_fcose_node_bounds_extras_feed_label_bounds() {
         let model = super::ArchitectureModelView {
-            nodes: vec![super::ArchitectureNodeView {
-                id: "api",
-                node_type: super::ArchitectureNodeType::Service,
-                title: Some("API"),
-                in_group: Some("core"),
-            }],
+            nodes: vec![
+                super::ArchitectureNodeView {
+                    id: "api",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: Some("API"),
+                    in_group: Some("core"),
+                },
+                super::ArchitectureNodeView {
+                    id: "external",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: Some("API"),
+                    in_group: None,
+                },
+            ],
             groups: vec![super::ArchitectureGroupView {
                 id: "core",
                 in_group: None,
@@ -2115,12 +2134,19 @@ mod tests {
                 font_size_px: 16.0,
             },
         );
-        let extras = node_bounds_extras.get("api").expect("api node extras");
+        let grouped = node_bounds_extras.get("api").expect("api node extras");
+        let top_level = node_bounds_extras
+            .get("external")
+            .expect("external node extras");
 
-        assert_eq!(extras.top, 2.0);
-        assert_eq!(extras.bottom, 19.0);
-        assert_eq!(extras.left, 2.0);
-        assert_eq!(extras.right, 2.0);
+        assert_eq!(grouped.top, 1.0);
+        assert_eq!(grouped.bottom, 18.0);
+        assert_eq!(grouped.left, 1.0);
+        assert_eq!(grouped.right, 1.0);
+        assert_eq!(top_level.top, 1.0);
+        assert_eq!(top_level.bottom, 19.0);
+        assert_eq!(top_level.left, 1.0);
+        assert_eq!(top_level.right, 1.0);
     }
 
     #[test]
@@ -2134,7 +2160,10 @@ mod tests {
             Some(super::CYTOSCAPE_DEFAULT_FONT_FAMILY)
         );
         assert_eq!(edge_style.font_size, 16.0);
-        assert_eq!(edge_style.font_family.as_deref(), Some("sans-serif"));
+        assert_eq!(
+            edge_style.font_family.as_deref(),
+            Some(super::CYTOSCAPE_DEFAULT_FONT_FAMILY)
+        );
     }
 
     #[test]

@@ -119,6 +119,35 @@ fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 }
 
 #[test]
+fn native_batch_applies_the_selected_presentation_profile() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    fs::write(temp.path().join("input.md"), TWO_CHARTS).expect("write Markdown input");
+
+    let output = run_in(
+        temp.path(),
+        &[
+            "batch",
+            "input.md",
+            "--output-dir",
+            "generated",
+            "--presentation-profile",
+            "merman-modern",
+            "--quiet",
+        ],
+    );
+    assert_success(&output);
+
+    let svg = fs::read_to_string(temp.path().join("generated/input-1.svg"))
+        .expect("read generated Flowchart SVG");
+    assert!(
+        svg.contains(
+            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
+        ),
+        "batch rendering should use the same typed presentation path: {svg}"
+    );
+}
+
+#[test]
 fn native_zero_chart_generation_publishes_document_and_cleans_only_owned_stale_files() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::write(temp.path().join("input.md"), TWO_CHARTS).expect("write Markdown input");

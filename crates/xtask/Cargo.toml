@@ -10,9 +10,9 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-chrono = { workspace = true, features = ["clock"] }
 base64.workspace = true
 brotli.workspace = true
+cssparser.workspace = true
 flate2.workspace = true
 fs2.workspace = true
 futures = { workspace = true, features = ["executor"] }
@@ -21,7 +21,7 @@ lalrpop.workspace = true
 merman = { path = "../merman", default-features = false, features = ["svg"] }
 merman-analysis.workspace = true
 merman-bindings-core = { workspace = true, features = ["analysis", "ascii", "jpeg", "pdf", "png", "svg"] }
-merman-core = { path = "../merman-core" }
+merman-core = { path = "../merman-core", features = ["system-clock", "system-timezone"] }
 merman-editor-core.workspace = true
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 merman-layout-elk.workspace = true
@@ -35,6 +35,7 @@ roxmltree.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde-saphyr = { workspace = true, features = ["deserialize", "serialize"] }
+svgtypes.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tempfile = "3.27.0"

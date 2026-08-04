@@ -14,6 +14,7 @@
     "test": "playwright test",
     "test:chromium": "playwright test --project=chromium-desktop --project=chromium-mobile",
     "test:smoke": "playwright test --grep @smoke",
+    "test:smoke:non-chromium": "playwright test --grep @smoke --project=firefox-smoke --project=webkit-smoke",
     "test:zenuml-isolation": "playwright test benchmark.realm.spec.ts --project=chromium-desktop --project=chromium-mobile",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
