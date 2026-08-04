@@ -1,6 +1,6 @@
 use super::activation::SequenceActivationState;
 use super::messages::{
-    SequenceMessageHorizontalContext, SequenceMessageHorizontalModel,
+    SequenceMessageBoundMetrics, SequenceMessageHorizontalContext, SequenceMessageHorizontalModel,
     sequence_message_horizontal_model,
 };
 use super::metrics::{
@@ -38,6 +38,7 @@ pub(super) struct BlockStepPlanContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) message_bound_metrics: &'a [Option<SequenceMessageBoundMetrics>],
 }
 
 pub(super) struct SequenceBlockPlan {
@@ -152,6 +153,7 @@ struct BlockFrameWidthContext<'a> {
     note_text_style: &'a TextStyle,
     math_config: &'a MermaidConfig,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    message_bound_metrics: &'a [Option<SequenceMessageBoundMetrics>],
 }
 
 #[derive(Clone, Copy)]
@@ -179,6 +181,7 @@ impl<'a> BlockStepPlanContext<'a> {
             note_text_style: self.note_text_style,
             math_config: self.math_config,
             math_renderer: self.math_renderer,
+            message_bound_metrics: self.message_bound_metrics,
         }
     }
 }
@@ -341,7 +344,7 @@ fn calculate_sequence_block_bounds(
     let mut stack: Vec<OpenBlock> = Vec::new();
     let mut activation_state = SequenceActivationState::new(ctx.activation_width);
 
-    for msg in messages {
+    for (message_index, msg) in messages.iter().enumerate() {
         if is_block_start(msg.message_type) {
             stack.push(OpenBlock::new(msg.id.clone()));
             continue;
@@ -411,6 +414,11 @@ fn calculate_sequence_block_bounds(
                 is_neo: ctx.is_neo,
                 measurer: ctx.measurer,
                 msg_text_style: ctx.msg_text_style,
+                premeasured_bound: ctx
+                    .message_bound_metrics
+                    .get(message_index)
+                    .copied()
+                    .flatten(),
             },
         ) else {
             continue;
@@ -494,6 +502,7 @@ mod tests {
                 note_text_style: &note_style,
                 math_config: &math_config,
                 math_renderer: None,
+                message_bound_metrics: &[],
             },
         )
     }
@@ -656,6 +665,7 @@ mod tests {
                 note_text_style: &text_style,
                 math_config: &math_config,
                 math_renderer: None,
+                message_bound_metrics: &[],
             },
             BlockStepContext {
                 block_base_step_empty: 0.0,

@@ -9,7 +9,9 @@ use super::block_steps::{
     BlockStepPlanContext, SequenceBlockPlan, is_block_end, is_block_section, is_block_start,
     plan_sequence_blocks,
 };
-use super::messages::{SequenceMessageLayoutContext, layout_sequence_message};
+use super::messages::{
+    SequenceMessageBoundMetrics, SequenceMessageLayoutContext, layout_sequence_message,
+};
 use super::notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use super::rect::SequenceRectOpen;
 use crate::math::MathRenderer;
@@ -45,6 +47,7 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) message_bound_metrics: &'a [Option<SequenceMessageBoundMetrics>],
 }
 
 pub(super) struct SequenceLayoutGraph {
@@ -336,6 +339,7 @@ fn handle_sequence_message(
             msg_text_style: ctx.msg_text_style,
             math_config: ctx.math_config,
             math_renderer: ctx.math_renderer,
+            premeasured_bound: ctx.message_bound_metrics.get(msg_idx).copied().flatten(),
             created_actor_index: msg
                 .to
                 .as_deref()
@@ -420,6 +424,7 @@ pub(super) fn build_sequence_layout_graph(
         note_text_style: ctx.note_text_style,
         math_config: ctx.math_config,
         math_renderer: ctx.math_renderer,
+        message_bound_metrics: ctx.message_bound_metrics,
     });
 
     let rect_step_start = 2.0 * ctx.box_margin;

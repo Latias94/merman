@@ -5,6 +5,7 @@ use super::metrics::{
     measure_sequence_label_for_layout, measure_svg_like_with_html_br,
 };
 use super::wrap_sequence_label_like_mermaid_lines;
+use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
 use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
@@ -17,6 +18,42 @@ const LINETYPE_CENTRAL_CONNECTION_REVERSE: i32 = 60;
 const LINETYPE_CENTRAL_CONNECTION_DUAL: i32 = 61;
 const CENTRAL_CONNECTION_BASE_OFFSET: f64 = 4.0;
 const CENTRAL_CONNECTION_BIDIRECTIONAL_OFFSET: f64 = 6.0;
+
+/// Operation-local message bounds indexed by the same immutable Sequence model that produced it.
+///
+/// The carrier validates only the built-in measurement route. Text, style, wrapping, and model
+/// identity remain part of the enclosing private plan and must not be detached from this value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct SequenceMessageBoundMetrics {
+    width: f64,
+    height: f64,
+    carrier: BuiltinTextMeasurementOperationCarrier,
+}
+
+impl SequenceMessageBoundMetrics {
+    pub(super) fn new(
+        width: f64,
+        height: f64,
+        carrier: BuiltinTextMeasurementOperationCarrier,
+    ) -> Self {
+        Self {
+            width,
+            height,
+            carrier,
+        }
+    }
+
+    pub(super) fn validated_for(self, measurer: &dyn TextMeasurer) -> Option<Self> {
+        (measurer
+            .builtin_operation_carrier(TextMeasurementOperation::MermaidCalculateTextDimensions)
+            == Some(self.carrier))
+        .then_some(self)
+    }
+
+    pub(super) const fn width(self) -> f64 {
+        self.width
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct SequenceMessageHorizontalModel {
@@ -38,6 +75,7 @@ pub(super) struct SequenceMessageHorizontalContext<'a> {
     pub(super) is_neo: bool,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
+    pub(super) premeasured_bound: Option<SequenceMessageBoundMetrics>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -71,8 +109,13 @@ pub(super) fn sequence_message_horizontal_model(
     let to_bounds = ctx
         .activation_state
         .actor_bounds(to_index, ctx.actor_centers_x[to_index]);
+    let premeasured_bound = ctx
+        .premeasured_bound
+        .and_then(|metrics| metrics.validated_for(ctx.measurer));
     let text_width = if msg.wrap || msg.message_text().is_empty() {
         0.0
+    } else if let Some(metrics) = premeasured_bound {
+        metrics.width
     } else {
         measure_svg_like_with_html_br(ctx.measurer, msg.message_text(), ctx.msg_text_style)
             .0
@@ -210,6 +253,7 @@ pub(super) struct SequenceMessageLayoutContext<'a> {
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) premeasured_bound: Option<SequenceMessageBoundMetrics>,
     pub(super) created_actor_index: Option<usize>,
     pub(super) destroyed_from_index: Option<usize>,
     pub(super) destroyed_to_index: Option<usize>,
@@ -254,6 +298,7 @@ pub(super) fn layout_sequence_message(
             is_neo: ctx.is_neo,
             measurer: ctx.measurer,
             msg_text_style: ctx.msg_text_style,
+            premeasured_bound: ctx.premeasured_bound,
         },
     )?;
     let mut startx = horizontal.start_x;
@@ -287,7 +332,19 @@ pub(super) fn layout_sequence_message(
     );
     let effective_text = wrapped_text.as_deref().unwrap_or(text);
 
-    let vertical = message_vertical_geometry(effective_text, is_math_message, is_self, &ctx);
+    let premeasured_bound = if wrapped_text.is_none() && !is_math_message {
+        ctx.premeasured_bound
+            .and_then(|metrics| metrics.validated_for(ctx.measurer))
+    } else {
+        None
+    };
+    let vertical = message_vertical_geometry(
+        effective_text,
+        is_math_message,
+        is_self,
+        premeasured_bound,
+        &ctx,
+    );
 
     let x1 = startx;
     let x2 = stopx;
@@ -504,10 +561,13 @@ fn message_vertical_geometry(
     effective_text: &str,
     is_math_message: bool,
     is_self: bool,
+    premeasured_bound: Option<SequenceMessageBoundMetrics>,
     ctx: &SequenceMessageLayoutContext<'_>,
 ) -> SequenceMessageVerticalGeometry {
     let (text_width, text_height) = if effective_text.is_empty() {
         (0.0, 0.0)
+    } else if let Some(metrics) = premeasured_bound {
+        (metrics.width, metrics.height)
     } else {
         measure_sequence_label_for_layout(
             ctx.measurer,

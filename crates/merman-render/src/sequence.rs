@@ -106,6 +106,7 @@ pub(crate) fn sequence_block_widths_for_render(
         note_text_style: &settings.note_text_style,
         math_config: effective_config,
         math_renderer,
+        message_bound_metrics: &[],
     })
     .into_iter()
     .collect()
@@ -137,6 +138,7 @@ pub(crate) fn layout_sequence_diagram_typed_with_title_and_resource_policy(
         actor_top_offset_y,
         max_actor_layout_height,
         has_boxes,
+        message_bound_metrics,
     } = plan_sequence_actors(SequenceActorLayoutPlanContext {
         model,
         measurer,
@@ -190,6 +192,7 @@ pub(crate) fn layout_sequence_diagram_typed_with_title_and_resource_policy(
         note_text_style: &settings.note_text_style,
         math_config: &math_config,
         math_renderer,
+        message_bound_metrics: message_bound_metrics.as_deref().unwrap_or(&[]),
     });
 
     let rect_x_bounds = sequence_rect_stack_x_bounds(
@@ -240,6 +243,7 @@ pub(crate) fn layout_sequence_diagram_typed_with_title_and_resource_policy(
         msg_text_style: &settings.msg_text_style,
         math_config: &math_config,
         math_renderer,
+        message_bound_metrics: message_bound_metrics.as_deref().unwrap_or(&[]),
     }));
 
     Ok(SequenceDiagramLayout {
