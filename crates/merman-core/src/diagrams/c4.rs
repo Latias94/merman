@@ -3120,6 +3120,19 @@ Boundary(b, "Boundary") {
     }
 
     #[test]
+    fn c4_named_arguments_follow_pinned_positional_overwrite_order() {
+        let model = parse(
+            r#"C4Context
+Person(p, "Person", "Description", $tags="tag1,tag2", $link="https://example.com")
+"#,
+        );
+        let shape = model["shapes"][0].as_object().unwrap();
+
+        assert_eq!(shape["tags"], json!("tag1,tag2"));
+        assert!(!shape.contains_key("link"));
+    }
+
+    #[test]
     fn c4_alias_updates_keep_first_match_lookup_semantics() {
         let model = parse(
             r#"C4Context
