@@ -17,10 +17,10 @@ use jni::{
 #[cfg(feature = "svg")]
 use jni::{errors::Error as JniError, objects::Global};
 use merman_bindings_core::{
-    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
-    BindingError, BindingOperationRequest, BindingOperationResult, BindingPayloadSchemaKey,
-    BindingStatus, CompiledBindingSurface, ConstructorServiceKey, RuntimePolicyExposure, TargetKey,
-    TransportExposure, ValidatedArtifactContract,
+    ArtifactContractSpec, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode,
+    BindingEngineServices, BindingError, BindingOperationRequest, BindingOperationResult,
+    BindingPayloadSchemaKey, BindingStatus, CapabilityKey, ConstructorServiceKey, OperationKey,
+    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use std::cell::Cell;
@@ -73,28 +73,65 @@ impl JniEngineRegistry {
 }
 
 static ENGINE_REGISTRY: OnceLock<Mutex<JniEngineRegistry>> = OnceLock::new();
-static ARTIFACT_CONTRACT: OnceLock<ValidatedArtifactContract> = OnceLock::new();
+const ANDROID_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
+    #[cfg(feature = "svg")]
+    ConstructorServiceKey::HostTextMeasurement,
+];
+const ANDROID_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson,
+    #[cfg(feature = "ascii")]
+    OperationKey::Ascii,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisJson,
+    #[cfg(feature = "jpeg")]
+    OperationKey::Jpeg,
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    #[cfg(feature = "pdf")]
+    OperationKey::Pdf,
+    #[cfg(feature = "png")]
+    OperationKey::Png,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::ValidationJson,
+];
+const ANDROID_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
+const ANDROID_RUNTIME_POLICY: RuntimePolicyExposure = if cfg!(all(
+    feature = "system-clock",
+    feature = "system-timezone",
+    feature = "system-random"
+)) {
+    RuntimePolicyExposure::BindingOptions
+} else {
+    RuntimePolicyExposure::DeterministicOnly
+};
+static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
+    .with_operations(ANDROID_OPERATIONS)
+    .with_supplemental_capabilities(ANDROID_SUPPLEMENTAL_CAPABILITIES)
+    .with_all_available_metadata()
+    .with_payload_schemas(BindingPayloadSchemaKey::ALL)
+    .with_constructor_services(ANDROID_CONSTRUCTOR_SERVICES)
+    .with_runtime_policy_exposure(ANDROID_RUNTIME_POLICY)
+    .materialize();
 
 fn android_artifact_contract() -> &'static ValidatedArtifactContract {
-    ARTIFACT_CONTRACT.get_or_init(|| {
-        let exposure = TransportExposure::for_target(TargetKey::Native)
-            .with_all_compiled_operations()
-            .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
-            .and_then(TransportExposure::with_all_available_metadata)
-            .and_then(|exposure| {
-                exposure.with_payload_schemas(BindingPayloadSchemaKey::ALL.iter().copied())
-            })
-            .expect("the Android transport declares each compiled endpoint set once")
-            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
-        #[cfg(feature = "svg")]
-        let exposure = exposure
-            .with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
-            .expect("the Android SVG transport exposes its compiled constructor service");
-
-        CompiledBindingSurface::current()
-            .validate(exposure)
-            .expect("the Android transport exposure must match its compiled native surface")
-    })
+    &ARTIFACT_CONTRACT
 }
 
 #[cfg(feature = "svg")]

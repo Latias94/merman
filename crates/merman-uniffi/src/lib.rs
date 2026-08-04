@@ -6,14 +6,13 @@
 //! not replace the canonical C ABI in `merman-ffi`.
 
 use merman_bindings_core::{
-    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingError,
-    BindingErrorKind, BindingPayloadSchemaKey, BindingStatus, CompiledBindingSurface,
-    RuntimePolicyExposure, TargetKey, TransportExposure, ValidatedArtifactContract,
+    ArtifactContractSpec, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode,
+    BindingError, BindingErrorKind, BindingPayloadSchemaKey, BindingStatus, CapabilityKey,
+    ConstructorServiceKey, OperationKey, RuntimePolicyExposure, TargetKey,
+    ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
-use merman_bindings_core::{
-    BindingEngineServices, ConstructorServiceKey, HostTextMeasurementError, HostTextMeasurer,
-};
+use merman_bindings_core::{BindingEngineServices, HostTextMeasurementError, HostTextMeasurer};
 use serde_json::Value;
 use std::sync::{Arc, OnceLock};
 
@@ -27,7 +26,62 @@ pub const UNIFFI_BINDING_API_VERSION: u32 = 3;
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
 static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
-static ARTIFACT_CONTRACT: OnceLock<ValidatedArtifactContract> = OnceLock::new();
+const NATIVE_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
+    #[cfg(feature = "svg")]
+    ConstructorServiceKey::HostTextMeasurement,
+];
+const NATIVE_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson,
+    #[cfg(feature = "ascii")]
+    OperationKey::Ascii,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisJson,
+    #[cfg(feature = "jpeg")]
+    OperationKey::Jpeg,
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    #[cfg(feature = "pdf")]
+    OperationKey::Pdf,
+    #[cfg(feature = "png")]
+    OperationKey::Png,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::ValidationJson,
+];
+const NATIVE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
+const NATIVE_RUNTIME_POLICY: RuntimePolicyExposure = if cfg!(all(
+    feature = "system-clock",
+    feature = "system-timezone",
+    feature = "system-random"
+)) {
+    RuntimePolicyExposure::BindingOptions
+} else {
+    RuntimePolicyExposure::DeterministicOnly
+};
+static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
+    .with_operations(NATIVE_OPERATIONS)
+    .with_supplemental_capabilities(NATIVE_SUPPLEMENTAL_CAPABILITIES)
+    .with_all_available_metadata()
+    .with_payload_schemas(BindingPayloadSchemaKey::ALL)
+    .with_constructor_services(NATIVE_CONSTRUCTOR_SERVICES)
+    .with_runtime_policy_exposure(NATIVE_RUNTIME_POLICY)
+    .materialize();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MermanErrorKind {
@@ -835,25 +889,7 @@ fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, Bi
 }
 
 fn native_artifact_contract() -> &'static ValidatedArtifactContract {
-    ARTIFACT_CONTRACT.get_or_init(|| {
-        let exposure = TransportExposure::for_target(TargetKey::Native)
-            .with_all_compiled_operations()
-            .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
-            .and_then(TransportExposure::with_all_available_metadata)
-            .and_then(|exposure| {
-                exposure.with_payload_schemas(BindingPayloadSchemaKey::ALL.iter().copied())
-            })
-            .expect("the UniFFI transport declares each compiled endpoint set once")
-            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
-        #[cfg(feature = "svg")]
-        let exposure = exposure
-            .with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
-            .expect("the UniFFI SVG transport exposes its compiled constructor service");
-
-        CompiledBindingSurface::current()
-            .validate(exposure)
-            .expect("the UniFFI transport exposure must match its compiled native surface")
-    })
+    &ARTIFACT_CONTRACT
 }
 
 fn execute_once_operation(
@@ -1451,7 +1487,10 @@ mod tests {
             assert_eq!(kind, MermanErrorKind::MissingCapability);
             assert_eq!(capability_id.as_deref(), Some("svg"));
             assert_eq!(resource, None);
-            assert_eq!(message, "SVG rendering requires the svg feature");
+            assert_eq!(
+                message,
+                "operation `svg` requires capability `svg`, which is not exposed by target `native`"
+            );
         }
     }
 
@@ -1540,23 +1579,31 @@ mod tests {
             uri: None,
             options_json: Some(r#"{"runtime_policy":"native"}"#.to_string()),
         };
-        let compiled = native_artifact_contract()
-            .runtime_capabilities()
-            .system_adapter_ids;
-        let missing = ["system-clock", "system-timezone", "system-random"]
-            .into_iter()
-            .find(|capability| !compiled.contains(capability));
-
-        match missing {
-            Some(expected_capability_id) => {
-                let error = engine().execute(request).unwrap_err();
-                assert_missing_capability(&error, expected_capability_id);
-            }
-            None => {
-                let result = engine().execute(request).unwrap();
-                let metadata: Value = serde_json::from_str(&result.metadata_json).unwrap();
-                assert_eq!(metadata["runtime_policy"], "native");
-            }
+        if NATIVE_RUNTIME_POLICY == RuntimePolicyExposure::DeterministicOnly {
+            let MermanError::Binding {
+                code,
+                code_name,
+                kind,
+                capability_id,
+                message,
+                ..
+            } = engine().execute(request).unwrap_err();
+            assert_eq!(code, BindingStatus::OptionsJsonError.code());
+            assert_eq!(code_name, BindingStatus::OptionsJsonError.code_name());
+            assert_eq!(kind, MermanErrorKind::Generic);
+            assert_eq!(capability_id, None);
+            assert!(message.contains("not exposed by target `native`"));
+        } else {
+            assert_eq!(NATIVE_RUNTIME_POLICY, RuntimePolicyExposure::BindingOptions);
+            let result = engine().execute(request).unwrap();
+            assert_eq!(
+                native_artifact_contract()
+                    .runtime_capabilities()
+                    .system_adapter_ids,
+                ["system-clock", "system-random", "system-timezone"]
+            );
+            let metadata: Value = serde_json::from_str(&result.metadata_json).unwrap();
+            assert_eq!(metadata["runtime_policy"], "native");
         }
     }
 
@@ -2058,6 +2105,7 @@ mod tests {
                 .collect::<std::collections::BTreeSet<_>>(),
             std::collections::BTreeSet::from([
                 "capabilities",
+                "constructor_service_contracts",
                 "constructor_service_ids",
                 "metadata_ids",
                 "option_group_ids",

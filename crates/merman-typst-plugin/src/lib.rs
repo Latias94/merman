@@ -5,11 +5,10 @@
 //! transport envelope so hosts can handle failures without depending on trap behavior.
 
 use merman_bindings_core::{
-    BindingOperationRequest, CompiledBindingSurface, RuntimePolicyExposure, TargetKey,
-    TransportExposure, ValidatedArtifactContract,
+    ArtifactContractSpec, BindingOperationRequest, CapabilityKey, OperationKey,
+    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 use serde_json::{json, Value};
-use std::sync::OnceLock;
 
 const TYPST_RESULT_PAYLOAD_SCHEMA_VERSION: u32 = 1;
 pub const TYPST_RUNTIME_CATALOG_SCHEMA_VERSION: u32 =
@@ -19,10 +18,31 @@ pub const TYPST_RUNTIME_CATALOG_SCHEMA_VERSION: u32 =
 /// These are semantic operation IDs from the shared capability descriptor, not WebAssembly export
 /// names. Keep this list closed so the package and artifact smoke tests can reject accidental
 /// transport expansion.
-pub const TYPST_BINDING_OPERATION_IDS: &[&str] = &["analysis-json", "svg"];
+pub const TYPST_BINDING_OPERATION_IDS: &[&str] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson.id(),
+    #[cfg(feature = "svg")]
+    OperationKey::Svg.id(),
+];
 const RENDER_OPERATION: &str = "render-svg";
 const ANALYZE_OPERATION: &str = "analyze";
-static ARTIFACT_CONTRACT: OnceLock<ValidatedArtifactContract> = OnceLock::new();
+const TYPST_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+];
+const TYPST_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+];
+static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Typst)
+    .with_operations(TYPST_OPERATIONS)
+    .with_supplemental_capabilities(TYPST_SUPPLEMENTAL_CAPABILITIES)
+    .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+    .materialize();
 
 #[cfg(target_arch = "wasm32")]
 wasm_minimal_protocol::initiate_protocol!();
@@ -53,24 +73,7 @@ pub fn capabilities_json() -> Vec<u8> {
 }
 
 fn typst_artifact_contract() -> &'static ValidatedArtifactContract {
-    ARTIFACT_CONTRACT.get_or_init(|| {
-        let operations = [
-            #[cfg(feature = "analysis")]
-            merman_bindings_core::OperationKey::AnalysisJson,
-            #[cfg(feature = "svg")]
-            merman_bindings_core::OperationKey::Svg,
-        ];
-
-        let exposure = TransportExposure::for_target(TargetKey::Typst)
-            .with_operations(operations)
-            .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
-            .expect("the Typst transport declares each endpoint set once")
-            .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly);
-
-        CompiledBindingSurface::current()
-            .validate(exposure)
-            .expect("the Typst transport exposure must match its compiled surface")
-    })
+    &ARTIFACT_CONTRACT
 }
 
 fn typst_capabilities_json() -> Vec<u8> {
@@ -340,10 +343,7 @@ mod tests {
     #[test]
     fn typst_target_projection_tracks_resolved_backend_and_closed_operation_set() {
         let projected = typst_artifact_contract().runtime_capabilities();
-        assert!(projected
-            .operation_ids
-            .iter()
-            .all(|operation| TYPST_BINDING_OPERATION_IDS.contains(operation)));
+        assert_eq!(projected.operation_ids, TYPST_BINDING_OPERATION_IDS);
         assert_eq!(
             projected.has_operation("analysis-json"),
             cfg!(feature = "analysis")

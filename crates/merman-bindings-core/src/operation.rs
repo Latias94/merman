@@ -1610,52 +1610,50 @@ mod tests {
     }
 
     #[test]
-    fn explicit_native_policy_matches_the_owner_compiled_adapter_probe() {
-        let compiled = merman::runtime::compiled_system_adapter_ids();
-        let missing = ["system-clock", "system-timezone", "system-random"]
-            .into_iter()
-            .find(|capability| !compiled.contains(capability));
+    fn explicit_native_policy_follows_the_default_artifact_exposure() {
+        if crate::artifact_contract::DEFAULT_RUNTIME_POLICY
+            == crate::RuntimePolicyExposure::DeterministicOnly
+        {
+            let error = match BindingEngine::from_options(br#"{"runtime_policy":"native"}"#) {
+                Ok(_) => panic!("the default artifact accepted an unexposed native policy"),
+                Err(error) => error,
+            };
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+            assert_eq!(error.kind(), crate::BindingErrorKind::Generic);
+            assert_eq!(error.capability_id(), None);
+            assert!(error.message().contains("not exposed by target `native`"));
 
-        match missing {
-            Some(expected_capability) => {
-                let error = match BindingEngine::from_options(br#"{"runtime_policy":"native"}"#) {
-                    Ok(_) => panic!("owner probe reported a missing native adapter"),
-                    Err(error) => error,
-                };
-                assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
-                assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
-                assert_eq!(error.capability_id(), Some(expected_capability));
-                assert!(error.message().contains("runtime capability `system-"));
-                assert!(error.message().contains("not compiled into this artifact"));
+            let free_function_error =
+                crate::parse_json(b"flowchart TD\nA --> B", br#"{"runtime_policy":"native"}"#)
+                    .expect_err("free functions must honor the artifact policy exposure");
+            assert_eq!(
+                free_function_error.status(),
+                BindingStatus::OptionsJsonError
+            );
+            assert_eq!(free_function_error.capability_id(), None);
+        } else {
+            assert_eq!(
+                crate::artifact_contract::DEFAULT_RUNTIME_POLICY,
+                crate::RuntimePolicyExposure::BindingOptions
+            );
+            assert!(
+                merman::runtime::RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS
+                    .iter()
+                    .all(|id| merman::runtime::compiled_system_adapter_ids().contains(id))
+            );
+            let engine = BindingEngine::from_options(br#"{"runtime_policy":"native"}"#).unwrap();
+            let result = engine
+                .execute(BindingOperationRequest {
+                    operation_id: "semantic-json",
+                    source: b"flowchart TD\nA --> B",
+                    uri: None,
+                    options_json: b"",
+                })
+                .unwrap();
+            let metadata: serde_json::Value =
+                serde_json::from_slice(result.metadata_json()).unwrap();
 
-                let free_function_error =
-                    crate::parse_json(b"flowchart TD\nA --> B", br#"{"runtime_policy":"native"}"#)
-                        .expect_err("free functions must honor the selected runtime policy");
-                assert_eq!(
-                    free_function_error.kind(),
-                    crate::BindingErrorKind::MissingCapability
-                );
-                assert_eq!(
-                    free_function_error.capability_id(),
-                    Some(expected_capability)
-                );
-            }
-            None => {
-                let engine =
-                    BindingEngine::from_options(br#"{"runtime_policy":"native"}"#).unwrap();
-                let result = engine
-                    .execute(BindingOperationRequest {
-                        operation_id: "semantic-json",
-                        source: b"flowchart TD\nA --> B",
-                        uri: None,
-                        options_json: b"",
-                    })
-                    .unwrap();
-                let metadata: serde_json::Value =
-                    serde_json::from_slice(result.metadata_json()).unwrap();
-
-                assert_eq!(metadata["runtime_policy"], "native");
-            }
+            assert_eq!(metadata["runtime_policy"], "native");
         }
     }
 

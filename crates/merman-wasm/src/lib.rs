@@ -5,14 +5,12 @@
 //! The crate intentionally stays thin: all parsing, rendering, options parsing, and error
 //! classification are delegated to `merman-bindings-core`.
 
-#[cfg(feature = "editor")]
-use merman_bindings_core::TransportCompiledExtensionKey;
 use merman_bindings_core::{
-    BindingError, BindingOperationRequest, BindingPayloadSchemaKey, CompiledBindingSurface,
-    RuntimeCatalog, RuntimePolicyExposure, TargetKey, TransportExposure, ValidatedArtifactContract,
+    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingPayloadSchemaKey,
+    CapabilityKey, OperationKey, RuntimeCatalog, RuntimePolicyExposure, TargetKey,
+    TransportCompiledExtensionKey, ValidatedArtifactContract,
 };
 use serde::Serialize;
-use std::sync::OnceLock;
 use wasm_bindgen::prelude::*;
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -39,36 +37,57 @@ use serde::Deserialize;
 /// This is independent from the native C ABI and the Typst plugin ABI. It changes when the
 /// JavaScript/WASM export or runtime-contract wire shape becomes incompatible.
 pub const WASM_TRANSPORT_API_VERSION: u32 = 3;
-static ARTIFACT_CONTRACT: OnceLock<ValidatedArtifactContract> = OnceLock::new();
+const WASM_TRANSPORT_EXTENSIONS: &[TransportCompiledExtensionKey] = &[
+    #[cfg(feature = "editor")]
+    TransportCompiledExtensionKey::Editor,
+];
+const WASM_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson,
+    #[cfg(feature = "ascii")]
+    OperationKey::Ascii,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisJson,
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::ValidationJson,
+];
+const WASM_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "editor")]
+    CapabilityKey::Editor,
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
+const WASM_CONSTRUCTOR_SERVICES: &[merman_bindings_core::ConstructorServiceKey] = &[
+    #[cfg(all(feature = "svg", target_arch = "wasm32"))]
+    merman_bindings_core::ConstructorServiceKey::HostTextMeasurement,
+];
+static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Web)
+    .with_operations(WASM_OPERATIONS)
+    .with_supplemental_capabilities(WASM_SUPPLEMENTAL_CAPABILITIES)
+    .with_all_available_metadata()
+    .with_payload_schemas(&[BindingPayloadSchemaKey::BindingResult])
+    .with_constructor_services(WASM_CONSTRUCTOR_SERVICES)
+    .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+    .with_transport_extensions(WASM_TRANSPORT_EXTENSIONS)
+    .materialize();
 
 fn wasm_artifact_contract() -> &'static ValidatedArtifactContract {
-    ARTIFACT_CONTRACT.get_or_init(|| {
-        let compiled = CompiledBindingSurface::current();
-        #[cfg(feature = "editor")]
-        let compiled = compiled
-            .with_transport_extension(TransportCompiledExtensionKey::Editor)
-            .expect("the Web editor capability is compiled only by the transport crate");
-
-        let exposure = TransportExposure::for_target(TargetKey::Web)
-            .with_all_compiled_operations()
-            .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
-            .and_then(TransportExposure::with_all_available_metadata)
-            .and_then(|exposure| {
-                exposure.with_payload_schemas([BindingPayloadSchemaKey::BindingResult])
-            })
-            .expect("the Web transport declares each compiled endpoint set once")
-            .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly);
-        #[cfg(all(feature = "svg", target_arch = "wasm32"))]
-        let exposure = exposure
-            .with_constructor_services([
-                merman_bindings_core::ConstructorServiceKey::HostTextMeasurement,
-            ])
-            .expect("the Web transport declares its host text-measurement service once");
-
-        compiled
-            .validate(exposure)
-            .expect("the Web transport exposure must match its compiled surface")
-    })
+    &ARTIFACT_CONTRACT
 }
 
 fn wasm_runtime_catalog() -> RuntimeCatalog {

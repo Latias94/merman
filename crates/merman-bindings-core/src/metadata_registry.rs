@@ -1,5 +1,4 @@
 use crate::capability::CapabilityKey;
-use std::collections::BTreeSet;
 
 /// One stable catalog in the binding-owned metadata registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -70,11 +69,6 @@ impl MetadataSpec {
     #[must_use]
     pub const fn required_capability(&self) -> Option<CapabilityKey> {
         self.required_capability
-    }
-
-    pub(crate) fn is_available(&self, capabilities: &BTreeSet<CapabilityKey>) -> bool {
-        self.required_capability
-            .is_none_or(|capability| capabilities.contains(&capability))
     }
 
     pub(crate) const fn handler(&self) -> MetadataHandlerKey {

@@ -6,8 +6,8 @@
 
 use crate::XtaskError;
 use merman_bindings_core::{
-    BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract, CompiledBindingSurface,
-    RuntimeResourceContract, TargetKey, TransportExposure, binding_resource_contract,
+    ArtifactContractSpec, BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract, OperationKey,
+    RuntimeResourceContract, TargetKey, binding_resource_contract,
 };
 use std::fmt::Write as _;
 use std::fs;
@@ -74,15 +74,24 @@ fn generated_preamble(comment: &str) -> String {
 }
 
 fn web_resource_contract() -> RuntimeResourceContract {
-    let exposure = TransportExposure::for_target(TargetKey::Web)
-        .with_all_compiled_operations()
-        .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
-        .expect("the compiled binding surface projects to the Web target");
-    CompiledBindingSurface::current()
-        .validate(exposure)
-        .expect("the Web resource contract must be internally coherent")
-        .runtime_catalog(0)
-        .resources
+    const WEB_OPERATIONS: &[OperationKey] = &[
+        OperationKey::AnalysisFactsJson,
+        OperationKey::AnalysisJson,
+        OperationKey::Ascii,
+        OperationKey::DocumentAnalysisFactsJson,
+        OperationKey::DocumentAnalysisJson,
+        OperationKey::LayoutJson,
+        OperationKey::SemanticJson,
+        OperationKey::Svg,
+        OperationKey::SvgPlanJson,
+        OperationKey::ValidationJson,
+    ];
+    const WEB_CONTRACT: merman_bindings_core::ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Web)
+            .with_operations(WEB_OPERATIONS)
+            .materialize();
+
+    WEB_CONTRACT.runtime_catalog(0).resources
 }
 
 fn render_c_header(contract: &BindingResourceContract) -> String {

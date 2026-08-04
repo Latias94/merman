@@ -5,70 +5,89 @@
 
 #![allow(dead_code)]
 
-use std::collections::BTreeSet;
-use std::sync::OnceLock;
+use crate::key_set::KeySet;
 
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../capabilities/generated/capability_surface.rs"
 ));
 
-pub(crate) fn compiled_capability_keys() -> &'static BTreeSet<CapabilityKey> {
-    static COMPILED: OnceLock<BTreeSet<CapabilityKey>> = OnceLock::new();
-    COMPILED.get_or_init(|| {
-        let mut capabilities = BTreeSet::new();
+#[cfg(feature = "svg")]
+const COMPILED_SVG_CAPABILITY_BITS: u64 = CapabilityKey::Svg.compact_bit()
+    | if merman::svg::layout_cytoscape_available() {
+        CapabilityKey::LayoutCytoscape.compact_bit()
+    } else {
+        0
+    }
+    | if merman::svg::layout_elk_available() {
+        CapabilityKey::LayoutElk.compact_bit()
+    } else {
+        0
+    }
+    | if merman::svg::math_available() {
+        CapabilityKey::Math.compact_bit()
+    } else {
+        0
+    };
 
-        #[cfg(feature = "svg")]
-        {
-            capabilities.insert(CapabilityKey::Svg);
-            if merman::svg::layout_cytoscape_available() {
-                capabilities.insert(CapabilityKey::LayoutCytoscape);
-            }
-            if merman::svg::layout_elk_available() {
-                capabilities.insert(CapabilityKey::LayoutElk);
-            }
-            if merman::svg::math_available() {
-                capabilities.insert(CapabilityKey::Math);
-            }
-        }
-        #[cfg(feature = "analysis")]
-        capabilities.insert(CapabilityKey::Analysis);
-        #[cfg(feature = "ascii")]
-        capabilities.insert(CapabilityKey::Ascii);
-        #[cfg(feature = "png")]
-        capabilities.insert(CapabilityKey::Png);
-        #[cfg(feature = "jpeg")]
-        capabilities.insert(CapabilityKey::Jpeg);
-        #[cfg(feature = "pdf")]
-        capabilities.insert(CapabilityKey::Pdf);
+#[cfg(not(feature = "svg"))]
+const COMPILED_SVG_CAPABILITY_BITS: u64 = 0;
 
-        for id in merman::runtime::compiled_system_adapter_ids() {
-            let key = CapabilityKey::from_id(id)
-                .expect("runtime adapter IDs must be owned by the capability descriptor");
-            capabilities.insert(key);
-        }
+const COMPILED_CAPABILITY_BITS: u64 = COMPILED_SVG_CAPABILITY_BITS
+    | if cfg!(feature = "analysis") {
+        CapabilityKey::Analysis.compact_bit()
+    } else {
+        0
+    }
+    | if cfg!(feature = "ascii") {
+        CapabilityKey::Ascii.compact_bit()
+    } else {
+        0
+    }
+    | if cfg!(feature = "png") {
+        CapabilityKey::Png.compact_bit()
+    } else {
+        0
+    }
+    | if cfg!(feature = "jpeg") {
+        CapabilityKey::Jpeg.compact_bit()
+    } else {
+        0
+    }
+    | if cfg!(feature = "pdf") {
+        CapabilityKey::Pdf.compact_bit()
+    } else {
+        0
+    }
+    | if cfg!(feature = "system-clock") {
+        CapabilityKey::SystemClock.compact_bit()
+    } else {
+        0
+    }
+    | if cfg!(feature = "system-random") {
+        CapabilityKey::SystemRandom.compact_bit()
+    } else {
+        0
+    }
+    | if cfg!(feature = "system-timezone") {
+        CapabilityKey::SystemTimezone.compact_bit()
+    } else {
+        0
+    };
 
-        capabilities
-    })
-}
-
-pub(crate) fn compiled_operation_keys() -> BTreeSet<OperationKey> {
-    OperationKey::ALL
-        .iter()
-        .copied()
-        .filter(|key| operation_is_compiled(*key))
-        .collect()
+pub(crate) const fn compiled_capability_keys() -> KeySet<CapabilityKey> {
+    KeySet::from_bits(COMPILED_CAPABILITY_BITS)
 }
 
 pub(crate) fn operation_is_compiled(key: OperationKey) -> bool {
     let compiled = compiled_capability_keys();
     let spec = key.spec();
     spec.capability
-        .is_none_or(|capability| compiled.contains(&capability))
+        .is_none_or(|capability| compiled.contains(capability))
         && spec
             .compiled_prerequisites
             .iter()
-            .all(|capability| compiled.contains(capability))
+            .all(|capability| compiled.contains(*capability))
 }
 
 /// One capability implemented by a transport crate rather than binding-core itself.

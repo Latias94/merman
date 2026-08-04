@@ -283,7 +283,7 @@ impl ValidatedArtifactContract {
     /// Produces the exact open-string capability DTO advertised by this transport.
     #[must_use]
     pub fn runtime_capabilities(&self) -> RuntimeCapabilities {
-        let provider_ids = sorted_stable_ids(
+        let provider_ids = stable_ids(
             self.text_measurement_provider_keys(),
             crate::TextMeasurementProviderKey::id,
         );
@@ -299,13 +299,10 @@ impl ValidatedArtifactContract {
         };
 
         RuntimeCapabilities {
-            capability_ids: sorted_stable_ids(self.capability_keys(), crate::CapabilityKey::id),
-            output_ids: sorted_stable_ids(self.output_keys(), crate::OutputKey::id),
-            operation_ids: sorted_stable_ids(self.operation_keys(), crate::OperationKey::id),
-            system_adapter_ids: sorted_stable_ids(
-                self.system_adapter_keys(),
-                crate::CapabilityKey::id,
-            ),
+            capability_ids: stable_ids(self.capability_keys(), crate::CapabilityKey::id),
+            output_ids: stable_ids(self.output_keys(), crate::OutputKey::id),
+            operation_ids: stable_ids(self.operation_keys(), crate::OperationKey::id),
+            system_adapter_ids: stable_ids(self.system_adapter_keys(), crate::CapabilityKey::id),
             text_measurement,
         }
     }
@@ -315,14 +312,13 @@ impl ValidatedArtifactContract {
     pub fn runtime_catalog(&self, transport_api_version: u32) -> RuntimeCatalog {
         let capabilities = self.runtime_capabilities();
         let constructor_service_contracts = runtime_constructor_service_contracts_for(self);
-        let mut payload_schemas = self
+        let payload_schemas = self
             .payload_schema_keys()
             .map(|schema| RuntimePayloadSchema {
                 id: schema.id(),
                 version: schema.version(),
             })
             .collect::<Vec<_>>();
-        payload_schemas.sort_unstable_by_key(|schema| schema.id);
 
         RuntimeCatalog {
             schema_version: RUNTIME_CATALOG_SCHEMA_VERSION,
@@ -330,12 +326,12 @@ impl ValidatedArtifactContract {
             package_version: env!("CARGO_PKG_VERSION"),
             options_schema_versions: vec![crate::BINDING_OPTIONS_SCHEMA_VERSION],
             payload_schemas,
-            metadata_ids: sorted_stable_ids(self.metadata_keys(), MetadataKey::id),
-            option_group_ids: sorted_stable_ids(
+            metadata_ids: stable_ids(self.metadata_keys(), MetadataKey::id),
+            option_group_ids: stable_ids(
                 self.option_group_keys(),
                 crate::BindingOptionGroupKey::id,
             ),
-            constructor_service_ids: sorted_stable_ids(
+            constructor_service_ids: stable_ids(
                 self.constructor_service_keys(),
                 crate::ConstructorServiceKey::id,
             ),
@@ -372,25 +368,26 @@ impl ValidatedArtifactContract {
     }
 }
 
-fn sorted_stable_ids<T>(
+fn stable_ids<T>(
     values: impl IntoIterator<Item = T>,
     id: impl Fn(T) -> &'static str,
 ) -> Vec<&'static str> {
-    let mut ids = values.into_iter().map(id).collect::<Vec<_>>();
-    ids.sort_unstable();
-    ids
+    // Every typed vocabulary is declared in stable-ID order, and artifact selections retain that
+    // order. Keeping the descriptor order avoids pulling generic sorting machinery into minimal
+    // native artifacts while preserving deterministic catalogs.
+    values.into_iter().map(id).collect()
 }
 
 fn runtime_constructor_service_contracts_for(
     artifact_contract: &ValidatedArtifactContract,
 ) -> Vec<RuntimeConstructorServiceContract> {
-    let mut contracts = artifact_contract
+    artifact_contract
         .constructor_service_keys()
         .map(|service| {
             let spec = service.spec();
             RuntimeConstructorServiceContract {
                 id: service.id(),
-                provided_text_measurement_provider_ids: sorted_stable_ids(
+                provided_text_measurement_provider_ids: stable_ids(
                     crate::TextMeasurementProviderKey::ALL
                         .iter()
                         .copied()
@@ -406,9 +403,7 @@ fn runtime_constructor_service_contracts_for(
                 resource_limits: runtime_constructor_resource_limits(spec.resource_catalog()),
             }
         })
-        .collect::<Vec<_>>();
-    contracts.sort_unstable_by_key(|contract| contract.id);
-    contracts
+        .collect()
 }
 
 fn runtime_constructor_resource_limits(
@@ -850,38 +845,17 @@ fn rule_catalog_entry(rule: merman_analysis::RuleCatalogEntry) -> RuleCatalogEnt
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "svg")]
-    use crate::ConstructorServiceKey;
-    use crate::{
-        BindingPayloadSchemaKey, BindingStatus, CompiledBindingSurface, RuntimePolicyExposure,
-        TargetKey, TransportExposure,
-    };
+    use crate::{ArtifactContractSpec, BindingStatus, OperationKey, TargetKey};
     use serde_json::Value;
 
     fn full_native_contract() -> ValidatedArtifactContract {
-        let exposure = TransportExposure::for_target(TargetKey::Native)
-            .with_all_compiled_operations()
-            .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
-            .and_then(TransportExposure::with_all_available_metadata)
-            .and_then(|exposure| {
-                exposure.with_payload_schemas(BindingPayloadSchemaKey::ALL.iter().copied())
-            })
-            .map(|exposure| {
-                exposure.with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
-            })
-            .expect("the complete native exposure must be declarable");
+        crate::artifact_contract::DEFAULT_ARTIFACT_SNAPSHOT
+    }
 
-        #[cfg(feature = "svg")]
-        let exposure = exposure
-            .with_constructor_services([
-                ConstructorServiceKey::HostTextMeasurement,
-                ConstructorServiceKey::IconRegistry,
-            ])
-            .expect("the complete SVG service surface must be declarable");
-
-        CompiledBindingSurface::current()
-            .validate(exposure)
-            .expect("the complete native artifact contract must be coherent")
+    fn semantic_contract() -> ValidatedArtifactContract {
+        ArtifactContractSpec::new(TargetKey::Native)
+            .with_operations(&[OperationKey::SemanticJson])
+            .materialize()
     }
 
     #[test]
@@ -1305,13 +1279,7 @@ mod tests {
 
     #[test]
     fn catalog_without_svg_exposure_omits_icon_registry_service_contract() {
-        let exposure = TransportExposure::for_target(TargetKey::Native)
-            .with_operations([crate::OperationKey::SemanticJson])
-            .expect("semantic operation must be declarable");
-        let catalog = CompiledBindingSurface::current()
-            .validate(exposure)
-            .expect("semantic-only artifact contract must be coherent")
-            .runtime_catalog(2);
+        let catalog = semantic_contract().runtime_catalog(2);
 
         assert!(!catalog.capabilities.has_capability("svg"));
         assert!(!catalog.constructor_service_ids.contains(&"icon-registry"));
@@ -1376,19 +1344,17 @@ mod tests {
     #[cfg(all(feature = "svg", feature = "analysis"))]
     #[test]
     fn transport_owned_projection_hides_svg_resources_but_keeps_semantic_limits() {
-        let exposure = TransportExposure::for_target(TargetKey::Native)
-            .with_operations([
-                crate::OperationKey::AnalysisJson,
-                crate::OperationKey::AnalysisFactsJson,
-                crate::OperationKey::DocumentAnalysisJson,
-                crate::OperationKey::DocumentAnalysisFactsJson,
-                crate::OperationKey::SemanticJson,
-                crate::OperationKey::ValidationJson,
-            ])
-            .expect("analysis operations must be declarable");
-        let contract = CompiledBindingSurface::current()
-            .validate(exposure)
-            .expect("analysis-only artifact contract must be coherent");
+        const ANALYSIS_OPERATIONS: &[OperationKey] = &[
+            OperationKey::AnalysisFactsJson,
+            OperationKey::AnalysisJson,
+            OperationKey::DocumentAnalysisFactsJson,
+            OperationKey::DocumentAnalysisJson,
+            OperationKey::SemanticJson,
+            OperationKey::ValidationJson,
+        ];
+        let contract = ArtifactContractSpec::new(TargetKey::Native)
+            .with_operations(ANALYSIS_OPERATIONS)
+            .materialize();
         let capabilities = contract.runtime_capabilities();
         let catalog = contract.runtime_catalog(2);
 
@@ -1493,13 +1459,7 @@ mod tests {
 
     #[test]
     fn presentation_catalog_projects_the_artifact_surface() {
-        let empty_contract = CompiledBindingSurface::current()
-            .validate(
-                TransportExposure::for_target(TargetKey::Native)
-                    .with_operations([crate::OperationKey::SemanticJson])
-                    .expect("semantic operation must be declarable"),
-            )
-            .expect("semantic-only artifact contract must be coherent");
+        let empty_contract = semantic_contract();
         let empty: Value =
             serde_json::from_slice(&presentation_catalog_json_for(&empty_contract).unwrap())
                 .unwrap();
@@ -1514,13 +1474,9 @@ mod tests {
 
         #[cfg(feature = "svg")]
         {
-            let no_elk = CompiledBindingSurface::current()
-                .validate(
-                    TransportExposure::for_target(TargetKey::Native)
-                        .with_operations([crate::OperationKey::Svg])
-                        .expect("SVG operation must be declarable"),
-                )
-                .expect("SVG artifact contract without ELK exposure must be coherent");
+            let no_elk = ArtifactContractSpec::new(TargetKey::Native)
+                .with_operations(&[OperationKey::Svg])
+                .materialize();
             let no_elk: Value =
                 serde_json::from_slice(&presentation_catalog_json_for(&no_elk).unwrap()).unwrap();
             assert_eq!(
@@ -1601,18 +1557,10 @@ mod tests {
             assert_eq!(empty_again, empty);
 
             if merman::svg::layout_elk_available() {
-                let full = CompiledBindingSurface::current()
-                    .validate(
-                        TransportExposure::for_target(TargetKey::Native)
-                            .with_operations([crate::OperationKey::Svg])
-                            .and_then(|exposure| {
-                                exposure.with_supplemental_capabilities([
-                                    crate::CapabilityKey::LayoutElk,
-                                ])
-                            })
-                            .expect("SVG and ELK exposure must be declarable"),
-                    )
-                    .expect("SVG artifact contract with ELK must be coherent");
+                let full = ArtifactContractSpec::new(TargetKey::Native)
+                    .with_operations(&[OperationKey::Svg])
+                    .with_supplemental_capabilities(&[crate::CapabilityKey::LayoutElk])
+                    .materialize();
                 let full: Value =
                     serde_json::from_slice(&presentation_catalog_json_for(&full).unwrap()).unwrap();
                 assert_eq!(full["profiles"][0]["fully_available"], true);
@@ -1867,13 +1815,7 @@ mod tests {
 
     #[test]
     fn artifact_metadata_rejects_known_but_unadvertised_catalogs() {
-        let contract = CompiledBindingSurface::current()
-            .validate(
-                TransportExposure::for_target(TargetKey::Native)
-                    .with_operations([crate::OperationKey::SemanticJson])
-                    .expect("semantic operation must be declarable"),
-            )
-            .expect("metadata-free artifact contract must be coherent");
+        let contract = semantic_contract();
         let error = contract
             .metadata_json(MetadataKey::SupportedDiagrams.id())
             .unwrap_err();

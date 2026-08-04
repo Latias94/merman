@@ -53,7 +53,8 @@ impl BindingEngine {
     /// Creates a deterministic engine that never consults ambient host state.
     pub fn new(options_json: &[u8]) -> Result<Self, BindingError> {
         let artifact_contract = default_artifact_contract();
-        let (options, base_options) = common::parse_base_options(options_json)?;
+        let (options, base_options) =
+            common::parse_base_options_for_artifact(options_json, &artifact_contract)?;
         ensure_selected_runtime_policy(&options, BindingRuntimePolicy::Deterministic)?;
         Self::with_parsed_options_and_services(
             artifact_contract,
@@ -89,7 +90,8 @@ impl BindingEngine {
         options_json: &[u8],
         services: BindingEngineServices,
     ) -> Result<Self, BindingError> {
-        let (options, base_options) = common::parse_base_options(options_json)?;
+        let (options, base_options) =
+            common::parse_base_options_for_artifact(options_json, &artifact_contract)?;
         artifact_contract.validate_engine_services(&services)?;
         services.validate_options(&options)?;
         validate_runtime_policy_exposure(&artifact_contract, &options)?;
@@ -107,7 +109,8 @@ impl BindingEngine {
     /// Creates an engine that explicitly selects the compiled native runtime adapters.
     pub fn try_native(options_json: &[u8]) -> Result<Self, BindingError> {
         let artifact_contract = default_artifact_contract();
-        let (options, base_options) = common::parse_base_options(options_json)?;
+        let (options, base_options) =
+            common::parse_base_options_for_artifact(options_json, &artifact_contract)?;
         ensure_selected_runtime_policy(&options, BindingRuntimePolicy::Native)?;
         let runtime_policy =
             merman::runtime::RuntimePolicy::try_native().map_err(common::runtime_policy_error)?;
@@ -126,7 +129,8 @@ impl BindingEngine {
         context: merman::runtime::OperationContext,
     ) -> Result<Self, BindingError> {
         let artifact_contract = default_artifact_contract();
-        let (options, base_options) = common::parse_base_options(options_json)?;
+        let (options, base_options) =
+            common::parse_base_options_for_artifact(options_json, &artifact_contract)?;
         common::reject_selected_runtime_policy(&options, "operation-context")?;
         Self::with_parsed_options_and_services(
             artifact_contract,
@@ -143,7 +147,8 @@ impl BindingEngine {
         runtime_policy: merman::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
         let artifact_contract = default_artifact_contract();
-        let (options, base_options) = common::parse_base_options(options_json)?;
+        let (options, base_options) =
+            common::parse_base_options_for_artifact(options_json, &artifact_contract)?;
         common::reject_selected_runtime_policy(&options, "custom")?;
         Self::with_parsed_options_and_services(
             artifact_contract,
@@ -188,16 +193,25 @@ impl BindingEngine {
         operation: crate::BindingOperationKind,
         options_json: &[u8],
     ) -> Result<PreparedRequestOverlay, BindingError> {
-        let overlay = common::parse_request_overlay(options_json, operation.resource_scope())?;
+        let overlay = common::parse_request_overlay_for_artifact(
+            options_json,
+            operation.resource_scope(),
+            &self.artifact_contract,
+        )?;
         match overlay {
             common::BindingRequestOverlay::Unchanged => {
                 self.unchanged_request_validation
-                    .get_or_init(|| self.base_options.validate_unchanged_request())
+                    .get_or_init(|| {
+                        self.base_options
+                            .validate_unchanged_request(Some(&self.artifact_contract))
+                    })
                     .clone()?;
                 Ok(PreparedRequestOverlay::Unchanged)
             }
             overlay @ common::BindingRequestOverlay::Override { .. } => {
-                let options = self.base_options.apply_overlay(overlay)?;
+                let options = self
+                    .base_options
+                    .apply_overlay(overlay, Some(&self.artifact_contract))?;
                 self.services.validate_options(&options)?;
                 let configs =
                     BindingOperationConfigs::compile(&options, self.runtime_policy.clone())?;

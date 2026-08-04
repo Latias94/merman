@@ -10,6 +10,7 @@ mod artifact_contract;
 mod capability;
 mod common;
 mod engine;
+mod key_set;
 mod lifecycle;
 mod metadata;
 mod metadata_registry;
@@ -29,7 +30,7 @@ mod ascii;
 #[cfg(feature = "svg")]
 mod render;
 
-pub use artifact_contract::{CompiledBindingSurface, TransportExposure, ValidatedArtifactContract};
+pub use artifact_contract::{ArtifactContractSpec, ValidatedArtifactContract};
 pub use capability::{
     CAPABILITY_DESCRIPTOR_DIGEST, CAPABILITY_DESCRIPTOR_SCHEMA_VERSION, CapabilityDescriptor,
     CapabilityKey, OperationKey, OperationSpec, OutputDescriptor, OutputKey, TargetDescriptor,

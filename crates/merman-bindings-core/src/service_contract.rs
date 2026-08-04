@@ -1,6 +1,3 @@
-use crate::capability::CapabilityKey;
-use std::collections::BTreeSet;
-
 /// One renderer text-measurement route advertised by a transport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
@@ -33,30 +30,6 @@ impl TextMeasurementProviderKey {
                 ConstructorServiceKey::HostTextMeasurement,
             ),
             Self::Vendored => TextMeasurementProviderSource::SvgPipeline,
-        }
-    }
-
-    pub(crate) fn is_compiled(self, capabilities: &BTreeSet<CapabilityKey>) -> bool {
-        match self.source() {
-            TextMeasurementProviderSource::SvgPipeline => {
-                capabilities.contains(&CapabilityKey::Svg)
-            }
-            TextMeasurementProviderSource::ConstructorService(service) => {
-                service.spec().is_compiled(capabilities)
-            }
-        }
-    }
-
-    pub(crate) fn is_exposed(
-        self,
-        uses_svg_pipeline: bool,
-        constructor_services: &BTreeSet<ConstructorServiceKey>,
-    ) -> bool {
-        match self.source() {
-            TextMeasurementProviderSource::SvgPipeline => uses_svg_pipeline,
-            TextMeasurementProviderSource::ConstructorService(service) => {
-                constructor_services.contains(&service)
-            }
         }
     }
 }
@@ -123,14 +96,6 @@ pub(crate) struct ConstructorServiceSpec {
 impl ConstructorServiceSpec {
     pub(crate) const fn resource_catalog(&self) -> Option<ConstructorServiceResourceCatalog> {
         self.resource_catalog
-    }
-
-    pub(crate) fn is_compiled(&self, capabilities: &BTreeSet<CapabilityKey>) -> bool {
-        match self.availability {
-            ConstructorServiceAvailability::SvgPipeline => {
-                capabilities.contains(&CapabilityKey::Svg)
-            }
-        }
     }
 
     pub(crate) const fn is_available(&self, uses_svg_pipeline: bool) -> bool {

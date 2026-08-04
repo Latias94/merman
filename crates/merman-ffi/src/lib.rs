@@ -6,14 +6,15 @@
 //! function table and execute every operation through the shared binding operation path. No raw Rust
 //! allocation or Rust object pointer crosses this boundary.
 
-use merman_bindings_core::{
-    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
-    BindingEngineServices, BindingError, BindingErrorKind, BindingOperationRequest,
-    BindingPayloadSchemaKey, BindingResourceErrorDetails, BindingStatus, CompiledBindingSurface,
-    RuntimePolicyExposure, TargetKey, TransportExposure, ValidatedArtifactContract,
-};
 #[cfg(feature = "svg")]
-use merman_bindings_core::{ConstructorServiceKey, HostMeasurementResult};
+use merman_bindings_core::HostMeasurementResult;
+use merman_bindings_core::{
+    ArtifactContractSpec, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError,
+    BindingEngineAdmissionMode, BindingEngineServices, BindingError, BindingErrorKind,
+    BindingOperationRequest, BindingPayloadSchemaKey, BindingResourceErrorDetails, BindingStatus,
+    CapabilityKey, ConstructorServiceKey, OperationKey, RuntimePolicyExposure, TargetKey,
+    ValidatedArtifactContract,
+};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::mem::{align_of, size_of};
@@ -197,9 +198,64 @@ fn token_has_domain(token: u64, domain_tag: u64) -> bool {
 
 static ENGINE_REGISTRY: OnceLock<Mutex<NativeEngineRegistry>> = OnceLock::new();
 static ALLOCATION_REGISTRY: OnceLock<Mutex<NativeAllocationRegistry>> = OnceLock::new();
-static ARTIFACT_CONTRACT: OnceLock<ValidatedArtifactContract> = OnceLock::new();
 static RUNTIME_CATALOG: OnceLock<Box<[u8]>> = OnceLock::new();
 static RUNTIME_CATALOG_DIGEST: OnceLock<Box<[u8]>> = OnceLock::new();
+const NATIVE_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
+    #[cfg(feature = "svg")]
+    ConstructorServiceKey::HostTextMeasurement,
+];
+const NATIVE_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson,
+    #[cfg(feature = "ascii")]
+    OperationKey::Ascii,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisJson,
+    #[cfg(feature = "jpeg")]
+    OperationKey::Jpeg,
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    #[cfg(feature = "pdf")]
+    OperationKey::Pdf,
+    #[cfg(feature = "png")]
+    OperationKey::Png,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::ValidationJson,
+];
+const NATIVE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
+const NATIVE_RUNTIME_POLICY: RuntimePolicyExposure = if cfg!(all(
+    feature = "system-clock",
+    feature = "system-timezone",
+    feature = "system-random"
+)) {
+    RuntimePolicyExposure::BindingOptions
+} else {
+    RuntimePolicyExposure::DeterministicOnly
+};
+static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
+    .with_operations(NATIVE_OPERATIONS)
+    .with_supplemental_capabilities(NATIVE_SUPPLEMENTAL_CAPABILITIES)
+    .with_all_available_metadata()
+    .with_payload_schemas(BindingPayloadSchemaKey::ALL)
+    .with_constructor_services(NATIVE_CONSTRUCTOR_SERVICES)
+    .with_runtime_policy_exposure(NATIVE_RUNTIME_POLICY)
+    .materialize();
 
 fn reentrant_call_failure() -> NativeFailure {
     NativeFailure::reentrant_call("a host callback must not re-enter the same native engine")
@@ -332,25 +388,7 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
 }
 
 fn native_artifact_contract() -> &'static ValidatedArtifactContract {
-    ARTIFACT_CONTRACT.get_or_init(|| {
-        let exposure = TransportExposure::for_target(TargetKey::Native)
-            .with_all_compiled_operations()
-            .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
-            .and_then(TransportExposure::with_all_available_metadata)
-            .and_then(|exposure| {
-                exposure.with_payload_schemas(BindingPayloadSchemaKey::ALL.iter().copied())
-            })
-            .expect("the C transport declares each compiled endpoint set once")
-            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
-        #[cfg(feature = "svg")]
-        let exposure = exposure
-            .with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
-            .expect("the C SVG transport exposes its compiled constructor service");
-
-        CompiledBindingSurface::current()
-            .validate(exposure)
-            .expect("the C transport exposure must match its compiled native surface")
-    })
+    &ARTIFACT_CONTRACT
 }
 
 fn engine_registry() -> &'static Mutex<NativeEngineRegistry> {
@@ -2364,6 +2402,7 @@ mod tests {
             root.keys().map(String::as_str).collect::<BTreeSet<_>>(),
             [
                 "capabilities",
+                "constructor_service_contracts",
                 "constructor_service_ids",
                 "metadata_ids",
                 "option_group_ids",
@@ -2416,6 +2455,15 @@ mod tests {
                     .map(merman_bindings_core::ConstructorServiceKey::id)
                     .collect::<Vec<_>>()
             )
+        );
+        assert_eq!(
+            catalog["constructor_service_contracts"],
+            serde_json::to_value(
+                native_artifact_contract()
+                    .runtime_catalog(MERMAN_NATIVE_ABI_VERSION)
+                    .constructor_service_contracts
+            )
+            .unwrap()
         );
         assert!(catalog.get("runtime_contract").is_none());
         assert!(catalog.get("capability_vocabulary").is_none());
@@ -3254,30 +3302,33 @@ mod tests {
         config.options_json = borrowed_slice(br#"{"runtime_policy":"native"}"#);
         let mut result = native_result();
         let mut token = 0;
-        let compiled = native_artifact_contract()
-            .runtime_capabilities()
-            .system_adapter_ids;
-        let missing = ["system-clock", "system-timezone", "system-random"]
-            .into_iter()
-            .find(|capability| !compiled.contains(capability));
         let status = unsafe { api.engine_new.unwrap()(&config, &mut token, &mut result) };
 
-        match missing {
-            Some(expected_capability) => {
-                assert_eq!(status, MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION);
-                assert_eq!(token, 0);
-                let error = result_json(&result);
-                assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
-                assert_eq!(error["capability_id"], expected_capability);
-            }
-            None => {
-                assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
-                assert_ne!(token, 0);
-                assert_eq!(
-                    unsafe { api.engine_try_close.unwrap()(token) },
-                    MERMAN_NATIVE_STATUS_OK
-                );
-            }
+        if NATIVE_RUNTIME_POLICY == RuntimePolicyExposure::DeterministicOnly {
+            assert_eq!(status, MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR);
+            assert_eq!(token, 0);
+            let error = result_json(&result);
+            assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_GENERIC);
+            assert_eq!(error["capability_id"], serde_json::Value::Null);
+            assert!(
+                error["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("not exposed by target `native`"))
+            );
+        } else {
+            assert_eq!(NATIVE_RUNTIME_POLICY, RuntimePolicyExposure::BindingOptions);
+            assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
+            assert_ne!(token, 0);
+            assert_eq!(
+                native_artifact_contract()
+                    .runtime_capabilities()
+                    .system_adapter_ids,
+                ["system-clock", "system-random", "system-timezone"]
+            );
+            assert_eq!(
+                unsafe { api.engine_try_close.unwrap()(token) },
+                MERMAN_NATIVE_STATUS_OK
+            );
         }
         unsafe { api.result_free.unwrap()(&mut result) };
     }

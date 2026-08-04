@@ -1,13 +1,16 @@
 use merman_bindings_core::{
-    BindingEngine, BindingError, BindingOperationRequest, BindingPayloadSchemaKey, BindingStatus,
-    CapabilityKey, CompiledBindingSurface, OperationKey, RuntimePolicyExposure, TargetKey,
-    TransportExposure, ValidatedArtifactContract,
+    ArtifactContractSpec, BindingEngine, BindingError, BindingOperationRequest,
+    BindingPayloadSchemaKey, BindingStatus, CapabilityKey, OperationKey, RuntimePolicyExposure,
+    TargetKey, ValidatedArtifactContract,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
 
 const NODE_WIRE_VERSION: u32 = 1;
-static ARTIFACT_CONTRACT: OnceLock<ValidatedArtifactContract> = OnceLock::new();
+const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
+    TargetKey::Web
+} else {
+    TargetKey::Native
+};
 const NODE_STATIC_SVG_CAPABILITIES: &[CapabilityKey] = &[
     #[cfg(feature = "layout-cytoscape")]
     CapabilityKey::LayoutCytoscape,
@@ -25,6 +28,13 @@ const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "svg")]
     OperationKey::SvgPlanJson,
 ];
+static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(NODE_TARGET)
+    .with_operations(NODE_STATIC_SVG_OPERATIONS)
+    .with_supplemental_capabilities(NODE_STATIC_SVG_CAPABILITIES)
+    .with_all_available_metadata()
+    .with_payload_schemas(BindingPayloadSchemaKey::ALL)
+    .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+    .materialize();
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -79,29 +89,7 @@ pub(crate) fn create_engine(options_json: &str) -> Result<BindingEngine, Binding
 }
 
 fn node_artifact_contract() -> &'static ValidatedArtifactContract {
-    ARTIFACT_CONTRACT.get_or_init(|| {
-        let target = if cfg!(target_arch = "wasm32") {
-            TargetKey::Web
-        } else {
-            TargetKey::Native
-        };
-        let exposure = TransportExposure::for_target(target)
-            .with_operations(NODE_STATIC_SVG_OPERATIONS.iter().copied())
-            .and_then(|exposure| {
-                exposure
-                    .with_supplemental_capabilities(NODE_STATIC_SVG_CAPABILITIES.iter().copied())
-            })
-            .and_then(TransportExposure::with_all_available_metadata)
-            .and_then(|exposure| {
-                exposure.with_payload_schemas(BindingPayloadSchemaKey::ALL.iter().copied())
-            })
-            .expect("the Node transport declares each endpoint set once")
-            .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly);
-
-        CompiledBindingSurface::current()
-            .validate(exposure)
-            .expect("the Node transport exposure must match its compiled surface")
-    })
+    &ARTIFACT_CONTRACT
 }
 
 pub(crate) fn runtime_catalog_wire() -> Result<String, BindingError> {

@@ -1,5 +1,4 @@
 use crate::capability::{CapabilityKey, compiled_capability_keys};
-use std::collections::BTreeSet;
 
 /// Descriptor-backed availability rule for one top-level binding option group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,11 +94,11 @@ impl BindingOptionGroupKey {
     pub fn is_compiled(self) -> bool {
         let compiled = compiled_capability_keys();
         let spec = self.spec();
-        (spec.requires_svg_pipeline && compiled.contains(&CapabilityKey::Svg))
+        (spec.requires_svg_pipeline && compiled.contains(CapabilityKey::Svg))
             || spec
                 .any_capabilities
                 .iter()
-                .any(|capability| compiled.contains(capability))
+                .any(|capability| compiled.contains(*capability))
     }
 }
 
@@ -150,11 +149,3 @@ const OPTION_GROUP_SPECS: &[BindingOptionGroupSpec] = &[
         requires_svg_pipeline: true,
     },
 ];
-
-pub(crate) fn compiled_option_group_keys() -> BTreeSet<BindingOptionGroupKey> {
-    BindingOptionGroupKey::ALL
-        .iter()
-        .copied()
-        .filter(|key| key.is_compiled())
-        .collect()
-}

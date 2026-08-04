@@ -1,260 +1,618 @@
 use crate::capability::{
     CapabilityKey, OperationKey, OutputKey, TargetKey, TransportCompiledExtensionKey,
-    compiled_capability_keys, compiled_operation_keys,
+    compiled_capability_keys,
 };
+use crate::key_set::KeySet;
 use crate::metadata_registry::{MetadataKey, metadata_spec};
-use crate::option_contract::{BindingOptionGroupKey, compiled_option_group_keys};
+use crate::option_contract::BindingOptionGroupKey;
 use crate::payload_contract::BindingPayloadSchemaKey;
 use crate::service_contract::{
     ConstructorServiceKey, RuntimePolicyExposure, TextMeasurementProviderKey,
+    TextMeasurementProviderSource,
 };
 use crate::{BindingEngineServices, BindingError};
-use std::collections::BTreeSet;
 use std::sync::{Arc, OnceLock};
 
-mod surface;
-mod validation;
-
-use surface::CompiledSelection;
-pub use surface::TransportExposure;
-use validation::{
-    close_capability_implications, invalid_artifact_contract, is_supplemental_capability,
-    resolve_metadata, resolve_system_adapters, validate_compiled_capabilities,
-    validate_compiled_operation_requirements, validate_services,
-};
-
-/// Descriptor-derived facts compiled into `merman-bindings-core` plus typed transport extensions.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompiledBindingSurface {
-    capabilities: BTreeSet<CapabilityKey>,
-    operations: BTreeSet<OperationKey>,
-    metadata: BTreeSet<MetadataKey>,
-    option_groups: BTreeSet<BindingOptionGroupKey>,
-    text_measurement_providers: BTreeSet<TextMeasurementProviderKey>,
-    constructor_services: BTreeSet<ConstructorServiceKey>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StaticMetadataSelection {
+    Explicit(&'static [MetadataKey]),
+    AllAvailable,
 }
 
-impl CompiledBindingSurface {
-    /// Captures the exact binding-core facts for the current Cargo feature selection.
+/// Static typed declaration of one transport's callable artifact surface.
+///
+/// The declaration contains no raw capability or operation IDs and can live in a `const` or
+/// `static`. [`Self::materialize`] verifies and produces the immutable
+/// [`ValidatedArtifactContract`] snapshot during constant evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArtifactContractSpec {
+    target: TargetKey,
+    capabilities: &'static [CapabilityKey],
+    operations: &'static [OperationKey],
+    metadata: StaticMetadataSelection,
+    payload_schemas: &'static [BindingPayloadSchemaKey],
+    constructor_services: &'static [ConstructorServiceKey],
+    runtime_policy: RuntimePolicyExposure,
+    transport_extensions: &'static [TransportCompiledExtensionKey],
+    configured_fields: u8,
+}
+
+const OPERATIONS_CONFIGURED: u8 = 1 << 0;
+const CAPABILITIES_CONFIGURED: u8 = 1 << 1;
+const METADATA_CONFIGURED: u8 = 1 << 2;
+const PAYLOAD_SCHEMAS_CONFIGURED: u8 = 1 << 3;
+const CONSTRUCTOR_SERVICES_CONFIGURED: u8 = 1 << 4;
+const RUNTIME_POLICY_CONFIGURED: u8 = 1 << 5;
+const TRANSPORT_EXTENSIONS_CONFIGURED: u8 = 1 << 6;
+
+impl ArtifactContractSpec {
     #[must_use]
-    pub fn current() -> Self {
-        let capabilities = compiled_capability_keys().clone();
-
-        let operations = compiled_operation_keys();
-
-        let metadata = MetadataKey::ALL
-            .iter()
-            .copied()
-            .filter(|key| metadata_spec(*key).is_available(&capabilities))
-            .collect();
-
-        let option_groups = compiled_option_group_keys();
-
-        let text_measurement_providers = TextMeasurementProviderKey::ALL
-            .iter()
-            .copied()
-            .filter(|provider| provider.is_compiled(&capabilities))
-            .collect();
-
-        let constructor_services = ConstructorServiceKey::ALL
-            .iter()
-            .copied()
-            .filter(|service| service.spec().is_compiled(&capabilities))
-            .collect();
-
+    pub const fn new(target: TargetKey) -> Self {
         Self {
-            capabilities,
-            operations,
-            metadata,
-            option_groups,
-            text_measurement_providers,
-            constructor_services,
+            target,
+            capabilities: &[],
+            operations: &[],
+            metadata: StaticMetadataSelection::Explicit(&[]),
+            payload_schemas: &[],
+            constructor_services: &[],
+            runtime_policy: RuntimePolicyExposure::DeterministicOnly,
+            transport_extensions: &[],
+            configured_fields: 0,
         }
     }
 
-    /// Adds a capability compiled by the transport crate rather than binding-core itself.
-    pub fn with_transport_extension(
+    #[must_use]
+    pub const fn with_operations(mut self, operations: &'static [OperationKey]) -> Self {
+        self.configure_once(OPERATIONS_CONFIGURED);
+        self.operations = operations;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_supplemental_capabilities(
         mut self,
-        extension: TransportCompiledExtensionKey,
-    ) -> Result<Self, BindingError> {
-        let capability = extension.capability();
-        if !self.capabilities.insert(capability) {
-            return Err(invalid_artifact_contract(format!(
-                "compiled capability `{}` was declared more than once",
-                capability.id()
-            )));
-        }
-        Ok(self)
+        capabilities: &'static [CapabilityKey],
+    ) -> Self {
+        self.configure_once(CAPABILITIES_CONFIGURED);
+        self.capabilities = capabilities;
+        self
     }
 
-    pub fn validate(
-        &self,
-        exposure: TransportExposure,
-    ) -> Result<ValidatedArtifactContract, BindingError> {
-        let TransportExposure {
-            target,
-            capabilities: requested_capabilities,
-            operations: requested_operations,
-            metadata: requested_metadata,
-            payload_schemas,
-            constructor_services,
-            runtime_policy,
-        } = exposure;
-
-        let operations = self.resolve_operations(target, requested_operations)?;
-        let mut capabilities = self.resolve_capabilities(target, requested_capabilities)?;
-        let mut compiled_prerequisites = BTreeSet::new();
-        for operation in &operations {
-            if let Some(capability) = operation.spec().capability {
-                capabilities.insert(capability);
-            }
-            compiled_prerequisites.extend(operation.spec().compiled_prerequisites.iter().copied());
-        }
-        close_capability_implications(&mut capabilities);
-        close_capability_implications(&mut compiled_prerequisites);
-        validate_compiled_capabilities(target, &capabilities, &self.capabilities)?;
-        validate_compiled_operation_requirements(
-            target,
-            &operations,
-            &compiled_prerequisites,
-            &self.capabilities,
-        )?;
-        let uses_svg_pipeline = capabilities.contains(&CapabilityKey::Svg)
-            || compiled_prerequisites.contains(&CapabilityKey::Svg);
-
-        if runtime_policy == RuntimePolicyExposure::BindingOptions && target != TargetKey::Native {
-            return Err(invalid_artifact_contract(format!(
-                "runtime-policy binding options are not valid for target `{}`",
-                target.id()
-            )));
-        }
-        let system_adapters = resolve_system_adapters(target, runtime_policy, &self.capabilities);
-        capabilities.extend(system_adapters.iter().copied());
-
-        let outputs = operations
-            .iter()
-            .filter_map(|operation| operation.spec().output)
-            .collect::<BTreeSet<_>>();
-
-        let metadata = resolve_metadata(requested_metadata, &capabilities, &self.metadata)?;
-        validate_services(
-            &constructor_services,
-            &self.constructor_services,
-            uses_svg_pipeline,
-        )?;
-        let text_measurement_providers =
-            self.resolve_providers(&constructor_services, uses_svg_pipeline)?;
-        let option_groups = self.option_groups.clone();
-
-        Ok(ValidatedArtifactContract {
-            target,
-            capabilities,
-            outputs,
-            operations,
-            metadata,
-            payload_schemas,
-            option_groups,
-            text_measurement_providers,
-            constructor_services,
-            system_adapters,
-            runtime_policy,
-        })
+    #[must_use]
+    pub const fn with_metadata(mut self, metadata: &'static [MetadataKey]) -> Self {
+        self.configure_once(METADATA_CONFIGURED);
+        self.metadata = StaticMetadataSelection::Explicit(metadata);
+        self
     }
 
-    fn resolve_operations(
-        &self,
-        target: TargetKey,
-        selection: CompiledSelection<OperationKey>,
-    ) -> Result<BTreeSet<OperationKey>, BindingError> {
-        let operations = match selection {
-            CompiledSelection::AllCompiled => self
-                .operations
-                .iter()
-                .copied()
-                .filter(|operation| operation.spec().targets.contains(&target))
-                .collect(),
-            CompiledSelection::Explicit(operations) => operations,
-        };
-        for operation in &operations {
-            if !self.operations.contains(operation) {
-                return Err(invalid_artifact_contract(format!(
-                    "transport operation `{}` is not compiled",
-                    operation.id()
-                )));
-            }
-            if !operation.spec().targets.contains(&target) {
-                return Err(invalid_artifact_contract(format!(
-                    "transport operation `{}` is not valid for target `{}`",
-                    operation.id(),
-                    target.id()
-                )));
-            }
-        }
-        Ok(operations)
+    #[must_use]
+    pub const fn with_all_available_metadata(mut self) -> Self {
+        self.configure_once(METADATA_CONFIGURED);
+        self.metadata = StaticMetadataSelection::AllAvailable;
+        self
     }
 
-    fn resolve_capabilities(
-        &self,
-        target: TargetKey,
-        selection: CompiledSelection<CapabilityKey>,
-    ) -> Result<BTreeSet<CapabilityKey>, BindingError> {
-        let capabilities = match selection {
-            CompiledSelection::AllCompiled => self
-                .capabilities
-                .iter()
-                .copied()
-                .filter(|capability| {
-                    is_supplemental_capability(*capability)
-                        && capability.spec().targets.contains(&target)
-                })
-                .collect(),
-            CompiledSelection::Explicit(capabilities) => capabilities,
-        };
-        for capability in &capabilities {
-            if !is_supplemental_capability(*capability) {
-                return Err(invalid_artifact_contract(format!(
-                    "capability `{}` is derived from operations, runtime policy, or another owning contract and cannot be selected as supplemental",
-                    capability.id()
-                )));
-            }
-        }
-        Ok(capabilities)
+    #[must_use]
+    pub const fn with_payload_schemas(
+        mut self,
+        payload_schemas: &'static [BindingPayloadSchemaKey],
+    ) -> Self {
+        self.configure_once(PAYLOAD_SCHEMAS_CONFIGURED);
+        self.payload_schemas = payload_schemas;
+        self
     }
 
-    fn resolve_providers(
-        &self,
-        constructor_services: &BTreeSet<ConstructorServiceKey>,
-        uses_svg_pipeline: bool,
-    ) -> Result<BTreeSet<TextMeasurementProviderKey>, BindingError> {
-        let mut providers = BTreeSet::new();
-        for provider in TextMeasurementProviderKey::ALL.iter().copied() {
-            if provider.is_exposed(uses_svg_pipeline, constructor_services) {
-                if !self.text_measurement_providers.contains(&provider) {
-                    return Err(invalid_artifact_contract(format!(
-                        "artifact facts expose the uncompiled `{}` text-measurement provider",
-                        provider.id()
-                    )));
+    #[must_use]
+    pub const fn with_constructor_services(
+        mut self,
+        constructor_services: &'static [ConstructorServiceKey],
+    ) -> Self {
+        self.configure_once(CONSTRUCTOR_SERVICES_CONFIGURED);
+        self.constructor_services = constructor_services;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_runtime_policy_exposure(
+        mut self,
+        runtime_policy: RuntimePolicyExposure,
+    ) -> Self {
+        self.configure_once(RUNTIME_POLICY_CONFIGURED);
+        self.runtime_policy = runtime_policy;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_transport_extensions(
+        mut self,
+        transport_extensions: &'static [TransportCompiledExtensionKey],
+    ) -> Self {
+        self.configure_once(TRANSPORT_EXTENSIONS_CONFIGURED);
+        self.transport_extensions = transport_extensions;
+        self
+    }
+
+    const fn configure_once(&mut self, field: u8) {
+        if self.configured_fields & field != 0 {
+            panic!("artifact contract field configured more than once");
+        }
+        self.configured_fields |= field;
+    }
+
+    /// Materializes a verified, allocation-free snapshot.
+    ///
+    /// Declare the spec and snapshot in a `const` or `static` so invalid transport declarations
+    /// fail during compilation rather than during process initialization.
+    #[must_use]
+    #[inline(always)]
+    pub const fn materialize(self) -> ValidatedArtifactContract {
+        let mut compiled_capabilities = compiled_capability_keys().bits();
+        let extension_capabilities = transport_extension_bits(self.transport_extensions);
+        if compiled_capabilities & extension_capabilities != 0 {
+            panic!("transport extension capability was compiled more than once");
+        }
+        compiled_capabilities |= extension_capabilities;
+
+        let operations = operation_slice_bits(self.operations);
+        validate_operation_bits(operations, self.target, compiled_capabilities);
+
+        let supplemental_capabilities = capability_slice_bits(self.capabilities);
+        validate_supplemental_capability_bits(
+            supplemental_capabilities,
+            self.target,
+            compiled_capabilities,
+        );
+
+        let mut capabilities = supplemental_capabilities;
+        let mut compiled_prerequisites = 0;
+        let mut operation_index = 0;
+        while operation_index < OperationKey::ALL.len() {
+            let operation = OperationKey::ALL[operation_index];
+            if operations & operation.compact_bit() != 0 {
+                let spec = operation.spec();
+                if let Some(capability) = spec.capability {
+                    capabilities |= capability.compact_bit();
                 }
-                providers.insert(provider);
+                compiled_prerequisites |= capability_slice_bits(spec.compiled_prerequisites);
+            }
+            operation_index += 1;
+        }
+        capabilities = close_capability_implication_bits(capabilities);
+        compiled_prerequisites = close_capability_implication_bits(compiled_prerequisites);
+        validate_capability_bits(capabilities, self.target, compiled_capabilities);
+        validate_capability_bits(compiled_prerequisites, self.target, compiled_capabilities);
+
+        let uses_svg_pipeline = capabilities & CapabilityKey::Svg.compact_bit() != 0
+            || compiled_prerequisites & CapabilityKey::Svg.compact_bit() != 0;
+        if matches!(self.runtime_policy, RuntimePolicyExposure::BindingOptions)
+            && !matches!(self.target, TargetKey::Native)
+        {
+            panic!("binding-options runtime policy requires the native target");
+        }
+        let system_adapters =
+            system_adapter_bits(self.target, self.runtime_policy, compiled_capabilities);
+        capabilities |= system_adapters;
+
+        let outputs = output_bits_for_operations(operations);
+        let compiled_metadata = compiled_metadata_bits(compiled_capabilities);
+        let metadata = match self.metadata {
+            StaticMetadataSelection::Explicit(metadata) => {
+                let selected = metadata_slice_bits(metadata);
+                validate_metadata_bits(selected, capabilities, compiled_metadata);
+                selected
+            }
+            StaticMetadataSelection::AllAvailable => {
+                available_metadata_bits(compiled_metadata, capabilities)
+            }
+        };
+        let payload_schemas = payload_schema_slice_bits(self.payload_schemas);
+        let constructor_services = constructor_service_slice_bits(self.constructor_services);
+        validate_constructor_service_bits(
+            constructor_services,
+            compiled_capabilities,
+            uses_svg_pipeline,
+        );
+
+        ValidatedArtifactContract {
+            target: self.target,
+            capabilities: KeySet::from_bits(capabilities),
+            outputs: KeySet::from_bits(outputs),
+            operations: KeySet::from_bits(operations),
+            metadata: KeySet::from_bits(metadata),
+            payload_schemas: KeySet::from_bits(payload_schemas),
+            option_groups: KeySet::from_bits(option_group_bits(capabilities, uses_svg_pipeline)),
+            text_measurement_providers: KeySet::from_bits(text_measurement_provider_bits(
+                uses_svg_pipeline,
+                constructor_services,
+            )),
+            constructor_services: KeySet::from_bits(constructor_services),
+            system_adapters: KeySet::from_bits(system_adapters),
+            runtime_policy: self.runtime_policy,
+        }
+    }
+}
+
+const fn transport_extension_bits(extensions: &[TransportCompiledExtensionKey]) -> u64 {
+    let mut bits = 0;
+    let mut index = 0;
+    while index < extensions.len() {
+        let bit = extensions[index].capability().compact_bit();
+        if bits & bit != 0 {
+            panic!("transport extension was declared more than once");
+        }
+        bits |= bit;
+        index += 1;
+    }
+    bits
+}
+
+const fn capability_slice_bits(capabilities: &[CapabilityKey]) -> u64 {
+    let mut bits = 0;
+    let mut index = 0;
+    while index < capabilities.len() {
+        let bit = capabilities[index].compact_bit();
+        if bits & bit != 0 {
+            panic!("capability was declared more than once");
+        }
+        bits |= bit;
+        index += 1;
+    }
+    bits
+}
+
+const fn operation_slice_bits(operations: &[OperationKey]) -> u64 {
+    let mut bits = 0;
+    let mut index = 0;
+    while index < operations.len() {
+        let bit = operations[index].compact_bit();
+        if bits & bit != 0 {
+            panic!("operation was declared more than once");
+        }
+        bits |= bit;
+        index += 1;
+    }
+    bits
+}
+
+const fn metadata_slice_bits(metadata: &[MetadataKey]) -> u64 {
+    let mut bits = 0;
+    let mut index = 0;
+    while index < metadata.len() {
+        let bit = metadata[index].compact_bit();
+        if bits & bit != 0 {
+            panic!("metadata catalog was declared more than once");
+        }
+        bits |= bit;
+        index += 1;
+    }
+    bits
+}
+
+const fn payload_schema_slice_bits(schemas: &[BindingPayloadSchemaKey]) -> u64 {
+    let mut bits = 0;
+    let mut index = 0;
+    while index < schemas.len() {
+        let bit = schemas[index].compact_bit();
+        if bits & bit != 0 {
+            panic!("payload schema was declared more than once");
+        }
+        bits |= bit;
+        index += 1;
+    }
+    bits
+}
+
+const fn constructor_service_slice_bits(services: &[ConstructorServiceKey]) -> u64 {
+    let mut bits = 0;
+    let mut index = 0;
+    while index < services.len() {
+        let bit = services[index].compact_bit();
+        if bits & bit != 0 {
+            panic!("constructor service was declared more than once");
+        }
+        bits |= bit;
+        index += 1;
+    }
+    bits
+}
+
+const fn validate_operation_bits(operations: u64, target: TargetKey, compiled_capabilities: u64) {
+    let mut index = 0;
+    while index < OperationKey::ALL.len() {
+        let operation = OperationKey::ALL[index];
+        if operations & operation.compact_bit() != 0 {
+            if !operation_is_compiled(operation, compiled_capabilities) {
+                panic!("transport operation is not compiled");
+            }
+            if !targets_contain(operation.spec().targets, target) {
+                panic!("transport operation is not valid for the selected target");
             }
         }
-        Ok(providers)
+        index += 1;
     }
+}
+
+const fn operation_is_compiled(operation: OperationKey, compiled_capabilities: u64) -> bool {
+    let spec = operation.spec();
+    if let Some(capability) = spec.capability {
+        if compiled_capabilities & capability.compact_bit() == 0 {
+            return false;
+        }
+    }
+    let prerequisites = capability_slice_bits(spec.compiled_prerequisites);
+    compiled_capabilities & prerequisites == prerequisites
+}
+
+const fn validate_supplemental_capability_bits(
+    capabilities: u64,
+    target: TargetKey,
+    compiled_capabilities: u64,
+) {
+    let mut index = 0;
+    while index < CapabilityKey::ALL.len() {
+        let capability = CapabilityKey::ALL[index];
+        if capabilities & capability.compact_bit() != 0 {
+            if !is_supplemental_capability_const(capability) {
+                panic!("owned capability cannot be selected as supplemental");
+            }
+            if compiled_capabilities & capability.compact_bit() == 0 {
+                panic!("supplemental capability is not compiled");
+            }
+            if !targets_contain(capability.spec().targets, target) {
+                panic!("supplemental capability is not valid for the selected target");
+            }
+        }
+        index += 1;
+    }
+}
+
+const fn is_supplemental_capability_const(capability: CapabilityKey) -> bool {
+    let kind = capability.spec().kind;
+    (const_str_eq(kind, "engine") || const_str_eq(kind, "api"))
+        && !capability_is_operation_owned(capability)
+}
+
+const fn capability_is_operation_owned(capability: CapabilityKey) -> bool {
+    let expected = capability.compact_bit();
+    let mut index = 0;
+    while index < OperationKey::ALL.len() {
+        if let Some(owner) = OperationKey::ALL[index].spec().capability
+            && owner.compact_bit() == expected
+        {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+const fn const_str_eq(left: &str, right: &str) -> bool {
+    let left = left.as_bytes();
+    let right = right.as_bytes();
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if left[index] != right[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+const fn close_capability_implication_bits(mut capabilities: u64) -> u64 {
+    loop {
+        let old_bits = capabilities;
+        let mut index = 0;
+        while index < CapabilityKey::ALL.len() {
+            let capability = CapabilityKey::ALL[index];
+            if old_bits & capability.compact_bit() != 0 {
+                capabilities |= capability_slice_bits(capability.spec().implications);
+            }
+            index += 1;
+        }
+        if capabilities == old_bits {
+            return capabilities;
+        }
+    }
+}
+
+const fn validate_capability_bits(
+    capabilities: u64,
+    target: TargetKey,
+    compiled_capabilities: u64,
+) {
+    if capabilities & !compiled_capabilities != 0 {
+        panic!("artifact capability requirement is not compiled");
+    }
+    let mut index = 0;
+    while index < CapabilityKey::ALL.len() {
+        let capability = CapabilityKey::ALL[index];
+        if capabilities & capability.compact_bit() != 0
+            && !targets_contain(capability.spec().targets, target)
+        {
+            panic!("artifact capability is not valid for the selected target");
+        }
+        index += 1;
+    }
+}
+
+const fn system_adapter_bits(
+    target: TargetKey,
+    runtime_policy: RuntimePolicyExposure,
+    compiled_capabilities: u64,
+) -> u64 {
+    if !matches!(target, TargetKey::Native)
+        || !matches!(runtime_policy, RuntimePolicyExposure::BindingOptions)
+    {
+        return 0;
+    }
+    let native = CapabilityKey::SystemClock.compact_bit()
+        | CapabilityKey::SystemRandom.compact_bit()
+        | CapabilityKey::SystemTimezone.compact_bit();
+    if compiled_capabilities & native == native {
+        native
+    } else {
+        0
+    }
+}
+
+const fn output_bits_for_operations(operations: u64) -> u64 {
+    let mut outputs = 0;
+    let mut index = 0;
+    while index < OperationKey::ALL.len() {
+        let operation = OperationKey::ALL[index];
+        if operations & operation.compact_bit() != 0 {
+            if let Some(output) = operation.spec().output {
+                outputs |= output.compact_bit();
+            }
+        }
+        index += 1;
+    }
+    outputs
+}
+
+const fn compiled_metadata_bits(compiled_capabilities: u64) -> u64 {
+    let mut metadata = 0;
+    let mut index = 0;
+    while index < MetadataKey::ALL.len() {
+        let key = MetadataKey::ALL[index];
+        if metadata_is_available(key, compiled_capabilities) {
+            metadata |= key.compact_bit();
+        }
+        index += 1;
+    }
+    metadata
+}
+
+const fn available_metadata_bits(compiled_metadata: u64, capabilities: u64) -> u64 {
+    let mut metadata = 0;
+    let mut index = 0;
+    while index < MetadataKey::ALL.len() {
+        let key = MetadataKey::ALL[index];
+        if compiled_metadata & key.compact_bit() != 0 && metadata_is_available(key, capabilities) {
+            metadata |= key.compact_bit();
+        }
+        index += 1;
+    }
+    metadata
+}
+
+const fn validate_metadata_bits(metadata: u64, capabilities: u64, compiled_metadata: u64) {
+    if metadata & !compiled_metadata != 0 {
+        panic!("metadata catalog is not compiled");
+    }
+    let mut index = 0;
+    while index < MetadataKey::ALL.len() {
+        let key = MetadataKey::ALL[index];
+        if metadata & key.compact_bit() != 0 && !metadata_is_available(key, capabilities) {
+            panic!("metadata catalog is unavailable for the selected capabilities");
+        }
+        index += 1;
+    }
+}
+
+const fn metadata_is_available(key: MetadataKey, capabilities: u64) -> bool {
+    match metadata_spec(key).required_capability() {
+        Some(capability) => capabilities & capability.compact_bit() != 0,
+        None => true,
+    }
+}
+
+const fn validate_constructor_service_bits(
+    services: u64,
+    compiled_capabilities: u64,
+    uses_svg_pipeline: bool,
+) {
+    let compiled_svg = compiled_capabilities & CapabilityKey::Svg.compact_bit() != 0;
+    let mut index = 0;
+    while index < ConstructorServiceKey::ALL.len() {
+        let service = ConstructorServiceKey::ALL[index];
+        if services & service.compact_bit() != 0 {
+            if !service.spec().is_available(compiled_svg) {
+                panic!("constructor service is not compiled");
+            }
+            if !service.spec().is_available(uses_svg_pipeline) {
+                panic!("constructor service requires the SVG pipeline");
+            }
+        }
+        index += 1;
+    }
+}
+
+const fn option_group_bits(capabilities: u64, uses_svg_pipeline: bool) -> u64 {
+    let mut groups = 0;
+    let mut index = 0;
+    while index < BindingOptionGroupKey::ALL.len() {
+        let key = BindingOptionGroupKey::ALL[index];
+        let spec = key.spec();
+        let mut available = spec.requires_svg_pipeline() && uses_svg_pipeline;
+        let any_capabilities = spec.any_capabilities();
+        let mut capability_index = 0;
+        while capability_index < any_capabilities.len() {
+            if capabilities & any_capabilities[capability_index].compact_bit() != 0 {
+                available = true;
+            }
+            capability_index += 1;
+        }
+        if available {
+            groups |= key.compact_bit();
+        }
+        index += 1;
+    }
+    groups
+}
+
+const fn text_measurement_provider_bits(uses_svg_pipeline: bool, constructor_services: u64) -> u64 {
+    let mut providers = 0;
+    let mut index = 0;
+    while index < TextMeasurementProviderKey::ALL.len() {
+        let provider = TextMeasurementProviderKey::ALL[index];
+        let exposed = match provider.source() {
+            TextMeasurementProviderSource::SvgPipeline => uses_svg_pipeline,
+            TextMeasurementProviderSource::ConstructorService(service) => {
+                constructor_services & service.compact_bit() != 0
+            }
+        };
+        if exposed {
+            providers |= provider.compact_bit();
+        }
+        index += 1;
+    }
+    providers
+}
+
+const fn targets_contain(targets: &[TargetKey], target: TargetKey) -> bool {
+    let expected = target_bit(target);
+    let mut index = 0;
+    while index < targets.len() {
+        if target_bit(targets[index]) == expected {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+const fn target_bit(target: TargetKey) -> u8 {
+    1_u8 << (target as u32)
 }
 
 /// Immutable checked selection that owns discovery, operation admission, and metadata dispatch.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ValidatedArtifactContract {
     target: TargetKey,
-    capabilities: BTreeSet<CapabilityKey>,
-    outputs: BTreeSet<OutputKey>,
-    operations: BTreeSet<OperationKey>,
-    metadata: BTreeSet<MetadataKey>,
-    payload_schemas: BTreeSet<BindingPayloadSchemaKey>,
-    option_groups: BTreeSet<BindingOptionGroupKey>,
-    text_measurement_providers: BTreeSet<TextMeasurementProviderKey>,
-    constructor_services: BTreeSet<ConstructorServiceKey>,
-    system_adapters: BTreeSet<CapabilityKey>,
+    capabilities: KeySet<CapabilityKey>,
+    outputs: KeySet<OutputKey>,
+    operations: KeySet<OperationKey>,
+    metadata: KeySet<MetadataKey>,
+    payload_schemas: KeySet<BindingPayloadSchemaKey>,
+    option_groups: KeySet<BindingOptionGroupKey>,
+    text_measurement_providers: KeySet<TextMeasurementProviderKey>,
+    constructor_services: KeySet<ConstructorServiceKey>,
+    system_adapters: KeySet<CapabilityKey>,
     runtime_policy: RuntimePolicyExposure,
 }
 
@@ -266,49 +624,49 @@ impl ValidatedArtifactContract {
 
     #[must_use]
     pub fn capability_keys(&self) -> impl Iterator<Item = CapabilityKey> + '_ {
-        self.capabilities.iter().copied()
+        self.capabilities.iter()
     }
 
     #[must_use]
     pub fn output_keys(&self) -> impl Iterator<Item = OutputKey> + '_ {
-        self.outputs.iter().copied()
+        self.outputs.iter()
     }
 
     #[must_use]
     pub fn operation_keys(&self) -> impl Iterator<Item = OperationKey> + '_ {
-        self.operations.iter().copied()
+        self.operations.iter()
     }
 
     #[must_use]
     pub fn metadata_keys(&self) -> impl Iterator<Item = MetadataKey> + '_ {
-        self.metadata.iter().copied()
+        self.metadata.iter()
     }
 
     #[must_use]
     pub fn payload_schema_keys(&self) -> impl Iterator<Item = BindingPayloadSchemaKey> + '_ {
-        self.payload_schemas.iter().copied()
+        self.payload_schemas.iter()
     }
 
     #[must_use]
     pub fn option_group_keys(&self) -> impl Iterator<Item = BindingOptionGroupKey> + '_ {
-        self.option_groups.iter().copied()
+        self.option_groups.iter()
     }
 
     #[must_use]
     pub fn text_measurement_provider_keys(
         &self,
     ) -> impl Iterator<Item = TextMeasurementProviderKey> + '_ {
-        self.text_measurement_providers.iter().copied()
+        self.text_measurement_providers.iter()
     }
 
     #[must_use]
     pub fn constructor_service_keys(&self) -> impl Iterator<Item = ConstructorServiceKey> + '_ {
-        self.constructor_services.iter().copied()
+        self.constructor_services.iter()
     }
 
     #[must_use]
     pub fn system_adapter_keys(&self) -> impl Iterator<Item = CapabilityKey> + '_ {
-        self.system_adapters.iter().copied()
+        self.system_adapters.iter()
     }
 
     #[must_use]
@@ -317,15 +675,19 @@ impl ValidatedArtifactContract {
     }
 
     pub(crate) fn exposes_metadata(&self, key: MetadataKey) -> bool {
-        self.metadata.contains(&key)
+        self.metadata.contains(key)
     }
 
     pub(crate) fn exposes_operation(&self, key: OperationKey) -> bool {
-        self.operations.contains(&key)
+        self.operations.contains(key)
     }
 
     pub(crate) fn exposes_capability(&self, key: CapabilityKey) -> bool {
-        self.capabilities.contains(&key)
+        self.capabilities.contains(key)
+    }
+
+    pub(crate) fn exposes_option_group(&self, key: BindingOptionGroupKey) -> bool {
+        self.option_groups.contains(key)
     }
 
     pub(crate) fn validate_engine_services(
@@ -333,7 +695,7 @@ impl ValidatedArtifactContract {
         services: &BindingEngineServices,
     ) -> Result<(), BindingError> {
         for service in services.service_keys() {
-            if !self.constructor_services.contains(&service) {
+            if !self.constructor_services.contains(service) {
                 return Err(BindingError::invalid_argument(format!(
                     "constructor service `{}` is not exposed by this artifact contract",
                     service.id()
@@ -346,31 +708,69 @@ impl ValidatedArtifactContract {
 
 static DEFAULT_ARTIFACT_CONTRACT: OnceLock<Arc<ValidatedArtifactContract>> = OnceLock::new();
 
-pub(crate) fn default_artifact_contract() -> Arc<ValidatedArtifactContract> {
-    Arc::clone(DEFAULT_ARTIFACT_CONTRACT.get_or_init(|| {
-        let exposure = TransportExposure::for_target(TargetKey::Native)
-            .with_all_compiled_operations()
-            .and_then(TransportExposure::with_all_compiled_supplemental_capabilities)
-            .and_then(TransportExposure::with_all_available_metadata)
-            .and_then(|exposure| {
-                exposure.with_payload_schemas(BindingPayloadSchemaKey::ALL.iter().copied())
-            })
-            .expect("the default Rust binding surface is declared once")
-            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
-        #[cfg(feature = "svg")]
-        let exposure = exposure
-            .with_constructor_services([
-                ConstructorServiceKey::HostTextMeasurement,
-                ConstructorServiceKey::IconRegistry,
-            ])
-            .expect("the default Rust SVG service surface is coherent");
+const DEFAULT_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
+    #[cfg(feature = "svg")]
+    ConstructorServiceKey::HostTextMeasurement,
+    #[cfg(feature = "svg")]
+    ConstructorServiceKey::IconRegistry,
+];
+const DEFAULT_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson,
+    #[cfg(feature = "ascii")]
+    OperationKey::Ascii,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisJson,
+    #[cfg(feature = "jpeg")]
+    OperationKey::Jpeg,
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    #[cfg(feature = "pdf")]
+    OperationKey::Pdf,
+    #[cfg(feature = "png")]
+    OperationKey::Png,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::ValidationJson,
+];
+const DEFAULT_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
+pub(crate) const DEFAULT_RUNTIME_POLICY: RuntimePolicyExposure = if cfg!(all(
+    feature = "system-clock",
+    feature = "system-timezone",
+    feature = "system-random"
+)) {
+    RuntimePolicyExposure::BindingOptions
+} else {
+    RuntimePolicyExposure::DeterministicOnly
+};
 
-        Arc::new(
-            CompiledBindingSurface::current()
-                .validate(exposure)
-                .expect("the default Rust artifact contract matches its compiled surface"),
-        )
-    }))
+pub(crate) const DEFAULT_ARTIFACT_SNAPSHOT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(TargetKey::Native)
+        .with_operations(DEFAULT_OPERATIONS)
+        .with_supplemental_capabilities(DEFAULT_SUPPLEMENTAL_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_payload_schemas(BindingPayloadSchemaKey::ALL)
+        .with_constructor_services(DEFAULT_CONSTRUCTOR_SERVICES)
+        .with_runtime_policy_exposure(DEFAULT_RUNTIME_POLICY)
+        .materialize();
+
+pub(crate) fn default_artifact_contract() -> Arc<ValidatedArtifactContract> {
+    Arc::clone(DEFAULT_ARTIFACT_CONTRACT.get_or_init(|| Arc::new(DEFAULT_ARTIFACT_SNAPSHOT)))
 }
 
 #[cfg(test)]

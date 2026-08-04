@@ -1,116 +1,335 @@
 use super::*;
 
-fn semantic_exposure() -> TransportExposure {
-    TransportExposure::for_target(TargetKey::Native)
-        .with_operations([OperationKey::SemanticJson])
-        .unwrap()
-}
+const STATIC_SEMANTIC_CONTRACT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(TargetKey::Native)
+        .with_operations(&[OperationKey::SemanticJson])
+        .materialize();
 
-fn semantic_contract() -> ValidatedArtifactContract {
-    CompiledBindingSurface::current()
-        .validate(semantic_exposure())
-        .unwrap()
+const STATIC_EMPTY_CONTRACT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(TargetKey::Native).materialize();
+
+const STATIC_WEB_EDITOR_CONTRACT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(TargetKey::Web)
+        .with_operations(&[OperationKey::SemanticJson])
+        .with_supplemental_capabilities(&[CapabilityKey::Editor])
+        .with_transport_extensions(&[TransportCompiledExtensionKey::Editor])
+        .materialize();
+
+fn panics(action: impl FnOnce()) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(action)).is_err()
 }
 
 #[test]
-fn explicit_selections_reject_duplicates() {
-    let error = semantic_exposure()
-        .with_operations([OperationKey::SemanticJson])
+fn semantic_snapshot_is_exact_and_does_not_inherit_compiled_features() {
+    assert_eq!(STATIC_SEMANTIC_CONTRACT.target(), TargetKey::Native);
+    assert_eq!(
+        STATIC_SEMANTIC_CONTRACT
+            .operation_keys()
+            .collect::<Vec<_>>(),
+        [OperationKey::SemanticJson]
+    );
+    assert_eq!(
+        STATIC_SEMANTIC_CONTRACT
+            .capability_keys()
+            .collect::<Vec<_>>(),
+        []
+    );
+    assert_eq!(
+        STATIC_SEMANTIC_CONTRACT.output_keys().collect::<Vec<_>>(),
+        []
+    );
+    assert_eq!(
+        STATIC_SEMANTIC_CONTRACT.metadata_keys().collect::<Vec<_>>(),
+        []
+    );
+    assert_eq!(
+        STATIC_SEMANTIC_CONTRACT
+            .option_group_keys()
+            .collect::<Vec<_>>(),
+        []
+    );
+    assert_eq!(
+        STATIC_SEMANTIC_CONTRACT
+            .constructor_service_keys()
+            .collect::<Vec<_>>(),
+        []
+    );
+    assert_eq!(
+        STATIC_SEMANTIC_CONTRACT
+            .text_measurement_provider_keys()
+            .collect::<Vec<_>>(),
+        []
+    );
+    assert_eq!(
+        STATIC_SEMANTIC_CONTRACT.runtime_policy_exposure(),
+        RuntimePolicyExposure::DeterministicOnly
+    );
+}
+
+#[test]
+fn semantic_contract_rejects_every_unadvertised_constructor_option_group() {
+    for group in BindingOptionGroupKey::ALL {
+        let options = format!(r#"{{"{}":{{}}}}"#, group.id());
+        let error = STATIC_SEMANTIC_CONTRACT
+            .create_engine(options.as_bytes())
+            .err()
+            .unwrap_or_else(|| panic!("semantic contract accepted `{}`", group.id()));
+
+        assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
+        assert!(error.message().contains(group.id()));
+        assert!(error.message().contains("not exposed by target `native`"));
+    }
+}
+
+#[test]
+fn semantic_contract_rejects_unadvertised_request_option_groups_after_feature_unification() {
+    let engine = STATIC_SEMANTIC_CONTRACT.create_engine(b"").unwrap();
+    for group in [
+        BindingOptionGroupKey::Ascii,
+        BindingOptionGroupKey::Environment,
+        BindingOptionGroupKey::Layout,
+        BindingOptionGroupKey::Lint,
+        BindingOptionGroupKey::Presentation,
+        BindingOptionGroupKey::Svg,
+    ] {
+        let options = format!(r#"{{"{}":{{}}}}"#, group.id());
+        let error = engine
+            .execute(
+                crate::BindingOperationRequest::new(
+                    OperationKey::SemanticJson.id(),
+                    b"flowchart TD\nA --> B",
+                )
+                .with_options_json(options.as_bytes()),
+            )
+            .unwrap_err();
+
+        assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
+        assert!(error.message().contains(group.id()));
+        assert!(error.message().contains("not exposed by target `native`"));
+    }
+
+    let nested_lint = engine
+        .execute(
+            crate::BindingOperationRequest::new(
+                OperationKey::SemanticJson.id(),
+                b"flowchart TD\nA --> B",
+            )
+            .with_options_json(br#"{"analysis":{"lint":{}}}"#),
+        )
         .unwrap_err();
-    assert!(error.message().contains("declared more than once"));
+    assert_eq!(nested_lint.status(), crate::BindingStatus::OptionsJsonError);
+    assert!(nested_lint.message().contains("lint"));
+    assert!(
+        nested_lint
+            .message()
+            .contains("not exposed by target `native`")
+    );
 }
 
 #[test]
-fn transport_cannot_expose_an_uncompiled_operation() {
-    let exposure = TransportExposure::for_target(TargetKey::Native)
-        .with_operations([OperationKey::Png])
-        .unwrap();
-    let result = CompiledBindingSurface::current().validate(exposure);
-    assert_eq!(result.is_ok(), cfg!(all(feature = "png", feature = "svg")));
-}
+fn full_default_snapshot_matches_the_feature_owned_declaration() {
+    assert_eq!(
+        DEFAULT_ARTIFACT_SNAPSHOT
+            .operation_keys()
+            .collect::<Vec<_>>(),
+        DEFAULT_OPERATIONS
+    );
+    assert_eq!(
+        DEFAULT_ARTIFACT_SNAPSHOT
+            .payload_schema_keys()
+            .collect::<Vec<_>>(),
+        BindingPayloadSchemaKey::ALL
+    );
+    assert_eq!(
+        DEFAULT_ARTIFACT_SNAPSHOT
+            .constructor_service_keys()
+            .collect::<Vec<_>>(),
+        DEFAULT_CONSTRUCTOR_SERVICES
+    );
+    assert_eq!(
+        DEFAULT_ARTIFACT_SNAPSHOT.runtime_policy_exposure(),
+        DEFAULT_RUNTIME_POLICY
+    );
 
-#[test]
-fn output_projection_uses_the_generated_operation_relationship() {
-    let compiled = CompiledBindingSurface::current();
-    let operations = OperationKey::ALL
+    let expected_metadata = MetadataKey::ALL
         .iter()
         .copied()
-        .filter(|operation| compiled.operations.contains(operation))
-        .filter(|operation| operation.spec().targets.contains(&TargetKey::Native))
+        .filter(|key| {
+            key.spec()
+                .required_capability()
+                .is_none_or(|capability| DEFAULT_ARTIFACT_SNAPSHOT.exposes_capability(capability))
+        })
         .collect::<Vec<_>>();
-    let expected = operations
-        .iter()
-        .filter_map(|operation| operation.spec().output)
-        .collect::<BTreeSet<_>>();
-    let exposure = TransportExposure::for_target(TargetKey::Native)
-        .with_operations(operations)
-        .unwrap();
+    assert_eq!(
+        DEFAULT_ARTIFACT_SNAPSHOT
+            .metadata_keys()
+            .collect::<Vec<_>>(),
+        expected_metadata
+    );
 
-    let contract = compiled.validate(exposure).unwrap();
-    assert_eq!(contract.output_keys().collect::<BTreeSet<_>>(), expected);
+    for operation in DEFAULT_OPERATIONS {
+        assert!(
+            operation
+                .spec()
+                .capability
+                .is_none_or(|capability| DEFAULT_ARTIFACT_SNAPSHOT.exposes_capability(capability))
+        );
+    }
 }
 
-#[cfg(feature = "png")]
 #[test]
-fn operation_requirements_validate_the_pipeline_without_advertising_its_output() {
-    let exposure = TransportExposure::for_target(TargetKey::Native)
-        .with_operations([OperationKey::Png])
-        .unwrap();
-    let contract = CompiledBindingSurface::current()
-        .validate(exposure)
-        .unwrap();
-
-    assert_eq!(
-        contract.capability_keys().collect::<BTreeSet<_>>(),
-        BTreeSet::from([CapabilityKey::Png])
-    );
-    assert_eq!(
-        contract.output_keys().collect::<BTreeSet<_>>(),
-        BTreeSet::from([OutputKey::Png])
-    );
-    assert_eq!(
-        contract
-            .text_measurement_provider_keys()
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from([TextMeasurementProviderKey::Vendored])
-    );
+fn target_bits_follow_stable_descriptor_order() {
+    for (index, target) in TargetKey::ALL.iter().copied().enumerate() {
+        assert_eq!(target_bit(target), 1_u8 << index, "{}", target.id());
+        if index > 0 {
+            assert!(TargetKey::ALL[index - 1].id() < target.id());
+        }
+    }
 }
 
-#[cfg(feature = "png")]
 #[test]
-fn operation_requirements_reject_a_missing_compiled_pipeline() {
-    let mut compiled = CompiledBindingSurface::current();
-    compiled.capabilities.remove(&CapabilityKey::Svg);
-    let exposure = TransportExposure::for_target(TargetKey::Native)
-        .with_operations([OperationKey::Png])
-        .unwrap();
+fn typed_transport_extensions_are_explicit_and_exact() {
+    assert_eq!(STATIC_WEB_EDITOR_CONTRACT.target(), TargetKey::Web);
+    assert_eq!(
+        STATIC_WEB_EDITOR_CONTRACT
+            .operation_keys()
+            .collect::<Vec<_>>(),
+        [OperationKey::SemanticJson]
+    );
+    assert_eq!(
+        STATIC_WEB_EDITOR_CONTRACT
+            .capability_keys()
+            .collect::<Vec<_>>(),
+        [CapabilityKey::Editor]
+    );
 
-    let error = compiled.validate(exposure).unwrap_err();
-    assert!(error.message().contains("operation requirement `svg`"));
-    assert!(error.message().contains("png"));
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Web)
+            .with_operations(&[OperationKey::SemanticJson])
+            .with_supplemental_capabilities(&[CapabilityKey::Editor])
+            .materialize();
+    }));
+}
+
+#[test]
+fn duplicate_and_reconfigured_fields_fail_closed() {
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Native)
+            .with_operations(&[OperationKey::SemanticJson, OperationKey::SemanticJson])
+            .materialize();
+    }));
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Native)
+            .with_operations(&[OperationKey::SemanticJson])
+            .with_operations(&[]);
+    }));
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Native)
+            .with_metadata(&[])
+            .with_all_available_metadata();
+    }));
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Web)
+            .with_transport_extensions(&[
+                TransportCompiledExtensionKey::Editor,
+                TransportCompiledExtensionKey::Editor,
+            ])
+            .materialize();
+    }));
+}
+
+#[test]
+fn canonical_validator_rejects_invalid_target_and_compiled_requirements() {
+    let jpeg_and_svg = CapabilityKey::Jpeg.compact_bit() | CapabilityKey::Svg.compact_bit();
+    assert!(panics(|| {
+        validate_operation_bits(
+            OperationKey::Jpeg.compact_bit(),
+            TargetKey::Web,
+            jpeg_and_svg,
+        );
+    }));
+
+    assert!(panics(|| {
+        validate_operation_bits(
+            OperationKey::Png.compact_bit(),
+            TargetKey::Native,
+            CapabilityKey::Png.compact_bit(),
+        );
+    }));
+}
+
+#[test]
+fn canonical_validator_rejects_owned_or_uncompiled_supplemental_capabilities() {
+    assert!(panics(|| {
+        validate_supplemental_capability_bits(
+            CapabilityKey::Svg.compact_bit(),
+            TargetKey::Native,
+            CapabilityKey::Svg.compact_bit(),
+        );
+    }));
+    assert!(panics(|| {
+        validate_supplemental_capability_bits(
+            CapabilityKey::Editor.compact_bit(),
+            TargetKey::Web,
+            0,
+        );
+    }));
+}
+
+#[test]
+fn canonical_validator_rejects_unavailable_metadata_and_services() {
+    assert!(panics(|| {
+        validate_metadata_bits(
+            MetadataKey::LintRuleCatalog.compact_bit(),
+            0,
+            MetadataKey::LintRuleCatalog.compact_bit(),
+        );
+    }));
+    assert!(panics(|| {
+        validate_constructor_service_bits(
+            ConstructorServiceKey::IconRegistry.compact_bit(),
+            CapabilityKey::Svg.compact_bit(),
+            false,
+        );
+    }));
+}
+
+#[test]
+fn binding_options_runtime_policy_is_native_target_only() {
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Web)
+            .with_operations(&[OperationKey::SemanticJson])
+            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
+            .materialize();
+    }));
 }
 
 #[test]
 fn operation_admission_uses_the_validated_contract() {
-    let contract = semantic_contract();
     let semantic = crate::BindingOperationKind::from_id("semantic-json").unwrap();
     assert_eq!(
-        contract.admit_operation(semantic).unwrap().operation(),
+        STATIC_SEMANTIC_CONTRACT
+            .admit_operation(semantic)
+            .unwrap()
+            .operation(),
         semantic
     );
+
     let analysis = crate::BindingOperationKind::from_id("analysis-json").unwrap();
-    let error = contract.admit_operation(analysis).unwrap_err();
-    assert_eq!(semantic.operation_id(), "semantic-json");
+    let error = STATIC_SEMANTIC_CONTRACT
+        .admit_operation(analysis)
+        .unwrap_err();
     assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
+    assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+    assert_eq!(error.capability_id(), Some("analysis"));
 }
 
 #[test]
-fn contract_bound_execution_preserves_validation_before_admission() {
-    let contract = semantic_contract();
-    let engine = contract.create_engine(b"").unwrap();
+fn validation_still_precedes_operation_admission() {
+    let engine = STATIC_SEMANTIC_CONTRACT.create_engine(b"").unwrap();
 
     for error in [
-        contract
+        STATIC_SEMANTIC_CONTRACT
             .execute_once(
                 crate::BindingOperationRequest::new("analysis-json", b"flowchart TD\nA --> B")
                     .with_options_json(b"{"),
@@ -125,33 +344,11 @@ fn contract_bound_execution_preserves_validation_before_admission() {
     ] {
         assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
     }
-
-    for error in [
-        contract
-            .execute_once(crate::BindingOperationRequest::new(
-                "analysis-json",
-                b"flowchart TD\nA --> B",
-            ))
-            .unwrap_err(),
-        engine
-            .execute(crate::BindingOperationRequest::new(
-                "analysis-json",
-                b"flowchart TD\nA --> B",
-            ))
-            .unwrap_err(),
-    ] {
-        assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
-        assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
-        assert_eq!(error.capability_id(), Some("analysis"));
-    }
 }
 
 #[test]
-fn known_hidden_base_operation_is_not_a_missing_capability() {
-    let contract = CompiledBindingSurface::current()
-        .validate(TransportExposure::for_target(TargetKey::Native))
-        .unwrap();
-    let error = contract
+fn known_but_hidden_base_operation_is_not_a_missing_capability() {
+    let error = STATIC_EMPTY_CONTRACT
         .execute_once(crate::BindingOperationRequest::new(
             "semantic-json",
             b"flowchart TD\nA --> B",
@@ -166,7 +363,7 @@ fn known_hidden_base_operation_is_not_a_missing_capability() {
 
 #[test]
 fn deterministic_only_contract_rejects_native_runtime_policy() {
-    let error = semantic_contract()
+    let error = STATIC_SEMANTIC_CONTRACT
         .create_engine(br#"{"runtime_policy":"native"}"#)
         .err()
         .expect("deterministic-only contracts must reject native policy");
@@ -175,23 +372,10 @@ fn deterministic_only_contract_rejects_native_runtime_policy() {
     assert!(error.message().contains("is not exposed"));
 }
 
-#[test]
-fn binding_options_runtime_policy_is_native_target_only() {
-    let exposure = TransportExposure::for_target(TargetKey::Web)
-        .with_operations([OperationKey::SemanticJson])
-        .unwrap()
-        .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions);
-    let error = CompiledBindingSurface::current()
-        .validate(exposure)
-        .unwrap_err();
-
-    assert!(error.message().contains("not valid for target `web`"));
-}
-
 #[cfg(feature = "svg")]
 #[test]
 fn named_helpers_cannot_bypass_contract_admission() {
-    let engine = semantic_contract().create_engine(b"").unwrap();
+    let engine = STATIC_SEMANTIC_CONTRACT.create_engine(b"").unwrap();
     assert!(engine.parse_json(b"flowchart TD\nA --> B").is_ok());
 
     let error = engine.render_svg(b"flowchart TD\nA --> B").unwrap_err();
@@ -216,7 +400,7 @@ fn unadvertised_constructor_service_is_rejected() {
 
     let services =
         crate::BindingEngineServices::new().with_host_text_measurer(Arc::new(NoopHostTextMeasurer));
-    let error = semantic_contract()
+    let error = STATIC_SEMANTIC_CONTRACT
         .create_engine_with_services(b"", services)
         .err()
         .expect("unadvertised constructor services must be rejected");
@@ -228,31 +412,26 @@ fn unadvertised_constructor_service_is_rejected() {
 #[cfg(feature = "svg")]
 #[test]
 fn operations_and_services_derive_text_measurement_providers() {
-    let vendored_only = CompiledBindingSurface::current()
-        .validate(
-            TransportExposure::for_target(TargetKey::Native)
-                .with_operations([OperationKey::Svg])
-                .unwrap(),
-        )
-        .unwrap();
+    const VENDORED_ONLY: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
+        .with_operations(&[OperationKey::Svg])
+        .materialize();
+    const WITH_HOST: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
+        .with_operations(&[OperationKey::Svg])
+        .with_constructor_services(&[ConstructorServiceKey::HostTextMeasurement])
+        .materialize();
+    const WITH_ICONS: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
+        .with_operations(&[OperationKey::Svg])
+        .with_constructor_services(&[ConstructorServiceKey::IconRegistry])
+        .materialize();
+
     assert_eq!(
-        vendored_only
+        VENDORED_ONLY
             .text_measurement_provider_keys()
             .collect::<Vec<_>>(),
         [TextMeasurementProviderKey::Vendored]
     );
-
-    let with_host = CompiledBindingSurface::current()
-        .validate(
-            TransportExposure::for_target(TargetKey::Native)
-                .with_operations([OperationKey::Svg])
-                .unwrap()
-                .with_constructor_services([ConstructorServiceKey::HostTextMeasurement])
-                .unwrap(),
-        )
-        .unwrap();
     assert_eq!(
-        with_host
+        WITH_HOST
             .text_measurement_provider_keys()
             .collect::<Vec<_>>(),
         [
@@ -260,39 +439,45 @@ fn operations_and_services_derive_text_measurement_providers() {
             TextMeasurementProviderKey::Vendored,
         ]
     );
-
-    let with_icons = CompiledBindingSurface::current()
-        .validate(
-            TransportExposure::for_target(TargetKey::Native)
-                .with_operations([OperationKey::Svg])
-                .unwrap()
-                .with_constructor_services([ConstructorServiceKey::IconRegistry])
-                .unwrap(),
-        )
-        .unwrap();
     assert_eq!(
-        with_icons
+        WITH_ICONS
             .text_measurement_provider_keys()
             .collect::<Vec<_>>(),
         [TextMeasurementProviderKey::Vendored]
     );
 }
 
-#[cfg(feature = "svg")]
+#[cfg(feature = "png")]
+#[test]
+fn compiled_prerequisites_enable_the_pipeline_without_advertising_its_output() {
+    const PNG_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
+        .with_operations(&[OperationKey::Png])
+        .materialize();
+
+    assert_eq!(
+        PNG_CONTRACT.capability_keys().collect::<Vec<_>>(),
+        [CapabilityKey::Png]
+    );
+    assert_eq!(
+        PNG_CONTRACT.output_keys().collect::<Vec<_>>(),
+        [OutputKey::Png]
+    );
+    assert_eq!(
+        PNG_CONTRACT
+            .text_measurement_provider_keys()
+            .collect::<Vec<_>>(),
+        [TextMeasurementProviderKey::Vendored]
+    );
+}
+
+#[cfg(feature = "layout-elk")]
 #[test]
 fn descriptor_implications_are_closed_automatically() {
-    let exposure = TransportExposure::for_target(TargetKey::Native)
-        .with_operations([OperationKey::Svg])
-        .unwrap()
-        .with_supplemental_capabilities([CapabilityKey::LayoutElk])
-        .unwrap();
-    let result = CompiledBindingSurface::current().validate(exposure);
-    assert_eq!(result.is_ok(), merman::svg::layout_elk_available());
-    if let Ok(contract) = result {
-        assert!(
-            contract
-                .capability_keys()
-                .any(|key| key == CapabilityKey::Svg)
-        );
-    }
+    const CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
+        .with_operations(&[OperationKey::Svg])
+        .with_supplemental_capabilities(&[CapabilityKey::LayoutElk])
+        .materialize();
+
+    assert!(CONTRACT.exposes_capability(CapabilityKey::Svg));
+    assert!(CONTRACT.exposes_capability(CapabilityKey::LayoutElk));
 }

@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use crate::artifact_contract::ValidatedArtifactContract;
 use crate::option_contract::BindingOptionGroupKey;
 use crate::resource_contract::{
     BindingResourceScope, binding_resource_contract, resource_limit_descriptor,
@@ -710,11 +711,26 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
     parse_options_value(&options_json_value(bytes)?)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_base_options(
     bytes: &[u8],
 ) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
+    parse_base_options_for_contract(bytes, None)
+}
+
+pub(crate) fn parse_base_options_for_artifact(
+    bytes: &[u8],
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
+    parse_base_options_for_contract(bytes, Some(artifact_contract))
+}
+
+fn parse_base_options_for_contract(
+    bytes: &[u8],
+    artifact_contract: Option<&ValidatedArtifactContract>,
+) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
     let wire = options_json_value(bytes)?;
-    let typed = parse_options_value(&wire)?;
+    let typed = parse_options_value_for_contract(&wire, artifact_contract)?;
     let resource_ceiling = typed.analysis.resources.clone().unwrap_or_default();
     Ok((
         typed,
@@ -726,11 +742,18 @@ pub(crate) fn parse_base_options(
 }
 
 fn parse_options_value(value: &Value) -> Result<BindingOptions, BindingError> {
+    parse_options_value_for_contract(value, None)
+}
+
+fn parse_options_value_for_contract(
+    value: &Value,
+    artifact_contract: Option<&ValidatedArtifactContract>,
+) -> Result<BindingOptions, BindingError> {
     validate_options_schema_version(value)?;
     reject_ambiguous_analysis_wrappers(value)?;
     reject_removed_host_theme(value)?;
     reject_null_presentation_values(value)?;
-    reject_uncompiled_option_groups(value)?;
+    reject_unavailable_option_groups(value, artifact_contract)?;
     #[cfg(feature = "svg")]
     reject_removed_layout_fields(value)?;
     #[cfg(feature = "ascii")]
@@ -894,9 +917,30 @@ fn reject_unknown_options_json_fields(value: &Value) -> Result<(), BindingError>
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn parse_request_overlay(
     request_options_json: &[u8],
     resource_scope: BindingResourceScope,
+) -> Result<BindingRequestOverlay, BindingError> {
+    parse_request_overlay_for_contract(request_options_json, resource_scope, None)
+}
+
+pub(crate) fn parse_request_overlay_for_artifact(
+    request_options_json: &[u8],
+    resource_scope: BindingResourceScope,
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<BindingRequestOverlay, BindingError> {
+    parse_request_overlay_for_contract(
+        request_options_json,
+        resource_scope,
+        Some(artifact_contract),
+    )
+}
+
+fn parse_request_overlay_for_contract(
+    request_options_json: &[u8],
+    resource_scope: BindingResourceScope,
+    artifact_contract: Option<&ValidatedArtifactContract>,
 ) -> Result<BindingRequestOverlay, BindingError> {
     let request_value = options_json_value(request_options_json)?;
     if is_unchanged_request(&request_value) {
@@ -910,7 +954,7 @@ pub(crate) fn parse_request_overlay(
             "request options_json cannot set runtime_policy; configure it when creating the engine",
         ));
     }
-    parse_options_value(&request_value)?;
+    parse_options_value_for_contract(&request_value, artifact_contract)?;
 
     let mut normalized_wire = normalize_analysis_wrapper(request_value);
     let requested_resources = take_request_resource_options(&mut normalized_wire, resource_scope)?;
@@ -921,13 +965,17 @@ pub(crate) fn parse_request_overlay(
 }
 
 impl BaseBindingOptions {
-    pub(crate) fn validate_unchanged_request(&self) -> Result<(), BindingError> {
-        parse_options_value(&self.normalized_wire).map(drop)
+    pub(crate) fn validate_unchanged_request(
+        &self,
+        artifact_contract: Option<&ValidatedArtifactContract>,
+    ) -> Result<(), BindingError> {
+        parse_options_value_for_contract(&self.normalized_wire, artifact_contract).map(drop)
     }
 
     pub(crate) fn apply_overlay(
         &self,
         overlay: BindingRequestOverlay,
+        artifact_contract: Option<&ValidatedArtifactContract>,
     ) -> Result<BindingOptions, BindingError> {
         let BindingRequestOverlay::Override {
             normalized_wire,
@@ -949,7 +997,7 @@ impl BaseBindingOptions {
                     serde_json::to_value(resources).map_err(internal_json_error)?,
                 );
         }
-        parse_options_value(&merged)
+        parse_options_value_for_contract(&merged, artifact_contract)
     }
 }
 
@@ -965,7 +1013,10 @@ fn is_unchanged_request(value: &Value) -> bool {
                 .is_some_and(|version| version == u64::from(BINDING_OPTIONS_SCHEMA_VERSION)))
 }
 
-fn reject_uncompiled_option_groups(value: &Value) -> Result<(), BindingError> {
+fn reject_unavailable_option_groups(
+    value: &Value,
+    artifact_contract: Option<&ValidatedArtifactContract>,
+) -> Result<(), BindingError> {
     let Some(options) = value.as_object() else {
         return Ok(());
     };
@@ -979,10 +1030,17 @@ fn reject_uncompiled_option_groups(value: &Value) -> Result<(), BindingError> {
                         .and_then(Value::as_object)
                         .is_some_and(|nested| nested.contains_key(group))
                 }));
-        if present && !key.is_compiled() {
+        let available = artifact_contract
+            .map(|contract| contract.exposes_option_group(*key))
+            .unwrap_or_else(|| key.is_compiled());
+        if present && !available {
+            let reason = artifact_contract.map_or_else(
+                || "is not available in this artifact".to_string(),
+                |contract| format!("is not exposed by target `{}`", contract.target().id()),
+            );
             return Err(BindingError::new(
                 BindingStatus::OptionsJsonError,
-                format!("options group `{group}` is not available in this artifact"),
+                format!("options group `{group}` {reason}"),
             ));
         }
     }
@@ -1983,10 +2041,10 @@ mod tests {
         let (_, base) = parse_base_options(base)?;
         Ok(match parse_request_overlay(request, scope)? {
             BindingRequestOverlay::Unchanged => {
-                base.validate_unchanged_request()?;
+                base.validate_unchanged_request(None)?;
                 parse_options_value(&base.normalized_wire)?
             }
-            overlay => base.apply_overlay(overlay)?,
+            overlay => base.apply_overlay(overlay, None)?,
         })
     }
 
