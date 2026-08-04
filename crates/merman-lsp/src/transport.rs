@@ -9,8 +9,8 @@ use self::framing::{
 use self::lifecycle::{ProtocolLifecycleService, ProtocolLifecycleState};
 use crate::refresh_coordinator::MAX_CONCURRENT_REFRESH_REQUESTS;
 use crate::session::{
-    LSP_ORDINARY_HANDLER_CONCURRENCY, LSP_REQUEST_BYTE_BUDGET, MermanLspService,
-    ProtocolMessageShape, exact_cancellation_request_id,
+    ClassifiedRequest, LSP_ORDINARY_HANDLER_CONCURRENCY, LSP_REQUEST_BYTE_BUDGET, MermanLspService,
+    ProtocolMessageShape,
 };
 use futures::channel::mpsc;
 use futures::future;
@@ -44,33 +44,36 @@ const OUTPUT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 type HandlerTask = future::BoxFuture<'static, Option<Response>>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AdmissionClass {
-    ImmediateControl,
-    Deferred,
+#[derive(Debug)]
+enum StdioAdmission {
+    ImmediateControl(ClassifiedRequest),
+    Deferred(ClassifiedRequest),
 }
 
-enum ServiceAdmission<F> {
-    Immediate(F),
-    Exit(F),
-    Deferred(F),
+impl StdioAdmission {
+    #[cfg(test)]
+    fn shape(&self) -> ProtocolMessageShape {
+        match self {
+            Self::ImmediateControl(request) | Self::Deferred(request) => request.shape(),
+        }
+    }
+
+    #[cfg(test)]
+    fn is_immediate_control(&self) -> bool {
+        matches!(self, Self::ImmediateControl(_))
+    }
 }
 
-fn admission_class(
-    request: &Request,
+fn stdio_admission(
+    request: Request,
     body_length: usize,
     max_control_message_bytes: usize,
-) -> AdmissionClass {
-    if body_length <= max_control_message_bytes
-        && (exact_cancellation_request_id(request).is_some()
-            || matches!(
-                ProtocolMessageShape::classify(request),
-                ProtocolMessageShape::ExitNotification
-            ))
-    {
-        AdmissionClass::ImmediateControl
+) -> StdioAdmission {
+    let request = ClassifiedRequest::new(request);
+    if body_length <= max_control_message_bytes && request.shape().is_exact_control_notification() {
+        StdioAdmission::ImmediateControl(request)
     } else {
-        AdmissionClass::Deferred
+        StdioAdmission::Deferred(request)
     }
 }
 
@@ -78,25 +81,27 @@ trait StdioAdmissionService {
     type Error;
     type Future: std::future::Future<Output = Result<Option<Response>, Self::Error>>;
 
-    fn admit(&mut self, request: Request, class: AdmissionClass) -> ServiceAdmission<Self::Future>;
+    fn admit_immediate_control(&mut self, request: ClassifiedRequest) -> Self::Future;
+
+    fn admit_deferred(&mut self, request: ClassifiedRequest) -> Self::Future;
+
+    fn deferred_published(&mut self, _shape: ProtocolMessageShape) {}
 }
 
 impl StdioAdmissionService for MermanLspService {
     type Error = <Self as Service<Request>>::Error;
     type Future = <Self as Service<Request>>::Future;
 
-    fn admit(&mut self, request: Request, class: AdmissionClass) -> ServiceAdmission<Self::Future> {
-        let exits = matches!(
-            ProtocolMessageShape::classify(&request),
-            ProtocolMessageShape::ExitNotification
-        );
-        let future = Service::call(self, request);
-        if exits {
-            ServiceAdmission::Exit(future)
-        } else if class == AdmissionClass::ImmediateControl {
-            ServiceAdmission::Immediate(future)
+    fn admit_immediate_control(&mut self, request: ClassifiedRequest) -> Self::Future {
+        debug_assert!(request.shape().is_exact_control_notification());
+        self.call_classified(request)
+    }
+
+    fn admit_deferred(&mut self, request: ClassifiedRequest) -> Self::Future {
+        if request.shape().is_exact_control_notification() {
+            self.call_deferred_control(request)
         } else {
-            ServiceAdmission::Deferred(future)
+            self.call_classified(request)
         }
     }
 }
@@ -569,32 +574,25 @@ where
                             message: IncomingMessage::Request(request),
                             body_length,
                         } => {
-                            let request_id = request.id().cloned();
-                            let class =
-                                admission_class(&request, body_length, max_control_message_bytes);
-                            if class == AdmissionClass::ImmediateControl {
-                                match service.admit(request, AdmissionClass::ImmediateControl) {
-                                    ServiceAdmission::Immediate(handler) => {
-                                        if complete_immediate_control(handler).await {
-                                            continue;
-                                        }
+                            let request = match stdio_admission(
+                                request,
+                                body_length,
+                                max_control_message_bytes,
+                            ) {
+                                StdioAdmission::ImmediateControl(request) => {
+                                    let exits = request.shape().is_exit_notification();
+                                    let handler = service.admit_immediate_control(request);
+                                    if !complete_immediate_control(handler).await {
                                         break TransportStop::InputClosed;
                                     }
-                                    ServiceAdmission::Exit(handler) => {
-                                        if !complete_immediate_control(handler).await {
-                                            break TransportStop::InputClosed;
-                                        }
+                                    if exits {
                                         break TransportStop::ExitNotification;
                                     }
-                                    ServiceAdmission::Deferred(handler) => {
-                                        drop(handler);
-                                        tracing::error!(
-                                            "immediate LSP control admission returned deferred work"
-                                        );
-                                        break TransportStop::InputClosed;
-                                    }
+                                    continue;
                                 }
-                            }
+                                StdioAdmission::Deferred(request) => request,
+                            };
+                            let shape = request.shape();
 
                             let retained_deferred_permit =
                                 match Arc::clone(&retained_deferred_budget).try_acquire_owned() {
@@ -603,9 +601,11 @@ where
                                         tracing::warn!(
                                             %error,
                                             retained_deferred_capacity,
-                                            request_id = ?request_id,
+                                            request_has_id = request.request().id().is_some(),
                                             "LSP retained deferred admission exhausted"
                                         );
+                                        let (_, request_id, _) =
+                                            request.into_request().into_parts();
                                         if let Err(stop) = reject_overloaded_message(
                                             request_id,
                                             &overload_count_budget,
@@ -631,9 +631,10 @@ where
                                         %error,
                                         body_length,
                                         request_byte_budget,
-                                        request_id = ?request_id,
+                                        request_has_id = request.request().id().is_some(),
                                         "LSP ordinary message byte budget exhausted"
                                     );
+                                    let (_, request_id, _) = request.into_request().into_parts();
                                     if let Err(stop) = reject_overloaded_message(
                                         request_id,
                                         &overload_count_budget,
@@ -648,25 +649,7 @@ where
                                 }
                             };
 
-                            let handler = match service.admit(request, AdmissionClass::Deferred) {
-                                ServiceAdmission::Deferred(handler) => handler,
-                                ServiceAdmission::Immediate(handler) => {
-                                    drop(request_byte_permit);
-                                    drop(retained_deferred_permit);
-                                    if !complete_immediate_control(handler).await {
-                                        break TransportStop::InputClosed;
-                                    }
-                                    continue;
-                                }
-                                ServiceAdmission::Exit(handler) => {
-                                    drop(request_byte_permit);
-                                    drop(retained_deferred_permit);
-                                    if !complete_immediate_control(handler).await {
-                                        break TransportStop::InputClosed;
-                                    }
-                                    break TransportStop::ExitNotification;
-                                }
-                            };
+                            let handler = service.admit_deferred(request);
                             let task: HandlerTask = Box::pin(async move {
                                 let _retained_deferred_permit = retained_deferred_permit;
                                 let _request_byte_permit = request_byte_permit;
@@ -683,12 +666,13 @@ where
                                 }
                             });
                             if let Err(error) = server_tasks_tx.unbounded_send(task) {
-                                tracing::error!(
-                                    request_id = ?request_id,
-                                    "LSP task handoff closed after service admission"
-                                );
+                                tracing::error!("LSP task handoff closed after service admission");
                                 drop(error);
                                 break TransportStop::InputClosed;
+                            }
+                            service.deferred_published(shape);
+                            if shape.is_exit_notification() {
+                                break TransportStop::ExitNotification;
                             }
                         }
                         FrameRead::Error(error, recovery) => {
@@ -830,10 +814,11 @@ where
 /// client sends a valid `exit` notification.
 ///
 /// Framing is owned here so a rejected `exit` request cannot make an upstream buffered reader
-/// discard later frames from the same client write. A valid notification cancels in-flight handlers
-/// through the lifecycle wrapper before the transport drains its task queue. Exact small controls
-/// bypass ordinary capacity only while input remains synchronized. `OutputClosed` dominates a
-/// concurrent protocol or overload stop.
+/// discard later frames from the same client write. An exact small `exit` terminates the session
+/// inline before the transport drains its task queue. A larger valid `exit` stops further input
+/// after entering the deferred queue, then terminates the session when that queued handler is
+/// polled during the drain. Exact small controls bypass ordinary capacity only while input remains
+/// synchronized. `OutputClosed` dominates a concurrent protocol or overload stop.
 pub async fn serve_stdio<I, O, L>(
     stdin: I,
     stdout: O,

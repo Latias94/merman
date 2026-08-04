@@ -20,6 +20,17 @@ fn frame(body: &[u8]) -> Vec<u8> {
     frame
 }
 
+fn oversized_exit_body() -> (usize, Vec<u8>) {
+    let normal = br#"{"jsonrpc":"2.0","method":"exit","params":null}"#;
+    let oversized = format!(
+        r#"{{"jsonrpc":"2.0","method":"exit","params":null{}}}"#,
+        " ".repeat(normal.len())
+    )
+    .into_bytes();
+    assert!(oversized.len() > normal.len());
+    (normal.len(), oversized)
+}
+
 fn request_method(frame: FrameRead) -> String {
     match frame {
         FrameRead::Message {
@@ -193,6 +204,13 @@ struct InlineControlService {
     calls: Arc<AtomicUsize>,
     cancel_seen: Option<oneshot::Sender<()>>,
     exit_seen: Option<oneshot::Sender<()>>,
+}
+
+struct DeferredExitProbeService {
+    ordinary_polled: Option<oneshot::Sender<()>>,
+    ordinary_release: Option<oneshot::Receiver<()>>,
+    exit_admitted: Option<oneshot::Sender<()>>,
+    exit_polled: Option<oneshot::Sender<()>>,
 }
 
 struct SharedDeadlineWrite {
@@ -397,8 +415,32 @@ impl StdioAdmissionService for AdmissionProbeService {
     type Future =
         Pin<Box<dyn Future<Output = Result<Option<Response>, Self::Error>> + Send + 'static>>;
 
-    fn admit(&mut self, request: Request, class: AdmissionClass) -> ServiceAdmission<Self::Future> {
-        let exits = request.method() == "exit";
+    fn admit_immediate_control(&mut self, request: ClassifiedRequest) -> Self::Future {
+        let request = request.into_request();
+        match request.method() {
+            "$/cancelRequest" => {
+                assert_eq!(self.admission_stage.fetch_add(1, Ordering::SeqCst), 1);
+                let _ = self
+                    .cancel_admitted
+                    .take()
+                    .expect("single cancellation notification")
+                    .send(());
+            }
+            "exit" => {
+                assert_eq!(self.admission_stage.fetch_add(1, Ordering::SeqCst), 2);
+                let _ = self
+                    .exit_admitted
+                    .take()
+                    .expect("single exit notification")
+                    .send(());
+            }
+            method => panic!("unexpected immediate admission probe method: {method}"),
+        }
+        Box::pin(async { Ok(None) })
+    }
+
+    fn admit_deferred(&mut self, request: ClassifiedRequest) -> Self::Future {
+        let request = request.into_request();
         let future: Self::Future = match request.method() {
             "test/pending" => {
                 assert_eq!(self.admission_stage.fetch_add(1, Ordering::SeqCst), 0);
@@ -435,14 +477,62 @@ impl StdioAdmissionService for AdmissionProbeService {
             }
             method => panic!("unexpected admission probe method: {method}"),
         };
-        if exits {
-            drop(future);
-            ServiceAdmission::Exit(Box::pin(async { Ok(None) }))
-        } else if class == AdmissionClass::ImmediateControl {
-            drop(future);
-            ServiceAdmission::Immediate(Box::pin(async { Ok(None) }))
-        } else {
-            ServiceAdmission::Deferred(future)
+        future
+    }
+}
+
+impl StdioAdmissionService for DeferredExitProbeService {
+    type Error = Infallible;
+    type Future =
+        Pin<Box<dyn Future<Output = Result<Option<Response>, Self::Error>> + Send + 'static>>;
+
+    fn admit_immediate_control(&mut self, _request: ClassifiedRequest) -> Self::Future {
+        panic!("deferred-exit probe must not receive immediate control admission")
+    }
+
+    fn admit_deferred(&mut self, request: ClassifiedRequest) -> Self::Future {
+        let request = request.into_request();
+        match request.method() {
+            "shutdown" => {
+                let id = request
+                    .id()
+                    .cloned()
+                    .expect("shutdown probe request must carry an ID");
+                Box::pin(async move { Ok(Some(Response::from_ok(id, serde_json::Value::Null))) })
+            }
+            "test/block" => {
+                let ordinary_polled = self
+                    .ordinary_polled
+                    .take()
+                    .expect("single ordinary request");
+                let ordinary_release = self
+                    .ordinary_release
+                    .take()
+                    .expect("single ordinary request");
+                Box::pin(async move {
+                    let _ = ordinary_polled.send(());
+                    let _ = ordinary_release.await;
+                    Ok(None)
+                })
+            }
+            "exit" => {
+                let exit_polled = self.exit_polled.take().expect("single exit notification");
+                Box::pin(async move {
+                    let _ = exit_polled.send(());
+                    Ok(None)
+                })
+            }
+            method => panic!("unexpected deferred-exit probe method: {method}"),
+        }
+    }
+
+    fn deferred_published(&mut self, shape: ProtocolMessageShape) {
+        if shape.is_exit_notification() {
+            let _ = self
+                .exit_admitted
+                .take()
+                .expect("single exit notification")
+                .send(());
         }
     }
 }
@@ -523,27 +613,16 @@ macro_rules! impl_stdio_service {
                 type Error = <$service as Service<Request>>::Error;
                 type Future = <$service as Service<Request>>::Future;
 
-                fn admit(
+                fn admit_immediate_control(
                     &mut self,
-                    request: Request,
-                    class: AdmissionClass,
-                ) -> ServiceAdmission<Self::Future> {
-                    let exits = matches!(
-                        ProtocolMessageShape::classify(&request),
-                        ProtocolMessageShape::ExitNotification
-                    );
-                    let future = Service::call(self, request);
-                    if exits {
-                        drop(future);
-                        let completed: Self::Future = Box::pin(async { Ok(None) });
-                        ServiceAdmission::Exit(completed)
-                    } else if class == AdmissionClass::ImmediateControl {
-                        drop(future);
-                        let completed: Self::Future = Box::pin(async { Ok(None) });
-                        ServiceAdmission::Immediate(completed)
-                    } else {
-                        ServiceAdmission::Deferred(future)
-                    }
+                    request: ClassifiedRequest,
+                ) -> Self::Future {
+                    drop(Service::call(self, request.into_request()));
+                    Box::pin(async { Ok(None) })
+                }
+
+                fn admit_deferred(&mut self, request: ClassifiedRequest) -> Self::Future {
+                    Service::call(self, request.into_request())
                 }
             }
         )+
@@ -559,21 +638,22 @@ impl_stdio_service!(
 );
 
 #[test]
-fn admission_class_requires_exact_small_control_notifications() {
+fn stdio_admission_requires_exact_small_control_notifications() {
     let cancel = Request::build("$/cancelRequest")
         .params(serde_json::json!({ "id": 1 }))
         .finish();
-    assert_eq!(
-        admission_class(&cancel, 128, MAX_CONTROL_MESSAGE_BYTES),
-        AdmissionClass::ImmediateControl
+    assert!(stdio_admission(cancel.clone(), 128, MAX_CONTROL_MESSAGE_BYTES).is_immediate_control());
+    assert!(
+        stdio_admission(
+            cancel.clone(),
+            MAX_CONTROL_MESSAGE_BYTES,
+            MAX_CONTROL_MESSAGE_BYTES,
+        )
+        .is_immediate_control()
     );
     assert_eq!(
-        admission_class(
-            &cancel,
-            MAX_CONTROL_MESSAGE_BYTES,
-            MAX_CONTROL_MESSAGE_BYTES,
-        ),
-        AdmissionClass::ImmediateControl
+        stdio_admission(cancel.clone(), 128, MAX_CONTROL_MESSAGE_BYTES).shape(),
+        ProtocolMessageShape::CancellationNotification
     );
 
     let missing_cancel_params = Request::build("$/cancelRequest").finish();
@@ -593,18 +673,15 @@ fn admission_class_requires_exact_small_control_notifications() {
         id_bearing_cancel,
         similar_method,
     ] {
-        assert_eq!(
-            admission_class(&request, 128, MAX_CONTROL_MESSAGE_BYTES),
-            AdmissionClass::Deferred
-        );
+        assert!(!stdio_admission(request, 128, MAX_CONTROL_MESSAGE_BYTES).is_immediate_control());
     }
-    assert_eq!(
-        admission_class(
-            &cancel,
+    assert!(
+        !stdio_admission(
+            cancel,
             MAX_CONTROL_MESSAGE_BYTES + 1,
             MAX_CONTROL_MESSAGE_BYTES,
-        ),
-        AdmissionClass::Deferred
+        )
+        .is_immediate_control()
     );
 
     let exit = Request::build("exit").finish();
@@ -612,20 +689,16 @@ fn admission_class_requires_exact_small_control_notifications() {
         .params(serde_json::Value::Null)
         .finish();
     for request in [exit, null_exit] {
-        assert_eq!(
-            admission_class(&request, 128, MAX_CONTROL_MESSAGE_BYTES),
-            AdmissionClass::ImmediateControl
-        );
+        let admission = stdio_admission(request, 128, MAX_CONTROL_MESSAGE_BYTES);
+        assert!(admission.is_immediate_control());
+        assert_eq!(admission.shape(), ProtocolMessageShape::ExitNotification);
     }
     let parameterized_exit = Request::build("exit")
         .params(serde_json::json!({ "unexpected": true }))
         .finish();
     let id_bearing_exit = Request::build("exit").id(9).finish();
     for request in [parameterized_exit, id_bearing_exit] {
-        assert_eq!(
-            admission_class(&request, 128, MAX_CONTROL_MESSAGE_BYTES),
-            AdmissionClass::Deferred
-        );
+        assert!(!stdio_admission(request, 128, MAX_CONTROL_MESSAGE_BYTES).is_immediate_control());
     }
 }
 
@@ -1420,15 +1493,10 @@ async fn oversized_cancel_cannot_bypass_the_main_request_budget() {
 #[tokio::test(flavor = "current_thread")]
 async fn oversized_valid_exit_cannot_bypass_full_deferred_capacity() {
     let main = br#"{"jsonrpc":"2.0","id":1,"method":"test/block","params":null}"#;
-    let normal_exit = br#"{"jsonrpc":"2.0","method":"exit","params":null}"#;
-    let oversized_exit = format!(
-        r#"{{"jsonrpc":"2.0","method":"exit","params":null{}}}"#,
-        " ".repeat(normal_exit.len())
-    );
-    assert!(oversized_exit.len() > normal_exit.len());
+    let (control_limit, oversized_exit) = oversized_exit_body();
 
     let mut input = frame(main);
-    input.extend(frame(oversized_exit.as_bytes()));
+    input.extend(frame(&oversized_exit));
     let calls = Arc::new(AtomicUsize::new(0));
     let (responses_tx, _responses_rx) = mpsc::unbounded();
 
@@ -1442,7 +1510,7 @@ async fn oversized_valid_exit_cannot_bypass_full_deferred_capacity() {
             },
         )
         .retained_deferred_capacity(1)
-        .control_message_byte_limit(normal_exit.len())
+        .control_message_byte_limit(control_limit)
         .serve_inner(PendingService {
             calls: Arc::clone(&calls),
         }),
@@ -1452,6 +1520,283 @@ async fn oversized_valid_exit_cannot_bypass_full_deferred_capacity() {
 
     assert_eq!(stop, TransportStop::InputOverloaded);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn merman_deferred_cancel_has_no_side_effect_before_worker_poll() {
+    let crate::server::test_support::TestService {
+        mut service,
+        socket,
+        ..
+    } = crate::server::test_support::service();
+    let _socket = socket;
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({ "capabilities": {} }))
+        .id(1)
+        .finish();
+    assert!(
+        service
+            .call(initialize)
+            .await
+            .expect("initialize service call")
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let uri = "file:///tmp/deferred-cancel.mmd";
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(serde_json::json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": "mermaid",
+                    "version": 1,
+                    "text": "flowchart TD\nA-->B\n"
+                }
+            }))
+            .finish(),
+    );
+    let target_id = format!("request-{}", "x".repeat(MAX_CONTROL_MESSAGE_BYTES));
+    let hover = service.call(
+        Request::build("textDocument/hover")
+            .params(serde_json::json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 1, "character": 0 }
+            }))
+            .id(Id::String(target_id.clone()))
+            .finish(),
+    );
+    tokio::pin!(hover);
+
+    let cancel = Request::build("$/cancelRequest")
+        .params(serde_json::json!({ "id": target_id }))
+        .finish();
+    let body_length = serde_json::to_vec(&cancel)
+        .expect("serialize cancellation request")
+        .len();
+    assert!(body_length > MAX_CONTROL_MESSAGE_BYTES);
+    let cancel = match stdio_admission(cancel, body_length, MAX_CONTROL_MESSAGE_BYTES) {
+        StdioAdmission::Deferred(cancel) => service.admit_deferred(cancel),
+        StdioAdmission::ImmediateControl(_) => {
+            panic!("large string cancellation must use deferred admission")
+        }
+    };
+
+    assert!(
+        futures::poll!(&mut hover).is_pending(),
+        "deferred admission must not cancel a target before the worker polls it"
+    );
+    assert!(
+        cancel
+            .await
+            .expect("deferred cancellation handler")
+            .is_none()
+    );
+    let response = hover
+        .await
+        .expect("cancelled hover service result")
+        .expect("cancelled hover response");
+    assert_eq!(
+        response.error().expect("request cancellation error").code,
+        ErrorCode::RequestCancelled
+    );
+    assert!(open.await.expect("open service result").is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn merman_deferred_exit_has_no_side_effect_before_worker_poll() {
+    let crate::server::test_support::TestService {
+        mut service,
+        socket,
+        session,
+        ..
+    } = crate::server::test_support::service();
+    let _socket = socket;
+    let endpoint = session.endpoint_guard();
+    let exit = Request::build("exit")
+        .params(serde_json::Value::Null)
+        .finish();
+    let exit = match stdio_admission(
+        exit,
+        MAX_CONTROL_MESSAGE_BYTES + 1,
+        MAX_CONTROL_MESSAGE_BYTES,
+    ) {
+        StdioAdmission::Deferred(exit) => service.admit_deferred(exit),
+        StdioAdmission::ImmediateControl(_) => {
+            panic!("oversized exit must use deferred admission")
+        }
+    };
+
+    assert!(
+        !endpoint.is_terminated(),
+        "deferred admission must not terminate the session before worker polling"
+    );
+    assert!(exit.await.expect("deferred exit handler").is_none());
+    assert!(endpoint.is_terminated());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn oversized_exit_waits_for_ordinary_worker_capacity() {
+    let (mut client_input, server_input) = tokio::io::duplex(4096);
+    let (ordinary_polled_tx, ordinary_polled_rx) = oneshot::channel();
+    let (ordinary_release_tx, ordinary_release_rx) = oneshot::channel();
+    let (exit_admitted_tx, exit_admitted_rx) = oneshot::channel();
+    let (exit_polled_tx, mut exit_polled_rx) = oneshot::channel();
+    let (responses_tx, _responses_rx) = mpsc::unbounded();
+    let (control_limit, oversized_exit) = oversized_exit_body();
+    let lifecycle = Arc::new(ProtocolLifecycleState::default());
+    let server_lifecycle = Arc::clone(&lifecycle);
+    let server = tokio::spawn(async move {
+        stdio_server(
+            server_input,
+            Vec::<u8>::new(),
+            ResponseLoopback {
+                responses: responses_tx,
+            },
+        )
+        .ordinary_concurrency_level(1)
+        .control_message_byte_limit(control_limit)
+        .serve_inner(ProtocolLifecycleService {
+            inner: DeferredExitProbeService {
+                ordinary_polled: Some(ordinary_polled_tx),
+                ordinary_release: Some(ordinary_release_rx),
+                exit_admitted: Some(exit_admitted_tx),
+                exit_polled: Some(exit_polled_tx),
+            },
+            lifecycle: server_lifecycle,
+        })
+        .await
+    });
+
+    client_input
+        .write_all(&frame(br#"{"jsonrpc":"2.0","id":1,"method":"test/block"}"#))
+        .await
+        .expect("write blocking ordinary request");
+    ordinary_polled_rx
+        .await
+        .expect("ordinary handler should occupy the sole worker");
+    client_input
+        .write_all(&frame(&oversized_exit))
+        .await
+        .expect("write oversized exit notification");
+    exit_admitted_rx
+        .await
+        .expect("oversized exit should enter deferred admission");
+    assert_eq!(
+        lifecycle.termination(),
+        StdioTermination::ExitWithoutShutdown,
+        "published exit receipt must survive before the deferred handler is polled"
+    );
+    assert!(matches!(
+        exit_polled_rx.try_recv(),
+        Err(oneshot::error::TryRecvError::Empty)
+    ));
+    drop(client_input);
+
+    ordinary_release_tx
+        .send(())
+        .expect("release the sole ordinary worker");
+    exit_polled_rx
+        .await
+        .expect("deferred exit should run after worker capacity is available");
+    assert_eq!(
+        server.await.expect("stdio task should not panic"),
+        TransportStop::ExitNotification
+    );
+    assert_eq!(
+        lifecycle.termination(),
+        StdioTermination::ExitWithoutShutdown
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn oversized_exit_receipt_preserves_completed_shutdown_before_worker_poll() {
+    let (mut client_input, server_input) = tokio::io::duplex(4096);
+    let (server_output, client_output) = tokio::io::duplex(4096);
+    let (ordinary_polled_tx, ordinary_polled_rx) = oneshot::channel();
+    let (ordinary_release_tx, ordinary_release_rx) = oneshot::channel();
+    let (exit_admitted_tx, exit_admitted_rx) = oneshot::channel();
+    let (exit_polled_tx, mut exit_polled_rx) = oneshot::channel();
+    let (responses_tx, _responses_rx) = mpsc::unbounded();
+    let (control_limit, oversized_exit) = oversized_exit_body();
+    let lifecycle = Arc::new(ProtocolLifecycleState::default());
+    let server_lifecycle = Arc::clone(&lifecycle);
+    let server = tokio::spawn(async move {
+        stdio_server(
+            server_input,
+            server_output,
+            ResponseLoopback {
+                responses: responses_tx,
+            },
+        )
+        .ordinary_concurrency_level(1)
+        .control_message_byte_limit(control_limit)
+        .serve_inner(ProtocolLifecycleService {
+            inner: DeferredExitProbeService {
+                ordinary_polled: Some(ordinary_polled_tx),
+                ordinary_release: Some(ordinary_release_rx),
+                exit_admitted: Some(exit_admitted_tx),
+                exit_polled: Some(exit_polled_tx),
+            },
+            lifecycle: server_lifecycle,
+        })
+        .await
+    });
+
+    client_input
+        .write_all(&frame(br#"{"jsonrpc":"2.0","id":1,"method":"shutdown"}"#))
+        .await
+        .expect("write shutdown request");
+    client_input.flush().await.expect("flush shutdown request");
+    let mut output = LspFrameReader::new(client_output);
+    let response = timeout(Duration::from_secs(1), output.read_frame())
+        .await
+        .expect("shutdown response should be written")
+        .expect("shutdown response frame should be valid");
+    let FrameRead::Message {
+        message: IncomingMessage::Response(response),
+        ..
+    } = response
+    else {
+        panic!("expected shutdown response frame");
+    };
+    assert!(response.is_ok());
+
+    client_input
+        .write_all(&frame(br#"{"jsonrpc":"2.0","id":2,"method":"test/block"}"#))
+        .await
+        .expect("write blocking ordinary request");
+    ordinary_polled_rx
+        .await
+        .expect("ordinary handler should occupy the sole worker");
+    client_input
+        .write_all(&frame(&oversized_exit))
+        .await
+        .expect("write oversized exit notification");
+    exit_admitted_rx
+        .await
+        .expect("oversized exit should enter deferred admission");
+    assert_eq!(
+        lifecycle.termination(),
+        StdioTermination::ExitAfterShutdown,
+        "published exit receipt must preserve the completed shutdown state"
+    );
+    assert!(matches!(
+        exit_polled_rx.try_recv(),
+        Err(oneshot::error::TryRecvError::Empty)
+    ));
+    drop(client_input);
+
+    ordinary_release_tx
+        .send(())
+        .expect("release the sole ordinary worker");
+    exit_polled_rx
+        .await
+        .expect("deferred exit should run after worker capacity is available");
+    assert_eq!(
+        server.await.expect("stdio task should not panic"),
+        TransportStop::ExitNotification
+    );
+    assert_eq!(lifecycle.termination(), StdioTermination::ExitAfterShutdown);
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
