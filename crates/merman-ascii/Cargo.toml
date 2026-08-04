@@ -21,7 +21,6 @@ fixed-capabilities = ["ascii"]
 default = []
 
 [dependencies]
-chrono.workspace = true
 merman-core.workspace = true
 thiserror.workspace = true
 unicode-width.workspace = true

@@ -25,7 +25,6 @@ system-random = ["merman-core/system-random"]
 system-timing = ["merman-core/system-timing"]
 
 [dependencies]
-chrono.workspace = true
 merman-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true

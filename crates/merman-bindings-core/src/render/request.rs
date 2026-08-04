@@ -835,7 +835,7 @@ mod tests {
     fn boundary_fixed_today_returns_invalid_argument_instead_of_panicking() {
         let options = crate::common::parse_options(
             br#"{
-                "fixed_today": "-262143-01-01",
+                "fixed_today": "-2147483648-01-01",
                 "fixed_local_offset_minutes": 1439
             }"#,
         )

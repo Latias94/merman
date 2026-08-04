@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use merman_core::time::{CivilDate, OffsetDateTime, UtcOffset};
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_fixture_render_context::RenderContextCatalog;
 use regex::Regex;
@@ -7,12 +7,15 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 fn ms_to_local_iso(ms: i64) -> Option<String> {
-    let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    Some(
-        dt.with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset must be valid"))
-            .format("%Y-%m-%dT%H:%M:%S%.3f")
-            .to_string(),
-    )
+    let dt = OffsetDateTime::from_unix_millis(ms, UtcOffset::UTC).utc_datetime();
+    Some(format!(
+        "{}T{:02}:{:02}:{:02}.{:03}",
+        dt.date(),
+        dt.hour(),
+        dt.minute(),
+        dt.second(),
+        dt.millisecond()
+    ))
 }
 
 fn workspace_root() -> PathBuf {
@@ -250,9 +253,7 @@ fn fixtures_match_golden_snapshots() {
 
     // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
     let engine = Engine::new()
-        .with_fixed_today(Some(
-            NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-        ))
+        .with_fixed_today(Some(CivilDate::new(2026, 2, 15).expect("valid date")))
         // Gantt date handling follows JavaScript local-time semantics, which varies by runner timezone.
         // Pin a fixed offset so snapshots are stable across CI environments.
         .try_with_fixed_local_offset_minutes(0)

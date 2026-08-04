@@ -717,7 +717,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         }
         let header = format!(
             "# import-upstream-examples report (Mermaid{baseline_label})\n# generated_at={}\n# total_candidates={}\n# skip_duplicate_content={}\n# skip_exists={}\n",
-            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z"),
+            crate::cmd::timestamps::current_local_report_timestamp_milliseconds(),
             report_total_candidates,
             report_skip_duplicate_content,
             report_skip_exists,

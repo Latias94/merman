@@ -48,7 +48,6 @@ thiserror.workspace = true
 unicode-general-category.workspace = true
 lol_html.workspace = true
 url.workspace = true
-chrono.workspace = true
 jiff = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }
 ryu-js.workspace = true

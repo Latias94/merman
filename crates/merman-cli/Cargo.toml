@@ -119,7 +119,6 @@ shell-completions = ["dep:clap_complete"]
 atomic-write-file = { workspace = true, optional = true }
 clap.workspace = true
 clap_complete = { workspace = true, optional = true }
-chrono.workspace = true
 hickory-resolver = { workspace = true, optional = true }
 merman = { workspace = true, default-features = false }
 merman-analysis = { workspace = true, optional = true, default-features = false }

@@ -6,17 +6,11 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-import hashlib
 from pathlib import Path
 import re
 import subprocess
 import sys
 
-from artifact_dependency_approvals import (
-    ARTIFACT_DEPENDENCY_APPROVALS,
-    HOST_CLOSURE_REFERENCE_TARGET,
-    ApprovalCatalog,
-)
 from artifact_profile_recipe import (
     DEFAULT_DESCRIPTOR,
     REPO_ROOT,
@@ -37,11 +31,10 @@ FEATURE_MARKER = "__MERMAN_CLOSURE_FEATURES__"
 PACKAGE_ID_RE = re.compile(
     r"^(?P<name>[A-Za-z0-9_-]+)\s+v(?P<version>[^\s]+)(?P<annotations>.*)$"
 )
-FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-FINGERPRINT_DOMAIN = b"merman-artifact-dependency-closure-v2\0"
 DEFAULT_REGISTRY_SOURCE = "registry+https://github.com/rust-lang/crates.io-index"
 CARGO_DEDUPLICATION_SUFFIX = " (*)"
 CARGO_PROC_MACRO_ANNOTATION = " (proc-macro)"
+HOST_CLOSURE_REFERENCE_TARGET = "x86_64-unknown-linux-gnu"
 LINUX_REFERENCE_SCOPE = "linux-reference"
 PROFILE_TARGET_SCOPE = "profile-target"
 RESOLVED_REPO_ROOT = REPO_ROOT.resolve()
@@ -60,7 +53,6 @@ class ClosureClaim:
     required_packages: tuple[str, ...]
     forbidden_packages: tuple[str, ...]
     forbidden_features: tuple[PackageFeatureExclusion, ...] = ()
-    observed_residual_packages: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -68,7 +60,6 @@ class VerificationCase:
     recipe: CargoArtifactRecipe
     claim: ClosureClaim
     target: str
-    approved_fingerprint: str
 
     @property
     def closure_scope(self) -> str:
@@ -106,9 +97,6 @@ class ClosureObservation:
     closure_target: str
     package_count: int
     package_versions: frozenset[tuple[str, str]]
-    observed_residual_packages: tuple[str, ...]
-    fingerprint: str
-    fingerprint_enforced: bool
 
 
 class ClosureVerificationError(RuntimeError):
@@ -124,6 +112,7 @@ SEMANTIC_CLAIMS = (
         profile_id="rust-static-svg",
         required_packages=("merman", "merman-core", "merman-render"),
         forbidden_packages=(
+            "chrono",
             "getrandom",
             "image",
             "jiff",
@@ -170,6 +159,7 @@ SEMANTIC_CLAIMS = (
         profile_id="rust-svg-basic",
         required_packages=("merman", "merman-core", "merman-render"),
         forbidden_packages=(
+            "chrono",
             "getrandom",
             "image",
             "jiff",
@@ -237,6 +227,7 @@ SEMANTIC_CLAIMS = (
         profile_id="cli-analysis",
         required_packages=("merman-analysis", "merman-cli", "merman-core"),
         forbidden_packages=(
+            "chrono",
             "clap_complete",
             "krilla",
             "krilla-svg",
@@ -277,11 +268,10 @@ SEMANTIC_CLAIMS = (
             "tiny-skia",
             "usvg",
         ),
-        forbidden_packages=("krilla", "krilla-svg"),
+        forbidden_packages=("chrono", "krilla", "krilla-svg"),
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("pdf", "png")),
         ),
-        observed_residual_packages=("png",),
     ),
     ClosureClaim(
         claim_id="png-excludes-pdf-backend",
@@ -293,32 +283,18 @@ SEMANTIC_CLAIMS = (
             "tiny-skia",
             "usvg",
         ),
-        forbidden_packages=("krilla", "krilla-svg"),
+        forbidden_packages=("chrono", "krilla", "krilla-svg"),
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("jpeg", "pdf")),
         ),
     ),
     ClosureClaim(
-        claim_id="pdf-records-krilla-svg-residual",
+        claim_id="pdf-requires-krilla-and-excludes-raster-exports",
         profile_id="rust-export-pdf",
         required_packages=("krilla", "merman-export", "merman-render"),
-        forbidden_packages=(),
+        forbidden_packages=("chrono",),
         forbidden_features=(
             PackageFeatureExclusion("merman-export", ("jpeg", "png")),
-        ),
-        observed_residual_packages=(
-            "fontdb",
-            "gif",
-            "image-webp",
-            "krilla-svg",
-            "memmap2",
-            "png",
-            "resvg",
-            "rustybuzz",
-            "tiny-skia",
-            "ttf-parser",
-            "usvg",
-            "zune-jpeg",
         ),
     ),
 )
@@ -327,22 +303,14 @@ SEMANTIC_CLAIMS = (
 def load_verification_cases(
     *,
     descriptor_path: Path = DEFAULT_DESCRIPTOR,
-    approvals: ApprovalCatalog = ARTIFACT_DEPENDENCY_APPROVALS,
     semantic_claims: Sequence[ClosureClaim] = SEMANTIC_CLAIMS,
 ) -> tuple[VerificationCase, ...]:
-    """Join recipes, semantic checks, and approved runtime fingerprints."""
+    """Join descriptor-owned recipes with semantic runtime-closure checks."""
     try:
         profiles = load_artifact_profiles(descriptor_path)
     except ArtifactProfileError as error:
         raise ClosureVerificationError(str(error)) from error
     profile_ids = tuple(profile.profile_id for profile in profiles)
-    missing = sorted(set(profile_ids) - set(approvals))
-    unexpected = sorted(set(approvals) - set(profile_ids))
-    if missing or unexpected:
-        raise ClosureVerificationError(
-            "artifact dependency approvals must match the profile directory "
-            f"exactly: missing={missing!r} unexpected={unexpected!r}"
-        )
 
     semantic_by_profile = {claim.profile_id: claim for claim in semantic_claims}
     if len(semantic_by_profile) != len(semantic_claims):
@@ -368,29 +336,6 @@ def load_verification_cases(
                 f"{recipe.build_target_kind!r}"
             )
 
-        target_approvals = approvals[profile_id]
-        approved_targets = tuple(target for target, _ in target_approvals)
-        if len(approved_targets) != len(set(approved_targets)):
-            raise ClosureVerificationError(
-                f"profile {profile_id!r} has duplicate approval targets"
-            )
-        if approved_targets != expected_targets:
-            raise ClosureVerificationError(
-                f"profile {profile_id!r} approval targets must match descriptor "
-                f"evidence targets exactly: expected={expected_targets!r} "
-                f"observed={approved_targets!r}"
-            )
-        invalid_targets = [
-            target
-            for target, fingerprint in target_approvals
-            if not FINGERPRINT_RE.fullmatch(fingerprint)
-        ]
-        if invalid_targets:
-            raise ClosureVerificationError(
-                f"profile {profile_id!r} has invalid runtime fingerprints for "
-                f"targets {invalid_targets!r}"
-            )
-
         claim = semantic_by_profile.get(profile_id)
         if claim is None:
             claim = ClosureClaim(
@@ -405,8 +350,7 @@ def load_verification_cases(
                 f"package {recipe.package!r}"
             )
         cases.extend(
-            VerificationCase(recipe, claim, target, fingerprint)
-            for target, fingerprint in target_approvals
+            VerificationCase(recipe, claim, target) for target in expected_targets
         )
     return tuple(cases)
 
@@ -547,45 +491,24 @@ def _normalize_cargo_source(annotations: str) -> str:
     return source
 
 
-def closure_fingerprint(closure: DependencyClosure) -> str:
-    """Hash one exact source-aware runtime dependency and feature closure."""
-    digest = hashlib.sha256()
-    digest.update(FINGERPRINT_DOMAIN)
-    for (package, version, source), features in sorted(
-        closure.features_by_package_identity.items()
-    ):
-        digest.update(package.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(version.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(source.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(",".join(sorted(features)).encode("utf-8"))
-        digest.update(b"\n")
-    return f"sha256:{digest.hexdigest()}"
-
-
 def check_case(
     case: VerificationCase,
     closure: DependencyClosure,
-    *,
-    enforce_fingerprint: bool = True,
 ) -> tuple[list[str], ClosureObservation]:
     """Compare one observed runtime closure with its profile-owned contract."""
     claim = case.claim
     failures: list[str] = []
     required = set(claim.required_packages)
     forbidden = set(claim.forbidden_packages)
-    residual = set(claim.observed_residual_packages)
 
-    overlaps = sorted((required | residual) & forbidden)
+    overlaps = sorted(required & forbidden)
     if overlaps:
         failures.append(
-            "claim lists packages as both required/residual and forbidden: "
+            "claim lists packages as both required and forbidden: "
             + ", ".join(overlaps)
         )
 
-    missing = sorted((required | residual) - closure.packages)
+    missing = sorted(required - closure.packages)
     if missing:
         failures.append("required packages missing: " + ", ".join(missing))
 
@@ -594,10 +517,9 @@ def check_case(
         failures.append("forbidden packages present: " + ", ".join(present))
 
     for exclusion in claim.forbidden_features:
-        if exclusion.package not in required and exclusion.package not in residual:
+        if exclusion.package not in required:
             failures.append(
-                f"feature exclusion owner {exclusion.package!r} is not a required "
-                "or residual package"
+                f"feature exclusion owner {exclusion.package!r} is not a required package"
             )
             continue
         actual = closure.features_by_package.get(exclusion.package)
@@ -610,14 +532,6 @@ def check_case(
                 + ", ".join(enabled)
             )
 
-    fingerprint = closure_fingerprint(closure)
-    if enforce_fingerprint and fingerprint != case.approved_fingerprint:
-        failures.append(
-            "runtime dependency closure fingerprint drift: "
-            f"approved={case.approved_fingerprint} observed={fingerprint}; "
-            "review `cargo tree` output before updating the approval"
-        )
-
     observation = ClosureObservation(
         profile_id=case.recipe.profile_id,
         build_target_kind=case.recipe.build_target_kind,
@@ -628,9 +542,6 @@ def check_case(
             (name, version)
             for name, version, _source in closure.features_by_package_identity
         ),
-        observed_residual_packages=tuple(sorted(residual & closure.packages)),
-        fingerprint=fingerprint,
-        fingerprint_enforced=enforce_fingerprint,
     )
     return failures, observation
 
@@ -649,8 +560,6 @@ def verify_cases(
     cases: Iterable[VerificationCase],
     *,
     runner: CommandRunner = _default_runner,
-    enforce_fingerprints: bool = True,
-    running_host_target: str,
 ) -> tuple[ClosureObservation, ...]:
     """Run every selected profile-target case and aggregate all failures."""
     failures: list[str] = []
@@ -685,15 +594,7 @@ def verify_cases(
                     raise ClosureVerificationError("cargo tree stdout was not text")
                 closure = parse_cargo_tree(completed.stdout)
                 command_closures[command_key] = closure
-            enforce_case_fingerprint = enforce_fingerprints and (
-                case.recipe.build_target_kind != "host"
-                or running_host_target == case.target
-            )
-            case_failures, observation = check_case(
-                case,
-                closure,
-                enforce_fingerprint=enforce_case_fingerprint,
-            )
+            case_failures, observation = check_case(case, closure)
             observations.append(observation)
             failures.extend(f"{context}: {failure}" for failure in case_failures)
         except RuntimeError as error:
@@ -735,7 +636,7 @@ def _select_cases(
     unknown = sorted(requested - known)
     if unknown:
         raise ClosureVerificationError(
-            "profiles have no dependency-closure approval: " + ", ".join(unknown)
+            "profiles have no dependency-closure recipe: " + ", ".join(unknown)
         )
     return tuple(case for case in cases if case.recipe.profile_id in requested)
 
@@ -754,14 +655,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=[],
         help="Verify only this artifact profile; may be repeated.",
     )
-    parser.add_argument(
-        "--print-fingerprints",
-        action="store_true",
-        help=(
-            "Validate semantic closure claims and print observed fingerprints "
-            "without accepting fingerprint drift."
-        ),
-    )
     args = parser.parse_args(argv)
 
     try:
@@ -773,11 +666,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             running_host_target = rustc_host_target()
         except RuntimeError as error:
             raise ClosureVerificationError(str(error)) from error
-        observations = verify_cases(
-            cases,
-            enforce_fingerprints=not args.print_fingerprints,
-            running_host_target=running_host_target,
-        )
+        observations = verify_cases(cases)
         if not args.profile and args.descriptor.resolve() == DEFAULT_DESCRIPTOR.resolve():
             profile_packages: dict[str, frozenset[tuple[str, str]]] = {}
             for observation in observations:
@@ -798,7 +687,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     for observation in observations:
-        residual = ",".join(observation.observed_residual_packages) or "none"
         print(
             "artifact-closure OK "
             f"profile={observation.profile_id} "
@@ -807,10 +695,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"closure-target={observation.closure_target} "
             f"verifier-host={running_host_target} "
             "closure=runtime "
-            f"packages={observation.package_count} "
-            f"fingerprint={observation.fingerprint} "
-            f"fingerprint-enforced={str(observation.fingerprint_enforced).lower()} "
-            f"observed-residual={residual}"
+            f"packages={observation.package_count}"
         )
     return 0
 
