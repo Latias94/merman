@@ -395,8 +395,8 @@ fn run_layout(
         }
     }
 
-    work_control.charge(normalize_work_units(g)?)?;
-    normalize::run(g);
+    let normalization_plan = prepare_normalization(g, work_control)?;
+    normalize::run_planned(g, normalization_plan);
     if g.options().compound && !tiny_simple_chain {
         parent_dummy_chains::parent_dummy_chains_controlled(g, work_control)?;
         add_border_segments::add_border_segments_controlled(g, work_control)?;
@@ -488,11 +488,15 @@ fn run_layout(
 
     // Translate so the minimum top-left is at (marginx, marginy), matching Dagre's
     // `translateGraph(...)` behavior.
-    charge_graph_scan(g, work_control)?;
+    let translation_and_route_plan_work = checked_add(graph_scan_work_units(g)?, g.edge_count())?;
+    work_control.charge(translation_and_route_plan_work)?;
     let mut min_x: f64 = f64::INFINITY;
     let mut min_y: f64 = f64::INFINITY;
     let mut max_x: f64 = f64::NEG_INFINITY;
     let mut max_y: f64 = f64::NEG_INFINITY;
+    let mut translation_edge_work = Some(0usize);
+    let mut edge_route_materialization_work = Some(0usize);
+    let mut edge_keys = Vec::with_capacity(g.edge_count());
     g.for_each_node(|_id, n| {
         let (Some(x), Some(y)) = (n.x, n.y) else {
             return;
@@ -502,7 +506,18 @@ fn run_layout(
         max_x = max_x.max(x + n.width / 2.0);
         max_y = max_y.max(y + n.height / 2.0);
     });
-    g.for_each_edge(|_ek, lbl| {
+    g.for_each_edge(|edge_key, lbl| {
+        edge_keys.push(edge_key.clone());
+        translation_edge_work = translation_edge_work.and_then(|total| {
+            total
+                .checked_add(1)
+                .and_then(|next| next.checked_add(lbl.points.len()))
+        });
+        edge_route_materialization_work = edge_route_materialization_work.and_then(|total| {
+            total
+                .checked_add(lbl.points.len().max(1))
+                .and_then(|next| next.checked_add(2))
+        });
         // Match Dagre's `translateGraph(...)`: it computes min/max based on nodes and edge-label
         // boxes, but does not include intermediate edge points. This can leave some internal spline
         // control points with negative coordinates (which Mermaid preserves in `data-points`), while
@@ -515,9 +530,12 @@ fn run_layout(
             max_y = max_y.max(y + lbl.height / 2.0);
         }
     });
+    let translation_edge_work = translation_edge_work.ok_or(WorkError::ArithmeticOverflow)?;
+    let edge_route_materialization_work =
+        edge_route_materialization_work.ok_or(WorkError::ArithmeticOverflow)?;
 
     if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
-        let translation_work = checked_add(g.node_count(), edge_point_work_units(g)?)?;
+        let translation_work = checked_add(g.node_count(), translation_edge_work)?;
         work_control.charge(translation_work)?;
         // Dagre shifts the graph by `-(min - margin)` so the smallest x/y becomes `margin`.
         // This is observable in Mermaid flowchart-v2 SVG output where `diagramPadding: 0`
@@ -555,8 +573,7 @@ fn run_layout(
     }
     // Ensure every edge has at least one internal point (so D3 `curveBasis` emits cubic beziers),
     // and add node intersection endpoints to better match Dagre/Mermaid edge point semantics.
-    work_control.charge(edge_route_materialization_work_units(g)?)?;
-    let edge_keys: Vec<graphlib::EdgeKey> = g.edges().cloned().collect();
+    work_control.charge(edge_route_materialization_work)?;
     for e in edge_keys {
         let Some((sx, sy, sw, sh)) = g
             .node(&e.v)
@@ -663,45 +680,41 @@ fn node_snapshot_work_units(
     checked_add(g.node_order_slot_count(), g.node_count())
 }
 
-fn normalize_work_units(
+fn edge_snapshot_work_units(
     g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
 ) -> Result<usize, WorkError> {
-    let mut derived_nodes = 0usize;
+    checked_add(g.edge_slot_count(), g.edge_count())
+}
+
+fn prepare_normalization(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut dyn WorkControl,
+) -> Result<Vec<graphlib::EdgeKey>, WorkError> {
+    // The stable edge snapshot is itself input-dependent work. Admit the slot scan and one key
+    // clone per live edge before allocating the plan, then admit every planned edge mutation and
+    // derived dummy node before normalization changes the temporary graph.
+    work_control.charge(edge_snapshot_work_units(g)?)?;
+    let mut to_normalize = Vec::new();
+    let mut materialization_work = 0usize;
     for edge in g.edges() {
         let v_rank = g.node(&edge.v).and_then(|node| node.rank).unwrap_or(0);
         let w_rank = g.node(&edge.w).and_then(|node| node.rank).unwrap_or(0);
+        if w_rank == v_rank + 1 {
+            continue;
+        }
         let gap = usize::try_from((i64::from(w_rank) - i64::from(v_rank) - 1).max(0))
             .map_err(|_| WorkError::ArithmeticOverflow)?;
-        derived_nodes = checked_add(derived_nodes, gap)?;
+        materialization_work = checked_add(materialization_work, checked_add(1, gap)?)?;
+        to_normalize.push(edge.clone());
     }
-    checked_add(g.edge_count(), derived_nodes)
+    work_control.charge(materialization_work)?;
+    Ok(to_normalize)
 }
 
 fn remove_empty_ranks_work_units(
     g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
 ) -> Result<usize, WorkError> {
     checked_add(g.node_count(), checked_n_log_n(g.node_count())?)
-}
-
-fn edge_point_work_units(
-    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
-) -> Result<usize, WorkError> {
-    g.edges().try_fold(0usize, |total, key| {
-        let points = g.edge_by_key(key).map_or(0, |edge| edge.points.len());
-        checked_add(checked_add(total, 1)?, points)
-    })
-}
-
-fn edge_route_materialization_work_units(
-    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
-) -> Result<usize, WorkError> {
-    g.edges().try_fold(0usize, |total, key| {
-        let internal_points = g
-            .edge_by_key(key)
-            .map_or(0, |edge| edge.points.len().max(1));
-        let materialized = checked_add(internal_points, 2)?;
-        checked_add(total, materialized)
-    })
 }
 
 /// Writes proxy ranks back before retiring every proxy through one graph-wide removal pass.
@@ -944,6 +957,8 @@ mod tests {
         }
         graph.set_edge("a", "c");
         graph.set_edge("c", "d");
+        graph.node_mut("c").unwrap().rank = Some(0);
+        graph.node_mut("d").unwrap().rank = Some(3);
         assert!(graph.remove_node("b"));
         assert!(graph.remove_edge("a", "c", None));
 
@@ -953,6 +968,19 @@ mod tests {
         assert_eq!(graph.edge_slot_count(), 2);
         assert_eq!(graph_scan_work_units(&graph), Ok(6));
         assert_eq!(node_snapshot_work_units(&graph), Ok(7));
+        assert_eq!(edge_snapshot_work_units(&graph), Ok(3));
+
+        let mut normalize_work = RecordingWorkControl::default();
+        let normalization_plan = prepare_normalization(&graph, &mut normalize_work).unwrap();
+        assert_eq!(normalize_work.charges, vec![3, 3]);
+        assert_eq!(normalization_plan.len(), 1);
+
+        let mut rejected = RecordingWorkControl::with_limit(2);
+        assert!(matches!(
+            prepare_normalization(&graph, &mut rejected),
+            Err(WorkError::Interrupted)
+        ));
+        assert_eq!(rejected.charges, vec![3]);
     }
 
     #[test]
