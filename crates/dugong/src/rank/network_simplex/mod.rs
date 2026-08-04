@@ -766,7 +766,7 @@ fn enter_edge_fast(
                         let minlen = lbl.minlen.max(1) as i128;
                         let slack = w_rank - v_rank - minlen;
                         match &best {
-                            Some((best_slack, _)) if slack >= *best_slack => {}
+                            Some(best_key) if (slack, edge_ix) >= *best_key => {}
                             _ => best = Some((slack, edge_ix)),
                         }
                     },
@@ -802,7 +802,7 @@ fn enter_edge_fast(
                         let minlen = lbl.minlen.max(1) as i128;
                         let slack = w_rank - v_rank - minlen;
                         match &best {
-                            Some((best_slack, _)) if slack >= *best_slack => {}
+                            Some(best_key) if (slack, edge_ix) >= *best_key => {}
                             _ => best = Some((slack, edge_ix)),
                         }
                     },
@@ -819,7 +819,7 @@ fn enter_edge_fast(
                 let minlen = lbl.minlen.max(1) as i128;
                 let slack = w_rank - v_rank - minlen;
                 match &best {
-                    Some((best_slack, _)) if slack >= *best_slack => {}
+                    Some(best_key) if (slack, edge_ix) >= *best_key => {}
                     _ => best = Some((slack, edge_ix)),
                 }
             }
@@ -1396,6 +1396,96 @@ mod tests {
         fresh.rebuild(&second_tree, &graph, Some("a"));
 
         assert_eq!(reused, fresh);
+    }
+
+    #[test]
+    fn enter_edge_fast_breaks_equal_slack_ties_by_global_edge_order() {
+        let mut graph = Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel::default());
+        graph.set_default_node_label(NodeLabel::default);
+        graph.set_default_edge_label(|| EdgeLabel {
+            minlen: 1,
+            weight: 1.0,
+            ..EdgeLabel::default()
+        });
+        for node in ["r", "a", "b", "c", "x", "y"] {
+            graph.set_node(node, NodeLabel::default());
+        }
+        for (tail, head) in [
+            ("a", "r"),
+            ("a", "b"),
+            ("a", "c"),
+            ("r", "x"),
+            ("r", "y"),
+            ("y", "c"),
+            ("x", "b"),
+        ] {
+            graph.set_edge(tail, head);
+        }
+
+        let mut candidate_edge_ixs = Vec::new();
+        graph.for_each_edge_entry_ix(|edge_ix, _tail_ix, _head_ix, key, _label| {
+            if (key.v == "y" && key.w == "c") || (key.v == "x" && key.w == "b") {
+                candidate_edge_ixs.push((key.clone(), edge_ix));
+            }
+        });
+        assert_eq!(
+            candidate_edge_ixs,
+            [
+                (
+                    EdgeKey {
+                        v: "y".to_string(),
+                        w: "c".to_string(),
+                        name: None,
+                    },
+                    5,
+                ),
+                (
+                    EdgeKey {
+                        v: "x".to_string(),
+                        w: "b".to_string(),
+                        name: None,
+                    },
+                    6,
+                ),
+            ]
+        );
+
+        let mut spanning_tree = tree(&[("r", "a"), ("a", "b"), ("a", "c"), ("r", "x"), ("r", "y")]);
+        init_low_lim_values(&mut spanning_tree, Some("r"));
+
+        let mut rank_by_ix = vec![0_i128; graph.node_slot_count()];
+        rank_by_ix[graph.node_ix("b").expect("b is present")] = 1;
+        rank_by_ix[graph.node_ix("c").expect("c is present")] = 1;
+        let rank_by_ix_i32 = rank_by_ix
+            .iter()
+            .map(|rank| i32::try_from(*rank).expect("test ranks fit i32"))
+            .collect::<Vec<_>>();
+
+        let leaving = EdgeKey {
+            v: "a".to_string(),
+            w: "r".to_string(),
+            name: None,
+        };
+        let expected = EdgeKey {
+            v: "y".to_string(),
+            w: "c".to_string(),
+            name: None,
+        };
+        let slow = enter_edge(&spanning_tree, &graph, &rank_by_ix_i32, &leaving);
+        assert_eq!(slow, expected);
+
+        let mut tree_state = TreeState::new(&spanning_tree, &graph);
+        tree_state.rebuild(&spanning_tree, &graph, Some("r"));
+        let fast = enter_edge_fast(
+            &mut tree_state,
+            &graph,
+            &rank_by_ix,
+            spanning_tree.node_ix("a").expect("a is present"),
+            spanning_tree.node_ix("r").expect("r is present"),
+        );
+
+        assert_eq!(fast, slow);
     }
 }
 
