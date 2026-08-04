@@ -1426,6 +1426,24 @@ fn default_edge_label_can_read_endpoints_and_name() {
 }
 
 #[test]
+fn panicking_default_edge_label_does_not_commit_adjacency() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_default_edge_label(|| panic!("default edge label failed"));
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        g.set_edge("a", "b");
+    }));
+
+    assert!(result.is_err());
+    assert!(g.has_node("a"));
+    assert!(g.has_node("b"));
+    assert_eq!(g.edge_count(), 0);
+    assert!(g.edge_keys().is_empty());
+    assert!(g.successors("a").is_empty());
+    assert!(g.predecessors("b").is_empty());
+}
+
+#[test]
 fn default_edge_label_does_not_change_existing_edge() {
     let mut g: Graph<(), Option<i32>, ()> = Graph::new(GraphOptions::default());
     g.set_edge("a", "b");
@@ -1702,6 +1720,285 @@ fn successors_returns_node_successors() {
 }
 
 #[test]
+fn directed_node_adjacency_deduplicates_parallel_edges_but_edge_queries_do_not() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge_named("a", "b", Some("first"), None);
+    g.set_edge_named("a", "b", Some("second"), None);
+    g.set_edge_named("a", "c", Some("third"), None);
+
+    assert_eq!(g.successors("a"), vec!["b", "c"]);
+    assert_eq!(g.predecessors("b"), vec!["a"]);
+    assert_eq!(g.first_successor("a"), Some("b"));
+    assert_eq!(g.first_predecessor("b"), Some("a"));
+
+    let mut successors = Vec::new();
+    g.extend_successors("a", &mut successors);
+    assert_eq!(successors, vec!["b", "c"]);
+    let mut predecessors = Vec::new();
+    g.extend_predecessors("b", &mut predecessors);
+    assert_eq!(predecessors, vec!["a"]);
+
+    let mut visited_successors = Vec::new();
+    g.for_each_successor("a", |node| visited_successors.push(node));
+    assert_eq!(visited_successors, vec!["b", "c"]);
+    let mut visited_predecessors = Vec::new();
+    g.for_each_predecessor("b", |node| visited_predecessors.push(node));
+    assert_eq!(visited_predecessors, vec!["a"]);
+
+    assert_eq!(g.out_edges("a", Some("b")).len(), 2);
+    assert_eq!(g.in_edges("b", Some("a")).len(), 2);
+}
+
+#[test]
+fn directed_node_adjacency_preserves_first_edge_order_across_interleaved_sources() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge_named("a", "c", Some("a-c-first"), None);
+    g.set_edge_named("x", "c", Some("x-c"), None);
+    g.set_edge_named("a", "b", Some("a-b"), None);
+    g.set_edge_named("a", "c", Some("a-c-parallel"), None);
+    g.set_edge_named("y", "c", Some("y-c"), None);
+    g.set_edge_named("a", "d", Some("a-d"), None);
+
+    assert_eq!(g.successors("a"), vec!["c", "b", "d"]);
+    assert_eq!(g.predecessors("c"), vec!["a", "x", "y"]);
+    assert_eq!(g.out_edges("a", Some("c")).len(), 2);
+    assert_eq!(g.in_edges("c", Some("a")).len(), 2);
+}
+
+#[test]
+fn directed_node_adjacency_follows_javascript_object_keys_for_mixed_neighbors() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    for target in [
+        "ordinary-b",
+        "10",
+        "01",
+        "2",
+        "4294967295",
+        "0",
+        "ordinary-a",
+        "4294967294",
+    ] {
+        g.set_edge("source", target);
+    }
+    for source in [
+        "ordinary-y",
+        "10",
+        "01",
+        "2",
+        "4294967295",
+        "0",
+        "ordinary-x",
+        "4294967294",
+    ] {
+        g.set_edge(source, "target");
+    }
+
+    assert_eq!(
+        g.successors("source"),
+        vec![
+            "0",
+            "2",
+            "10",
+            "4294967294",
+            "ordinary-b",
+            "01",
+            "4294967295",
+            "ordinary-a",
+        ]
+    );
+    assert_eq!(
+        g.predecessors("target"),
+        vec![
+            "0",
+            "2",
+            "10",
+            "4294967294",
+            "ordinary-y",
+            "01",
+            "4294967295",
+            "ordinary-x",
+        ]
+    );
+    assert_eq!(g.first_successor("source"), Some("0"));
+    assert_eq!(g.first_predecessor("target"), Some("0"));
+}
+
+#[test]
+fn directed_node_adjacency_preserves_object_key_lifecycle_for_parallel_edges() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge_named("source", "ordinary-a", Some("ordinary-a-first"), None);
+    g.set_edge_named("source", "10", Some("numeric-10-first"), None);
+    g.set_edge_named("source", "ordinary-b", Some("ordinary-b"), None);
+    g.set_edge_named("source", "2", Some("numeric-2"), None);
+    g.set_edge_named("source", "ordinary-a", Some("ordinary-a-second"), None);
+    g.set_edge_named("source", "10", Some("numeric-10-second"), None);
+
+    g.set_edge_named("ordinary-in-a", "target", Some("ordinary-in-a-first"), None);
+    g.set_edge_named("10", "target", Some("numeric-in-10-first"), None);
+    g.set_edge_named("ordinary-in-b", "target", Some("ordinary-in-b"), None);
+    g.set_edge_named("2", "target", Some("numeric-in-2"), None);
+    g.set_edge_named(
+        "ordinary-in-a",
+        "target",
+        Some("ordinary-in-a-second"),
+        None,
+    );
+    g.set_edge_named("10", "target", Some("numeric-in-10-second"), None);
+
+    assert_eq!(
+        g.successors("source"),
+        vec!["2", "10", "ordinary-a", "ordinary-b"]
+    );
+    assert_eq!(
+        g.predecessors("target"),
+        vec!["2", "10", "ordinary-in-a", "ordinary-in-b"]
+    );
+    assert_eq!(g.directed_array_index_adjacency_entry_count(), 4);
+
+    assert!(g.remove_edge("source", "ordinary-a", Some("ordinary-a-first")));
+    assert!(g.remove_edge("source", "10", Some("numeric-10-first")));
+    assert!(g.remove_edge("ordinary-in-a", "target", Some("ordinary-in-a-first")));
+    assert!(g.remove_edge("10", "target", Some("numeric-in-10-first")));
+    assert_eq!(
+        g.successors("source"),
+        vec!["2", "10", "ordinary-a", "ordinary-b"]
+    );
+    assert_eq!(
+        g.predecessors("target"),
+        vec!["2", "10", "ordinary-in-a", "ordinary-in-b"]
+    );
+    assert_eq!(g.directed_array_index_adjacency_entry_count(), 4);
+
+    assert!(g.remove_edge("source", "ordinary-a", Some("ordinary-a-second")));
+    assert!(g.remove_edge("source", "10", Some("numeric-10-second")));
+    assert!(g.remove_edge("ordinary-in-a", "target", Some("ordinary-in-a-second")));
+    assert!(g.remove_edge("10", "target", Some("numeric-in-10-second")));
+    assert_eq!(g.directed_array_index_adjacency_entry_count(), 2);
+    g.set_edge_named("source", "ordinary-a", Some("ordinary-a-readded"), None);
+    g.set_edge_named("source", "10", Some("numeric-10-readded"), None);
+    g.set_edge_named(
+        "ordinary-in-a",
+        "target",
+        Some("ordinary-in-a-readded"),
+        None,
+    );
+    g.set_edge_named("10", "target", Some("numeric-in-10-readded"), None);
+
+    assert_eq!(
+        g.successors("source"),
+        vec!["2", "10", "ordinary-b", "ordinary-a"]
+    );
+    assert_eq!(
+        g.predecessors("target"),
+        vec!["2", "10", "ordinary-in-b", "ordinary-in-a"]
+    );
+    assert_eq!(g.directed_array_index_adjacency_entry_count(), 4);
+}
+
+#[test]
+fn directed_node_adjacency_preserves_counted_key_lifecycle_through_removal_and_compaction() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_node("removed", ());
+    g.set_edge_named("source", "ordinary-b", Some("ordinary-b-first"), None);
+    g.set_edge_named("source", "10", Some("numeric-10"), None);
+    g.set_edge_named("source", "ordinary-c", Some("ordinary-c"), None);
+    g.set_edge_named("source", "2", Some("numeric-2"), None);
+    g.set_edge_named("source", "ordinary-b", Some("ordinary-b-second"), None);
+    g.set_edge_named("ordinary-a", "target", Some("ordinary-a-first"), None);
+    g.set_edge_named("10", "target", Some("numeric-in-10"), None);
+    g.set_edge_named("ordinary-x", "target", Some("ordinary-x"), None);
+    g.set_edge_named("2", "target", Some("numeric-in-2"), None);
+    g.set_edge_named("ordinary-a", "target", Some("ordinary-a-second"), None);
+
+    assert!(g.remove_edge("source", "ordinary-b", Some("ordinary-b-first")));
+    assert!(g.remove_edge("ordinary-a", "target", Some("ordinary-a-first")));
+    assert_eq!(
+        g.successors("source"),
+        vec!["2", "10", "ordinary-b", "ordinary-c"]
+    );
+    assert_eq!(
+        g.predecessors("target"),
+        vec!["2", "10", "ordinary-a", "ordinary-x"]
+    );
+    assert_eq!(g.directed_array_index_adjacency_entry_count(), 4);
+
+    assert!(g.remove_node("removed"));
+    assert!(g.compact_if_sparse(1.01));
+    assert_eq!(
+        g.successors("source"),
+        vec!["2", "10", "ordinary-b", "ordinary-c"]
+    );
+    assert_eq!(
+        g.predecessors("target"),
+        vec!["2", "10", "ordinary-a", "ordinary-x"]
+    );
+    assert_eq!(g.directed_array_index_adjacency_entry_count(), 4);
+
+    assert!(g.remove_edge("source", "ordinary-b", Some("ordinary-b-second")));
+    assert_eq!(g.successors("source"), vec!["2", "10", "ordinary-c"]);
+    g.set_edge_named("source", "ordinary-b", Some("ordinary-b-readded"), None);
+    assert_eq!(
+        g.successors("source"),
+        vec!["2", "10", "ordinary-c", "ordinary-b"]
+    );
+}
+
+#[test]
+fn directed_edge_callbacks_can_query_node_adjacency_without_prewarming() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge_named("a", "b", Some("first"), None);
+    g.set_edge_named("a", "b", Some("second"), None);
+    g.set_edge_named("a", "c", Some("third"), None);
+
+    let mut observations = Vec::new();
+    g.for_each_out_edge("a", None, |_, _| {
+        observations.push(g.successors("a"));
+    });
+
+    assert_eq!(observations, vec![vec!["b", "c"]; 3]);
+}
+
+#[test]
+fn directed_node_adjacency_reuses_high_fanout_removals_without_historical_order() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    for index in 0..256 {
+        g.set_edge("source", format!("old-{index:03}"));
+    }
+
+    for index in 0..255 {
+        assert!(g.remove_edge("source", &format!("old-{index:03}"), None));
+    }
+    assert_eq!(g.successors("source"), vec!["old-255"]);
+    assert_eq!(g.first_successor("source"), Some("old-255"));
+
+    for index in 0..255 {
+        g.set_edge("source", format!("new-{index:03}"));
+    }
+    let successors = g.successors("source");
+    assert_eq!(successors.len(), 256);
+    assert_eq!(successors.first(), Some(&"old-255"));
+    assert_eq!(successors.get(1), Some(&"new-000"));
+    assert_eq!(successors.last(), Some(&"new-254"));
+    assert_eq!(g.predecessors("new-000"), vec!["source"]);
+    assert_eq!(g.predecessors("new-254"), vec!["source"]);
+}
+
+#[test]
 fn neighbors_returns_unique_in_and_out_neighbors() {
     let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
     g.set_edge("a", "b");
@@ -1711,6 +2008,30 @@ fn neighbors_returns_unique_in_and_out_neighbors() {
     assert_eq!(sorted(g.neighbors("a")), vec!["a", "b"]);
     assert_eq!(sorted(g.neighbors("b")), vec!["a", "c"]);
     assert_eq!(sorted(g.neighbors("c")), vec!["b"]);
+}
+
+#[test]
+fn directed_neighbors_use_predecessor_first_union_order() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    for predecessor in ["ordinary-in", "10", "shared", "2"] {
+        g.set_edge(predecessor, "center");
+    }
+    for successor in ["ordinary-out", "1", "shared", "3"] {
+        g.set_edge("center", successor);
+    }
+
+    assert_eq!(
+        g.predecessors("center"),
+        vec!["2", "10", "ordinary-in", "shared"]
+    );
+    assert_eq!(
+        g.successors("center"),
+        vec!["1", "3", "ordinary-out", "shared"]
+    );
+    assert_eq!(
+        g.neighbors("center"),
+        vec!["2", "10", "ordinary-in", "shared", "1", "3", "ordinary-out",]
+    );
 }
 
 #[test]

@@ -12,14 +12,6 @@
           "is_cluster": true
         },
         {
-          "id": "IPC::Sender",
-          "x": 87.977,
-          "y": 77.0,
-          "width": 100.953,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
           "id": "__proto__",
           "x": 255.156,
           "y": 77.0,
@@ -32,6 +24,14 @@
           "x": 384.203,
           "y": 77.0,
           "width": 99.688,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "IPC::Sender",
+          "x": 87.977,
+          "y": 77.0,
+          "width": 100.953,
           "height": 84.0,
           "is_cluster": false
         }

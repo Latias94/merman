@@ -4,14 +4,6 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "C2",
-          "x": 217.519,
-          "y": 284.0,
-          "width": 42.563,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
           "id": "Class01",
           "x": 64.599,
           "y": 84.0,
@@ -24,6 +16,14 @@
           "x": 217.519,
           "y": 84.0,
           "width": 76.641,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C2",
+          "x": 217.519,
+          "y": 284.0,
+          "width": 42.563,
           "height": 84.0,
           "is_cluster": false
         },

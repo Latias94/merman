@@ -37,186 +37,6 @@
   "entries": [
     {
       "diagram": "architecture",
-      "fixture": "probe_architecture_icontext_anchor_b_mix_992",
-      "descendants": "parity",
-      "input_sha256": "3bf1d1ac295dc82d6ce49e4db5c125697ca794791c8f82483c40eb2b73635962",
-      "upstream_svg_sha256": "8bd5607997ebbca56e4bebf6a069fc462a449c9f29a7811076e4498687397d60",
-      "upstream": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -22 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -23 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "probe_architecture_icontext_anchor_code_span_996",
-      "descendants": "parity",
-      "input_sha256": "6592041981139078d801a398422d94ae6ae754473ea78f37c9f02066f3e9b924",
-      "upstream_svg_sha256": "787c1fea3d8dc79954690a2af7363dd0ae0bfb7cd8a955d629c41a260c7a07fb",
-      "upstream": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -22 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -23 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "probe_architecture_icontext_anchor_img_993",
-      "descendants": "parity",
-      "input_sha256": "9a602743dafecdad6c178bee0e968331309c7692b2481ec40e4865575e91f6d3",
-      "upstream_svg_sha256": "a19360cbbaf84f715d7cfcccffb4fa7daf6e07c062438d8f9119182316e1d9dd",
-      "upstream": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -22 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -23 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "probe_architecture_icontext_anchor_nested_svg_text_998",
-      "descendants": "parity",
-      "input_sha256": "9c589d55c04c75132262452da231beba448bde4f3bd5e79a05baa9d658b7b512",
-      "upstream_svg_sha256": "0352ebe54e370e5c8a82132da4d590b239b27f528d710937a887018b5406b960",
-      "upstream": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -22 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -23 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "probe_architecture_icontext_anchor_span_991",
-      "descendants": "parity",
-      "input_sha256": "8696cd076521bcea3e2d1560e8d884100f0363164c12dbbd451fe84546cfe1fb",
-      "upstream_svg_sha256": "c2c6724ed5d9f5df90ef3162c751ccbc10a6d29733061f3a2c88b03c6138b2ef",
-      "upstream": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -22 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -23 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "probe_architecture_icontext_anchor_svg_994",
-      "descendants": "parity",
-      "input_sha256": "9e8ad22c2b4b30e8b913b15bb73ec6967baf890da7abcbdf7f2634b8c5980e30",
-      "upstream_svg_sha256": "61836874c47add98e67293e607b7cb712811d539e92aa4b9e824fd80b73d53a3",
-      "upstream": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -22 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -23 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "probe_architecture_icontext_anchor_text_code_997",
-      "descendants": "parity",
-      "input_sha256": "fdb0b68a0534be1834af9b74f26a4c56bede2f023f282044cf99c324f892ce70",
-      "upstream_svg_sha256": "b390dae301192614d2e19ec34f1bcdf5a0c038fb9c10d9432087e3b50aeec92d",
-      "upstream": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -22 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -23 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "probe_architecture_icontext_span_anchor_code_995",
-      "descendants": "parity",
-      "input_sha256": "6f9a77b9cd9c1ee88bc8f6ec97c5f0c8a28f19f97d3bf82720982d8ba079ec02",
-      "upstream_svg_sha256": "bccc018467e7b686af26030e9995041cdd495bf66b15c1cd5d7c3f0281191ee3",
-      "upstream": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -22 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -23 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch3_bidirectional_and_mixed_arrows_054",
-      "descendants": "parity",
-      "input_sha256": "a304e26da676f9e0595c604147e34f1e9a76d6bbec70f376ba30b6b4a49556b0",
-      "upstream_svg_sha256": "1d0f6b8b688e8d70ee4740b1a275e954b03f2e737447c3924f3333e9f30810f2",
-      "upstream": {
-        "style": "max-width: 429.094px; background-color: white;",
-        "view_box": "-153.047 -9.833 429.094 195.521",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 429.094px; background-color: white;",
-        "view_box": "-154.047 -10.833 429.094 195.521",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "stress_architecture_batch3_deep_group_chain_050",
       "descendants": "parity",
       "input_sha256": "35da38c557b88455b45f589ab49488a46b69982ab85e9d03d9115c2e19672d10",
@@ -230,126 +50,6 @@
       "local": {
         "style": "max-width: 4094.546px; background-color: white;",
         "view_box": "-2008.773 -7622.028 4094.546 15381.056",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch3_long_group_titles_wrapping_055",
-      "descendants": "parity",
-      "input_sha256": "405393ce844f1f1607a197a809de62c8d35abacd6e0115b0c0cc042980bc7901",
-      "upstream_svg_sha256": "b0809824f71b0290efedb2201e11a3385bba15868d26ec4124adb2a10c954421",
-      "upstream": {
-        "style": "max-width: 477.687px; background-color: white;",
-        "view_box": "-221.843 -65.5 477.687 262",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 479.687px; background-color: white;",
-        "view_box": "-222.843 -65.5 479.687 262",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch3_parallel_edges_and_labels_057",
-      "descendants": "parity",
-      "input_sha256": "855b615e05d77a3fdebf0eb28561ba977ce1bee3cec16876c3aa85ab51f9788b",
-      "upstream_svg_sha256": "af2a3dcbecef491117c06b16ec3c95580606ea0d38a5966dc1fb25125882fa93",
-      "upstream": {
-        "style": "max-width: 361.164px; background-color: white;",
-        "view_box": "-119.832 -211.175 361.164 586.037",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 361.164px; background-color: white;",
-        "view_box": "-120.332 -212.175 361.164 586.037",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch3_port_pairs_corner_cases_058",
-      "descendants": "parity",
-      "input_sha256": "ddc6383edd5597eb4d7c8af4f58c6444956e8a00761d99ea74be139b12517039",
-      "upstream_svg_sha256": "a697cd4955386948732f8105e581c4b037bd6c47eab7b557f39107c14b575a2c",
-      "upstream": {
-        "style": "max-width: 355.591px; background-color: white;",
-        "view_box": "-96.295 -172.13 355.591 508.301",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 355.591px; background-color: white;",
-        "view_box": "-97.295 -173.13 355.591 508.301",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch3_unicode_titles_and_services_052",
-      "descendants": "parity",
-      "input_sha256": "b1428b5b59888938394e34d7ff0e8aa2c7ea9366095924e5e95da4dc38e53289",
-      "upstream_svg_sha256": "b0b942bdd1ed9da1105917c67d159106c65850b0e8fa4e732ce2f5bd0018626b",
-      "upstream": {
-        "style": "max-width: 447.926px; background-color: white;",
-        "view_box": "-181.963 -165.963 447.926 462.926",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 449.426px; background-color: white;",
-        "view_box": "-182.213 -165.963 449.426 462.926",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch4_init_fontsize_wrap_063",
-      "descendants": "parity",
-      "input_sha256": "11e0373973c152e48662c005cd05d0b34bf6db3fb9fb6955bc6199c48cf47556",
-      "upstream_svg_sha256": "74e48d9811ad750a8e458785bcd1697f2bd86f4812c53cdca1fd21289220c7ad",
-      "upstream": {
-        "style": "max-width: 161.788px; background-color: white;",
-        "view_box": "21 -208.937 161.788 585.561",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 161.788px; background-color: white;",
-        "view_box": "18.305 -209.937 161.788 585.561",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch4_init_small_icons_061",
-      "descendants": "parity",
-      "input_sha256": "1600c44dd35f9434c9c4b2291a7b62c5662c33d25a1fa1b79a2cac99e0976399",
-      "upstream_svg_sha256": "be3e95cdf60df02ffe8ddc12c97065871d5ebd155bd1e3c9360bc2f6e86ffda2",
-      "upstream": {
-        "style": "max-width: 187.859px; background-color: white;",
-        "view_box": "-60.286 -56.286 187.859 191.571",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 187.859px; background-color: white;",
-        "view_box": "-61.84 -56.286 187.859 191.571",
         "width": "100%",
         "height": null
       },
@@ -389,107 +89,7 @@
       },
       "local": {
         "style": "max-width: 343.78px; background-color: white;",
-        "view_box": "-96.096 -109.236 343.78 378.472",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch4_ports_matrix_072",
-      "descendants": "parity",
-      "input_sha256": "d8a7edcfca014387d43b18122b098875c3ed8b87cd480427a3697a0cbf0aacc9",
-      "upstream_svg_sha256": "38c99bded46a18b312104319f72067a6188e1b7cf04f96394c9436d1b6807d3a",
-      "upstream": {
-        "style": "max-width: 360.926px; background-color: white;",
-        "view_box": "-118.963 -110.713 360.926 385.113",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 360.926px; background-color: white;",
-        "view_box": "-119.963 -111.713 360.926 385.113",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch4_title_accdescr_multiline_065",
-      "descendants": "parity",
-      "input_sha256": "0a5039d32f25cf62bde4da66ca617670a3d3435fbcc8158ab71793263acd57a7",
-      "upstream_svg_sha256": "f2ac7b8d1774939fa7464fd4c8c4a72f8710ac149a3965ec5355ca1c7b8a51b4",
-      "upstream": {
-        "style": "max-width: 360.687px; background-color: white;",
-        "view_box": "-119.593 -22 360.687 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 360.687px; background-color: white;",
-        "view_box": "-120.093 -23 360.687 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch5_dense_group_services_073",
-      "descendants": "parity",
-      "input_sha256": "f9f3824137bdc6aa79b46c61e4a9be6467f77b9bf3514028ea6b44a8bfc60690",
-      "upstream_svg_sha256": "d5b7c0b0b06f44fdf2d8c4a6183b72f2e5ee0c8b71e0625baf8d051cc5eead7b",
-      "upstream": {
-        "style": "max-width: 454.327px; background-color: white;",
-        "view_box": "-194.663 -166.046 454.327 463.091",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 455.327px; background-color: white;",
-        "view_box": "-196.163 -166.046 455.327 463.091",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch5_group_edges_across_nested_groups_075",
-      "descendants": "parity",
-      "input_sha256": "72397f0b60a8c10bfcd5713fb25e18794085dc408eac569816120a734bfebca9",
-      "upstream_svg_sha256": "a11521843e8dacc488a21cc39c5c78d60382c91995d962361f8354969e7ecb30",
-      "upstream": {
-        "style": "max-width: 354px; background-color: white;",
-        "view_box": "-137 -445.616 354 1022.233",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 356px; background-color: white;",
-        "view_box": "-138 -445.616 356 1022.233",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch5_junction_fanout_grid_074",
-      "descendants": "parity",
-      "input_sha256": "495eabcea6b63688bdb00ad6d6798787f14e23e2a4176a5db8fd91f50f603639",
-      "upstream_svg_sha256": "a0c413c2996c14255bf8ba9ba8338caeadfb731eb2089bbc2182f2525e471b44",
-      "upstream": {
-        "style": "max-width: 762.811px; background-color: white;",
-        "view_box": "-319.906 -211.355 762.811 586.397",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 762.811px; background-color: white;",
-        "view_box": "-320.906 -212.355 762.811 586.397",
+        "view_box": "-94.213 -108.986 343.78 378.472",
         "width": "100%",
         "height": null
       },
@@ -508,48 +108,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 546.426px; background-color: white;",
-        "view_box": "-276.713 -165.963 546.426 462.926",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch5_multi_edges_same_ports_079",
-      "descendants": "parity",
-      "input_sha256": "fc38f090537b2da7051599ac45f8b83ead2d6ee654dda5461273c504af3d5924",
-      "upstream_svg_sha256": "ffa423c94483220bb646ba2543ff9fe6f08e712b1cc6be6dd01d7e5bd9781679",
-      "upstream": {
-        "style": "max-width: 372.404px; background-color: white;",
-        "view_box": "-110.369 -110.713 372.404 385.113",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 372.404px; background-color: white;",
-        "view_box": "-111.369 -111.713 372.404 385.113",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch5_ports_matrix_stress_082",
-      "descendants": "parity",
-      "input_sha256": "ac8173feebe4f06b3b17901bbcef5b9bf04d695d72ccc6e7fda1ec890364736a",
-      "upstream_svg_sha256": "43e98432e9e9b68465af6baba3fafa449aa25e571280d3aa6b44f0eb9c236ed9",
-      "upstream": {
-        "style": "max-width: 331.072px; background-color: white;",
-        "view_box": "-103.859 -194.901 331.072 553.489",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 331.072px; background-color: white;",
-        "view_box": "-104.859 -195.901 331.072 553.489",
+        "style": "max-width: 544.426px; background-color: white;",
+        "view_box": "-275.713 -165.963 544.426 462.926",
         "width": "100%",
         "height": null
       },
@@ -597,86 +157,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085",
-      "descendants": "parity",
-      "input_sha256": "bda86c166019beb24d3207327b8a76a82e6c5ca73dcc287a47b768fe6cb49b0a",
-      "upstream_svg_sha256": "577c71e2e0ed32c731618ce37828fcbe32fa1f9e518021c35c00e1da59c26ec6",
-      "upstream": {
-        "style": "max-width: 447.687px; background-color: white;",
-        "view_box": "-157.515 -65.5 447.687 262",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 448.687px; background-color: white;",
-        "view_box": "-157.909 -65.5 448.687 262",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch6_edge_labels_with_xml_like_text_096",
-      "descendants": "parity",
-      "input_sha256": "b886f3a27cf3b08d69941645d53f5d2be339150b1470d080e4ff1d05e34bf9e1",
-      "upstream_svg_sha256": "6065c32cd96996f438bd9d2a0dabfc1e51b3f259c03278564c45d7139201b239",
-      "upstream": {
-        "style": "max-width: 360.687px; background-color: white;",
-        "view_box": "-104.343 -22 360.687 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 360.687px; background-color: white;",
-        "view_box": "-105.625 -23 360.687 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch6_iconify_icontext_html_entities_088",
-      "descendants": "parity",
-      "input_sha256": "5cad6baabe0be3a82944e24956a86708be3d48d48c49ca4a16e1fa016ea807fa",
-      "upstream_svg_sha256": "7c30deef273a1b82805b523504fd4315220bec83cbefb27b5202bc4a1dc1f203",
-      "upstream": {
-        "style": "max-width: 448.426px; background-color: white;",
-        "view_box": "-186.713 -165.963 448.426 462.926",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 449.426px; background-color: white;",
-        "view_box": "-188.213 -165.963 449.426 462.926",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch6_init_fontsize_icon_size_wrap_093",
-      "descendants": "parity",
-      "input_sha256": "791d561fb7423a14bd6ee0d78a48afc6114ee5545bd614f7d96df68e12db6d3a",
-      "upstream_svg_sha256": "acbc8cf1a76ebf7e8c1ebc99a62b1ca579c979e75e0c006d537d1febfd646a75",
-      "upstream": {
-        "style": "max-width: 323.605px; background-color: white;",
-        "view_box": "-130.821 -141.74 323.605 380.479",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 325.605px; background-color: white;",
-        "view_box": "-132.04 -141.74 325.605 380.479",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "stress_architecture_batch6_junctions_multi_split_with_group_edges_087",
       "descendants": "parity",
       "input_sha256": "b0d450f0a6cb50ef1c50adff9b4c3d99af5ff28e52057cc448e89935ffc997dc",
@@ -717,46 +197,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "stress_architecture_batch6_mixed_arrow_styles_and_labels_092",
-      "descendants": "parity",
-      "input_sha256": "5f278a3a1f20798e7815fdabd2391cbc0f4ce18de280b9566a1de41ba65d40ec",
-      "upstream_svg_sha256": "8f6575f634dd413d4be8d4997d2c733c2dab71381874d0ab47b0caf00dbefc8f",
-      "upstream": {
-        "style": "max-width: 562.95px; background-color: white;",
-        "view_box": "-219.975 -9.833 562.95 195.521",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 562.95px; background-color: white;",
-        "view_box": "-220.975 -10.833 562.95 195.521",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch6_nested_groups_group_edges_and_ports_086",
-      "descendants": "parity",
-      "input_sha256": "2222c6daa73a3c00b8ed9353667f5caaf8b31d3cc2deba6ce21adeeeed6e953e",
-      "upstream_svg_sha256": "e5432c22787d0a25d25d9c9ff4c546ac33618efbcd2d4f21688ebc8e6781b5aa",
-      "upstream": {
-        "style": "max-width: 549.002px; background-color: white;",
-        "view_box": "-241.001 -448.219 549.002 1027.438",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 551.002px; background-color: white;",
-        "view_box": "-242.001 -448.219 551.002 1027.438",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "stress_architecture_batch6_ordering_declarations_and_in_keyword_091",
       "descendants": "parity",
       "input_sha256": "ded2dd1f6eda1378aee1bfeb3cddec88a8acf25072a4df0dd281db0a211b6789",
@@ -770,46 +210,6 @@
       "local": {
         "style": "max-width: 485.714px; background-color: white;",
         "view_box": "-199.357 -186.194 485.714 506.387",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_batch6_port_matrix_stress_090",
-      "descendants": "parity",
-      "input_sha256": "a4fd3a5b6d3de9bb31f7aa4c7f555487357c94595689d4a70b43d677ab0092a7",
-      "upstream_svg_sha256": "05c11eceec4dca569daa7d34d4744f9e2d9cae6caf7d4240ec4b00031b90f90f",
-      "upstream": {
-        "style": "max-width: 424.198px; background-color: white;",
-        "view_box": "-150.599 -190.25 424.198 544.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 424.198px; background-color: white;",
-        "view_box": "-151.599 -191.25 424.198 544.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_crossing_edges_ring_028",
-      "descendants": "parity",
-      "input_sha256": "0aa4452a768fbd440a149e0c46d296e30307b56c8367cfe7bccb5af97c0d1e5e",
-      "upstream_svg_sha256": "70157a2a26803cfea7bd2e205069da74c6a8355bbaa97a7f48f3673d8efeb5bd",
-      "upstream": {
-        "style": "max-width: 640px; background-color: white;",
-        "view_box": "-238.5 -87.75 640 339.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 640px; background-color: white;",
-        "view_box": "-239.5 -88.75 640 339.188",
         "width": "100%",
         "height": null
       },
@@ -837,66 +237,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "stress_architecture_dense_junction_grid_035",
-      "descendants": "parity",
-      "input_sha256": "06f0123007dd9b75571780d2dd07a5ed05e1f6a256e581135af7e3a18874b682",
-      "upstream_svg_sha256": "fea3485e515533da908ade1f4f4f7c9b5a42900e120c0a466d5f531e7fef3ae4",
-      "upstream": {
-        "style": "max-width: 453.213px; background-color: white;",
-        "view_box": "-162.488 -109.262 453.213 382.212",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 453.213px; background-color: white;",
-        "view_box": "-163.488 -110.262 453.213 382.212",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_dense_ports_star_044",
-      "descendants": "parity",
-      "input_sha256": "8d0f431ae065ce9e79fa6d8ba55a5549007d3ae009549577b1c2fa2e996747e7",
-      "upstream_svg_sha256": "63b3c33af758910b262fe6ad8dcd9508047efe283cd5c3143cdc8613282e6cef",
-      "upstream": {
-        "style": "max-width: 562.586px; background-color: white;",
-        "view_box": "-220.543 -211.543 562.586 586.773",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 562.586px; background-color: white;",
-        "view_box": "-221.043 -212.543 562.586 586.773",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_disconnected_group_edges_032",
-      "descendants": "parity",
-      "input_sha256": "3a8ac1d9b9d9c4d2eb455c83f8dd2cb9827e716318e09fe690e72836f83cf7b2",
-      "upstream_svg_sha256": "3a86d273d385a1c5c967d234895e974dffd98283e1f072e65f33e7a1b206548b",
-      "upstream": {
-        "style": "max-width: 719.604px; background-color: white;",
-        "view_box": "-319.302 -198.217 719.604 531.621",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 719.604px; background-color: white;",
-        "view_box": "-319.302 -198.717 719.604 531.621",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "stress_architecture_disconnected_islands_046",
       "descendants": "parity",
       "input_sha256": "374325f3f136018cef51c2895741197cc723f1de43a5ff359348113da55d684c",
@@ -910,86 +250,6 @@
       "local": {
         "style": "max-width: 823.346px; background-color: white;",
         "view_box": "-369.673 -319.23 823.346 775.647",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_edge_label_corner_cases_012",
-      "descendants": "parity",
-      "input_sha256": "6cdc8f076df5969406c993377b2b6fd598b6f0bc91d641943de4d8773ed3ab77",
-      "upstream_svg_sha256": "8ff1a72efba2fadc30b0928cdb0f7f2e9024f3fc3cfd288d98d0eb25dae8c03b",
-      "upstream": {
-        "style": "max-width: 344.851px; background-color: white;",
-        "view_box": "-65.282 -101.782 344.851 367.251",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 344.851px; background-color: white;",
-        "view_box": "-66.368 -102.782 344.851 367.251",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_edge_titles_oneword_036",
-      "descendants": "parity",
-      "input_sha256": "e7527f843e79f5adf578dd00ce2cdf300fc03ecfdd5cfec7d1c7c0ff4eb4b1fe",
-      "upstream_svg_sha256": "d05315afeb6af1c817e3c2169110abce3af31c2d6e9f5a33d7399d3196c27c39",
-      "upstream": {
-        "style": "max-width: 354.397px; background-color: white;",
-        "view_box": "-101.365 -101.782 354.397 367.251",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 354.397px; background-color: white;",
-        "view_box": "-102.365 -102.782 354.397 367.251",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_external_icons_005",
-      "descendants": "parity",
-      "input_sha256": "1f6e05635c4121a63dd5cdf33682e2f65c9740bbe74464be7f6f6bd587340e64",
-      "upstream_svg_sha256": "4badb5a819cc949b245b53bafd5bf8d0b1716f6837a13f4fb53352a83e3de2cd",
-      "upstream": {
-        "style": "max-width: 861.089px; background-color: white;",
-        "view_box": "-403.545 -166.06 861.089 463.12",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 862.089px; background-color: white;",
-        "view_box": "-405.045 -166.06 862.089 463.12",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_font_and_theme_097",
-      "descendants": "parity",
-      "input_sha256": "0447e14107a71d7d103dc0fd19cc1fe9f2a4f35b4dff7aff0919dd59bd465376",
-      "upstream_svg_sha256": "e1be2e77b32221d25a1c8ac5d183b7cf534540defee954548563744487828ed3",
-      "upstream": {
-        "style": "max-width: 360.687px; background-color: white;",
-        "view_box": "-119.593 -20 360.687 183.609",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 360.687px; background-color: white;",
-        "view_box": "-120.093 -21 360.687 183.609",
         "width": "100%",
         "height": null
       },
@@ -1037,66 +297,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "stress_architecture_html_titles_and_escapes_041",
-      "descendants": "parity",
-      "input_sha256": "2233a34c2d3d4f7820984a903ba6086737252ed077b448623161c7f7cac32886",
-      "upstream_svg_sha256": "8046784c9d0d590b46c0431abb2f829ee1afd276adcbb3d60392892c5a8ecdc0",
-      "upstream": {
-        "style": "max-width: 479.926px; background-color: white;",
-        "view_box": "-209.963 -165.963 479.926 462.926",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 481.926px; background-color: white;",
-        "view_box": "-210.963 -165.963 481.926 462.926",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_icontext_anchor_code_044",
-      "descendants": "parity",
-      "input_sha256": "7e64a5d8171f7babc304be7eabd3e5119bdc941d9d4ca8301cfd4f4079cc4e4b",
-      "upstream_svg_sha256": "875c87ae11e6563df8323d46d4622d1a26535d259a72959ae1b6b4d95863bced",
-      "upstream": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -22 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 160px; background-color: white;",
-        "view_box": "-40 -23 160 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_junction_star_003",
-      "descendants": "parity",
-      "input_sha256": "30919f436b1b3d2d4e04d0f0538c00dee6188ec1fb7ca32c8935f2d50334519a",
-      "upstream_svg_sha256": "a10b7857a7ba0e73beff5972fc1833644a0a9df30dc1b66f32ec73a401b3cb15",
-      "upstream": {
-        "style": "max-width: 631.779px; background-color: white;",
-        "view_box": "-254.389 -168.835 631.779 501.358",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 631.779px; background-color: white;",
-        "view_box": "-255.389 -169.835 631.779 501.358",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "stress_architecture_junctions_in_groups_040",
       "descendants": "parity",
       "input_sha256": "ef61d6e60519eef38a124b9965d3d4e414312f50d475dfcae20bce4d661f6d13",
@@ -1117,26 +317,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "stress_architecture_long_edge_labels_wrap_048",
-      "descendants": "parity",
-      "input_sha256": "4d2e09636a55f4307669a1258b6c4ac7bf1415b99bba8ce676de60b13dd218e5",
-      "upstream_svg_sha256": "15228659be2cca348c137443eef7d141dafc35af811c0c63681433a7b5b21ff5",
-      "upstream": {
-        "style": "max-width: 343.064px; background-color: white;",
-        "view_box": "-96.282 -101.782 343.064 367.251",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 343.064px; background-color: white;",
-        "view_box": "-97.321 -102.782 343.064 367.251",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "stress_architecture_long_group_titles_018",
       "descendants": "parity",
       "input_sha256": "7ac8bff26f659a649a4a177f5fcd059c1689459fed359b46ffdcb370f39577d6",
@@ -1149,27 +329,7 @@
       },
       "local": {
         "style": "max-width: 480.063px; background-color: white;",
-        "view_box": "-185.963 -165.963 480.063 462.926",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_long_ids_030",
-      "descendants": "parity",
-      "input_sha256": "461d82085eb83a36516cd2634c59866645406f8753c74b6911ff6181b40cfe9c",
-      "upstream_svg_sha256": "2e25ce19fb5d39d334794695c2cd3130fc79abfb18ee3432e2086c9eba08e829",
-      "upstream": {
-        "style": "max-width: 677.551px; background-color: white;",
-        "view_box": "-302.775 -273.275 677.551 677.551",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 679.551px; background-color: white;",
-        "view_box": "-303.775 -273.275 679.551 677.551",
+        "view_box": "-182.963 -165.963 480.063 462.926",
         "width": "100%",
         "height": null
       },
@@ -1188,8 +348,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 649.029px; background-color: white;",
-        "view_box": "-262.514 -165.994 649.029 462.988",
+        "style": "max-width: 648.029px; background-color: white;",
+        "view_box": "-263.014 -165.994 648.029 462.988",
         "width": "100%",
         "height": null
       },
@@ -1229,7 +389,7 @@
       },
       "local": {
         "style": "max-width: 363.084px; background-color: white;",
-        "view_box": "-104.366 -212.306 363.084 586.3",
+        "view_box": "-103.366 -211.306 363.084 586.3",
         "width": "100%",
         "height": null
       },
@@ -1250,26 +410,6 @@
       "local": {
         "style": "max-width: 662.126px; background-color: white;",
         "view_box": "-296.73 -188.898 662.126 508.795",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_nested_groups_002",
-      "descendants": "parity",
-      "input_sha256": "f19a3e81df73a7d1bdae2a1925f2752d14ffaf831e526e807f93a73b81c01b36",
-      "upstream_svg_sha256": "2ad2979e1f66cf84be6bf979a109470ba3bf1804a96db1561a5c9c1b77b1239e",
-      "upstream": {
-        "style": "max-width: 728.924px; background-color: white;",
-        "view_box": "-314.462 -245.829 728.924 622.658",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 729.924px; background-color: white;",
-        "view_box": "-313.962 -245.829 729.924 622.658",
         "width": "100%",
         "height": null
       },
@@ -1309,87 +449,7 @@
       },
       "local": {
         "style": "max-width: 531.333px; background-color: white;",
-        "view_box": "-188.38 -161.72 531.333 484.439",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_ports_and_arrows_007",
-      "descendants": "parity",
-      "input_sha256": "8d5a7e0e8d6d0a2adbb09951ee1d1197ace95bb86acf254ae54676640b6fbb1b",
-      "upstream_svg_sha256": "c94b14f89ff90afe97c4d3871ae33787413db48fe05a64fbd106e4e58b4ac861",
-      "upstream": {
-        "style": "max-width: 526.226px; background-color: white;",
-        "view_box": "-189.863 -193.363 526.226 550.414",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 526.226px; background-color: white;",
-        "view_box": "-191.492 -194.363 526.226 550.414",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_ports_matrix_029",
-      "descendants": "parity",
-      "input_sha256": "8dee5de6a3096a0c0886ee57de0e0fff181a751101b6441ce71010552cd512fa",
-      "upstream_svg_sha256": "3e8565894a67a33319d7f3fb5d8238dca3b628a046448b5dfbfc5ab807b97efb",
-      "upstream": {
-        "style": "max-width: 421.126px; background-color: white;",
-        "view_box": "-149.063 -81.937 421.126 351.062",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 421.126px; background-color: white;",
-        "view_box": "-150.063 -82.937 421.126 351.062",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_unicode_and_xml_escapes_019",
-      "descendants": "parity",
-      "input_sha256": "013fc9f64aae7d63ef3a4079175230feec86e4cb87edef1292da9081320457e5",
-      "upstream_svg_sha256": "397bdc488815be6e467fc424bb448cdd9e27185f5635fa470957e773b4c42508",
-      "upstream": {
-        "style": "max-width: 470.322px; background-color: white;",
-        "view_box": "-211.661 -166.297 470.322 463.593",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 472.322px; background-color: white;",
-        "view_box": "-212.661 -166.297 472.322 463.593",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "stress_architecture_wide_graph_011",
-      "descendants": "parity",
-      "input_sha256": "e27acf83ef1539efbcbead9c77bccdee588e625c9ca9dbb6b7e821a52e07ef66",
-      "upstream_svg_sha256": "4e92d90ad87871fbda2c4d37fa7a4f68ac4ec3b0eb84cc522d407acb02a46fa8",
-      "upstream": {
-        "style": "max-width: 755.524px; background-color: white;",
-        "view_box": "-317.012 -190.329 755.524 544.346",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 755.524px; background-color: white;",
-        "view_box": "-317.512 -191.329 755.524 544.346",
+        "view_box": "-186.583 -160.72 531.333 484.439",
         "width": "100%",
         "height": null
       },
@@ -1417,46 +477,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "upstream_architecture_cypress_directional_arrows_normalized",
-      "descendants": "parity",
-      "input_sha256": "517c80ccdc18dfb8571214a301015fc1c94542b2ef6b0fb180fcf8ec4e9d333c",
-      "upstream_svg_sha256": "f55634841a48558058a4d5c6c795f8cc6cfb4a980b25165cda0d103afb4ae093",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-195.671 -187.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-196.671 -188.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_architecture_cypress_edge_labels_normalized",
-      "descendants": "parity",
-      "input_sha256": "eed67211c2f2e4ac49abaa688a247a387c93d52e5b64f9bb373a931e83e3147b",
-      "upstream_svg_sha256": "fcb808dd1612544acc30cdc55b9c8ea6d1f679b214979d074784d14ac1792e82",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-185.421 -182.994 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-186.89 -183.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "upstream_architecture_cypress_fallback_icon",
       "descendants": "parity",
       "input_sha256": "bee88b22a5b38e572f203cb6693fd58f512e362160637519244f80d88d0ebd50",
@@ -1469,7 +489,7 @@
       },
       "local": {
         "style": "max-width: 179.688px; background-color: white;",
-        "view_box": "-49.844 -23 179.688 184.188",
+        "view_box": "-49.844 -22 179.688 184.188",
         "width": "100%",
         "height": null
       },
@@ -1497,146 +517,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "upstream_architecture_cypress_simple_junction_edges_normalized",
-      "descendants": "parity",
-      "input_sha256": "849c1d5f65cc3f0244fcfc66d34d4e82d19eeb9231130788573d75c250d60250",
-      "upstream_svg_sha256": "2116bec277044a778f8dfb5344309675608dd7a5b470634273bc303997989fd5",
-      "upstream": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-220.516 -211.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-221.516 -212.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_architecture_cypress_split_directioning_normalized",
-      "descendants": "parity",
-      "input_sha256": "1d05aeaea475751b15bd35387bf1a0583a53ddd9eeb8d7a09501b14ed0e8b6e2",
-      "upstream_svg_sha256": "20e9c1adc72e2f2573c54eb14e52484e1aaabe3f42a5b7be25272ffcf539bc70",
-      "upstream": {
-        "style": "max-width: 346.839px; background-color: white;",
-        "view_box": "-111.919 -237.252 346.839 638.191",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 346.839px; background-color: white;",
-        "view_box": "-112.919 -238.252 346.839 638.191",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_architecture_demo_arrow_mesh_bidirectional",
-      "descendants": "parity",
-      "input_sha256": "1f023020a03447084af54f6e6e71aa53835e30fca02c26ca84f1398e92ce23a3",
-      "upstream_svg_sha256": "951c062f31978faa41b554c4375b057b82bc01cfcaaa407d45f785b75e4132b6",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-195.671 -187.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-196.671 -188.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_architecture_demo_arrow_mesh_bidirectional_inverse",
-      "descendants": "parity",
-      "input_sha256": "ff324677df4b35a1a1196acc9bda98b7e0f31f64f9301cbdc1c46ebdb0eeec7a",
-      "upstream_svg_sha256": "45720e19bc20f1637d8dfd25180e1a5a1a7957aa3ec82e85314571c12c9eacd9",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-195.494 -187.421 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-196.494 -188.421 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_architecture_demo_edge_label_long",
-      "descendants": "parity",
-      "input_sha256": "f5165a02141e182775cd1eb98a3535dc62a4e102bfa31c9bcd68c3f866fe2c4e",
-      "upstream_svg_sha256": "a8c5893a90eb07ca7e6f2c7fd3916d4d0014e46cb2a05dff06c4681293539ccf",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-150.994 -182.994 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-153.346 -183.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_architecture_demo_edge_label_short",
-      "descendants": "parity",
-      "input_sha256": "99d17ddfec5a58ec5d54761be47109aae805ead5c31ff29326990b8bb59623e2",
-      "upstream_svg_sha256": "e6eb79e2e2e8a1d88669ef50137ffc667e941494942e0106ddba684f9e6d95df",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-185.421 -182.994 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-186.89 -183.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_architecture_demo_junction_basic",
-      "descendants": "parity",
-      "input_sha256": "30c2a560fe84bdf2fa9633e6c2f6e89e6f4cdb4a329fde698c09a2308994bc85",
-      "upstream_svg_sha256": "095b895bcb7ecedd755baf714ee66219fe59def3726f85c484b158973c59d917",
-      "upstream": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-220.516 -211.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-221.516 -212.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "upstream_architecture_demo_junction_groups_arrows",
       "descendants": "parity",
       "input_sha256": "f2e26cffd3815363a1ea30be862baa2e61e455191f2edcbe7cec02e2d2b0ee03",
@@ -1657,66 +537,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "upstream_architecture_docs_edge_arrows",
-      "descendants": "parity",
-      "input_sha256": "204bc13a1692dccfdbc34bac649cf2707478a78a652d286a26a9a88c96ebc204",
-      "upstream_svg_sha256": "63cccc7f5f8385febe4788798b2ed07dc4757eba2f6c072cfe2e740b07fa6fbf",
-      "upstream": {
-        "style": "max-width: 561.85px; background-color: white;",
-        "view_box": "-220.175 -110.832 561.85 385.351",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 561.85px; background-color: white;",
-        "view_box": "-220.675 -111.832 561.85 385.351",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_architecture_docs_edge_titles",
-      "descendants": "parity",
-      "input_sha256": "9669b3fd076542be4f68edf5db7a1ded2ca7731cb551d3a159b7831d43ad25c3",
-      "upstream_svg_sha256": "95261ac297a55fbe76ed174118390fcc5b784095222f30ca1ef514e7e2685cf3",
-      "upstream": {
-        "style": "max-width: 360.926px; background-color: white;",
-        "view_box": "-107.963 -110.713 360.926 385.113",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 360.926px; background-color: white;",
-        "view_box": "-109.51 -111.713 360.926 385.113",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_architecture_docs_junctions",
-      "descendants": "parity",
-      "input_sha256": "1b061069afe28e72900616cec02513893e4d7ef6be5e9aa25750875597259272",
-      "upstream_svg_sha256": "d1a25619560439cddec7f28617e7eb2ea676524b6e00c892c7c7b2643ca32747",
-      "upstream": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-220.516 -211.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-221.516 -212.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "upstream_architecture_docs_service_icon_text",
       "descendants": "parity",
       "input_sha256": "b5343d2651f5c3cc98493799111a6e87c8a7dd303f94c745f720ab61ae59d678",
@@ -1729,7 +549,7 @@
       },
       "local": {
         "style": "max-width: 454.093px; background-color: white;",
-        "view_box": "-200.12 -177.722 454.093 452.444",
+        "view_box": "-200.12 -177.222 454.093 452.444",
         "width": "100%",
         "height": null
       },
@@ -1757,46 +577,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_directional_arrows_006",
-      "descendants": "parity",
-      "input_sha256": "b13da30e1c41ef8497c0ac1df2205ef85a9bf45b46b4b6356164e0a50d1ecc08",
-      "upstream_svg_sha256": "0f9ecb42458534a3003843658e695f29dc08dc1d4743a794a0c2a9dfaf4dc571",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-195.671 -187.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-196.671 -188.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_edge_labels_008",
-      "descendants": "parity",
-      "input_sha256": "2871c7925e46a9745b986997eb35328326d41d8dbbc3c8047cfdccd62b32f518",
-      "upstream_svg_sha256": "96703cdfaf749f3fa6d2e9d2d01de60f23d15953cb9c86ccdd767d4dc3579508",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-185.421 -182.994 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-186.89 -183.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_groups_within_groups_003",
       "descendants": "parity",
       "input_sha256": "ea1fe4185b7c09496906280058067594d3a28381e483311e175c310027dc1626",
@@ -1817,46 +597,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_simple_junction_edges_009",
-      "descendants": "parity",
-      "input_sha256": "a46f23437f473148c9d3a2e7ff543a3e35951b4ec802de40c63af8c33c72a728",
-      "upstream_svg_sha256": "8ddfc3bdfe00eb0c127b0a860f308a71620fb37da35010be56cb770d2d899c15",
-      "upstream": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-220.516 -211.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-221.516 -212.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_split_directioning_005",
-      "descendants": "parity",
-      "input_sha256": "d7c764184dc5c1d00f6ce0fe4075e4ac6aa6e381edb52e0d6a39d38d925ebce6",
-      "upstream_svg_sha256": "6dcc7b06891f9540b952654c302f71a6bf6895e813c77d14c3e04c867ead5097",
-      "upstream": {
-        "style": "max-width: 346.839px; background-color: white;",
-        "view_box": "-111.919 -237.252 346.839 638.191",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 346.839px; background-color: white;",
-        "view_box": "-112.919 -238.252 346.839 638.191",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_the_fallback_icon_004",
       "descendants": "parity",
       "input_sha256": "43ad4c6eb7adc3eba813cb32910dd12d686c4257ed4d4d10c0223bddc9570eea",
@@ -1869,67 +609,7 @@
       },
       "local": {
         "style": "max-width: 179.688px; background-color: white;",
-        "view_box": "-49.844 -23 179.688 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_docs_architecture_junctions_016",
-      "descendants": "parity",
-      "input_sha256": "9d6b42afa3299dfefb29d0b9702fe733903b2e6c964c3b634b612fa47e233359",
-      "upstream_svg_sha256": "c8f91669c8242db602229f409e3c3710d62138a724a160ffcf2fde61807a2f9d",
-      "upstream": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-220.516 -211.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-221.516 -212.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_html_demos_architecture_arrow_tests_005",
-      "descendants": "parity",
-      "input_sha256": "b07c6d1a3343f8bff807e11b175a4abe9da5703f6d7b569e9d249b47a76be356",
-      "upstream_svg_sha256": "39c9e55d698a15cacd04bc7dd751cdfee9fdf458e1479467bbf5e1905b0e95d3",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-195.671 -187.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-196.671 -188.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_html_demos_architecture_arrow_tests_006",
-      "descendants": "parity",
-      "input_sha256": "4103c67c8c2bc3fcc51525e37388a540b78cc85f83df924bc77af3b0f9951c2f",
-      "upstream_svg_sha256": "a515bcf2d631ff330ad2d9307224b0f6468b7ca12a7405151426b9dbe2bd930d",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-195.494 -187.421 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-196.494 -188.421 514.342 538.53",
+        "view_box": "-49.844 -22 179.688 184.188",
         "width": "100%",
         "height": null
       },
@@ -1949,47 +629,7 @@
       },
       "local": {
         "style": "max-width: 179.688px; background-color: white;",
-        "view_box": "-49.844 -23 179.688 184.188",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_html_demos_architecture_edge_label_test_008",
-      "descendants": "parity",
-      "input_sha256": "4921b2d8a555b75388e6bf8b9028122f9b1dd635a3bf0dd57c03fc3e6df6daeb",
-      "upstream_svg_sha256": "2d19ea525a4e15e4a059003f1593ff5045a3faa7ca0fd6f37efc952e15346d3c",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-185.421 -182.994 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-186.89 -183.244 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_html_demos_architecture_edge_label_test_009",
-      "descendants": "parity",
-      "input_sha256": "1d1d960bb4d6bbb106ade24938f3ea27dc2b2349196f54c1263a1ddc9dca5f13",
-      "upstream_svg_sha256": "45b566f1badb00967d6e11b3104ed380fda83f3b3d95b6546af81fc71bfcfad8",
-      "upstream": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-150.994 -182.994 514.342 538.53",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 514.342px; background-color: white;",
-        "view_box": "-153.346 -183.244 514.342 538.53",
+        "view_box": "-49.844 -22 179.688 184.188",
         "width": "100%",
         "height": null
       },
@@ -2009,7 +649,7 @@
       },
       "local": {
         "style": "max-width: 579.844px; background-color: white;",
-        "view_box": "-269.258 -226.36 579.844 590.907",
+        "view_box": "-269.258 -225.36 579.844 590.907",
         "width": "100%",
         "height": null
       },
@@ -2037,26 +677,6 @@
     },
     {
       "diagram": "architecture",
-      "fixture": "upstream_html_demos_architecture_junction_demo_010",
-      "descendants": "parity",
-      "input_sha256": "a78bc2ae51b2d954f4942fb3db1d6eace216a3b14039f4301fecd40136b41b35",
-      "upstream_svg_sha256": "979b856c83a5abb957bb4b65be1e7fce113552b6bb7a8fab2d7c34b7fe4525a8",
-      "upstream": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-220.516 -211.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 564.033px; background-color: white;",
-        "view_box": "-221.516 -212.288 564.033 586.264",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
       "fixture": "upstream_html_demos_architecture_junction_demo_groups_011",
       "descendants": "parity",
       "input_sha256": "3194b4053aa90aa2acccc9ac9cdec7de6f564d78af49793b9c6fefdb9524bf15",
@@ -2070,26 +690,6 @@
       "local": {
         "style": "max-width: 746.435px; background-color: white;",
         "view_box": "-333.217 -266.306 746.435 663.611",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-root-bbox"
-    },
-    {
-      "diagram": "architecture",
-      "fixture": "upstream_html_demos_architecture_split_direction_004",
-      "descendants": "parity",
-      "input_sha256": "7b045dfb594877ae07d33c4aa7a16021473e0ddc4e89734fafcc0aaffd67c53f",
-      "upstream_svg_sha256": "8907381274afda1033af857d3f50d85b391211816a8c494e19e2b4b107005be7",
-      "upstream": {
-        "style": "max-width: 346.839px; background-color: white;",
-        "view_box": "-111.919 -237.252 346.839 638.191",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 346.839px; background-color: white;",
-        "view_box": "-112.919 -238.252 346.839 638.191",
         "width": "100%",
         "height": null
       },

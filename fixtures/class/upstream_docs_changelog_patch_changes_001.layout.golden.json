@@ -20,20 +20,20 @@
           "is_cluster": true
         },
         {
-          "id": "Company.Project.Module",
-          "x": 207.26,
-          "y": 222.5,
-          "width": 269.52,
-          "height": 275.0,
-          "is_cluster": true
-        },
-        {
           "id": "GenericClass",
           "x": 207.26,
           "y": 222.5,
           "width": 199.52,
           "height": 150.0,
           "is_cluster": false
+        },
+        {
+          "id": "Company.Project.Module",
+          "x": 207.26,
+          "y": 222.5,
+          "width": 269.52,
+          "height": 275.0,
+          "is_cluster": true
         }
       ],
       "edges": [],

@@ -1248,12 +1248,10 @@ mod tests {
         let upstream = render_plain_flowchart(fact, "plain", source);
         write_flowchart_compare_fixture(temp.path(), "plain", source, &upstream);
 
-        let evidence = run_flowchart_compare_with_math_renderer(
-            fact,
-            flowchart_compare_request(temp.path()),
-            None,
-        )
-        .expect("plain fixtures must not require a math backend");
+        let mut request = flowchart_compare_request(temp.path());
+        request.common.filter = Some("plain".to_string());
+        let evidence = run_flowchart_compare_with_math_renderer(fact, request, None)
+            .expect("plain fixtures must not require a math backend");
 
         assert_eq!(evidence.selected_fixtures(), 1);
         assert_eq!(evidence.rendered_fixtures(), 1);

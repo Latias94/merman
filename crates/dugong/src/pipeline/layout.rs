@@ -43,17 +43,24 @@ fn build_layout_graph(
     input: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>, WorkError> {
+    // Pinned Dagre performs one `setNode` and one `setParent` operation per input node. The latter
+    // also recreates parentless ordinary root properties, which the optimized reconstruction
+    // replays after the atomic parent batch below.
     let node_iteration_work = checked_mul(input.node_order_slot_count(), 2)?;
     // Every numeric node is inserted into the temporary graph's global node order and root
     // compound bucket. Parent-bucket moves are charged separately by the atomic batch owner.
     let numeric_update_count = checked_mul(input.array_index_node_count(), 2)?;
     let numeric_order_work = checked_ordered_key_updates(input.node_count(), numeric_update_count)?;
+    let numeric_adjacency_work = checked_ordered_key_updates(
+        input.edge_count(),
+        input.directed_array_index_adjacency_entry_count(),
+    )?;
     let work = checked_add(
         checked_add(
             checked_add(1, node_iteration_work)?,
             input.edge_slot_count(),
         )?,
-        numeric_order_work,
+        checked_add(numeric_order_work, numeric_adjacency_work)?,
     )?;
     work_control.charge(work)?;
 
@@ -82,10 +89,11 @@ fn build_layout_graph(
     layout.set_default_node_label(NodeLabel::default);
     layout.set_default_edge_label(EdgeLabel::default);
 
-    for id in input.nodes() {
-        let Some(node) = input.node(id) else {
-            continue;
-        };
+    let mut parent_assignments = Vec::new();
+    let mut ordinary_root_replays = Vec::new();
+    let mut numeric_parent_assignments = 0usize;
+    let mut created_unseen_parent = false;
+    input.for_each_node(|id, node| {
         layout.set_node(
             id,
             NodeLabel {
@@ -94,11 +102,14 @@ fn build_layout_graph(
                 ..NodeLabel::default()
             },
         );
-    }
-    let mut parent_assignments = Vec::new();
-    let mut numeric_parent_assignments = 0usize;
-    for id in input.nodes() {
         if let Some(parent) = input.parent(id) {
+            // Pinned Dagre calls `setNode(v)` and then `setParent(v, parent(v))` in the same
+            // `nodes()` iteration. Graphlib's `setParent` creates an unseen parent immediately,
+            // so preserve that observable node order before batching the parent links themselves.
+            if !layout.has_node(parent) {
+                layout.set_node(parent, NodeLabel::default());
+                created_unseen_parent = true;
+            }
             let child_ix = layout
                 .node_ix(id)
                 .expect("every copied child must exist in the layout graph");
@@ -107,22 +118,51 @@ fn build_layout_graph(
                 .expect("every copied parent must exist in the layout graph");
             parent_assignments.push((child_ix, parent_ix));
             numeric_parent_assignments += usize::from(graphlib::is_javascript_array_index(id));
+        } else if !graphlib::is_javascript_array_index(id) {
+            ordinary_root_replays.push(
+                layout
+                    .node_ix(id)
+                    .expect("every copied root must exist in the layout graph"),
+            );
         }
+    });
+    // `layout` was created above and has not received any parent links yet. Graphlib still
+    // validates that construction-only contract atomically, while its work bound can use the
+    // exact zero existing-link count instead of treating every allocated slot as a forest edge.
+    let parent_work = checked_unparented_parent_batch_work(
+        layout.node_slot_count(),
+        0,
+        parent_assignments.len(),
+        numeric_parent_assignments,
+    )?;
+    // Without an implicitly created parent, removing all parented nodes from the completed root
+    // bucket already leaves ordinary roots in input order. Charge and replay only when the early
+    // parent insertion can make the official delete/recreate sequence observable.
+    let root_replay_work = if created_unseen_parent {
+        checked_mul(ordinary_root_replays.len(), 2)?
+    } else {
+        0
+    };
+    let relationship_work = checked_add(parent_work, root_replay_work)?;
+    if relationship_work != 0 {
+        work_control.charge(relationship_work)?;
     }
     if !parent_assignments.is_empty() {
-        // `layout` was created above and has not received any parent links yet. Graphlib still
-        // validates that construction-only contract atomically, while its work bound can use the
-        // exact zero existing-link count instead of treating every allocated slot as a forest edge.
-        let parent_work = checked_unparented_parent_batch_work(
-            layout.node_slot_count(),
-            0,
-            parent_assignments.len(),
-            numeric_parent_assignments,
-        )?;
-        work_control.charge(parent_work)?;
         layout
             .try_set_unparented_parents_ix(&parent_assignments)
             .expect("copying a valid graph's first parent assignments must remain acyclic");
+    }
+    // Pinned Mermaid's dagre-d3-es calls `setParent(v, undefined)` for every parentless node.
+    // Graphlib deletes and recreates that root property, so ordinary string roots follow input
+    // node order even when an earlier child caused its unseen parent to be created out of turn.
+    // Numeric roots need no replay because JavaScript always enumerates array-index keys in
+    // ascending numeric order. Applying all parent removals first and then replaying every final
+    // ordinary root in input order preserves the same observable root enumeration without an
+    // ancestor walk per parent assignment.
+    if created_unseen_parent {
+        for root_ix in ordinary_root_replays {
+            layout.clear_parent_ix(root_ix);
+        }
     }
     input.for_each_edge(|key, edge| {
         layout.set_edge_key(
@@ -1219,6 +1259,169 @@ mod tests {
                 batched.edge("a", "b", Some("target")),
                 sequential.edge("a", "b", Some("target")),
             );
+        }
+    }
+
+    #[test]
+    fn build_layout_graph_interleaves_node_and_parent_insertion() {
+        let mut input = graphlib::Graph::new(graphlib::GraphOptions {
+            multigraph: true,
+            compound: true,
+            directed: true,
+        });
+        input.set_graph(GraphLabel::default());
+        input.set_node(
+            "child",
+            NodeLabel {
+                width: 10.0,
+                height: 20.0,
+                ..Default::default()
+            },
+        );
+        input.set_node("sibling", NodeLabel::default());
+        input.set_node(
+            "parent",
+            NodeLabel {
+                width: 30.0,
+                height: 40.0,
+                ..Default::default()
+            },
+        );
+        input.set_parent("child", "parent");
+
+        assert_eq!(input.node_ids(), ["child", "sibling", "parent"]);
+
+        let mut work_control = NoopWorkControl;
+        let layout = build_layout_graph(&input, &mut work_control)
+            .expect("the checked no-op work control must admit graph construction");
+
+        assert_eq!(layout.node_ids(), ["child", "parent", "sibling"]);
+        assert_eq!(layout.parent("child"), Some("parent"));
+        assert_eq!(layout.children_root(), ["sibling", "parent"]);
+        let parent = layout.node("parent").expect("parent node");
+        assert_eq!((parent.width, parent.height), (30.0, 40.0));
+    }
+
+    fn build_layout_graph_sequential_parent_reference(
+        input: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ) -> graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut layout = graphlib::Graph::new(graphlib::GraphOptions {
+            multigraph: true,
+            compound: true,
+            directed: true,
+        });
+        layout.set_default_node_label(NodeLabel::default);
+        input.for_each_node(|id, node| {
+            layout.set_node(
+                id,
+                NodeLabel {
+                    width: node.width,
+                    height: node.height,
+                    ..NodeLabel::default()
+                },
+            );
+            if let Some(parent) = input.parent(id) {
+                layout.set_parent_ref(id, parent);
+            } else {
+                layout.clear_parent(id);
+            }
+        });
+        layout
+    }
+
+    fn assert_parent_shape_matches_sequential_reference(
+        input: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ) {
+        let expected = build_layout_graph_sequential_parent_reference(input);
+        let mut work_control = NoopWorkControl;
+        let actual = build_layout_graph(input, &mut work_control)
+            .expect("the checked no-op work control must admit graph construction");
+
+        assert_eq!(actual.node_ids(), expected.node_ids());
+        assert_eq!(actual.children_root(), expected.children_root());
+        for id in expected.node_ids() {
+            assert_eq!(actual.parent(&id), expected.parent(&id), "parent of {id}");
+            assert_eq!(
+                actual.children(&id),
+                expected.children(&id),
+                "children of {id}"
+            );
+            let actual_node = actual.node(&id).expect("actual node");
+            let expected_node = expected.node(&id).expect("reference node");
+            assert_eq!(
+                (actual_node.width, actual_node.height),
+                (expected_node.width, expected_node.height),
+                "copied label of {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn build_layout_graph_matches_sequential_graphlib_parent_replay() {
+        let cases = [
+            (
+                vec!["child", "sibling", "parent"],
+                vec![("child", "parent")],
+            ),
+            (
+                vec!["leaf", "root", "middle", "tail"],
+                vec![("leaf", "middle"), ("middle", "root")],
+            ),
+            (
+                vec!["10", "1", "3", "ordinary-child", "ordinary-parent", "root"],
+                vec![("1", "10"), ("ordinary-child", "ordinary-parent")],
+            ),
+        ];
+
+        for (node_ids, parent_links) in cases {
+            let mut input = test_graph();
+            for (index, id) in node_ids.into_iter().enumerate() {
+                input.set_node(
+                    id,
+                    NodeLabel {
+                        width: index as f64 + 1.0,
+                        height: index as f64 + 11.0,
+                        ..NodeLabel::default()
+                    },
+                );
+            }
+            for (child, parent) in parent_links {
+                input.set_parent(child, parent);
+            }
+            assert_parent_shape_matches_sequential_reference(&input);
+        }
+    }
+
+    #[test]
+    fn build_layout_graph_precharges_implicit_parent_root_replay() {
+        let mut input = test_graph();
+        for id in ["child", "sibling", "parent"] {
+            input.set_node(id, NodeLabel::default());
+        }
+        input.set_parent("child", "parent");
+
+        let initial_work = 1 + input.node_order_slot_count() * 2;
+        let relationship_work = checked_unparented_parent_batch_work(3, 0, 1, 0).unwrap() + 4;
+        let exact = initial_work + relationship_work;
+
+        let mut measured = RecordingWorkControl::default();
+        let rebuilt = build_layout_graph(&input, &mut measured)
+            .expect("the unbounded control admits implicit-parent reconstruction");
+        assert_eq!(measured.charges, [initial_work, relationship_work]);
+        assert_eq!(rebuilt.children_root(), ["sibling", "parent"]);
+
+        let mut below = RecordingWorkControl::with_limit(exact - 1);
+        assert!(matches!(
+            build_layout_graph(&input, &mut below),
+            Err(WorkError::Interrupted)
+        ));
+        assert_eq!(below.charges, [initial_work, relationship_work]);
+
+        for limit in [exact, exact + 1] {
+            let mut admitted = RecordingWorkControl::with_limit(limit);
+            let rebuilt = build_layout_graph(&input, &mut admitted)
+                .expect("equal and above implicit-parent budgets succeed");
+            assert_eq!(rebuilt.children_root(), ["sibling", "parent"]);
         }
     }
 }

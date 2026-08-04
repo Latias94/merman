@@ -101,7 +101,7 @@
             "min_x": -149.357,
             "min_y": -103.694,
             "max_x": -89.357,
-            "max_y": -6.694
+            "max_y": -5.694
           },
           "label_metrics": {
             "text_width": 56.0,
@@ -127,7 +127,7 @@
             "min_x": 108.357,
             "min_y": -103.694,
             "max_x": 136.357,
-            "max_y": -6.694
+            "max_y": -5.694
           },
           "label_metrics": {
             "text_width": 24.0,
@@ -153,7 +153,7 @@
             "min_x": 110.357,
             "min_y": 99.194,
             "max_x": 134.357,
-            "max_y": 196.194
+            "max_y": 197.194
           },
           "label_metrics": {
             "text_width": 20.0,

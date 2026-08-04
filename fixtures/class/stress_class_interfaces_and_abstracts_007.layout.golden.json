@@ -4,19 +4,19 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "AbstractBase",
-          "x": 224.72,
-          "y": 75.0,
-          "width": 144.0,
-          "height": 150.0,
-          "is_cluster": false
-        },
-        {
           "id": "IService",
           "x": 51.36,
           "y": 75.0,
           "width": 102.72,
           "height": 108.0,
+          "is_cluster": false
+        },
+        {
+          "id": "AbstractBase",
+          "x": 224.72,
+          "y": 75.0,
+          "width": 144.0,
+          "height": 150.0,
           "is_cluster": false
         },
         {

@@ -3,7 +3,7 @@
 use rustc_hash::FxBuildHasher;
 use std::{cell::RefCell, collections::BTreeMap, error::Error, fmt};
 
-use super::adj_cache::{DirectedAdjCache, UndirectedAdjCache};
+use super::adj_cache::{DirectedEdgeAdjCache, DirectedNodeAdjacency, UndirectedAdjCache};
 use super::edge_key::{EdgeKey, EdgeKeyView};
 use super::entries::{EdgeEntry, NodeEntry};
 use super::options::GraphOptions;
@@ -247,7 +247,8 @@ where
     //
     // Note: This uses interior mutability to keep query APIs on `&self`.
     directed_adj_gen: u64,
-    directed_adj_cache: RefCell<Option<DirectedAdjCache>>,
+    directed_edge_adj_cache: RefCell<Option<DirectedEdgeAdjCache>>,
+    directed_node_adj: DirectedNodeAdjacency,
 
     // Some Dagre helpers (especially `network-simplex`) use undirected trees. Make adjacency
     // queries for undirected graphs fast as well.
@@ -279,6 +280,9 @@ where
         self.child_ordinary_positions.push(ORDINARY_KEY_TOMBSTONE);
         if self.options.compound {
             self.insert_child_in_object_key_order(None, idx);
+        }
+        if self.options.directed {
+            self.directed_node_adj.add_node();
         }
         idx
     }
@@ -333,6 +337,9 @@ where
             self.parent_ix.pop();
             self.children_ix.pop();
             self.child_ordinary_positions.pop();
+            if self.options.directed {
+                self.directed_node_adj.truncate_nodes(self.nodes.len());
+            }
         }
     }
 
@@ -386,6 +393,7 @@ where
             self.children_ix.clear();
             self.root_children = ObjectKeyOrder::default();
             self.child_ordinary_positions.clear();
+            self.directed_node_adj.clear();
             return;
         }
 
@@ -423,6 +431,9 @@ where
         self.node_order = new_node_order;
         self.node_ordinary_positions = new_node_ordinary_positions;
         self.node_len = self.nodes.len();
+        if self.options.directed {
+            self.directed_node_adj.remap(&node_remap, self.nodes.len());
+        }
 
         self.parent_ix = vec![None; self.nodes.len()];
         self.children_ix = (0..self.nodes.len())
@@ -485,7 +496,7 @@ where
             return;
         }
         self.directed_adj_gen = self.directed_adj_gen.wrapping_add(1);
-        *self.directed_adj_cache.get_mut() = None;
+        *self.directed_edge_adj_cache.get_mut() = None;
     }
 
     fn invalidate_undirected_adj(&mut self) {
@@ -501,10 +512,10 @@ where
         self.invalidate_undirected_adj();
     }
 
-    fn ensure_directed_adj<'a>(&'a self) -> std::cell::RefMut<'a, DirectedAdjCache> {
+    fn ensure_directed_edge_adj<'a>(&'a self) -> std::cell::RefMut<'a, DirectedEdgeAdjCache> {
         debug_assert!(self.options.directed);
         let generation = self.directed_adj_gen;
-        let mut cache = self.directed_adj_cache.borrow_mut();
+        let mut cache = self.directed_edge_adj_cache.borrow_mut();
         let stale = cache
             .as_ref()
             .map(|c| c.generation != generation)
@@ -544,7 +555,7 @@ where
                 in_cursors[e.w_ix] += 1;
             }
 
-            *cache = Some(DirectedAdjCache {
+            *cache = Some(DirectedEdgeAdjCache {
                 generation,
                 out_offsets,
                 out_edges,
@@ -553,7 +564,7 @@ where
             });
         }
         std::cell::RefMut::map(cache, |c| {
-            c.get_or_insert_with(|| DirectedAdjCache {
+            c.get_or_insert_with(|| DirectedEdgeAdjCache {
                 generation,
                 out_offsets: vec![0; self.nodes.len() + 1],
                 out_edges: Vec::new(),
@@ -680,7 +691,8 @@ where
             root_children: ObjectKeyOrder::default(),
             child_ordinary_positions: Vec::new(),
             directed_adj_gen: 0,
-            directed_adj_cache: RefCell::new(None),
+            directed_edge_adj_cache: RefCell::new(None),
+            directed_node_adj: DirectedNodeAdjacency::default(),
             undirected_adj_gen: 0,
             undirected_adj_cache: RefCell::new(None),
         }
@@ -704,6 +716,10 @@ where
             g.root_children.reserve_ordinary(node_capacity);
         }
         g.child_ordinary_positions.reserve(node_capacity);
+        if options.directed {
+            g.directed_node_adj.reserve_nodes(node_capacity);
+            g.directed_node_adj.reserve_edges(edge_capacity);
+        }
         g
     }
 
@@ -803,7 +819,7 @@ where
 
     pub fn edge_by_endpoints_ix(&self, v_ix: usize, w_ix: usize) -> Option<&E> {
         if self.options.directed {
-            let cache = self.ensure_directed_adj();
+            let cache = self.ensure_directed_edge_adj();
             for &edge_idx in cache.out_edges(v_ix) {
                 let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                     continue;
@@ -915,6 +931,20 @@ where
         self.node_order.numeric_len()
     }
 
+    /// Returns the number of directed neighbor entries stored in numeric `Object.keys` order.
+    ///
+    /// A unique directed endpoint pair contributes once when its successor key is a JavaScript
+    /// array index and once when its predecessor key is one. Parallel edges share those entries.
+    /// Layout owners use this exact count to precharge the ordered-map work required when copying
+    /// the graph into another Graphlib-compatible directed graph.
+    pub fn directed_array_index_adjacency_entry_count(&self) -> usize {
+        if self.options.directed {
+            self.directed_node_adj.numeric_ordered_entry_count()
+        } else {
+            0
+        }
+    }
+
     fn node_indices_in_object_key_order(&self) -> impl Iterator<Item = usize> + '_ {
         self.node_order.iter()
     }
@@ -949,7 +979,7 @@ where
     pub fn is_adjacency_cache_current(&self) -> bool {
         if self.options.directed {
             let generation = self.directed_adj_gen;
-            self.directed_adj_cache
+            self.directed_edge_adj_cache
                 .borrow()
                 .as_ref()
                 .is_some_and(|cache| cache.generation == generation)
@@ -966,7 +996,7 @@ where
     #[doc(hidden)]
     pub fn prepare_adjacency_cache(&self) {
         if self.options.directed {
-            drop(self.ensure_directed_adj());
+            drop(self.ensure_directed_edge_adj());
         } else {
             drop(self.ensure_undirected_adj());
         }
@@ -1182,16 +1212,23 @@ where
         let Some(&w_ix) = self.node_index.get(&key.w) else {
             return self;
         };
+        let v_array_index = javascript_array_index(&key.v);
+        let w_array_index = javascript_array_index(&key.w);
 
+        let edge_label = label.unwrap_or_else(|| {
+            (self.default_edge_label)(key.v.as_str(), key.w.as_str(), key.name.as_deref())
+        });
         self.invalidate_adj();
+        if self.options.directed {
+            self.directed_node_adj
+                .add_edge(v_ix, w_ix, v_array_index, w_array_index);
+        }
         let idx = self.edges.len();
         self.edges.push(Some(EdgeEntry {
             key: key.clone(),
             v_ix,
             w_ix,
-            label: label.unwrap_or_else(|| {
-                (self.default_edge_label)(key.v.as_str(), key.w.as_str(), key.name.as_deref())
-            }),
+            label: edge_label,
         }));
         self.edge_len += 1;
         self.edge_index.insert(key, idx);
@@ -1267,11 +1304,16 @@ where
     }
 
     fn remove_edge_at_index(&mut self, idx: usize) {
-        self.invalidate_adj();
         let Some(edge) = self.edges.get(idx).and_then(|e| e.as_ref()) else {
             return;
         };
-        let _ = self.edge_index.remove_entry(&edge.key);
+        let key = edge.key.clone();
+        let (v_ix, w_ix) = (edge.v_ix, edge.w_ix);
+        self.invalidate_adj();
+        if self.options.directed {
+            self.directed_node_adj.remove_edge(v_ix, w_ix);
+        }
+        let _ = self.edge_index.remove_entry(&key);
         self.edges[idx] = None;
         self.edge_len = self.edge_len.saturating_sub(1);
         self.trim_trailing_edge_tombstones();
@@ -1301,7 +1343,7 @@ where
         };
 
         let mut incident_edges: Vec<usize> = if self.options.directed {
-            let cache = self.ensure_directed_adj();
+            let cache = self.ensure_directed_edge_adj();
             let out_edges = cache.out_edges(idx);
             let in_edges = cache.in_edges(idx);
             let mut edge_indices = Vec::with_capacity(out_edges.len() + in_edges.len());
@@ -1343,15 +1385,16 @@ where
 
         // Remove incident edges.
         for edge_idx in incident_edges {
-            let Some(slot) = self.edges.get_mut(edge_idx) else {
-                continue;
-            };
-            let Some(edge) = slot.as_ref() else {
+            let Some(edge) = self.edges.get(edge_idx).and_then(|slot| slot.as_ref()) else {
                 continue;
             };
             let key = edge.key.clone();
+            let (v_ix, w_ix) = (edge.v_ix, edge.w_ix);
+            if self.options.directed {
+                self.directed_node_adj.remove_edge(v_ix, w_ix);
+            }
             let _ = self.edge_index.remove_entry(&key);
-            *slot = None;
+            self.edges[edge_idx] = None;
             self.edge_len = self.edge_len.saturating_sub(1);
         }
 
@@ -1434,16 +1477,19 @@ where
             }
         }
 
-        for slot in &mut self.edges {
-            let should_remove = slot
+        for edge_ix in 0..self.edges.len() {
+            let should_remove = self.edges[edge_ix]
                 .as_ref()
                 .is_some_and(|edge| removed_by_ix[edge.v_ix] || removed_by_ix[edge.w_ix]);
             if !should_remove {
                 continue;
             }
-            let Some(edge) = slot.take() else {
+            let Some(edge) = self.edges[edge_ix].take() else {
                 continue;
             };
+            if self.options.directed {
+                self.directed_node_adj.remove_edge(edge.v_ix, edge.w_ix);
+            }
             let _ = self.edge_index.remove_entry(&edge.key);
             self.edge_len = self.edge_len.saturating_sub(1);
         }
@@ -1460,16 +1506,10 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return Vec::new();
         };
-        let cache = self.ensure_directed_adj();
-        let out_edges = cache.out_edges(v_idx);
-        let mut out: Vec<&str> = Vec::with_capacity(out_edges.len());
-        for &edge_idx in out_edges {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            out.push(edge.key.w.as_str());
-        }
-        out
+        self.directed_node_adj
+            .successors(v_idx)
+            .filter_map(|node_ix| self.node_id_by_ix(node_ix))
+            .collect()
     }
 
     pub fn predecessors(&self, v: &str) -> Vec<&str> {
@@ -1479,16 +1519,10 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return Vec::new();
         };
-        let cache = self.ensure_directed_adj();
-        let in_edges = cache.in_edges(v_idx);
-        let mut out: Vec<&str> = Vec::with_capacity(in_edges.len());
-        for &edge_idx in in_edges {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            out.push(edge.key.v.as_str());
-        }
-        out
+        self.directed_node_adj
+            .predecessors(v_idx)
+            .filter_map(|node_ix| self.node_id_by_ix(node_ix))
+            .collect()
     }
 
     pub fn first_successor<'a>(&'a self, v: &str) -> Option<&'a str> {
@@ -1496,12 +1530,8 @@ where
             return self.adjacent_nodes(v).into_iter().next();
         }
         let &v_idx = self.node_index.get(v)?;
-        let w = {
-            let cache = self.ensure_directed_adj();
-            let edge_idx = *cache.out_edges(v_idx).first()?;
-            self.edges.get(edge_idx)?.as_ref()?.key.w.as_str()
-        };
-        Some(w)
+        let node_ix = self.directed_node_adj.first_successor(v_idx)?;
+        self.node_id_by_ix(node_ix)
     }
 
     pub fn first_predecessor<'a>(&'a self, v: &str) -> Option<&'a str> {
@@ -1509,12 +1539,8 @@ where
             return self.adjacent_nodes(v).into_iter().next();
         }
         let &v_idx = self.node_index.get(v)?;
-        let u = {
-            let cache = self.ensure_directed_adj();
-            let edge_idx = *cache.in_edges(v_idx).first()?;
-            self.edges.get(edge_idx)?.as_ref()?.key.v.as_str()
-        };
-        Some(u)
+        let node_ix = self.directed_node_adj.first_predecessor(v_idx)?;
+        self.node_id_by_ix(node_ix)
     }
 
     pub fn extend_successors<'a>(&'a self, v: &str, out: &mut Vec<&'a str>) {
@@ -1525,14 +1551,11 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        let cache = self.ensure_directed_adj();
-        let out_edges = cache.out_edges(v_idx);
-        out.reserve(out_edges.len());
-        for &edge_idx in out_edges {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            out.push(edge.key.w.as_str());
+        out.reserve(self.directed_node_adj.successor_count(v_idx));
+        for node_ix in self.directed_node_adj.successors(v_idx) {
+            if let Some(node) = self.node_id_by_ix(node_ix) {
+                out.push(node);
+            }
         }
     }
 
@@ -1544,14 +1567,11 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        let cache = self.ensure_directed_adj();
-        let in_edges = cache.in_edges(v_idx);
-        out.reserve(in_edges.len());
-        for &edge_idx in in_edges {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            out.push(edge.key.v.as_str());
+        out.reserve(self.directed_node_adj.predecessor_count(v_idx));
+        for node_ix in self.directed_node_adj.predecessors(v_idx) {
+            if let Some(node) = self.node_id_by_ix(node_ix) {
+                out.push(node);
+            }
         }
     }
 
@@ -1568,12 +1588,10 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        let cache = self.ensure_directed_adj();
-        for &edge_idx in cache.out_edges(v_idx) {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            f(edge.key.w.as_str());
+        for node_ix in self.directed_node_adj.successors(v_idx) {
+            if let Some(node) = self.node_id_by_ix(node_ix) {
+                f(node);
+            }
         }
     }
 
@@ -1590,12 +1608,10 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        let cache = self.ensure_directed_adj();
-        for &edge_idx in cache.in_edges(v_idx) {
-            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
-                continue;
-            };
-            f(edge.key.v.as_str());
+        for node_ix in self.directed_node_adj.predecessors(v_idx) {
+            if let Some(node) = self.node_id_by_ix(node_ix) {
+                f(node);
+            }
         }
     }
 
@@ -1604,16 +1620,18 @@ where
             return self.adjacent_nodes(v);
         }
         let mut out: Vec<&str> = Vec::new();
-        for w in self.successors(v) {
-            if !out.iter().any(|x| x == &w) {
-                out.push(w);
-            }
-        }
-        for u in self.predecessors(v) {
+        // Pinned Graphlib implements `neighbors` as `union(predecessors, successors)`, so a node
+        // reachable in both directions keeps its predecessor-side position.
+        self.for_each_predecessor(v, |u| {
             if !out.iter().any(|x| x == &u) {
                 out.push(u);
             }
-        }
+        });
+        self.for_each_successor(v, |w| {
+            if !out.iter().any(|x| x == &w) {
+                out.push(w);
+            }
+        });
         out
     }
 
@@ -1646,7 +1664,7 @@ where
             let Some(&v_idx) = self.node_index.get(v) else {
                 return Vec::new();
             };
-            let cache = self.ensure_directed_adj();
+            let cache = self.ensure_directed_edge_adj();
             let out_edges = cache.out_edges(v_idx);
             let mut out: Vec<EdgeKey> = Vec::with_capacity(out_edges.len());
             for &edge_idx in out_edges {
@@ -1686,7 +1704,7 @@ where
             let Some(&v_idx) = self.node_index.get(v) else {
                 return Vec::new();
             };
-            let cache = self.ensure_directed_adj();
+            let cache = self.ensure_directed_edge_adj();
             let in_edges = cache.in_edges(v_idx);
             let mut out: Vec<EdgeKey> = Vec::with_capacity(in_edges.len());
             for &edge_idx in in_edges {
@@ -1710,7 +1728,7 @@ where
             let Some(&v_idx) = self.node_index.get(v) else {
                 return;
             };
-            let cache = self.ensure_directed_adj();
+            let cache = self.ensure_directed_edge_adj();
             for &edge_idx in cache.out_edges(v_idx) {
                 let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                     continue;
@@ -1749,7 +1767,7 @@ where
             let Some(&v_idx) = self.node_index.get(v) else {
                 return;
             };
-            let cache = self.ensure_directed_adj();
+            let cache = self.ensure_directed_edge_adj();
             for &edge_idx in cache.in_edges(v_idx) {
                 let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                     continue;
@@ -1781,7 +1799,7 @@ where
         if !self.options.directed {
             return;
         }
-        let cache = self.ensure_directed_adj();
+        let cache = self.ensure_directed_edge_adj();
         for &edge_idx in cache.out_edges(v_ix) {
             let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                 continue;
@@ -1801,7 +1819,7 @@ where
         if !self.options.directed {
             return 0;
         }
-        self.ensure_directed_adj().out_edges(v_ix).len()
+        self.ensure_directed_edge_adj().out_edges(v_ix).len()
     }
 
     /// Visits every undirected edge incident to an indexed node without allocating edge keys.
@@ -1847,7 +1865,7 @@ where
         if !self.options.directed {
             return;
         }
-        let cache = self.ensure_directed_adj();
+        let cache = self.ensure_directed_edge_adj();
         for &edge_ix in cache.out_edges(v_ix) {
             let Some(e) = self.edges.get(edge_ix).and_then(|e| e.as_ref()) else {
                 continue;
@@ -1864,7 +1882,7 @@ where
         F: FnMut(usize),
     {
         if self.options.directed {
-            let cache = self.ensure_directed_adj();
+            let cache = self.ensure_directed_edge_adj();
             for &edge_idx in cache.out_edges(v_ix) {
                 let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                     continue;
@@ -1899,7 +1917,7 @@ where
         if !self.options.directed {
             return;
         }
-        let cache = self.ensure_directed_adj();
+        let cache = self.ensure_directed_edge_adj();
         for &edge_idx in cache.in_edges(v_ix) {
             let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                 continue;
@@ -1918,7 +1936,7 @@ where
         if !self.options.directed {
             return;
         }
-        let cache = self.ensure_directed_adj();
+        let cache = self.ensure_directed_edge_adj();
         for &edge_ix in cache.in_edges(v_ix) {
             let Some(e) = self.edges.get(edge_ix).and_then(|e| e.as_ref()) else {
                 continue;
@@ -2148,7 +2166,23 @@ where
         let Some(&child_ix) = self.node_index.get(child) else {
             return self;
         };
+        self.clear_parent_ix(child_ix)
+    }
+
+    /// Clears a parent by node index while preserving Graphlib's property recreation semantics.
+    ///
+    /// Replaying an already-root ordinary string key moves it to the end of the ordinary-key
+    /// segment. Replaying an already-root JavaScript array-index key is observably a no-op because
+    /// `Object.keys` continues to enumerate it numerically, so avoid the redundant ordered-map
+    /// removal and insertion in that case.
+    pub fn clear_parent_ix(&mut self, child_ix: usize) -> &mut Self {
+        if !self.options.compound || self.nodes.get(child_ix).and_then(Option::as_ref).is_none() {
+            return self;
+        }
         let prev_parent_ix = self.parent_ix.get(child_ix).copied().flatten();
+        if prev_parent_ix.is_none() && self.child_array_index(child_ix).is_some() {
+            return self;
+        }
         self.remove_child_from_object(prev_parent_ix, child_ix);
         self.parent_ix[child_ix] = None;
         self.insert_child_in_object_key_order(None, child_ix);
@@ -2268,9 +2302,8 @@ where
             return self.nodes().collect();
         }
         self.node_indices_in_object_key_order()
-            .filter_map(|node_ix| self.nodes[node_ix].as_ref())
-            .filter(|node| self.in_edges(&node.id, None).is_empty())
-            .map(|node| node.id.as_str())
+            .filter(|&node_ix| self.directed_node_adj.predecessor_count(node_ix) == 0)
+            .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
     }
 
@@ -2279,9 +2312,8 @@ where
             return self.nodes().collect();
         }
         self.node_indices_in_object_key_order()
-            .filter_map(|node_ix| self.nodes[node_ix].as_ref())
-            .filter(|node| self.out_edges(&node.id, None).is_empty())
-            .map(|node| node.id.as_str())
+            .filter(|&node_ix| self.directed_node_adj.successor_count(node_ix) == 0)
+            .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
     }
 
@@ -2290,7 +2322,7 @@ where
             return false;
         }
         if self.options.directed {
-            return self.successors(v).is_empty();
+            return self.first_successor(v).is_none();
         }
         self.neighbors(v).is_empty()
     }

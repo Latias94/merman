@@ -5299,6 +5299,7 @@ version = "0.8.0-alpha.4"
 dependencies = [
  "base64 0.22.1",
  "brotli",
+ "cssparser",
  "dugong",
  "flate2",
  "fs2",
@@ -5320,6 +5321,7 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "sha2 0.10.9",
+ "svgtypes",
  "tempfile",
  "thiserror 2.0.19",
  "toml",

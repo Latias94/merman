@@ -1,6 +1,6 @@
-# ER Diagram Minimum (mermaid@11.12.3)
+# ER Diagram Admission Contract (Mermaid 11.16.0)
 
-This document tracks the current `erDiagram` / `er` parser alignment status in `merman-core`.
+This document tracks the admitted `erDiagram` / `er` parser, model, layout, and SVG behavior.
 
 Upstream references:
 
@@ -8,7 +8,7 @@ Upstream references:
 - DB/model: `repo-ref/mermaid/packages/mermaid/src/diagrams/er/erDb.ts`
 - Parser tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/er/parser/erDiagram.spec.js`
 
-## Implemented (phase 1)
+## Implemented
 
 - Type detection: `er` when input starts with `erDiagram`.
 - Stand-alone entities:
@@ -54,8 +54,10 @@ The parser returns a headless semantic model:
 - `relationships`: array referencing entity DOM ids (`entity-<name>-<n>`) like Mermaid.
 - `classes`: class definitions (`styles`, `textStyles`).
 
-Note: Mermaid renderers typically consume `ErDB.getData()` (layout-friendly nodes/edges). A future
-crate can convert this model into layout data for rendering.
+`merman-render` consumes the layout-ready model through Dagre or ELK and emits admitted SVG.
+Relationship labels use the shared updated-path geometry helper, including Mermaid's rounding and
+invalid-style sentinel semantics. The multiple-relationship fixture ending in `_003` is the signed
+semantic-label canary.
 
 ## Known gaps (to be closed)
 

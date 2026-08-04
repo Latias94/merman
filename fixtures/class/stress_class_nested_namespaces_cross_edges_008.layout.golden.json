@@ -12,22 +12,6 @@
           "is_cluster": true
         },
         {
-          "id": "One.Two",
-          "x": 118.952,
-          "y": 196.5,
-          "width": 197.903,
-          "height": 318.0,
-          "is_cluster": true
-        },
-        {
-          "id": "OneA",
-          "x": 126.822,
-          "y": 496.5,
-          "width": 56.953,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
           "id": "TwoB",
           "x": 126.822,
           "y": 117.0,
@@ -40,6 +24,22 @@
           "x": 86.281,
           "y": 276.0,
           "width": 62.563,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "One.Two",
+          "x": 118.952,
+          "y": 196.5,
+          "width": 197.903,
+          "height": 318.0,
+          "is_cluster": true
+        },
+        {
+          "id": "OneA",
+          "x": 126.822,
+          "y": 496.5,
+          "width": 56.953,
           "height": 84.0,
           "is_cluster": false
         }

@@ -92,6 +92,16 @@ fn foreign_object_for_text<'a>(svg: &'a str, text: &str) -> &'a str {
     &svg[start..end]
 }
 
+fn embedded_stylesheet(svg: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG");
+    document
+        .descendants()
+        .find(|node| node.is_element() && node.tag_name().name() == "style")
+        .and_then(|node| node.text())
+        .expect("embedded stylesheet")
+        .to_owned()
+}
+
 fn class_model(parsed: &ParsedDiagramRender) -> &merman_core::models::class_diagram::ClassDiagram {
     let RenderSemanticModel::Class(model) = parsed.model() else {
         panic!("expected Class render model");
@@ -230,6 +240,39 @@ class Animal
         assert_eq!(title.attribute("font-size"), None);
         assert_eq!(title.attribute("style"), None);
     }
+}
+
+#[test]
+fn class_stylesheet_matches_signed_mermaid_11_16_css_contract() {
+    const FIXTURE: &str = "stress_class_many_relations_labels_020";
+    let local_svg = render_class_fixture(
+        &format!("{FIXTURE}.mmd"),
+        &LayoutOptions::headless_svg_defaults(),
+        &SvgRenderOptions::default(),
+    );
+    let upstream_svg = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures")
+            .join("upstream-svgs")
+            .join("class")
+            .join(format!("{FIXTURE}.svg")),
+    )
+    .expect("signed Mermaid Class SVG");
+
+    let local_css = embedded_stylesheet(&local_svg).replace("#merman", "#class-contract");
+    let upstream_css =
+        embedded_stylesheet(&upstream_svg).replace(&format!("#{FIXTURE}"), "#class-contract");
+
+    assert_eq!(
+        local_css, upstream_css,
+        "Class CSS must preserve Mermaid's common prefix, family rules, icon rules, common Neo rules, and final :root order"
+    );
+    assert!(
+        local_css.starts_with(
+            r#"#class-contract{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#333;}"#
+        ),
+        "the public root fill must use textColor rather than classText"
+    );
 }
 
 #[test]
@@ -692,9 +735,13 @@ classDiagram
 
     assert!(
         svg.contains(
-            r#"#merman .node rect,#merman .node circle,#merman .node ellipse,#merman .node polygon,#merman .node path{fill:#112233;stroke:#445566;stroke-width:7}"#
+            r#"#merman .node rect,#merman .node circle,#merman .node ellipse,#merman .node polygon,#merman .node path{fill:#112233;stroke:#445566;stroke-width:7;}"#
         ),
         "expected numeric strokeWidth to drive Class node shape CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#merman .edge-thickness-normal{stroke-width:7px;}"#),
+        "expected numeric strokeWidth to drive Mermaid's common edge CSS: {svg}"
     );
     assert!(
         svg.contains(r#"#merman .divider{stroke:#445566;stroke-width:1;}"#),

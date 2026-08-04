@@ -14,7 +14,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<'details
     pub(in crate::svg::parity::flowchart) timing: RenderTiming,
     pub(in crate::svg::parity::flowchart) details: &'details mut FlowchartRenderDetails,
     pub(in crate::svg::parity::flowchart) edge_cache:
-        &'cache FxHashMap<&'cache str, FlowchartEdgePathCacheEntry>,
+        &'cache mut FxHashMap<&'cache str, FlowchartEdgePathCacheEntry>,
 }
 
 struct FlowchartRootFrame<'a> {
@@ -100,6 +100,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                     edge,
                     current.origin_x,
                     current.content_origin_y,
+                    &*session.edge_cache,
                 );
                 continue;
             }
@@ -322,7 +323,15 @@ fn render_flowchart_elk_edge_paths(
     out.push_str(r#"<g class="edges edgePaths">"#);
     let mut scratch = FlowchartEdgeDataPointsScratch::default();
     for e in edges {
-        render_flowchart_edge_path(out, ctx, e, 0.0, 0.0, &mut scratch, session.edge_cache);
+        render_flowchart_edge_path(
+            out,
+            ctx,
+            e,
+            0.0,
+            0.0,
+            &mut scratch,
+            &mut *session.edge_cache,
+        );
     }
     out.push_str("</g>");
 }
@@ -348,7 +357,7 @@ fn render_flowchart_elk_edge_labels(
         }
     }
     for e in edges {
-        render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, session.edge_cache);
+        render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, &*session.edge_cache);
     }
     out.push_str("</g>");
 }
@@ -524,7 +533,7 @@ fn initialize_flowchart_root_frame<'a>(
                 origin_x,
                 frame.content_origin_y,
                 &mut scratch,
-                session.edge_cache,
+                &mut *session.edge_cache,
             );
         }
         out.push_str("</g>");
@@ -553,7 +562,7 @@ fn initialize_flowchart_root_frame<'a>(
                     e,
                     origin_x,
                     frame.content_origin_y,
-                    session.edge_cache,
+                    &*session.edge_cache,
                 );
             }
         } else {
@@ -566,7 +575,7 @@ fn initialize_flowchart_root_frame<'a>(
                     e,
                     origin_x,
                     frame.content_origin_y,
-                    session.edge_cache,
+                    &*session.edge_cache,
                 );
             }
         }

@@ -12,22 +12,6 @@
           "is_cluster": true
         },
         {
-          "id": "A1",
-          "x": 92.521,
-          "y": 85.0,
-          "width": 115.041,
-          "height": 120.0,
-          "is_cluster": false
-        },
-        {
-          "id": "A2",
-          "x": 247.242,
-          "y": 85.0,
-          "width": 94.401,
-          "height": 120.0,
-          "is_cluster": false
-        },
-        {
           "id": "B",
           "x": 171.601,
           "y": 305.0,
@@ -36,10 +20,26 @@
           "is_cluster": true
         },
         {
+          "id": "A1",
+          "x": 92.521,
+          "y": 85.0,
+          "width": 115.041,
+          "height": 120.0,
+          "is_cluster": false
+        },
+        {
           "id": "B1",
           "x": 92.521,
           "y": 305.0,
           "width": 101.281,
+          "height": 120.0,
+          "is_cluster": false
+        },
+        {
+          "id": "A2",
+          "x": 247.242,
+          "y": 85.0,
+          "width": 94.401,
           "height": 120.0,
           "is_cluster": false
         },

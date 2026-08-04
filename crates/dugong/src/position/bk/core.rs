@@ -40,17 +40,10 @@ struct Type2Bounds {
     upper: isize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Type2ScanSemantics {
-    LegacySuffixUnion,
-    MonotonicSegments,
-}
-
 fn type2_conflict_bounds(
     south_len: usize,
     north_len: isize,
     boundaries: &[Type2Boundary],
-    semantics: Type2ScanSemantics,
 ) -> Vec<Type2Bounds> {
     let mut bounds = vec![
         Type2Bounds {
@@ -80,28 +73,13 @@ fn type2_conflict_bounds(
         if boundary_index > 0 && boundaries[boundary_index - 1].south_index == south_index {
             boundary_index -= 1;
             let boundary_upper = boundaries[boundary_index].north_order.unwrap_or(-1);
-            upper = match semantics {
-                Type2ScanSemantics::LegacySuffixUnion => north_len.min(boundary_upper),
-                Type2ScanSemantics::MonotonicSegments => boundary_upper,
-            };
+            // Upstream repeatedly scans the remaining suffix through `north.length`, so a later
+            // border can only narrow that cap.
+            upper = north_len.min(boundary_upper);
         }
     }
 
     bounds
-}
-
-fn type2_requires_legacy_suffix_union(boundaries: &[Type2Boundary]) -> bool {
-    let mut previous_order = None;
-    for boundary in boundaries {
-        let Some(order) = boundary.north_order else {
-            return true;
-        };
-        if previous_order.is_some_and(|previous| order < previous) {
-            return true;
-        }
-        previous_order = Some(order);
-    }
-    false
 }
 
 fn first_dummy_predecessor<'a>(
@@ -195,13 +173,7 @@ pub fn find_type2_conflicts(
                 continue;
             }
 
-            let mut first: Option<&str> = None;
-            g.for_each_predecessor(v, |u| {
-                if first.is_none() {
-                    first = Some(u);
-                }
-            });
-            if let Some(u) = first {
+            if let Some(u) = g.first_predecessor(v) {
                 boundaries.push(Type2Boundary {
                     south_index,
                     north_order: g.node(u).and_then(|n| n.order).map(|n| n as isize),
@@ -209,12 +181,7 @@ pub fn find_type2_conflicts(
             }
         }
 
-        let bounds = type2_conflict_bounds(
-            south.len(),
-            north.len() as isize,
-            &boundaries,
-            Type2ScanSemantics::LegacySuffixUnion,
-        );
+        let bounds = type2_conflict_bounds(south.len(), north.len() as isize, &boundaries);
         for (v, bounds) in south.iter().zip(bounds) {
             if g.node(v).and_then(|node| node.dummy.as_deref()).is_none() {
                 continue;
@@ -1026,12 +993,7 @@ impl<'a> BkWorkspace<'a> {
                 });
             }
 
-            let semantics = if type2_requires_legacy_suffix_union(&boundaries) {
-                Type2ScanSemantics::LegacySuffixUnion
-            } else {
-                Type2ScanSemantics::MonotonicSegments
-            };
-            let bounds = type2_conflict_bounds(south_len, north_len, &boundaries, semantics);
+            let bounds = type2_conflict_bounds(south_len, north_len, &boundaries);
             for (index, bounds) in bounds.into_iter().enumerate() {
                 let v = self.layering[layer_index][index];
                 if !self.nodes[v].metrics.is_dummy {
@@ -2118,7 +2080,7 @@ mod tests {
     }
 
     #[test]
-    fn linear_type2_bounds_match_legacy_interval_union() {
+    fn linear_type2_bounds_match_upstream_suffix_scan_union() {
         const STATES: [Option<Option<isize>>; 5] = [
             None,
             Some(None),
@@ -2142,12 +2104,7 @@ mod tests {
                     }
                 }
                 assert_eq!(
-                    type2_conflict_bounds(
-                        south_len,
-                        3,
-                        &boundaries,
-                        Type2ScanSemantics::LegacySuffixUnion,
-                    ),
+                    type2_conflict_bounds(south_len, 3, &boundaries),
                     reference_type2_bounds(south_len, 3, &boundaries),
                     "south_len={south_len}, boundaries={boundaries:?}"
                 );
@@ -2176,14 +2133,16 @@ mod tests {
     }
 
     #[test]
-    fn monotonic_workspace_segments_keep_uncapped_border_orders() {
+    fn indexed_type2_scan_matches_public_for_out_of_range_monotonic_border_orders() {
         let mut g = Graph::new(GraphOptions::default());
         g.set_graph(GraphLabel::default());
         for (id, rank, order, dummy) in [
             ("low", 0, 0, "dummy"),
-            ("high", 0, 3, "dummy"),
-            ("south", 1, 0, "dummy"),
-            ("border", 1, 1, "border"),
+            ("middle", 0, 1, "dummy"),
+            ("high", 0, 5, "dummy"),
+            ("border-low", 1, 0, "border"),
+            ("south", 1, 1, "dummy"),
+            ("border-high", 1, 2, "border"),
         ] {
             g.set_node(
                 id,
@@ -2195,25 +2154,26 @@ mod tests {
                 },
             );
         }
+        g.set_edge("low", "border-low");
         g.set_edge("high", "south");
-        g.set_edge("high", "border");
+        g.set_edge("high", "border-high");
 
         let layering = vec![
+            vec!["low".to_string(), "middle".to_string(), "high".to_string()],
             vec![
-                "low".to_string(),
-                "missing-a".to_string(),
-                "missing-b".to_string(),
-                "high".to_string(),
+                "border-low".to_string(),
+                "south".to_string(),
+                "border-high".to_string(),
             ],
-            vec!["south".to_string(), "border".to_string()],
         ];
-        let public_conflicts = find_type2_conflicts(&g, &layering);
-        assert!(!has_conflict(&public_conflicts, "high", "south"));
+        let expected = find_type2_conflicts(&g, &layering);
+        assert!(has_conflict(&expected, "high", "south"));
 
         let mut workspace = BkWorkspace::new(&g, &layering);
         workspace.find_type2_conflicts();
-        let conflict_ids = workspace_conflict_ids(&g, &workspace);
-        let expected_conflicts = BTreeSet::from([("border".to_string(), "high".to_string())]);
-        assert_eq!(conflict_ids, expected_conflicts);
+
+        let expected = public_conflict_ids(&expected);
+        assert_eq!(workspace_conflict_ids(&g, &workspace), expected);
+        assert_eq!(workspace.conflicts.len(), expected.len());
     }
 }

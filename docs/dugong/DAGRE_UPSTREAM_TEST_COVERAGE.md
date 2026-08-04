@@ -383,3 +383,17 @@ Source: `repo-ref/dagre/test/position/bk-test.js`
 - `centers a node if it is a predecessor of two same sized nodes` -> `crates/dugong/tests/position_bk_test.rs::position_x_centers_a_node_if_it_is_a_predecessor_of_two_same_sized_nodes`
 - `shifts blocks on both sides of aligned block` -> `crates/dugong/tests/position_bk_test.rs::position_x_shifts_blocks_on_both_sides_of_aligned_block`
 - `aligns inner segments` -> `crates/dugong/tests/position_bk_test.rs::position_x_aligns_inner_segments`
+
+## Current Ordering And Differential Contract
+
+- Compound graph construction preserves Graphlib insertion order even when a child is inserted
+  before its parent. Parent assignment must not silently reorder either node.
+- BK Type-2 conflict detection follows the pinned single suffix scan. There is no alternate
+  monotonic or legacy production contract.
+- `xtask compare-dagre-layout` captures the production State or Class graph before layout, writes
+  one Graphlib JSON input, and runs both Dugong and pinned `dagre-d3-es` from that input. It compares
+  graph dimensions, node positions, edge-label anchors, routed points, and stable node/edge sets;
+  drift above `1e-6` or any identity difference is a command failure.
+- The Class many-relations and nested-namespace fixtures and the State parallel-label fixture are
+  retained as family canaries. They complement the algorithm-level ordering, normalization,
+  self-loop, rank-direction, and transient-node retirement tests in `crates/dugong/tests`.

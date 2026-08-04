@@ -4,25 +4,25 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "note0",
-          "x": 70.719,
-          "y": 18.0,
-          "width": 141.438,
-          "height": 36.0,
-          "is_cluster": false
-        },
-        {
           "id": "test",
           "x": 70.719,
           "y": 128.0,
           "width": 51.516,
           "height": 84.0,
           "is_cluster": false
+        },
+        {
+          "id": "note0",
+          "x": 70.719,
+          "y": 18.0,
+          "width": 141.438,
+          "height": 36.0,
+          "is_cluster": false
         }
       ],
       "edges": [
         {
-          "id": "edgeNote1",
+          "id": "edgeNote0",
           "from": "note0",
           "to": "test",
           "from_cluster": null,

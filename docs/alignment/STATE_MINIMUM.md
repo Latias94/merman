@@ -1,6 +1,6 @@
-# State Diagram Minimum (mermaid@11.12.3)
+# State Diagram Admission Contract (Mermaid 11.16.0)
 
-This document tracks the current `stateDiagram` parser alignment status in `merman-core`.
+This document tracks the admitted `stateDiagram` parser, model, Dagre layout, and SVG behavior.
 
 Upstream references:
 
@@ -9,7 +9,7 @@ Upstream references:
 - Parser tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/parser/state-parser.spec.js`
 - Style tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/parser/state-style.spec.js`
 
-## Implemented (phase 1)
+## Implemented
 
 - Type detection:
   - `stateDiagram` when input starts with `stateDiagram` / `stateDiagram-v2`.
@@ -54,6 +54,18 @@ The parser returns a headless semantic model:
 - Note sizing parity: note node `padding` follows `config.flowchart.padding` (schema default `15`).
 - `config`/`direction`/`other`: `StateDB.getData()` compatible keys for downstream renderers.
 
+## Layout And SVG Admission
+
+- The production graph preserves Mermaid's interleaved child/parent insertion order and compound
+  extraction order. `compare-dagre-layout --diagram state` compares the same serialized input in
+  Dugong and pinned `dagre-d3-es`, including edge-label anchors and routed points.
+- Updated-path edge labels use the shared source-backed geometry helper. Leaf self-loops retain the
+  Dagre anchor, while composite self-loops move only after cluster path updates.
+- `classDef` shape styles, text styles, CSSOM color serialization, HTML-label selectors, and SVG
+  `tspan` selectors are emitted separately like Mermaid.
+- `stress_state_batch5_parallel_edges_labels_styles_067` is the signed semantic-label canary. Root
+  browser-measurement residuals remain owned by the exact root residual catalog.
+
 ## Known gaps (to be closed)
 
 - Sanitization parity is in progress:
@@ -61,7 +73,6 @@ The parser returns a headless semantic model:
     (mirroring `common.sanitizeText*` behavior for common cases and using `securityLevel` / `flowchart.htmlLabels`).
   - Remaining gaps: full DOMPurify parity and `dompurifyConfig` option coverage.
 - `stateDomId` / `graphItemCount` parity beyond the covered edge+note scenarios (e.g. more nested/doc translator cases).
-- Full Mermaid default config parity (defaults are generated from the pinned config schema, but the generator does not yet implement every JSON-schema feature; remaining mismatches should be captured by parity tests and fixed iteratively).
 - Click/link security-level behavior and renderer-specific handling (e.g. target/sandbox rules).
 - Other statement forms in the upstream grammar.
 - Diagnostics alignment (error messages and offsets).

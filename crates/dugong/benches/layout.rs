@@ -9,6 +9,10 @@ const CONFLICT_INDEX_LAYERS: usize = 4;
 const CONFLICT_INDEX_SEGMENT_WIDTH: usize = 8;
 const CONFLICT_INDEX_WIDTHS: [usize; 4] = [64, 256, 1024, 4096];
 const TYPE2_FALLBACK_WIDTHS: [usize; 5] = [64, 128, 256, 512, 1024];
+const ADJACENCY_FANOUTS: [usize; 4] = [64, 256, 1024, 4096];
+const PARALLEL_EDGE_RATIOS: [usize; 3] = [1, 10, 100];
+const PARALLEL_ENDPOINT_PAIRS: usize = 64;
+const ADJACENCY_QUERY_REPETITIONS: usize = 256;
 
 #[derive(Debug, Clone)]
 struct LayeredDagSpec {
@@ -120,6 +124,131 @@ fn bench_layout(c: &mut Criterion) {
                 BatchSize::LargeInput,
             )
         });
+    }
+
+    group.finish();
+}
+
+fn bench_graph_build(c: &mut Criterion) {
+    let mut group = c.benchmark_group("dugong_graph_build");
+
+    for layer_count in LAYER_COUNTS {
+        let spec = build_layered_dag_spec("build", layer_count, 10, None);
+        let node_count = spec.node_ids.len();
+        group.throughput(criterion::Throughput::Elements(node_count as u64));
+        group.bench_with_input(BenchmarkId::new("plan", node_count), &spec, |b, spec| {
+            b.iter(|| black_box(spec.build()))
+        });
+    }
+
+    for ratio in PARALLEL_EDGE_RATIOS {
+        let spec = ParallelEdgeSpec::new(PARALLEL_ENDPOINT_PAIRS, ratio);
+        group.throughput(criterion::Throughput::Elements(spec.edge_names.len() as u64));
+        group.bench_with_input(
+            BenchmarkId::new("parallel_edges_per_pair", ratio),
+            &spec,
+            |b, spec| b.iter(|| black_box(spec.build())),
+        );
+    }
+
+    group.finish();
+}
+
+#[derive(Debug)]
+struct ParallelEdgeSpec {
+    targets: Vec<String>,
+    edge_names: Vec<(usize, String)>,
+}
+
+impl ParallelEdgeSpec {
+    fn new(endpoint_pairs: usize, edges_per_pair: usize) -> Self {
+        let targets = (0..endpoint_pairs)
+            .map(|index| format!("parallel-target-{index}"))
+            .collect();
+        let edge_names = (0..endpoint_pairs)
+            .flat_map(|target_ix| {
+                (0..edges_per_pair)
+                    .map(move |edge_ix| (target_ix, format!("edge-{target_ix}-{edge_ix}")))
+            })
+            .collect();
+        Self {
+            targets,
+            edge_names,
+        }
+    }
+
+    fn build(&self) -> Graph<(), (), ()> {
+        let mut g = Graph::with_capacity(
+            GraphOptions {
+                multigraph: true,
+                ..Default::default()
+            },
+            self.targets.len() + 1,
+            self.edge_names.len(),
+        );
+        for (target_ix, name) in &self.edge_names {
+            g.set_edge_named(
+                "parallel-source",
+                self.targets[*target_ix].as_str(),
+                Some(name.as_str()),
+                None::<()>,
+            );
+        }
+        g
+    }
+}
+
+#[derive(Debug)]
+struct FanoutSpec {
+    targets: Vec<String>,
+}
+
+impl FanoutSpec {
+    fn new(width: usize) -> Self {
+        Self {
+            targets: (0..width)
+                .map(|index| format!("fanout-target-{index}"))
+                .collect(),
+        }
+    }
+
+    fn build(&self) -> Graph<(), (), ()> {
+        let mut g = Graph::with_capacity(
+            GraphOptions::default(),
+            self.targets.len() + 1,
+            self.targets.len(),
+        );
+        for target in &self.targets {
+            g.set_edge("fanout-source", target.as_str());
+        }
+        g
+    }
+}
+
+fn bench_adjacency_churn(c: &mut Criterion) {
+    let mut group = c.benchmark_group("dugong_adjacency_churn");
+
+    for width in ADJACENCY_FANOUTS {
+        let spec = FanoutSpec::new(width);
+        group.throughput(criterion::Throughput::Elements(width as u64));
+        group.bench_with_input(
+            BenchmarkId::new("retain_last_then_query", width),
+            &spec,
+            |b, spec| {
+                b.iter_batched(
+                    || spec.build(),
+                    |mut g| {
+                        for target in &spec.targets[..spec.targets.len() - 1] {
+                            black_box(g.remove_edge("fanout-source", target, None));
+                        }
+                        for _ in 0..ADJACENCY_QUERY_REPETITIONS {
+                            black_box(g.first_successor("fanout-source"));
+                        }
+                    },
+                    BatchSize::LargeInput,
+                )
+            },
+        );
     }
 
     group.finish();
@@ -332,6 +461,8 @@ fn bench_bk_type2_fallback(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_layout,
+    bench_graph_build,
+    bench_adjacency_churn,
     bench_normalize,
     bench_bk_conflict_index,
     bench_bk_type2_fallback

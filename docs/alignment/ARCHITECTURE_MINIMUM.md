@@ -1,8 +1,8 @@
-# Architecture Minimum Slice (Phase 1)
+# Architecture Diagram Admission Contract
 
-This document defines the initial, test-driven minimum slice for architecture parsing in `merman`.
+This document defines the admitted Architecture parser, Cytoscape/FCoSE layout, and SVG contract.
 
-Baseline: Mermaid `@11.12.3`.
+Baseline: Mermaid `11.16.0` at `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
 
 Upstream references:
 
@@ -30,13 +30,17 @@ Upstream references:
 - Inline comments:
   - Trailing `%% ...` is ignored unless inside quotes.
 
-## Output shape (Phase 1)
+## Output Shape
 
 - `type`, `title`, `accTitle`, `accDescr`
 - `groups[]`, `nodes[]`, `services[]`, `junctions[]`, `edges[]`
 - `config`
 
-## Alignment goal
+## Layout And SVG Admission
 
-This is an incremental slice. The ultimate goal is full Mermaid `architecture` grammar and DB behavior
-compatibility at the pinned baseline tag.
+- Service bounds follow Cytoscape's body/label union and final expansion phases; compound group
+  bounds are derived from children with labels before final root viewport emission.
+- Because upstream Architecture label groups do not expose `data-id`, the semantic-label adapter
+  binds labels to the path in their direct owning edge group and rejects repeated-text ambiguity.
+- `stress_architecture_batch3_parallel_edges_and_labels_057` is the signed label canary and requires
+  exact geometry; Architecture has no semantic-label residual entries.

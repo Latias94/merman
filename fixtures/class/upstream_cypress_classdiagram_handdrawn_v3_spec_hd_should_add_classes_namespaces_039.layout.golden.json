@@ -4,20 +4,12 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "C1",
-          "x": 58.781,
+          "id": "Namespace1",
+          "x": 117.563,
           "y": 77.0,
-          "width": 42.563,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "C2",
-          "x": 176.344,
-          "y": 77.0,
-          "width": 42.563,
-          "height": 84.0,
-          "is_cluster": false
+          "width": 235.125,
+          "height": 154.0,
+          "is_cluster": true
         },
         {
           "id": "C3",
@@ -36,12 +28,20 @@
           "is_cluster": false
         },
         {
-          "id": "Namespace1",
-          "x": 117.563,
+          "id": "C1",
+          "x": 58.781,
           "y": 77.0,
-          "width": 235.125,
-          "height": 154.0,
-          "is_cluster": true
+          "width": 42.563,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C2",
+          "x": 176.344,
+          "y": 77.0,
+          "width": 42.563,
+          "height": 84.0,
+          "is_cluster": false
         }
       ],
       "edges": [

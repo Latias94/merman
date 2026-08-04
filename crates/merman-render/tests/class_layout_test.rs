@@ -403,6 +403,88 @@ namespace Company.Project {
 }
 
 #[test]
+fn class_layout_notes_precede_lollipop_interfaces_in_pinned_source_order() {
+    let layout =
+        load_class_layout_fixture("upstream_html_demos_classchart_class_diagram_demos_006");
+
+    assert_eq!(
+        layout
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Dog", "Cat", "note0", "interface0", "interface1"]
+    );
+    assert_eq!(
+        layout
+            .edges
+            .iter()
+            .map(|edge| edge.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["edgeNote0", "0", "1"]
+    );
+
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+    let note = node("note0");
+    let first_interface = node("interface0");
+    let second_interface = node("interface1");
+    let dog = node("Dog");
+
+    assert!((note.x - first_interface.x).abs() < 1e-6);
+    assert!((note.x - second_interface.x).abs() < 1e-6);
+    assert!(
+        note.y < second_interface.y && second_interface.y < first_interface.y,
+        "pinned note/interface order should be note0, interface1, interface0; note={}, interface1={}, interface0={}",
+        note.y,
+        second_interface.y,
+        first_interface.y
+    );
+    assert!(
+        (first_interface.y - dog.y).abs() < 1e-6,
+        "interface0 and Dog should remain on the same horizontal route"
+    );
+}
+
+#[test]
+fn class_layout_note_edge_ids_use_declaration_index_and_precede_relations() {
+    let (layout, parsed) = layout_class_text(
+        r#"classDiagram
+class A
+note "detached"
+A --> B
+note for B "attached"
+"#,
+    );
+
+    assert_eq!(
+        class_model(&parsed)
+            .notes
+            .iter()
+            .map(|note| note.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["note0", "note1"]
+    );
+    assert_eq!(
+        layout
+            .edges
+            .iter()
+            .map(|edge| edge.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["edgeNote1", "0"]
+    );
+
+    let note_edge = &layout.edges[0];
+    assert_eq!(note_edge.from, "note1");
+    assert_eq!(note_edge.to, "B");
+}
+
+#[test]
 fn class_layout_deep_namespaces_fall_back_without_stack_growth() {
     let depth = 24;
     let (layout, _parsed) = layout_class_text(&nested_class_namespace_text(depth));

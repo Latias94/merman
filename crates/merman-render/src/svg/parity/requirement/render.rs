@@ -353,23 +353,99 @@ pub(crate) fn render_requirement_diagram_svg_model(
         font_style: None,
     };
 
-    let mut content_bounds = layout.bounds.clone().unwrap_or_else(|| {
-        if layout.nodes.is_empty() && layout.edges.is_empty() {
+    let edge_identity = |edge: &crate::model::LayoutEdge| {
+        dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(&edge.id))
+    };
+    let mut rendered_edge_paths = std::collections::HashMap::new();
+    let mut rendered_edge_label_positions = std::collections::HashMap::new();
+    for edge in &layout.edges {
+        let identity = edge_identity(edge);
+        let prepared_edge = prepared_edges
+            .get(&identity)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!(
+                    "missing prepared Requirement edge label for {} -> {} ({})",
+                    edge.from, edge.to, edge.id
+                ),
+            })?;
+        let rendered_d = curve_basis_path_d(&edge.points);
+        if rendered_edge_paths
+            .insert(identity.clone(), rendered_d.clone())
+            .is_some()
+        {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "duplicate rendered Requirement edge identity for {} -> {} ({})",
+                    edge.from, edge.to, edge.id
+                ),
+            });
+        }
+        if prepared_edge.has_label {
+            let label = edge.label.as_ref().ok_or_else(|| Error::InvalidModel {
+                message: format!(
+                    "missing Requirement edge label geometry for {} -> {} ({})",
+                    edge.from, edge.to, edge.id
+                ),
+            })?;
+            let label_position = super::super::edge_label_geometry::position_edge_label(
+                crate::model::LayoutPoint {
+                    x: label.x,
+                    y: label.y,
+                },
+                &edge.points,
+                &rendered_d,
+                false,
+            );
+            rendered_edge_label_positions.insert(identity, label_position);
+        }
+    }
+
+    // Mermaid derives the root viewport from the rendered SVG subtree. Reconstruct those bounds
+    // from final paths and post-path label positions instead of stale Dagre label anchors.
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for node in &layout.nodes {
+        min_x = min_x.min(node.x);
+        min_y = min_y.min(node.y);
+        max_x = max_x.max(node.x + node.width);
+        max_y = max_y.max(node.y + node.height);
+    }
+    for edge in &layout.edges {
+        for point in &edge.points {
+            min_x = min_x.min(point.x);
+            min_y = min_y.min(point.y);
+            max_x = max_x.max(point.x);
+            max_y = max_y.max(point.y);
+        }
+        let identity = edge_identity(edge);
+        if let (Some(label), Some(position)) = (
+            edge.label.as_ref(),
+            rendered_edge_label_positions.get(&identity),
+        ) {
+            min_x = min_x.min(position.x - label.width / 2.0);
+            min_y = min_y.min(position.y - label.height / 2.0);
+            max_x = max_x.max(position.x + label.width / 2.0);
+            max_y = max_y.max(position.y + label.height / 2.0);
+        }
+    }
+    let mut content_bounds =
+        if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
+            Bounds {
+                min_x,
+                min_y,
+                max_x,
+                max_y,
+            }
+        } else {
             Bounds {
                 min_x: 0.0,
                 min_y: 0.0,
                 max_x: 0.0,
                 max_y: 0.0,
             }
-        } else {
-            compute_layout_bounds(&[], &layout.nodes, &layout.edges).unwrap_or(Bounds {
-                min_x: 0.0,
-                min_y: 0.0,
-                max_x: 100.0,
-                max_y: 100.0,
-            })
-        }
-    });
+        };
     let diagram_title = diagram_title
         .map(str::trim)
         .filter(|title| !title.is_empty());
@@ -484,7 +560,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
     out.push_str(r#"<g class="clusters"/>"#);
 
     out.push_str(r#"<g class="edgePaths">"#);
-    for (e, prepared_label) in layout.edges.iter().zip(prepared_edges) {
+    for e in &layout.edges {
+        let identity = edge_identity(e);
+        let prepared_label = prepared_edges
+            .get(&identity)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!(
+                    "missing prepared Requirement edge label for {} -> {} ({})",
+                    e.from, e.to, e.id
+                ),
+            })?;
         let rel_type = prepared_label.relationship_type.as_str();
         let is_contains = rel_type == "contains";
         let pattern = if is_contains { "solid" } else { "dashed" };
@@ -495,25 +580,34 @@ pub(crate) fn render_requirement_diagram_svg_model(
             "fill:none;stroke-dasharray: 10,7;;;fill:none;stroke-dasharray: 10,7"
         };
 
-        let d = curve_basis_path_d(&e.points);
+        let d = rendered_edge_paths
+            .get(&identity)
+            .expect("Requirement edge paths were validated before root rendering");
         let data_points_b64 =
             base64::engine::general_purpose::STANDARD.encode(json_stringify_points(&e.points));
 
-        let marker_attr = if is_contains {
-            format!(
+        let mut marker_attr = String::new();
+        if prepared_label.marker_start {
+            let _ = write!(
+                &mut marker_attr,
                 r#" marker-start="url(#{})""#,
                 escape_xml(&contains_marker_id)
-            )
-        } else {
-            format!(r#" marker-end="url(#{})""#, escape_xml(&arrow_marker_id))
-        };
+            );
+        }
+        if prepared_label.marker_end {
+            let _ = write!(
+                &mut marker_attr,
+                r#" marker-end="url(#{})""#,
+                escape_xml(&arrow_marker_id)
+            );
+        }
 
         let _ = write!(
             &mut out,
             r#"<path d="{d}" id="{dom_id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{look_attr}{marker_attr}/>"#,
-            d = escape_xml(&d),
-            dom_id = escape_xml(&format!("{}{}", node_id_prefix, e.id)),
-            id = escape_xml(&e.id),
+            d = escape_xml(d),
+            dom_id = escape_xml(&format!("{}{}", node_id_prefix, prepared_label.rendered_id)),
+            id = escape_xml(&prepared_label.rendered_id),
             class = escape_xml(&class),
             style = escape_xml(style),
             data_points = escape_xml(&data_points_b64),
@@ -524,35 +618,45 @@ pub(crate) fn render_requirement_diagram_svg_model(
     out.push_str("</g>");
 
     out.push_str(r#"<g class="edgeLabels">"#);
-    for (e, prepared_label) in layout.edges.iter().zip(prepared_edges) {
+    for e in &layout.edges {
+        let identity = edge_identity(e);
+        let prepared_label = prepared_edges
+            .get(&identity)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!(
+                    "missing prepared Requirement edge label for {} -> {} ({})",
+                    e.from, e.to, e.id
+                ),
+            })?;
         let rel_type = prepared_label.relationship_type.as_str();
-        if rel_type.trim().is_empty() {
-            continue;
-        }
+        debug_assert!(!rel_type.trim().is_empty());
         let label_text = prepared_label.display_text.as_str();
-        let max_width_px = prepared_label.max_width_px;
 
-        let (x, y, w, h) = e
+        let (w, h) = e
             .label
             .as_ref()
-            .map(|l| (l.x, l.y, l.width, l.height))
-            .unwrap_or_else(|| {
-                let mid = e
-                    .points
-                    .get(1)
-                    .cloned()
-                    .unwrap_or(crate::model::LayoutPoint { x: 0.0, y: 0.0 });
-                (mid.x, mid.y, 0.0, 0.0)
-            });
-        let _ = write!(
-            &mut out,
-            r#"<g class="edgeLabel" transform="translate({x}, {y})"><g class="label" data-id="{id}" transform="translate({lx}, {ly})">"#,
-            x = fmt(x),
-            y = fmt(y),
-            id = escape_xml(&e.id),
-            lx = fmt(-w / 2.0),
-            ly = fmt(-h / 2.0),
-        );
+            .map(|label| (label.width, label.height))
+            .unwrap_or((0.0, 0.0));
+        if prepared_label.has_label {
+            let label_position = rendered_edge_label_positions
+                .get(&identity)
+                .expect("Requirement label positions were validated before root rendering");
+            let _ = write!(
+                &mut out,
+                r#"<g class="edgeLabel" transform="translate({x}, {y})"><g class="label" data-id="{id}" transform="translate({lx}, {ly})">"#,
+                x = fmt(label_position.x),
+                y = fmt(label_position.y),
+                id = escape_xml(&prepared_label.rendered_id),
+                lx = fmt(-w / 2.0),
+                ly = fmt(-h / 2.0),
+            );
+        } else {
+            let _ = write!(
+                &mut out,
+                r#"<g class="edgeLabel"><g class="label" data-id="{id}" transform="translate(0, 0)">"#,
+                id = escape_xml(&prepared_label.rendered_id),
+            );
+        }
         let label_html = mermaid_markdown_to_html(label_text, sanitize_config);
         mk_label_foreign_object(
             &mut out,
@@ -564,7 +668,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 span_style: None,
                 div_class: Some("labelBkg"),
                 div_style_prefix: None,
-                max_width_px,
+                max_width_px: 200,
             },
         );
         out.push_str("</g></g>");
@@ -572,12 +676,48 @@ pub(crate) fn render_requirement_diagram_svg_model(
     out.push_str("</g>");
 
     out.push_str(r#"<g class="nodes">"#);
-    for (n, prepared_node) in layout.nodes.iter().zip(prepared_nodes) {
+    for n in &layout.nodes {
         if n.id == "__proto__" {
             continue;
         }
         let cx = n.x + n.width / 2.0;
         let cy = n.y + n.height / 2.0;
+        let prepared_node = prepared_nodes
+            .get(&n.id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing prepared Requirement node plan for {}", n.id),
+            })?;
+        if matches!(
+            prepared_node,
+            crate::requirement::RequirementNodeRenderPlan::EdgeLabelAnchor
+        ) {
+            let _ = write!(
+                &mut out,
+                r#"<g class="label edgeLabel" id="{id}" transform="translate({cx}, {cy})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/>"#,
+                id = escape_xml(&n.id),
+                cx = fmt(cx),
+                cy = fmt(cy),
+            );
+            mk_label_foreign_object(
+                &mut out,
+                LabelForeignObject {
+                    html: "",
+                    width: 0.0,
+                    height: 0.0,
+                    span_class: "nodeLabel",
+                    span_style: None,
+                    div_class: None,
+                    div_style_prefix: None,
+                    max_width_px: 10,
+                },
+            );
+            out.push_str("</g></g>");
+            continue;
+        }
+        let crate::requirement::RequirementNodeRenderPlan::Semantic(prepared_node) = prepared_node
+        else {
+            unreachable!("edge label anchors return before semantic rendering");
+        };
 
         let mut node_classes: Vec<&str> = Vec::new();
         let mut css_styles: &[String] = &[];
@@ -1245,7 +1385,10 @@ mod tests {
         let (layout, _, edge_plans) = prepared.render_parts();
         assert_eq!(layout.edges.len(), 2);
         assert!(layout.edges.iter().all(|edge| edge.id == "a-b-c-0"));
-        for (edge, label_plan) in layout.edges.iter().zip(edge_plans) {
+        for edge in &layout.edges {
+            let identity =
+                dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(edge.id.as_str()));
+            let label_plan = edge_plans.get(&identity).expect("prepared edge identity");
             match (edge.from.as_str(), edge.to.as_str()) {
                 ("a-b", "c") => assert_eq!(label_plan.relationship_type, "contains"),
                 ("a", "b-c") => assert_eq!(label_plan.relationship_type, "satisfies"),
@@ -1277,6 +1420,207 @@ mod tests {
         );
         assert_eq!(svg.matches(r#"marker-start="url(#"#).count(), 1, "{svg}");
         assert_eq!(svg.matches(r#"marker-end="url(#"#).count(), 1, "{svg}");
+
+        let document = roxmltree::Document::parse(&svg).expect("valid Requirement SVG");
+        let edge_label_max_widths = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("div")
+                    && node
+                        .attribute("class")
+                        .unwrap_or_default()
+                        .split_whitespace()
+                        .any(|class| class == "labelBkg")
+            })
+            .map(|node| node.attribute("style").unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(edge_label_max_widths.len(), 2, "{svg}");
+        assert!(
+            edge_label_max_widths
+                .iter()
+                .all(|style| style.contains("max-width: 200px;")),
+            "Requirement edge labels keep Mermaid's fixed 200px wrap cap: {svg}"
+        );
+    }
+
+    #[test]
+    fn requirement_self_loop_preserves_pinned_segment_identity_and_dom() {
+        let model = RequirementDiagramRenderModel {
+            requirements: vec![requirement_node("req1")],
+            relationships: vec![RequirementRenderRelationship {
+                rel_type: "satisfies".to_string(),
+                src: "req1".to_string(),
+                dst: "req1".to_string(),
+            }],
+            ..empty_requirement_model()
+        };
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+            &model,
+            config.as_value(),
+            &measurer,
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+
+        let (layout, node_plans, edge_plans) = prepared.render_parts();
+        assert_eq!(layout.nodes.len(), 3);
+        assert!(matches!(
+            node_plans.get("req1---req1---1"),
+            Some(crate::requirement::RequirementNodeRenderPlan::EdgeLabelAnchor)
+        ));
+        assert!(matches!(
+            node_plans.get("req1---req1---2"),
+            Some(crate::requirement::RequirementNodeRenderPlan::EdgeLabelAnchor)
+        ));
+        assert_eq!(
+            layout
+                .edges
+                .iter()
+                .map(|edge| edge.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "req1-cyclic-special-0",
+                "req1-cyclic-special-1",
+                "req1-cyclic-special-2",
+            ]
+        );
+        let rendered_segments = layout
+            .edges
+            .iter()
+            .map(|edge| {
+                let identity = dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(&edge.id));
+                let plan = edge_plans.get(&identity).expect("self-loop edge plan");
+                (
+                    plan.rendered_id.as_str(),
+                    plan.has_label,
+                    plan.marker_start,
+                    plan.marker_end,
+                    edge.label.is_some(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rendered_segments,
+            vec![
+                ("req1-cyclic-special-1", false, false, false, false),
+                ("req1-cyclic-special-mid", true, false, false, true),
+                ("req1-cyclic-special-2", false, false, true, false),
+            ]
+        );
+
+        let options = SvgRenderOptions {
+            diagram_id: Some("requirement-self-loop".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let svg = render_prepared_requirement_for_test(
+            &prepared, &model, &config, None, &measurer, &options,
+        )
+        .unwrap();
+
+        for rendered_id in [
+            "req1-cyclic-special-1",
+            "req1-cyclic-special-mid",
+            "req1-cyclic-special-2",
+        ] {
+            assert!(
+                svg.contains(&format!(r#"data-id="{rendered_id}""#)),
+                "{svg}"
+            );
+        }
+        assert!(!svg.contains("req1-req1-0"), "{svg}");
+        assert_eq!(svg.matches("&lt;&lt;satisfies&gt;&gt;").count(), 1, "{svg}");
+        assert_eq!(svg.matches(r#"marker-start="url(#"#).count(), 0, "{svg}");
+        assert_eq!(svg.matches(r#"marker-end="url(#"#).count(), 1, "{svg}");
+        assert!(svg.contains(
+            r#"<g class="edgeLabel"><g class="label" data-id="req1-cyclic-special-1" transform="translate(0, 0)">"#
+        ));
+        assert!(
+            svg.contains(
+                r#"<g class="label edgeLabel" id="req1---req1---1" transform="translate("#
+            )
+        );
+        assert!(svg.contains(r#"<rect width="0.1" height="0.1"/>"#));
+
+        let middle_edge = layout
+            .edges
+            .iter()
+            .find(|edge| edge.id == "req1-cyclic-special-1")
+            .expect("middle self-loop segment");
+        let middle_label = middle_edge.label.as_ref().expect("middle label geometry");
+        let middle_path = crate::svg::parity::curve_basis_path_d(&middle_edge.points);
+        let final_position = crate::svg::parity::edge_label_geometry::position_edge_label(
+            crate::model::LayoutPoint {
+                x: middle_label.x,
+                y: middle_label.y,
+            },
+            &middle_edge.points,
+            &middle_path,
+            false,
+        );
+        let view_box = root_view_box(&svg);
+        assert!(
+            final_position.x - middle_label.width / 2.0 >= view_box[0]
+                && final_position.x + middle_label.width / 2.0 <= view_box[0] + view_box[2]
+                && final_position.y - middle_label.height / 2.0 >= view_box[1]
+                && final_position.y + middle_label.height / 2.0 <= view_box[1] + view_box[3],
+            "final label bounds must be inside the root viewport: {view_box:?}"
+        );
+    }
+
+    #[test]
+    fn requirement_contains_self_loop_keeps_only_the_first_segment_start_marker() {
+        let model = RequirementDiagramRenderModel {
+            requirements: vec![requirement_node("req1")],
+            relationships: vec![RequirementRenderRelationship {
+                rel_type: "contains".to_string(),
+                src: "req1".to_string(),
+                dst: "req1".to_string(),
+            }],
+            ..empty_requirement_model()
+        };
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+            &model,
+            config.as_value(),
+            &measurer,
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+        let svg = render_prepared_requirement_for_test(
+            &prepared,
+            &model,
+            &config,
+            None,
+            &measurer,
+            &SvgRenderOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(svg.matches(r#"marker-start="url(#"#).count(), 1, "{svg}");
+        assert_eq!(svg.matches(r#"marker-end="url(#"#).count(), 0, "{svg}");
+        let document = roxmltree::Document::parse(&svg).expect("valid Requirement SVG");
+        let path_for = |id: &str| {
+            document
+                .descendants()
+                .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(id))
+                .unwrap_or_else(|| panic!("missing self-loop path {id}"))
+        };
+        assert!(
+            path_for("req1-cyclic-special-1")
+                .attribute("marker-start")
+                .is_some_and(|value| value.ends_with("requirement_containsStart)"))
+        );
+        assert_eq!(
+            path_for("req1-cyclic-special-mid").attribute("marker-start"),
+            None
+        );
+        assert_eq!(
+            path_for("req1-cyclic-special-2").attribute("marker-end"),
+            None
+        );
     }
 
     #[test]

@@ -4,10 +4,10 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Ba",
+          "id": "FooBase",
           "x": 53.203,
-          "y": 236.0,
-          "width": 40.484,
+          "y": 72.0,
+          "width": 106.406,
           "height": 84.0,
           "is_cluster": false
         },
@@ -20,10 +20,10 @@
           "is_cluster": false
         },
         {
-          "id": "FooBase",
+          "id": "Ba",
           "x": 53.203,
-          "y": 72.0,
-          "width": 106.406,
+          "y": 236.0,
+          "width": 40.484,
           "height": 84.0,
           "is_cluster": false
         }

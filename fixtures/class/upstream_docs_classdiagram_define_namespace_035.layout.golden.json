@@ -12,19 +12,19 @@
           "is_cluster": true
         },
         {
-          "id": "Rectangle",
-          "x": 106.579,
-          "y": 241.0,
-          "width": 138.157,
-          "height": 144.0,
-          "is_cluster": false
-        },
-        {
           "id": "Triangle",
           "x": 106.579,
           "y": 77.0,
           "width": 76.953,
           "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Rectangle",
+          "x": 106.579,
+          "y": 241.0,
+          "width": 138.157,
+          "height": 144.0,
           "is_cluster": false
         }
       ],
