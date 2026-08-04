@@ -107,9 +107,9 @@ pub use resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
-    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
-    ResourceLimitOverrideError, ResourceLimitPhase, ZenumlComplexity, resource_limit_descriptors,
-    resource_profile_descriptors,
+    ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
+    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase, ZenumlComplexity,
+    resource_limit_descriptors, resource_profile_descriptors,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -324,14 +324,12 @@ pub(crate) fn layout_flowchart_typed_by_engine(
         );
     }
 
-    options
-        .resource_policy()
-        .check_layout_work_units(flowchart::flowchart_layout_work_units(model))?;
-    flowchart::layout_flowchart_typed(
+    flowchart::layout_flowchart_typed_with_work_meter(
         model,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
+        options.work_meter(),
     )
 }
 
@@ -370,7 +368,9 @@ mod tests {
     use super::*;
     #[cfg(feature = "layout-elk")]
     use merman_core::ParsedDiagramRender;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    #[cfg(feature = "layout-elk")]
+    use merman_core::RenderSemanticModel;
+    use merman_core::{Engine, ParseOptions};
 
     #[test]
     fn render_capability_ids_and_error_accessor_are_stable() {
@@ -553,7 +553,7 @@ A-->B
     }
 
     #[test]
-    fn render_model_dispatch_rejects_flowchart_cluster_work_before_layout() {
+    fn render_model_dispatch_rejects_flowchart_dagre_work_during_its_first_owner_phase() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TD\nsubgraph Cluster\nA\nend\nA-->B",
@@ -561,15 +561,10 @@ A-->B
             )
             .unwrap()
             .unwrap();
-        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
-            panic!("expected flowchart render model");
-        };
-        let work = flowchart::flowchart_layout_work_units(model);
-        assert!(work > 1);
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, work - 1)
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
                     .unwrap(),
             )
             .begin_session()
@@ -585,7 +580,7 @@ A-->B
         };
         assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
         assert_eq!(limit.limit, "max_layout_work_units");
-        assert_eq!(limit.actual, work);
+        assert!(limit.actual > 1);
     }
 
     fn assert_class_layout_work_limit(source: &str) {

@@ -12,7 +12,7 @@ pub(crate) use merman_core::diagrams::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel,
 };
 
-pub(crate) use layout::{flowchart_layout_work_units, layout_flowchart_typed};
+pub(crate) use layout::layout_flowchart_typed_with_work_meter;
 
 pub(crate) use config::{FlowchartConfigView, FlowchartLayoutSettings};
 pub(crate) use label::{
