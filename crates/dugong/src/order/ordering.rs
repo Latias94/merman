@@ -1,6 +1,6 @@
-use super::cross_count::cross_count_ix_controlled;
+use super::cross_count::{cross_count_ix_controlled, is_zero_crossing_ix_controlled};
 use super::workspace::OrderWorkspace;
-use super::{OrderEdgeWeight, OrderNodeLabel, Relationship, init_order};
+use super::{EMPTY_LAYER_SLOT, OrderEdgeWeight, OrderNodeLabel, Relationship, init_order};
 use crate::graphlib::Graph;
 use crate::work::{checked_add, checked_mul, checked_n_log_n};
 use crate::{NoopWorkControl, WorkControl, WorkError};
@@ -31,30 +31,19 @@ where
     E: Default + OrderEdgeWeight + 'static,
     G: Default,
 {
-    order_controlled_impl(g, opts, work_control, true)
-}
-
-fn order_controlled_impl<N, E, G>(
-    g: &mut Graph<N, E, G>,
-    opts: OrderOptions,
-    work_control: &mut dyn WorkControl,
-    allow_proven_shortcuts: bool,
-) -> Result<(), WorkError>
-where
-    N: Default + OrderNodeLabel + 'static,
-    E: Default + OrderEdgeWeight + 'static,
-    G: Default,
-{
     // The setup plan inspects node slots, rank spans, and leaf status before any of the matching
     // vectors or sort inputs are materialized. Admit that bounded planning scan first.
-    work_control.charge(checked_mul(g.node_count(), 2)?)?;
+    work_control.charge(checked_mul(g.node_order_slot_count(), 2)?)?;
     let setup_plan = order_setup_plan(g)?;
     work_control.charge(setup_plan.work_units)?;
+    if setup_plan.prepare_adjacency_cache {
+        // Adjacency queries rebuild through interior mutability. Force that rebuild only after its
+        // complete slot-backed work has been admitted, so later cardinality queries stay O(1).
+        g.prepare_adjacency_cache();
+    }
     work_control.charge(checked_mul(setup_plan.node_slots, 3)?)?;
     let mut max_rank: i32 = i32::MIN;
     let mut nodes_by_rank: Vec<Vec<usize>> = Vec::new();
-    let mut primary_rank_sizes: Vec<usize> = Vec::new();
-    let mut sweep_node_count = 0usize;
     let mut sweep_nodes = vec![false; setup_plan.node_slots];
 
     g.for_each_node_ix(|v_ix, _id, node| {
@@ -74,13 +63,6 @@ where
 
         if let Some(rank) = node.rank() {
             push_rank(rank);
-            if rank >= 0 {
-                let rank = rank as usize;
-                if primary_rank_sizes.len() <= rank {
-                    primary_rank_sizes.resize(rank + 1, 0);
-                }
-                primary_rank_sizes[rank] += 1;
-            }
         }
         if let (Some(min_rank), Some(max_rank_node)) = (node.min_rank(), node.max_rank()) {
             for r in min_rank..=max_rank_node {
@@ -91,19 +73,12 @@ where
             }
         }
         if participates_in_sweep {
-            sweep_node_count += 1;
             sweep_nodes[v_ix] = true;
         }
     });
     if max_rank == i32::MIN {
         return Ok(());
     }
-    let rank_slots =
-        usize::try_from(i64::from(max_rank) + 1).map_err(|_| WorkError::ArithmeticOverflow)?;
-    if primary_rank_sizes.len() < rank_slots {
-        primary_rank_sizes.resize(rank_slots, 0);
-    }
-
     let layering = init_order(g);
     assign_order(g, &layering);
     let mut initial_layering_nodes = vec![false; setup_plan.node_slots];
@@ -123,10 +98,7 @@ where
     if opts.disable_optimal_order_heuristic {
         return Ok(());
     }
-    if allow_proven_shortcuts
-        && initial_layering_covers_sweep_nodes
-        && layering.iter().all(|layer| layer.len() <= 1)
-    {
+    if initial_layering_covers_sweep_nodes && layering.iter().all(|layer| layer.len() <= 1) {
         return Ok(());
     }
 
@@ -143,47 +115,47 @@ where
 
     let mut i: usize = 0;
     let mut last_best: usize = 0;
+    let mut have_scored_layering = false;
+    let mut best_is_proven_minimum = false;
     while last_best < 4 {
-        run_sweep_round(g, &ranks_down, &ranks_up, i, &mut workspace, work_control)?;
+        let primary_order_changed =
+            run_sweep_round(g, &ranks_down, &ranks_up, i, &mut workspace, work_control)?;
 
-        // Layer sizes are rank-stable across sweeps. Charge the bounded plan scan, then the rank
-        // buckets, local sorts, and result materialization before they are allocated.
-        work_control.charge(primary_rank_sizes.len())?;
-        work_control.charge(layer_matrix_work_units(
-            &primary_rank_sizes,
-            g.node_count(),
-        )?)?;
-        let layering_now = build_layer_matrix_ix(g, max_rank);
-        let layering_now_node_count = layering_now
-            .iter()
-            .try_fold(0usize, |total, layer| checked_add(total, layer.len()))?;
-        let cross_count = cross_count_ix_controlled(g, &layering_now, work_control)?;
-        if cross_count.value < best_cc {
-            last_best = 0;
-            best_cc = cross_count.value;
-            best_layering = Some(layering_now);
-        }
-
-        // Crossing weights are products of edge weights. If every participating edge has a finite,
-        // non-negative weight, zero is the global lower bound. Equal-score sweeps never replace the
-        // first best layering, so continuing cannot affect the selected output.
-        if allow_proven_shortcuts && cross_count.is_proven_minimum {
-            if layering_now_node_count == sweep_node_count {
-                break;
-            }
-
-            // The best score is already the global lower bound, so later layer matrices and cross
-            // counts cannot replace it. Preserve the observable order side effects for range-only
-            // or otherwise unrepresented sweep nodes by running the remaining sweeps, while
-            // deleting the now-provably-dead materialization and Fenwick work.
+        // Crossing count is a pure function of the primary layer matrix and edge weights. Keep
+        // running every Dagre sweep so bias, constraints, and range-only node side effects remain
+        // intact, but do not rebuild and recount a matrix that is byte-for-byte unchanged.
+        if have_scored_layering && !primary_order_changed {
             i += 1;
             last_best += 1;
-            while last_best < 4 {
-                run_sweep_round(g, &ranks_down, &ranks_up, i, &mut workspace, work_control)?;
-                i += 1;
-                last_best += 1;
+            continue;
+        }
+
+        let layering_now = build_layer_matrix_ix_controlled(g, max_rank, work_control)?;
+        have_scored_layering = true;
+        if best_is_proven_minimum && layering_now.has_unique_rank_orders {
+            let is_zero = is_zero_crossing_ix_controlled(g, &layering_now.layers, work_control)?;
+            if is_zero {
+                // Pinned Dagre keeps the most recent layering when crossing scores tie. The full
+                // weighted count is unnecessary once zero is proved to be the exact global lower
+                // bound, but the latest zero-crossing layering remains observable.
+                best_layering = Some(layering_now.layers);
             }
-            break;
+        } else {
+            let cross_count = cross_count_ix_controlled(g, &layering_now.layers, work_control)?;
+            let proves_minimum =
+                layering_now.has_unique_rank_orders && cross_count.is_proven_minimum;
+            if cross_count.value < best_cc {
+                last_best = 0;
+                best_cc = cross_count.value;
+                best_is_proven_minimum = proves_minimum;
+                best_layering = Some(layering_now.layers);
+            } else if cross_count.value == best_cc {
+                // Pinned Dagre keeps the most recent layering when crossing scores tie. Bias
+                // alternates across sweeps, so replacing the previous best here is observable in
+                // final node order.
+                best_is_proven_minimum |= proves_minimum;
+                best_layering = Some(layering_now.layers);
+            }
         }
 
         i += 1;
@@ -203,7 +175,7 @@ fn run_sweep_round<N, E, G>(
     iteration: usize,
     workspace: &mut OrderWorkspace,
     work_control: &mut dyn WorkControl,
-) -> Result<(), WorkError>
+) -> Result<bool, WorkError>
 where
     N: Default + OrderNodeLabel + 'static,
     E: Default + OrderEdgeWeight + 'static,
@@ -216,7 +188,10 @@ where
     } else {
         Relationship::OutEdges
     };
-    work_control.charge(workspace.iteration_work_units(relationship)?)?;
+    work_control.charge(
+        workspace
+            .iteration_work_units(if use_down { ranks_down } else { ranks_up }, relationship)?,
+    )?;
 
     if use_down {
         sweep(
@@ -242,6 +217,7 @@ where
 struct OrderSetupPlan {
     work_units: usize,
     node_slots: usize,
+    prepare_adjacency_cache: bool,
 }
 
 fn order_setup_plan<N, E, G>(g: &Graph<N, E, G>) -> Result<OrderSetupPlan, WorkError>
@@ -259,7 +235,20 @@ where
         }
     });
     let node_work = checked_add(checked_mul(g.node_count(), 3)?, node_slots)?;
-    let edge_work = checked_mul(g.edge_count(), 4)?;
+    let prepare_adjacency_cache = !g.is_adjacency_cache_current();
+    let edge_tombstones = g
+        .edge_slot_count()
+        .checked_sub(g.edge_count())
+        .ok_or(WorkError::ArithmeticOverflow)?;
+    let tombstone_rebuild_work = if prepare_adjacency_cache {
+        // A stale CSR cache scans every edge slot twice. The existing four live-edge units cover
+        // live adjacency materialization plus the owner-local edge passes; add only the two scans
+        // that are invisible when an edge slot is a tombstone.
+        checked_mul(edge_tombstones, 2)?
+    } else {
+        0
+    };
+    let edge_work = checked_add(checked_mul(g.edge_count(), 4)?, tombstone_rebuild_work)?;
     let mut work = checked_add(node_work, edge_work);
     let mut rank_slots = 0usize;
     g.for_each_node(|_id, node| {
@@ -296,6 +285,7 @@ where
     Ok(OrderSetupPlan {
         work_units,
         node_slots,
+        prepare_adjacency_cache,
     })
 }
 
@@ -321,13 +311,14 @@ fn sweep<N, E, G>(
     relationship: Relationship,
     workspace: &mut OrderWorkspace,
     work_control: &mut dyn WorkControl,
-) -> Result<(), WorkError>
+) -> Result<bool, WorkError>
 where
     N: Default + OrderNodeLabel + 'static,
     E: Default + OrderEdgeWeight + 'static,
     G: Default,
 {
     workspace.begin_sweep();
+    let mut primary_order_changed = false;
 
     for &rank in ranks {
         if rank < 0 {
@@ -341,22 +332,49 @@ where
                 continue;
             };
             if let Some(n) = g.node_label_mut_by_ix(original_ix) {
+                if n.rank().is_some() && n.order() != Some(i) {
+                    primary_order_changed = true;
+                }
                 n.set_order(i);
             }
         }
         workspace.add_constraints(rank, &sorted.vs);
     }
-    Ok(())
+    Ok(primary_order_changed)
 }
 
-fn build_layer_matrix_ix<N, E, G>(g: &Graph<N, E, G>, max_rank: i32) -> Vec<Vec<usize>>
+#[derive(Debug, PartialEq, Eq)]
+struct BuiltLayerMatrix {
+    layers: Vec<Vec<usize>>,
+    has_unique_rank_orders: bool,
+}
+
+fn build_layer_matrix_ix_controlled<N, E, G>(
+    g: &Graph<N, E, G>,
+    max_rank: i32,
+    work_control: &mut dyn WorkControl,
+) -> Result<BuiltLayerMatrix, WorkError>
 where
     N: Default + OrderNodeLabel + 'static,
     E: Default + 'static,
     G: Default,
 {
-    let mut layers: Vec<Vec<(usize, usize)>> = vec![Vec::new(); (max_rank + 1).max(0) as usize];
+    let rank_slots = usize::try_from((i64::from(max_rank) + 1).max(0))
+        .map_err(|_| WorkError::ArithmeticOverflow)?;
+    let planning_work = checked_add(
+        checked_mul(rank_slots, 2)?,
+        checked_add(g.node_count(), g.node_order_slot_count())?,
+    )?;
+    work_control.charge(planning_work)?;
+
+    let mut layer_slots = vec![0usize; rank_slots];
+    let mut entries = Vec::with_capacity(g.node_count());
+    let mut error = None;
+    let mut has_unique_rank_orders = true;
     g.for_each_node_ix(|v_ix, _id, node| {
+        if error.is_some() {
+            return;
+        }
         let Some(rank) = node.rank() else {
             return;
         };
@@ -364,37 +382,51 @@ where
             return;
         }
         let Some(order) = node.order() else {
+            // A later sweep may assign this ranked node an order and change which edges
+            // participate in the layer matrix. Do not reuse a proof from an incomplete matrix.
+            has_unique_rank_orders = false;
             return;
         };
         let idx = rank as usize;
-        if let Some(layer) = layers.get_mut(idx) {
-            layer.push((order, v_ix));
-        }
+        let Some(slots) = layer_slots.get_mut(idx) else {
+            has_unique_rank_orders = false;
+            return;
+        };
+        let Some(required_slots) = order.checked_add(1) else {
+            error = Some(WorkError::ArithmeticOverflow);
+            return;
+        };
+        *slots = (*slots).max(required_slots);
+        entries.push((idx, order, v_ix));
     });
-    let mut out: Vec<Vec<usize>> = Vec::with_capacity(layers.len());
-    for mut layer in layers {
-        layer.sort_by_key(|(o, _)| *o);
-        out.push(layer.into_iter().map(|(_, v)| v).collect());
+    if let Some(error) = error {
+        return Err(error);
     }
-    out
-}
 
-fn layer_matrix_work_units(
-    layer_sizes: &[usize],
-    graph_node_count: usize,
-) -> Result<usize, WorkError> {
-    let (ranked_nodes, sort_work) = layer_sizes.iter().copied().try_fold(
-        (0usize, 0usize),
-        |(ranked_nodes, sort_work), size| {
-            Ok((
-                checked_add(ranked_nodes, size)?,
-                checked_add(sort_work, checked_n_log_n(size)?)?,
-            ))
-        },
-    )?;
-    let bucket_work = checked_mul(layer_sizes.len(), 2)?;
-    let node_work = checked_add(graph_node_count, checked_mul(ranked_nodes, 2)?)?;
-    checked_add(checked_add(bucket_work, node_work)?, sort_work)
+    let total_slots = layer_slots
+        .iter()
+        .try_fold(0usize, |total, &slots| checked_add(total, slots))?;
+    work_control.charge(checked_add(
+        rank_slots,
+        checked_add(total_slots, entries.len())?,
+    )?)?;
+
+    let mut layers = Vec::with_capacity(rank_slots);
+    for slots in layer_slots {
+        layers.push(vec![EMPTY_LAYER_SLOT; slots]);
+    }
+    for (rank, order, v_ix) in entries {
+        if let Some(slot) = layers.get_mut(rank).and_then(|layer| layer.get_mut(order)) {
+            // Dagre assigns `layering[rank][order] = node`, so a later graph node replaces an
+            // earlier duplicate order instead of introducing a second compacted entry.
+            has_unique_rank_orders &= *slot == EMPTY_LAYER_SLOT;
+            *slot = v_ix;
+        }
+    }
+    Ok(BuiltLayerMatrix {
+        layers,
+        has_unique_rank_orders,
+    })
 }
 
 fn assign_order_ix<N, E, G>(g: &mut Graph<N, E, G>, layering: &[Vec<usize>])
@@ -405,6 +437,9 @@ where
 {
     for layer in layering {
         for (i, &v_ix) in layer.iter().enumerate() {
+            if v_ix == EMPTY_LAYER_SLOT {
+                continue;
+            }
             if let Some(node) = g.node_label_mut_by_ix(v_ix) {
                 node.set_order(i);
             }
@@ -472,7 +507,67 @@ mod tests {
     }
 
     #[test]
-    fn wide_ordering_charges_both_global_and_layer_local_sorts() {
+    fn setup_precharges_edge_tombstones_before_adjacency_rebuild() {
+        fn stale_graph(directed: bool) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+            let mut graph = Graph::new(GraphOptions {
+                directed,
+                multigraph: true,
+                ..GraphOptions::default()
+            });
+            graph.set_graph(GraphLabel::default());
+            for (id, rank) in [("a", 0), ("b", 1), ("c", 1)] {
+                graph.set_node(
+                    id,
+                    NodeLabel {
+                        rank: Some(rank),
+                        ..Default::default()
+                    },
+                );
+            }
+            graph.set_edge_named("a", "b", Some("first"), Some(EdgeLabel::default()));
+            graph.set_edge_named("a", "c", Some("removed"), Some(EdgeLabel::default()));
+            graph.set_edge_named("b", "c", Some("last"), Some(EdgeLabel::default()));
+            graph.prepare_adjacency_cache();
+            assert!(graph.remove_edge("a", "c", Some("removed")));
+            assert_eq!(graph.edge_count(), 2);
+            assert_eq!(graph.edge_slot_count(), 3);
+            assert!(!graph.is_adjacency_cache_current());
+            graph
+        }
+
+        for directed in [true, false] {
+            let mut graph = stale_graph(directed);
+            let planning_work = checked_mul(graph.node_order_slot_count(), 2).unwrap();
+            let setup_plan = order_setup_plan(&graph).unwrap();
+            assert!(setup_plan.prepare_adjacency_cache);
+            let admitted_boundary = checked_add(planning_work, setup_plan.work_units).unwrap();
+
+            let mut below = RecordingWorkControl {
+                max: admitted_boundary - 1,
+                ..Default::default()
+            };
+            assert_eq!(
+                order_controlled(&mut graph, OrderOptions::default(), &mut below),
+                Err(WorkError::Interrupted)
+            );
+            assert_eq!(below.used, planning_work);
+            assert!(!graph.is_adjacency_cache_current());
+
+            let mut exact = RecordingWorkControl {
+                max: admitted_boundary,
+                ..Default::default()
+            };
+            assert_eq!(
+                order_controlled(&mut graph, OrderOptions::default(), &mut exact),
+                Err(WorkError::Interrupted)
+            );
+            assert_eq!(exact.used, admitted_boundary);
+            assert!(graph.is_adjacency_cache_current());
+        }
+    }
+
+    #[test]
+    fn wide_ordering_does_not_charge_a_layer_matrix_sort() {
         const NODE_COUNT: usize = 256;
         let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
             Graph::new(GraphOptions::default());
@@ -482,6 +577,7 @@ mod tests {
                 format!("n{index}"),
                 NodeLabel {
                     rank: Some(0),
+                    order: Some(index),
                     ..Default::default()
                 },
             );
@@ -491,10 +587,111 @@ mod tests {
             ..Default::default()
         };
 
-        order_controlled(&mut graph, OrderOptions::default(), &mut work_control).unwrap();
+        let layering = build_layer_matrix_ix_controlled(&graph, 0, &mut work_control).unwrap();
 
-        let one_sort = checked_n_log_n(NODE_COUNT).unwrap();
-        assert!(work_control.used >= checked_mul(one_sort, 2).unwrap());
+        let planning_work = 2 + 2 * NODE_COUNT;
+        let materialization_work = 1 + NODE_COUNT * 2;
+        assert_eq!(work_control.used, planning_work + materialization_work);
+        assert!(layering.has_unique_rank_orders);
+        assert_eq!(layering.layers[0].len(), NODE_COUNT);
+        assert!(work_control.used < checked_n_log_n(NODE_COUNT).unwrap());
+    }
+
+    #[test]
+    fn sparse_high_rank_layer_matrix_charges_every_rank_wide_pass() {
+        const MAX_RANK: i32 = 1_024;
+        let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
+            Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel::default());
+        for (id, rank) in [("low", 0), ("high", MAX_RANK)] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(rank),
+                    order: Some(0),
+                    ..Default::default()
+                },
+            );
+        }
+        let rank_slots = usize::try_from(MAX_RANK + 1).unwrap();
+        let planning_work = 2 * rank_slots + 2 * graph.node_count();
+        let materialization_work = rank_slots + 2 + graph.node_count();
+        let exact_work = planning_work + materialization_work;
+        let mut exact = RecordingWorkControl {
+            max: exact_work,
+            ..Default::default()
+        };
+
+        let layering = build_layer_matrix_ix_controlled(&graph, MAX_RANK, &mut exact).unwrap();
+
+        assert_eq!(exact.used, exact_work);
+        assert!(layering.has_unique_rank_orders);
+        assert_eq!(layering.layers.len(), rank_slots);
+        assert_eq!(layering.layers[0], vec![graph.node_ix("low").unwrap()]);
+        assert_eq!(
+            layering.layers[rank_slots - 1],
+            vec![graph.node_ix("high").unwrap()]
+        );
+
+        let mut below = RecordingWorkControl {
+            max: exact_work - 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            build_layer_matrix_ix_controlled(&graph, MAX_RANK, &mut below),
+            Err(WorkError::Interrupted)
+        );
+        assert_eq!(below.used, planning_work);
+    }
+
+    #[test]
+    fn layer_matrix_charges_node_order_tombstones_before_scanning() {
+        let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
+            Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel::default());
+        for (id, order) in [("a", 0), ("removed", 1), ("b", 2)] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(0),
+                    order: Some(order),
+                    ..Default::default()
+                },
+            );
+        }
+        assert!(graph.remove_node("removed"));
+        assert_eq!(graph.node_count(), 2);
+        assert_eq!(graph.node_order_slot_count(), 3);
+
+        let planning_work = 2 + graph.node_count() + graph.node_order_slot_count();
+        let materialization_work = 1 + 3 + graph.node_count();
+        let exact_work = planning_work + materialization_work;
+        let mut exact = RecordingWorkControl {
+            max: exact_work,
+            ..Default::default()
+        };
+
+        let layering = build_layer_matrix_ix_controlled(&graph, 0, &mut exact).unwrap();
+
+        assert_eq!(exact.used, exact_work);
+        assert_eq!(
+            layering.layers,
+            vec![vec![
+                graph.node_ix("a").unwrap(),
+                EMPTY_LAYER_SLOT,
+                graph.node_ix("b").unwrap(),
+            ]]
+        );
+
+        let mut below = RecordingWorkControl {
+            max: planning_work - 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            build_layer_matrix_ix_controlled(&graph, 0, &mut below),
+            Err(WorkError::Interrupted)
+        );
+        assert_eq!(below.used, 0);
     }
 
     #[test]
@@ -543,133 +740,204 @@ mod tests {
     }
 
     #[test]
-    fn zero_crossing_does_not_skip_range_only_ordering() {
-        fn graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
-            let mut graph = Graph::new(GraphOptions::default());
-            graph.set_graph(GraphLabel::default());
-            for (id, rank) in [
-                ("a", Some(0)),
-                ("c", Some(0)),
-                ("x", None),
-                ("b", Some(1)),
-                ("d", Some(1)),
-            ] {
-                graph.set_node(
-                    id,
-                    NodeLabel {
-                        rank,
-                        min_rank: (id == "x").then_some(0),
-                        max_rank: (id == "x").then_some(1),
-                        ..Default::default()
-                    },
-                );
-            }
-            graph.set_edge("a", "b");
-            graph.set_edge("c", "d");
-            graph
-        }
-
-        let mut optimized = graph();
-        let mut optimized_work = RecordingWorkControl {
-            max: usize::MAX,
-            ..Default::default()
-        };
-        order_controlled_impl(
-            &mut optimized,
-            OrderOptions::default(),
-            &mut optimized_work,
-            true,
-        )
-        .unwrap();
-
-        let mut reference = graph();
-        let mut reference_work = RecordingWorkControl {
-            max: usize::MAX,
-            ..Default::default()
-        };
-        order_controlled_impl(
-            &mut reference,
-            OrderOptions::default(),
-            &mut reference_work,
-            false,
-        )
-        .unwrap();
-
-        for id in optimized.node_ids() {
-            assert_eq!(
-                optimized.node(&id).and_then(|node| node.order),
-                reference.node(&id).and_then(|node| node.order),
-                "order differs for {id}"
-            );
-        }
-        assert_eq!(optimized.node("x").and_then(|node| node.order), Some(0));
-        assert!(optimized_work.used < reference_work.used);
-    }
-
-    #[test]
-    fn zero_crossing_does_not_skip_ranked_compound_ordering() {
-        fn graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
-            let mut graph = Graph::new(GraphOptions {
-                compound: true,
-                ..GraphOptions::default()
-            });
-            graph.set_graph(GraphLabel::default());
-            for (id, rank) in [("a", 0), ("c", 0), ("b", 1), ("d", 1), ("child", 1)] {
-                graph.set_node(
-                    id,
-                    NodeLabel {
-                        rank: Some(rank),
-                        ..Default::default()
-                    },
-                );
-            }
+    fn equal_crossing_sweeps_keep_mermaid_dagres_last_layering() {
+        let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
+            Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel::default());
+        graph.set_node(
+            "a",
+            NodeLabel {
+                rank: Some(0),
+                ..Default::default()
+            },
+        );
+        for id in ["b", "c"] {
             graph.set_node(
-                "cluster",
+                id,
                 NodeLabel {
                     rank: Some(1),
                     ..Default::default()
                 },
             );
-            graph.set_parent("child", "cluster");
-            graph.set_edge("a", "b");
-            graph.set_edge("c", "d");
-            graph
-        }
-
-        let mut optimized = graph();
-        let mut optimized_work = RecordingWorkControl {
-            max: usize::MAX,
-            ..Default::default()
-        };
-        order_controlled_impl(
-            &mut optimized,
-            OrderOptions::default(),
-            &mut optimized_work,
-            true,
-        )
-        .unwrap();
-
-        let mut reference = graph();
-        let mut reference_work = RecordingWorkControl {
-            max: usize::MAX,
-            ..Default::default()
-        };
-        order_controlled_impl(
-            &mut reference,
-            OrderOptions::default(),
-            &mut reference_work,
-            false,
-        )
-        .unwrap();
-
-        for id in optimized.node_ids() {
-            assert_eq!(
-                optimized.node(&id).and_then(|node| node.order),
-                reference.node(&id).and_then(|node| node.order),
-                "order differs for {id}"
+            graph.set_edge_with_label(
+                "a",
+                id,
+                EdgeLabel {
+                    // Explicit zero weights exercise the structural proof's ignored-edge path;
+                    // the sweep must still preserve Dagre's observable tie-last replacement.
+                    weight: 0.0,
+                    ..Default::default()
+                },
             );
         }
-        assert!(optimized_work.used <= reference_work.used);
+        let mut work_control = RecordingWorkControl {
+            max: usize::MAX,
+            ..Default::default()
+        };
+
+        order_controlled(&mut graph, OrderOptions::default(), &mut work_control).unwrap();
+
+        // Pinned Dagre replaces the best layering on an equal crossing score. The fourth sweep
+        // uses right bias, so the equal-barycenter siblings finish in reverse insertion order.
+        assert_eq!(graph.node("b").and_then(|node| node.order), Some(1));
+        assert_eq!(graph.node("c").and_then(|node| node.order), Some(0));
+    }
+
+    #[test]
+    fn zero_crossing_sweep_does_not_short_circuit_dagres_tie_last_search() {
+        let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
+            Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel::default());
+        for (id, rank) in [
+            ("anchor", 0),
+            ("b0", 1),
+            ("b1", 1),
+            ("b2", 1),
+            ("c0", 2),
+            ("c1", 2),
+        ] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(rank),
+                    ..Default::default()
+                },
+            );
+        }
+        for (from, to) in [("b0", "c0"), ("b1", "c1"), ("b2", "c0")] {
+            graph.set_edge_with_label(
+                from,
+                to,
+                EdgeLabel {
+                    weight: 1.0,
+                    ..Default::default()
+                },
+            );
+        }
+        let mut work_control = RecordingWorkControl {
+            max: usize::MAX,
+            ..Default::default()
+        };
+
+        order_controlled(&mut graph, OrderOptions::default(), &mut work_control).unwrap();
+
+        // Pinned Dagre scores these sweeps 0, 1, 0, 1. A zero global minimum therefore permits a
+        // cheaper zero/non-zero proof, but it must still preserve the later equal minimum from the
+        // right-biased third sweep rather than the first zero or the final working order.
+        for (id, expected) in [
+            ("anchor", 0),
+            ("b2", 0),
+            ("b0", 1),
+            ("b1", 2),
+            ("c0", 0),
+            ("c1", 1),
+        ] {
+            assert_eq!(
+                graph.node(id).and_then(|node| node.order),
+                Some(expected),
+                "unexpected final order for {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn layer_matrix_preserves_mermaid_dagre_order_holes() {
+        let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
+            Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel::default());
+        graph.set_node(
+            "a",
+            NodeLabel {
+                rank: Some(0),
+                order: Some(0),
+                ..Default::default()
+            },
+        );
+        graph.set_node(
+            "b",
+            NodeLabel {
+                rank: Some(0),
+                order: Some(2),
+                ..Default::default()
+            },
+        );
+        let mut work_control = RecordingWorkControl {
+            max: usize::MAX,
+            ..Default::default()
+        };
+
+        let layering = build_layer_matrix_ix_controlled(&graph, 0, &mut work_control).unwrap();
+
+        assert!(layering.has_unique_rank_orders);
+        assert_eq!(
+            layering.layers,
+            vec![vec![
+                graph.node_ix("a").unwrap(),
+                EMPTY_LAYER_SLOT,
+                graph.node_ix("b").unwrap(),
+            ]]
+        );
+    }
+
+    #[test]
+    fn layer_matrix_matches_mermaid_dagres_last_write_for_duplicate_orders() {
+        let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
+            Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel::default());
+        for id in ["a", "b"] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(0),
+                    order: Some(0),
+                    ..Default::default()
+                },
+            );
+        }
+        let mut work_control = RecordingWorkControl {
+            max: usize::MAX,
+            ..Default::default()
+        };
+
+        let layering = build_layer_matrix_ix_controlled(&graph, 0, &mut work_control).unwrap();
+
+        assert!(!layering.has_unique_rank_orders);
+        assert_eq!(layering.layers, vec![vec![graph.node_ix("b").unwrap()]]);
+    }
+
+    #[test]
+    fn layer_matrix_disables_cached_proofs_when_a_ranked_node_has_no_order() {
+        let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
+            Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel::default());
+        graph.set_node(
+            "ordered",
+            NodeLabel {
+                rank: Some(0),
+                order: Some(0),
+                ..Default::default()
+            },
+        );
+        graph.set_node(
+            "missing",
+            NodeLabel {
+                rank: Some(0),
+                order: None,
+                ..Default::default()
+            },
+        );
+        let mut work_control = RecordingWorkControl {
+            max: usize::MAX,
+            ..Default::default()
+        };
+
+        let layering = build_layer_matrix_ix_controlled(&graph, 0, &mut work_control).unwrap();
+
+        assert!(!layering.has_unique_rank_orders);
+        assert_eq!(
+            layering.layers,
+            vec![vec![graph.node_ix("ordered").unwrap()]]
+        );
     }
 
     #[test]

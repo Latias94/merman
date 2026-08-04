@@ -5,6 +5,10 @@
 
 mod types;
 
+// Mermaid's pinned Dagre builds layer matrices by writing nodes directly at `node.order`.
+// Sparse slots are observable in crossing positions and final order assignment.
+const EMPTY_LAYER_SLOT: usize = usize::MAX;
+
 pub use types::{
     LayerGraphLabel, OrderEdgeWeight, OrderNodeLabel, OrderNodeRange, Relationship, WeightLabel,
 };

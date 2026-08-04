@@ -326,6 +326,8 @@ impl BorderType {
 struct BkNode {
     graph_ix: usize,
     order: Option<usize>,
+    layer_index: usize,
+    forward_position: usize,
     metrics: SepNodeMetrics,
     is_border: bool,
     border_type: BorderType,
@@ -361,6 +363,96 @@ const ORIENTATIONS: [Orientation; 4] = [
     },
 ];
 
+enum NeighborOrder {
+    // Every directional neighbor set belongs to one adjacent layer with unique positions, so the
+    // Dagre stable-sort result can be materialized once and reversed by index when required.
+    Preordered,
+    // Mixed layers or repeated layering occurrences make Dagre's orientation-local position map
+    // and stable tie order observable, so retain the exact per-orientation fallback.
+    StableSortFallback {
+        positions: Vec<usize>,
+        scratch: Vec<usize>,
+    },
+}
+
+impl NeighborOrder {
+    fn is_preordered(&self) -> bool {
+        matches!(self, Self::Preordered)
+    }
+
+    fn prepare_orientation(&mut self, layering: &[Vec<usize>], orientation: Orientation) {
+        let Self::StableSortFallback { positions, .. } = self else {
+            return;
+        };
+
+        positions.fill(NONE);
+        for layer_offset in 0..layering.len() {
+            let layer_index = if orientation.reverse_layers {
+                layering.len() - 1 - layer_offset
+            } else {
+                layer_offset
+            };
+            let layer = &layering[layer_index];
+            for order in 0..layer.len() {
+                let node = if orientation.reverse_inner {
+                    layer[layer.len() - 1 - order]
+                } else {
+                    layer[order]
+                };
+                positions[node] = order;
+            }
+        }
+    }
+
+    fn median_candidates(
+        &mut self,
+        neighbors: &[usize],
+        nodes: &[BkNode],
+        layering: &[Vec<usize>],
+        orientation: Orientation,
+    ) -> [Option<(usize, usize)>; 2] {
+        debug_assert!(!neighbors.is_empty());
+
+        let lower_median = (neighbors.len() - 1) / 2;
+        let upper_median = neighbors.len() / 2;
+        match self {
+            Self::Preordered => {
+                let candidate_at = |index: usize| {
+                    let neighbor = if orientation.reverse_inner {
+                        neighbors[neighbors.len() - 1 - index]
+                    } else {
+                        neighbors[index]
+                    };
+                    let node = nodes[neighbor];
+                    let position = if orientation.reverse_inner {
+                        layering[node.layer_index].len() - 1 - node.forward_position
+                    } else {
+                        node.forward_position
+                    };
+                    (neighbor, position)
+                };
+                [
+                    Some(candidate_at(lower_median)),
+                    (upper_median != lower_median).then(|| candidate_at(upper_median)),
+                ]
+            }
+            Self::StableSortFallback { positions, scratch } => {
+                scratch.clear();
+                scratch.extend_from_slice(neighbors);
+                scratch.sort_by_key(|&neighbor| positions[neighbor]);
+                let candidate_at = |index: usize| {
+                    let neighbor = scratch[index];
+                    (neighbor, positions[neighbor])
+                };
+                [
+                    Some(candidate_at(lower_median)),
+                    (upper_median != lower_median).then(|| candidate_at(upper_median)),
+                ]
+            }
+        }
+    }
+}
+
 fn charge_nonzero(work_control: &mut dyn WorkControl, units: usize) -> Result<(), WorkError> {
     if units == 0 {
         return Ok(());
@@ -375,6 +467,30 @@ fn local_sort_work(degree: usize) -> Result<usize, WorkError> {
     // Each vertical-alignment sort is local to one node's adjacency list. There is no graph-wide
     // node or edge sort in BK positioning.
     checked_mul(degree, ceil_log2(degree))
+}
+
+fn record_neighbor_layer(slot: &mut Option<usize>, layer_index: usize) -> bool {
+    match *slot {
+        Some(existing) => existing == layer_index,
+        None => {
+            *slot = Some(layer_index);
+            true
+        }
+    }
+}
+
+fn record_local_sort_entry(total: &mut Result<usize, WorkError>, degree_before: usize) {
+    *total = (*total).and_then(|current| {
+        let degree_after = checked_add(degree_before, 1)?;
+        let before = local_sort_work(degree_before)?;
+        let after = local_sort_work(degree_after)?;
+        checked_add(
+            current,
+            after
+                .checked_sub(before)
+                .ok_or(WorkError::ArithmeticOverflow)?,
+        )
+    });
 }
 
 fn layered_adjacency_work(
@@ -407,11 +523,10 @@ struct BkWorkspace<'a> {
     first_predecessor: Vec<Option<usize>>,
     first_dummy_predecessor: Vec<Option<usize>>,
     conflicts: HashSet<(usize, usize)>,
+    neighbor_order: NeighborOrder,
     root: Vec<usize>,
     align: Vec<usize>,
-    pos: Vec<usize>,
     coords: [Vec<f64>; 4],
-    neighbor_scratch: Vec<usize>,
     root_to_block: Vec<usize>,
     block_roots: Vec<usize>,
     block_edges: HashMap<(usize, usize), f64>,
@@ -449,9 +564,11 @@ impl<'a> BkWorkspace<'a> {
             .iter()
             .try_fold(0usize, |total, layer| checked_add(total, layer.len()))?;
         let edge_scan_entries = if g.is_directed() {
-            g.edge_count()
+            g.edge_slot_count()
         } else {
-            checked_mul(g.edge_count(), 2)?
+            // The slot-backed scan visits every tombstone once, then processes each live edge for
+            // its second undirected endpoint.
+            checked_add(g.edge_slot_count(), g.edge_count())?
         };
         charge_nonzero(
             work_control,
@@ -461,11 +578,12 @@ impl<'a> BkWorkspace<'a> {
             )?,
         )?;
 
+        // Graphlib can retain a wide slot span outside this layout operation. Bound the dense
+        // lookup table to live nodes actually named by the source layering.
         let mut required_graph_slots = 0usize;
         let mut layering: Vec<Vec<usize>> = Vec::with_capacity(source_layering.len());
-
         for source_layer in source_layering {
-            let mut layer: Vec<usize> = Vec::with_capacity(source_layer.len());
+            let mut layer = Vec::with_capacity(source_layer.len());
             for id in source_layer {
                 let Some(graph_ix) = g.node_ix(id) else {
                     continue;
@@ -482,11 +600,17 @@ impl<'a> BkWorkspace<'a> {
         )?;
         let mut graph_to_local = vec![NONE; required_graph_slots];
         let mut nodes: Vec<BkNode> = Vec::with_capacity(source_layer_entries.min(g.node_count()));
+        let mut can_preorder_neighbors = true;
+        let mut layer_entries = 0usize;
+        let mut adjacent_layer_pairs = 0usize;
 
-        for layer in &mut layering {
-            for graph_ix in layer {
+        for (layer_index, layer) in layering.iter_mut().enumerate() {
+            for (position, graph_ix) in layer.iter_mut().enumerate() {
                 let local_ix = graph_to_local[*graph_ix];
                 if local_ix != NONE {
+                    // Repeated layering occurrences make orientation-specific stable tie order
+                    // observable. Preserve Dagre's per-orientation stable-sort path in that case.
+                    can_preorder_neighbors = false;
                     *graph_ix = local_ix;
                     continue;
                 }
@@ -500,12 +624,17 @@ impl<'a> BkWorkspace<'a> {
                 nodes.push(BkNode {
                     graph_ix: *graph_ix,
                     order: label.order,
+                    layer_index,
+                    forward_position: position,
                     metrics: SepNodeMetrics::from(label),
                     is_border: label.dummy.as_deref() == Some("border"),
                     border_type: BorderType::from_label(label),
                 });
                 *graph_ix = local_ix;
             }
+            layer_entries = checked_add(layer_entries, layer.len())?;
+            adjacent_layer_pairs =
+                checked_add(adjacent_layer_pairs, layer.len().saturating_sub(1))?;
         }
 
         let node_count = nodes.len();
@@ -516,6 +645,12 @@ impl<'a> BkWorkspace<'a> {
         let mut first_dummy_predecessor = vec![None; node_count];
         let mut saw_predecessor = vec![false; node_count];
         let mut saw_dummy_predecessor = vec![false; node_count];
+        let mut predecessor_layers = vec![None; node_count];
+        let mut successor_layers = vec![None; node_count];
+        let mut predecessor_entries_acc = Ok(0usize);
+        let mut successor_entries_acc = Ok(0usize);
+        let mut predecessor_sort_work_acc = Ok(0usize);
+        let mut successor_sort_work_acc = Ok(0usize);
 
         if g.is_directed() {
             g.for_each_edge_ix(|from_graph_ix, to_graph_ix, _, _| {
@@ -548,6 +683,27 @@ impl<'a> BkWorkspace<'a> {
                 }
 
                 if let Some(from_local) = from_local {
+                    let from_layer = nodes[from_local].layer_index;
+                    let to_layer = nodes[to_local].layer_index;
+                    let adjacent = from_layer.abs_diff(to_layer) == 1;
+                    let predecessor_layer_ok =
+                        record_neighbor_layer(&mut predecessor_layers[to_local], from_layer);
+                    let successor_layer_ok =
+                        record_neighbor_layer(&mut successor_layers[from_local], to_layer);
+                    can_preorder_neighbors &=
+                        adjacent && predecessor_layer_ok && successor_layer_ok;
+                    record_local_sort_entry(
+                        &mut predecessor_sort_work_acc,
+                        predecessors[to_local].len(),
+                    );
+                    record_local_sort_entry(
+                        &mut successor_sort_work_acc,
+                        successors[from_local].len(),
+                    );
+                    predecessor_entries_acc =
+                        predecessor_entries_acc.and_then(|total| checked_add(total, 1));
+                    successor_entries_acc =
+                        successor_entries_acc.and_then(|total| checked_add(total, 1));
                     predecessors[to_local].push(from_local);
                     successors[from_local].push(to_local);
                 }
@@ -591,6 +747,31 @@ impl<'a> BkWorkspace<'a> {
                     }
 
                     if let Some(neighbor_local) = neighbor_local {
+                        let node_layer = nodes[node_local].layer_index;
+                        let neighbor_layer = nodes[neighbor_local].layer_index;
+                        let adjacent = node_layer.abs_diff(neighbor_layer) == 1;
+                        let predecessor_layer_ok = record_neighbor_layer(
+                            &mut predecessor_layers[node_local],
+                            neighbor_layer,
+                        );
+                        let successor_layer_ok = record_neighbor_layer(
+                            &mut successor_layers[node_local],
+                            neighbor_layer,
+                        );
+                        can_preorder_neighbors &=
+                            adjacent && predecessor_layer_ok && successor_layer_ok;
+                        record_local_sort_entry(
+                            &mut predecessor_sort_work_acc,
+                            predecessors[node_local].len(),
+                        );
+                        record_local_sort_entry(
+                            &mut successor_sort_work_acc,
+                            successors[node_local].len(),
+                        );
+                        predecessor_entries_acc =
+                            predecessor_entries_acc.and_then(|total| checked_add(total, 1));
+                        successor_entries_acc =
+                            successor_entries_acc.and_then(|total| checked_add(total, 1));
                         predecessors[node_local].push(neighbor_local);
                         successors[node_local].push(neighbor_local);
                     }
@@ -598,16 +779,41 @@ impl<'a> BkWorkspace<'a> {
             });
         }
 
-        let layer_entries = layering
-            .iter()
-            .try_fold(0usize, |total, layer| checked_add(total, layer.len()))?;
-        let adjacent_layer_pairs = layering.iter().try_fold(0usize, |total, layer| {
-            checked_add(total, layer.len().saturating_sub(1))
-        })?;
-        charge_nonzero(work_control, layer_entries)?;
         let (predecessor_entries, successor_entries, predecessor_sort_work, successor_sort_work) =
-            layered_adjacency_work(&layering, &predecessors, &successors)?;
-        charge_nonzero(work_control, node_count)?;
+            if can_preorder_neighbors {
+                (
+                    predecessor_entries_acc?,
+                    successor_entries_acc?,
+                    predecessor_sort_work_acc?,
+                    successor_sort_work_acc?,
+                )
+            } else {
+                charge_nonzero(work_control, layer_entries)?;
+                layered_adjacency_work(&layering, &predecessors, &successors)?
+            };
+        if can_preorder_neighbors {
+            charge_nonzero(
+                work_control,
+                checked_add(predecessor_sort_work, successor_sort_work)?,
+            )?;
+            // With one occurrence per node and adjacent-layer neighbors, every position is unique.
+            // Dagre's stable ascending order can therefore be reused directly for left-biased
+            // orientations and traversed backwards for right-biased orientations.
+            for neighbors in &mut predecessors {
+                neighbors.sort_by_key(|&neighbor| nodes[neighbor].forward_position);
+            }
+            for neighbors in &mut successors {
+                neighbors.sort_by_key(|&neighbor| nodes[neighbor].forward_position);
+            }
+        }
+        let neighbor_order = if can_preorder_neighbors {
+            NeighborOrder::Preordered
+        } else {
+            NeighborOrder::StableSortFallback {
+                positions: vec![NONE; node_count],
+                scratch: Vec::new(),
+            }
+        };
 
         Ok(Self {
             g,
@@ -618,11 +824,10 @@ impl<'a> BkWorkspace<'a> {
             first_predecessor,
             first_dummy_predecessor,
             conflicts: HashSet::default(),
+            neighbor_order,
             root: (0..node_count).collect(),
             align: (0..node_count).collect(),
-            pos: vec![NONE; node_count],
             coords: std::array::from_fn(|_| vec![0.0; node_count]),
-            neighbor_scratch: Vec::new(),
             root_to_block: vec![NONE; node_count],
             block_roots: Vec::new(),
             block_edges: HashMap::default(),
@@ -692,6 +897,13 @@ impl<'a> BkWorkspace<'a> {
     }
 
     fn vertical_alignment_work_units(&self, orientation: Orientation) -> Result<usize, WorkError> {
+        if self.neighbor_order.is_preordered() {
+            // Positions and stable neighbor order are operation-owned setup artifacts. Each
+            // orientation retains the root/alignment reset, node traversal, and up to two median
+            // probes per layering occurrence without rebuilding positions or adjacency scratch.
+            return checked_add(self.nodes.len(), checked_mul(self.layer_entries, 3)?);
+        }
+
         let directional_entries = if orientation.reverse_layers {
             self.successor_entries
         } else {
@@ -707,6 +919,9 @@ impl<'a> BkWorkspace<'a> {
     }
 
     fn neighbor_sort_work_units(&self, orientation: Orientation) -> usize {
+        if self.neighbor_order.is_preordered() {
+            return 0;
+        }
         if orientation.reverse_layers {
             self.successor_sort_work
         } else {
@@ -716,10 +931,12 @@ impl<'a> BkWorkspace<'a> {
 
     #[cfg(test)]
     fn total_neighbor_sort_work_units(&self) -> Result<usize, WorkError> {
-        checked_mul(
-            checked_add(self.predecessor_sort_work, self.successor_sort_work)?,
-            2,
-        )
+        let one_direction_pair = checked_add(self.predecessor_sort_work, self.successor_sort_work)?;
+        if self.neighbor_order.is_preordered() {
+            Ok(one_direction_pair)
+        } else {
+            checked_mul(one_direction_pair, 2)
+        }
     }
 
     fn horizontal_compaction_work_units(&self) -> Result<usize, WorkError> {
@@ -854,40 +1071,33 @@ impl<'a> BkWorkspace<'a> {
         for node in 0..self.nodes.len() {
             self.root[node] = node;
             self.align[node] = node;
-            self.pos[node] = NONE;
         }
-
-        for index in 0..self.layering.len() {
-            let layer_index = self.oriented_layer_index(orientation, index);
-            for order in 0..self.layering[layer_index].len() {
-                let v = self.oriented_node(orientation, layer_index, order);
-                self.pos[v] = order;
-            }
-        }
+        self.neighbor_order
+            .prepare_orientation(&self.layering, orientation);
 
         for index in 0..self.layering.len() {
             let layer_index = self.oriented_layer_index(orientation, index);
             let mut prev_idx = -1;
             for order in 0..self.layering[layer_index].len() {
                 let v = self.oriented_node(orientation, layer_index, order);
-                self.neighbor_scratch.clear();
                 let neighbors = if orientation.reverse_layers {
                     &self.successors[v]
                 } else {
                     &self.predecessors[v]
                 };
-                self.neighbor_scratch.extend_from_slice(neighbors);
-                if self.neighbor_scratch.is_empty() {
+                if neighbors.is_empty() {
                     continue;
                 }
 
-                let pos = &self.pos;
-                self.neighbor_scratch.sort_by_key(|&w| pos[w]);
-                let i0 = (self.neighbor_scratch.len() - 1) / 2;
-                let i1 = self.neighbor_scratch.len() / 2;
-                for neighbor_index in i0..=i1 {
-                    let w = self.neighbor_scratch[neighbor_index];
-                    let w_pos = self.pos[w] as isize;
+                let candidates = self.neighbor_order.median_candidates(
+                    neighbors,
+                    &self.nodes,
+                    &self.layering,
+                    orientation,
+                );
+
+                for (w, w_pos) in candidates.into_iter().flatten() {
+                    let w_pos = w_pos as isize;
                     if self.align[v] == v && prev_idx < w_pos && !self.has_conflict(v, w) {
                         self.align[w] = v;
                         self.align[v] = self.root[w];
@@ -1482,6 +1692,122 @@ mod tests {
         (g, vec![north, south])
     }
 
+    fn mixed_rank_neighbor_graph() -> (Graph<NodeLabel, EdgeLabel, GraphLabel>, Vec<Vec<String>>) {
+        let mut g = Graph::new(GraphOptions::default());
+        g.set_graph(GraphLabel::default());
+        let layering = [
+            ["north-left", "north-middle", "north-right"],
+            ["middle-left", "middle-center", "middle-right"],
+            ["south-left", "south-center", "south-right"],
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(rank, layer)| {
+            layer
+                .into_iter()
+                .enumerate()
+                .map(|(order, id)| {
+                    g.set_node(
+                        id,
+                        NodeLabel {
+                            rank: Some(rank as i32),
+                            order: Some(order),
+                            ..Default::default()
+                        },
+                    );
+                    id.to_string()
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+        for (from, to) in [
+            ("north-left", "middle-left"),
+            ("north-right", "middle-left"),
+            ("north-middle", "middle-center"),
+            ("north-right", "middle-right"),
+            ("middle-left", "south-left"),
+            ("middle-left", "south-right"),
+            ("middle-center", "south-center"),
+            ("middle-right", "south-left"),
+            // This edge spans two ranks, so Dagre's orientation-local stable sort remains
+            // observable and the workspace must not select the preordered strategy.
+            ("north-middle", "south-right"),
+        ] {
+            g.set_edge(from, to);
+        }
+
+        (g, layering)
+    }
+
+    fn oriented_string_layering(
+        layering: &[Vec<String>],
+        orientation: Orientation,
+    ) -> Vec<Vec<String>> {
+        let mut oriented = layering.to_vec();
+        if orientation.reverse_layers {
+            oriented.reverse();
+        }
+        if orientation.reverse_inner {
+            for layer in &mut oriented {
+                layer.reverse();
+            }
+        }
+        oriented
+    }
+
+    fn workspace_alignment(
+        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        workspace: &BkWorkspace<'_>,
+    ) -> Alignment {
+        let mut root = HashMap::default();
+        let mut align = HashMap::default();
+        for node in 0..workspace.nodes.len() {
+            let node_id = g
+                .node_id_by_ix(workspace.nodes[node].graph_ix)
+                .expect("workspace node id");
+            let root_id = g
+                .node_id_by_ix(workspace.nodes[workspace.root[node]].graph_ix)
+                .expect("workspace root id");
+            let align_id = g
+                .node_id_by_ix(workspace.nodes[workspace.align[node]].graph_ix)
+                .expect("workspace alignment id");
+            root.insert(node_id.to_string(), root_id.to_string());
+            align.insert(node_id.to_string(), align_id.to_string());
+        }
+        Alignment { root, align }
+    }
+
+    fn assert_workspace_alignment_matches_public(
+        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        layering: &[Vec<String>],
+        expect_preordered: bool,
+    ) {
+        let mut workspace = BkWorkspace::new(g, layering);
+        assert_eq!(workspace.neighbor_order.is_preordered(), expect_preordered);
+
+        for orientation in ORIENTATIONS {
+            let oriented_layering = oriented_string_layering(layering, orientation);
+            let expected = vertical_alignment(g, &oriented_layering, &Conflicts::new(), |node| {
+                let neighbors = if orientation.reverse_layers {
+                    g.successors(node)
+                } else {
+                    g.predecessors(node)
+                };
+                neighbors.into_iter().map(str::to_string).collect()
+            });
+
+            workspace.vertical_alignment(orientation);
+
+            assert_eq!(
+                workspace_alignment(g, &workspace),
+                expected,
+                "orientation index {}",
+                orientation.index
+            );
+        }
+    }
+
     #[test]
     fn neighbor_sort_work_is_zero_for_a_chain() {
         let (g, layering) = chain_graph(256);
@@ -1503,14 +1829,14 @@ mod tests {
             assert_eq!(workspace.successor_sort_work, one_direction);
             assert_eq!(
                 workspace.total_neighbor_sort_work_units(),
-                checked_mul(one_direction, 2)
+                Ok(one_direction)
             );
         }
     }
 
     #[test]
     fn neighbor_sort_work_sums_local_degrees_instead_of_global_edges() {
-        let cases = [(vec![16], 128), (vec![4, 4, 4, 4], 64), (vec![1; 16], 0)];
+        let cases = [(vec![16], 64), (vec![4, 4, 4, 4], 32), (vec![1; 16], 0)];
 
         for (degrees, expected) in cases {
             let (g, layering) = fanout_graph(&degrees);
@@ -1528,11 +1854,85 @@ mod tests {
         let workspace = BkWorkspace::new(&g, &layering);
         let one_sort = checked_mul(degree, ceil_log2(degree)).unwrap();
 
+        assert!(!workspace.neighbor_order.is_preordered());
         assert_eq!(workspace.successor_sort_work, one_sort * 2);
         assert_eq!(
             workspace.total_neighbor_sort_work_units(),
             checked_mul(one_sort, 4)
         );
+    }
+
+    #[test]
+    fn mixed_layer_undirected_neighbors_keep_the_stable_sort_fallback() {
+        let mut graph = Graph::new(GraphOptions {
+            directed: false,
+            multigraph: false,
+            compound: false,
+        });
+        graph.set_graph(GraphLabel::default());
+        for (id, rank) in [("north", 0), ("middle", 1), ("south", 2)] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(rank),
+                    order: Some(0),
+                    ..Default::default()
+                },
+            );
+        }
+        graph.set_edge("north", "middle");
+        graph.set_edge("middle", "south");
+        let layering = vec![
+            vec!["north".to_string()],
+            vec!["middle".to_string()],
+            vec!["south".to_string()],
+        ];
+
+        let workspace = BkWorkspace::new(&graph, &layering);
+
+        assert!(!workspace.neighbor_order.is_preordered());
+        assert_eq!(workspace.total_neighbor_sort_work_units(), Ok(8));
+    }
+
+    #[test]
+    fn preordered_neighbors_match_public_stable_sort_in_all_orientations() {
+        let (g, layering) = fanout_graph(&[3, 5, 7]);
+
+        assert_workspace_alignment_matches_public(&g, &layering, true);
+    }
+
+    #[test]
+    fn stable_sort_fallback_matches_public_alignment_in_all_orientations() {
+        let (g, layering) = mixed_rank_neighbor_graph();
+
+        assert_workspace_alignment_matches_public(&g, &layering, false);
+    }
+
+    #[test]
+    fn workspace_index_span_ignores_unlayered_high_slot_nodes() {
+        let mut g = Graph::new(GraphOptions::default());
+        g.set_graph(GraphLabel::default());
+        g.set_node(
+            "layered",
+            NodeLabel {
+                rank: Some(0),
+                order: Some(0),
+                ..Default::default()
+            },
+        );
+        for index in 0..4_096 {
+            g.set_node(format!("unlayered-{index}"), NodeLabel::default());
+        }
+        let layering = vec![vec!["layered".to_string()]];
+        let mut work_control = RecordingWorkControl::default();
+
+        let workspace = BkWorkspace::new_controlled(&g, &layering, &mut work_control).unwrap();
+
+        assert!(g.node_slot_count() > 4_000);
+        assert_eq!(workspace.nodes.len(), 1);
+        // The third setup tranche covers the graph-index lookup allocation plus the source
+        // entries. It must follow the participating index span (1 + 1), not all graph slots.
+        assert_eq!(work_control.charges, vec![1, 2, 2, 1]);
     }
 
     #[test]

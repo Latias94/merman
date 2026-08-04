@@ -206,7 +206,7 @@ impl LayerRank {
 
 #[derive(Debug, Default)]
 struct ConstraintGraph {
-    outgoing: HashMap<usize, Vec<(usize, usize)>>,
+    outgoing: HashMap<usize, Vec<usize>>,
     seen: HashSet<(usize, usize)>,
 }
 
@@ -218,8 +218,7 @@ impl ConstraintGraph {
 
     fn insert(&mut self, from: usize, to: usize) {
         if self.seen.insert((from, to)) {
-            let ordinal = self.seen.len() - 1;
-            self.outgoing.entry(from).or_default().push((ordinal, to));
+            self.outgoing.entry(from).or_default().push(to);
         }
     }
 }
@@ -228,7 +227,6 @@ impl ConstraintGraph {
 struct SortScratch {
     entry_by_original: Vec<Option<usize>>,
     touched_originals: Vec<usize>,
-    relevant_constraints: Vec<(usize, usize, usize)>,
 }
 
 impl SortScratch {
@@ -255,11 +253,8 @@ pub(super) struct OrderWorkspace {
     tracked_orders: Vec<bool>,
     constraints: ConstraintGraph,
     scratch: SortScratch,
-    node_visits: usize,
-    hierarchy_link_visits: usize,
-    child_sort_work: usize,
-    in_neighbor_visits: usize,
-    out_neighbor_visits: usize,
+    in_iteration_work_prefix: Vec<usize>,
+    out_iteration_work_prefix: Vec<usize>,
 }
 
 impl OrderWorkspace {
@@ -296,16 +291,13 @@ impl OrderWorkspace {
             layers.push(LayerRank::build(g, rank, nodes)?);
         }
 
-        let mut node_visits = 0usize;
-        let mut hierarchy_link_visits = 0usize;
-        let mut child_sort_work = 0usize;
-        let mut in_neighbor_visits = 0usize;
-        let mut out_neighbor_visits = 0usize;
+        let mut in_iteration_work_prefix = Vec::with_capacity(layers.len() + 1);
+        let mut out_iteration_work_prefix = Vec::with_capacity(layers.len() + 1);
+        in_iteration_work_prefix.push(0usize);
+        out_iteration_work_prefix.push(0usize);
         for layer in &layers {
-            node_visits = checked_add(node_visits, layer.nodes.len())?;
-            hierarchy_link_visits =
-                checked_add(hierarchy_link_visits, layer.hierarchy_link_visits)?;
-            child_sort_work = checked_add(child_sort_work, layer.child_sort_work)?;
+            let mut in_neighbor_visits = 0usize;
+            let mut out_neighbor_visits = 0usize;
             for node in &layer.nodes {
                 let Some(original_ix) = node.original_ix else {
                     continue;
@@ -319,6 +311,21 @@ impl OrderWorkspace {
                     out_neighbors.get(original_ix).map_or(0, Vec::len),
                 )?;
             }
+            let hierarchy_work = checked_mul(layer.hierarchy_link_visits, 3)?;
+            let common_work = checked_add(
+                layer.nodes.len(),
+                checked_add(hierarchy_work, layer.child_sort_work)?,
+            )?;
+            let in_work = checked_add(common_work, in_neighbor_visits)?;
+            let out_work = checked_add(common_work, out_neighbor_visits)?;
+            in_iteration_work_prefix.push(checked_add(
+                *in_iteration_work_prefix.last().unwrap_or(&0),
+                in_work,
+            )?);
+            out_iteration_work_prefix.push(checked_add(
+                *out_iteration_work_prefix.last().unwrap_or(&0),
+                out_work,
+            )?);
         }
 
         Ok(Self {
@@ -328,11 +335,8 @@ impl OrderWorkspace {
             tracked_orders,
             constraints: ConstraintGraph::default(),
             scratch: SortScratch::default(),
-            node_visits,
-            hierarchy_link_visits,
-            child_sort_work,
-            in_neighbor_visits,
-            out_neighbor_visits,
+            in_iteration_work_prefix,
+            out_iteration_work_prefix,
         })
     }
 
@@ -342,20 +346,27 @@ impl OrderWorkspace {
 
     pub(super) fn iteration_work_units(
         &self,
+        ranks: &[i32],
         relationship: Relationship,
     ) -> Result<usize, WorkError> {
-        let neighbor_visits = match relationship {
-            Relationship::InEdges => self.in_neighbor_visits,
-            Relationship::OutEdges => self.out_neighbor_visits,
+        let Some((&first, &last)) = ranks.first().zip(ranks.last()) else {
+            return Ok(0);
         };
-
-        // Each hierarchy link can participate in constraint construction, conflict resolution,
-        // and subgraph expansion during one sweep. Account those owner-local passes explicitly.
-        let hierarchy_work = checked_mul(self.hierarchy_link_visits, 3)?;
-        checked_add(
-            checked_add(self.node_visits, neighbor_visits)?,
-            checked_add(hierarchy_work, self.child_sort_work)?,
-        )
+        let start = usize::try_from(first.min(last)).map_err(|_| WorkError::ArithmeticOverflow)?;
+        let end = usize::try_from(first.max(last))
+            .map_err(|_| WorkError::ArithmeticOverflow)?
+            .checked_add(1)
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        let prefix = match relationship {
+            Relationship::InEdges => &self.in_iteration_work_prefix,
+            Relationship::OutEdges => &self.out_iteration_work_prefix,
+        };
+        let Some((&before, &after)) = prefix.get(start).zip(prefix.get(end)) else {
+            return Err(WorkError::ArithmeticOverflow);
+        };
+        after
+            .checked_sub(before)
+            .ok_or(WorkError::ArithmeticOverflow)
     }
 
     pub(super) fn sort_rank<N, E, G>(
@@ -383,11 +394,13 @@ impl OrderWorkspace {
             Relationship::OutEdges => &self.out_neighbors,
         };
         sort_subgraph(
-            g,
-            layer,
-            neighbors,
-            &self.tracked_orders,
-            &self.constraints,
+            SortSubgraphContext {
+                graph: g,
+                layer,
+                neighbors,
+                tracked_orders: &self.tracked_orders,
+                constraints: &self.constraints,
+            },
             &mut self.scratch,
             bias_right,
             work_control,
@@ -507,12 +520,16 @@ fn add_subgraph_constraints(
     }
 }
 
+struct SortSubgraphContext<'a, N: Default + 'static, E: Default + 'static, G: Default> {
+    graph: &'a Graph<N, E, G>,
+    layer: &'a LayerRank,
+    neighbors: &'a [Vec<WeightedNeighbor>],
+    tracked_orders: &'a [bool],
+    constraints: &'a ConstraintGraph,
+}
+
 fn sort_subgraph<N, E, G>(
-    g: &Graph<N, E, G>,
-    layer: &LayerRank,
-    neighbors: &[Vec<WeightedNeighbor>],
-    tracked_orders: &[bool],
-    constraints: &ConstraintGraph,
+    context: SortSubgraphContext<'_, N, E, G>,
     scratch: &mut SortScratch,
     bias_right: bool,
     work_control: &mut dyn WorkControl,
@@ -534,6 +551,13 @@ where
         Exit(Frame),
     }
 
+    let SortSubgraphContext {
+        graph,
+        layer,
+        neighbors,
+        tracked_orders,
+        constraints,
+    } = context;
     let mut results: Vec<Option<SortResultIx>> = (0..layer.nodes.len()).map(|_| None).collect();
     let mut stack = vec![Step::Enter(layer.root)];
 
@@ -550,7 +574,7 @@ where
                     });
                 }
 
-                let barycenters = barycenters(g, layer, neighbors, tracked_orders, &movable);
+                let barycenters = barycenters(graph, layer, neighbors, tracked_orders, &movable);
                 let mut nested = Vec::new();
                 for entry in &barycenters {
                     if !layer.children(entry.v_ix).is_empty() {
@@ -603,10 +627,10 @@ where
                     let right_predecessor = first_neighbor_original(layer, neighbors, border_right);
                     if let (Some(left), Some(right)) = (left_predecessor, right_predecessor) {
                         let left_order = layer
-                            .order_by_original(g, tracked_orders, left)
+                            .order_by_original(graph, tracked_orders, left)
                             .unwrap_or(0) as f64;
                         let right_order = layer
-                            .order_by_original(g, tracked_orders, right)
+                            .order_by_original(graph, tracked_orders, right)
                             .unwrap_or(0) as f64;
                         let barycenter = result.barycenter.unwrap_or(0.0);
                         let weight = result.weight.unwrap_or(0.0);
@@ -768,7 +792,11 @@ fn resolve_conflicts(
         });
     }
 
-    scratch.relevant_constraints.clear();
+    // Pinned Graphlib's global edge scan appends every constraint to its source entry's `out`
+    // array. Interleaving edges from different sources cannot affect those per-source arrays, so
+    // replay sources in entry order while preserving each source's outgoing insertion order. This
+    // is equivalent to Dagre's adjacency construction without collecting and sorting global edge
+    // ordinals.
     for (from_entry, entry) in entries.iter().enumerate() {
         let Some(from) = layer.original_ix(entry.v_ix) else {
             continue;
@@ -777,22 +805,13 @@ fn resolve_conflicts(
             continue;
         };
         work_control.charge(outgoing.len())?;
-        for &(ordinal, to) in outgoing {
+        for &to in outgoing {
             let Some(Some(to_entry)) = scratch.entry_by_original.get(to).copied() else {
                 continue;
             };
-            scratch
-                .relevant_constraints
-                .push((ordinal, from_entry, to_entry));
+            conflicts[to_entry].indegree += 1;
+            conflicts[from_entry].outs.push(to_entry);
         }
-    }
-    work_control.charge(checked_n_log_n(scratch.relevant_constraints.len())?)?;
-    scratch
-        .relevant_constraints
-        .sort_by_key(|(ordinal, _from, _to)| *ordinal);
-    for &(_ordinal, from_entry, to_entry) in &scratch.relevant_constraints {
-        conflicts[to_entry].indegree += 1;
-        conflicts[from_entry].outs.push(to_entry);
     }
     scratch.clear_entries();
 
@@ -905,3 +924,6 @@ fn merge_conflict_entries(
     target_entry.i = target_entry.i.min(source_entry.i);
     source_entry.merged = true;
 }
+
+#[cfg(test)]
+mod tests;

@@ -941,6 +941,37 @@ where
         self.edges.len()
     }
 
+    /// Reports whether the lazy adjacency index already represents the current graph generation.
+    ///
+    /// This hidden cross-crate hook lets a resource owner admit a possible slot-backed rebuild
+    /// before the first adjacency query triggers it through interior mutability.
+    #[doc(hidden)]
+    pub fn is_adjacency_cache_current(&self) -> bool {
+        if self.options.directed {
+            let generation = self.directed_adj_gen;
+            self.directed_adj_cache
+                .borrow()
+                .as_ref()
+                .is_some_and(|cache| cache.generation == generation)
+        } else {
+            let generation = self.undirected_adj_gen;
+            self.undirected_adj_cache
+                .borrow()
+                .as_ref()
+                .is_some_and(|cache| cache.generation == generation)
+        }
+    }
+
+    /// Materializes the current lazy adjacency index at an owner-selected admitted boundary.
+    #[doc(hidden)]
+    pub fn prepare_adjacency_cache(&self) {
+        if self.options.directed {
+            drop(self.ensure_directed_adj());
+        } else {
+            drop(self.ensure_undirected_adj());
+        }
+    }
+
     pub fn edge_key_by_ix(&self, edge_ix: usize) -> Option<&EdgeKey> {
         self.edges
             .get(edge_ix)
@@ -1771,6 +1802,42 @@ where
             return 0;
         }
         self.ensure_directed_adj().out_edges(v_ix).len()
+    }
+
+    /// Visits every undirected edge incident to an indexed node without allocating edge keys.
+    ///
+    /// The callback receives the queried node first and the opposite endpoint second. Parallel
+    /// edges retain graph insertion order. Directed graphs expose no entries through this method.
+    pub fn for_each_undirected_edge_ix<F>(&self, v_ix: usize, mut f: F)
+    where
+        F: FnMut(usize, usize, &EdgeKey, &E),
+    {
+        if self.options.directed {
+            return;
+        }
+        let cache = self.ensure_undirected_adj();
+        for &edge_ix in cache.edges(v_ix) {
+            let Some(edge) = self.edges.get(edge_ix).and_then(|edge| edge.as_ref()) else {
+                continue;
+            };
+            let other_ix = if edge.v_ix == v_ix {
+                edge.w_ix
+            } else {
+                edge.v_ix
+            };
+            f(v_ix, other_ix, &edge.key, &edge.label);
+        }
+    }
+
+    /// Returns the number of undirected incident-edge entries for an indexed node.
+    ///
+    /// This is the exact traversal cardinality of [`Self::for_each_undirected_edge_ix`]. Directed
+    /// graphs return zero.
+    pub fn undirected_edge_count_ix(&self, v_ix: usize) -> usize {
+        if self.options.directed {
+            return 0;
+        }
+        self.ensure_undirected_adj().edges(v_ix).len()
     }
 
     pub fn for_each_out_edge_entry_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)

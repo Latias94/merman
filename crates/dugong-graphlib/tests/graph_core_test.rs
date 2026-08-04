@@ -50,6 +50,65 @@ fn graph_options_can_enable_undirected_compound_or_multigraph_modes() {
 }
 
 #[test]
+fn indexed_undirected_edge_iteration_reports_the_opposite_endpoint() {
+    let mut graph: Graph<(), i32, ()> = Graph::new(GraphOptions {
+        directed: false,
+        multigraph: true,
+        ..GraphOptions::default()
+    });
+    graph.set_edge_named("a", "z", Some("first"), Some(1));
+    graph.set_edge_named("b", "z", Some("second"), Some(2));
+    let z_ix = graph.node_ix("z").unwrap();
+    let mut visited = Vec::new();
+
+    assert_eq!(graph.undirected_edge_count_ix(z_ix), 2);
+    graph.for_each_undirected_edge_ix(z_ix, |node_ix, other_ix, key, label| {
+        visited.push((
+            node_ix,
+            graph.node_id_by_ix(other_ix).unwrap().to_string(),
+            key.name.clone(),
+            *label,
+        ));
+    });
+
+    assert_eq!(
+        visited,
+        vec![
+            (z_ix, "a".to_string(), Some("first".to_string()), 1),
+            (z_ix, "b".to_string(), Some("second".to_string()), 2),
+        ]
+    );
+
+    let mut directed: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    directed.set_edge("a", "z");
+    let directed_z = directed.node_ix("z").unwrap();
+    let mut calls = 0;
+    directed.for_each_undirected_edge_ix(directed_z, |_, _, _, _| calls += 1);
+    assert_eq!(directed.undirected_edge_count_ix(directed_z), 0);
+    assert_eq!(calls, 0);
+}
+
+#[test]
+fn explicit_adjacency_cache_preparation_tracks_graph_mutations() {
+    for directed in [true, false] {
+        let mut graph: Graph<(), (), ()> = Graph::new(GraphOptions {
+            directed,
+            ..GraphOptions::default()
+        });
+        graph.set_edge("a", "b");
+
+        assert!(!graph.is_adjacency_cache_current());
+        graph.prepare_adjacency_cache();
+        assert!(graph.is_adjacency_cache_current());
+
+        graph.set_edge("b", "c");
+        assert!(!graph.is_adjacency_cache_current());
+        graph.prepare_adjacency_cache();
+        assert!(graph.is_adjacency_cache_current());
+    }
+}
+
+#[test]
 fn graph_label_can_be_set_and_read() {
     let mut g: Graph<(), (), Option<String>> = Graph::new(GraphOptions::default());
 
