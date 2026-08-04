@@ -901,7 +901,6 @@ def _freeze_bench_executable(
             | stat.S_IROTH
             | stat.S_IXOTH
         )
-        temporary.chmod(read_only_executable)
         try:
             os.link(temporary, destination)
         except FileExistsError as error:
@@ -910,18 +909,29 @@ def _freeze_bench_executable(
             ) from error
         published = True
         temporary.unlink()
+        destination.chmod(read_only_executable)
 
         frozen_sha256 = _path_sha256(destination)
         if frozen_sha256 != source_sha256:
             raise ContractViolation(
                 f"published frozen executable digest differs for {recipe.label}"
             )
+        frozen_mode = stat.S_IMODE(destination.stat().st_mode)
+        if frozen_mode != read_only_executable:
+            raise ContractViolation(
+                f"frozen executable mode differs for {recipe.label}: "
+                f"expected 0555, observed {frozen_mode:04o}"
+            )
         if not os.access(destination, os.X_OK):
             raise ContractViolation(f"frozen executable is not executable: {destination}")
     except Exception:
         temporary.unlink(missing_ok=True)
         if published:
-            destination.unlink(missing_ok=True)
+            try:
+                destination.unlink(missing_ok=True)
+            except PermissionError:
+                destination.chmod(stat.S_IRUSR | stat.S_IWUSR)
+                destination.unlink(missing_ok=True)
         try:
             destination_dir.rmdir()
         except OSError:
@@ -944,7 +954,7 @@ def _freeze_bench_executable(
         "frozen_executable": {
             **_describe_required_file(destination, sha256=source_sha256),
             "executable": True,
-            "mode": "0555",
+            "mode": f"{frozen_mode:04o}",
         },
     }
     return destination, freeze
