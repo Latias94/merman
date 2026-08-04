@@ -1394,6 +1394,192 @@ fn remove_nodes_matches_sequential_removal_across_graph_modes() {
     }
 }
 
+fn directed_batch_adjacency_reference_graph() -> Graph<(), i32, ()> {
+    let mut g = Graph::new(GraphOptions {
+        directed: true,
+        multigraph: true,
+        compound: true,
+    });
+    for id in [
+        "compound-root",
+        "source",
+        "target",
+        "ordinary-keep-a",
+        "ordinary-drop",
+        "ordinary-keep-b",
+        "2",
+        "10",
+        "outside-a",
+        "outside-b",
+        "promoted-child",
+    ] {
+        g.set_node(id, ());
+    }
+
+    for child in [
+        "source",
+        "target",
+        "ordinary-drop",
+        "outside-a",
+        "outside-b",
+    ] {
+        g.set_parent(child, "compound-root");
+    }
+    g.set_parent("promoted-child", "ordinary-drop");
+
+    for (v, w, name, label) in [
+        ("source", "ordinary-keep-a", "survive-ordinary-1", 1),
+        ("source", "10", "drop-numeric", 2),
+        ("source", "ordinary-drop", "drop-ordinary-1", 3),
+        ("source", "2", "survive-numeric", 4),
+        ("source", "ordinary-keep-b", "survive-ordinary-b", 5),
+        ("source", "ordinary-keep-a", "survive-ordinary-2", 6),
+        ("source", "ordinary-drop", "drop-ordinary-2", 7),
+        ("ordinary-keep-a", "target", "incoming-a", 8),
+        ("10", "target", "drop-in-numeric", 9),
+        ("ordinary-drop", "target", "drop-in-ordinary", 10),
+        ("2", "target", "incoming-2", 11),
+        ("ordinary-keep-b", "target", "incoming-b", 12),
+        ("ordinary-keep-a", "ordinary-keep-b", "keep-forward", 13),
+        ("ordinary-keep-b", "ordinary-keep-a", "keep-reverse", 14),
+        ("ordinary-drop", "ordinary-keep-b", "drop-forward", 15),
+        ("ordinary-keep-b", "ordinary-drop", "drop-reverse", 16),
+        ("ordinary-drop", "ordinary-drop", "drop-self", 17),
+        ("outside-a", "outside-b", "outside-forward", 18),
+        ("outside-b", "outside-a", "outside-reverse", 19),
+    ] {
+        g.set_edge_named(v, w, Some(name), Some(label));
+    }
+    g
+}
+
+fn assert_directed_graph_public_state_eq(
+    actual: &Graph<(), i32, ()>,
+    expected: &Graph<(), i32, ()>,
+) {
+    assert_eq!(actual.node_ids(), expected.node_ids());
+    assert_eq!(actual.node_count(), expected.node_count());
+    assert_eq!(actual.node_slot_count(), expected.node_slot_count());
+    assert_eq!(
+        actual.node_order_slot_count(),
+        expected.node_order_slot_count()
+    );
+    assert_eq!(
+        actual.array_index_node_count(),
+        expected.array_index_node_count()
+    );
+    assert_eq!(actual.edge_keys(), expected.edge_keys());
+    assert_eq!(actual.edge_count(), expected.edge_count());
+    assert_eq!(actual.edge_slot_count(), expected.edge_slot_count());
+    assert_eq!(actual.children_root(), expected.children_root());
+    assert_eq!(
+        actual.directed_array_index_adjacency_entry_count(),
+        expected.directed_array_index_adjacency_entry_count()
+    );
+
+    for key in actual.edge_keys() {
+        assert_eq!(actual.edge_by_key(&key), expected.edge_by_key(&key));
+    }
+    for id in actual.node_ids() {
+        assert_eq!(actual.parent(&id), expected.parent(&id));
+        assert_eq!(actual.children(&id), expected.children(&id));
+        assert_eq!(actual.successors(&id), expected.successors(&id));
+        assert_eq!(actual.predecessors(&id), expected.predecessors(&id));
+        assert_eq!(actual.first_successor(&id), expected.first_successor(&id));
+        assert_eq!(
+            actual.first_predecessor(&id),
+            expected.first_predecessor(&id)
+        );
+        assert_eq!(actual.neighbors(&id), expected.neighbors(&id));
+        assert_eq!(actual.out_edges(&id, None), expected.out_edges(&id, None));
+        assert_eq!(actual.in_edges(&id, None), expected.in_edges(&id, None));
+    }
+}
+
+#[test]
+fn remove_nodes_bulk_directed_adjacency_matches_sequential_public_state() {
+    let targets = ["ordinary-drop", "10"];
+    let mut batch = directed_batch_adjacency_reference_graph();
+    let mut sequential = directed_batch_adjacency_reference_graph();
+
+    assert_eq!(
+        batch.successors("source"),
+        vec![
+            "2",
+            "10",
+            "ordinary-keep-a",
+            "ordinary-drop",
+            "ordinary-keep-b",
+        ]
+    );
+    assert_eq!(
+        batch.predecessors("target"),
+        vec![
+            "2",
+            "10",
+            "ordinary-keep-a",
+            "ordinary-drop",
+            "ordinary-keep-b",
+        ]
+    );
+    batch.prepare_adjacency_cache();
+    sequential.prepare_adjacency_cache();
+
+    assert_eq!(batch.remove_nodes(targets), targets.len());
+    assert_eq!(
+        targets
+            .into_iter()
+            .filter(|id| sequential.remove_node(id))
+            .count(),
+        targets.len()
+    );
+    assert_directed_graph_public_state_eq(&batch, &sequential);
+
+    assert_eq!(
+        batch.successors("source"),
+        vec!["2", "ordinary-keep-a", "ordinary-keep-b"]
+    );
+    assert_eq!(
+        batch.predecessors("target"),
+        vec!["2", "ordinary-keep-a", "ordinary-keep-b"]
+    );
+    assert_eq!(batch.directed_array_index_adjacency_entry_count(), 2);
+    assert_eq!(batch.parent("promoted-child"), None);
+    assert!(batch.has_edge("outside-a", "outside-b", Some("outside-forward")));
+    assert!(batch.has_edge("outside-b", "outside-a", Some("outside-reverse")));
+
+    assert!(batch.remove_edge("source", "ordinary-keep-a", Some("survive-ordinary-1")));
+    assert!(sequential.remove_edge("source", "ordinary-keep-a", Some("survive-ordinary-1")));
+    assert_directed_graph_public_state_eq(&batch, &sequential);
+    assert_eq!(
+        batch.successors("source"),
+        vec!["2", "ordinary-keep-a", "ordinary-keep-b"]
+    );
+
+    assert!(batch.remove_edge("source", "ordinary-keep-a", Some("survive-ordinary-2")));
+    assert!(sequential.remove_edge("source", "ordinary-keep-a", Some("survive-ordinary-2")));
+    assert_directed_graph_public_state_eq(&batch, &sequential);
+    assert_eq!(batch.successors("source"), vec!["2", "ordinary-keep-b"]);
+
+    batch.set_edge_named(
+        "source",
+        "ordinary-keep-a",
+        Some("survive-ordinary-readded"),
+        Some(20),
+    );
+    sequential.set_edge_named(
+        "source",
+        "ordinary-keep-a",
+        Some("survive-ordinary-readded"),
+        Some(20),
+    );
+    assert_directed_graph_public_state_eq(&batch, &sequential);
+    assert_eq!(
+        batch.successors("source"),
+        vec!["2", "ordinary-keep-b", "ordinary-keep-a"]
+    );
+}
+
 #[test]
 fn set_edge_creates_endpoint_nodes_and_uses_default_edge_label() {
     let mut g: Graph<(), Option<i32>, ()> = Graph::new(GraphOptions::default());

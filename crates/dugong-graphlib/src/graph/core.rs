@@ -1477,6 +1477,9 @@ where
             }
         }
 
+        if self.options.directed {
+            self.directed_node_adj.remove_incident_edges(&removed_by_ix);
+        }
         for edge_ix in 0..self.edges.len() {
             let should_remove = self.edges[edge_ix]
                 .as_ref()
@@ -1487,9 +1490,6 @@ where
             let Some(edge) = self.edges[edge_ix].take() else {
                 continue;
             };
-            if self.options.directed {
-                self.directed_node_adj.remove_edge(edge.v_ix, edge.w_ix);
-            }
             let _ = self.edge_index.remove_entry(&edge.key);
             self.edge_len = self.edge_len.saturating_sub(1);
         }

@@ -214,6 +214,54 @@ impl DirectedNodeAdjacency {
         self.free_links.push(link_ix);
     }
 
+    /// Removes every endpoint pair incident to a marked node, regardless of parallel-edge count.
+    /// Numeric maps and ordinary linked lists are each retained once per neighbor bucket.
+    pub(in crate::graph) fn remove_incident_edges(&mut self, removed_nodes: &[bool]) {
+        debug_assert_eq!(removed_nodes.len(), self.successors.len());
+        debug_assert_eq!(removed_nodes.len(), self.predecessors.len());
+
+        let mut numeric_ordered_entry_count = 0usize;
+        for bucket in &mut self.successors {
+            let numeric_len = Self::retain_bucket(
+                bucket,
+                &mut self.links,
+                removed_nodes,
+                LinkDirection::Successor,
+            );
+            numeric_ordered_entry_count = numeric_ordered_entry_count
+                .checked_add(numeric_len)
+                .expect("directed numeric adjacency entry count overflowed");
+        }
+        for bucket in &mut self.predecessors {
+            let numeric_len = Self::retain_bucket(
+                bucket,
+                &mut self.links,
+                removed_nodes,
+                LinkDirection::Predecessor,
+            );
+            numeric_ordered_entry_count = numeric_ordered_entry_count
+                .checked_add(numeric_len)
+                .expect("directed numeric adjacency entry count overflowed");
+        }
+        self.numeric_ordered_entry_count = numeric_ordered_entry_count;
+
+        let links = &mut self.links;
+        let free_links = &mut self.free_links;
+        self.link_index.retain(|&(v_ix, w_ix), link_ix| {
+            if !removed_nodes[v_ix] && !removed_nodes[w_ix] {
+                return true;
+            }
+
+            let link_ix = *link_ix;
+            let link = links[link_ix]
+                .take()
+                .expect("directed link index referenced a removed link");
+            debug_assert_eq!((link.v_ix, link.w_ix), (v_ix, w_ix));
+            free_links.push(link_ix);
+            false
+        });
+    }
+
     pub(in crate::graph) fn remap(&mut self, node_remap: &[Option<usize>], new_node_slots: usize) {
         let old = std::mem::take(self);
         self.reserve_edges(old.link_index.len());
@@ -435,6 +483,86 @@ impl DirectedNodeAdjacency {
         link.predecessor_next = None;
         self.predecessors[w_ix].ordinary_tail = Some(link_ix);
         self.predecessors[w_ix].len += 1;
+    }
+
+    fn retain_bucket(
+        bucket: &mut DirectedNeighborBucket,
+        links: &mut [Option<DirectedLink>],
+        removed_nodes: &[bool],
+        direction: LinkDirection,
+    ) -> usize {
+        let numeric_len = if let Some(numeric) = bucket.numeric.as_deref_mut() {
+            numeric.retain(|_, link_ix| {
+                let link = links[*link_ix]
+                    .as_ref()
+                    .expect("numeric adjacency referenced a removed link");
+                !removed_nodes[link.v_ix] && !removed_nodes[link.w_ix]
+            });
+            numeric.len()
+        } else {
+            0
+        };
+        if bucket
+            .numeric
+            .as_deref()
+            .is_some_and(|numeric| numeric.is_empty())
+        {
+            bucket.numeric = None;
+        }
+
+        let mut next = bucket.ordinary_head;
+        let mut retained_head = None;
+        let mut retained_tail: Option<usize> = None;
+        let mut ordinary_len = 0usize;
+        while let Some(link_ix) = next {
+            let link = links[link_ix]
+                .as_ref()
+                .expect("ordered adjacency referenced a removed link");
+            next = match direction {
+                LinkDirection::Successor => link.successor_next,
+                LinkDirection::Predecessor => link.predecessor_next,
+            };
+            if removed_nodes[link.v_ix] || removed_nodes[link.w_ix] {
+                continue;
+            }
+
+            if let Some(previous_ix) = retained_tail {
+                let previous = links[previous_ix]
+                    .as_mut()
+                    .expect("retained adjacency tail referenced a removed link");
+                match direction {
+                    LinkDirection::Successor => previous.successor_next = Some(link_ix),
+                    LinkDirection::Predecessor => previous.predecessor_next = Some(link_ix),
+                }
+            } else {
+                retained_head = Some(link_ix);
+            }
+
+            let link = links[link_ix]
+                .as_mut()
+                .expect("retained adjacency link was missing");
+            match direction {
+                LinkDirection::Successor => {
+                    link.successor_prev = retained_tail;
+                    link.successor_next = None;
+                }
+                LinkDirection::Predecessor => {
+                    link.predecessor_prev = retained_tail;
+                    link.predecessor_next = None;
+                }
+            }
+            retained_tail = Some(link_ix);
+            ordinary_len = ordinary_len
+                .checked_add(1)
+                .expect("directed ordinary adjacency count overflowed");
+        }
+
+        bucket.ordinary_head = retained_head;
+        bucket.ordinary_tail = retained_tail;
+        bucket.len = numeric_len
+            .checked_add(ordinary_len)
+            .expect("directed adjacency bucket count overflowed");
+        numeric_len
     }
 
     fn unlink_successor(&mut self, v_ix: usize, link_ix: usize, array_index: Option<u32>) {
@@ -717,6 +845,62 @@ mod tests {
 
         adjacency.clear();
         assert_eq!(adjacency.numeric_ordered_entry_count(), 0);
+    }
+
+    #[test]
+    fn directed_bulk_removal_preserves_surviving_link_state() {
+        let mut adjacency = DirectedNodeAdjacency::default();
+        for _ in 0..7 {
+            adjacency.add_node();
+        }
+
+        adjacency.add_edge(0, 1, None, Some(2));
+        adjacency.add_edge(0, 2, None, Some(10));
+        adjacency.add_edge(0, 3, None, None);
+        adjacency.add_edge(0, 3, None, None);
+        adjacency.add_edge(0, 4, None, None);
+        adjacency.add_edge(0, 4, None, None);
+        adjacency.add_edge(1, 5, Some(2), None);
+        adjacency.add_edge(2, 5, Some(10), None);
+        adjacency.add_edge(3, 5, None, None);
+        adjacency.add_edge(4, 5, None, None);
+        adjacency.add_edge(3, 1, None, Some(2));
+        adjacency.add_edge(1, 3, Some(2), None);
+        adjacency.add_edge(4, 3, None, None);
+        adjacency.add_edge(3, 4, None, None);
+        adjacency.add_edge(6, 6, None, None);
+
+        let link_slots = adjacency.links.len();
+        adjacency.remove_incident_edges(&[false, false, true, false, true, false, false]);
+
+        assert_eq!(adjacency.successors(0).collect::<Vec<_>>(), vec![1, 3]);
+        assert_eq!(adjacency.successors(1).collect::<Vec<_>>(), vec![5, 3]);
+        assert_eq!(adjacency.successors(3).collect::<Vec<_>>(), vec![1, 5]);
+        assert_eq!(adjacency.successors(6).collect::<Vec<_>>(), vec![6]);
+        assert_eq!(adjacency.predecessors(1).collect::<Vec<_>>(), vec![0, 3]);
+        assert_eq!(adjacency.predecessors(3).collect::<Vec<_>>(), vec![1, 0]);
+        assert_eq!(adjacency.predecessors(5).collect::<Vec<_>>(), vec![1, 3]);
+        assert_eq!(adjacency.numeric_ordered_entry_count(), 4);
+        assert_eq!(adjacency.link_index.len(), 7);
+        assert_eq!(adjacency.links.iter().flatten().count(), 7);
+        assert_eq!(adjacency.free_links.len(), link_slots - 7);
+        assert!(
+            adjacency
+                .free_links
+                .iter()
+                .all(|&link_ix| adjacency.links[link_ix].is_none())
+        );
+
+        adjacency.remove_edge(0, 3);
+        assert_eq!(adjacency.successors(0).collect::<Vec<_>>(), vec![1, 3]);
+        adjacency.remove_edge(0, 3);
+        assert_eq!(adjacency.successors(0).collect::<Vec<_>>(), vec![1]);
+        assert_eq!(adjacency.predecessors(3).collect::<Vec<_>>(), vec![1]);
+
+        adjacency.add_edge(0, 6, None, None);
+        assert_eq!(adjacency.links.len(), link_slots);
+        assert_eq!(adjacency.successors(0).collect::<Vec<_>>(), vec![1, 6]);
+        assert_eq!(adjacency.predecessors(6).collect::<Vec<_>>(), vec![6, 0]);
     }
 
     #[test]
