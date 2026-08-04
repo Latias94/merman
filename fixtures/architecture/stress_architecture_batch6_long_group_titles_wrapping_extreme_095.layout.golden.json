@@ -65,7 +65,7 @@
             "min_x": -74.343,
             "min_y": 17.0,
             "max_x": -46.343,
-            "max_y": 114.0
+            "max_y": 115.0
           },
           "label_metrics": {
             "text_width": 24.0,
@@ -91,7 +91,7 @@
             "min_x": 128.343,
             "min_y": 17.0,
             "max_x": 152.343,
-            "max_y": 114.0
+            "max_y": 115.0
           },
           "label_metrics": {
             "text_width": 20.0,
