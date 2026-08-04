@@ -47,17 +47,61 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 
 ## Quick Start
 
-These examples use the published 0.8 prerelease channel. Check the selected package version when your integration depends on a newly introduced contract.
+> [!IMPORTANT]
+> This README describes the unreleased `0.8.0-alpha.4` source contract. The Rust and CLI commands below install the current repository source; published registry packages can still be alpha.3. Pin a full commit before using an unreleased build in CI or production.
+
+### Rust
+
+Add the alpha.4 candidate from Git:
+
+```sh
+cargo add merman --git https://github.com/Latias94/merman
+```
+
+Render one Mermaid source string without constructing a renderer:
+
+```rust
+use merman::render_svg;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let svg = render_svg("flowchart TD\n  A[Start] --> B[Done]")?;
+    std::fs::write("diagram.svg", svg)?;
+    Ok(())
+}
+```
+
+`diagram.svg` is now a standalone SVG file that can be opened directly or embedded in a page.
+
+Choose the narrowest Rust entry point that owns the task:
+
+| Task | Start with |
+| --- | --- |
+| Render one standalone SVG | `merman::render_svg` |
+| Embed several SVGs in one document | `merman::render_svg_with_id` |
+| Parse or inspect semantics without rendering | `merman::Engine` |
+| Reuse configuration, inspect layout, or export another format | `merman::svg::HeadlessRenderer` |
+
+`render_svg` uses the complete deterministic SVG defaults and reports ordinary prose or empty input as `RenderSvgError::NoDiagram`. `render_svg_with_id` is the same one-shot path with a caller-owned ID; supply IDs that remain unique after `merman::svg::sanitize_svg_id` normalization.
+
+The task-oriented [Rust examples](https://github.com/Latias94/merman/tree/main/crates/merman/examples) are self-contained files that can be copied into another crate. They cover one-shot SVG, same-DOM embedding, renderer reuse, PNG and terminal output, semantic and layout inspection, deterministic dates, site configuration, presentation themes, and consumer-specific SVG pipelines.
+
+After alpha.4 is published, the registry equivalent will be:
+
+```sh
+cargo add merman@^0.8.0-alpha.4
+```
 
 ### Command Line
 
-Install the complete CLI and render a diagram:
+Install the current complete CLI from source and render a diagram:
 
 ```sh
-cargo install merman-cli --version '^0.8.0-alpha.3' --locked
+cargo install --git https://github.com/Latias94/merman --locked merman-cli
 printf 'flowchart LR\n  Source --> Merman --> SVG\n' | \
   merman-cli render - --output diagram.svg
 ```
+
+`diagram.svg` now contains the rendered diagram; the native path starts no browser or JavaScript runtime.
 
 Native commands use explicit single-diagram and Markdown workflows:
 
@@ -77,31 +121,9 @@ Root help and completions do not advertise `-i` / `-o`. Root invocations that be
 
 Native `render` and `batch` use `-f/--format`; their hidden `-e` aliases share the `v0.9.0` removal date, but `mmdc -e/--outputFormat` remains part of the compatibility interface. See the [`merman-cli` guide](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md) for the migration table, PDF, ASCII/Unicode, Iconify, runtime policy, and recoverable batch output.
 
-### Rust
-
-```sh
-cargo add merman@^0.8.0-alpha.3
-```
-
-```rust
-use merman::svg::HeadlessRenderer;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let renderer = HeadlessRenderer::new().with_diagram_id("readme-example");
-    let svg = renderer
-        .render_svg_sync("flowchart TD\nA[Start] --> B[Done]")?
-        .expect("diagram detected");
-
-    println!("{svg}");
-    Ok(())
-}
-```
-
-The default dependency enables complete deterministic SVG rendering, including both optional layout engines and math. It does not read ambient clock, time-zone, randomness, or timing state. More examples are organized by task in [`crates/merman/examples`](https://github.com/Latias94/merman/tree/main/crates/merman/examples).
-
 ### Browser
 
-Install the complete browser package from the current alpha channel and initialize it once per browser realm:
+Install the complete browser package from the published alpha channel and initialize it once per browser realm:
 
 ```sh
 npm install @mermanjs/web@alpha
@@ -115,11 +137,15 @@ const svg = renderSvg(`flowchart TD
   A[Start] --> B[Done]`);
 ```
 
+The call returns the rendered SVG string in `svg`; it does not mutate the page.
+
 The browser package does not provide a Node.js or SSR fallback. See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for Worker lifecycle, custom WASM loading, and resource policy.
 
-### From Source
+The npm alpha channel can trail this source tree. Check the installed package version before using an alpha.4-only contract.
 
-Use an immutable commit when testing unreleased source behavior:
+### Pin Unreleased Source
+
+Replace `FULL_COMMIT_SHA` with a reviewed commit when an unreleased integration must be reproducible:
 
 ```sh
 cargo install --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA --locked merman-cli

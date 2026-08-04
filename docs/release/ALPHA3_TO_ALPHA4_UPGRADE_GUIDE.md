@@ -37,7 +37,8 @@ The practical upgrade rule is:
 | --- | --- | --- |
 | Parse Mermaid into Rust models | `merman-core` | Smallest foundational API; no rendering or diagnostics product surface. |
 | Lint, diagnose, or scan Markdown/MDX in Rust | `merman-analysis` | Analysis without renderer, layout, export, icon, or network dependencies. |
-| Render complete SVG in Rust | `merman` | Use the default or `complete-svg`; includes SVG, Cytoscape, ELK, and math. |
+| Render one complete SVG in Rust | `merman::render_svg` | Use the default or `complete-svg`; includes SVG, Cytoscape, ELK, and math. |
+| Reuse or configure a Rust renderer | `merman::svg::HeadlessRenderer` | Use when several operations share configuration or need layout data, export, presentation, resource policy, or an SVG pipeline. |
 | Render basic deterministic SVG in Rust | `merman` | Disable defaults and select `svg`; optional layout engines and math remain absent. |
 | Convert, export, lint, or batch from a shell | `merman-cli` | The release binary is the complete product; source builds can select narrower feature leaves. |
 | Run a language server | `merman-lsp` | Use the release binary, or build the explicit `stdio` transport. |
@@ -237,6 +238,7 @@ APIs that were never part of the alpha.3 release and can be ignored by tag-only 
 
 ### Rendering and option contracts
 
+- For an ordinary one-shot SVG, replace alpha.3 setup through `merman::render::HeadlessRenderer` or the multi-argument `merman::render::render_svg_sync` helper with `merman::render_svg(source)`. The new facade returns `Result<String, RenderSvgError>` and reports empty or non-diagram input as `RenderSvgError::NoDiagram`; use `merman::render_svg_with_id(source, id)` when multiple SVGs share one DOM. If the operation needs configuration or reuse, import `HeadlessRenderer` from `merman::svg` and keep the explicit renderer path.
 - Replace public low-level `merman-render` `layout_parsed*`, `render_layouted_svg`, raw semantic/layout SVG helpers, debug wrappers, and per-family pass-through functions with `merman::svg::HeadlessRenderer`, `prepare_render_sync`, `layout_json_sync`, or `render_svg_sync`. Direct low-level integrations can use `merman_render::family::prepare` with one `RenderSession`.
 - Import ELK configuration and guarded pipeline entry points from the `merman-elk-layered` crate root; phase modules are private and require operation-seed resolution.
 - Configure text measurement, math, icons, clock, randomness, and resource policy through `RenderEnvironment`. Binding and Web JSON use `presentation.theme` for semantic host colors, top-level `site_config` for raw Mermaid `themeVariables`, and `environment.text_measurement` / `environment.math_renderer` for rendering services. The removed `host_theme` group and the old `layout.text_measurer` / `layout.math_renderer` fields are rejected.
