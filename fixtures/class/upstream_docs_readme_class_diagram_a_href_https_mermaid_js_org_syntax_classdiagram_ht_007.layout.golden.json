@@ -4,10 +4,26 @@
     "ClassDiagramV2": {
       "nodes": [
         {
+          "id": "Class01",
+          "x": 64.0,
+          "y": 96.0,
+          "width": 128.0,
+          "height": 192.0,
+          "is_cluster": false
+        },
+        {
           "id": "AveryLongClass",
           "x": 64.0,
           "y": 338.0,
           "width": 128.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Class09",
+          "x": 291.844,
+          "y": 96.0,
+          "width": 76.641,
           "height": 84.0,
           "is_cluster": false
         },
@@ -28,27 +44,11 @@
           "is_cluster": false
         },
         {
-          "id": "Class01",
-          "x": 64.0,
-          "y": 96.0,
-          "width": 128.0,
-          "height": 192.0,
-          "is_cluster": false
-        },
-        {
           "id": "Class07",
           "x": 459.005,
           "y": 338.0,
           "width": 191.76,
           "height": 144.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Class09",
-          "x": 291.844,
-          "y": 96.0,
-          "width": 76.641,
-          "height": 84.0,
           "is_cluster": false
         },
         {

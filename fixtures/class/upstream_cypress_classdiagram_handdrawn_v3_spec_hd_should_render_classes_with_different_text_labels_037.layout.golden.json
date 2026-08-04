@@ -12,38 +12,6 @@
           "is_cluster": false
         },
         {
-          "id": "C10",
-          "x": 1404.477,
-          "y": 42.0,
-          "width": 140.484,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "C11",
-          "x": 1600.797,
-          "y": 42.0,
-          "width": 152.156,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "C12",
-          "x": 1822.234,
-          "y": 42.0,
-          "width": 190.719,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "C13",
-          "x": 2071.352,
-          "y": 42.0,
-          "width": 207.516,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
           "id": "C2",
           "x": 188.555,
           "y": 42.0,
@@ -96,6 +64,38 @@
           "x": 1234.633,
           "y": 42.0,
           "width": 99.203,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C10",
+          "x": 1404.477,
+          "y": 42.0,
+          "width": 140.484,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C11",
+          "x": 1600.797,
+          "y": 42.0,
+          "width": 152.156,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C12",
+          "x": 1822.234,
+          "y": 42.0,
+          "width": 190.719,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C13",
+          "x": 2071.352,
+          "y": 42.0,
+          "width": 207.516,
           "height": 84.0,
           "is_cluster": false
         }

@@ -1315,6 +1315,9 @@ fn build_state_diagram_dagre_input(
     graph.set_graph(graph_label);
 
     // Pre-size nodes (leaf nodes only). Cluster nodes start with a tiny placeholder size.
+    // Mermaid's renderer interleaves `setNode` and `setParent` for each node. Graphlib inserts a
+    // parent that has not been seen yet when `setParent` runs, so preserving this operation order
+    // is observable in Dagre's insertion-order tie breaking.
     for n in &model.nodes {
         if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
             continue;
@@ -1323,119 +1326,104 @@ fn build_state_diagram_dagre_input(
             .get(&n.id)
             .cloned()
             .unwrap_or_else(|| n.id.clone());
-        if state_node_is_effective_group(n) {
-            graph.set_node(
-                dagre_id,
-                NodeLabel {
-                    width: 1.0,
-                    height: 1.0,
-                    ..Default::default()
-                },
-            );
-            continue;
-        }
+        let node_label = if state_node_is_effective_group(n) {
+            NodeLabel {
+                width: 1.0,
+                height: 1.0,
+                ..Default::default()
+            }
+        } else {
+            let padding = n.padding.unwrap_or(state_padding).max(0.0);
+            let label_text = n
+                .label
+                .as_ref()
+                .map(value_to_label_text)
+                .unwrap_or_else(|| n.id.clone());
 
-        let padding = n.padding.unwrap_or(state_padding).max(0.0);
-        let label_text = n
-            .label
-            .as_ref()
-            .map(value_to_label_text)
-            .unwrap_or_else(|| n.id.clone());
+            let (w, h) = match n.shape.as_str() {
+                "stateStart" => (14.0, 14.0),
+                "stateEnd" => (14.0, 14.0),
+                "choice" => (28.0, 28.0),
+                "fork" | "join" => {
+                    let (mut width, mut height) =
+                        if matches!(diagram_dir, RankDir::LR | RankDir::RL) {
+                            (10.0, 70.0)
+                        } else {
+                            (70.0, 10.0)
+                        };
+                    width += state_padding / 2.0;
+                    height += state_padding / 2.0;
+                    (width, height)
+                }
+                "note" => {
+                    let (tw, th) = node_label_metrics(
+                        &label_text,
+                        wrapping_width,
+                        &n.css_compiled_styles,
+                        &n.css_styles,
+                        measurer,
+                        &text_style,
+                        wrap_mode,
+                    );
+                    (tw + padding * 2.0, th + padding * 2.0)
+                }
+                "rectWithTitle" => {
+                    let desc = n
+                        .description
+                        .as_ref()
+                        .map(|v| v.join("\n"))
+                        .unwrap_or_default();
+                    let (title_w, title_h) =
+                        title_label_metrics(&label_text, measurer, &text_style, WrapMode::HtmlLike);
+                    let (desc_w, desc_h) =
+                        title_label_metrics(&desc, measurer, &text_style, WrapMode::HtmlLike);
 
-        let (w, h) = match n.shape.as_str() {
-            "stateStart" => (14.0, 14.0),
-            "stateEnd" => (14.0, 14.0),
-            "choice" => (28.0, 28.0),
-            "fork" | "join" => {
-                let (mut width, mut height) = if matches!(diagram_dir, RankDir::LR | RankDir::RL) {
-                    (10.0, 70.0)
-                } else {
-                    (70.0, 10.0)
-                };
-                width += state_padding / 2.0;
-                height += state_padding / 2.0;
-                (width, height)
-            }
-            "note" => {
-                let (tw, th) = node_label_metrics(
-                    &label_text,
-                    wrapping_width,
-                    &n.css_compiled_styles,
-                    &n.css_styles,
-                    measurer,
-                    &text_style,
-                    wrap_mode,
-                );
-                (tw + padding * 2.0, th + padding * 2.0)
-            }
-            "rectWithTitle" => {
-                let desc = n
-                    .description
-                    .as_ref()
-                    .map(|v| v.join("\n"))
-                    .unwrap_or_default();
-                let (title_w, title_h) =
-                    title_label_metrics(&label_text, measurer, &text_style, WrapMode::HtmlLike);
-                let (desc_w, desc_h) =
-                    title_label_metrics(&desc, measurer, &text_style, WrapMode::HtmlLike);
+                    let geometry = super::RectWithTitleGeometry::from_metrics(
+                        title_w, title_h, desc_w, desc_h, padding,
+                    );
+                    (geometry.width, geometry.height)
+                }
+                "rect" => {
+                    let (tw, th) = node_label_metrics(
+                        &label_text,
+                        wrapping_width,
+                        &n.css_compiled_styles,
+                        &n.css_styles,
+                        measurer,
+                        &text_style,
+                        wrap_mode,
+                    );
+                    // Mermaid converts `rect` into `roundedRect` when rx/ry is set.
+                    let has_rounding = n.rx.unwrap_or(0.0) > 0.0 && n.ry.unwrap_or(0.0) > 0.0;
+                    let pad_x = if has_rounding { padding } else { padding * 2.0 };
+                    let pad_y = padding;
+                    (tw + pad_x * 2.0, th + pad_y * 2.0)
+                }
+                other => {
+                    return Err(Error::InvalidModel {
+                        message: format!("unsupported state node shape: {other}"),
+                    });
+                }
+            };
 
-                let geometry = super::RectWithTitleGeometry::from_metrics(
-                    title_w, title_h, desc_w, desc_h, padding,
-                );
-                (geometry.width, geometry.height)
-            }
-            "rect" => {
-                let (tw, th) = node_label_metrics(
-                    &label_text,
-                    wrapping_width,
-                    &n.css_compiled_styles,
-                    &n.css_styles,
-                    measurer,
-                    &text_style,
-                    wrap_mode,
-                );
-                // Mermaid converts `rect` into `roundedRect` when rx/ry is set.
-                let has_rounding = n.rx.unwrap_or(0.0) > 0.0 && n.ry.unwrap_or(0.0) > 0.0;
-                let pad_x = if has_rounding { padding } else { padding * 2.0 };
-                let pad_y = padding;
-                (tw + pad_x * 2.0, th + pad_y * 2.0)
-            }
-            other => {
-                return Err(Error::InvalidModel {
-                    message: format!("unsupported state node shape: {other}"),
-                });
-            }
-        };
-
-        graph.set_node(
-            dagre_id,
             NodeLabel {
                 width: w.max(1.0),
                 height: h.max(1.0),
                 ..Default::default()
-            },
-        );
-    }
+            }
+        };
 
-    if graph.options().compound {
-        for n in &model.nodes {
-            if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
-                continue;
-            }
-            if let Some(p) = n.parent_id.as_ref() {
-                if state_is_hidden_id(&hidden_prefixes, p.as_str()) {
-                    continue;
-                }
-                let child_id = dagre_id_by_semantic_id
-                    .get(&n.id)
-                    .cloned()
-                    .unwrap_or_else(|| n.id.clone());
-                let parent_id = dagre_id_by_semantic_id
-                    .get(p)
-                    .cloned()
-                    .unwrap_or_else(|| p.clone());
-                graph.set_parent(child_id, parent_id);
-            }
+        graph.set_node(dagre_id.clone(), node_label);
+        if let Some(parent) = n
+            .parent_id
+            .as_ref()
+            .filter(|parent| !state_is_hidden_id(&hidden_prefixes, parent))
+        {
+            let parent_id = dagre_id_by_semantic_id
+                .get(parent)
+                .cloned()
+                .unwrap_or_else(|| parent.clone());
+            graph.set_parent(dagre_id, parent_id);
         }
     }
 
@@ -2221,7 +2209,8 @@ pub fn debug_build_state_diagram_dagre_graph(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::TextMetrics;
+    use crate::text::{TextMetrics, VendoredFontMetricsTextMeasurer};
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
     struct NonLatticeMeasurer {
         width: f64,
@@ -2236,6 +2225,60 @@ mod tests {
                 line_count: 1,
             }
         }
+    }
+
+    #[test]
+    fn state_dagre_input_interleaves_child_parent_insertion_like_mermaid() {
+        let source = include_str!(
+            "../../../../fixtures/state/stress_state_batch5_concurrency_four_regions_long_titles_061.mmd"
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .expect("parse state fixture")
+            .expect("detect state fixture");
+        let RenderSemanticModel::State(model) = parsed.model() else {
+            panic!("expected State render model");
+        };
+        let input = build_state_diagram_dagre_input(
+            model,
+            parsed.metadata().effective_config.as_value(),
+            &VendoredFontMetricsTextMeasurer::default(),
+        )
+        .expect("build State Dagre input");
+
+        let r1_id = &input.dagre_id_by_semantic_id["r1"];
+        let divider2_id = &input.dagre_id_by_semantic_id["divider-id-2"];
+        let region_id = input.graph.parent(r1_id).expect("r1 compound parent");
+
+        let model_index = |dagre_id: &str| {
+            model
+                .nodes
+                .iter()
+                .position(|node| dagre_id_for_node(node) == dagre_id)
+                .unwrap_or_else(|| panic!("missing model node {dagre_id}"))
+        };
+        assert!(
+            model_index(r1_id) < model_index(divider2_id)
+                && model_index(divider2_id) < model_index(region_id),
+            "the fixture must keep the compound parent later than its first child and divider2"
+        );
+
+        let node_ids = input.graph.node_ids();
+        let graph_index = |id: &str| {
+            node_ids
+                .iter()
+                .position(|candidate| candidate == id)
+                .unwrap_or_else(|| panic!("missing Dagre node {id}"))
+        };
+        assert_eq!(
+            graph_index(region_id),
+            graph_index(r1_id) + 1,
+            "setParent must implicitly insert the unseen region immediately after r1"
+        );
+        assert!(
+            graph_index(region_id) < graph_index(divider2_id),
+            "the implicitly inserted parent must participate in upstream insertion-order ties"
+        );
     }
 
     #[test]

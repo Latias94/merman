@@ -1,8 +1,8 @@
-# C4 Minimum Slice (Phase 1)
+# C4 Parser And Semantic Contract
 
-This document defines the initial, test-driven minimum slice for C4 parsing in `merman`.
+This document defines the admitted C4 parser and semantic-model contract in `merman`.
 
-Baseline: Mermaid `@11.12.3`.
+Baseline: Mermaid `11.16.0` at `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
 
 ## Supported (current)
 
@@ -14,7 +14,9 @@ Baseline: Mermaid `@11.12.3`.
   - `accDescr: ...` and multiline `accDescr { ... }`
   - `accTitle: ...` is treated as `title` (upstream grammar quirk)
 - Direction:
-  - `direction TB|BT|LR|RL` is accepted (no-op)
+  - Mermaid 11.16 rejects `direction TB|BT|LR|RL` in the C4 render parser.
+  - Editor recovery retains parser-backed facts for the rejected line without constructing a
+    render model from it.
 - Macros (subset; consistent parsing rules):
   - People / systems:
     - `Person`, `Person_Ext`
@@ -42,23 +44,22 @@ Baseline: Mermaid `@11.12.3`.
     - `UpdateRelStyle(...)`
     - `UpdateLayoutConfig(...)` (enforces `>= 1`)
 
-## Argument parsing rules (current)
+## Argument Semantics
 
 - Arguments are comma-separated inside `(...)`.
 - Empty arguments are allowed and become empty strings.
 - Quoted strings use `"..."`
   - No escape processing (aligning with Mermaid’s C4 lexer behavior).
-- Key/value attributes are supported:
-  - `$key="value"` becomes `{ "key": "value" }`
-  - If such an object is passed in a positional slot like `type`/`techn`/`descr`, Mermaid’s DB
-    stores it under the provided key as `{ key: { text: value } }` (e.g. `$techn="Rust"` becomes
-    `techn: { text: "Rust" }`).
-  - If such an object is passed in the `label` slot, it is preserved under `label.text` (e.g.
-    `Person(p1, $sprite="users")` yields `label.text.sprite = "users"`).
-  - Sprite/tags/link can also be provided in their dedicated positional slots (e.g.
-    `Person(p1, "P", "D", $sprite="users", $tags="t1", $link="...")`).
+- Arguments are represented internally as ordered `C4Arg::Text` and `C4Arg::Named` values. JSON
+  objects are a compatibility projection, not the parser's semantic carrier.
+- Named attributes retain source order, duplicates, unknown keys, and sparse positional slots.
+  Structural fields such as aliases cannot be overwritten through named attributes.
+- `UpdateRelStyle` resolves named fields independently of order and uses JavaScript `parseInt`
+  behavior for offsets. The historical `offsetX`/`offsetY` positional rebinding is not retained.
+- If a named object occupies a positional `label`, `type`, `techn`, or `descr` slot, the DB keeps
+  Mermaid's nested text-object side effect. Dedicated sprite/tags/link positions remain supported.
 
-## Output shape (Phase 1)
+## Output Shape
 
 - Headless semantic snapshot:
   - `type` (always `c4`)
@@ -71,10 +72,17 @@ Baseline: Mermaid `@11.12.3`.
   - `rels`: array of relationship objects
   - `config`
 
-## Alignment goal
+## Structural Semantics
 
-This is an incremental slice. The ultimate goal is full Mermaid C4 grammar and DB behavior
-compatibility at the pinned baseline tag.
+- Boundary bodies are transactional: malformed, empty, unmatched, or unclosed bodies do not leak
+  declarations or parent state into the render model.
+- Shape and relation redeclaration replaces omitted optional fields instead of retaining stale
+  values. Relationship lookup keeps Mermaid's first-match identity semantics.
+- SVG paint order follows each boundary subtree rather than grouping all boundaries before all
+  shapes. Relationship offsets, line styles, and text styles remain attached to their ordered
+  relation identity.
+- The semantic edge-label gate and browser computed-style gate are documented in
+  `SEMANTIC_LABEL_PARITY.md` and `C4_LAYOUT_UPSTREAM_TEST_COVERAGE.md`.
 
 ## Notes on DB behavior
 

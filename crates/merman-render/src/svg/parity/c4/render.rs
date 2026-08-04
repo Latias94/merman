@@ -9,6 +9,111 @@ type C4SvgModelRel = C4RelRenderModel;
 
 // C4 diagram SVG renderer implementation (split from parity.rs).
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum C4PaintItem {
+    Shape(usize),
+    Boundary(usize),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum C4PaintVisit {
+    EnterBoundary(usize),
+    PaintBoundary(usize),
+}
+
+fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintItem>> {
+    let mut shapes_by_parent: std::collections::HashMap<&str, Vec<usize>> =
+        std::collections::HashMap::new();
+    for (index, shape) in layout.shapes.iter().enumerate() {
+        shapes_by_parent
+            .entry(shape.parent_boundary.as_str())
+            .or_default()
+            .push(index);
+    }
+
+    let mut boundaries_by_parent: std::collections::HashMap<&str, Vec<usize>> =
+        std::collections::HashMap::new();
+    for (index, boundary) in layout.boundaries.iter().enumerate() {
+        boundaries_by_parent
+            .entry(boundary.parent_boundary.as_str())
+            .or_default()
+            .push(index);
+    }
+
+    let mut global_boundaries = layout
+        .boundaries
+        .iter()
+        .enumerate()
+        .filter_map(|(index, boundary)| (boundary.alias == "global").then_some(index));
+    let Some(global_boundary) = global_boundaries.next() else {
+        return Err(crate::Error::InvalidModel {
+            message: "c4: expected the implicit global boundary while painting".to_string(),
+        });
+    };
+    if global_boundaries.next().is_some() {
+        return Err(crate::Error::InvalidModel {
+            message: "c4: expected exactly one implicit global boundary while painting".to_string(),
+        });
+    }
+
+    let mut order = Vec::with_capacity(layout.shapes.len() + layout.boundaries.len() - 1);
+    let mut painted_shapes = vec![false; layout.shapes.len()];
+    let mut visited_boundaries = vec![false; layout.boundaries.len()];
+    let mut stack = vec![C4PaintVisit::EnterBoundary(global_boundary)];
+
+    while let Some(visit) = stack.pop() {
+        match visit {
+            C4PaintVisit::EnterBoundary(index) => {
+                if std::mem::replace(&mut visited_boundaries[index], true) {
+                    return Err(crate::Error::InvalidModel {
+                        message: format!(
+                            "c4: boundary {} is reachable more than once while painting",
+                            layout.boundaries[index].alias
+                        ),
+                    });
+                }
+
+                let boundary = &layout.boundaries[index];
+                if boundary.alias != "global" {
+                    stack.push(C4PaintVisit::PaintBoundary(index));
+                }
+                if let Some(children) = boundaries_by_parent.get(boundary.alias.as_str()) {
+                    stack.extend(
+                        children
+                            .iter()
+                            .rev()
+                            .copied()
+                            .map(C4PaintVisit::EnterBoundary),
+                    );
+                }
+                if let Some(shapes) = shapes_by_parent.get(boundary.alias.as_str()) {
+                    for &shape_index in shapes {
+                        painted_shapes[shape_index] = true;
+                        order.push(C4PaintItem::Shape(shape_index));
+                    }
+                }
+            }
+            C4PaintVisit::PaintBoundary(index) => {
+                order.push(C4PaintItem::Boundary(index));
+            }
+        }
+    }
+
+    if visited_boundaries.iter().any(|visited| !visited) {
+        return Err(crate::Error::InvalidModel {
+            message: "c4: found an orphaned or cyclic boundary while painting".to_string(),
+        });
+    }
+    if painted_shapes.iter().any(|painted| !painted) {
+        return Err(crate::Error::InvalidModel {
+            message: "c4: found a shape outside the global boundary tree while painting"
+                .to_string(),
+        });
+    }
+
+    Ok(order)
+}
+
 fn c4_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
@@ -229,359 +334,363 @@ pub(crate) fn render_c4_diagram_svg_typed(
     const PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
     const EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAB6ElEQVR4Xu2YLY+EMBCG9+dWr0aj0Wg0Go1Go0+j8Xdv2uTCvv1gpt0ebHKPuhDaeW4605Z9mJvx4AdXUyTUdd08z+u6flmWZRnHsWkafk9DptAwDPu+f0eAYtu2PEaGWuj5fCIZrBAC2eLBAnRCsEkkxmeaJp7iDJ2QMDdHsLg8SxKFEJaAo8lAXnmuOFIhTMpxxKATebo4UiFknuNo4OniSIXQyRxEA3YsnjGCVEjVXD7yLUAqxBGUyPv/Y4W2beMgGuS7kVQIBycH0fD+oi5pezQETxdHKmQKGk1eQEYldK+jw5GxPfZ9z7Mk0Qnhf1W1m3w//EUn5BDmSZsbR44QQLBEqrBHqOrmSKaQAxdnLArCrxZcM7A7ZKs4ioRq8LFC+NpC3WCBJsvpVw5edm9iEXFuyNfxXAgSwfrFQ1c0iNda8AdejvUgnktOtJQQxmcfFzGglc5WVCj7oDgFqU18boeFSs52CUh8LE8BIVQDT1ABrB0HtgSEYlX5doJnCwv9TXocKCaKbnwhdDKPq4lf3SwU3HLq4V/+WYhHVMa/3b4IlfyikAduCkcBc7mQ3/z/Qq/cTuikhkzB12Ae/mcJC9U+Vo8Ej1gWAtgbeGgFsAMHr50BIWOLCbezvhpBFUdY6EJuJ/QDW0XoMX60zZ0AAAAASUVORK5CYII=";
 
-    for s in &layout.shapes {
-        let meta = shape_meta.get(s.alias.as_str()).copied();
-        let (default_bg_color, default_border_color) = if s.type_c4_shape.starts_with("external_") {
-            ("#999999", "#8A8A8A")
-        } else {
-            ("#08427B", "#073B6F")
-        };
-        let bg_color = meta.and_then(|m| m.bg_color.clone()).unwrap_or_else(|| {
-            c4_cfg.color(&format!("{}_bg_color", s.type_c4_shape), default_bg_color)
-        });
-        let border_color = meta
-            .and_then(|m| m.border_color.clone())
-            .unwrap_or_else(|| {
-                c4_cfg.color(
-                    &format!("{}_border_color", s.type_c4_shape),
-                    default_border_color,
-                )
-            });
-        let font_color = meta
-            .and_then(|m| m.font_color.clone())
-            .unwrap_or_else(|| "#FFFFFF".to_string());
-        let shape_font = c4_cfg.shape_font(&s.type_c4_shape);
+    for item in c4_paint_order(layout)? {
+        match item {
+            C4PaintItem::Shape(index) => {
+                let s = &layout.shapes[index];
+                let meta = shape_meta.get(s.alias.as_str()).copied();
+                let (default_bg_color, default_border_color) =
+                    if s.type_c4_shape.starts_with("external_") {
+                        ("#999999", "#8A8A8A")
+                    } else {
+                        ("#08427B", "#073B6F")
+                    };
+                let bg_color = meta.and_then(|m| m.bg_color.clone()).unwrap_or_else(|| {
+                    c4_cfg.color(&format!("{}_bg_color", s.type_c4_shape), default_bg_color)
+                });
+                let border_color = meta
+                    .and_then(|m| m.border_color.clone())
+                    .unwrap_or_else(|| {
+                        c4_cfg.color(
+                            &format!("{}_border_color", s.type_c4_shape),
+                            default_border_color,
+                        )
+                    });
+                let font_color = meta
+                    .and_then(|m| m.font_color.clone())
+                    .unwrap_or_else(|| "#FFFFFF".to_string());
+                let shape_font = c4_cfg.shape_font(&s.type_c4_shape);
 
-        out.push_str(r#"<g class="person-man">"#);
+                out.push_str(r#"<g class="person-man">"#);
 
-        match s.type_c4_shape.as_str() {
-            "system_db"
-            | "external_system_db"
-            | "container_db"
-            | "external_container_db"
-            | "component_db"
-            | "external_component_db" => {
-                let half = s.width / 2.0;
-                let d1 = format!(
-                    "M{},{}c0,-10 {},-10 {},-10c0,0 {},0 {},10l0,{}c0,10 -{},10 -{},10c0,0 -{},0 -{},-10l0,-{}",
-                    fmt(s.x),
-                    fmt(s.y),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                    fmt(s.height),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                    fmt(s.height)
-                );
-                let d2 = format!(
-                    "M{},{}c0,10 {},10 {},10c0,0 {},0 {},-10",
-                    fmt(s.x),
-                    fmt(s.y),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half)
-                );
+                match s.type_c4_shape.as_str() {
+                    "system_db"
+                    | "external_system_db"
+                    | "container_db"
+                    | "external_container_db"
+                    | "component_db"
+                    | "external_component_db" => {
+                        let half = s.width / 2.0;
+                        let d1 = format!(
+                            "M{},{}c0,-10 {},-10 {},-10c0,0 {},0 {},10l0,{}c0,10 -{},10 -{},10c0,0 -{},0 -{},-10l0,-{}",
+                            fmt(s.x),
+                            fmt(s.y),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                            fmt(s.height),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                            fmt(s.height)
+                        );
+                        let d2 = format!(
+                            "M{},{}c0,10 {},10 {},10c0,0 {},0 {},-10",
+                            fmt(s.x),
+                            fmt(s.y),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half)
+                        );
+                        let _ = write!(
+                            &mut out,
+                            r#"<path fill="{}" stroke-width="0.5" stroke="{}" d="{}"/>"#,
+                            escape_attr(&bg_color),
+                            escape_attr(&border_color),
+                            escape_attr(&d1)
+                        );
+                        let _ = write!(
+                            &mut out,
+                            r#"<path fill="none" stroke-width="0.5" stroke="{}" d="{}"/>"#,
+                            escape_attr(&border_color),
+                            escape_attr(&d2)
+                        );
+                    }
+                    "system_queue"
+                    | "external_system_queue"
+                    | "container_queue"
+                    | "external_container_queue"
+                    | "component_queue"
+                    | "external_component_queue" => {
+                        let half = s.height / 2.0;
+                        let d1 = format!(
+                            "M{},{}l{},0c5,0 5,{} 5,{}c0,0 0,{} -5,{}l-{},0c-5,0 -5,-{} -5,-{}c0,0 0,-{} 5,-{}",
+                            fmt(s.x),
+                            fmt(s.y),
+                            fmt(s.width),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                            fmt(s.width),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                        );
+                        let d2 = format!(
+                            "M{},{}c-5,0 -5,{} -5,{}c0,{} 5,{} 5,{}",
+                            fmt(s.x + s.width),
+                            fmt(s.y),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half),
+                            fmt(half)
+                        );
+                        let _ = write!(
+                            &mut out,
+                            r#"<path fill="{}" stroke-width="0.5" stroke="{}" d="{}"/>"#,
+                            escape_attr(&bg_color),
+                            escape_attr(&border_color),
+                            escape_attr(&d1)
+                        );
+                        let _ = write!(
+                            &mut out,
+                            r#"<path fill="none" stroke-width="0.5" stroke="{}" d="{}"/>"#,
+                            escape_attr(&border_color),
+                            escape_attr(&d2)
+                        );
+                    }
+                    _ => {
+                        let _ = write!(
+                            &mut out,
+                            r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="2.5" ry="2.5" stroke-width="0.5"/>"#,
+                            fmt(s.x),
+                            fmt(s.y),
+                            escape_attr(&bg_color),
+                            escape_attr(&border_color),
+                            fmt(s.width),
+                            fmt(s.height)
+                        );
+                    }
+                }
+
+                let mut type_font = shape_font.clone();
+                type_font.font_size -= 2.0;
+                let type_family = type_font
+                    .font_family
+                    .as_deref()
+                    .unwrap_or(C4_DEFAULT_FONT_FAMILY);
+                let type_size = type_font.font_size;
+                let type_text_length = s.type_block.width.round().max(0.0);
                 let _ = write!(
                     &mut out,
-                    r#"<path fill="{}" stroke-width="0.5" stroke="{}" d="{}"/>"#,
-                    escape_attr(&bg_color),
-                    escape_attr(&border_color),
-                    escape_attr(&d1)
+                    r#"<text fill="{}" font-family="{}" font-size="{}" font-style="italic" lengthAdjust="spacing" textLength="{}" x="{}" y="{}">{}</text>"#,
+                    escape_attr(&font_color),
+                    escape_attr(type_family),
+                    fmt(type_size.max(1.0)),
+                    fmt(type_text_length),
+                    fmt(s.x + s.width / 2.0 - type_text_length / 2.0),
+                    fmt(s.y + s.type_block.y),
+                    escape_xml(&format!("<<{}>>", s.type_c4_shape))
                 );
-                let _ = write!(
-                    &mut out,
-                    r#"<path fill="none" stroke-width="0.5" stroke="{}" d="{}"/>"#,
-                    escape_attr(&border_color),
-                    escape_attr(&d2)
-                );
-            }
-            "system_queue"
-            | "external_system_queue"
-            | "container_queue"
-            | "external_container_queue"
-            | "component_queue"
-            | "external_component_queue" => {
-                let half = s.height / 2.0;
-                let d1 = format!(
-                    "M{},{}l{},0c5,0 5,{} 5,{}c0,0 0,{} -5,{}l-{},0c-5,0 -5,-{} -5,-{}c0,0 0,-{} 5,-{}",
-                    fmt(s.x),
-                    fmt(s.y),
-                    fmt(s.width),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                    fmt(s.width),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                );
-                let d2 = format!(
-                    "M{},{}c-5,0 -5,{} -5,{}c0,{} 5,{} 5,{}",
-                    fmt(s.x + s.width),
-                    fmt(s.y),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half),
-                    fmt(half)
-                );
-                let _ = write!(
-                    &mut out,
-                    r#"<path fill="{}" stroke-width="0.5" stroke="{}" d="{}"/>"#,
-                    escape_attr(&bg_color),
-                    escape_attr(&border_color),
-                    escape_attr(&d1)
-                );
-                let _ = write!(
-                    &mut out,
-                    r#"<path fill="none" stroke-width="0.5" stroke="{}" d="{}"/>"#,
-                    escape_attr(&border_color),
-                    escape_attr(&d2)
-                );
-            }
-            _ => {
-                let _ = write!(
-                    &mut out,
-                    r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="2.5" ry="2.5" stroke-width="0.5"/>"#,
-                    fmt(s.x),
-                    fmt(s.y),
-                    escape_attr(&bg_color),
-                    escape_attr(&border_color),
-                    fmt(s.width),
-                    fmt(s.height)
-                );
-            }
-        }
 
-        let mut type_font = shape_font.clone();
-        type_font.font_size -= 2.0;
-        let type_family = type_font
-            .font_family
-            .as_deref()
-            .unwrap_or(C4_DEFAULT_FONT_FAMILY);
-        let type_size = type_font.font_size;
-        let type_text_length = s.type_block.width.round().max(0.0);
-        let _ = write!(
-            &mut out,
-            r#"<text fill="{}" font-family="{}" font-size="{}" font-style="italic" lengthAdjust="spacing" textLength="{}" x="{}" y="{}">{}</text>"#,
-            escape_attr(&font_color),
-            escape_attr(type_family),
-            fmt(type_size.max(1.0)),
-            fmt(type_text_length),
-            fmt(s.x + s.width / 2.0 - type_text_length / 2.0),
-            fmt(s.y + s.type_block.y),
-            escape_xml(&format!("<<{}>>", s.type_c4_shape))
-        );
+                if matches!(s.type_c4_shape.as_str(), "person" | "external_person") {
+                    let href = if s.type_c4_shape == "external_person" {
+                        EXTERNAL_PERSON_IMG
+                    } else {
+                        PERSON_IMG
+                    };
+                    let _ = write!(
+                        &mut out,
+                        r#"<image width="48" height="48" x="{}" y="{}" xlink:href="{}"/>"#,
+                        fmt(s.x + s.width / 2.0 - 24.0),
+                        fmt(s.y + s.image.y),
+                        escape_attr(href)
+                    );
+                }
 
-        if matches!(s.type_c4_shape.as_str(), "person" | "external_person") {
-            let href = if s.type_c4_shape == "external_person" {
-                EXTERNAL_PERSON_IMG
-            } else {
-                PERSON_IMG
-            };
-            let _ = write!(
-                &mut out,
-                r#"<image width="48" height="48" x="{}" y="{}" xlink:href="{}"/>"#,
-                fmt(s.x + s.width / 2.0 - 24.0),
-                fmt(s.y + s.image.y),
-                escape_attr(href)
-            );
-        }
-
-        let label_family = shape_font
-            .font_family
-            .as_deref()
-            .unwrap_or(C4_DEFAULT_FONT_FAMILY);
-        let label_weight = "bold";
-        let label_size = shape_font.font_size + 2.0;
-        c4_write_text_by_tspan(
-            &mut out,
-            C4TspanText {
-                content: &s.label.text,
-                x: s.x,
-                y: s.y + s.label.y,
-                width: s.width,
-                font_family: label_family,
-                font_size: label_size,
-                font_weight: label_weight,
-                attrs: &[("fill", &font_color)],
-            },
-        );
-
-        let body_family = shape_font
-            .font_family
-            .as_deref()
-            .unwrap_or(C4_DEFAULT_FONT_FAMILY);
-        let body_weight = shape_font.font_weight.as_deref().unwrap_or("normal");
-        let body_size = shape_font.font_size;
-
-        if let Some(techn) = &s.techn {
-            if !techn.text.trim().is_empty() {
+                let label_family = shape_font
+                    .font_family
+                    .as_deref()
+                    .unwrap_or(C4_DEFAULT_FONT_FAMILY);
+                let label_weight = "bold";
+                let label_size = shape_font.font_size + 2.0;
                 c4_write_text_by_tspan(
                     &mut out,
                     C4TspanText {
-                        content: &techn.text,
+                        content: &s.label.text,
                         x: s.x,
-                        y: s.y + techn.y,
+                        y: s.y + s.label.y,
                         width: s.width,
-                        font_family: body_family,
-                        font_size: body_size,
-                        font_weight: body_weight,
-                        attrs: &[("fill", &font_color), ("font-style", "italic")],
+                        font_family: label_family,
+                        font_size: label_size,
+                        font_weight: label_weight,
+                        attrs: &[("fill", &font_color)],
                     },
                 );
+
+                let body_family = shape_font
+                    .font_family
+                    .as_deref()
+                    .unwrap_or(C4_DEFAULT_FONT_FAMILY);
+                let body_weight = shape_font.font_weight.as_deref().unwrap_or("normal");
+                let body_size = shape_font.font_size;
+
+                if let Some(techn) = &s.techn {
+                    if !techn.text.trim().is_empty() {
+                        c4_write_text_by_tspan(
+                            &mut out,
+                            C4TspanText {
+                                content: &techn.text,
+                                x: s.x,
+                                y: s.y + techn.y,
+                                width: s.width,
+                                font_family: body_family,
+                                font_size: body_size,
+                                font_weight: body_weight,
+                                attrs: &[("fill", &font_color), ("font-style", "italic")],
+                            },
+                        );
+                    }
+                } else if let Some(ty) = &s.ty
+                    && !ty.text.trim().is_empty()
+                {
+                    c4_write_text_by_tspan(
+                        &mut out,
+                        C4TspanText {
+                            content: &ty.text,
+                            x: s.x,
+                            y: s.y + ty.y,
+                            width: s.width,
+                            font_family: body_family,
+                            font_size: body_size,
+                            font_weight: body_weight,
+                            attrs: &[("fill", &font_color), ("font-style", "italic")],
+                        },
+                    );
+                }
+
+                if let Some(descr) = &s.descr
+                    && !descr.text.trim().is_empty()
+                {
+                    let descr_font = c4_cfg.shape_font("person");
+                    let descr_family = descr_font
+                        .font_family
+                        .as_deref()
+                        .unwrap_or(C4_DEFAULT_FONT_FAMILY);
+                    let descr_weight = descr_font.font_weight.as_deref().unwrap_or("normal");
+                    let descr_size = descr_font.font_size;
+                    c4_write_text_by_tspan(
+                        &mut out,
+                        C4TspanText {
+                            content: &descr.text,
+                            x: s.x,
+                            y: s.y + descr.y,
+                            width: s.width,
+                            font_family: descr_family,
+                            font_size: descr_size,
+                            font_weight: descr_weight,
+                            attrs: &[("fill", &font_color)],
+                        },
+                    );
+                }
+
+                out.push_str("</g>");
             }
-        } else if let Some(ty) = &s.ty
-            && !ty.text.trim().is_empty()
-        {
-            c4_write_text_by_tspan(
-                &mut out,
-                C4TspanText {
-                    content: &ty.text,
-                    x: s.x,
-                    y: s.y + ty.y,
-                    width: s.width,
-                    font_family: body_family,
-                    font_size: body_size,
-                    font_weight: body_weight,
-                    attrs: &[("fill", &font_color), ("font-style", "italic")],
-                },
-            );
-        }
+            C4PaintItem::Boundary(index) => {
+                let b = &layout.boundaries[index];
+                let meta = boundary_meta.get(b.alias.as_str()).copied();
+                let fill_color = meta
+                    .and_then(|m| m.bg_color.clone())
+                    .unwrap_or_else(|| "none".to_string());
+                let stroke_color = meta
+                    .and_then(|m| m.border_color.clone())
+                    .unwrap_or_else(|| "#444444".to_string());
+                let is_node_type = meta.and_then(|m| m.node_type.as_deref()).is_some();
 
-        if let Some(descr) = &s.descr
-            && !descr.text.trim().is_empty()
-        {
-            let descr_font = c4_cfg.shape_font("person");
-            let descr_family = descr_font
-                .font_family
-                .as_deref()
-                .unwrap_or(C4_DEFAULT_FONT_FAMILY);
-            let descr_weight = descr_font.font_weight.as_deref().unwrap_or("normal");
-            let descr_size = descr_font.font_size;
-            c4_write_text_by_tspan(
-                &mut out,
-                C4TspanText {
-                    content: &descr.text,
-                    x: s.x,
-                    y: s.y + descr.y,
-                    width: s.width,
-                    font_family: descr_family,
-                    font_size: descr_size,
-                    font_weight: descr_weight,
-                    attrs: &[("fill", &font_color)],
-                },
-            );
-        }
+                out.push_str("<g>");
+                if is_node_type {
+                    let _ = write!(
+                        &mut out,
+                        r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="2.5" ry="2.5" stroke-width="1"/>"#,
+                        fmt(b.x),
+                        fmt(b.y),
+                        escape_attr(&fill_color),
+                        escape_attr(&stroke_color),
+                        fmt(b.width),
+                        fmt(b.height)
+                    );
+                } else {
+                    let _ = write!(
+                        &mut out,
+                        r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="2.5" ry="2.5" stroke-width="1" stroke-dasharray="7.0,7.0"/>"#,
+                        fmt(b.x),
+                        fmt(b.y),
+                        escape_attr(&fill_color),
+                        escape_attr(&stroke_color),
+                        fmt(b.width),
+                        fmt(b.height)
+                    );
+                }
 
-        out.push_str("</g>");
-    }
+                let boundary_font = c4_cfg.boundary_font();
+                let boundary_family = boundary_font
+                    .font_family
+                    .as_deref()
+                    .unwrap_or(C4_DEFAULT_FONT_FAMILY);
+                let boundary_weight = "bold";
+                let boundary_size = boundary_font.font_size + 2.0;
+                c4_write_text_by_tspan(
+                    &mut out,
+                    C4TspanText {
+                        content: &b.label.text,
+                        x: b.x,
+                        y: b.y + b.label.y,
+                        width: b.width,
+                        font_family: boundary_family,
+                        font_size: boundary_size,
+                        font_weight: boundary_weight,
+                        attrs: &[("fill", "#444444")],
+                    },
+                );
+                if let Some(ty) = &b.ty
+                    && !ty.text.trim().is_empty()
+                {
+                    let boundary_type_weight =
+                        boundary_font.font_weight.as_deref().unwrap_or("normal");
+                    let boundary_type_size = boundary_font.font_size;
+                    c4_write_text_by_tspan(
+                        &mut out,
+                        C4TspanText {
+                            content: &ty.text,
+                            x: b.x,
+                            y: b.y + ty.y,
+                            width: b.width,
+                            font_family: boundary_family,
+                            font_size: boundary_type_size,
+                            font_weight: boundary_type_weight,
+                            attrs: &[("fill", "#444444")],
+                        },
+                    );
+                }
+                if let Some(descr) = &b.descr
+                    && !descr.text.trim().is_empty()
+                {
+                    let descr_weight = boundary_font.font_weight.as_deref().unwrap_or("normal");
+                    let descr_size = (boundary_font.font_size - 2.0).max(1.0);
+                    c4_write_text_by_tspan(
+                        &mut out,
+                        C4TspanText {
+                            content: &descr.text,
+                            x: b.x,
+                            y: b.y + descr.y,
+                            width: b.width,
+                            font_family: boundary_family,
+                            font_size: descr_size,
+                            font_weight: descr_weight,
+                            attrs: &[("fill", "#444444")],
+                        },
+                    );
+                }
 
-    for b in &layout.boundaries {
-        if b.alias == "global" {
-            continue;
+                out.push_str("</g>");
+            }
         }
-        let meta = boundary_meta.get(b.alias.as_str()).copied();
-        let fill_color = meta
-            .and_then(|m| m.bg_color.clone())
-            .unwrap_or_else(|| "none".to_string());
-        let stroke_color = meta
-            .and_then(|m| m.border_color.clone())
-            .unwrap_or_else(|| "#444444".to_string());
-        let is_node_type = meta.and_then(|m| m.node_type.as_deref()).is_some();
-
-        out.push_str("<g>");
-        if is_node_type {
-            let _ = write!(
-                &mut out,
-                r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="2.5" ry="2.5" stroke-width="1"/>"#,
-                fmt(b.x),
-                fmt(b.y),
-                escape_attr(&fill_color),
-                escape_attr(&stroke_color),
-                fmt(b.width),
-                fmt(b.height)
-            );
-        } else {
-            let _ = write!(
-                &mut out,
-                r#"<rect x="{}" y="{}" fill="{}" stroke="{}" width="{}" height="{}" rx="2.5" ry="2.5" stroke-width="1" stroke-dasharray="7.0,7.0"/>"#,
-                fmt(b.x),
-                fmt(b.y),
-                escape_attr(&fill_color),
-                escape_attr(&stroke_color),
-                fmt(b.width),
-                fmt(b.height)
-            );
-        }
-
-        let boundary_font = c4_cfg.boundary_font();
-        let boundary_family = boundary_font
-            .font_family
-            .as_deref()
-            .unwrap_or(C4_DEFAULT_FONT_FAMILY);
-        let boundary_weight = "bold";
-        let boundary_size = boundary_font.font_size + 2.0;
-        c4_write_text_by_tspan(
-            &mut out,
-            C4TspanText {
-                content: &b.label.text,
-                x: b.x,
-                y: b.y + b.label.y,
-                width: b.width,
-                font_family: boundary_family,
-                font_size: boundary_size,
-                font_weight: boundary_weight,
-                attrs: &[("fill", "#444444")],
-            },
-        );
-        if let Some(ty) = &b.ty
-            && !ty.text.trim().is_empty()
-        {
-            let boundary_type_weight = boundary_font.font_weight.as_deref().unwrap_or("normal");
-            let boundary_type_size = boundary_font.font_size;
-            c4_write_text_by_tspan(
-                &mut out,
-                C4TspanText {
-                    content: &ty.text,
-                    x: b.x,
-                    y: b.y + ty.y,
-                    width: b.width,
-                    font_family: boundary_family,
-                    font_size: boundary_type_size,
-                    font_weight: boundary_type_weight,
-                    attrs: &[("fill", "#444444")],
-                },
-            );
-        }
-        if let Some(descr) = &b.descr
-            && !descr.text.trim().is_empty()
-        {
-            let descr_weight = boundary_font.font_weight.as_deref().unwrap_or("normal");
-            let descr_size = (boundary_font.font_size - 2.0).max(1.0);
-            c4_write_text_by_tspan(
-                &mut out,
-                C4TspanText {
-                    content: &descr.text,
-                    x: b.x,
-                    y: b.y + descr.y,
-                    width: b.width,
-                    font_family: boundary_family,
-                    font_size: descr_size,
-                    font_weight: descr_weight,
-                    attrs: &[("fill", "#444444")],
-                },
-            );
-        }
-
-        out.push_str("</g>");
     }
 
     let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
@@ -747,14 +856,16 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn c4_css_honors_mermaid_11_15_person_theme_options() {
+    fn c4_css_honors_mermaid_11_16_person_and_common_theme_options() {
         let css = c4_css(
             "c4",
             &json!({
                 "themeVariables": {
                     "personBorder": "#112233",
                     "personBkg": "#445566",
-                    "textColor": "#778899"
+                    "textColor": "#778899",
+                    "nodeBorder": "#aabbcc",
+                    "strokeWidth": 2
                 }
             }),
         );
@@ -762,5 +873,15 @@ mod tests {
         assert!(css.contains("#c4{"));
         assert!(css.contains("fill:#778899;"));
         assert!(css.contains("#c4 .person{stroke:#112233;fill:#445566;}"));
+        assert!(
+            css.contains(r#"#c4 [data-look="neo"].node path{stroke:#aabbcc;stroke-width:2px;}"#)
+        );
+        assert!(
+            css.find("#c4 .person") < css.find(r#"#c4 [data-look="neo"].node path"#),
+            "diagram-specific C4 rules must precede Mermaid's common Neo suffix"
+        );
+        assert!(css.ends_with(
+            r#"#c4 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
+        ));
     }
 }

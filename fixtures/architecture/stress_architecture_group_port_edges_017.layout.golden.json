@@ -168,7 +168,7 @@
             "min_x": 20.889,
             "min_y": 117.224,
             "max_x": 45.889,
-            "max_y": 214.224
+            "max_y": 215.224
           },
           "label_metrics": {
             "text_width": 21.0,
@@ -194,7 +194,7 @@
             "min_x": 220.885,
             "min_y": 117.224,
             "max_x": 245.885,
-            "max_y": 214.224
+            "max_y": 215.224
           },
           "label_metrics": {
             "text_width": 21.0,
@@ -220,7 +220,7 @@
             "min_x": 14.889,
             "min_y": -121.724,
             "max_x": 51.889,
-            "max_y": -24.724
+            "max_y": -23.724
           },
           "label_metrics": {
             "text_width": 33.0,
@@ -245,7 +245,7 @@
             "min_x": -244.385,
             "min_y": -121.724,
             "max_x": -216.385,
-            "max_y": -24.724
+            "max_y": -23.724
           },
           "label_metrics": {
             "text_width": 24.0,

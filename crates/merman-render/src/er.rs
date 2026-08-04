@@ -413,6 +413,9 @@ struct LayoutEdgeParts {
     stroke_dasharray: Option<String>,
 }
 
+// Layout-engine fallback used before SVG path insertion. This deliberately stays outside the SVG
+// parity layer: rendered-path change detection and five-decimal placement belong to
+// `svg::parity::edge_label_geometry`, while this function only supplies a missing Dagre/ELK anchor.
 fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
     if points.is_empty() {
         return None;

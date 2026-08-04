@@ -4,18 +4,18 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Docs",
-          "x": 45.039,
-          "y": 200.0,
-          "width": 54.234,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
           "id": "HomePage",
           "x": 45.039,
           "y": 42.0,
           "width": 90.078,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Docs",
+          "x": 45.039,
+          "y": 200.0,
+          "width": 54.234,
           "height": 84.0,
           "is_cluster": false
         }

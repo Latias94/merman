@@ -1,9 +1,8 @@
-# Requirement Diagram Minimum Slice (Phase 1)
+# Requirement Diagram Admission Contract
 
-This document defines the initial, test-driven minimum slice for Requirement Diagram parsing in
-`merman`.
+This document defines the admitted Requirement parser, model, Dagre layout, and SVG contract.
 
-Baseline: Mermaid `@11.12.3`.
+Baseline: Mermaid `11.16.0` at `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
 
 Upstream references:
 
@@ -57,7 +56,7 @@ Upstream references:
   - `style` / `classDef` / `class` statements do not treat `#` as a comment marker (needed for
     hex colors like `#f9f`), aligning with Mermaid’s lexer state.
 
-## Output shape (Phase 1)
+## Output Shape
 
 - The semantic output is a headless snapshot aligned with Mermaid’s Requirement DB behavior:
   - `type`
@@ -69,7 +68,13 @@ Upstream references:
   - `classes`: map of `{ id, styles, textStyles }`
   - `config`
 
-## Alignment goal
+## Layout And SVG Admission
 
-This is an incremental slice. The ultimate goal is full Mermaid `requirement` grammar and DB
-behavior compatibility at the pinned baseline tag.
+- Relationship ownership uses a structured edge key, so duplicate sources, reverse edges, and
+  self-loops do not bind labels by source text or array position.
+- Dagre self-loops preserve Mermaid's helper segments, marker ids, and route restoration.
+- Updated paths are finalized before label projection; fixed-width labels retain Mermaid's `200px`
+  wrapping contract.
+- `upstream_cypress_requirementdiagram_unified_spec_example_003` is the signed `<<traces>>`
+  semantic-label canary. Its browser text-measurement residuals are exact catalog entries, not a
+  family-wide coordinate tolerance.

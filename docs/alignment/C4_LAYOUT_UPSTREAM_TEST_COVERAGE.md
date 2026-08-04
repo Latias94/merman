@@ -8,6 +8,8 @@ This document tracks which **upstream Mermaid C4 layout behaviors** are covered 
   `cargo run -p xtask -- gen-upstream-svgs --diagram c4`)
 - the automated DOM parity report:
   `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- the semantic edge-label gate activated by the same `--check-dom` flag. This gate is independent
+  of canonical DOM normalization and binds each label to its ordered C4 relation.
 
 Scope: Mermaid tag `@11.16.0`.
 
@@ -21,7 +23,7 @@ Unlike many other Mermaid diagrams, the C4 renderer does not have a dedicated, g
 unit test” suite. For parity work we treat the upstream SVG baselines as authoritative and use
 layout snapshots to localize diffs to “layout vs. SVG”.
 
-## Covered behaviors (Phase 1 slice)
+## Covered Behaviors
 
 The current C4 layout implementation in `merman-render` is covered by the following fixture sets:
 
@@ -34,6 +36,13 @@ The current C4 layout implementation in `merman-render` is covered by the follow
 - Shape/boundary wrapping rules (row limits and widthLimit):
   - `fixtures/c4/upstream_update_layout_config_invalid_values_spec.mmd`
   - `fixtures/c4/upstream_boundary_type_injection_spec.mmd`
+- Ordered relationship geometry, sparse named offsets, and explicit text/line styles:
+  - `fixtures/c4/upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010.mmd`
+  - `fixtures/c4/upstream_cypress_c4_spec_c4_4_should_render_a_simple_c4dynamic_diagram_004.mmd`
+
+The label gate compares message and technology roles separately, includes the owning line and raw
+presentation evidence, and consumes only exact signed browser-measurement residuals. See
+`docs/alignment/SEMANTIC_LABEL_PARITY.md`.
 
 For detailed expected fields and invariants, see:
 

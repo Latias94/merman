@@ -4,6 +4,14 @@
     "ClassDiagramV2": {
       "nodes": [
         {
+          "id": "User",
+          "x": 27.117,
+          "y": 56.5,
+          "width": 54.234,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
           "id": "Cart",
           "x": 392.558,
           "y": 56.5,
@@ -24,14 +32,6 @@
           "x": 200.158,
           "y": 101.0,
           "width": 82.406,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "User",
-          "x": 27.117,
-          "y": 56.5,
-          "width": 54.234,
           "height": 84.0,
           "is_cluster": false
         }

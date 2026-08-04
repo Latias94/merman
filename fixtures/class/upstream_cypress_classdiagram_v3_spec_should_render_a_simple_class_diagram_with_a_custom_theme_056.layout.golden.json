@@ -4,35 +4,19 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "AveryLongClass",
-          "x": 110.88,
-          "y": 410.0,
-          "width": 128.0,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "C2",
-          "x": 740.523,
-          "y": 756.0,
-          "width": 42.563,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "C3",
-          "x": 566.323,
-          "y": 410.0,
-          "width": 42.563,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
           "id": "Class01",
           "x": 110.88,
           "y": 132.0,
           "width": 221.76,
           "height": 264.0,
+          "is_cluster": false
+        },
+        {
+          "id": "AveryLongClass",
+          "x": 110.88,
+          "y": 410.0,
+          "width": 128.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
@@ -92,11 +76,27 @@
           "is_cluster": false
         },
         {
-          "id": "Class10",
-          "x": 1053.285,
-          "y": 132.0,
-          "width": 94.56,
-          "height": 168.0,
+          "id": "C2",
+          "x": 740.523,
+          "y": 756.0,
+          "width": 42.563,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C3",
+          "x": 566.323,
+          "y": 410.0,
+          "width": 42.563,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Class12",
+          "x": 917.684,
+          "y": 410.0,
+          "width": 76.641,
+          "height": 84.0,
           "is_cluster": false
         },
         {
@@ -108,11 +108,11 @@
           "is_cluster": false
         },
         {
-          "id": "Class12",
-          "x": 917.684,
-          "y": 410.0,
-          "width": 76.641,
-          "height": 84.0,
+          "id": "Class10",
+          "x": 1053.285,
+          "y": 132.0,
+          "width": 94.56,
+          "height": 168.0,
           "is_cluster": false
         }
       ],

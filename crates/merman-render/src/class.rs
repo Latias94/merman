@@ -112,8 +112,14 @@ pub(crate) fn class_member_create_text_input(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClassLayoutEngine {
     Dagre,
+    CaptureDagreInput,
     #[cfg(feature = "layout-elk")]
     Elk(Option<elk::ElkOperationSeed>),
+}
+
+enum ClassLayoutResult {
+    Layout(ClassDiagramLayout),
+    DagreInput(Box<ClassLayoutGraph>),
 }
 
 fn normalize_dir(direction: &str) -> String {
@@ -162,26 +168,6 @@ pub(crate) fn class_namespace_label<'a>(model: &'a ClassDiagramModel, id: &'a st
             (!label.is_empty()).then_some(label)
         })
         .unwrap_or(id)
-}
-
-fn class_namespace_child_pairs(model: &ClassDiagramModel) -> HashSet<(&str, &str)> {
-    let mut pairs = HashSet::with_capacity(model.classes.len());
-    for class in model.classes.values() {
-        let Some(parent) = class
-            .parent
-            .as_deref()
-            .map(str::trim)
-            .filter(|parent| !parent.is_empty())
-        else {
-            continue;
-        };
-        let id = class.id.trim();
-        if id.is_empty() {
-            continue;
-        }
-        pairs.insert((parent, id));
-    }
-    pairs
 }
 
 type Rect = merman_core::geom::Box2;
@@ -1937,14 +1923,17 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<ClassDiagramLayout> {
-    layout_class_diagram_typed_inner(
+    match layout_class_diagram_typed_inner(
         model,
         effective_config.as_value(),
         effective_config,
         measurer,
         math_renderer,
         ClassLayoutEngine::Dagre,
-    )
+    )? {
+        ClassLayoutResult::Layout(layout) => Ok(layout),
+        ClassLayoutResult::DagreInput(_) => unreachable!("Dagre layout returned its input graph"),
+    }
 }
 
 #[cfg(feature = "layout-elk")]
@@ -1959,14 +1948,17 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
 ) -> Result<ClassDiagramLayout> {
-    layout_class_diagram_typed_inner(
+    match layout_class_diagram_typed_inner(
         model,
         effective_config.as_value(),
         effective_config,
         measurer,
         math_renderer,
         ClassLayoutEngine::Elk(Some(operation_seed)),
-    )
+    )? {
+        ClassLayoutResult::Layout(layout) => Ok(layout),
+        ClassLayoutResult::DagreInput(_) => unreachable!("ELK layout returned a Dagre input graph"),
+    }
 }
 
 fn layout_class_diagram_typed_inner(
@@ -1976,7 +1968,7 @@ fn layout_class_diagram_typed_inner(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     engine: ClassLayoutEngine,
-) -> Result<ClassDiagramLayout> {
+) -> Result<ClassLayoutResult> {
     validate_class_namespace_hierarchy(model)?;
     let diagram_dir = rank_dir_from(&model.direction);
     let ClassLayoutSettings {
@@ -2003,7 +1995,6 @@ fn layout_class_diagram_typed_inner(
         FxHashMap::default();
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
     let namespace_ids = class_namespace_ids_in_decl_order(model);
-    let namespace_child_pairs = class_namespace_child_pairs(model);
 
     let mut g = Box::new(Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(
         GraphOptions {
@@ -2023,27 +2014,6 @@ fn layout_class_diagram_typed_inner(
         marginy: 0.0,
         ..Default::default()
     });
-
-    let mut classes_namespace_facades: Vec<&ClassNode> = Vec::with_capacity(model.classes.len());
-    let mut inserted_classes: HashSet<String> = HashSet::with_capacity(model.classes.len());
-    let mut inserted_notes: HashSet<String> = HashSet::with_capacity(model.notes.len());
-
-    let is_namespace_facade = |c: &ClassNode| {
-        let trimmed_id = c.id.trim();
-        trimmed_id.split_once('.').is_some_and(|(ns, short)| {
-            let ns = ns.trim();
-            let short = short.trim();
-            model.namespaces.contains_key(ns)
-                && c.parent
-                    .as_deref()
-                    .map(|p| p.trim())
-                    .is_none_or(|p| p.is_empty())
-                && c.annotations.is_empty()
-                && c.members.is_empty()
-                && c.methods.is_empty()
-                && namespace_child_pairs.contains(&(ns, short))
-        })
-    };
 
     let class_box_measure_ctx = ClassBoxMeasureCtx {
         measurer,
@@ -2106,9 +2076,8 @@ fn layout_class_diagram_typed_inner(
         };
 
     for &id in &namespace_ids {
-        // Mermaid 11.15's active Class renderer is the v3 unified path. `ClassDB.getData()`
-        // emits all namespace group nodes before class/note/interface nodes, and Graphlib's
-        // insertion order later feeds the Dagre cluster extraction/copy order.
+        // Mermaid's v3 `ClassDB.getData()` emits namespace groups before classes, notes, and
+        // interfaces. Graphlib preserves that insertion order for Dagre's `initOrder`.
         g.set_node(id.to_string(), NodeLabel::default());
 
         if let Some(parent) = model
@@ -2124,16 +2093,6 @@ fn layout_class_diagram_typed_inner(
     }
 
     for c in model.classes.values() {
-        if inserted_classes.contains(c.id.as_str()) {
-            continue;
-        }
-        if is_namespace_facade(c) {
-            if !classes_namespace_facades.iter().any(|seen| seen.id == c.id) {
-                classes_namespace_facades.push(c);
-            }
-            continue;
-        }
-        inserted_classes.insert(c.id.clone());
         insert_class_node(&mut g, c, &mut class_label_plans_by_id);
         if let Some(parent) = c
             .parent
@@ -2146,7 +2105,20 @@ fn layout_class_diagram_typed_inner(
         }
     }
 
-    // Interface nodes (lollipop syntax).
+    for n in &model.notes {
+        insert_note_node(&mut g, n, &mut node_label_metrics_by_id);
+        if let Some(parent) = n
+            .parent
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            && model.namespaces.contains_key(parent)
+        {
+            g.set_parent(n.id.clone(), parent.to_string());
+        }
+    }
+
+    // Interface nodes (lollipop syntax) follow notes in `ClassDB.getData()`.
     for iface in &model.interfaces {
         let label = decode_entities_minimal(iface.label.trim());
         let (tw, th) = label_metrics(
@@ -2180,92 +2152,30 @@ fn layout_class_diagram_typed_inner(
         }
     }
 
-    for n in &model.notes {
-        if inserted_notes.insert(n.id.clone()) {
-            insert_note_node(&mut g, n, &mut node_label_metrics_by_id);
-            if let Some(parent) = n
-                .parent
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                && model.namespaces.contains_key(parent)
-            {
-                g.set_parent(n.id.clone(), parent.to_string());
-            }
+    // Note attachments precede class relations in Mermaid's layout edge array. Their IDs use the
+    // note declaration index, including unattached notes, rather than the relation count.
+    for (i, note) in model.notes.iter().enumerate() {
+        let Some(class_id) = note.class_id.as_ref() else {
+            continue;
+        };
+        if !model.classes.contains_key(class_id) {
+            continue;
         }
-    }
-
-    // Mermaid's namespace-qualified facade nodes can be introduced implicitly by relations
-    // (Graphlib will auto-create missing nodes when an edge is added). Model these as
-    // insertion-order-late vertices so Dagre's `initOrder` matches upstream in ambiguous
-    // note-vs-facade ordering cases.
-    for c in classes_namespace_facades {
-        if inserted_classes.insert(c.id.clone()) {
-            insert_class_node(&mut g, c, &mut class_label_plans_by_id);
-        }
-    }
-
-    if g.options().compound {
-        for &id in &namespace_ids {
-            let Some(parent) = model
-                .namespaces
-                .get(id)
-                .and_then(|ns| ns.parent.as_deref())
-                .map(str::trim)
-                .filter(|parent| !parent.is_empty())
-            else {
-                continue;
-            };
-            if model.namespaces.contains_key(parent) {
-                g.set_parent(id.to_string(), parent.to_string());
-            }
-        }
-
-        // Mermaid assigns parents based on the class' `parent` field (see upstream
-        // `addClasses(..., parent)` + `g.setParent(vertex.id, parent)`).
-        for c in model.classes.values() {
-            if let Some(parent) = c
-                .parent
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                && model.namespaces.contains_key(parent)
-            {
-                g.set_parent(c.id.clone(), parent.to_string());
-            }
-        }
-
-        for note in &model.notes {
-            let Some(parent) = note
-                .parent
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-            else {
-                continue;
-            };
-            if model.namespaces.contains_key(parent) {
-                g.set_parent(note.id.clone(), parent.to_string());
-            }
-        }
-
-        // Keep interface nodes inside the same namespace cluster as their owning class.
-        for iface in &model.interfaces {
-            let Some(cls) = model.classes.get(iface.class_id.as_str()) else {
-                continue;
-            };
-            let Some(parent) = cls
-                .parent
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-            else {
-                continue;
-            };
-            if model.namespaces.contains_key(parent) {
-                g.set_parent(iface.id.clone(), parent.to_string());
-            }
-        }
+        let el = EdgeLabel {
+            width: 0.0,
+            height: 0.0,
+            labelpos: LabelPos::C,
+            labeloffset: 10.0,
+            minlen: 1,
+            weight: 1.0,
+            ..Default::default()
+        };
+        g.set_edge_named(
+            note.id.clone(),
+            class_id.clone(),
+            Some(format!("edgeNote{i}")),
+            Some(el),
+        );
     }
 
     for rel in &model.relations {
@@ -2348,25 +2258,8 @@ fn layout_class_diagram_typed_inner(
         );
     }
 
-    let start_note_edge_id = model.relations.len() + 1;
-    for (i, note) in model.notes.iter().enumerate() {
-        let Some(class_id) = note.class_id.as_ref() else {
-            continue;
-        };
-        if !model.classes.contains_key(class_id) {
-            continue;
-        }
-        let edge_id = format!("edgeNote{}", start_note_edge_id + i);
-        let el = EdgeLabel {
-            width: 0.0,
-            height: 0.0,
-            labelpos: LabelPos::C,
-            labeloffset: 10.0,
-            minlen: 1,
-            weight: 1.0,
-            ..Default::default()
-        };
-        g.set_edge_named(note.id.clone(), class_id.clone(), Some(edge_id), Some(el));
+    if engine == ClassLayoutEngine::CaptureDagreInput {
+        return Ok(ClassLayoutResult::DagreInput(g));
     }
 
     #[cfg(feature = "layout-elk")]
@@ -2388,7 +2281,8 @@ fn layout_class_diagram_typed_inner(
                 operation_seed,
             },
             measurer,
-        );
+        )
+        .map(ClassLayoutResult::Layout);
     }
 
     let _ = engine;
@@ -2524,17 +2418,12 @@ fn layout_class_diagram_typed_inner(
         });
     }
 
-    // Keep snapshots deterministic. The Dagre-ish pipeline may insert dummy nodes/edges in
-    // iteration-dependent order, so sort the emitted layout lists by stable identifiers.
     let render_tree = ClassRenderTree {
         roots: render_roots,
         top: fragments.render_root_id,
     };
-    let mut nodes: Vec<LayoutNode> = fragments.nodes.into_values().collect();
-    nodes.sort_by(|a, b| a.id.cmp(&b.id));
-
-    let mut edges: Vec<LayoutEdge> = fragments.edges.into_iter().map(|(e, _)| e).collect();
-    edges.sort_by(|a, b| a.id.cmp(&b.id));
+    let nodes: Vec<LayoutNode> = fragments.nodes.into_values().collect();
+    let edges: Vec<LayoutEdge> = fragments.edges.into_iter().map(|(e, _)| e).collect();
 
     let namespace_order: std::collections::HashMap<&str, usize> = namespace_ids
         .iter()
@@ -2558,7 +2447,7 @@ fn layout_class_diagram_typed_inner(
 
     let bounds = compute_bounds(&nodes, &edges, &clusters);
 
-    Ok(ClassDiagramLayout {
+    Ok(ClassLayoutResult::Layout(ClassDiagramLayout {
         nodes,
         edges,
         clusters,
@@ -2566,7 +2455,30 @@ fn layout_class_diagram_typed_inner(
         uses_elk_adapter_dom: false,
         class_label_plans_by_id,
         render_tree,
-    })
+    }))
+}
+
+/// Debug-only helper: builds the production Class Dagre graph and returns it before layout runs.
+///
+/// The capture mode shares the complete production graph-construction path, including measured
+/// node and edge-label dimensions, declaration order, named multiedges, and namespace parents.
+#[doc(hidden)]
+pub fn debug_build_class_diagram_dagre_graph(
+    model: &ClassDiagramModel,
+    effective_config: &merman_core::MermaidConfig,
+    measurer: &dyn TextMeasurer,
+) -> Result<ClassLayoutGraph> {
+    match layout_class_diagram_typed_inner(
+        model,
+        effective_config.as_value(),
+        effective_config,
+        measurer,
+        None,
+        ClassLayoutEngine::CaptureDagreInput,
+    )? {
+        ClassLayoutResult::DagreInput(graph) => Ok(*graph),
+        ClassLayoutResult::Layout(_) => unreachable!("Class Dagre input capture ran layout"),
+    }
 }
 
 fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
@@ -2962,8 +2874,6 @@ fn class_layout_from_elk(
         });
     }
 
-    nodes.sort_by(|a, b| a.id.cmp(&b.id));
-    edges.sort_by(|a, b| a.id.cmp(&b.id));
     let namespace_order: HashMap<&str, usize> = namespace_ids
         .iter()
         .copied()
@@ -3213,10 +3123,45 @@ mod tests {
     use dugong::graphlib::{Graph, GraphOptions};
     use dugong::{EdgeLabel, GraphLabel, NodeLabel};
     use merman_core::models::class_diagram::Namespace;
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 
     use crate::text::{
         TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
     };
+
+    #[test]
+    fn class_dagre_debug_input_uses_the_production_graph_and_source_identity_order() {
+        let source =
+            include_str!("../../../fixtures/class/stress_class_many_relations_labels_020.mmd");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .expect("parse Class fixture")
+            .expect("detect Class fixture");
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected Class render model");
+        };
+        let graph = super::debug_build_class_diagram_dagre_graph(
+            model,
+            &parsed.metadata().effective_config,
+            &VendoredFontMetricsTextMeasurer::default(),
+        )
+        .expect("build Class Dagre input");
+
+        assert_eq!(graph.node_ids(), ["A", "B", "C", "D", "E"]);
+        assert!(graph.node_ids().into_iter().all(|id| {
+            graph
+                .node(&id)
+                .is_some_and(|node| node.x.is_none() && node.y.is_none())
+        }));
+        assert_eq!(
+            graph
+                .edge_keys()
+                .into_iter()
+                .map(|edge| edge.name.expect("named Class edge"))
+                .collect::<Vec<_>>(),
+            ["0", "1", "2", "3", "4", "5", "6", "7"]
+        );
+    }
 
     #[cfg(feature = "layout-elk")]
     #[test]

@@ -30,6 +30,35 @@
       ],
       "edges": [
         {
+          "id": "edgeNote0",
+          "from": "note0",
+          "to": "Alpha",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 98.563,
+              "y": 84.0
+            },
+            {
+              "x": 123.563,
+              "y": 84.0
+            },
+            {
+              "x": 148.563,
+              "y": 84.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "0",
           "from": "Alpha",
           "to": "Beta",
@@ -55,35 +84,6 @@
             "width": 200.0,
             "height": 48.0
           },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edgeNote2",
-          "from": "note0",
-          "to": "Alpha",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 98.563,
-              "y": 84.0
-            },
-            {
-              "x": 123.563,
-              "y": 84.0
-            },
-            {
-              "x": 148.563,
-              "y": 84.0
-            }
-          ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
           "end_label_left": null,

@@ -4,19 +4,19 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "Bar",
-          "x": 255.6,
-          "y": 72.0,
-          "width": 165.44,
-          "height": 126.0,
-          "is_cluster": false
-        },
-        {
           "id": "Foo",
           "x": 61.44,
           "y": 72.0,
           "width": 122.88,
           "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Bar",
+          "x": 255.6,
+          "y": 72.0,
+          "width": 165.44,
+          "height": 126.0,
           "is_cluster": false
         }
       ],
