@@ -90,7 +90,7 @@ After acquisition, the same bytes still pass the renderer's JSON, identifier,
 geometry, alias, XML, retained-memory, and build-work ceilings. The CLI never
 substitutes its acquisition ledger for renderer admission.
 
-The icon ceilings were calibrated on 2026-08-03 against four complete Iconify
+The icon ceilings were calibrated on 2026-08-04 against four complete Iconify
 collections totaling 23,705,343 encoded bytes and 44,210 resolved entries, a
 256-icon-per-pack curated subset, and synthetic exact-ceiling body/alias,
 entry/edge, and XML rewrite fixtures. The complete corpus high-water marks were
@@ -98,7 +98,8 @@ entry/edge, and XML rewrite fixtures. The complete corpus high-water marks were
 and 1.42x encoded-byte headroom respectively. Exact and plus-one tests remain
 authoritative for admission behavior; the calibration receipt records latency,
 allocation, retained memory, render amplification, toolchain, host, and input
-hash provenance.
+hash provenance. See
+[`ICON_REGISTRY_CALIBRATION_2026-08-04.md`](../performance/ICON_REGISTRY_CALIBRATION_2026-08-04.md).
 
 The CSS, Puppeteer compatibility, staged-output, and scheduling ceilings remain
 initial engineering ceilings. The repository does not yet contain a

@@ -1,7 +1,7 @@
 # Security Threat Model
 
 **Status**: Living document  
-**Last updated**: 2026-08-03
+**Last updated**: 2026-08-04
 **Scope**: `merman-core`, `merman-render`, `merman`, `merman-bindings-core`, and `merman-cli`
 
 ## Problem
@@ -66,7 +66,7 @@ flowchart LR
 | Expensive vector PDF internals | `PdfOptions` is independent of the PNG/JPG pixel limit. Page geometry remains vector, while localized filter bitmaps have an aggregate 33,554,432-pixel default budget and embedded raster images have separate per-image and aggregate budgets. | PDF planning tests, public API regression tests, and CLI behavior. |
 | Parser/layout denial of service | Shared render budgets plus diagram-specific guards such as nesting and Gantt exclude expansion limits. Parser nesting limits remain separate because they protect recursive parse/config surfaces before layout budgets exist. | Core/render unit tests. |
 | Raw style declaration breakouts | SVG style declaration helpers reject or escape known declaration and selector breakouts. | Render CSS tests. |
-| Malicious or oversized Iconify packs | The consuming builder checks pack and aggregate bytes before decoding; bounds JSON depth, members, and keys; validates ASCII identifiers and finite geometry; accounts icons, aliases, retained bodies, XML plans, and build work with checked arithmetic; resolves aliases iteratively; rejects DTDs, entities, processing instructions, malformed XML, duplicate JSON keys, duplicate IDs, and graph collisions; and publishes no partial mutable registry. | Renderer unit and public contract tests, binding service tests, complete-collection calibration, curated-subset calibration, and synthetic exact-boundary fixtures. |
+| Malicious or oversized Iconify packs | The consuming builder checks pack and aggregate bytes before decoding; bounds JSON depth, members, and keys; validates ASCII identifiers and finite geometry; accounts icons, aliases, retained bodies, XML plans, and build work with checked arithmetic; resolves aliases iteratively; rejects DTDs, entities, processing instructions, malformed XML, duplicate JSON keys, duplicate IDs, and graph collisions; and publishes no partial mutable registry. | Renderer unit and public contract tests, binding service tests, [complete-collection and synthetic calibration](../performance/ICON_REGISTRY_CALIBRATION_2026-08-04.md), and exact/plus-one fixtures. |
 | Active content in admitted icon bodies | Every insertion uses XML-aware deterministic ID scoping, SVG assembly, effective-config sanitization, and post-sanitizer XML validation. Script, event attributes, style elements, `foreignObject`, and dangerous SVG/XLink URLs are removed under both strict and loose configurations; ambiguous sanitizer output fails closed. | Icon threat-matrix tests and SVG/export security regressions. |
 
 ## Known Residual Risks
