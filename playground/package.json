@@ -31,7 +31,7 @@
     "test": "npm run prepare:browser-runtime && npm run test:prepared",
     "test:prepared": "npm run test:browser:typecheck && npm run test:build-graph && npm run test:csp-policy:prepared && npm run test:semantic-tokens && npm run test:editor-worker && npm run test:mermaid-config && npm run test:runtime && npm run test:mermaid-requirements && npm run test:realm && npm run test:examples && npm run test:export && npm run test:benchmark",
     "test:benchmark": "node --test --experimental-strip-types src/benchmark/*.test.ts src/benchmark/realm/*.test.ts",
-    "test:build-graph": "node --test scripts/benchmark-build-graph.test.mjs scripts/benchmark-page-guards.test.mjs scripts/csp-policy.test.mjs scripts/package-entrypoints.test.mjs",
+    "test:build-graph": "node --test scripts/benchmark-build-graph.test.mjs scripts/benchmark-page-guards.test.mjs scripts/csp-policy.test.mjs scripts/optional-feature-manifest.test.mjs scripts/package-entrypoints.test.mjs",
     "test:csp-policy:prepared": "node --test scripts/csp-policy.prepared.test.mjs",
     "test:examples": "node --test --experimental-strip-types src/lib/examples.test.ts",
     "test:editor-worker": "node --test --experimental-strip-types src/editor/worker-client.test.ts",

@@ -26,6 +26,12 @@
     "editor": "编辑",
     "preview": "预览"
   },
+  "features": {
+    "loading": "正在加载{{feature}}...",
+    "loadFailed": "无法加载{{feature}}",
+    "reloadDescription": "请重新加载页面后再次请求此功能。",
+    "reload": "重新加载页面"
+  },
   "textMeasurement": {
     "browser": "浏览器",
     "headless": "Headless"

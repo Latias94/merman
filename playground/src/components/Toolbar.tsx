@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import {
+  lazy,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -29,7 +36,7 @@ import {
 } from "@/src/lib/export";
 import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
-import { BenchDialog } from "@/src/components/BenchDialog";
+import { LazyFeatureBoundary } from "@/src/components/LazyFeatureBoundary";
 import {
   asciiSupportDescription,
   asciiSupportLabelKey,
@@ -86,8 +93,20 @@ import {
   FileText,
   Code,
   ExternalLink,
+  Gauge,
   Type,
 } from "lucide-react";
+
+const BenchWorkbench = lazy(() =>
+  import("@/src/components/BenchWorkbench").then((module) => ({
+    default: module.BenchWorkbench,
+  })),
+);
+const ExampleGallery = lazy(() =>
+  import("@/src/components/ExampleGallery").then((module) => ({
+    default: module.ExampleGallery,
+  })),
+);
 
 const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
   light: <Sun className="size-4" />,
@@ -112,6 +131,104 @@ function openIdOptions(
   return values.map((value) => ({ value, label: labelFor(value) }));
 }
 
+function BenchLauncher() {
+  const { t } = useTranslation();
+  const [activated, setActivated] = useState(false);
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useCallback(() => triggerRef.current?.focus(), []);
+
+  const openBench = () => {
+    setActivated(true);
+    setOpen(true);
+  };
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            ref={triggerRef}
+            variant={open ? "secondary" : "ghost"}
+            size="sm"
+            aria-label={t("toolbar.bench")}
+            className="size-10 px-0 lg:h-8 lg:w-auto lg:px-2.5"
+            onClick={openBench}
+          >
+            <Gauge className="size-4" />
+            <span className="hidden lg:inline">{t("toolbar.bench")}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("toolbar.bench")}</TooltipContent>
+      </Tooltip>
+
+      {activated && (
+        <LazyFeatureBoundary
+          feature={t("toolbar.bench")}
+          presentation={{
+            kind: "dialog",
+            open,
+            onOpenChange: setOpen,
+            restoreFocus,
+          }}
+        >
+          <BenchWorkbench
+            open={open}
+            onOpenChange={setOpen}
+            restoreFocus={restoreFocus}
+          />
+        </LazyFeatureBoundary>
+      )}
+    </>
+  );
+}
+
+function ExamplesLauncher() {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useCallback(() => triggerRef.current?.focus(), []);
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            ref={triggerRef}
+            variant={open ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setOpen(true)}
+            aria-label={t("toolbar.examples")}
+            className="size-10 px-0 sm:h-8 sm:w-auto sm:px-2.5"
+          >
+            <BookOpen className="size-4" />
+            <span className="hidden sm:inline">{t("toolbar.examples")}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("toolbar.examples")}</TooltipContent>
+      </Tooltip>
+
+      {open && (
+        <LazyFeatureBoundary
+          feature={t("toolbar.examples")}
+          presentation={{
+            kind: "dialog",
+            open,
+            onOpenChange: setOpen,
+            restoreFocus,
+          }}
+        >
+          <ExampleGallery
+            open={open}
+            onOpenChange={setOpen}
+            restoreFocus={restoreFocus}
+          />
+        </LazyFeatureBoundary>
+      )}
+    </>
+  );
+}
+
 export function Toolbar() {
   const { t } = useTranslation();
   const {
@@ -131,8 +248,6 @@ export function Toolbar() {
     setDiagramFont,
     uiTheme,
     setUITheme,
-    toggleExamples,
-    showExamples,
   } = useAppStore(
     useShallow((state) => ({
       code: state.code,
@@ -148,10 +263,8 @@ export function Toolbar() {
       setSvgPipeline: state.setSvgPipeline,
       setTextMeasurementMode: state.setTextMeasurementMode,
       setUITheme: state.setUITheme,
-      showExamples: state.showExamples,
       svgPipeline: state.svgPipeline,
       textMeasurementMode: state.textMeasurementMode,
-      toggleExamples: state.toggleExamples,
       uiTheme: state.uiTheme,
     }))
   );
@@ -591,24 +704,8 @@ export function Toolbar() {
 
           <div className="hidden h-6 w-px bg-border sm:block" />
 
-          {/* 示例按钮 */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                id="examples-trigger"
-                variant={showExamples ? "secondary" : "ghost"}
-                size="sm"
-                onClick={toggleExamples}
-                aria-label={t("toolbar.examples")}
-              >
-                <BookOpen className="size-4" />
-                <span className="hidden sm:inline">{t("toolbar.examples")}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("toolbar.examples")}</TooltipContent>
-          </Tooltip>
-
-          <BenchDialog />
+          <ExamplesLauncher />
+          <BenchLauncher />
 
         </div>
 

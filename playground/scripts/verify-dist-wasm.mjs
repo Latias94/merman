@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 
 import {
   BENCHMARK_SOURCES,
@@ -18,6 +19,7 @@ import {
   verifyHtmlCsp,
 } from "./csp-policy.mjs";
 import { loadOpaqueRealmCspHashes } from "./opaque-realm-csp.mjs";
+import { inspectOptionalFeatureManifest } from "./optional-feature-manifest.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
@@ -211,8 +213,15 @@ if (corpusScripts.length !== 1 || corpusScripts[0] !== corpusEntry.chunk.file) {
   ]);
 }
 
-const indexStatic = collectManifestClosure(manifest, [indexEntry.key], false);
-const indexReachable = collectManifestClosure(manifest, [indexEntry.key], true);
+const optionalFeatureGraph = inspectOptionalFeatureManifest(manifest);
+if (optionalFeatureGraph.violations.length > 0) {
+  fail([
+    "  Optional feature activation graph is invalid:",
+    ...optionalFeatureGraph.violations.map((violation) => `    - ${violation}`),
+  ]);
+}
+const indexStatic = optionalFeatureGraph.initialStaticKeys;
+const indexReachable = optionalFeatureGraph.initialReachableKeys;
 const corpusStatic = collectManifestClosure(manifest, [corpusEntry.key], false);
 const corpusReachable = collectManifestClosure(manifest, [corpusEntry.key], true);
 const benchmarkStatic = collectManifestClosure(
@@ -272,15 +281,17 @@ if (benchmarkEagerEngineChunks.length > 0) {
   ]);
 }
 
-const indexDynamicRoots = new Set(
-  [...indexStatic].flatMap((key) => manifest[key].dynamicImports ?? []),
+const benchmarkFeatureReachable = collectManifestClosure(
+  manifest,
+  [optionalFeatureGraph.featureRoots.benchmark],
+  true,
 );
-const mermanArtifactRoots = [...indexDynamicRoots].filter((key) =>
+const mermanArtifactRoots = [...benchmarkFeatureReachable].filter((key) =>
   hasManifestSource(key, manifest[key], BENCHMARK_SOURCES.mermanArtifact),
 );
 if (mermanArtifactRoots.length !== 1) {
   fail([
-    `  Parent application must expose exactly one Merman benchmark engine-artifact root, found ${mermanArtifactRoots.length}.`,
+    `  Benchmark activation closure must expose exactly one Merman engine-artifact root, found ${mermanArtifactRoots.length}.`,
   ]);
 }
 const [mermanArtifactRoot] = mermanArtifactRoots;
@@ -345,11 +356,18 @@ if (!shimReferencesWasm) {
   fail([`  The wasm-bindgen shim does not reference the WASM binary: ${wasmName}`]);
 }
 
+const initialJavaScript = observeManifestClosure(indexStatic, manifest);
+const optionalRoots = Object.entries(optionalFeatureGraph.featureRoots)
+  .map(([feature, key]) => `${feature}: ${manifest[key].file}`)
+  .join(", ");
+
 console.log(
   [
     "[merman-playground] dist WASM present.",
     `  WASM: ${relativeToDist(wasm)}`,
     `  JS shim: ${relativeToDist(shim)}`,
+    `  Initial JS closure: ${initialJavaScript.files} files, ${formatBytes(initialJavaScript.rawBytes)} raw, ${formatBytes(initialJavaScript.gzipBytes)} gzip`,
+    `  Activation-owned roots: ${optionalRoots}`,
     "  Compare execution: opaque verified static realm artifact",
     `  Benchmark corpus entry: ${relativeToDist(BENCHMARK_CORPUS_HTML)}`,
     `  Benchmark entry: ${relativeToDist(BENCHMARK_HTML)}`,
@@ -578,6 +596,22 @@ function isMermanEngineModule(key, chunk) {
 
 function formatManifestKeys(keys) {
   return [...keys].sort().join(", ");
+}
+
+function observeManifestClosure(keys, manifest) {
+  const files = new Set([...keys].map((key) => manifest[key].file));
+  let rawBytes = 0;
+  let gzipBytes = 0;
+  for (const file of files) {
+    const source = readFileSync(path.join(DIST, file));
+    rawBytes += source.byteLength;
+    gzipBytes += gzipSync(source).byteLength;
+  }
+  return { files: files.size, rawBytes, gzipBytes };
+}
+
+function formatBytes(bytes) {
+  return `${(bytes / 1024).toFixed(2)} KiB`;
 }
 
 function errorMessage(error) {

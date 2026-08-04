@@ -1,8 +1,8 @@
 import {
   lazy,
-  Suspense,
   useEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type KeyboardEvent,
 } from "react";
@@ -17,6 +17,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
+import { CodeEditor } from "./components/Editor";
+import { Preview } from "./components/Preview";
+import { LazyFeatureBoundary } from "./components/LazyFeatureBoundary";
 import {
   useAppStore,
   type TextMeasurementMode,
@@ -27,27 +30,11 @@ import { useShare } from "./hooks/useShare";
 import { normalizeThemeName } from "@mermanjs/web";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
 
-const CodeEditor = lazy(() =>
-  import("./components/Editor").then((module) => ({
-    default: module.CodeEditor,
-  }))
-);
 const ConfigEditor = lazy(() =>
-  import("./components/ConfigEditor").then((module) => ({
+  import("./components/ConfigEditorFeature").then((module) => ({
     default: module.ConfigEditor,
   }))
 );
-const Preview = lazy(() =>
-  import("./components/Preview").then((module) => ({
-    default: module.Preview,
-  }))
-);
-const ExampleGallery = lazy(() =>
-  import("./components/ExampleGallery").then((module) => ({
-    default: module.ExampleGallery,
-  }))
-);
-
 const TEXT_MEASUREMENT_VALUES = new Set<TextMeasurementMode>([
   "browser",
   "headless",
@@ -134,10 +121,6 @@ export default function App() {
         <Toolbar />
 
         <main className="relative min-h-0 flex-1 overflow-hidden">
-          <Suspense fallback={null}>
-            <ExampleGallery />
-          </Suspense>
-
           <div className="flex h-full min-h-0 flex-col overflow-hidden">
             {isNarrowLayout && (
               <WorkspaceTabs
@@ -205,10 +188,19 @@ function EditorPanel({
   setEditorMode(mode: "code" | "config"): void;
   t(key: string): string;
 }) {
+  const [hasActivatedConfig, setHasActivatedConfig] = useState(
+    editorMode === "config",
+  );
+  const configActivated = hasActivatedConfig || editorMode === "config";
+
   return (
     <Tabs
       value={editorMode}
-      onValueChange={(value) => setEditorMode(value as "code" | "config")}
+      onValueChange={(value) => {
+        const mode = value as "code" | "config";
+        if (mode === "config") setHasActivatedConfig(true);
+        setEditorMode(mode);
+      }}
       activationMode="manual"
       className="h-full min-h-0 gap-0 bg-card"
     >
@@ -233,18 +225,21 @@ function EditorPanel({
         forceMount
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        <Suspense fallback={<PanelLoading label={t("editor.loading")} />}>
-          <CodeEditor className="h-full min-h-0" />
-        </Suspense>
+        <CodeEditor className="h-full min-h-0" />
       </TabsContent>
       <TabsContent
         value="config"
-        forceMount
+        forceMount={configActivated ? true : undefined}
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        <Suspense fallback={<PanelLoading label={t("editor.loading")} />}>
-          <ConfigEditor className="h-full min-h-0" />
-        </Suspense>
+        {configActivated && (
+          <LazyFeatureBoundary
+            feature={t("editor.configMode")}
+            presentation={{ kind: "panel" }}
+          >
+            <ConfigEditor className="h-full min-h-0" />
+          </LazyFeatureBoundary>
+        )}
       </TabsContent>
     </Tabs>
   );
@@ -258,17 +253,7 @@ function PreviewPanel({ t }: { t(key: string): string }) {
           {t("preview.title")}
         </span>
       </div>
-      <Suspense fallback={<PanelLoading label={t("preview.loading")} />}>
-        <Preview className="min-h-0 flex-1 bg-[linear-gradient(to_right,var(--preview-grid)_1px,transparent_1px),linear-gradient(to_bottom,var(--preview-grid)_1px,transparent_1px)] bg-[size:20px_20px]" />
-      </Suspense>
-    </div>
-  );
-}
-
-function PanelLoading({ label }: { label: string }) {
-  return (
-    <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
-      {label}
+      <Preview className="min-h-0 flex-1 bg-[linear-gradient(to_right,var(--preview-grid)_1px,transparent_1px),linear-gradient(to_bottom,var(--preview-grid)_1px,transparent_1px)] bg-[size:20px_20px]" />
     </div>
   );
 }

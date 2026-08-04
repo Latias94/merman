@@ -2,9 +2,9 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -16,7 +16,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   Download,
-  Gauge,
   Play,
   RotateCcw,
   Settings2,
@@ -33,7 +32,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -53,16 +51,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useAppStore } from "@/src/store";
 import { benchmarkController } from "@/src/benchmark/browser";
-import {
-  createBenchmarkDialogState,
-  reduceBenchmarkDialogState,
+import type {
+  BenchmarkDialogAction,
+  BenchmarkDialogState,
 } from "@/src/benchmark/dialog-state";
 import { downloadBenchmarkReport } from "@/src/benchmark/report";
 import type {
@@ -126,7 +119,23 @@ const SETUP_METRICS = [
 type SetupMetric = (typeof SETUP_METRICS)[number];
 const WARMUP_OPTIONS = [0, 1, 2, 3, 5] as const;
 
-export function BenchDialog() {
+export function BenchDialog({
+  dialogState,
+  dispatchDialog,
+  open,
+  onOpenChange,
+  restoreFocus,
+  runFingerprint,
+  setRunFingerprint,
+}: {
+  readonly dialogState: BenchmarkDialogState;
+  readonly dispatchDialog: Dispatch<BenchmarkDialogAction>;
+  readonly open: boolean;
+  readonly runFingerprint: string | null;
+  onOpenChange(open: boolean): void;
+  restoreFocus(): void;
+  setRunFingerprint(fingerprint: string): void;
+}) {
   const { t } = useTranslation();
   const state = useStore(
     benchmarkController.store,
@@ -148,29 +157,9 @@ export function BenchDialog() {
     }))
   );
   const facade = useMermanRuntime(selectMermanFacade);
-  const [open, setOpen] = useState(false);
-  const initialRetainedReport = state.retained?.report ?? null;
-  const [dialogState, dispatchDialog] = useReducer(
-    reduceBenchmarkDialogState,
-    createBenchmarkDialogState(
-      state.status,
-      initialRetainedReport
-        ? {
-            id: initialRetainedReport.run.id,
-            draft: {
-              iterations: initialRetainedReport.run.iterations,
-              mode: initialRetainedReport.run.mode,
-              warmups: initialRetainedReport.run.warmups,
-            },
-          }
-        : null,
-      state.status === "running" ? state.activeRunId : null,
-    ),
-  );
   const [visible, setVisible] = useState(
     () => document.visibilityState === "visible"
   );
-  const [runFingerprint, setRunFingerprint] = useState<string | null>(null);
   const [runError, setRunError] = useState<ErrorProjection | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const phaseHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -239,12 +228,27 @@ export function BenchDialog() {
     return () => window.cancelAnimationFrame(frame);
   }, [open, phase]);
 
-  const handleOpenChange = useCallback((nextOpen: boolean) => {
-    if (!nextOpen && benchmarkController.store.getState().status === "running") {
-      benchmarkController.cancel("dialog-closed");
-    }
-    setOpen(nextOpen);
-  }, []);
+  useEffect(
+    () => () => {
+      if (benchmarkController.store.getState().status === "running") {
+        benchmarkController.cancel("dialog-unmounted");
+      }
+    },
+    [],
+  );
+
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (
+        !nextOpen &&
+        benchmarkController.store.getState().status === "running"
+      ) {
+        benchmarkController.cancel("dialog-closed");
+      }
+      onOpenChange(nextOpen);
+    },
+    [onOpenChange],
+  );
 
   const handleRun = useCallback(() => {
     if (!facade || !code.trim() || !visible) return;
@@ -319,11 +323,13 @@ export function BenchDialog() {
     code,
     diagramFont,
     diagramTheme,
+    dispatchDialog,
     facade,
     fingerprint,
     iterations,
     mermaidConfig,
     mode,
+    setRunFingerprint,
     textMeasurementMode,
     visible,
     warmups,
@@ -343,26 +349,13 @@ export function BenchDialog() {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DialogTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={t("toolbar.bench")}
-              className="size-10 px-0 lg:h-8 lg:w-auto lg:px-2.5"
-            >
-              <Gauge className="size-4" />
-              <span className="hidden lg:inline">{t("toolbar.bench")}</span>
-            </Button>
-          </DialogTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{t("toolbar.bench")}</TooltipContent>
-      </Tooltip>
-
       <DialogContent
         showCloseButton={false}
         className="grid grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          restoreFocus();
+        }}
         style={{
           maxHeight:
             "min(56rem, calc(100dvh - max(0.5rem, env(safe-area-inset-top)) - max(0.5rem, env(safe-area-inset-bottom))))",

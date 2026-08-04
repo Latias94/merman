@@ -50,9 +50,6 @@ export interface AppState {
   setWorkspacePane: (pane: WorkspacePane) => void;
   previewMode: PreviewMode;
   setPreviewMode: (mode: PreviewMode) => void;
-  showExamples: boolean;
-  setShowExamples: (open: boolean) => void;
-  toggleExamples: () => void;
 }
 
 // Default source
@@ -151,9 +148,6 @@ export const useAppStore = create<AppState>((set) => ({
   setWorkspacePane: (workspacePane) => set({ workspacePane }),
   previewMode: "svg",
   setPreviewMode: (previewMode) => set({ previewMode }),
-  showExamples: false,
-  setShowExamples: (showExamples) => set({ showExamples }),
-  toggleExamples: () => set((state) => ({ showExamples: !state.showExamples })),
 }));
 
 applyResolvedTheme(initialResolvedTheme);

@@ -73,6 +73,7 @@ test("Monaco and the Rust editor session start only local production workers", a
       requests.some((url) => /merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/.test(url)),
     )
     .toBe(true);
+  expect(workers.some((url) => /json\.worker/i.test(url))).toBe(false);
 
   await replaceEditorSource(page, "flowchart TD\n  A -->");
   await expect

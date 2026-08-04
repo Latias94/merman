@@ -26,6 +26,12 @@
     "editor": "Editor",
     "preview": "Preview"
   },
+  "features": {
+    "loading": "Loading {{feature}}...",
+    "loadFailed": "{{feature}} could not be loaded",
+    "reloadDescription": "Reload the page to request this feature again.",
+    "reload": "Reload page"
+  },
   "textMeasurement": {
     "browser": "Browser",
     "headless": "Headless"
