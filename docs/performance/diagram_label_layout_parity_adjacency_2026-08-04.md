@@ -2,10 +2,13 @@
 
 Status: preregistered; measurement pending
 
-Revision 2 was preregistered on 2026-08-04 before inspecting any timing result from runtime
-candidate `d3fd45e33fafa0397c72d813ff3e76dc1a187a34`. Revision 1 named candidate `4feb70287924`, but a
-source review rejected its per-node hash maps and historical tombstone scans before measurement;
-only build-only compilation occurred. No Revision 1 timing sample exists.
+Revision 3 was preregistered on 2026-08-04 before inspecting any timing result from integrated
+candidate `44eb98734fab9fef483ef0d5e845dd42218985f6`. Revision 1 named candidate `4feb70287924`, but a
+source review rejected its per-node hash maps and historical tombstone scans before measurement.
+Revision 2 named linked runtime `d3fd45e33`; every host-admission attempt failed before a benchmark
+started, then remote `main` advanced and was merged. Only build-only compilation occurred for the
+superseded candidates; neither produced a timing sample. Thresholds, surfaces, order, and sample
+budgets remain unchanged.
 
 ## Question And Revisions
 
@@ -16,12 +19,13 @@ public reused-engine SVG render operation.
 - Base: `1d571a007a00fe4027aee8f1e4c90dc8e42171b6`
 - Runtime candidate: `d3fd45e33fafa0397c72d813ff3e76dc1a187a34`
 - Candidate with benchmark harness: `0781a09dc893da2eb24576f3f0655cbe25895c82`
+- Integrated candidate: `44eb98734fab9fef483ef0d5e845dd42218985f6`
 - Base with the identical benchmark harness: `1187ea027f96dd95276ea826d2efb70bd88fc89c`
 - Benchmark harness SHA-256: `65bc05e7c53cf940908b344a32e73b8596c9f02cfd9c1549acfe8e8a4be3488e`
 - Toolchain: Rust `1.95.0` (`x86_64-pc-windows-msvc`)
 - Public base worktree: `E:\Rust\merman-perf-label-base`
 - Structural base worktree: `E:\Rust\merman-perf-label-base-bench`
-- Candidate worktree: `E:\Rust\merman-perf-label-linked`
+- Candidate worktree: `E:\Rust\merman-perf-label-final`
 
 Both worktrees must be clean detached checkouts. Builds are completed before host admission and no
 warm-up, calibration, diagnostic, or prior-candidate sample is reused.
@@ -36,9 +40,9 @@ through State, Class, Requirement, and Flowchart public rendering.
 ```powershell
 python tools/bench/compare_self.py `
   --base-dir E:\Rust\merman-perf-label-base `
-  --head-dir E:\Rust\merman-perf-label-linked `
+  --head-dir E:\Rust\merman-perf-label-final `
   --base-label 1d571a007-label-parity-base `
-  --head-label d3fd45e33-linked-adjacency `
+  --head-label 44eb98734-integrated-adjacency `
   --base-package merman `
   --head-package merman `
   --base-bench pipeline `
@@ -48,7 +52,7 @@ python tools/bench/compare_self.py `
   --base-toolchain 1.95.0 `
   --head-toolchain 1.95.0 `
   --base-target-dir E:\Rust\merman\target\performance\label-parity-adjacency-base `
-  --head-target-dir E:\Rust\merman\target\performance\label-parity-adjacency-linked `
+  --head-target-dir E:\Rust\merman\target\performance\label-parity-adjacency-final `
   --base-corpus tools/bench/corpus.json `
   --head-corpus tools/bench/corpus.json `
   --suite standard `
@@ -96,7 +100,7 @@ Build-only preparation:
 $env:CARGO_TARGET_DIR='E:\Rust\merman\target\performance\label-parity-adjacency-base-bench-dugong'
 cargo +1.95.0 bench --locked -p dugong --bench layout --no-run
 
-$env:CARGO_TARGET_DIR='E:\Rust\merman\target\performance\label-parity-adjacency-linked-dugong'
+$env:CARGO_TARGET_DIR='E:\Rust\merman\target\performance\label-parity-adjacency-final-dugong'
 cargo +1.95.0 bench --locked -p dugong --bench layout --no-run
 ```
 
@@ -106,7 +110,7 @@ For each of the four exact filters above, the measured sequence uses Criterion 0
 $env:CARGO_TARGET_DIR='E:\Rust\merman\target\performance\label-parity-adjacency-base-bench-dugong'
 cargo +1.95.0 bench --locked -p dugong --bench layout -- '<FILTER>' --save-baseline base-a
 
-$env:CARGO_TARGET_DIR='E:\Rust\merman\target\performance\label-parity-adjacency-linked-dugong'
+$env:CARGO_TARGET_DIR='E:\Rust\merman\target\performance\label-parity-adjacency-final-dugong'
 cargo +1.95.0 bench --locked -p dugong --bench layout -- '<FILTER>' --save-baseline candidate-a
 cargo +1.95.0 bench --locked -p dugong --bench layout -- '<FILTER>' --save-baseline candidate-b
 
