@@ -75,7 +75,10 @@ fn render_icon_rect_frame(
     let half_padding = (ctx.node_padding / 2.0).max(0.0);
     let label_text_plain =
         flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
-    let has_label = !label_text_plain.trim().is_empty();
+    let has_label = !crate::flowchart::flowchart_label_text_is_empty_for_mode(
+        &label_text_plain,
+        ctx.node_html_labels,
+    );
     let label_padding = if has_label { 8.0 } else { 0.0 };
     let top_label = common.node_pos == Some("t");
 

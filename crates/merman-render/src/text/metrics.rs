@@ -2,14 +2,41 @@
 
 use super::line_break::html_break_spaces_segments;
 use super::{
-    DeterministicTextMeasurer, MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle,
-    WrapMode, ceil_to_1_64_px, mermaid_markdown_to_lines, mermaid_xhtml_label_plain_text,
-    round_to_1_64_px, wrap,
+    MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle, WrapMode, ceil_to_1_64_px,
+    mermaid_markdown_to_lines, mermaid_xhtml_label_plain_text, round_to_1_64_px, wrap,
 };
 use crate::environment::{
     BuiltinInlineHtmlWidth, BuiltinTextMeasurementOperationCarrier, InlineHtmlMeasurementCarrier,
     TextMeasurementOperation,
 };
+
+fn is_html_collapsible_ascii_whitespace(ch: char) -> bool {
+    matches!(ch, '\t' | '\n' | '\u{000C}' | '\r' | ' ')
+}
+
+fn trim_html_collapsible_ascii_whitespace(input: &str) -> &str {
+    input.trim_matches(is_html_collapsible_ascii_whitespace)
+}
+
+// This input has already passed through the lightweight HTML parser. Do not use the generic text
+// normalizer here: its Unicode trim would erase a final NBSP-only line before inline measurement.
+fn normalized_preparsed_html_text_lines(text: &str) -> Vec<String> {
+    let mut out = text.split('\n').map(str::to_string).collect::<Vec<_>>();
+
+    while out.len() > 1
+        && out
+            .last()
+            .is_some_and(|line| trim_html_collapsible_ascii_whitespace(line).is_empty())
+    {
+        out.pop();
+    }
+
+    if out.is_empty() {
+        vec![String::new()]
+    } else {
+        out
+    }
+}
 
 pub(crate) fn measure_xhtml_label_fragment(
     measurer: &dyn TextMeasurer,
@@ -2074,7 +2101,7 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     // keep only the empty `<i>` element. Model the layout-time glyph advance explicitly.
     fn decode_html_entity(entity: &str) -> Option<char> {
         match entity {
-            "nbsp" => Some(' '),
+            "nbsp" => Some('\u{00A0}'),
             "lt" => Some('<'),
             "gt" => Some('>'),
             "amp" => Some('&'),
@@ -2281,19 +2308,21 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     }
 
     // Keep whitespace adjacent to inline icons: in HTML it becomes significant when it separates
-    // text from an inline-block `<i>` (for both `<i> text` and `text <i>`). Only drop the newline
-    // that our lightweight parser adds for closing block tags.
+    // text from an inline-block `<i>` (for both `<i> text` and `text <i>`). Otherwise discard only
+    // collapsible ASCII boundary whitespace. U+00A0 remains visible at either boundary.
     let plain = if icon_on_line.iter().any(|v| *v) {
         plain.trim_end_matches('\n').to_string()
     } else {
-        plain.trim_end().to_string()
+        plain
+            .trim_end_matches(is_html_collapsible_ascii_whitespace)
+            .to_string()
     };
     let has_inline_icons = icon_on_line.iter().any(|has_icon| *has_icon);
 
     if wrap_mode == WrapMode::HtmlLike && !has_inline_icons && carrier.is_builtin() {
         let explicit_line_boxes =
             explicit_inline_html_line_boxes(&inline_runs_by_line, &image_on_line);
-        let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
+        let mut lines = normalized_preparsed_html_text_lines(&plain);
         if lines.is_empty() {
             lines.push(String::new());
         }
@@ -2319,10 +2348,15 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
 
     // Keep this request before all styled probes for arbitrary and host measurers. Their callbacks
     // are observable, including stateful return values and the exact position of a failure.
-    let base = measurer.measure_wrapped(plain.trim(), style, max_width, wrap_mode);
+    let base = measurer.measure_wrapped(
+        trim_html_collapsible_ascii_whitespace(&plain),
+        style,
+        max_width,
+        wrap_mode,
+    );
     let explicit_line_boxes = explicit_inline_html_line_boxes(&inline_runs_by_line, &image_on_line);
 
-    let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
+    let mut lines = normalized_preparsed_html_text_lines(&plain);
     if lines.is_empty() {
         lines.push(String::new());
     }
@@ -2362,7 +2396,7 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                     if !icon_on_line[idx] || !line.starts_with(char::is_whitespace) {
                         continue;
                     }
-                    let text = line.trim();
+                    let text = trim_html_collapsible_ascii_whitespace(line);
                     if text.is_empty() {
                         continue;
                     }
@@ -2421,10 +2455,10 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                     .iter()
                     .enumerate()
                     .filter(|(idx, line)| {
-                        let text = line.trim();
+                        let text = trim_html_collapsible_ascii_whitespace(line);
                         if text.is_empty()
                             || icon_on_line.get(*idx).copied().unwrap_or(false)
-                            || !text.chars().any(|ch| ch.is_whitespace())
+                            || !text.chars().any(is_html_collapsible_ascii_whitespace)
                         {
                             return false;
                         }
@@ -2480,14 +2514,14 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
         }
     }
 
-    let icon_only_extra_lines = if plain.trim().is_empty() {
+    let icon_only_extra_lines = if trim_html_collapsible_ascii_whitespace(&plain).is_empty() {
         0
     } else {
         lines
             .iter()
             .enumerate()
             .filter(|(idx, line)| {
-                line.trim().is_empty()
+                trim_html_collapsible_ascii_whitespace(line).is_empty()
                     && icon_on_line.get(*idx).copied().unwrap_or(false)
                     && icon_width_px_by_line.get(*idx).copied().unwrap_or(0.0) > 0.0
             })
@@ -2888,7 +2922,11 @@ fn measure_markdown_with_inline_styles_impl(
     }
 
     let plain = plain_lines.join("\n");
-    let plain = plain.trim().to_string();
+    let plain = if wrap_mode == WrapMode::HtmlLike {
+        trim_html_collapsible_ascii_whitespace(&plain).to_string()
+    } else {
+        plain.trim().to_string()
+    };
     let base = if manually_wrap_words {
         measurer.measure_wrapped(&plain, style, None, wrap_mode)
     } else {

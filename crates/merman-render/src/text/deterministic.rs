@@ -9,6 +9,10 @@ pub struct DeterministicTextMeasurer {
 }
 
 impl DeterministicTextMeasurer {
+    fn is_html_collapsible_ascii_whitespace(ch: char) -> bool {
+        matches!(ch, '\t' | '\n' | '\u{000C}' | '\r' | ' ')
+    }
+
     fn replace_br_variants(text: &str) -> String {
         let mut out = String::with_capacity(text.len());
         let mut i = 0usize;
@@ -50,14 +54,17 @@ impl DeterministicTextMeasurer {
         out
     }
 
-    pub fn normalized_text_lines(text: &str) -> Vec<String> {
+    fn normalized_text_lines_with(
+        text: &str,
+        trailing_line_is_empty: impl Fn(&str) -> bool,
+    ) -> Vec<String> {
         let t = Self::replace_br_variants(text);
         let mut out = t.split('\n').map(|s| s.to_string()).collect::<Vec<_>>();
 
         // Mermaid often produces labels with a trailing newline (e.g. YAML `|` block scalars from
         // FlowDB). The rendered label does not keep an extra blank line at the end, so we trim
         // trailing empty lines to keep height parity.
-        while out.len() > 1 && out.last().is_some_and(|s| s.trim().is_empty()) {
+        while out.len() > 1 && out.last().is_some_and(|s| trailing_line_is_empty(s)) {
             out.pop();
         }
 
@@ -66,6 +73,22 @@ impl DeterministicTextMeasurer {
         } else {
             out
         }
+    }
+
+    pub fn normalized_text_lines(text: &str) -> Vec<String> {
+        Self::normalized_text_lines_with(text, |line| line.trim().is_empty())
+    }
+
+    pub(crate) fn normalized_text_lines_for_wrap_mode(
+        text: &str,
+        wrap_mode: WrapMode,
+    ) -> Vec<String> {
+        Self::normalized_text_lines_with(text, |line| match wrap_mode {
+            WrapMode::HtmlLike => line
+                .trim_matches(Self::is_html_collapsible_ascii_whitespace)
+                .is_empty(),
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => line.trim().is_empty(),
+        })
     }
 
     pub(crate) fn split_line_to_words(text: &str) -> Vec<String> {
@@ -217,7 +240,7 @@ impl DeterministicTextMeasurer {
         let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
         let break_long_words = matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun);
 
-        let raw_lines = Self::normalized_text_lines(text);
+        let raw_lines = Self::normalized_text_lines_for_wrap_mode(text, wrap_mode);
         let mut raw_width: f64 = 0.0;
         for line in &raw_lines {
             let w = if uses_heuristic_widths {

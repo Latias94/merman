@@ -95,7 +95,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     };
     let label_has_visual_content = flowchart_html_contains_img_tag(label.text)
         || (label.label_type == "markdown" && label.text.contains("!["));
-    if label_text_plain.trim().is_empty() && !label_has_visual_content {
+    if crate::flowchart::flowchart_label_text_is_empty_for_mode(
+        &label_text_plain,
+        ctx.node_html_labels,
+    ) && !label_has_visual_content
+    {
         metrics.width = 0.0;
         metrics.height = 0.0;
     }

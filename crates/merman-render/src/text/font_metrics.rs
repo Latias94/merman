@@ -1138,7 +1138,8 @@ fn vendored_measure_wrapped_impl(
     };
 
     let profile = VendoredFontMetricsTextMeasurer::metric_profile(table);
-    let normalized_lines = DeterministicTextMeasurer::normalized_text_lines(text);
+    let normalized_lines =
+        DeterministicTextMeasurer::normalized_text_lines_for_wrap_mode(text, wrap_mode);
 
     // Mermaid HTML labels behave differently depending on whether the content "needs" wrapping:
     // - if the unwrapped line width exceeds the configured wrapping width, Mermaid constrains

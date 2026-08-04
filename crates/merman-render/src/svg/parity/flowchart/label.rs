@@ -17,7 +17,7 @@ fn flowchart_label_html_impl(
     config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) -> String {
-    if label.trim().is_empty() {
+    if crate::flowchart::flowchart_label_text_is_empty_for_mode(label, true) {
         return String::new();
     }
 
@@ -92,7 +92,7 @@ fn flowchart_label_html_impl(
     }
 
     fn is_single_img_label(label: &str) -> bool {
-        let t = label.trim();
+        let t = crate::flowchart::flowchart_trim_html_collapsible_whitespace(label);
         let lower = t.to_ascii_lowercase();
         if !lower.starts_with("<img") {
             return false;
@@ -100,7 +100,7 @@ fn flowchart_label_html_impl(
         let Some(end) = t.find('>') else {
             return false;
         };
-        t[end + 1..].trim().is_empty()
+        crate::flowchart::flowchart_trim_html_collapsible_whitespace(&t[end + 1..]).is_empty()
     }
 
     fn trim_markdown_trailing_newlines(
@@ -337,7 +337,8 @@ fn flowchart_label_html_impl(
                 let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(decoded.as_ref());
                 mermaid_markdown_to_html_minimal(decoded.as_ref(), markdown_auto_wrap, wants_p)
             };
-            let html_out = html_out.trim().to_string();
+            let html_out =
+                crate::flowchart::flowchart_trim_html_collapsible_whitespace(&html_out).to_string();
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
             crate::xml::normalize_html_fragment_for_xhtml(&merman_core::sanitize::sanitize_text(
                 &html_out, config,
@@ -351,7 +352,7 @@ fn flowchart_label_html_impl(
             };
             let label = crate::flowchart::flowchart_decode_label_escapes(&label);
             let label = if label_type == "string" {
-                label.trim().to_string()
+                crate::flowchart::flowchart_trim_html_collapsible_whitespace(&label).to_string()
             } else {
                 label
             };
@@ -456,4 +457,36 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
         style,
         max_width_px,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::flowchart_label_html_impl;
+
+    #[test]
+    fn html_label_output_preserves_entity_and_direct_nbsp_boundaries() {
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": true,
+            "securityLevel": "loose"
+        }));
+        let cases = [
+            ("&nbsp;A", "<p>\u{00A0}A</p>"),
+            ("A&nbsp;", "<p>A\u{00A0}</p>"),
+            ("&nbsp;", "<p>\u{00A0}</p>"),
+            ("\u{00A0}A", "<p>\u{00A0}A</p>"),
+            ("A\u{00A0}", "<p>A\u{00A0}</p>"),
+            ("\u{00A0}", "<p>\u{00A0}</p>"),
+            ("A<br>&nbsp;", "<p>A<br />\u{00A0}</p>"),
+        ];
+
+        for label_type in ["string", "markdown"] {
+            for (input, expected) in cases {
+                assert_eq!(
+                    flowchart_label_html_impl(input, label_type, &config, None),
+                    expected,
+                    "label_type={label_type}, input={input:?}",
+                );
+            }
+        }
+    }
 }

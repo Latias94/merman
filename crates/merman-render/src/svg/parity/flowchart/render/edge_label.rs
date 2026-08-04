@@ -259,7 +259,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         return;
     }
 
-    let label_html = if label_text.trim().is_empty() {
+    let label_html = if crate::flowchart::flowchart_label_text_is_empty_for_mode(
+        label_text,
+        ctx.edge_html_labels,
+    ) {
         String::new()
     } else {
         flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer)
@@ -308,7 +311,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             return;
         }
 
-        if !label_text_plain.trim().is_empty() {
+        if !crate::flowchart::flowchart_label_text_is_empty_for_mode(
+            &label_text_plain,
+            ctx.edge_html_labels,
+        ) {
             let (x, y) = fallback_midpoint(le, ctx, origin_x, origin_y);
             let has_inline_style_tags = if label_type == "markdown" {
                 false

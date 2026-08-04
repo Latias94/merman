@@ -16,6 +16,24 @@ pub(crate) struct FlowchartLabelMetricsRequest<'a> {
     pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
 }
 
+fn is_html_collapsible_ascii_whitespace(ch: char) -> bool {
+    matches!(ch, '\t' | '\n' | '\u{000C}' | '\r' | ' ')
+}
+
+// Mermaid 11.16 inserts decoded labels through `addHtmlSpan(...).html(...)`. HTML collapses the
+// ASCII whitespace set at a boundary, but U+00A0 remains visible and contributes to the line box.
+pub(crate) fn flowchart_trim_html_collapsible_whitespace(input: &str) -> &str {
+    input.trim_matches(is_html_collapsible_ascii_whitespace)
+}
+
+pub(crate) fn flowchart_label_text_is_empty_for_mode(text: &str, html_labels: bool) -> bool {
+    if html_labels {
+        flowchart_trim_html_collapsible_whitespace(text).is_empty()
+    } else {
+        text.trim().is_empty()
+    }
+}
+
 pub(crate) fn flowchart_label_metrics_for_layout(
     req: FlowchartLabelMetricsRequest<'_>,
 ) -> crate::text::TextMetrics {
@@ -134,7 +152,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                 }
 
                 fn is_single_img_tag(html: &str) -> bool {
-                    let t = html.trim();
+                    let t = flowchart_trim_html_collapsible_whitespace(html);
                     let lower = t.to_ascii_lowercase();
                     if !lower.starts_with("<img") {
                         return false;
@@ -142,7 +160,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                     let Some(end) = t.find('>') else {
                         return false;
                     };
-                    t[end + 1..].trim().is_empty()
+                    flowchart_trim_html_collapsible_whitespace(&t[end + 1..]).is_empty()
                 }
 
                 let fixed_img_width = is_single_img_tag(html);
@@ -175,7 +193,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                         if rest_lower.starts_with("<img")
                             && let Some(rel_end) = rest.find('>')
                         {
-                            if !text_buf.trim().is_empty() {
+                            if !flowchart_trim_html_collapsible_whitespace(&text_buf).is_empty() {
                                 blocks.push(Block::Text(std::mem::take(&mut text_buf)));
                             } else {
                                 text_buf.clear();
@@ -205,7 +223,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                     text_buf.push(ch);
                     i += ch.len_utf8();
                 }
-                if !text_buf.trim().is_empty() {
+                if !flowchart_trim_html_collapsible_whitespace(&text_buf).is_empty() {
                     blocks.push(Block::Text(text_buf));
                 }
 
@@ -221,7 +239,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                             last_space = false;
                             continue;
                         }
-                        if ch.is_whitespace() {
+                        if is_html_collapsible_ascii_whitespace(ch) {
                             if !last_space {
                                 out.push(' ');
                             }
@@ -232,10 +250,10 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                         last_space = false;
                     }
                     out.lines()
-                        .map(|l| l.trim())
+                        .map(flowchart_trim_html_collapsible_whitespace)
                         .collect::<Vec<_>>()
                         .join("\n")
-                        .trim()
+                        .trim_matches(is_html_collapsible_ascii_whitespace)
                         .to_string()
                 }
 
@@ -280,7 +298,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
 
             let mut label = raw_label.replace("\r\n", "\n");
             if label_type == "string" {
-                label = label.trim().to_string();
+                label = flowchart_trim_html_collapsible_whitespace(&label).to_string();
             }
             let label = label.trim_end_matches('\n');
             let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(label);
@@ -290,11 +308,12 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                 label.to_string()
             };
             let fixed_img_width = {
-                let t = label.trim();
+                let t = flowchart_trim_html_collapsible_whitespace(&label);
                 let lower = t.to_ascii_lowercase();
                 lower.starts_with("<img")
-                    && t.find('>')
-                        .is_some_and(|end| t[end + 1..].trim().is_empty())
+                    && t.find('>').is_some_and(|end| {
+                        flowchart_trim_html_collapsible_whitespace(&t[end + 1..]).is_empty()
+                    })
             };
             let html = if fixed_img_width || !wants_p {
                 label
@@ -367,10 +386,10 @@ pub(crate) fn flowchart_normalize_plain_multiline_label_for_html(
     std::borrow::Cow::Owned(
         label
             .split('\n')
-            .map(str::trim)
+            .map(flowchart_trim_html_collapsible_whitespace)
             .collect::<Vec<_>>()
             .join("\n")
-            .trim()
+            .trim_matches(is_html_collapsible_ascii_whitespace)
             .to_string(),
     )
 }
@@ -382,7 +401,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
 ) -> String {
     fn decode_html_entity(entity: &str) -> Option<char> {
         match entity {
-            "nbsp" => Some(' '),
+            "nbsp" => Some('\u{00A0}'),
             "lt" => Some('<'),
             "gt" => Some('>'),
             "amp" => Some('&'),
@@ -416,7 +435,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                 if ch == '\n' {
                     return;
                 }
-                if ch.is_whitespace() {
+                if is_html_collapsible_ascii_whitespace(ch) {
                     out.pop();
                     continue;
                 }
@@ -506,10 +525,9 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
         let mut last_nl = false;
         for ch in out.chars() {
             if ch == '\u{00A0}' {
-                if !last_space && !last_nl {
-                    normalized.push(' ');
-                }
-                last_space = true;
+                normalized.push(ch);
+                last_space = false;
+                last_nl = false;
                 continue;
             }
             if ch == '\n' {
@@ -520,7 +538,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                 last_nl = true;
                 continue;
             }
-            if ch.is_whitespace() {
+            if is_html_collapsible_ascii_whitespace(ch) {
                 if !last_space && !last_nl {
                     normalized.push(' ');
                     last_space = true;
@@ -537,9 +555,13 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
 
     match label_type {
         "markdown" => {
-            if html_labels && crate::text::mermaid_markdown_contains_raw_blocks(label) {
+            if html_labels
+                && (crate::text::mermaid_markdown_contains_raw_blocks(label)
+                    || crate::text::mermaid_markdown_contains_html_tags(label))
+            {
                 let html = crate::text::mermaid_markdown_to_html_label_fragment(label, true);
-                return strip_html_for_layout(&html).trim().to_string();
+                return flowchart_trim_html_collapsible_whitespace(&strip_html_for_layout(&html))
+                    .to_string();
             }
 
             let mut out = String::new();
@@ -559,7 +581,11 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                     _ => {}
                 }
             }
-            out.trim().to_string()
+            if html_labels {
+                flowchart_trim_html_collapsible_whitespace(&out).to_string()
+            } else {
+                out.trim().to_string()
+            }
         }
         _ => {
             let mut t = flowchart_decode_label_escapes(&label.replace("\r\n", "\n"));
@@ -666,7 +692,11 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
 
                 t = space_separate_html_like_tags_for_svg_labels(&t);
             }
-            t.trim().trim_end_matches('\n').to_string()
+            if html_labels {
+                flowchart_trim_html_collapsible_whitespace(&t).to_string()
+            } else {
+                t.trim().trim_end_matches('\n').to_string()
+            }
         }
     }
 }
@@ -792,6 +822,34 @@ mod tests {
 
         assert!((metrics.width - 12.01).abs() < 1e-12, "{metrics:?}");
         assert!((metrics.height - 20.008).abs() < 1e-12, "{metrics:?}");
+    }
+
+    #[test]
+    fn html_label_metrics_keep_nbsp_only_trailing_lines() {
+        let config = MermaidConfig::default();
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+
+        for (raw_label, label_type) in [("A<br>&nbsp;", "string"), ("A\n\u{00A0}", "markdown")] {
+            let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+                measurer: &measurer,
+                raw_label,
+                label_type,
+                style: &style,
+                max_width_px: None,
+                wrap_mode: WrapMode::HtmlLike,
+                config: &config,
+                math_renderer: None,
+            });
+
+            assert_eq!(metrics.line_count, 2, "{raw_label:?}: {metrics:?}");
+            assert_eq!(metrics.height, 48.0, "{raw_label:?}: {metrics:?}");
+        }
     }
 
     #[test]

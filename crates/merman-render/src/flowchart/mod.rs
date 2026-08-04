@@ -18,7 +18,8 @@ pub(crate) use config::{FlowchartConfigView, FlowchartLayoutSettings};
 pub(crate) use label::{
     FlowchartLabelMetricsRequest, flowchart_decode_label_escapes,
     flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
-    flowchart_normalize_plain_multiline_label_for_html,
+    flowchart_label_text_is_empty_for_mode, flowchart_normalize_plain_multiline_label_for_html,
+    flowchart_trim_html_collapsible_whitespace,
 };
 pub(crate) use node::{
     NodeLayoutDimensionsRequest, flowchart_node_render_dimensions, node_layout_dimensions,

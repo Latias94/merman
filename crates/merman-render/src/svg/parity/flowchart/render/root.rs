@@ -177,7 +177,11 @@ fn edge_label_is_empty(ctx: &FlowchartRenderCtx<'_>, edge: &crate::flowchart::Fl
     let label_text = edge.label.as_deref().unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     let label_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
-    label_plain.trim().is_empty() && label_text.trim().is_empty()
+    crate::flowchart::flowchart_label_text_is_empty_for_mode(&label_plain, ctx.edge_html_labels)
+        && crate::flowchart::flowchart_label_text_is_empty_for_mode(
+            label_text,
+            ctx.edge_html_labels,
+        )
 }
 
 pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(

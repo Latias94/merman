@@ -23,7 +23,7 @@ use super::{FlowEdge, FlowSubgraph, FlowchartModel};
 use super::{
     FlowchartLabelMetricsRequest, flowchart_apply_html_node_class_box_metrics,
     flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
-    flowchart_label_metrics_for_layout,
+    flowchart_label_metrics_for_layout, flowchart_label_text_is_empty_for_mode,
 };
 
 type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
@@ -425,10 +425,10 @@ fn merge_flowchart_self_loop_segments(
     output
 }
 
-fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
+fn edge_label_is_non_empty(edge: &FlowEdge, html_labels: bool) -> bool {
     edge.label
         .as_deref()
-        .map(|s| !s.trim().is_empty())
+        .map(|text| !flowchart_label_text_is_empty_for_mode(text, html_labels))
         .unwrap_or(false)
 }
 
@@ -2003,7 +2003,7 @@ fn layout_flowchart_with_model(
         let from = e.from.clone();
         let to = e.to.clone();
 
-        if edge_label_is_non_empty(e) {
+        if edge_label_is_non_empty(e, edge_html_labels) {
             let label_text = e.label.as_deref().unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
             let edge_text_style = flowchart_effective_text_style_for_classes(
@@ -2941,7 +2941,7 @@ fn layout_flowchart_with_model(
     work_control.charge_adapter(render_edges.len())?;
     let labeled_edges: std::collections::HashSet<&str> = render_edges
         .iter()
-        .filter(|e| edge_label_is_non_empty(e))
+        .filter(|e| edge_label_is_non_empty(e, edge_html_labels))
         .map(|e| e.id.as_str())
         .collect();
 
@@ -3872,6 +3872,36 @@ mod tests {
             .expect("node A");
 
         assert_eq!(node.label_width, Some(NON_LATTICE_COMPUTED_LENGTH_PX));
+    }
+
+    #[test]
+    fn dagre_html_nbsp_only_edge_labels_participate_in_layout() {
+        let nbsp = '\u{00A0}';
+        let source = format!("flowchart LR\nA -- \"&nbsp;\" --> B\nC -- \"{nbsp}\" --> D\n");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let layout = layout_flowchart_typed(
+            model,
+            &parsed.metadata().effective_config,
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .expect("layout ok");
+
+        assert_eq!(layout.edges.len(), 2);
+        for edge in &layout.edges {
+            let label = edge
+                .label
+                .as_ref()
+                .expect("HTML NBSP-only edge label must reach Dagre");
+            assert!(label.width > 0.0, "{label:?}");
+            assert!(label.height > 0.0, "{label:?}");
+        }
     }
 
     #[test]

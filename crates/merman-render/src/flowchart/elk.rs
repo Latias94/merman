@@ -21,6 +21,7 @@ use super::{
     FlowchartLabelMetricsRequest, flowchart_apply_html_node_class_box_metrics,
     flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
     flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
+    flowchart_label_text_is_empty_for_mode,
 };
 
 struct ElkOperationWorkControl {
@@ -1524,7 +1525,10 @@ fn node_dimensions_and_label(
 }
 
 fn edge_label(edge: &FlowEdge, ctx: EdgeMeasureContext<'_>) -> Option<elk::Label> {
-    if !edge_label_is_non_empty(edge) {
+    if flowchart_label_text_is_empty_for_mode(
+        edge.label.as_deref().unwrap_or_default(),
+        ctx.edge_html_labels,
+    ) {
         return None;
     }
 
@@ -1567,13 +1571,6 @@ fn edge_label(edge: &FlowEdge, ctx: EdgeMeasureContext<'_>) -> Option<elk::Label
     };
 
     Some(elk::Label { width, height })
-}
-
-fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
-    edge.label
-        .as_deref()
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false)
 }
 
 fn flow_node_to_elk_node(
@@ -1674,6 +1671,36 @@ mod tests {
             .expect("node A label");
 
         assert_eq!(label.width, NON_LATTICE_COMPUTED_LENGTH_PX);
+    }
+
+    #[test]
+    fn elk_html_nbsp_only_edge_labels_participate_in_layout() {
+        let nbsp = '\u{00A0}';
+        let source = format!("flowchart LR\nA -- \"&nbsp;\" --> B\nC -- \"{nbsp}\" --> D\n");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let graph = build_flowchart_elk_graph(
+            model,
+            &parsed.metadata().effective_config,
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .expect("ELK graph ok");
+
+        assert_eq!(graph.edges.len(), 2);
+        for edge in &graph.edges {
+            let label = edge
+                .label
+                .as_ref()
+                .expect("HTML NBSP-only edge label must reach ELK");
+            assert!(label.width > 0.0, "{label:?}");
+            assert!(label.height > 0.0, "{label:?}");
+        }
     }
 
     fn node(id: &str, label: Option<&str>, label_type: Option<&str>) -> FlowNode {

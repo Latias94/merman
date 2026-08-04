@@ -401,7 +401,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
     let label_has_visual_content =
         super::super::super::util::flowchart_html_contains_img_tag(label_text)
             || (label_type == "markdown" && label_text.contains("!["));
-    if label_text_plain.trim().is_empty() && !label_has_visual_content {
+    if crate::flowchart::flowchart_label_text_is_empty_for_mode(
+        &label_text_plain,
+        ctx.node_html_labels,
+    ) && !label_has_visual_content
+    {
         metrics.width = 0.0;
         metrics.height = 0.0;
     }

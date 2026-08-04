@@ -171,6 +171,85 @@ fn flowchart_html_labels_serialize_unknown_html_entities_as_well_formed_xml() {
 }
 
 #[test]
+fn flowchart_html_node_and_edge_labels_preserve_nbsp_boundaries() {
+    let nbsp = '\u{00A0}';
+    let source = format!(
+        r#"flowchart LR
+EntityLead["&nbsp;A"] -- "A&nbsp;" --> EntityTail["A&nbsp;"]
+DirectLead["{nbsp}D"] -- "{nbsp}" --> DirectOnly["{nbsp}"]
+MarkdownLead["`&nbsp;M`"] -- "`M<br>&nbsp;`" --> MarkdownTail["`A<br>&nbsp;`"]
+"#
+    );
+    let svg = render_flowchart_svg_from_text(&source);
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let text_content = |node: roxmltree::Node<'_, '_>| {
+        node.descendants()
+            .filter_map(|descendant| descendant.text().filter(|_| descendant.is_text()))
+            .collect::<String>()
+    };
+
+    let node_labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("span")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "nodeLabel")
+                })
+        })
+        .map(text_content)
+        .collect::<Vec<_>>();
+    let edge_labels = document
+        .descendants()
+        .filter(|node| node.has_tag_name("span") && node.attribute("class") == Some("edgeLabel"))
+        .map(text_content)
+        .collect::<Vec<_>>();
+
+    for expected in [format!("{nbsp}A"), format!("A{nbsp}"), nbsp.to_string()] {
+        assert!(
+            node_labels.contains(&expected),
+            "missing {expected:?}: {svg}"
+        );
+    }
+    for expected in [format!("A{nbsp}"), nbsp.to_string(), format!("M{nbsp}")] {
+        assert!(
+            edge_labels.contains(&expected),
+            "missing {expected:?}: {svg}"
+        );
+    }
+    assert!(
+        svg.contains(&format!("<p>A<br />{nbsp}</p>")),
+        "expected a visible NBSP-only trailing line: {svg}",
+    );
+
+    let pure_nbsp_labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("span")
+                && text_content(*node) == nbsp.to_string()
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| matches!(part, "nodeLabel" | "edgeLabel"))
+                })
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        pure_nbsp_labels.len() >= 2,
+        "expected pure NBSP node and edge labels: {svg}",
+    );
+    for label in pure_nbsp_labels {
+        let foreign_object = label
+            .ancestors()
+            .find(|ancestor| ancestor.has_tag_name("foreignObject"))
+            .expect("NBSP label foreignObject");
+        assert_ne!(foreign_object.attribute("width"), Some("0"), "{svg}");
+        assert_ne!(foreign_object.attribute("height"), Some("0"), "{svg}");
+    }
+}
+
+#[test]
 fn flowchart_missing_icon_uses_mermaid_unknown_icon_at_requested_size() {
     let svg = render_flowchart_svg_from_text(
         "flowchart TD\nA@{ icon: \"missing:icon\", label: \"Missing\" }\n",

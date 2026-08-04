@@ -67,6 +67,37 @@ fn flowchart_html_text_extraction_preserves_bare_comparison_symbols() {
 }
 
 #[test]
+fn flowchart_html_text_extraction_preserves_nbsp_boundaries() {
+    let cases = [
+        ("&nbsp;A", "\u{00A0}A"),
+        ("A&nbsp;", "A\u{00A0}"),
+        ("&nbsp;", "\u{00A0}"),
+        ("\u{00A0}A", "\u{00A0}A"),
+        ("A\u{00A0}", "A\u{00A0}"),
+        ("\u{00A0}", "\u{00A0}"),
+        ("A<br>&nbsp;", "A\n\u{00A0}"),
+    ];
+
+    for label_type in ["text", "string", "markdown"] {
+        for (input, expected) in cases {
+            assert_eq!(
+                crate::flowchart::flowchart_label_plain_text_for_layout(input, label_type, true,),
+                expected,
+                "label_type={label_type}, input={input:?}",
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_svg_text_extraction_keeps_its_existing_unicode_trim_semantics() {
+    assert_eq!(
+        crate::flowchart::flowchart_label_plain_text_for_layout("\u{00A0}A\u{00A0}", "text", false,),
+        "A",
+    );
+}
+
+#[test]
 fn flowchart_html_unicode_entities_use_finite_fallback_metrics() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
@@ -250,6 +281,69 @@ fn html_inline_styles_delegate_to_the_matching_font_variant() {
             .measure_wrapped("Italic", &italic, None, WrapMode::HtmlLike)
             .width;
     assert_eq!(mixed.width, mixed_expected);
+}
+
+#[test]
+fn html_inline_metrics_preserve_entity_and_direct_nbsp_boundaries() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+        font_style: None,
+    };
+
+    for (entity, direct) in [
+        ("&nbsp;A", "\u{00A0}A"),
+        ("A&nbsp;", "A\u{00A0}"),
+        ("&nbsp;", "\u{00A0}"),
+    ] {
+        let entity_metrics =
+            measure_html_with_inline_styles(&measurer, entity, &style, None, WrapMode::HtmlLike);
+        let direct_metrics =
+            measure_html_with_inline_styles(&measurer, direct, &style, None, WrapMode::HtmlLike);
+        assert_same_metrics(entity_metrics, direct_metrics);
+        assert_finite_positive_metrics(entity_metrics);
+
+        let entity_markdown = measure_markdown_with_inline_styles(
+            &measurer,
+            entity,
+            &style,
+            None,
+            WrapMode::HtmlLike,
+        );
+        let direct_markdown = measure_markdown_with_inline_styles(
+            &measurer,
+            direct,
+            &style,
+            None,
+            WrapMode::HtmlLike,
+        );
+        assert_same_metrics(entity_markdown, direct_markdown);
+        assert_finite_positive_metrics(entity_markdown);
+    }
+
+    let plain_a = measurer.measure_wrapped("A", &style, None, WrapMode::HtmlLike);
+    let trailing_nbsp =
+        measure_html_with_inline_styles(&measurer, "A&nbsp;", &style, None, WrapMode::HtmlLike);
+    assert!(trailing_nbsp.width > plain_a.width);
+
+    let styled_nbsp_tail = measure_html_with_inline_styles(
+        &measurer,
+        "<p>A<br /><strong>&nbsp;</strong></p>",
+        &style,
+        None,
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(styled_nbsp_tail.line_count, 2, "{styled_nbsp_tail:?}");
+    assert!(styled_nbsp_tail.height > trailing_nbsp.height);
+
+    let plain_nbsp_tail = measurer.measure_wrapped("A\n\u{00A0}", &style, None, WrapMode::HtmlLike);
+    assert_eq!(plain_nbsp_tail.line_count, 2, "{plain_nbsp_tail:?}");
+    assert_eq!(plain_nbsp_tail.height, 48.0, "{plain_nbsp_tail:?}");
+
+    let svg_nbsp_tail = measurer.measure_wrapped("A\n\u{00A0}", &style, None, WrapMode::SvgLike);
+    assert_eq!(svg_nbsp_tail.line_count, 1, "{svg_nbsp_tail:?}");
 }
 
 #[test]
