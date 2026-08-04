@@ -200,8 +200,8 @@ pub(crate) struct BuiltinTextMeasurementOperationCarrier {
 
 impl BuiltinTextMeasurementOperationCarrier {
     pub(crate) const fn into_inline_html(self) -> Option<InlineHtmlMeasurementCarrier> {
-        match self.operation {
-            TextMeasurementOperation::WrappedWithRawWidth => {
+        match (self.phase, self.operation) {
+            (TextMeasurementPhase::Wrap, TextMeasurementOperation::WrappedWithRawWidth) => {
                 Some(InlineHtmlMeasurementCarrier::builtin(self.profile))
             }
             _ => None,
@@ -2226,6 +2226,17 @@ mod tests {
 
     #[test]
     fn private_operation_carriers_only_qualify_builtin_profile_routes() {
+        assert!(
+            BuiltinTextMeasurementOperationCarrier {
+                profile: BuiltinTextMeasurementProfile::VendoredParity,
+                phase: TextMeasurementPhase::SvgBBox,
+                operation: TextMeasurementOperation::WrappedWithRawWidth,
+            }
+            .into_inline_html()
+            .is_none(),
+            "the inline planner requires both the wrapped operation and its Wrap owner phase"
+        );
+
         let parity_session = RenderEnvironment::deterministic()
             .begin_session()
             .expect("begin parity session");
