@@ -8,7 +8,7 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use merman_core::MermaidConfig;
 use merman_layout_elk as elk;
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::sync::Arc;
 
 use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartModel};
@@ -1029,78 +1029,104 @@ fn first_elk_parent_cycle_assignment(
     }
 
     let node_capacity = checked_adapter_mul(work_control, assignments.len(), 2)?;
-    let height = if node_capacity <= 1 {
-        0
-    } else {
-        usize::BITS as usize - (node_capacity - 1).leading_zeros() as usize
-    };
-    let find_work = checked_adapter_mul(
-        work_control,
-        checked_adapter_add(work_control, height, 1)?,
-        4,
-    )?;
-    let union_work = checked_adapter_mul(work_control, assignments.len(), find_work)?;
-    let linear_work = checked_adapter_add(
-        work_control,
-        checked_adapter_mul(work_control, node_capacity, 6)?,
-        checked_adapter_mul(work_control, assignments.len(), 2)?,
-    )?;
+    // Each retained assignment child has at most one final parent. In that functional graph, an
+    // assignment closes a Graphlib parent cycle exactly when it is the latest Mermaid-order edge
+    // on one directed cycle. Peel every acyclic node with Kahn's algorithm, then select the
+    // earliest such closing edge across the remaining cycles. This preserves Graphlib's
+    // observable error order without adding a logarithmic union-find term to otherwise linear ELK
+    // hierarchy preparation.
+    let node_work = checked_adapter_mul(work_control, node_capacity, 12)?;
+    let assignment_work = checked_adapter_mul(work_control, assignments.len(), 4)?;
     charge_adapter_work(
         work_control,
-        checked_adapter_add(work_control, union_work, linear_work)?,
+        checked_adapter_add(work_control, node_work, assignment_work)?,
     )?;
 
     fn intern<'a>(
         id: &'a str,
         index_by_id: &mut HashMap<&'a str, usize>,
-        parents: &mut Vec<usize>,
-        ranks: &mut Vec<u8>,
+        next_by_index: &mut Vec<Option<usize>>,
+        assignment_by_index: &mut Vec<Option<usize>>,
+        indegree: &mut Vec<usize>,
     ) -> usize {
         if let Some(&index) = index_by_id.get(id) {
             return index;
         }
-        let index = parents.len();
-        parents.push(index);
-        ranks.push(0);
+        let index = next_by_index.len();
+        next_by_index.push(None);
+        assignment_by_index.push(None);
+        indegree.push(0);
         index_by_id.insert(id, index);
         index
     }
 
-    fn find(parents: &mut [usize], mut index: usize) -> usize {
-        let mut root = index;
-        while parents[root] != root {
-            root = parents[root];
-        }
-        while parents[index] != index {
-            let next = parents[index];
-            parents[index] = root;
-            index = next;
-        }
-        root
-    }
-
     let mut index_by_id = HashMap::with_capacity(node_capacity);
-    let mut parents = Vec::with_capacity(node_capacity);
-    let mut ranks = Vec::with_capacity(node_capacity);
-    for (child, parent) in assignments {
-        let child_index = intern(child, &mut index_by_id, &mut parents, &mut ranks);
-        let parent_index = intern(parent, &mut index_by_id, &mut parents, &mut ranks);
-        let child_root = find(&mut parents, child_index);
-        let parent_root = find(&mut parents, parent_index);
-        if child_root == parent_root {
-            return Ok(Some((child.to_string(), parent.to_string())));
-        }
-        if ranks[child_root] < ranks[parent_root] {
-            parents[child_root] = parent_root;
-        } else {
-            parents[parent_root] = child_root;
-            if ranks[child_root] == ranks[parent_root] {
-                ranks[child_root] = ranks[child_root].saturating_add(1);
-            }
+    let mut next_by_index = Vec::with_capacity(node_capacity);
+    let mut assignment_by_index = Vec::with_capacity(node_capacity);
+    let mut indegree = Vec::with_capacity(node_capacity);
+    for (assignment_index, &(child, parent)) in assignments.iter().enumerate() {
+        let child_index = intern(
+            child,
+            &mut index_by_id,
+            &mut next_by_index,
+            &mut assignment_by_index,
+            &mut indegree,
+        );
+        let parent_index = intern(
+            parent,
+            &mut index_by_id,
+            &mut next_by_index,
+            &mut assignment_by_index,
+            &mut indegree,
+        );
+        next_by_index[child_index] = Some(parent_index);
+        assignment_by_index[child_index] = Some(assignment_index);
+        indegree[parent_index] += 1;
+    }
+
+    let mut queue = indegree
+        .iter()
+        .enumerate()
+        .filter_map(|(index, &degree)| (degree == 0).then_some(index))
+        .collect::<VecDeque<_>>();
+    while let Some(index) = queue.pop_front() {
+        let Some(parent_index) = next_by_index[index] else {
+            continue;
+        };
+        indegree[parent_index] -= 1;
+        if indegree[parent_index] == 0 {
+            queue.push_back(parent_index);
         }
     }
 
-    Ok(None)
+    let mut visited = vec![false; next_by_index.len()];
+    let mut first_closing_assignment = None;
+    for start in 0..next_by_index.len() {
+        if indegree[start] == 0 || visited[start] {
+            continue;
+        }
+        let mut current = start;
+        let mut closing_assignment = 0;
+        loop {
+            if visited[current] {
+                break;
+            }
+            visited[current] = true;
+            let assignment_index = assignment_by_index[current]
+                .expect("a node retained by functional-graph peeling must own a parent assignment");
+            closing_assignment = closing_assignment.max(assignment_index);
+            current = next_by_index[current]
+                .expect("a node retained by functional-graph peeling must have a parent");
+        }
+        if first_closing_assignment.is_none_or(|first| closing_assignment < first) {
+            first_closing_assignment = Some(closing_assignment);
+        }
+    }
+
+    Ok(first_closing_assignment.map(|assignment_index| {
+        let (child, parent) = assignments[assignment_index];
+        (child.to_string(), parent.to_string())
+    }))
 }
 
 // Heavy-light decomposition keeps hierarchy preprocessing and retained memory linear while making
