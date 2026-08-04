@@ -144,7 +144,7 @@ let pdf = renderer
 The same path is available as a runnable repository example:
 
 ```sh
-cargo run -p merman --features png --example example_05_raster_output
+cargo run -p merman --features png --example render_png
 ```
 
 If an application already owns SVG text, finalize it before calling low-level encoders. Those

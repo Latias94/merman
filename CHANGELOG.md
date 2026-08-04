@@ -39,6 +39,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### New and changed
 
+- Added root-level `merman::render_svg` and `render_svg_with_id` one-shot facades for the default deterministic SVG workflow, with typed `RenderSvgError::NoDiagram` handling; `HeadlessRenderer` remains the configured and reusable path. Reworked the Rust example catalog into self-contained, task-named files with no shared support module.
 - Separated oversized-output policy by format: SVG retains vector-specific limits, PNG/JPEG preflight final pixmap and embedded-image budgets, PDF owns page and filter-bitmap budgets, and Markdown batches reserve aggregate scheduling weight. The CLI exposes scoped raster, PDF, embedded-image, and batch-concurrency controls.
 - Centralized built-in SVG root emission around source-backed bounds, responsive/fixed sizing, accessibility metadata, escaping, and deferred finalization; fixture-scoped viewport pins and exact-label production tables are removed. #22
 - Added a generated 35-family Playground example catalog with source provenance and search, plus isolated Compare and Bench realms that expose explicit failures and downloadable local benchmark evidence.

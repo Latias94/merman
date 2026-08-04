@@ -42,6 +42,8 @@ let theme = HostTheme::new()
     .try_with_role(ThemeRole::Line, "#94a3b8")?;
 ```
 
+See [`presentation_profile.rs`](../../crates/merman/examples/presentation_profile.rs) for a ready-made profile and preset combination, or [`custom_presentation_theme.rs`](../../crates/merman/examples/custom_presentation_theme.rs) for a self-contained semantic-role mapping.
+
 Bundled theme IDs are `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, and `ayu-dark`. The One Dark, Gruvbox, and Ayu presets are Merman's semantic mappings inspired by those color systems; they are not claims of byte-for-byte identity with a particular editor distribution.
 
 Bundled presets keep normal and subtle text at a minimum 4.5:1 contrast against their canvas and structural line colors at a minimum 3:1. Palette labels independently choose black or white by the higher WCAG contrast ratio. Sequence actor and label-box variables follow the actor-specific roles, while Gantt done and critical tasks keep a readable neutral fill and express state through their semantic border color.
