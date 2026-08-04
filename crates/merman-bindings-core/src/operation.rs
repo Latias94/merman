@@ -1611,36 +1611,40 @@ mod tests {
 
     #[test]
     fn explicit_native_policy_follows_the_default_artifact_exposure() {
-        if crate::artifact_contract::DEFAULT_RUNTIME_POLICY
-            == crate::RuntimePolicyExposure::DeterministicOnly
-        {
+        assert_eq!(
+            crate::artifact_contract::DEFAULT_RUNTIME_POLICY,
+            crate::RuntimePolicyExposure::BindingOptions
+        );
+        let contract = crate::artifact_contract::default_artifact_contract();
+        let capabilities = contract.runtime_capabilities();
+        let missing_adapter = contract
+            .validate_native_runtime_policy()
+            .err()
+            .and_then(|error| error.capability_id());
+
+        if let Some(missing_adapter) = missing_adapter {
+            assert!(capabilities.system_adapter_ids.is_empty());
             let error = match BindingEngine::from_options(br#"{"runtime_policy":"native"}"#) {
-                Ok(_) => panic!("the default artifact accepted an unexposed native policy"),
+                Ok(_) => panic!("the default artifact accepted an incomplete native policy"),
                 Err(error) => error,
             };
-            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
-            assert_eq!(error.kind(), crate::BindingErrorKind::Generic);
-            assert_eq!(error.capability_id(), None);
-            assert!(error.message().contains("not exposed by target `native`"));
+            assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+            assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+            assert_eq!(error.capability_id(), Some(missing_adapter));
 
             let free_function_error =
                 crate::parse_json(b"flowchart TD\nA --> B", br#"{"runtime_policy":"native"}"#)
-                    .expect_err("free functions must honor the artifact policy exposure");
+                    .expect_err("free functions must honor the exact transport adapter set");
             assert_eq!(
                 free_function_error.status(),
-                BindingStatus::OptionsJsonError
+                BindingStatus::UnsupportedOperation
             );
-            assert_eq!(free_function_error.capability_id(), None);
-        } else {
             assert_eq!(
-                crate::artifact_contract::DEFAULT_RUNTIME_POLICY,
-                crate::RuntimePolicyExposure::BindingOptions
+                free_function_error.kind(),
+                crate::BindingErrorKind::MissingCapability
             );
-            assert!(
-                merman::runtime::RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS
-                    .iter()
-                    .all(|id| merman::runtime::compiled_system_adapter_ids().contains(id))
-            );
+            assert_eq!(free_function_error.capability_id(), Some(missing_adapter));
+        } else {
             let engine = BindingEngine::from_options(br#"{"runtime_policy":"native"}"#).unwrap();
             let result = engine
                 .execute(BindingOperationRequest {

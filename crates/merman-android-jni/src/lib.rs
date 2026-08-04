@@ -112,21 +112,22 @@ const ANDROID_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     #[cfg(feature = "math")]
     CapabilityKey::Math,
 ];
-const ANDROID_RUNTIME_POLICY: RuntimePolicyExposure = if cfg!(all(
-    feature = "system-clock",
-    feature = "system-timezone",
-    feature = "system-random"
-)) {
-    RuntimePolicyExposure::BindingOptions
-} else {
-    RuntimePolicyExposure::DeterministicOnly
-};
+const ANDROID_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
+    #[cfg(feature = "system-clock")]
+    CapabilityKey::SystemClock,
+    #[cfg(feature = "system-random")]
+    CapabilityKey::SystemRandom,
+    #[cfg(feature = "system-timezone")]
+    CapabilityKey::SystemTimezone,
+];
+const ANDROID_RUNTIME_POLICY: RuntimePolicyExposure = RuntimePolicyExposure::BindingOptions;
 static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
     .with_operations(ANDROID_OPERATIONS)
     .with_supplemental_capabilities(ANDROID_SUPPLEMENTAL_CAPABILITIES)
     .with_all_available_metadata()
     .with_payload_schemas(BindingPayloadSchemaKey::ALL)
     .with_constructor_services(ANDROID_CONSTRUCTOR_SERVICES)
+    .with_system_adapters(ANDROID_SYSTEM_ADAPTERS)
     .with_runtime_policy_exposure(ANDROID_RUNTIME_POLICY)
     .materialize();
 

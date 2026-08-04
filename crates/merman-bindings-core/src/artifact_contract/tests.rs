@@ -146,6 +146,17 @@ fn full_default_snapshot_matches_the_feature_owned_declaration() {
             .collect::<Vec<_>>(),
         DEFAULT_CONSTRUCTOR_SERVICES
     );
+    let expected_system_adapters = if DEFAULT_SYSTEM_ADAPTERS.len() == 3 {
+        DEFAULT_SYSTEM_ADAPTERS
+    } else {
+        &[]
+    };
+    assert_eq!(
+        DEFAULT_ARTIFACT_SNAPSHOT
+            .system_adapter_keys()
+            .collect::<Vec<_>>(),
+        expected_system_adapters
+    );
     assert_eq!(
         DEFAULT_ARTIFACT_SNAPSHOT.runtime_policy_exposure(),
         DEFAULT_RUNTIME_POLICY
@@ -305,6 +316,55 @@ fn binding_options_runtime_policy_is_native_target_only() {
 }
 
 #[test]
+fn system_adapter_declarations_fail_closed() {
+    let clock = CapabilityKey::SystemClock.compact_bit();
+    let timing = CapabilityKey::SystemTiming.compact_bit();
+
+    assert!(panics(|| {
+        validate_system_adapter_bits(
+            clock,
+            TargetKey::Web,
+            RuntimePolicyExposure::BindingOptions,
+            clock,
+        );
+    }));
+    assert!(panics(|| {
+        validate_system_adapter_bits(
+            clock,
+            TargetKey::Native,
+            RuntimePolicyExposure::DeterministicOnly,
+            clock,
+        );
+    }));
+    assert!(panics(|| {
+        validate_system_adapter_bits(
+            timing,
+            TargetKey::Native,
+            RuntimePolicyExposure::BindingOptions,
+            timing,
+        );
+    }));
+    assert!(panics(|| {
+        validate_system_adapter_bits(
+            clock,
+            TargetKey::Native,
+            RuntimePolicyExposure::BindingOptions,
+            0,
+        );
+    }));
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Native)
+            .with_system_adapters(&[CapabilityKey::SystemClock, CapabilityKey::SystemClock])
+            .materialize();
+    }));
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Native)
+            .with_system_adapters(&[])
+            .with_system_adapters(&[]);
+    }));
+}
+
+#[test]
 fn operation_admission_uses_the_validated_contract() {
     let semantic = crate::BindingOperationKind::from_id("semantic-json").unwrap();
     assert_eq!(
@@ -370,6 +430,48 @@ fn deterministic_only_contract_rejects_native_runtime_policy() {
 
     assert_eq!(error.status(), crate::BindingStatus::OptionsJsonError);
     assert!(error.message().contains("is not exposed"));
+}
+
+#[test]
+fn native_policy_reports_the_first_missing_transport_adapter() {
+    const CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
+        .with_operations(&[OperationKey::SemanticJson])
+        .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
+        .materialize();
+
+    let error = CONTRACT
+        .create_engine(br#"{"runtime_policy":"native"}"#)
+        .err()
+        .expect("native policy requires the transport-owned adapter set");
+
+    assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
+    assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+    assert_eq!(error.capability_id(), Some("system-clock"));
+}
+
+#[cfg(feature = "system-clock")]
+#[test]
+fn native_policy_uses_the_exact_transport_selection_after_feature_unification() {
+    const CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
+        .with_operations(&[OperationKey::SemanticJson])
+        .with_system_adapters(&[CapabilityKey::SystemClock])
+        .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
+        .materialize();
+
+    let error = CONTRACT
+        .create_engine(br#"{"runtime_policy":"native"}"#)
+        .err()
+        .expect("globally compiled adapters must not widen the transport contract");
+
+    assert!(
+        CONTRACT
+            .runtime_capabilities()
+            .system_adapter_ids
+            .is_empty()
+    );
+    assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
+    assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+    assert_eq!(error.capability_id(), Some("system-timezone"));
 }
 
 #[cfg(feature = "svg")]

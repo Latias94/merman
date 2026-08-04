@@ -112,6 +112,7 @@ impl BindingEngine {
         let (options, base_options) =
             common::parse_base_options_for_artifact(options_json, &artifact_contract)?;
         ensure_selected_runtime_policy(&options, BindingRuntimePolicy::Native)?;
+        artifact_contract.validate_native_runtime_policy()?;
         let runtime_policy =
             merman::runtime::RuntimePolicy::try_native().map_err(common::runtime_policy_error)?;
         Self::with_parsed_options_and_services(
@@ -748,15 +749,16 @@ fn validate_runtime_policy_exposure(
     artifact_contract: &ValidatedArtifactContract,
     options: &common::BindingOptions,
 ) -> Result<(), BindingError> {
-    if artifact_contract.runtime_policy_exposure() == RuntimePolicyExposure::DeterministicOnly
-        && options.runtime_policy == Some(BindingRuntimePolicy::Native)
-    {
+    if options.runtime_policy != Some(BindingRuntimePolicy::Native) {
+        return Ok(());
+    }
+    if artifact_contract.runtime_policy_exposure() == RuntimePolicyExposure::DeterministicOnly {
         return Err(BindingError::invalid_options_json(format!(
             "runtime_policy `native` is not exposed by target `{}`",
             artifact_contract.target().id()
         )));
     }
-    Ok(())
+    artifact_contract.validate_native_runtime_policy()
 }
 
 pub(crate) struct BindingOperationConfigs {
@@ -927,6 +929,28 @@ mod tests {
             _request: crate::HostTextMeasurementRequest<'_>,
         ) -> crate::HostMeasurementResult {
             panic!("engine construction must not invoke host text measurement")
+        }
+    }
+
+    #[test]
+    fn try_native_uses_the_exact_artifact_adapter_selection() {
+        let contract = crate::artifact_contract::default_artifact_contract();
+        let missing_adapter = contract
+            .validate_native_runtime_policy()
+            .err()
+            .and_then(|error| error.capability_id());
+
+        match (missing_adapter, BindingEngine::try_native(b"")) {
+            (Some(expected), Err(error)) => {
+                assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
+                assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+                assert_eq!(error.capability_id(), Some(expected));
+            }
+            (None, Ok(_engine)) => {}
+            (Some(expected), Ok(_)) => {
+                panic!("try_native accepted an artifact missing `{expected}`")
+            }
+            (None, Err(error)) => panic!("complete native artifact was rejected: {error:?}"),
         }
     }
 

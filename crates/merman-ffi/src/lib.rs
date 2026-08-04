@@ -239,21 +239,22 @@ const NATIVE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     #[cfg(feature = "math")]
     CapabilityKey::Math,
 ];
-const NATIVE_RUNTIME_POLICY: RuntimePolicyExposure = if cfg!(all(
-    feature = "system-clock",
-    feature = "system-timezone",
-    feature = "system-random"
-)) {
-    RuntimePolicyExposure::BindingOptions
-} else {
-    RuntimePolicyExposure::DeterministicOnly
-};
+const NATIVE_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
+    #[cfg(feature = "system-clock")]
+    CapabilityKey::SystemClock,
+    #[cfg(feature = "system-random")]
+    CapabilityKey::SystemRandom,
+    #[cfg(feature = "system-timezone")]
+    CapabilityKey::SystemTimezone,
+];
+const NATIVE_RUNTIME_POLICY: RuntimePolicyExposure = RuntimePolicyExposure::BindingOptions;
 static ARTIFACT_CONTRACT: ValidatedArtifactContract = ArtifactContractSpec::new(TargetKey::Native)
     .with_operations(NATIVE_OPERATIONS)
     .with_supplemental_capabilities(NATIVE_SUPPLEMENTAL_CAPABILITIES)
     .with_all_available_metadata()
     .with_payload_schemas(BindingPayloadSchemaKey::ALL)
     .with_constructor_services(NATIVE_CONSTRUCTOR_SERVICES)
+    .with_system_adapters(NATIVE_SYSTEM_ADAPTERS)
     .with_runtime_policy_exposure(NATIVE_RUNTIME_POLICY)
     .materialize();
 
@@ -3304,25 +3305,37 @@ mod tests {
         let mut token = 0;
         let status = unsafe { api.engine_new.unwrap()(&config, &mut token, &mut result) };
 
-        if NATIVE_RUNTIME_POLICY == RuntimePolicyExposure::DeterministicOnly {
-            assert_eq!(status, MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR);
+        assert_eq!(NATIVE_RUNTIME_POLICY, RuntimePolicyExposure::BindingOptions);
+        let capabilities = native_artifact_contract().runtime_capabilities();
+        let missing_adapter = [
+            CapabilityKey::SystemClock,
+            CapabilityKey::SystemTimezone,
+            CapabilityKey::SystemRandom,
+        ]
+        .into_iter()
+        .find(|adapter| !NATIVE_SYSTEM_ADAPTERS.contains(adapter))
+        .map(|adapter| adapter.id());
+
+        if let Some(missing_adapter) = missing_adapter {
+            assert!(capabilities.system_adapter_ids.is_empty());
+            for adapter_id in ["system-clock", "system-random", "system-timezone"] {
+                assert!(
+                    !capabilities
+                        .capability_ids
+                        .iter()
+                        .any(|id| id == &adapter_id)
+                );
+            }
+            assert_eq!(status, MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION);
             assert_eq!(token, 0);
             let error = result_json(&result);
-            assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_GENERIC);
-            assert_eq!(error["capability_id"], serde_json::Value::Null);
-            assert!(
-                error["message"]
-                    .as_str()
-                    .is_some_and(|message| message.contains("not exposed by target `native`"))
-            );
+            assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
+            assert_eq!(error["capability_id"], missing_adapter);
         } else {
-            assert_eq!(NATIVE_RUNTIME_POLICY, RuntimePolicyExposure::BindingOptions);
             assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
             assert_ne!(token, 0);
             assert_eq!(
-                native_artifact_contract()
-                    .runtime_capabilities()
-                    .system_adapter_ids,
+                capabilities.system_adapter_ids,
                 ["system-clock", "system-random", "system-timezone"]
             );
             assert_eq!(

@@ -858,6 +858,21 @@ mod tests {
             .materialize()
     }
 
+    fn expected_native_system_adapter_ids() -> Vec<&'static str> {
+        let mut ids = Vec::new();
+        #[cfg(feature = "system-clock")]
+        ids.push("system-clock");
+        #[cfg(feature = "system-random")]
+        ids.push("system-random");
+        #[cfg(feature = "system-timezone")]
+        ids.push("system-timezone");
+        if ids.len() != 3 {
+            ids.clear();
+        }
+        ids.sort_unstable();
+        ids
+    }
+
     #[test]
     fn supported_themes_exposes_core_theme_surface() {
         assert_eq!(
@@ -891,18 +906,10 @@ mod tests {
             capabilities.has_capability("ascii"),
             cfg!(feature = "ascii")
         );
-        let native_system_adapter_ids = merman::runtime::RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS;
-        let compiled_system_adapter_ids = merman::runtime::compiled_system_adapter_ids();
-        let mut expected_system_adapter_ids = if native_system_adapter_ids
-            .iter()
-            .all(|id| compiled_system_adapter_ids.contains(id))
-        {
-            native_system_adapter_ids.to_vec()
-        } else {
-            Vec::new()
-        };
-        expected_system_adapter_ids.sort_unstable();
-        assert_eq!(capabilities.system_adapter_ids, expected_system_adapter_ids);
+        assert_eq!(
+            capabilities.system_adapter_ids,
+            expected_native_system_adapter_ids()
+        );
         #[cfg(feature = "svg")]
         let (expected_layout_cytoscape, expected_layout_elk, expected_math) = (
             merman::svg::layout_cytoscape_available(),
@@ -990,17 +997,10 @@ mod tests {
     }
 
     #[test]
-    fn native_contract_exposes_only_the_atomic_binding_runtime_policy() {
+    fn native_contract_exposes_the_exact_transport_owned_runtime_adapters() {
         let transport = full_native_contract().runtime_capabilities();
-        let native_system_adapter_ids = merman::runtime::RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS;
         let compiled_system_adapter_ids = merman::runtime::compiled_system_adapter_ids();
-        let native_policy_available = native_system_adapter_ids
-            .iter()
-            .all(|id| compiled_system_adapter_ids.contains(id));
-        let mut expected_system_adapter_ids = native_policy_available
-            .then(|| native_system_adapter_ids.to_vec())
-            .unwrap_or_default();
-        expected_system_adapter_ids.sort_unstable();
+        let expected_system_adapter_ids = expected_native_system_adapter_ids();
 
         assert_eq!(transport.system_adapter_ids, expected_system_adapter_ids);
         for adapter_id in compiled_system_adapter_ids {
