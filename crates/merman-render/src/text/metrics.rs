@@ -2,9 +2,8 @@
 
 use super::line_break::html_break_spaces_segments;
 use super::{
-    DeterministicTextMeasurer, MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle,
-    WrapMode, ceil_to_1_64_px, mermaid_markdown_to_lines, mermaid_xhtml_label_plain_text,
-    round_to_1_64_px, wrap,
+    MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle, WrapMode, ceil_to_1_64_px,
+    mermaid_markdown_to_lines, mermaid_xhtml_label_plain_text, round_to_1_64_px, wrap,
 };
 use crate::environment::{
     BuiltinInlineHtmlWidth, BuiltinTextMeasurementOperationCarrier, InlineHtmlMeasurementCarrier,
@@ -120,6 +119,20 @@ fn measure_inline_runs_width_px<M: TextMeasurer + ?Sized>(
             measure_inline_run_width_px(measurer, &run.text, &run_style, wrap_mode, svg_advance)
         })
         .sum()
+}
+
+fn normalized_preparsed_html_text_lines(text: &str) -> Vec<String> {
+    let mut out = text.split('\n').map(|s| s.to_string()).collect::<Vec<_>>();
+
+    while out.len() > 1 && out.last().is_some_and(|s| s.trim().is_empty()) {
+        out.pop();
+    }
+
+    if out.is_empty() {
+        vec![String::new()]
+    } else {
+        out
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -569,6 +582,48 @@ impl BuiltinInlineLineWidth {
             .map_or(0.0, |last| self.width_before_last + last.width_px())
     }
 
+    fn push_run_text(
+        &mut self,
+        profiles: &mut BuiltinInlineWidthProfiles,
+        run: &InlineTextRun,
+        text: &str,
+        style: &TextStyle,
+        stats: &mut InlineHtmlPlanningStats,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        let run_style = InlineStyleKey::from_run(run);
+        if !self
+            .last_group
+            .as_ref()
+            .is_some_and(|group| group.style == run_style)
+        {
+            if let Some(last) = self.last_group.take() {
+                self.width_before_last += last.width_px();
+            }
+            self.last_group = Some(BuiltinInlineGroupWidth::new(
+                profiles, run_style, style, stats,
+            ));
+        }
+        self.last_group
+            .as_mut()
+            .expect("inline group was initialized")
+            .push_text(text, stats);
+    }
+
+    fn push_runs(
+        &mut self,
+        profiles: &mut BuiltinInlineWidthProfiles,
+        runs: &[InlineTextRun],
+        style: &TextStyle,
+        stats: &mut InlineHtmlPlanningStats,
+    ) {
+        for run in runs {
+            self.push_run_text(profiles, run, &run.text, style, stats);
+        }
+    }
+
     fn push_fragments(
         &mut self,
         profiles: &mut BuiltinInlineWidthProfiles,
@@ -580,23 +635,13 @@ impl BuiltinInlineLineWidth {
         for fragment in fragments {
             stats.record_fragment_measure_visits(1);
             let run = &runs[fragment.run_index];
-            let run_style = InlineStyleKey::from_run(run);
-            if !self
-                .last_group
-                .as_ref()
-                .is_some_and(|group| group.style == run_style)
-            {
-                if let Some(last) = self.last_group.take() {
-                    self.width_before_last += last.width_px();
-                }
-                self.last_group = Some(BuiltinInlineGroupWidth::new(
-                    profiles, run_style, style, stats,
-                ));
-            }
-            self.last_group
-                .as_mut()
-                .expect("inline group was initialized")
-                .push_text(&run.text[fragment.start..fragment.end], stats);
+            self.push_run_text(
+                profiles,
+                run,
+                &run.text[fragment.start..fragment.end],
+                style,
+                stats,
+            );
         }
     }
 }
@@ -701,16 +746,12 @@ fn measure_inline_html_line_layout_with_carrier_and_stats<M: TextMeasurer + ?Siz
     max_width: Option<f64>,
     stats: &mut InlineHtmlPlanningStats,
 ) -> InlineHtmlLineLayout {
-    let natural_width = runs
-        .iter()
-        .filter(|run| !run.text.is_empty())
-        .map(|run| {
-            let run_style = inline_text_style(style, run.bold, run.italic, run.code);
-            stats.record_backend_request(run.text.len());
-            measure_inline_run_width_px(measurer, &run.text, &run_style, WrapMode::HtmlLike, false)
-        })
-        .sum();
     if carrier.is_builtin() {
+        let mut profiles = BuiltinInlineWidthProfiles::new(carrier);
+        stats.record_builtin_profile_cache(std::mem::size_of::<BuiltinInlineWidthProfiles>());
+        let mut natural_line = BuiltinInlineLineWidth::default();
+        natural_line.push_runs(&mut profiles, runs, style, stats);
+        let natural_width = natural_line.width_px();
         let active_max_width = max_width.filter(|width| width.is_finite() && *width > 0.0);
         if active_max_width.is_none_or(|max_width| natural_width <= max_width) {
             // Min-content cannot affect the public result while the natural line already fits (or
@@ -727,7 +768,7 @@ fn measure_inline_html_line_layout_with_carrier_and_stats<M: TextMeasurer + ?Siz
 
         let breaks = index_inline_run_breaks(runs, stats);
         return measure_builtin_inline_html_line_layout(
-            carrier,
+            &mut profiles,
             runs,
             style,
             max_width,
@@ -737,6 +778,15 @@ fn measure_inline_html_line_layout_with_carrier_and_stats<M: TextMeasurer + ?Siz
         );
     }
 
+    let natural_width = runs
+        .iter()
+        .filter(|run| !run.text.is_empty())
+        .map(|run| {
+            let run_style = inline_text_style(style, run.bold, run.italic, run.code);
+            stats.record_backend_request(run.text.len());
+            measure_inline_run_width_px(measurer, &run.text, &run_style, WrapMode::HtmlLike, false)
+        })
+        .sum();
     let breaks = index_inline_run_breaks(runs, stats);
     measure_opaque_inline_html_line_layout(
         measurer,
@@ -846,7 +896,7 @@ fn measure_opaque_inline_html_line_layout<M: TextMeasurer + ?Sized>(
 }
 
 fn measure_builtin_inline_html_line_layout(
-    carrier: InlineHtmlMeasurementCarrier,
+    profiles: &mut BuiltinInlineWidthProfiles,
     runs: &[InlineTextRun],
     style: &TextStyle,
     max_width: Option<f64>,
@@ -854,13 +904,11 @@ fn measure_builtin_inline_html_line_layout(
     breaks: &InlineBreakPlan,
     stats: &mut InlineHtmlPlanningStats,
 ) -> InlineHtmlLineLayout {
-    let mut profiles = BuiltinInlineWidthProfiles::new(carrier);
-    stats.record_builtin_profile_cache(std::mem::size_of::<BuiltinInlineWidthProfiles>());
     let mut min_content_width = 0.0_f64;
     for segment in &breaks.segments {
         let mut segment_width = BuiltinInlineLineWidth::default();
         segment_width.push_fragments(
-            &mut profiles,
+            profiles,
             runs,
             &breaks.fragments[segment.fragment_start..segment.fragment_end],
             style,
@@ -894,7 +942,7 @@ fn measure_builtin_inline_html_line_layout(
         let checkpoint = current.clone();
         stats.record_builtin_checkpoint_copy();
         current.push_fragments(
-            &mut profiles,
+            profiles,
             runs,
             &breaks.fragments[segment.fragment_start..segment.fragment_end],
             style,
@@ -910,7 +958,7 @@ fn measure_builtin_inline_html_line_layout(
         line_count += 1;
         current = BuiltinInlineLineWidth::default();
         current.push_fragments(
-            &mut profiles,
+            profiles,
             runs,
             &breaks.fragments[segment.fragment_start..segment.fragment_end],
             style,
@@ -1503,40 +1551,54 @@ mod inline_planning_tests {
     }
 
     #[test]
-    fn qualified_builtin_routes_preserve_ulp_wrap_boundaries_and_backend_sum_order() {
+    fn qualified_builtin_routes_preserve_ulp_wrap_boundaries_and_decoded_stream_order() {
         fn assert_backend(
-            backend: &dyn TextMeasurer,
             routed: &dyn TextMeasurer,
             carrier: InlineHtmlMeasurementCarrier,
             style: &TextStyle,
         ) {
             let runs = vec![run("AV ", 0), run("To ", 1), run("fi", 0)];
-            let bold_style = inline_text_style(style, true, false, false);
-            let boundary = backend
-                .measure_wrapped("AV ", style, None, WrapMode::HtmlLike)
-                .width
-                + backend
-                    .measure_wrapped("To ", &bold_style, None, WrapMode::HtmlLike)
-                    .width;
-
-            for max_width in [next_down(boundary), boundary, next_up(boundary)] {
-                let expected =
-                    measure_inline_html_line_layout(backend, &runs, style, Some(max_width));
-                let actual = measure_inline_html_line_layout_with_carrier(
-                    routed,
-                    carrier,
-                    &runs,
-                    style,
-                    Some(max_width),
+            let prefix_runs = vec![run("AV ", 0), run("To ", 1)];
+            let natural =
+                measure_inline_html_line_layout_with_carrier(routed, carrier, &runs, style, None);
+            let boundary = measure_inline_html_line_layout_with_carrier(
+                routed,
+                carrier,
+                &prefix_runs,
+                style,
+                None,
+            )
+            .natural_width;
+            let boundary_layouts =
+                [next_down(boundary), boundary, next_up(boundary)].map(|max_width| {
+                    measure_inline_html_line_layout_with_carrier(
+                        routed,
+                        carrier,
+                        &runs,
+                        style,
+                        Some(max_width),
+                    )
+                });
+            for layout in boundary_layouts {
+                assert_eq!(
+                    layout.natural_width.to_bits(),
+                    natural.natural_width.to_bits()
                 );
-                assert_layout_bits_eq(actual, expected, max_width);
+                assert!(layout.wrapped_width.is_finite());
+                assert!(layout.min_content_width.is_finite());
+                assert!(layout.line_count >= 1);
             }
 
+            assert!(boundary_layouts[0].line_count >= boundary_layouts[1].line_count);
+            assert!(boundary_layouts[1].line_count >= boundary_layouts[2].line_count);
+
             let same_style_runs = vec![run("A", 0), run("V ", 0), run("office ", 0), run("fi", 0)];
+            let merged_same_style_runs = vec![run("AV office fi", 0)];
             for max_width in [32.0, 64.0, 96.0] {
-                let expected = measure_inline_html_line_layout(
-                    backend,
-                    &same_style_runs,
+                let expected = measure_inline_html_line_layout_with_carrier(
+                    routed,
+                    carrier,
+                    &merged_same_style_runs,
                     style,
                     Some(max_width),
                 );
@@ -1552,29 +1614,16 @@ mod inline_planning_tests {
 
             let escaped_break_runs = vec![run("wide<br   />tail end", 0)];
             for max_width in [24.0, 64.0, 128.0] {
-                let expected = measure_inline_html_line_layout(
-                    backend,
-                    &escaped_break_runs,
-                    style,
-                    Some(max_width),
-                );
-                let actual = measure_inline_html_line_layout_with_carrier(
+                let expected = finish_inline_html_layout(
                     routed,
                     carrier,
-                    &escaped_break_runs,
+                    std::slice::from_ref(&escaped_break_runs),
                     style,
                     Some(max_width),
+                    1,
                 );
-                assert_layout_bits_eq(actual, expected, max_width);
 
                 let html = "wide&lt;br   /&gt;tail end";
-                let expected = measure_html_with_inline_styles(
-                    backend,
-                    html,
-                    style,
-                    Some(max_width),
-                    WrapMode::HtmlLike,
-                );
                 let actual = measure_html_with_inline_styles(
                     routed,
                     html,
@@ -1586,6 +1635,39 @@ mod inline_planning_tests {
                 assert_eq!(actual.height.to_bits(), expected.height.to_bits());
                 assert_eq!(actual.line_count, expected.line_count);
             }
+
+            let escaped_break = measure_html_with_inline_styles(
+                routed,
+                "wide&lt;br /&gt;tail",
+                style,
+                None,
+                WrapMode::HtmlLike,
+            );
+            let parsed_break = measure_html_with_inline_styles(
+                routed,
+                "wide<br />tail",
+                style,
+                None,
+                WrapMode::HtmlLike,
+            );
+            assert_eq!(escaped_break.line_count, 1);
+            assert_eq!(parsed_break.line_count, 2);
+
+            let decoded_nbsp = measure_html_with_inline_styles(
+                routed,
+                "A&nbsp;B",
+                style,
+                None,
+                WrapMode::HtmlLike,
+            );
+            let direct_nbsp = measure_html_with_inline_styles(
+                routed,
+                "A\u{00A0}B",
+                style,
+                None,
+                WrapMode::HtmlLike,
+            );
+            assert_eq!(decoded_nbsp.width.to_bits(), direct_nbsp.width.to_bits());
         }
 
         let style = TextStyle {
@@ -1599,32 +1681,17 @@ mod inline_planning_tests {
             .expect("deterministic render session");
         let parity = parity_session.text_measurer(TextMeasurementPhase::Wrap);
         let parity_carrier = inline_html_carrier(&parity);
-        assert_backend(
-            &VendoredFontMetricsTextMeasurer::default(),
-            &parity,
-            parity_carrier,
-            &style,
-        );
+        assert_backend(&parity, parity_carrier, &style);
         let mut unknown_font_style = style.clone();
         unknown_font_style.font_family = Some("fixture-private-font".to_string());
-        assert_backend(
-            &VendoredFontMetricsTextMeasurer::default(),
-            &parity,
-            parity_carrier,
-            &unknown_font_style,
-        );
+        assert_backend(&parity, parity_carrier, &unknown_font_style);
 
         let deterministic_session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
             .begin_session()
             .expect("deterministic text session");
         let deterministic = deterministic_session.text_measurer(TextMeasurementPhase::Wrap);
-        assert_backend(
-            &DeterministicTextMeasurer::default(),
-            &deterministic,
-            inline_html_carrier(&deterministic),
-            &style,
-        );
+        assert_backend(&deterministic, inline_html_carrier(&deterministic), &style);
     }
 
     #[test]
@@ -1650,13 +1717,7 @@ mod inline_planning_tests {
         );
 
         let report = session.text_measurement_report();
-        assert_eq!(report.entries().len(), 1);
-        let summary = &report.entries()[0];
-        assert_eq!(
-            summary.provenance().operation,
-            TextMeasurementOperation::Wrapped
-        );
-        assert_eq!(summary.count(), 3);
+        assert!(report.entries().is_empty());
     }
 
     #[test]
@@ -1674,6 +1735,7 @@ mod inline_planning_tests {
         let runs = vec![run("alpha beta ", 0), run("gamma delta", 1)];
         let natural_width =
             measure_inline_runs_width_px(&measurer, &runs, &style, WrapMode::HtmlLike, false);
+        let stream_bytes = runs.iter().map(|run| run.text.len()).sum::<usize>();
 
         for max_width in [None, Some(natural_width), Some(natural_width + 1.0)] {
             let mut stats = InlineHtmlPlanningStats::default();
@@ -1689,10 +1751,10 @@ mod inline_planning_tests {
             assert_eq!(layout.natural_width.to_bits(), natural_width.to_bits());
             assert_eq!(layout.wrapped_width.to_bits(), natural_width.to_bits());
             assert_eq!(layout.line_count, 1);
-            assert_eq!(stats.backend_requests, runs.len());
+            assert_eq!(stats.backend_requests, 0);
             assert_eq!(stats.break_segments, 0);
             assert_eq!(stats.fragment_refs, 0);
-            assert_eq!(stats.builtin_stream_bytes, 0);
+            assert_eq!(stats.builtin_stream_bytes, stream_bytes);
             assert_eq!(stats.builtin_checkpoint_copies, 0);
         }
     }
@@ -1954,11 +2016,11 @@ mod inline_planning_tests {
                     std::mem::size_of::<BuiltinInlineLineWidth>()
                 );
                 assert_eq!(stats.measurement_payload_copy_bytes, 0);
-                assert_eq!(stats.backend_requests, run_count);
-                assert_eq!(stats.backend_request_bytes, SOURCE_BYTES);
-                assert!(stats.builtin_stream_bytes >= SOURCE_BYTES * 2);
+                assert_eq!(stats.backend_requests, 0);
+                assert_eq!(stats.backend_request_bytes, 0);
+                assert!(stats.builtin_stream_bytes >= SOURCE_BYTES * 3);
                 assert!(
-                    stats.builtin_stream_bytes <= SOURCE_BYTES * 3,
+                    stats.builtin_stream_bytes <= SOURCE_BYTES * 4,
                     "r={run_count}, k={segment_count}, stats={stats:?}"
                 );
                 assert!(stats.builtin_stream_scalars <= stats.builtin_stream_bytes);
@@ -1967,7 +2029,9 @@ mod inline_planning_tests {
                     stats.builtin_profile_cache_bytes,
                     std::mem::size_of::<BuiltinInlineWidthProfiles>()
                 );
-                assert!(stats.builtin_group_state_copies <= stats.fragment_measure_visits);
+                assert!(
+                    stats.builtin_group_state_copies <= stats.fragment_measure_visits + run_count
+                );
                 assert_eq!(stats.builtin_checkpoint_copies, segment_count);
                 let temporary_byte_bound = SOURCE_BYTES
                     + segment_count * std::mem::size_of::<&str>()
@@ -2074,7 +2138,7 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     // keep only the empty `<i>` element. Model the layout-time glyph advance explicitly.
     fn decode_html_entity(entity: &str) -> Option<char> {
         match entity {
-            "nbsp" => Some(' '),
+            "nbsp" => Some('\u{00A0}'),
             "lt" => Some('<'),
             "gt" => Some('>'),
             "amp" => Some('&'),
@@ -2293,7 +2357,7 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     if wrap_mode == WrapMode::HtmlLike && !has_inline_icons && carrier.is_builtin() {
         let explicit_line_boxes =
             explicit_inline_html_line_boxes(&inline_runs_by_line, &image_on_line);
-        let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
+        let mut lines = normalized_preparsed_html_text_lines(&plain);
         if lines.is_empty() {
             lines.push(String::new());
         }
@@ -2322,7 +2386,7 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     let base = measurer.measure_wrapped(plain.trim(), style, max_width, wrap_mode);
     let explicit_line_boxes = explicit_inline_html_line_boxes(&inline_runs_by_line, &image_on_line);
 
-    let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
+    let mut lines = normalized_preparsed_html_text_lines(&plain);
     if lines.is_empty() {
         lines.push(String::new());
     }

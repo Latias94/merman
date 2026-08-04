@@ -1,7 +1,6 @@
 #![cfg(feature = "layout-cytoscape")]
 
 use merman_core::{Engine, MermaidConfig, ParseOptions};
-use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
@@ -11,6 +10,7 @@ use merman_render::family::{self, RenderFamilyKind};
 use merman_render::model::ArchitectureDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::TextMetrics;
+use merman_render::{LayoutOptions, RenderResourcePolicy};
 use regex::Regex;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -109,14 +109,24 @@ fn prepare_architecture_text_with_engine(
     engine: &Engine,
     text: &str,
 ) -> family::FamilyRenderArtifact {
+    prepare_architecture_text_with_engine_and_environment(
+        engine,
+        text,
+        RenderEnvironment::deterministic(),
+    )
+}
+
+fn prepare_architecture_text_with_engine_and_environment(
+    engine: &Engine,
+    text: &str,
+    environment: RenderEnvironment,
+) -> family::FamilyRenderArtifact {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .expect("begin render session");
+    let session = environment.begin_session().expect("begin render session");
     family::prepare(parsed, &layout_options, session).expect("layout ok")
 }
 
@@ -257,7 +267,12 @@ fn architecture_svg_handles_deep_group_chain() {
     let engine = Engine::new();
     for depth in [1, DEPTH] {
         let source = deep_group_chain_diagram(depth);
-        let artifact = prepare_architecture_text_with_engine(&engine, &source);
+        let artifact = prepare_architecture_text_with_engine_and_environment(
+            &engine,
+            &source,
+            RenderEnvironment::deterministic()
+                .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input()),
+        );
         let options = SvgRenderOptions {
             diagram_id: Some("architecture-deep-groups".to_string()),
             ..Default::default()

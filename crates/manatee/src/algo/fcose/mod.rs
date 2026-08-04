@@ -581,8 +581,8 @@ pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Size
 
     let schedule = FcoseIterationSchedule::from_indexed_graph(opts.num_iter, graph, opts.rerun)?;
     // The configured CoSE schedule is known before SimGraph allocation. Check it as one
-    // non-consuming tranche; convergence-dependent spectral work remains exactly charged by its
-    // owner before each topology, matrix, SVD, and power-iteration tranche.
+    // non-consuming tranche; geometry-dependent repulsion work and convergence-dependent spectral
+    // work are charged by their owners before each allocation or scan tranche.
     work_control.check(schedule.maximum_work_units())?;
     work_control.charge(schedule.setup_work_units())?;
     let mut sim = SimGraph::from_indexed(graph);
@@ -2665,7 +2665,8 @@ impl SimGraph {
                     &mut self.nodes,
                     repulsion_range,
                     &all_nodes_in_layout_order,
-                );
+                    work_control,
+                )?;
             }
 
             if repulsion_range.is_finite() && repulsion_range > 0.0 {
@@ -2680,13 +2681,17 @@ impl SimGraph {
                                 repulsion_range,
                                 &mut self.surrounding_seen,
                                 &mut surrounding_seen_generation,
-                            );
+                                work_control,
+                            )?;
                         } else {
                             self.nodes[i].surrounding.clear();
                         }
                     }
 
                     let surrounding = std::mem::take(&mut self.nodes[i].surrounding);
+                    if !surrounding.is_empty() {
+                        work_control.charge(surrounding.len())?;
+                    }
                     let node_i_center_x = self.nodes[i].center_x();
                     let node_i_center_y = self.nodes[i].center_y();
                     for &j in &surrounding {
@@ -2721,6 +2726,7 @@ impl SimGraph {
                     let node_i_center_x = self.nodes[i].center_x();
                     let node_i_center_y = self.nodes[i].center_y();
                     for j in (i + 1)..self.nodes.len() {
+                        work_control.charge(1)?;
                         if self.nodes[i].owner_idx != self.nodes[j].owner_idx {
                             continue;
                         }
@@ -4333,16 +4339,25 @@ mod tests {
     struct RecordingWorkControl {
         charges: Vec<usize>,
         reject_after: Option<usize>,
+        max_total: Option<usize>,
+        used: usize,
     }
 
     impl WorkControl for RecordingWorkControl {
         fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            if self
+                .max_total
+                .is_some_and(|max| self.used.saturating_add(units) > max)
+            {
+                return Err(WorkFailure::Interrupted);
+            }
             if self
                 .reject_after
                 .is_some_and(|accepted| self.charges.len() >= accepted)
             {
                 return Err(WorkFailure::Interrupted);
             }
+            self.used = self.used.saturating_add(units);
             self.charges.push(units);
             Ok(())
         }
@@ -4470,7 +4485,7 @@ mod tests {
     }
 
     #[test]
-    fn controlled_layout_charges_each_executed_iteration_once() {
+    fn controlled_layout_skips_grid_refresh_when_no_repulsion_pair_exists() {
         let graph = IndexedGraph {
             nodes: vec![IndexedNode {
                 parent: None,
@@ -4503,7 +4518,7 @@ mod tests {
     }
 
     #[test]
-    fn controlled_layout_preflights_the_complete_schedule_before_kernel_allocation() {
+    fn controlled_layout_preflights_the_configured_schedule_before_kernel_allocation() {
         let graph = IndexedGraph {
             nodes: vec![IndexedNode {
                 parent: None,
@@ -4593,6 +4608,7 @@ mod tests {
         let mut control = RecordingWorkControl {
             charges: Vec::new(),
             reject_after: Some(0),
+            ..Default::default()
         };
 
         let error = layout_indexed_with_random_policy_and_work_control(
@@ -4657,6 +4673,7 @@ mod tests {
         let mut control = RecordingWorkControl {
             charges: Vec::new(),
             reject_after: Some(1),
+            ..Default::default()
         };
 
         let error = layout_indexed_with_random_policy_and_work_control(
@@ -5239,7 +5256,9 @@ mod tests {
             &mut nodes,
             repulsion_range,
             &node_order,
+            &mut RecordingWorkControl::default(),
         )
+        .expect("grid work")
         .expect("grid");
 
         let mut processed_generation = vec![0u32; nodes.len()];
@@ -5254,7 +5273,9 @@ mod tests {
             repulsion_range,
             &mut surrounding_seen,
             &mut surrounding_seen_generation,
-        );
+            &mut RecordingWorkControl::default(),
+        )
+        .expect("refresh surrounding");
         assert_eq!(nodes[0].surrounding, vec![1]);
 
         processed_generation[0] = current_processed_generation;
@@ -5266,11 +5287,44 @@ mod tests {
             repulsion_range,
             &mut surrounding_seen,
             &mut surrounding_seen_generation,
-        );
+            &mut RecordingWorkControl::default(),
+        )
+        .expect("refresh surrounding");
         assert!(
             !nodes[1].surrounding.contains(&0),
             "node1 should not include already-processed node0"
         );
+    }
+
+    #[test]
+    fn repulsion_grid_rejects_cell_allocation_before_resize() {
+        let repulsion_range = 1.0;
+        let mut nodes = vec![
+            node_at(0.0, 0.0, 10.0, 10.0),
+            node_at(20.0, 0.0, 10.0, 10.0),
+        ];
+        let node_order = [0usize, 1];
+        let mut work_control = RecordingWorkControl {
+            max_total: Some(99),
+            ..Default::default()
+        };
+
+        let error = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            10.0,
+            10.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+            &mut work_control,
+        )
+        .unwrap_err();
+
+        assert_eq!(error, WorkFailure::Interrupted);
+        assert!(work_control.charges.is_empty());
+        assert_eq!(work_control.used, 0);
     }
 
     #[test]
@@ -5935,18 +5989,27 @@ impl RepulsionGrid {
         &self.cells[self.idx(x, y)]
     }
 
-    fn reset(&mut self, size_x: i32, size_y: i32) {
+    fn reset<W: WorkControl + ?Sized>(
+        &mut self,
+        size_x: i32,
+        size_y: i32,
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
         self.size_x = size_x;
         self.size_y = size_y;
-        let target = (size_x as usize) * (size_y as usize);
+        let target = (usize::try_from(size_x).map_err(|_| WorkFailure::ArithmeticOverflow)?)
+            .checked_mul(usize::try_from(size_y).map_err(|_| WorkFailure::ArithmeticOverflow)?)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        work_control.charge(self.cells.len().max(target))?;
         self.cells.resize_with(target, Vec::new);
         for cell in &mut self.cells {
             cell.clear();
         }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn build_or_reuse(
+    fn build_or_reuse<W: WorkControl + ?Sized>(
         grid: Option<Self>,
         left: f64,
         top: f64,
@@ -5955,21 +6018,22 @@ impl RepulsionGrid {
         nodes: &mut [SimNode],
         repulsion_range: f64,
         node_order: &[usize],
-    ) -> Option<Self> {
-        if nodes.is_empty() {
-            return None;
+        work_control: &mut W,
+    ) -> std::result::Result<Option<Self>, WorkFailure> {
+        if nodes.is_empty() || node_order.len() <= 1 {
+            return Ok(None);
         }
         if !repulsion_range.is_finite() || repulsion_range <= 0.0 {
-            return None;
+            return Ok(None);
         }
         if !(left.is_finite() && top.is_finite() && right.is_finite() && bottom.is_finite()) {
-            return None;
+            return Ok(None);
         }
 
         let w = (right - left).max(1.0);
         let h = (bottom - top).max(1.0);
         if !(w.is_finite() && h.is_finite()) {
-            return None;
+            return Ok(None);
         }
 
         // layout-base `FDLayout.calcGrid`: size = ceil((graph.right - graph.left) / repulsionRange).
@@ -5980,7 +6044,7 @@ impl RepulsionGrid {
             size_y,
             cells: Vec::new(),
         });
-        grid.reset(size_x, size_y);
+        grid.reset(size_x, size_y, work_control)?;
 
         // Mirror layout-base `addNodeToGrid`: push the node into every cell that intersects the
         // node's rect, using top-left anchored coordinates.
@@ -6012,16 +6076,17 @@ impl RepulsionGrid {
                         continue;
                     }
                     let cell_idx = (gx as usize) * (size_y as usize) + (gy as usize);
+                    work_control.charge(1)?;
                     grid.cells[cell_idx].push(idx);
                 }
             }
         }
 
-        Some(grid)
+        Ok(Some(grid))
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn refresh_node_surrounding(
+    fn refresh_node_surrounding<W: WorkControl + ?Sized>(
         &self,
         node_idx: usize,
         nodes: &mut [SimNode],
@@ -6030,9 +6095,10 @@ impl RepulsionGrid {
         repulsion_range: f64,
         surrounding_seen: &mut [u32],
         surrounding_seen_generation: &mut u32,
-    ) {
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
         if node_idx >= nodes.len() {
-            return;
+            return Ok(());
         }
         let start_x = nodes[node_idx].grid_start_x;
         let finish_x = nodes[node_idx].grid_finish_x;
@@ -6053,6 +6119,7 @@ impl RepulsionGrid {
         surrounding.clear();
         *surrounding_seen_generation = surrounding_seen_generation.wrapping_add(1);
         if *surrounding_seen_generation == 0 {
+            work_control.charge(surrounding_seen.len())?;
             surrounding_seen.fill(0);
             *surrounding_seen_generation = 1;
         }
@@ -6065,7 +6132,11 @@ impl RepulsionGrid {
                 if gy < 0 || gy >= self.size_y {
                     continue;
                 }
-                for &other in self.cell(gx, gy) {
+                let cell = self.cell(gx, gy);
+                if !cell.is_empty() {
+                    work_control.charge(cell.len())?;
+                }
+                for &other in cell {
                     if other == node_idx {
                         continue;
                     }
@@ -6098,6 +6169,7 @@ impl RepulsionGrid {
                 }
             }
         }
+        Ok(())
     }
 }
 

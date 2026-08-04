@@ -155,6 +155,7 @@ impl SourcePhaseDiagnostics {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
     SourceImport(#[from] merman_elk_layered::ImportError),

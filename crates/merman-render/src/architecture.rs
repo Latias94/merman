@@ -76,10 +76,15 @@ fn architecture_relative_placement_constraints<'a>(
     node_index_by_id: &FxHashMap<&'a str, usize>,
     gap: f64,
     declared_pairs: &FxHashSet<(usize, usize)>,
-) -> Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> {
+    work_meter: &OperationWorkMeter,
+) -> Result<Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint>> {
     let mut relative: Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> = Vec::new();
 
     for spatial_map in spatial_maps {
+        if spatial_map.len() <= 1 {
+            continue;
+        }
+        work_meter.charge(spatial_map.len())?;
         let mut inv: FxHashMap<(i32, i32), &str> = FxHashMap::default();
         inv.reserve(spatial_map.len().saturating_mul(2));
         for (id, (x, y)) in spatial_map.iter() {
@@ -90,6 +95,7 @@ fn architecture_relative_placement_constraints<'a>(
             std::collections::VecDeque::new();
         let mut visited_pos: FxHashSet<(i32, i32)> = FxHashSet::default();
         visited_pos.reserve(spatial_map.len().saturating_mul(2));
+        work_meter.charge(1)?;
         pos_queue.push_back((0, 0));
 
         // Preserve Mermaid's direction iteration order: L, R, T, B.
@@ -97,6 +103,7 @@ fn architecture_relative_placement_constraints<'a>(
             [('L', (-1, 0)), ('R', (1, 0)), ('T', (0, 1)), ('B', (0, -1))];
 
         while let Some(curr) = pos_queue.pop_front() {
+            work_meter.charge(1)?;
             // Mermaid marks the current grid position as visited but does not skip duplicate
             // queued positions on pop. That preserves duplicate relative constraints when a
             // node is reached through two paths before its neighbors are visited.
@@ -105,6 +112,7 @@ fn architecture_relative_placement_constraints<'a>(
                 continue;
             };
             for (dir, (sx, sy)) in DIRS {
+                work_meter.charge(1)?;
                 let new_pos = (curr.0 + sx, curr.1 + sy);
                 let Some(&new_id) = inv.get(&new_pos) else {
                     continue;
@@ -112,6 +120,7 @@ fn architecture_relative_placement_constraints<'a>(
                 if visited_pos.contains(&new_pos) {
                     continue;
                 }
+                work_meter.charge(1)?;
                 pos_queue.push_back(new_pos);
                 let Some(&curr_idx) = node_index_by_id.get(curr_id) else {
                     continue;
@@ -158,12 +167,13 @@ fn architecture_relative_placement_constraints<'a>(
                     },
                     _ => continue,
                 };
+                work_meter.charge(1)?;
                 relative.push(c);
             }
         }
     }
 
-    relative
+    Ok(relative)
 }
 
 fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
@@ -618,6 +628,7 @@ struct ArchitectureFcoseInputPlanInput<'m, 'a> {
     fcose_node_separation: f64,
     fcose_num_iter: usize,
     fcose_random_policy: manatee::FcoseRandomPolicy,
+    work_meter: &'m OperationWorkMeter,
 }
 
 fn build_architecture_fcose_input_plan<'a>(
@@ -636,6 +647,7 @@ fn build_architecture_fcose_input_plan<'a>(
         fcose_node_separation,
         fcose_num_iter,
         fcose_random_policy,
+        work_meter,
     } = input;
 
     if layout_nodes.len() != model.nodes.len() {
@@ -934,7 +946,8 @@ fn build_architecture_fcose_input_plan<'a>(
         &node_index_by_id,
         gap,
         &declared_pairs,
-    ));
+        work_meter,
+    )?);
 
     let mut edges: Vec<manatee::algo::fcose::IndexedEdge> = Vec::new();
     let mut default_edge_length_sum = 0.0f64;
@@ -1338,6 +1351,7 @@ fn layout_architecture_diagram_model(
             fcose_node_separation,
             fcose_num_iter,
             fcose_random_policy,
+            work_meter,
         })?;
         let mut work_control = ArchitectureManateeWorkControl::new(work_meter);
         let result = manatee::algo::fcose::layout_indexed_with_random_policy_and_work_control(
@@ -1591,6 +1605,9 @@ mod tests {
         node_bounds_extras: &rustc_hash::FxHashMap<&'a str, manatee::BoundsExtras>,
     ) -> super::ArchitectureFcoseInputPlan<'a> {
         let measurer = crate::text::DeterministicTextMeasurer::default();
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
         super::build_architecture_fcose_input_plan(super::ArchitectureFcoseInputPlanInput {
             model,
             layout_nodes,
@@ -1609,6 +1626,7 @@ mod tests {
             )
             .with_seed_offset(0)
             .with_reset_seed_each_run(true),
+            work_meter: &meter,
         })
         .expect("build architecture FCoSE input plan")
     }
@@ -1764,6 +1782,9 @@ mod tests {
                 fcose_node_separation: 75.0,
                 fcose_num_iter: 2500,
                 fcose_random_policy: random_policy,
+                work_meter: &crate::resources::OperationWorkMeter::new(
+                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                ),
             })
             .expect("build Architecture FCoSE input plan");
 
@@ -2135,12 +2156,17 @@ mod tests {
             node_index_by_id.insert(id, idx);
         }
 
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
         let constraints = super::architecture_relative_placement_constraints(
             &[spatial_map],
             &node_index_by_id,
             120.0,
             &rustc_hash::FxHashSet::default(),
-        );
+            &meter,
+        )
+        .unwrap();
 
         assert_eq!(constraints.len(), 9);
         assert_eq!(
@@ -2159,5 +2185,42 @@ mod tests {
             2,
             "Mermaid processes the duplicate queued join position before cache is visited",
         );
+    }
+
+    #[test]
+    fn architecture_relative_constraints_charge_before_queue_growth() {
+        use crate::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+        };
+
+        let mut spatial_map = indexmap::IndexMap::new();
+        spatial_map.insert("origin", (0, 0));
+        spatial_map.insert("right", (1, 0));
+
+        let mut node_index_by_id = rustc_hash::FxHashMap::default();
+        node_index_by_id.insert("origin", 0);
+        node_index_by_id.insert("right", 1);
+
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 6)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let error = super::architecture_relative_placement_constraints(
+            &[spatial_map],
+            &node_index_by_id,
+            120.0,
+            &rustc_hash::FxHashSet::default(),
+            &meter,
+        )
+        .unwrap_err();
+
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected layout work resource error");
+        };
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, 7);
+        assert_eq!(error.max, 6);
+        assert_eq!(meter.used(), 6);
     }
 }

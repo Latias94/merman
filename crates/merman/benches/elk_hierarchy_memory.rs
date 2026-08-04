@@ -258,6 +258,8 @@ fn build_flowchart(depth: u32) -> Result<String, ProbeError> {
     for _ in 0..depth {
         source.push_str("end\n");
     }
+    source.push_str("root[\"Root\"]\n");
+    source.push_str("terminal --> root\n");
     Ok(source)
 }
 

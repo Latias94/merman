@@ -67,6 +67,13 @@ fn flowchart_html_text_extraction_preserves_bare_comparison_symbols() {
 }
 
 #[test]
+fn flowchart_html_text_extraction_preserves_nbsp_as_non_breaking_space() {
+    let plain =
+        crate::flowchart::flowchart_label_plain_text_for_layout("left&nbsp;right", "text", true);
+    assert_eq!(plain, "left\u{00A0}right");
+}
+
+#[test]
 fn flowchart_html_unicode_entities_use_finite_fallback_metrics() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

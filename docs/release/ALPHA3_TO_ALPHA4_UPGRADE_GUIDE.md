@@ -189,10 +189,33 @@ The main changelog groups alpha.4 by user outcome. Source and embedding integrat
 - Import ELK configuration and guarded pipeline entry points from the `merman-elk-layered` crate root; phase modules are private and require operation-seed resolution.
 - Configure text measurement, math, icons, clock, randomness, and resource policy through `RenderEnvironment`. Binding and Web JSON use `host_theme.theme_variables`, `environment.text_measurement`, and `environment.math_renderer`; `host_theme.themeVariables`, `layout.text_measurer`, and `layout.math_renderer` are rejected.
 - Replace field-based `RenderResourceLimits` with sealed `RenderResourcePolicy`. Select `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`, then apply validated overrides by stable limit id.
+- Treat low-level Graphlib, Manatee, and ELK error enums as non-exhaustive. Downstream `match`
+  expressions over `dugong_graphlib::GraphError`, `manatee::Error`, `manatee::WorkFailure`, or
+  `merman_layout_elk::Error` need a fallback arm; construct integrations through documented
+  methods instead of assuming the current variant list is closed.
 - Implement custom wrapped text measurement through `measure_wrapped` using the complete `TextStyle`, including `font_style`. The `measure_wrapped_raw` and heuristic-only `wrap_text_lines_px` APIs are removed; use `wrap_text_lines_measurer` when callers need explicit wrapping.
 - Rename `LayoutOptions.viewport_width` / `viewport_height` and matching binding/Web fields to `container_width` / `container_height`; Typst uses `container-width` / `container-height`. CLI users continue to use `--width` / `--height`.
 - Remove `LayoutOptions::use_manatee_layout`; select the `layout-cytoscape` capability instead. Remove `FlowchartElkBackend`; Flowchart ELK always uses the Mermaid adapter and Eclipse ELK layered implementation.
 - Use documented kebab-case binding values such as `resvg-safe`, `strip-existing-important`, `trusted-native`, and `unbounded-for-trusted-input`; underscore and shorthand aliases are removed.
+
+### Layout parity and resource behavior
+
+- Graphlib node and compound-child iteration follows JavaScript `Object.keys` order. Canonical
+  array-index string ids such as `"0"` or `"42"` enumerate before ordinary string ids, sorted
+  numerically; ordinary ids retain creation order. Code that used `node_ids()` as pure insertion
+  order should either avoid array-index ids or sort explicitly for its own domain.
+- Architecture layout now meters spatial-map relative-placement BFS work as it queues duplicate
+  Mermaid-compatible positions and materializes constraints. Inputs that relied on a low
+  `max_layout_work_units` override may now fail earlier with a layout resource-limit error instead
+  of growing an unbounded constraint vector.
+- FCoSE layout now charges pairwise repulsion work at runtime and charges grid allocation, grid
+  insertion, and surrounding-list scans before those structures grow. Tight custom resource
+  ceilings should be recalibrated against the diagrams they actually admit.
+- Built-in HTML label measurement now treats escaped `&lt;br&gt;` as literal text and decodes
+  `&nbsp;` to U+00A0. Real `<br>` tags still produce line breaks during HTML parsing.
+- The ELK hierarchy memory probe now includes a real deepest-node-to-root cross-scope edge, so its
+  `rendered_edge_count` semantic projection covers boundary-section rendering instead of an
+  edge-free nested-node workload.
 
 ### Web editor and measurement APIs
 

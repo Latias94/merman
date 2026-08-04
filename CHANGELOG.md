@@ -32,6 +32,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Replaced the C, Android, and Flutter ABI 2 path with generated ABI 3, Options JSON schema 2, opaque reusable engines, generic operation dispatch, typed missing-capability errors, and runtime capability/resource catalogs. Apple and Python callers must upgrade each generated UniFFI wrapper with its matching native artifact; generic UniFFI options now belong in `MermanOperationRequest.options_json`.
 - Reworked Rust analysis and editor ownership around sealed `AnalysisGeneration` values, explicit ready/rejected outcomes, parser-only facts schema 1, private snapshot/diagnostic policies, and cancellable shared-source entry points. See the [Rust and embedding API migration](docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md#rust-and-embedding-api-migration) section for exact type, method, builder, and symbol-search replacements.
 - Replaced low-level rendering entry points and independent layout/SVG service selection with `HeadlessRenderer`, one `RenderSession`, and operation-owned `RenderEnvironment` policy. Migrate viewport fields to `container_width` / `container_height`, use descriptor-driven resource profiles, and remove legacy Manatee and Flowchart ELK backend selectors.
+- Marked low-level Graphlib, Manatee, and ELK error enums as non-exhaustive; downstream exhaustive
+  matches over those implementation crates need a fallback arm.
 - Reworked embedded LSP ownership around the ordered `MermanLspService`, a one-time `MermanClientSocket::split()`, and bounded control/ordinary admission. Enable the `stdio` feature explicitly when building the bundled server, and send catalog/schema requests through the ordered service. #26
 - Typst calls now always enforce the `constrained` resource policy; caller-provided trusted or unbounded profiles and numeric overrides are replaced at the plugin boundary.
 
@@ -52,6 +54,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Fixed Block connectors to terminate on visible shape geometry, enforced Flowchart limits before Dagre/ELK/Swimlane dispatch, and preserved target-date daylight-saving semantics for Gantt without overflow at fixed-offset boundaries.
 - Fixed `initMerman({ wasm })` to accept a URL, `Response`, byte buffer, or compiled `WebAssembly.Module`; callers no longer need wasm-bindgen's deprecated `{ module_or_path }` envelope.
 - Prevented valid diagram ids from colliding with deferred root `viewBox` or `max-width` placeholders during SVG emission.
+- Hardened layout resource accounting for Architecture spatial-map constraints and Manatee FCoSE
+  repulsion/grid work, and fixed built-in HTML measurement so escaped `&lt;br&gt;` remains literal
+  text while `&nbsp;` decodes to a non-breaking space. The ELK hierarchy memory probe now also
+  renders a cross-scope boundary edge instead of only deep nested nodes.
 - Polished the Playground with persistent editor/config/preview state, generated example search, keyboard-correct tabs and dialogs, synchronized system theme, safe-area and dynamic-viewport sizing, local Monaco assets, and accessible focus behavior.
 - Made LSP capability negotiation accurate for snippets, markup, diagnostics, code actions, semantic tokens, and document-only symbols; stdio now keeps protocol stdout clean and follows the shutdown/exit lifecycle. #26
 

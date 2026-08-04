@@ -61,7 +61,7 @@ pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str>
 
     fn decode_html_entity(entity: &str) -> Option<char> {
         match entity {
-            "nbsp" => Some(' '),
+            "nbsp" => Some('\u{00A0}'),
             "lt" => Some('<'),
             "gt" => Some('>'),
             "amp" => Some('&'),

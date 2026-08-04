@@ -180,6 +180,7 @@ impl ObjectKeyOrder {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum GraphError {
     NamedEdgeInNonMultigraph,
     ParentCycle { child_ix: usize, parent_ix: usize },

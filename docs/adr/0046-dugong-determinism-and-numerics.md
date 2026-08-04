@@ -25,18 +25,23 @@ matching upstream numeric behavior closely enough to pass ported tests.
 
 ### Stable ordering rules
 
-To match upstream behavior (stable JS sorts + insertion-ordered containers):
+To match upstream behavior (stable JS sorts + JavaScript object-key containers):
 
 - use stable sorts in all steps where ordering affects layout outcomes.
 - when two items compare equal under the primary key, preserve input order (stable sort) or apply
   an explicit deterministic tie-breaker derived from stable IDs.
 - never rely on hash map iteration order; node and edge iteration must be deterministic.
+- Graphlib node and compound-child enumeration follows ECMAScript `Object.keys` order, not pure
+  Rust insertion order: canonical array-index string ids in `0..=2^32 - 2` enumerate first in
+  numeric order, then ordinary string ids enumerate by creation order.
 
 ### Deterministic data structures
 
 Implementation should ensure:
 
-- `nodes()` and `edges()` iteration order is deterministic (prefer insertion order semantics).
+- `nodes()` and compound `children()` iteration must preserve Graphlib-compatible object-key order;
+  ordinary string ids keep creation order, while array-index ids use the JavaScript numeric prefix.
+- `edges()` iteration order is deterministic and follows Graphlib insertion-order edge storage.
 - internal maps used for algorithm steps either:
   - iterate over sorted keys, or
   - are explicitly order-preserving containers.

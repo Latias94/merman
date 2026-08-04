@@ -382,7 +382,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
 ) -> String {
     fn decode_html_entity(entity: &str) -> Option<char> {
         match entity {
-            "nbsp" => Some(' '),
+            "nbsp" => Some('\u{00A0}'),
             "lt" => Some('<'),
             "gt" => Some('>'),
             "amp" => Some('&'),
@@ -506,10 +506,9 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
         let mut last_nl = false;
         for ch in out.chars() {
             if ch == '\u{00A0}' {
-                if !last_space && !last_nl {
-                    normalized.push(' ');
-                }
-                last_space = true;
+                normalized.push('\u{00A0}');
+                last_space = false;
+                last_nl = false;
                 continue;
             }
             if ch == '\n' {

@@ -383,32 +383,14 @@ impl BuiltinNormalizedTextWidth {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InlineHtmlBreakState {
-    AfterLt,
-    AfterB,
-    AfterBr,
-    AfterSlash,
-}
-
-#[derive(Debug, Clone)]
-struct PendingInlineHtmlBreak {
-    state: InlineHtmlBreakState,
-    literal: BuiltinNormalizedTextWidth,
-}
-
 /// Exact streaming width state for a qualified built-in HTML measurement route.
 ///
-/// Mermaid's pinned `createText.ts:addHtmlSpan` decodes HTML into a real span, so a valid `<br>`
-/// contributes a DOM line break before `getBoundingClientRect()`. This state follows the selected
-/// built-in backend's scalar accumulation order and its existing `normalized_text_lines`
-/// behavior, without retaining or rescanning the potentially unbounded whitespace in an
-/// incomplete tag. It intentionally recognizes only ASCII space, tab, CR, and LF inside `<br>`;
-/// the wider ECMAScript `\s` set and browser text shaping remain bounded browser residuals.
+/// The lightweight HTML parser in `text::metrics` owns tag handling and passes only decoded inline
+/// text runs here. That keeps escaped literals like `&lt;br&gt;` measurable as text instead of
+/// being interpreted a second time as DOM line breaks.
 #[derive(Debug, Clone)]
 pub(crate) struct BuiltinInlineHtmlWidth {
     normalized: BuiltinNormalizedTextWidth,
-    pending_break: Option<PendingInlineHtmlBreak>,
     quantize: bool,
 }
 
@@ -417,70 +399,18 @@ impl BuiltinInlineHtmlWidth {
         let (line, quantize) = BuiltinInlineRawLineWidth::new(profile, style);
         Self {
             normalized: BuiltinNormalizedTextWidth::new(line),
-            pending_break: None,
             quantize,
         }
     }
 
     pub(crate) fn push_text(&mut self, text: &str) {
         for ch in text.chars() {
-            self.push_char(ch);
-        }
-    }
-
-    fn push_char(&mut self, ch: char) {
-        let mut current = Some(ch);
-        while let Some(ch) = current.take() {
-            let Some(mut pending) = self.pending_break.take() else {
-                if ch == '<' {
-                    let mut literal = self.normalized.clone();
-                    literal.push_char(ch);
-                    self.pending_break = Some(PendingInlineHtmlBreak {
-                        state: InlineHtmlBreakState::AfterLt,
-                        literal,
-                    });
-                } else {
-                    self.normalized.push_char(ch);
-                }
-                continue;
-            };
-
-            match pending.state {
-                InlineHtmlBreakState::AfterLt if matches!(ch, 'b' | 'B') => {
-                    pending.literal.push_char(ch);
-                    pending.state = InlineHtmlBreakState::AfterB;
-                    self.pending_break = Some(pending);
-                }
-                InlineHtmlBreakState::AfterB if matches!(ch, 'r' | 'R') => {
-                    pending.literal.push_char(ch);
-                    pending.state = InlineHtmlBreakState::AfterBr;
-                    self.pending_break = Some(pending);
-                }
-                InlineHtmlBreakState::AfterBr if matches!(ch, ' ' | '\t' | '\r' | '\n') => {
-                    pending.literal.push_char(ch);
-                    self.pending_break = Some(pending);
-                }
-                InlineHtmlBreakState::AfterBr if ch == '/' => {
-                    pending.literal.push_char(ch);
-                    pending.state = InlineHtmlBreakState::AfterSlash;
-                    self.pending_break = Some(pending);
-                }
-                InlineHtmlBreakState::AfterBr | InlineHtmlBreakState::AfterSlash if ch == '>' => {
-                    self.normalized.push_char('\n');
-                }
-                _ => {
-                    self.normalized = pending.literal;
-                    current = Some(ch);
-                }
-            }
+            self.normalized.push_char(ch);
         }
     }
 
     pub(crate) fn width_px(&self) -> f64 {
-        let raw_width_px = self.pending_break.as_ref().map_or_else(
-            || self.normalized.finished_width_px(),
-            |pending| pending.literal.finished_width_px(),
-        );
+        let raw_width_px = self.normalized.finished_width_px();
         if self.quantize {
             round_to_1_64_px(raw_width_px)
         } else {
@@ -1655,6 +1585,7 @@ impl RenderSessionReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::measure_html_with_inline_styles;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -2304,18 +2235,22 @@ mod tests {
     }
 
     #[test]
-    fn builtin_inline_stream_matches_backend_order_and_supported_br_normalization() {
+    fn builtin_inline_stream_matches_backend_order_for_decoded_run_text() {
         fn assert_cases(
-            backend: &dyn TextMeasurer,
+            measurer: &dyn TextMeasurer,
             carrier: InlineHtmlMeasurementCarrier,
             style: &TextStyle,
             cases: &[(&str, &[&str])],
         ) {
-            for (text, chunks) in cases {
-                assert_eq!(chunks.concat(), *text);
-                let expected = backend
-                    .measure_wrapped(text, style, None, WrapMode::HtmlLike)
-                    .width;
+            for (html, chunks) in cases {
+                let expected = measure_html_with_inline_styles(
+                    measurer,
+                    html,
+                    style,
+                    None,
+                    WrapMode::HtmlLike,
+                )
+                .width;
                 let mut streamed = carrier
                     .begin_inline_html_width(style)
                     .expect("built-in carrier starts a streaming width");
@@ -2323,9 +2258,9 @@ mod tests {
                     streamed.push_text(chunk);
                 }
                 assert_eq!(
-                    streamed.width_px().to_bits(),
+                    round_to_1_64_px(streamed.width_px()).to_bits(),
                     expected.to_bits(),
-                    "text={text:?}, chunks={chunks:?}"
+                    "html={html:?}, chunks={chunks:?}"
                 );
             }
         }
@@ -2333,15 +2268,15 @@ mod tests {
         let cases: &[(&str, &[&str])] = &[
             ("AVATAR office", &["A", "VAT", "AR ", "office"]),
             (
-                "alpha<br   />omega",
+                "alpha&lt;br   /&gt;omega",
                 &["alpha<", "b", "r ", "  /", ">", "omega"],
             ),
-            ("<b<br/>tail", &["<b<", "br", "/>tail"]),
-            ("wide<br / >literal", &["wide<br ", "/ ", ">literal"]),
-            // ECMAScript `\s` also includes form feed. The headless built-in intentionally keeps
-            // that spelling literal until browser-grade HTML parsing is available.
+            ("&lt;b&lt;br/&gt;tail", &["<b<", "br", "/>tail"]),
+            ("wide&lt;br / &gt;literal", &["wide<br ", "/ ", ">literal"]),
+            // Tag parsing is owned by `text::metrics`; the streaming width state measures decoded
+            // inline text runs literally, including escaped spellings of `<br>`.
             (
-                "wide<br\u{000C}/>literal",
+                "wide&lt;br\u{000C}/&gt;literal",
                 &["wide<br", "\u{000C}", "/>literal"],
             ),
             (
@@ -2361,44 +2296,43 @@ mod tests {
         let parity_session = RenderEnvironment::deterministic()
             .begin_session()
             .expect("begin parity session");
-        let parity_carrier =
-            inline_html_carrier(&parity_session.text_measurer(TextMeasurementPhase::Wrap));
-        assert_cases(
-            &VendoredFontMetricsTextMeasurer::default(),
-            parity_carrier,
-            &style,
-            cases,
-        );
+        let parity_measurer = parity_session.text_measurer(TextMeasurementPhase::Wrap);
+        let parity_carrier = inline_html_carrier(&parity_measurer);
+        assert_cases(&parity_measurer, parity_carrier, &style, cases);
         let long_whitespace = " ".repeat(8_192);
-        let long_break = format!("wide<br{long_whitespace}/>tail");
-        let expected = VendoredFontMetricsTextMeasurer::default()
-            .measure_wrapped(&long_break, &style, None, WrapMode::HtmlLike)
-            .width;
+        let long_break = format!("wide&lt;br{long_whitespace}/&gt;tail");
+        let expected = measure_html_with_inline_styles(
+            &parity_measurer,
+            &long_break,
+            &style,
+            None,
+            WrapMode::HtmlLike,
+        )
+        .width;
         let mut streamed = parity_carrier
             .begin_inline_html_width(&style)
             .expect("parity carrier starts a streaming width");
         streamed.push_text("wide<br");
         streamed.push_text(&long_whitespace);
         streamed.push_text("/>tail");
-        assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+        assert_eq!(
+            round_to_1_64_px(streamed.width_px()).to_bits(),
+            expected.to_bits()
+        );
 
         let mut unknown_font = style.clone();
         unknown_font.font_family = Some("fixture-private-font".to_string());
-        assert_cases(
-            &VendoredFontMetricsTextMeasurer::default(),
-            parity_carrier,
-            &unknown_font,
-            cases,
-        );
+        assert_cases(&parity_measurer, parity_carrier, &unknown_font, cases);
 
         let deterministic_session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
             .begin_session()
             .expect("begin deterministic session");
-        let deterministic_carrier =
-            inline_html_carrier(&deterministic_session.text_measurer(TextMeasurementPhase::Wrap));
+        let deterministic_measurer =
+            deterministic_session.text_measurer(TextMeasurementPhase::Wrap);
+        let deterministic_carrier = inline_html_carrier(&deterministic_measurer);
         assert_cases(
-            &DeterministicTextMeasurer::default(),
+            &deterministic_measurer,
             deterministic_carrier,
             &style,
             cases,

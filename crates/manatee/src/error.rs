@@ -1,4 +1,5 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum WorkFailure {
     #[error("layout work was interrupted by the caller")]
     Interrupted,
@@ -7,6 +8,7 @@ pub enum WorkFailure {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error("graph contains an edge with a missing endpoint: {edge_id}")]
     MissingEndpoint { edge_id: String },

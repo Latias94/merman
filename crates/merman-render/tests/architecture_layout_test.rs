@@ -1,10 +1,10 @@
 #![cfg(feature = "layout-cytoscape")]
 
 use merman_core::{Engine, ParseOptions};
-use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
+use merman_render::{LayoutOptions, RenderResourcePolicy};
 
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
     let engine = Engine::new();
@@ -12,7 +12,19 @@ fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
 }
 
 fn layout_architecture_with_engine(engine: &Engine, text: &str) -> ArchitectureDiagramLayout {
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    layout_architecture_with_engine_and_environment(
+        engine,
+        text,
+        RenderEnvironment::deterministic(),
+    )
+}
+
+fn layout_architecture_with_engine_and_environment(
+    engine: &Engine,
+    text: &str,
+    environment: RenderEnvironment,
+) -> ArchitectureDiagramLayout {
+    let session = environment.begin_session().unwrap();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
@@ -217,7 +229,14 @@ fn architecture_layout_handles_deep_group_chain() {
     let handle = std::thread::Builder::new()
         .name("architecture-deep-group-layout".to_string())
         .stack_size(128 * 1024)
-        .spawn(move || layout_architecture_with_engine(&engine, &source))
+        .spawn(move || {
+            layout_architecture_with_engine_and_environment(
+                &engine,
+                &source,
+                RenderEnvironment::deterministic()
+                    .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input()),
+            )
+        })
         .expect("spawn architecture deep group layout test");
     let layout = handle
         .join()
