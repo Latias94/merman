@@ -42,6 +42,8 @@ enum XtaskError {
     TextMeasurementProtocol(String),
     #[error("native ABI descriptor is invalid: {0}")]
     NativeAbi(String),
+    #[error("resource contract projection is invalid: {0}")]
+    ResourceContract(String),
     #[error("capability surface descriptor is invalid: {0}")]
     CapabilitySurface(String),
     #[error("artifact profile descriptor is invalid: {0}")]

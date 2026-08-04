@@ -3,10 +3,43 @@ package io.merman
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.fail
 import org.junit.Test
 
 class MermanRuntimeCatalogValidatorTest {
+    @Test
+    fun knownResourceLimitValuesAreRuntimeImmutable() {
+        @Suppress("UNCHECKED_CAST")
+        val values = MermanResourceLimitId.knownValues as MutableList<MermanResourceLimitId>
+        val original = values.first()
+
+        try {
+            values[0] = MermanResourceLimitId.MAX_MODEL_ITEMS
+            fail("known resource limit values accepted mutation")
+        } catch (_: UnsupportedOperationException) {
+        }
+
+        assertSame(original, MermanResourceLimitId.knownValues.first())
+    }
+
+    @Test
+    fun runtimeResourceLimitIdsPreserveUnknownFutureValues() {
+        val known = MermanResourceLimitId.fromId("max_source_bytes")
+        assertSame(MermanResourceLimitId.MAX_SOURCE_BYTES, known)
+        assertEquals("source", known.phase)
+
+        val future = MermanResourceLimitId.fromId("future_limit")
+        assertEquals("future_limit", future.id)
+        assertFalse(future.isKnown)
+        assertNull(future.phase)
+        assertNull(future.overridable)
+        assertNull(future.minimumValue)
+        assertEquals(future, MermanResourceLimitId.fromId("future_limit"))
+    }
+
     @Test
     fun acceptsCurrentHandshakeAndAdditiveFieldsWithoutLoadingNativeLibrary() {
         val catalog = validCatalog()

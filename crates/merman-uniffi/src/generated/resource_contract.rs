@@ -69,6 +69,19 @@ pub struct MermanResourceLimitOverride {
     pub value: u64,
 }
 
+fn resource_override_value<T>(value: u64, target: &str) -> Result<T, MermanError>
+where
+    T: TryFrom<u64>,
+{
+    T::try_from(value).map_err(|_| {
+        MermanError::invalid_argument(format!("resource override exceeds {target}"))
+    })
+}
+
+fn resource_override_host_value(value: u64) -> Result<usize, MermanError> {
+    resource_override_value(value, "host usize")
+}
+
 #[uniffi::export]
 pub fn resource_options_json(
     profile: Option<MermanResourceProfile>,
@@ -77,9 +90,8 @@ pub fn resource_options_json(
     let pairs = overrides
         .iter()
         .map(|override_| {
-            usize::try_from(override_.value)
+            resource_override_host_value(override_.value)
                 .map(|value| (override_.id.id(), value))
-                .map_err(|_| MermanError::internal("resource override exceeds host usize"))
         })
         .collect::<Result<Vec<_>, _>>()?;
     let profile_id = profile.map(MermanResourceProfile::id);

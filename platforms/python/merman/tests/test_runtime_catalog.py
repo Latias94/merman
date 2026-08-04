@@ -130,15 +130,28 @@ class RuntimeCatalogTest(unittest.TestCase):
         catalog = valid_catalog()
         engine = FakeEngine(catalog)
 
-        self.assertEqual(merman.get_runtime_catalog(engine), catalog)
+        parsed = merman.get_runtime_catalog(engine)
+
+        self.assertEqual(parsed, catalog)
         self.assertEqual(engine.catalog_calls, 1)
         self.assertFalse(hasattr(merman, "get_runtime_contract"))
         self.assertFalse(hasattr(merman, "get_runtime_capability_vocabulary"))
         self.assertFalse(hasattr(merman, "MermanRuntimeContractError"))
         self.assertEqual(catalog["options_schema_versions"], [2])
         self.assertEqual(
-            catalog["resources"]["limits"][0]["operation_ids"],
+            parsed["resources"]["limits"][0]["operation_ids"],
             ["analysis-json", "ascii", "semantic-json", "svg"],
+        )
+        limit_id = parsed["resources"]["limits"][0]["id"]
+        self.assertIs(limit_id, merman.ResourceLimitId.MAX_SOURCE_BYTES)
+        self.assertEqual(limit_id.phase, "source")
+        self.assertTrue(limit_id.overridable)
+        self.assertEqual(limit_id.minimum_value, 1)
+        with self.assertRaises(AttributeError):
+            limit_id.future_metadata = True
+        self.assertIs(
+            next(iter(parsed["resources"]["profiles"][0]["limits"])),
+            merman.ResourceLimitId.MAX_SOURCE_BYTES,
         )
 
     def test_accepts_catalog_without_svg_or_text_measurement(self):
@@ -537,11 +550,36 @@ class RuntimeCatalogTest(unittest.TestCase):
             },
         )
         catalog["resources"]["limits"][0]["future_limit_metadata"] = True
+        catalog["resources"]["limits"].append(
+            {
+                "id": "future_limit",
+                "phase": "future_phase",
+                "description": "Maximum future work.",
+                "overridable": False,
+                "hard_cap": False,
+                "minimum_value": 0,
+                "operation_ids": ["future-operation"],
+                "future_limit_metadata": {"version": 1},
+            }
+        )
+        for profile in catalog["resources"]["profiles"]:
+            profile["limits"]["future_limit"] = None
         catalog["resources"]["profiles"][0]["future_profile_metadata"] = True
 
         parsed = merman.get_runtime_catalog(FakeEngine(catalog))
         self.assertEqual(parsed, catalog)
         self.assertEqual(parsed["future_ratio"], 0.5)
+        future_limit = parsed["resources"]["limits"][1]
+        self.assertIsInstance(future_limit["id"], merman.ResourceLimitId)
+        self.assertEqual(future_limit["id"].id, "future_limit")
+        self.assertFalse(future_limit["id"].is_known)
+        self.assertEqual(future_limit["future_limit_metadata"], {"version": 1})
+        for profile in parsed["resources"]["profiles"]:
+            future_profile_id = next(
+                limit_id for limit_id in profile["limits"] if limit_id == "future_limit"
+            )
+            self.assertIsInstance(future_profile_id, merman.ResourceLimitId)
+            self.assertFalse(future_profile_id.is_known)
 
     def test_public_star_export_has_no_removed_runtime_names(self):
         exported = {}

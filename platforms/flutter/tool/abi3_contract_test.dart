@@ -17,6 +17,7 @@ void main() {
   acceptsAFlatAbi3Catalog();
   rejectsCatalogsMissingCurrentBindingSchemas();
   projectsSvgPlanOperationFromGeneratedAbi();
+  requiresSdkUpgradeForUnknownCatalogOperation();
   preservesTypedRuntimeOutputContracts();
   preservesCompleteRuntimeResourceContract();
   acceptsInvariantOnlyCatalog();
@@ -329,6 +330,51 @@ void projectsSvgPlanOperationFromGeneratedAbi() {
         (native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG_PLAN_JSON != 0),
     'SVG plan URI contract must come from the generated ABI projection',
   );
+  _expect(
+    MermanOperation.knownValues.every(
+      (known) =>
+          identical(
+            MermanOperation.fromNativeCode(known.nativeCode),
+            known,
+          ) &&
+          identical(
+            MermanOperation.fromOperationId(known.operationId),
+            known,
+          ),
+    ),
+    'every generated operation must round-trip by numeric code and public ID',
+  );
+  final maxKnownCode =
+      MermanOperation.knownValues.map((known) => known.nativeCode).reduce(max);
+  _expectThrows<ArgumentError>(
+    () => MermanOperation.fromNativeCode(native.MERMAN_NATIVE_OPERATION_NONE),
+  );
+  _expectThrows<ArgumentError>(
+    () => MermanOperation.fromNativeCode(maxKnownCode + 1),
+  );
+}
+
+void requiresSdkUpgradeForUnknownCatalogOperation() {
+  final catalog = _catalog(operationIds: const [
+    'future-operation',
+    'semantic-json',
+    'svg',
+  ]);
+  final validated = MermanRuntimeCatalog.fromJson(catalog);
+  _expect(
+    validated.supportsOperation('future-operation'),
+    'runtime discovery must preserve unknown future operation IDs',
+  );
+  try {
+    MermanOperation.fromOperationId('future-operation');
+  } on UnsupportedError catch (error) {
+    _expect(
+      error.message.toString().contains('updated Merman SDK/header'),
+      'unknown operation invocation must require an SDK/header upgrade',
+    );
+    return;
+  }
+  throw StateError('unknown catalog operation unexpectedly became callable');
 }
 
 void acceptsAFlatAbi3Catalog() {
@@ -354,7 +400,9 @@ void acceptsAFlatAbi3Catalog() {
           (schema) => schema.id == 'binding-result' && schema.version == 1,
         ) &&
         catalog.metadataIds.contains('diagram-family-capabilities') &&
-        catalog.resourceLimitsById['max_source_bytes']!.operationIds
+        catalog
+            .resourceLimitById('max_source_bytes')!
+            .operationIds
             .contains('semantic-json'),
     'runtime discovery additions should retain their typed values',
   );
@@ -381,12 +429,13 @@ void rejectsCatalogsMissingCurrentBindingSchemas() {
 void preservesCompleteRuntimeResourceContract() {
   final catalog = MermanRuntimeCatalog.fromJson(_catalog());
   _expect(
-    catalog.resourceLimits.length == MermanResourceLimitId.values.length &&
+    catalog.resourceLimits.length == MermanResourceLimitId.knownValues.length &&
         catalog.resourceProfiles.length == MermanResourceProfile.values.length,
     'runtime resource descriptors must be retained',
   );
 
-  final sourceBytes = catalog.resourceLimitsById['max_source_bytes'];
+  final sourceBytes =
+      catalog.resourceLimitsById[MermanResourceLimitId.maxSourceBytes];
   final interactive = catalog.resourceProfilesById['interactive'];
   final unbounded = catalog.resourceProfilesById['unbounded-for-trusted-input'];
   _expect(
@@ -481,29 +530,79 @@ void acceptsAdditiveRuntimeResourceIds() {
     'description': 'Future additive resource limit',
     'overridable': false,
     'hard_cap': true,
-    'future_limit_metadata': true,
+    'future_limit_metadata': <String, Object?>{
+      'version': 2,
+      'tags': <Object?>[
+        'future',
+        <String, Object?>{'stable': true},
+      ],
+    },
   });
   for (final rawProfile in resources['profiles'] as List<Object?>) {
     final profile = rawProfile as Map<String, Object?>;
     final profileLimits = profile['limits'] as Map<String, Object?>;
     profileLimits['future_limit'] = 4096;
-    profile['future_profile_metadata'] = true;
+    profile['future_profile_metadata'] = <String, Object?>{
+      'source': 'future-runtime',
+      'flags': <Object?>[true, null],
+    };
   }
 
   final validated = MermanRuntimeCatalog.fromJson(catalog);
-  final futureLimit = validated.resourceLimitsById['future_limit'];
+  final futureLimitId = MermanResourceLimitId.fromId('future_limit');
+  final futureLimit = validated.resourceLimitsById[futureLimitId];
+  _expect(futureLimit != null, 'future resource limit must be discoverable');
+  final futureLimitMetadata = futureLimit!
+      .additionalFields['future_limit_metadata'] as Map<String, Object?>;
+  final futureLimitTags = futureLimitMetadata['tags'] as List<Object?>;
+  final futureLimitStability = futureLimitTags[1] as Map<String, Object?>;
+  final futureProfile = validated.resourceProfiles.first;
+  final futureProfileMetadata = futureProfile
+      .additionalFields['future_profile_metadata'] as Map<String, Object?>;
+  final futureProfileFlags = futureProfileMetadata['flags'] as List<Object?>;
+
+  final rawFutureLimit = limits.last as Map<String, Object?>;
+  final rawFutureLimitMetadata =
+      rawFutureLimit['future_limit_metadata'] as Map<String, Object?>;
+  rawFutureLimitMetadata['version'] = 3;
+  ((rawFutureLimitMetadata['tags'] as List<Object?>)[1]
+      as Map<String, Object?>)['stable'] = false;
+  final rawFirstProfile =
+      (resources['profiles'] as List<Object?>).first as Map<String, Object?>;
+  final rawFutureProfileMetadata =
+      rawFirstProfile['future_profile_metadata'] as Map<String, Object?>;
+  rawFutureProfileMetadata['source'] = 'mutated-source';
+
   _expect(
-    futureLimit != null &&
-        futureLimit.phase == 'future_phase' &&
+    futureLimit.phase == 'future_phase' &&
         futureLimit.hardCap &&
         !futureLimit.overridable &&
         futureLimit.minimumValue == 1 &&
+        identical(validated.resourceLimitById('future_limit'), futureLimit) &&
+        futureLimitMetadata['version'] == 2 &&
+        futureLimitStability['stable'] == true &&
+        futureProfileMetadata['source'] == 'future-runtime' &&
+        futureProfileFlags.last == null &&
         validated.resourceProfiles.every(
           (profile) =>
-              profile.limits.containsKey('future_limit') &&
-              profile.limits['future_limit'] == 4096,
+              profile.limits.containsKey(
+                futureLimitId,
+              ) &&
+              profile.limits[futureLimitId] == 4096,
         ),
-    'ABI 3 consumers must retain additive declared resource IDs',
+    'ABI 3 consumers must retain additive resource IDs and metadata',
+  );
+  _expectThrows<UnsupportedError>(
+    () => futureLimit.additionalFields['mutated'] = true,
+  );
+  _expectThrows<UnsupportedError>(
+    () => futureLimitTags.add('mutated'),
+  );
+  _expectThrows<UnsupportedError>(
+    () => futureLimitStability['stable'] = false,
+  );
+  _expectThrows<UnsupportedError>(
+    () => futureProfileMetadata['source'] = 'mutated',
   );
 }
 
@@ -787,7 +886,7 @@ void decodesMachineReadableNativeErrors() {
     ),
   );
   _expect(
-    resource.resourceDetails?.limitId == 'max_embedded_image_bytes' &&
+    resource.resourceDetails?.limitId.id == 'max_embedded_image_bytes' &&
         resource.resourceDetails?.phase == 'embedded_image_decode' &&
         resource.resourceDetails?.actual == 5 &&
         resource.resourceDetails?.max == 4 &&
@@ -976,13 +1075,13 @@ Map<String, Object?> _resourceContract(List<String> operationIds) =>
       'general_binding_default_profile': MermanResourceProfile.interactive.id,
       'cli_default_profile': MermanResourceProfile.trustedNative.id,
       'limits': <Object?>[
-        for (final limit in MermanResourceLimitId.values)
+        for (final limit in MermanResourceLimitId.knownValues)
           <String, Object?>{
             'id': limit.id,
-            'phase': _resourceLimitPhase(limit),
+            'phase': limit.phase,
             'description': 'Test descriptor for ${limit.id}',
             'overridable': limit.overridable,
-            'hard_cap': !limit.overridable,
+            'hard_cap': !limit.overridable!,
             'minimum_value': limit.minimumValue,
             'operation_ids': operationIds,
           },
@@ -996,47 +1095,15 @@ Map<String, Object?> _resourceContract(List<String> operationIds) =>
             'recommended_binding_default':
                 profile == MermanResourceProfile.interactive,
             'limits': <String, Object?>{
-              for (final limit in MermanResourceLimitId.values)
+              for (final limit in MermanResourceLimitId.knownValues)
                 limit.id:
                     profile == MermanResourceProfile.unboundedForTrustedInput &&
-                            limit.overridable
+                            limit.overridable!
                         ? null
                         : 1,
             },
           },
       ],
-    };
-
-String _resourceLimitPhase(MermanResourceLimitId limit) => switch (limit) {
-      MermanResourceLimitId.maxSourceBytes => 'source',
-      MermanResourceLimitId.maxModelItems ||
-      MermanResourceLimitId.maxModelTextBytes ||
-      MermanResourceLimitId.maxModelNestingDepth =>
-        'model',
-      MermanResourceLimitId.maxLayoutWorkUnits => 'layout',
-      MermanResourceLimitId.maxSvgBytes ||
-      MermanResourceLimitId.maxSvgElements =>
-        'svg',
-      MermanResourceLimitId.maxDocumentDiagrams => 'document_scan',
-      MermanResourceLimitId.maxAsciiGridCells => 'ascii_layout',
-      MermanResourceLimitId.maxRasterWidth ||
-      MermanResourceLimitId.maxRasterHeight ||
-      MermanResourceLimitId.maxRasterPixels =>
-        'raster_allocation',
-      MermanResourceLimitId.maxEmbeddedImageBytes ||
-      MermanResourceLimitId.maxTotalEmbeddedImageBytes ||
-      MermanResourceLimitId.maxEmbeddedImagePixels ||
-      MermanResourceLimitId.maxTotalEmbeddedImagePixels =>
-        'embedded_image_decode',
-      MermanResourceLimitId.maxPdfFilterImagePixels =>
-        'pdf_filter_rasterization',
-      MermanResourceLimitId.maxSvgConversionIsolationDepth ||
-      MermanResourceLimitId.maxSvgConversionFilterPrimitivesPerFilter ||
-      MermanResourceLimitId.maxTotalSvgConversionFilterPrimitives ||
-      MermanResourceLimitId.maxSvgConversionSubroots ||
-      MermanResourceLimitId.maxNestedSvgImages ||
-      MermanResourceLimitId.svgBackendTreeNodes =>
-        'svg_conversion',
     };
 
 Map<String, Object?> _clonedCatalog() =>

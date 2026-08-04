@@ -12,30 +12,83 @@ public enum class MermanResourceProfile(public val id: String) {
     UNBOUNDED_FOR_TRUSTED_INPUT("unbounded-for-trusted-input"),
 }
 
-public enum class MermanResourceLimitId(public val id: String, public val overridable: Boolean, public val minimumValue: Long) {
-    MAX_SOURCE_BYTES("max_source_bytes", true, 1),
-    MAX_MODEL_ITEMS("max_model_items", true, 1),
-    MAX_MODEL_TEXT_BYTES("max_model_text_bytes", true, 1),
-    MAX_MODEL_NESTING_DEPTH("max_model_nesting_depth", true, 1),
-    MAX_LAYOUT_WORK_UNITS("max_layout_work_units", true, 1),
-    MAX_SVG_BYTES("max_svg_bytes", true, 1),
-    MAX_SVG_ELEMENTS("max_svg_elements", true, 1),
-    MAX_DOCUMENT_DIAGRAMS("max_document_diagrams", true, 0),
-    MAX_ASCII_GRID_CELLS("max_ascii_grid_cells", true, 1),
-    MAX_RASTER_WIDTH("max_raster_width", true, 1),
-    MAX_RASTER_HEIGHT("max_raster_height", true, 1),
-    MAX_RASTER_PIXELS("max_raster_pixels", true, 1),
-    MAX_EMBEDDED_IMAGE_BYTES("max_embedded_image_bytes", true, 1),
-    MAX_TOTAL_EMBEDDED_IMAGE_BYTES("max_total_embedded_image_bytes", true, 1),
-    MAX_EMBEDDED_IMAGE_PIXELS("max_embedded_image_pixels", true, 1),
-    MAX_TOTAL_EMBEDDED_IMAGE_PIXELS("max_total_embedded_image_pixels", true, 1),
-    MAX_PDF_FILTER_IMAGE_PIXELS("max_pdf_filter_image_pixels", true, 1),
-    MAX_SVG_CONVERSION_ISOLATION_DEPTH("max_svg_conversion_isolation_depth", false, 1),
-    MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER("max_svg_conversion_filter_primitives_per_filter", false, 1),
-    MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES("max_total_svg_conversion_filter_primitives", false, 1),
-    MAX_SVG_CONVERSION_SUBROOTS("max_svg_conversion_subroots", false, 1),
-    MAX_NESTED_SVG_IMAGES("max_nested_svg_images", false, 1),
-    SVG_BACKEND_TREE_NODES("svg_backend_tree_nodes", false, 1),
+public class MermanResourceLimitId private constructor(
+    public val id: String,
+    public val phase: String?,
+    public val overridable: Boolean?,
+    public val minimumValue: Long?,
+) {
+    public val isKnown: Boolean
+        get() = phase != null
+
+    override fun equals(other: Any?): Boolean =
+        other is MermanResourceLimitId && id == other.id
+
+    override fun hashCode(): Int = id.hashCode()
+
+    override fun toString(): String = id
+
+    public companion object {
+        public val MAX_SOURCE_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_source_bytes", "source", true, 1)
+        public val MAX_MODEL_ITEMS: MermanResourceLimitId = MermanResourceLimitId("max_model_items", "layout_model", true, 1)
+        public val MAX_MODEL_TEXT_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_model_text_bytes", "layout_model", true, 1)
+        public val MAX_MODEL_NESTING_DEPTH: MermanResourceLimitId = MermanResourceLimitId("max_model_nesting_depth", "layout_model", true, 1)
+        public val MAX_LAYOUT_WORK_UNITS: MermanResourceLimitId = MermanResourceLimitId("max_layout_work_units", "layout_model", true, 1)
+        public val MAX_SVG_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_svg_bytes", "svg_output", true, 1)
+        public val MAX_SVG_ELEMENTS: MermanResourceLimitId = MermanResourceLimitId("max_svg_elements", "svg_postprocess", true, 1)
+        public val MAX_DOCUMENT_DIAGRAMS: MermanResourceLimitId = MermanResourceLimitId("max_document_diagrams", "document_scan", true, 0)
+        public val MAX_ASCII_GRID_CELLS: MermanResourceLimitId = MermanResourceLimitId("max_ascii_grid_cells", "ascii_layout", true, 1)
+        public val MAX_RASTER_WIDTH: MermanResourceLimitId = MermanResourceLimitId("max_raster_width", "raster_allocation", true, 1)
+        public val MAX_RASTER_HEIGHT: MermanResourceLimitId = MermanResourceLimitId("max_raster_height", "raster_allocation", true, 1)
+        public val MAX_RASTER_PIXELS: MermanResourceLimitId = MermanResourceLimitId("max_raster_pixels", "raster_allocation", true, 1)
+        public val MAX_EMBEDDED_IMAGE_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_embedded_image_bytes", "embedded_image_decode", true, 1)
+        public val MAX_TOTAL_EMBEDDED_IMAGE_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_total_embedded_image_bytes", "embedded_image_decode", true, 1)
+        public val MAX_EMBEDDED_IMAGE_PIXELS: MermanResourceLimitId = MermanResourceLimitId("max_embedded_image_pixels", "embedded_image_decode", true, 1)
+        public val MAX_TOTAL_EMBEDDED_IMAGE_PIXELS: MermanResourceLimitId = MermanResourceLimitId("max_total_embedded_image_pixels", "embedded_image_decode", true, 1)
+        public val MAX_PDF_FILTER_IMAGE_PIXELS: MermanResourceLimitId = MermanResourceLimitId("max_pdf_filter_image_pixels", "pdf_filter_rasterization", true, 1)
+        public val MAX_SVG_CONVERSION_ISOLATION_DEPTH: MermanResourceLimitId = MermanResourceLimitId("max_svg_conversion_isolation_depth", "svg_conversion", false, 1)
+        public val MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER: MermanResourceLimitId = MermanResourceLimitId("max_svg_conversion_filter_primitives_per_filter", "svg_conversion", false, 1)
+        public val MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES: MermanResourceLimitId = MermanResourceLimitId("max_total_svg_conversion_filter_primitives", "svg_conversion", false, 1)
+        public val MAX_SVG_CONVERSION_SUBROOTS: MermanResourceLimitId = MermanResourceLimitId("max_svg_conversion_subroots", "svg_conversion", false, 1)
+        public val MAX_NESTED_SVG_IMAGES: MermanResourceLimitId = MermanResourceLimitId("max_nested_svg_images", "svg_conversion", false, 1)
+        public val SVG_BACKEND_TREE_NODES: MermanResourceLimitId = MermanResourceLimitId("svg_backend_tree_nodes", "svg_conversion", false, 1)
+
+        public val knownValues: List<MermanResourceLimitId> =
+            java.util.Collections.unmodifiableList(listOf(
+            MAX_SOURCE_BYTES,
+            MAX_MODEL_ITEMS,
+            MAX_MODEL_TEXT_BYTES,
+            MAX_MODEL_NESTING_DEPTH,
+            MAX_LAYOUT_WORK_UNITS,
+            MAX_SVG_BYTES,
+            MAX_SVG_ELEMENTS,
+            MAX_DOCUMENT_DIAGRAMS,
+            MAX_ASCII_GRID_CELLS,
+            MAX_RASTER_WIDTH,
+            MAX_RASTER_HEIGHT,
+            MAX_RASTER_PIXELS,
+            MAX_EMBEDDED_IMAGE_BYTES,
+            MAX_TOTAL_EMBEDDED_IMAGE_BYTES,
+            MAX_EMBEDDED_IMAGE_PIXELS,
+            MAX_TOTAL_EMBEDDED_IMAGE_PIXELS,
+            MAX_PDF_FILTER_IMAGE_PIXELS,
+            MAX_SVG_CONVERSION_ISOLATION_DEPTH,
+            MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER,
+            MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES,
+            MAX_SVG_CONVERSION_SUBROOTS,
+            MAX_NESTED_SVG_IMAGES,
+            SVG_BACKEND_TREE_NODES,
+            ))
+
+        private val knownById: Map<String, MermanResourceLimitId> =
+            knownValues.associateBy(MermanResourceLimitId::id)
+
+        @JvmStatic
+        public fun fromId(id: String): MermanResourceLimitId {
+            require(id.isNotEmpty()) { "Resource limit id must not be empty" }
+            return knownById[id] ?: MermanResourceLimitId(id, null, null, null)
+        }
+    }
 }
 
 public enum class MermanResourceOverrideId(public val id: String, public val minimumValue: Long) {

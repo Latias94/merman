@@ -18,7 +18,7 @@ from ._binding_contract import (
     RUNTIME_CATALOG_SCHEMA_VERSION,
     TEXT_MEASUREMENT_PROVIDER_SPECS,
 )
-from ._resource_options import BINDING_OPTIONS_SCHEMA_VERSION
+from ._resource_options import BINDING_OPTIONS_SCHEMA_VERSION, ResourceLimitId
 
 try:
     from ._text_measurement_protocol import TEXT_MEASUREMENT_PROTOCOL_VERSION
@@ -108,7 +108,7 @@ class MermanRuntimeRegistry(TypedDict):
 
 
 class MermanRuntimeResourceLimit(TypedDict):
-    id: str
+    id: ResourceLimitId
     phase: str
     description: str
     overridable: bool
@@ -141,7 +141,7 @@ class MermanRuntimeResourceProfile(TypedDict):
     purpose: str
     trust_assumption: str
     recommended_binding_default: bool
-    limits: Dict[str, Optional[int]]
+    limits: Dict[ResourceLimitId, Optional[int]]
 
 
 class MermanRuntimeResources(TypedDict):
@@ -727,8 +727,8 @@ def _validate_resources(value: Any, operation_ids: List[str]) -> None:
         _expect_identifier(resources[field], f"runtime resources {field}")
     if not isinstance(resources["limits"], list):
         raise MermanRuntimeCatalogError("runtime resources limits must be an array")
-    minimums: Dict[str, int] = {}
-    hard_cap_ids = set()
+    minimums: Dict[ResourceLimitId, int] = {}
+    hard_cap_ids: set[ResourceLimitId] = set()
     for limit in resources["limits"]:
         item = _expect_object(limit, "runtime resource limit")
         _require_required_keys(
@@ -744,7 +744,10 @@ def _validate_resources(value: Any, operation_ids: List[str]) -> None:
             },
             "runtime resource limit",
         )
-        _expect_field_identifier(item["id"], "runtime resource limit ID")
+        limit_id = ResourceLimitId.from_id(
+            _expect_field_identifier(item["id"], "runtime resource limit ID")
+        )
+        item["id"] = limit_id
         for field in ["phase", "description"]:
             if not isinstance(item[field], str):
                 raise MermanRuntimeCatalogError(
@@ -759,7 +762,7 @@ def _validate_resources(value: Any, operation_ids: List[str]) -> None:
             raise MermanRuntimeCatalogError(
                 "runtime resource limit minimum_value must be a non-negative integer"
             )
-        if item["id"] in minimums:
+        if limit_id in minimums:
             raise MermanRuntimeCatalogError(
                 "runtime resource limit IDs must be unique"
             )
@@ -767,9 +770,9 @@ def _validate_resources(value: Any, operation_ids: List[str]) -> None:
             raise MermanRuntimeCatalogError(
                 "runtime hard resource limits cannot be overridable"
             )
-        minimums[item["id"]] = item["minimum_value"]
+        minimums[limit_id] = item["minimum_value"]
         if item["hard_cap"]:
-            hard_cap_ids.add(item["id"])
+            hard_cap_ids.add(limit_id)
         limit_operation_ids = _validate_identifier_list(
             item["operation_ids"], "runtime resource limit operation IDs"
         )
@@ -811,22 +814,27 @@ def _validate_resources(value: Any, operation_ids: List[str]) -> None:
         profile_ids.add(item["id"])
         if item["recommended_binding_default"]:
             recommended_profile_ids.add(item["id"])
-        limits = _expect_object(item["limits"], "runtime resource profile limits")
-        if set(limits) != set(minimums):
+        raw_limits = _expect_object(item["limits"], "runtime resource profile limits")
+        if set(raw_limits) != set(minimums):
             raise MermanRuntimeCatalogError(
                 "runtime resource profile limits must cover the declared limits"
             )
-        for limit_id, value in limits.items():
+        limits: Dict[ResourceLimitId, Optional[int]] = {}
+        for raw_limit_id, value in raw_limits.items():
+            limit_id = ResourceLimitId.from_id(raw_limit_id)
             if value is None:
                 if limit_id in hard_cap_ids:
                     raise MermanRuntimeCatalogError(
                         "runtime resource profile removed a finite hard cap"
                     )
+                limits[limit_id] = None
                 continue
             if not _is_safe_integer(value) or value < minimums[limit_id]:
                 raise MermanRuntimeCatalogError(
                     "runtime resource profile limits must meet the declared minimum or be null"
                 )
+            limits[limit_id] = value
+        item["limits"] = limits
     general_default = resources["general_binding_default_profile"]
     cli_default = resources["cli_default_profile"]
     if general_default not in profile_ids or cli_default not in profile_ids:

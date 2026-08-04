@@ -18,7 +18,10 @@ import type {
   HostTextWrapMode,
 } from "./generated/text-measurement-abi.js";
 import type { EditorRenamePolicy } from "./generated/token-descriptor.js";
-import type { ResourceOptions } from "./generated/resource-contract.js";
+import type {
+  ResourceLimitId,
+  ResourceOptions,
+} from "./generated/resource-contract.js";
 
 export type {
   HostTextDirection,
@@ -173,7 +176,7 @@ export interface RuntimeResourceContract {
 
 export interface RuntimeResourceLimit {
   [key: string]: unknown;
-  id: string;
+  id: ResourceLimitId;
   phase: string;
   description: string;
   overridable: boolean;
@@ -188,7 +191,7 @@ export interface RuntimeResourceProfile {
   purpose: string;
   trust_assumption: string;
   recommended_binding_default: boolean;
-  limits: Record<string, number | null>;
+  limits: Record<ResourceLimitId, number | null>;
 }
 
 export interface SvgOptions {

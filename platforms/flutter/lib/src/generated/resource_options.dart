@@ -16,39 +16,219 @@ enum MermanResourceProfile {
   final String id;
 }
 
-enum MermanResourceLimitId {
-  maxSourceBytes('max_source_bytes', true, 1),
-  maxModelItems('max_model_items', true, 1),
-  maxModelTextBytes('max_model_text_bytes', true, 1),
-  maxModelNestingDepth('max_model_nesting_depth', true, 1),
-  maxLayoutWorkUnits('max_layout_work_units', true, 1),
-  maxSvgBytes('max_svg_bytes', true, 1),
-  maxSvgElements('max_svg_elements', true, 1),
-  maxDocumentDiagrams('max_document_diagrams', true, 0),
-  maxAsciiGridCells('max_ascii_grid_cells', true, 1),
-  maxRasterWidth('max_raster_width', true, 1),
-  maxRasterHeight('max_raster_height', true, 1),
-  maxRasterPixels('max_raster_pixels', true, 1),
-  maxEmbeddedImageBytes('max_embedded_image_bytes', true, 1),
-  maxTotalEmbeddedImageBytes('max_total_embedded_image_bytes', true, 1),
-  maxEmbeddedImagePixels('max_embedded_image_pixels', true, 1),
-  maxTotalEmbeddedImagePixels('max_total_embedded_image_pixels', true, 1),
-  maxPdfFilterImagePixels('max_pdf_filter_image_pixels', true, 1),
-  maxSvgConversionIsolationDepth(
-      'max_svg_conversion_isolation_depth', false, 1),
-  maxSvgConversionFilterPrimitivesPerFilter(
-      'max_svg_conversion_filter_primitives_per_filter', false, 1),
-  maxTotalSvgConversionFilterPrimitives(
-      'max_total_svg_conversion_filter_primitives', false, 1),
-  maxSvgConversionSubroots('max_svg_conversion_subroots', false, 1),
-  maxNestedSvgImages('max_nested_svg_images', false, 1),
-  svgBackendTreeNodes('svg_backend_tree_nodes', false, 1),
-  ;
+final class MermanResourceLimitId {
+  static const maxSourceBytes = MermanResourceLimitId._known(
+    'max_source_bytes',
+    'source',
+    true,
+    1,
+  );
+  static const maxModelItems = MermanResourceLimitId._known(
+    'max_model_items',
+    'layout_model',
+    true,
+    1,
+  );
+  static const maxModelTextBytes = MermanResourceLimitId._known(
+    'max_model_text_bytes',
+    'layout_model',
+    true,
+    1,
+  );
+  static const maxModelNestingDepth = MermanResourceLimitId._known(
+    'max_model_nesting_depth',
+    'layout_model',
+    true,
+    1,
+  );
+  static const maxLayoutWorkUnits = MermanResourceLimitId._known(
+    'max_layout_work_units',
+    'layout_model',
+    true,
+    1,
+  );
+  static const maxSvgBytes = MermanResourceLimitId._known(
+    'max_svg_bytes',
+    'svg_output',
+    true,
+    1,
+  );
+  static const maxSvgElements = MermanResourceLimitId._known(
+    'max_svg_elements',
+    'svg_postprocess',
+    true,
+    1,
+  );
+  static const maxDocumentDiagrams = MermanResourceLimitId._known(
+    'max_document_diagrams',
+    'document_scan',
+    true,
+    0,
+  );
+  static const maxAsciiGridCells = MermanResourceLimitId._known(
+    'max_ascii_grid_cells',
+    'ascii_layout',
+    true,
+    1,
+  );
+  static const maxRasterWidth = MermanResourceLimitId._known(
+    'max_raster_width',
+    'raster_allocation',
+    true,
+    1,
+  );
+  static const maxRasterHeight = MermanResourceLimitId._known(
+    'max_raster_height',
+    'raster_allocation',
+    true,
+    1,
+  );
+  static const maxRasterPixels = MermanResourceLimitId._known(
+    'max_raster_pixels',
+    'raster_allocation',
+    true,
+    1,
+  );
+  static const maxEmbeddedImageBytes = MermanResourceLimitId._known(
+    'max_embedded_image_bytes',
+    'embedded_image_decode',
+    true,
+    1,
+  );
+  static const maxTotalEmbeddedImageBytes = MermanResourceLimitId._known(
+    'max_total_embedded_image_bytes',
+    'embedded_image_decode',
+    true,
+    1,
+  );
+  static const maxEmbeddedImagePixels = MermanResourceLimitId._known(
+    'max_embedded_image_pixels',
+    'embedded_image_decode',
+    true,
+    1,
+  );
+  static const maxTotalEmbeddedImagePixels = MermanResourceLimitId._known(
+    'max_total_embedded_image_pixels',
+    'embedded_image_decode',
+    true,
+    1,
+  );
+  static const maxPdfFilterImagePixels = MermanResourceLimitId._known(
+    'max_pdf_filter_image_pixels',
+    'pdf_filter_rasterization',
+    true,
+    1,
+  );
+  static const maxSvgConversionIsolationDepth = MermanResourceLimitId._known(
+    'max_svg_conversion_isolation_depth',
+    'svg_conversion',
+    false,
+    1,
+  );
+  static const maxSvgConversionFilterPrimitivesPerFilter =
+      MermanResourceLimitId._known(
+    'max_svg_conversion_filter_primitives_per_filter',
+    'svg_conversion',
+    false,
+    1,
+  );
+  static const maxTotalSvgConversionFilterPrimitives =
+      MermanResourceLimitId._known(
+    'max_total_svg_conversion_filter_primitives',
+    'svg_conversion',
+    false,
+    1,
+  );
+  static const maxSvgConversionSubroots = MermanResourceLimitId._known(
+    'max_svg_conversion_subroots',
+    'svg_conversion',
+    false,
+    1,
+  );
+  static const maxNestedSvgImages = MermanResourceLimitId._known(
+    'max_nested_svg_images',
+    'svg_conversion',
+    false,
+    1,
+  );
+  static const svgBackendTreeNodes = MermanResourceLimitId._known(
+    'svg_backend_tree_nodes',
+    'svg_conversion',
+    false,
+    1,
+  );
 
-  const MermanResourceLimitId(this.id, this.overridable, this.minimumValue);
+  static const List<MermanResourceLimitId> knownValues =
+      <MermanResourceLimitId>[
+    maxSourceBytes,
+    maxModelItems,
+    maxModelTextBytes,
+    maxModelNestingDepth,
+    maxLayoutWorkUnits,
+    maxSvgBytes,
+    maxSvgElements,
+    maxDocumentDiagrams,
+    maxAsciiGridCells,
+    maxRasterWidth,
+    maxRasterHeight,
+    maxRasterPixels,
+    maxEmbeddedImageBytes,
+    maxTotalEmbeddedImageBytes,
+    maxEmbeddedImagePixels,
+    maxTotalEmbeddedImagePixels,
+    maxPdfFilterImagePixels,
+    maxSvgConversionIsolationDepth,
+    maxSvgConversionFilterPrimitivesPerFilter,
+    maxTotalSvgConversionFilterPrimitives,
+    maxSvgConversionSubroots,
+    maxNestedSvgImages,
+    svgBackendTreeNodes,
+  ];
+
+  const MermanResourceLimitId._known(
+    this.id,
+    this.phase,
+    this.overridable,
+    this.minimumValue,
+  );
+
+  const MermanResourceLimitId._unknown(this.id)
+      : phase = null,
+        overridable = null,
+        minimumValue = null;
+
+  factory MermanResourceLimitId.fromId(String id) {
+    if (id.isEmpty) {
+      throw ArgumentError.value(
+        id,
+        'id',
+        'Resource limit id must not be empty',
+      );
+    }
+    for (final value in knownValues) {
+      if (value.id == id) {
+        return value;
+      }
+    }
+    return MermanResourceLimitId._unknown(id);
+  }
+
   final String id;
-  final bool overridable;
-  final int minimumValue;
+  final String? phase;
+  final bool? overridable;
+  final int? minimumValue;
+
+  bool get isKnown => phase != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MermanResourceLimitId && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
+  String toString() => id;
 }
 
 enum MermanResourceOverrideId {

@@ -11,11 +11,48 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { packageEntrySource, replaceDirectory } from "./build-surface-packages.mjs";
-import { webPackages } from "./surface-manifest.mjs";
+import {
+  resourceContractValueExportNames,
+  webPackages,
+} from "./surface-manifest.mjs";
+import { loadTypeScriptContract } from "./typescript-contract.mjs";
+
+const webRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("browser package assembly", () => {
+  it("projects generated resource discovery values from every public package", () => {
+    for (const descriptor of webPackages) {
+      for (const name of resourceContractValueExportNames) {
+        assert.ok(
+          descriptor.valueExportNames.includes(name),
+          `${descriptor.id} package omitted ${name}`,
+        );
+      }
+      assert.match(
+        packageEntrySource(descriptor),
+        /from "\.\.\/generated\/resource-contract\.js"/,
+      );
+    }
+  });
+
+  it("keeps the root barrel synchronized with resource contract exports", () => {
+    const contract = loadTypeScriptContract({
+      tsconfigPath: path.join(webRoot, "tsconfig.json"),
+    });
+    const diagnostics = contract.diagnostics();
+    assert.equal(diagnostics.length, 0, contract.formatDiagnostics(diagnostics));
+    const rootExports = contract.exportedValueNames(
+      path.join(webRoot, "src", "index.ts"),
+    );
+    assert.deepEqual(
+      resourceContractValueExportNames.filter((name) => !rootExports.has(name)),
+      [],
+    );
+  });
+
   it("restores the existing package projection when final replacement fails", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-package-"));
     try {

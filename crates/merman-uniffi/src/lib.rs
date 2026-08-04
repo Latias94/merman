@@ -160,6 +160,10 @@ impl MermanError {
             message: message.into(),
         }
     }
+
+    fn invalid_argument(message: impl Into<String>) -> Self {
+        Self::from_binding(BindingError::invalid_argument(message))
+    }
 }
 
 #[cfg(not(feature = "svg"))]
@@ -2209,6 +2213,28 @@ mod tests {
 
         let inherited = resource_options_json(None, Vec::new()).unwrap();
         assert_eq!(inherited, r#"{"version":2}"#);
+    }
+
+    #[test]
+    fn resource_override_host_width_conversion_is_a_caller_error() {
+        let host_max = usize::MAX as u64;
+        assert_eq!(resource_override_host_value(host_max).unwrap(), usize::MAX);
+
+        let error = resource_override_value::<u32>(u64::from(u32::MAX) + 1, "u32").unwrap_err();
+        let MermanError::Binding {
+            code,
+            code_name,
+            kind,
+            capability_id,
+            resource,
+            message,
+        } = error;
+        assert_eq!(code, BindingStatus::InvalidArgument.code());
+        assert_eq!(code_name, BindingStatus::InvalidArgument.code_name());
+        assert_eq!(kind, MermanErrorKind::Generic);
+        assert_eq!(capability_id, None);
+        assert_eq!(resource, None);
+        assert_eq!(message, "resource override exceeds u32");
     }
 
     #[cfg(feature = "svg")]

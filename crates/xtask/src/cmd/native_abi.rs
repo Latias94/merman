@@ -46,6 +46,88 @@ const ABI3_FROZEN_MINIMUM_SEMANTICS: [&str; 10] = [
 ];
 const FFI_RUST_OUTPUT: &str = "crates/merman-ffi/src/generated/abi3.rs";
 const FFI_HEADER_OUTPUT: &str = "crates/merman-ffi/include/merman.h";
+const FLUTTER_OPERATION_OUTPUT: &str = "platforms/flutter/lib/src/generated/native_operations.dart";
+const DART_RESERVED_WORDS: &[&str] = &[
+    "abstract",
+    "as",
+    "assert",
+    "async",
+    "await",
+    "base",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "covariant",
+    "default",
+    "deferred",
+    "do",
+    "dynamic",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "extension",
+    "external",
+    "factory",
+    "false",
+    "final",
+    "finally",
+    "for",
+    "get",
+    "hide",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "interface",
+    "is",
+    "late",
+    "library",
+    "mixin",
+    "new",
+    "null",
+    "of",
+    "on",
+    "operator",
+    "part",
+    "required",
+    "rethrow",
+    "return",
+    "sealed",
+    "set",
+    "show",
+    "static",
+    "super",
+    "switch",
+    "sync",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "type",
+    "typedef",
+    "var",
+    "void",
+    "when",
+    "while",
+    "with",
+    "yield",
+];
+const FLUTTER_OPERATION_FIXED_MEMBERS: &[&str] = &[
+    "fromNativeCode",
+    "fromOperationId",
+    "hashCode",
+    "knownValues",
+    "nativeCode",
+    "noSuchMethod",
+    "operationId",
+    "requiresUri",
+    "runtimeType",
+    "toString",
+];
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -727,6 +809,69 @@ fn validate_opaque_scalars(descriptor: &NativeAbiDescriptor) -> Result<(), Strin
     Ok(())
 }
 
+fn validate_operation_global_identifiers(
+    operations: &[OperationCodeDescriptor],
+) -> Result<(), String> {
+    let mut identifiers = BTreeMap::from([(
+        "MERMAN_NATIVE_OPERATION_DESCRIPTORS".to_string(),
+        "generated Rust operation descriptor table".to_string(),
+    )]);
+    for operation in operations {
+        let suffix = upper_snake(&operation.id);
+        let mut emitted = vec![
+            (operation.c_name.clone(), "operation code"),
+            (
+                format!("MERMAN_NATIVE_OPERATION_REQUIRES_URI_{suffix}"),
+                "requires-URI flag",
+            ),
+            (
+                format!("MERMAN_NATIVE_OPERATION_EXECUTABLE_{suffix}"),
+                "executable flag",
+            ),
+        ];
+        if operation.non_executable_failure.is_some() {
+            emitted.extend([
+                (
+                    format!("MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_STATUS_{suffix}"),
+                    "non-executable status",
+                ),
+                (
+                    format!("MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_ERROR_KIND_{suffix}"),
+                    "non-executable error kind",
+                ),
+            ]);
+        }
+        if operation.id != "none" {
+            // Capability is optional today, but reserving every generated metadata name keeps a
+            // later capability assignment from retroactively breaking the ABI projection.
+            emitted.extend([
+                (
+                    format!("MERMAN_NATIVE_OPERATION_ID_{suffix}"),
+                    "binding operation id",
+                ),
+                (
+                    format!("MERMAN_NATIVE_OPERATION_CAPABILITY_{suffix}"),
+                    "capability id",
+                ),
+                (
+                    format!("MERMAN_NATIVE_OPERATION_MEDIA_TYPE_{suffix}"),
+                    "media type",
+                ),
+            ]);
+        }
+
+        for (identifier, role) in emitted {
+            let source = format!("operation `{}` {role}", operation.id);
+            if let Some(previous) = identifiers.insert(identifier.clone(), source.clone()) {
+                return Err(descriptor_error(format!(
+                    "native ABI global identifier `{identifier}` is emitted by both {previous} and {source}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
     if descriptor.schema_version != SCHEMA_VERSION {
         return Err(descriptor_error(format!(
@@ -1060,6 +1205,8 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             )));
         }
     }
+    validate_operation_global_identifiers(&descriptor.operation_codes)?;
+    validate_flutter_operation_projection(&descriptor.operation_codes)?;
     let none = descriptor
         .operation_codes
         .iter()
@@ -1905,6 +2052,60 @@ fn upper_camel(value: &str) -> String {
         .collect()
 }
 
+fn lower_camel(value: &str) -> String {
+    let upper = upper_camel(value);
+    let mut characters = upper.chars();
+    match characters.next() {
+        Some(first) => format!("{}{}", first.to_ascii_lowercase(), characters.as_str()),
+        None => String::new(),
+    }
+}
+
+fn validate_dart_lower_camel_members<'a>(
+    values: impl IntoIterator<Item = &'a str>,
+    context: &str,
+    fixed_members: &[&str],
+) -> Result<(), String> {
+    let mut projected = BTreeMap::new();
+    for value in values {
+        let member = lower_camel(value);
+        if !is_ascii_identifier(&member) {
+            return Err(descriptor_error(format!(
+                "{context} `{value}` projects to invalid Dart identifier `{member}`"
+            )));
+        }
+        if DART_RESERVED_WORDS.contains(&member.as_str()) {
+            return Err(descriptor_error(format!(
+                "{context} `{value}` projects to reserved Dart keyword `{member}`"
+            )));
+        }
+        if fixed_members.contains(&member.as_str()) {
+            return Err(descriptor_error(format!(
+                "{context} `{value}` projects to fixed Dart MermanOperation member `{member}`"
+            )));
+        }
+        if let Some(previous) = projected.insert(member.clone(), value) {
+            return Err(descriptor_error(format!(
+                "{context}s `{previous}` and `{value}` both project to Dart member `{member}`"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_flutter_operation_projection(
+    operations: &[OperationCodeDescriptor],
+) -> Result<(), String> {
+    validate_dart_lower_camel_members(
+        operations
+            .iter()
+            .filter(|operation| operation.executable)
+            .map(|operation| operation.id.as_str()),
+        "native ABI executable operation id",
+        FLUTTER_OPERATION_FIXED_MEMBERS,
+    )
+}
+
 fn sorted_codes(values: &[CodeDescriptor]) -> Vec<&CodeDescriptor> {
     let mut values = values.iter().collect::<Vec<_>>();
     values.sort_by_key(|value| value.code);
@@ -2628,6 +2829,85 @@ fn render_rust_operation_catalog(out: &mut String, values: &[ResolvedOperation])
     out.push_str("        _ => None,\n    }\n}\n\n");
 }
 
+fn render_flutter_operations(values: &[ResolvedOperation]) -> String {
+    let executable = values
+        .iter()
+        .filter(|value| value.executable)
+        .collect::<Vec<_>>();
+    let mut out = String::from(
+        "// This file is @generated by `cargo run -p xtask -- gen-native-abi`.\n\
+         // Sources: abi/merman-v3.json and capabilities/feature-surface-v1.json.\n\
+         // Do not edit directly.\n\n\
+         import 'native_abi.dart' as native;\n\n\
+         /// One executable operation in the generated native ABI projection.\n\
+         ///\n\
+         /// Runtime catalogs may contain newer operation IDs. Convert an ID through\n\
+         /// [MermanOperation.fromOperationId] before invocation so an older SDK fails\n\
+         /// explicitly instead of guessing a numeric code.\n\
+         final class MermanOperation {\n\
+         \x20 const MermanOperation._(\n\
+         \x20   this.nativeCode,\n\
+         \x20   this.operationId,\n\
+         \x20   this.requiresUri,\n\
+         \x20 );\n\n",
+    );
+
+    for value in &executable {
+        let suffix = upper_snake(&value.id);
+        let name = lower_camel(&value.id);
+        writeln!(
+            out,
+            "  static const {name} = MermanOperation._(\n    native.{},\n    native.MERMAN_NATIVE_OPERATION_ID_{suffix},\n    {},\n  );",
+            value.c_name, value.requires_uri
+        )
+        .unwrap();
+    }
+
+    out.push_str("\n  static const List<MermanOperation> knownValues = <MermanOperation>[\n");
+    for value in &executable {
+        writeln!(out, "    {},", lower_camel(&value.id)).unwrap();
+    }
+    out.push_str(
+        "  ];\n\n\
+         \x20 factory MermanOperation.fromNativeCode(int nativeCode) {\n\
+         \x20   for (final operation in knownValues) {\n\
+         \x20     if (operation.nativeCode == nativeCode) {\n\
+         \x20       return operation;\n\
+         \x20     }\n\
+         \x20   }\n\
+         \x20   throw ArgumentError.value(\n\
+         \x20     nativeCode,\n\
+         \x20     'nativeCode',\n\
+         \x20     'No executable operation mapping exists in this generated ABI projection',\n\
+         \x20   );\n\
+         \x20 }\n\n\
+         \x20 factory MermanOperation.fromOperationId(String operationId) {\n\
+         \x20   for (final operation in knownValues) {\n\
+         \x20     if (operation.operationId == operationId) {\n\
+         \x20       return operation;\n\
+         \x20     }\n\
+         \x20   }\n\
+         \x20   throw UnsupportedError(\n\
+         \x20     'Operation `$operationId` requires an updated Merman SDK/header before invocation',\n\
+         \x20   );\n\
+         \x20 }\n\n\
+         \x20 final int nativeCode;\n\
+         \x20 final String operationId;\n\
+         \x20 final bool requiresUri;\n\n\
+         \x20 @override\n\
+         \x20 bool operator ==(Object other) =>\n\
+         \x20     other is MermanOperation &&\n\
+         \x20     nativeCode == other.nativeCode &&\n\
+         \x20     operationId == other.operationId;\n\n\
+         \x20 @override\n\
+         \x20 int get hashCode => Object.hash(nativeCode, operationId);\n\n\
+         \x20 @override\n\
+         \x20 String toString() => operationId;\n\
+         }\n",
+    );
+    out
+}
+
 fn render_rust_slot_type(out: &mut String, values: &[&CallableDescriptor]) {
     out.push_str("pub type MermanNativeFunctionSlot = i32;\n");
     for value in values {
@@ -2661,6 +2941,10 @@ fn generated_artifacts(prepared: &PreparedNativeAbi) -> Result<Vec<(PathBuf, Str
                 &prepared.full_descriptor_digest,
                 &prepared.operations,
             ),
+        ),
+        (
+            PathBuf::from(FLUTTER_OPERATION_OUTPUT),
+            render_flutter_operations(&prepared.operations),
         ),
         (
             PathBuf::from(ABI3_CURRENT_SEMANTIC_PROJECTION_PATH),
@@ -2904,6 +3188,127 @@ mod tests {
                                     && failure.error_kind_json_name == "generic"
                             })
                 })
+        );
+    }
+
+    #[test]
+    fn flutter_operation_projection_is_open_and_descriptor_owned() {
+        let root = crate::cmd::workspace_root();
+        let prepared = load_and_validate(&root, SemanticSnapshotMode::Verify).unwrap();
+        let artifacts = generated_artifacts(&prepared).unwrap();
+        let dart = artifacts
+            .iter()
+            .find(|(path, _)| {
+                path == Path::new("platforms/flutter/lib/src/generated/native_operations.dart")
+            })
+            .map(|(_, contents)| contents)
+            .expect("native ABI generation must own the Flutter operation projection");
+
+        assert!(dart.contains("final class MermanOperation"));
+        assert!(dart.contains("static const List<MermanOperation> knownValues"));
+        assert!(dart.contains("factory MermanOperation.fromNativeCode(int nativeCode)"));
+        assert!(dart.contains("factory MermanOperation.fromOperationId(String operationId)"));
+        assert!(dart.contains("requires an updated Merman SDK/header"));
+        assert!(!dart.contains("enum MermanOperation"));
+        assert!(!dart.contains("MERMAN_NATIVE_OPERATION_NONE,"));
+    }
+
+    #[test]
+    fn descriptor_rejects_unsafe_flutter_operation_member_projections() {
+        let mut reserved_member = committed_descriptor();
+        let operation = reserved_member
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "svg")
+            .expect("committed descriptor has svg operation");
+        operation.id = "from_native_code".to_string();
+        operation.c_name = "MERMAN_NATIVE_OPERATION_FROM_NATIVE_CODE".to_string();
+        let error = validate_descriptor(&reserved_member)
+            .expect_err("fixed Flutter members must not be shadowed");
+        assert!(error.contains("fromNativeCode"), "{error}");
+        assert!(
+            error.contains("fixed Dart MermanOperation member"),
+            "{error}"
+        );
+
+        let mut keyword = committed_descriptor();
+        let operation = keyword
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "svg")
+            .expect("committed descriptor has svg operation");
+        operation.id = "class".to_string();
+        operation.c_name = "MERMAN_NATIVE_OPERATION_CLASS".to_string();
+        let error = validate_descriptor(&keyword).expect_err("Dart keywords must not be generated");
+        assert!(error.contains("reserved Dart keyword `class`"), "{error}");
+
+        let mut collision = committed_descriptor();
+        let first = collision
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "analysis_json")
+            .expect("committed descriptor has analysis-json operation");
+        first.id = "foo_1".to_string();
+        first.c_name = "MERMAN_NATIVE_OPERATION_FOO_1".to_string();
+        let second = collision
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "analysis_facts_json")
+            .expect("committed descriptor has analysis-facts-json operation");
+        second.id = "foo1".to_string();
+        second.c_name = "MERMAN_NATIVE_OPERATION_FOO1".to_string();
+        let error = validate_descriptor(&collision)
+            .expect_err("normalized Flutter operation members must remain unique");
+        assert!(error.contains("`foo_1` and `foo1`"), "{error}");
+        assert!(error.contains("Dart member `foo1`"), "{error}");
+    }
+
+    #[test]
+    fn descriptor_rejects_colliding_derived_operation_globals() {
+        let mut descriptor = committed_descriptor();
+        let first = descriptor
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "analysis_json")
+            .expect("committed descriptor has analysis-json operation");
+        first.id = "foo".to_string();
+        first.c_name = "MERMAN_NATIVE_OPERATION_FOO".to_string();
+        let second = descriptor
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "analysis_facts_json")
+            .expect("committed descriptor has analysis-facts-json operation");
+        second.id = "id_foo".to_string();
+        second.c_name = "MERMAN_NATIVE_OPERATION_ID_FOO".to_string();
+
+        let error = validate_descriptor(&descriptor)
+            .expect_err("operation codes must not collide with derived metadata globals");
+        assert!(
+            error.contains("global identifier `MERMAN_NATIVE_OPERATION_ID_FOO`"),
+            "{error}"
+        );
+        assert!(
+            error.contains("operation `foo` binding operation id"),
+            "{error}"
+        );
+        assert!(
+            error.contains("operation `id_foo` operation code"),
+            "{error}"
+        );
+
+        let mut fixed_global = committed_descriptor();
+        let operation = fixed_global
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "analysis_json")
+            .expect("committed descriptor has analysis-json operation");
+        operation.id = "descriptors".to_string();
+        operation.c_name = "MERMAN_NATIVE_OPERATION_DESCRIPTORS".to_string();
+        let error = validate_descriptor(&fixed_global)
+            .expect_err("operation codes must not shadow fixed generated globals");
+        assert!(
+            error.contains("generated Rust operation descriptor table"),
+            "{error}"
         );
     }
 

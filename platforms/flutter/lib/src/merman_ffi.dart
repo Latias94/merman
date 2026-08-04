@@ -6,9 +6,13 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import 'generated/native_abi.dart' as native;
+import 'generated/native_operations.dart';
 import 'generated/package_version.dart';
-import 'generated/resource_options.dart' show mermanBindingOptionsSchemaVersion;
+import 'generated/resource_options.dart'
+    show MermanResourceLimitId, mermanBindingOptionsSchemaVersion;
 import 'generated/text_measurement_protocol.dart';
+
+export 'generated/native_operations.dart' show MermanOperation;
 
 const int _runtimeCatalogSchemaVersion = 1;
 
@@ -34,89 +38,6 @@ ffi.DynamicLibrary openMermanLibrary() {
 /// This exists for local Dart smoke tests and non-Flutter host applications.
 ffi.DynamicLibrary openMermanLibraryFromPath(String path) =>
     ffi.DynamicLibrary.open(path);
-
-/// Operations declared by the generated native ABI 3 header.
-///
-/// Numeric values and public operation IDs are generated from `abi/merman-v3.json`
-/// through `merman.h`; this enum intentionally contains no handwritten codes.
-enum MermanOperation {
-  svg(native.MERMAN_NATIVE_OPERATION_SVG),
-  png(native.MERMAN_NATIVE_OPERATION_PNG),
-  jpeg(native.MERMAN_NATIVE_OPERATION_JPEG),
-  pdf(native.MERMAN_NATIVE_OPERATION_PDF),
-  ascii(native.MERMAN_NATIVE_OPERATION_ASCII),
-  semanticJson(native.MERMAN_NATIVE_OPERATION_SEMANTIC_JSON),
-  layoutJson(native.MERMAN_NATIVE_OPERATION_LAYOUT_JSON),
-  analysisJson(native.MERMAN_NATIVE_OPERATION_ANALYSIS_JSON),
-  analysisFactsJson(native.MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON),
-  validationJson(native.MERMAN_NATIVE_OPERATION_VALIDATION_JSON),
-  documentAnalysisJson(native.MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON),
-  documentAnalysisFactsJson(
-    native.MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON,
-  ),
-  svgPlanJson(native.MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON);
-
-  const MermanOperation(this.nativeCode);
-
-  /// The generated ABI 3 numeric operation code.
-  final int nativeCode;
-
-  /// Stable ID consumed by the shared bindings-core operation path.
-  String get operationId => switch (this) {
-        MermanOperation.svg => native.MERMAN_NATIVE_OPERATION_ID_SVG,
-        MermanOperation.png => native.MERMAN_NATIVE_OPERATION_ID_PNG,
-        MermanOperation.jpeg => native.MERMAN_NATIVE_OPERATION_ID_JPEG,
-        MermanOperation.pdf => native.MERMAN_NATIVE_OPERATION_ID_PDF,
-        MermanOperation.ascii => native.MERMAN_NATIVE_OPERATION_ID_ASCII,
-        MermanOperation.semanticJson =>
-          native.MERMAN_NATIVE_OPERATION_ID_SEMANTIC_JSON,
-        MermanOperation.layoutJson =>
-          native.MERMAN_NATIVE_OPERATION_ID_LAYOUT_JSON,
-        MermanOperation.analysisJson =>
-          native.MERMAN_NATIVE_OPERATION_ID_ANALYSIS_JSON,
-        MermanOperation.analysisFactsJson =>
-          native.MERMAN_NATIVE_OPERATION_ID_ANALYSIS_FACTS_JSON,
-        MermanOperation.validationJson =>
-          native.MERMAN_NATIVE_OPERATION_ID_VALIDATION_JSON,
-        MermanOperation.documentAnalysisJson =>
-          native.MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_JSON,
-        MermanOperation.documentAnalysisFactsJson =>
-          native.MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_FACTS_JSON,
-        MermanOperation.svgPlanJson =>
-          native.MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON,
-      };
-
-  bool get requiresUri => switch (this) {
-        MermanOperation.svg =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG != 0,
-        MermanOperation.png =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_PNG != 0,
-        MermanOperation.jpeg =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_JPEG != 0,
-        MermanOperation.pdf =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_PDF != 0,
-        MermanOperation.ascii =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_ASCII != 0,
-        MermanOperation.semanticJson =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_SEMANTIC_JSON != 0,
-        MermanOperation.layoutJson =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_LAYOUT_JSON != 0,
-        MermanOperation.analysisJson =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_ANALYSIS_JSON != 0,
-        MermanOperation.analysisFactsJson =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_ANALYSIS_FACTS_JSON != 0,
-        MermanOperation.validationJson =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_VALIDATION_JSON != 0,
-        MermanOperation.documentAnalysisJson =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_DOCUMENT_ANALYSIS_JSON !=
-              0,
-        MermanOperation.documentAnalysisFactsJson =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_DOCUMENT_ANALYSIS_FACTS_JSON !=
-              0,
-        MermanOperation.svgPlanJson =>
-          native.MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG_PLAN_JSON != 0,
-      };
-}
 
 /// A raw generic-operation result returned by the ABI 3 operation table.
 class MermanOperationResult {
@@ -167,7 +88,7 @@ class MermanResourceErrorDetails {
     required this.profile,
   });
 
-  final String limitId;
+  final MermanResourceLimitId limitId;
   final String phase;
   final int actual;
   final int max;
@@ -250,7 +171,7 @@ class MermanException implements Exception {
                 profile is String &&
                 profile.isNotEmpty) {
               resourceDetails = MermanResourceErrorDetails(
-                limitId: limitId,
+                limitId: MermanResourceLimitId.fromId(limitId),
                 phase: phase,
                 actual: actual,
                 max: max,
@@ -1005,15 +926,25 @@ final class MermanResourceLimitDescriptor {
     required this.hardCap,
     required this.minimumValue,
     required List<String> operationIds,
-  }) : operationIds = List.unmodifiable(operationIds);
+    Map<String, Object?> additionalFields = const {},
+  })  : operationIds = List.unmodifiable(operationIds),
+        additionalFields = _deeplyUnmodifiableJsonObject(
+          additionalFields,
+          'resource limit additional fields',
+        );
 
-  final String id;
+  final MermanResourceLimitId id;
   final String phase;
   final String description;
   final bool overridable;
   final bool hardCap;
   final int minimumValue;
   final List<String> operationIds;
+
+  /// Additive schema fields unknown to this SDK version.
+  ///
+  /// Values are defensively copied and recursively unmodifiable.
+  final Map<String, Object?> additionalFields;
 }
 
 /// One independently versioned binding payload advertised by the loaded artifact.
@@ -1028,19 +959,29 @@ final class MermanRuntimePayloadSchema {
 }
 
 final class MermanResourceProfileDescriptor {
-  const MermanResourceProfileDescriptor({
+  MermanResourceProfileDescriptor({
     required this.id,
     required this.purpose,
     required this.trustAssumption,
     required this.recommendedBindingDefault,
-    required this.limits,
-  });
+    required Map<MermanResourceLimitId, int?> limits,
+    Map<String, Object?> additionalFields = const {},
+  })  : limits = Map.unmodifiable(limits),
+        additionalFields = _deeplyUnmodifiableJsonObject(
+          additionalFields,
+          'resource profile additional fields',
+        );
 
   final String id;
   final String purpose;
   final String trustAssumption;
   final bool recommendedBindingDefault;
-  final Map<String, int?> limits;
+  final Map<MermanResourceLimitId, int?> limits;
+
+  /// Additive schema fields unknown to this SDK version.
+  ///
+  /// Values are defensively copied and recursively unmodifiable.
+  final Map<String, Object?> additionalFields;
 }
 
 /// Runtime behavior contract for one output exposed by the loaded artifact.
@@ -1338,12 +1279,15 @@ class MermanRuntimeCatalog {
   final List<MermanResourceLimitDescriptor> resourceLimits;
   final List<MermanResourceProfileDescriptor> resourceProfiles;
   final Map<String, MermanRuntimeOutputContract> outputContractsById;
-  final Map<String, MermanResourceLimitDescriptor> resourceLimitsById;
+  final Map<MermanResourceLimitId, MermanResourceLimitDescriptor>
+      resourceLimitsById;
   final Map<String, MermanResourceProfileDescriptor> resourceProfilesById;
 
   bool supportsCapability(String id) => capabilityIds.contains(id);
   bool supportsOutput(String id) => outputIds.contains(id);
   bool supportsOperation(String id) => operationIds.contains(id);
+  MermanResourceLimitDescriptor? resourceLimitById(String id) =>
+      resourceLimitsById[MermanResourceLimitId.fromId(id)];
   bool supportsPayloadSchema(String id, int version) => payloadSchemas.any(
         (schema) => schema.id == id && schema.version == version,
       );
@@ -2449,7 +2393,7 @@ _ParsedRuntimeResources _parseRuntimeResources(
     );
   }
   final limits = <MermanResourceLimitDescriptor>[];
-  final limitIds = <String>{};
+  final limitIds = <String, MermanResourceLimitId>{};
   for (var index = 0; index < rawLimits.length; index += 1) {
     final label = 'runtime resources.limits[$index]';
     final limit = _asObject(rawLimits[index], label);
@@ -2464,17 +2408,19 @@ _ParsedRuntimeResources _parseRuntimeResources(
       },
       label,
     );
-    final id = _requiredNonEmptyString(limit, 'id', label);
-    if (!limitIds.add(id)) {
+    final idText = _requiredNonEmptyString(limit, 'id', label);
+    if (limitIds.containsKey(idText)) {
       throw MermanException.contract(
-        'runtime resource limit ID `$id` is duplicated',
+        'runtime resource limit ID `$idText` is duplicated',
       );
     }
+    final id = MermanResourceLimitId.fromId(idText);
+    limitIds[idText] = id;
     final overridable = _requiredBool(limit, 'overridable', label);
     final hardCap = _requiredBool(limit, 'hard_cap', label);
     if (hardCap && overridable) {
       throw MermanException.contract(
-        'runtime resource limit `$id` cannot be both a hard cap and overridable',
+        'runtime resource limit `$idText` cannot be both a hard cap and overridable',
       );
     }
     final limitOperationIds = _optionalSortedUniqueStrings(
@@ -2500,6 +2446,18 @@ _ParsedRuntimeResources _parseRuntimeResources(
         legacyDefault: 1,
       ),
       operationIds: limitOperationIds,
+      additionalFields: _additionalJsonFields(
+        limit,
+        const {
+          'id',
+          'phase',
+          'description',
+          'overridable',
+          'hard_cap',
+          'minimum_value',
+          'operation_ids',
+        },
+      ),
     ));
   }
 
@@ -2537,8 +2495,9 @@ _ParsedRuntimeResources _parseRuntimeResources(
       '$label.limits',
     );
     final profileLimitIds = rawProfileLimits.keys.toSet();
-    final missingLimitIds = limitIds.difference(profileLimitIds);
-    final unknownLimitIds = profileLimitIds.difference(limitIds);
+    final declaredLimitIds = limitIds.keys.toSet();
+    final missingLimitIds = declaredLimitIds.difference(profileLimitIds);
+    final unknownLimitIds = profileLimitIds.difference(declaredLimitIds);
     if (missingLimitIds.isNotEmpty || unknownLimitIds.isNotEmpty) {
       throw MermanException.contract(
         '$label.limits must contain exactly the declared resource limit IDs; '
@@ -2547,17 +2506,17 @@ _ParsedRuntimeResources _parseRuntimeResources(
       );
     }
 
-    final profileLimits = <String, int?>{};
+    final profileLimits = <MermanResourceLimitId, int?>{};
     for (final limit in limits) {
-      final value = rawProfileLimits[limit.id];
+      final value = rawProfileLimits[limit.id.id];
       if (value != null && (value is! int || value < limit.minimumValue)) {
         throw MermanException.contract(
-          '$label.limits[`${limit.id}`] must be null or at least ${limit.minimumValue}',
+          '$label.limits[`${limit.id.id}`] must be null or at least ${limit.minimumValue}',
         );
       }
       if (limit.hardCap && value == null) {
         throw MermanException.contract(
-          '$label.limits[`${limit.id}`] must retain its finite hard cap',
+          '$label.limits[`${limit.id.id}`] must retain its finite hard cap',
         );
       }
       profileLimits[limit.id] = value as int?;
@@ -2569,7 +2528,17 @@ _ParsedRuntimeResources _parseRuntimeResources(
           _requiredNonEmptyString(profile, 'trust_assumption', label),
       recommendedBindingDefault:
           _requiredBool(profile, 'recommended_binding_default', label),
-      limits: Map.unmodifiable(profileLimits),
+      limits: profileLimits,
+      additionalFields: _additionalJsonFields(
+        profile,
+        const {
+          'id',
+          'purpose',
+          'trust_assumption',
+          'recommended_binding_default',
+          'limits',
+        },
+      ),
     ));
   }
 
@@ -2833,6 +2802,47 @@ Map<String, Object?> _asObject(Object? value, String label) {
     output[entry.key as String] = entry.value;
   }
   return output;
+}
+
+Map<String, Object?> _additionalJsonFields(
+  Map<String, Object?> source,
+  Set<String> knownKeys,
+) =>
+    <String, Object?>{
+      for (final entry in source.entries)
+        if (!knownKeys.contains(entry.key)) entry.key: entry.value,
+    };
+
+Map<String, Object?> _deeplyUnmodifiableJsonObject(
+  Map<String, Object?> source,
+  String label,
+) =>
+    Map.unmodifiable(<String, Object?>{
+      for (final entry in source.entries)
+        entry.key: _deeplyUnmodifiableJsonValue(
+          entry.value,
+          '$label.${entry.key}',
+        ),
+    });
+
+Object? _deeplyUnmodifiableJsonValue(Object? value, String label) {
+  if (value == null || value is String || value is num || value is bool) {
+    return value;
+  }
+  if (value is List) {
+    return List<Object?>.unmodifiable(
+      value.indexed.map(
+        (entry) => _deeplyUnmodifiableJsonValue(
+          entry.$2,
+          '$label[${entry.$1}]',
+        ),
+      ),
+    );
+  }
+  if (value is Map) {
+    return _deeplyUnmodifiableJsonObject(_asObject(value, label), label);
+  }
+  throw MermanException.contract('$label must be a JSON value');
 }
 
 Map<String, Object?> _requiredObject(Map<String, Object?> source, String key) {

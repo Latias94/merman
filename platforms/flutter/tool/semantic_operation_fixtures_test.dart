@@ -119,12 +119,7 @@ void _assertSuccessInvariants(
 }
 
 MermanOperation _operationForId(String operationId) {
-  for (final operation in MermanOperation.values) {
-    if (operation.operationId == operationId) {
-      return operation;
-    }
-  }
-  throw StateError('shared fixture has unsupported operation `$operationId`');
+  return MermanOperation.fromOperationId(operationId);
 }
 
 List<_SemanticOperationFixture> _loadFixtures() {
