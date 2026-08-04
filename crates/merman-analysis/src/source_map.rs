@@ -989,31 +989,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn shared_text_slice_preserves_range_and_source_identity_without_copying() {
-        let source = Arc::<str>::from("prefix 🤓 suffix");
-        let start = source.find('🤓').unwrap();
-        let end = start + '🤓'.len_utf8();
-        let slice = SharedTextSlice::from_range(Arc::clone(&source), start, end).unwrap();
-        let whole = SharedTextSlice::whole(Arc::clone(&source));
-
-        assert_eq!(slice.as_str(), "🤓");
-        assert_eq!(slice.start(), start);
-        assert_eq!(slice.end(), end);
-        assert!(slice.shares_source_allocation_with(&whole));
-        assert!(Arc::ptr_eq(&slice.source_arc(), &source));
-    }
-
-    #[test]
-    fn shared_text_slice_rejects_invalid_or_non_boundary_ranges() {
+    fn shared_text_slice_range_and_ownership_contract_is_table_driven() {
         let source = Arc::<str>::from("a🤓b");
-        let emoji = source.find('🤓').unwrap();
+        let source_len = source.len();
+        let whole = SharedTextSlice::whole(Arc::clone(&source));
+        let cases = [
+            ("full", 0, source_len, Some("a🤓b")),
+            ("empty start", 0, 0, Some("")),
+            ("empty middle", 1, 1, Some("")),
+            ("empty end", source_len, source_len, Some("")),
+            ("ASCII prefix", 0, 1, Some("a")),
+            ("astral scalar", 1, 5, Some("🤓")),
+            ("ASCII suffix", 5, source_len, Some("b")),
+            ("reversed", 5, 1, None),
+            ("end out of bounds", 0, source_len + 1, None),
+            (
+                "start and end out of bounds",
+                source_len + 1,
+                source_len + 1,
+                None,
+            ),
+            ("start inside scalar", 2, 5, None),
+            ("end inside scalar", 1, 2, None),
+        ];
 
-        assert!(SharedTextSlice::from_range(Arc::clone(&source), 3, 2).is_none());
-        assert!(SharedTextSlice::from_range(Arc::clone(&source), 0, source.len() + 1).is_none());
-        assert!(
-            SharedTextSlice::from_range(Arc::clone(&source), emoji + 1, source.len()).is_none()
-        );
-        assert!(SharedTextSlice::from_range(source, 0, emoji + 1).is_none());
+        for (name, start, end, expected) in cases {
+            let actual = SharedTextSlice::from_range(Arc::clone(&source), start, end);
+            let Some(expected) = expected else {
+                assert!(actual.is_none(), "{name}");
+                continue;
+            };
+            let slice = actual.unwrap_or_else(|| panic!("{name}"));
+
+            assert_eq!(slice.as_str(), expected, "{name}");
+            assert_eq!(&*slice, expected, "{name}");
+            assert_eq!(slice.as_ref(), expected, "{name}");
+            assert_eq!(slice.start(), start, "{name}");
+            assert_eq!(slice.end(), end, "{name}");
+            assert!(slice.shares_source_allocation_with(&whole), "{name}");
+            assert!(Arc::ptr_eq(&slice.source_arc(), &source), "{name}");
+
+            let mut copied = slice.to_owned_text();
+            copied.push('!');
+            assert_eq!(slice.as_str(), expected, "{name}");
+            assert_eq!(copied, format!("{expected}!"), "{name}");
+        }
     }
 
     #[test]
