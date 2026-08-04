@@ -2,7 +2,7 @@
 
 use super::{feasible_tree, tree, util};
 use crate::graphlib::{EdgeKey, Graph, alg};
-use crate::work::{checked_add, checked_mul, checked_n_log_n};
+use crate::work::{checked_add, checked_mul, checked_n_log_n, checked_ordered_key_updates};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
 use crate::{NoopWorkControl, WorkControl, WorkError};
 
@@ -598,11 +598,13 @@ pub(crate) fn network_simplex_controlled(
 
 fn simplify_work_units(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<usize, WorkError> {
     let node_work = checked_mul(g.node_count(), 2)?;
+    let numeric_order_work =
+        checked_ordered_key_updates(g.node_count(), g.array_index_node_count())?;
     let edge_work = checked_add(
         checked_mul(g.edge_count(), 3)?,
         checked_mul(checked_n_log_n(g.edge_count())?, 2)?,
     )?;
-    checked_add(node_work, edge_work)
+    checked_add(checked_add(node_work, numeric_order_work)?, edge_work)
 }
 
 fn tree_state_rebuild_work_units(
@@ -1220,6 +1222,23 @@ mod tests {
             tree.set_edge(source, target);
         }
         tree
+    }
+
+    #[test]
+    fn simplify_work_curve_includes_numeric_object_key_rebuilds() {
+        for width in (0..=10).map(|shift| 1usize << shift) {
+            let mut numeric = Graph::new(GraphOptions::default());
+            let mut ordinary = Graph::new(GraphOptions::default());
+            for index in (0..width).rev() {
+                numeric.set_node(index.to_string(), NodeLabel::default());
+                ordinary.set_node(format!("node-{index}"), NodeLabel::default());
+            }
+
+            let numeric_work = simplify_work_units(&numeric).unwrap();
+            let ordinary_work = simplify_work_units(&ordinary).unwrap();
+            let ordered_work = checked_ordered_key_updates(width, width).unwrap();
+            assert_eq!(numeric_work, ordinary_work + ordered_work);
+        }
     }
 
     #[test]

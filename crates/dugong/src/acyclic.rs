@@ -186,7 +186,8 @@ fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
         }
     }
 
-    // Dagre's `dfsFAS` iterates nodes in `g.nodes()` order (insertion order).
+    // Dagre's `dfsFAS` iterates nodes in pinned Graphlib `g.nodes()` order. Graphlib delegates to
+    // JavaScript object-key enumeration, so array-index IDs precede ordinary creation-order IDs.
     for v in g.nodes() {
         dfs_iterative(g, v, &mut visited, &mut stack, &mut fas);
     }

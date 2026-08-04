@@ -6,7 +6,10 @@
 use rustc_hash::FxHashSet;
 
 use crate::graphlib;
-use crate::work::{checked_add, checked_mul, checked_n_log_n};
+use crate::work::{
+    checked_add, checked_mul, checked_n_log_n, checked_ordered_key_updates,
+    checked_unparented_parent_batch_work,
+};
 use crate::{
     EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, acyclic, add_border_segments,
     coordinate_system, nesting_graph, normalize, order, parent_dummy_chains, position, rank,
@@ -40,8 +43,18 @@ fn build_layout_graph(
     input: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>, WorkError> {
-    let node_work = checked_mul(input.node_count(), 2)?;
-    let work = checked_add(checked_add(1, node_work)?, input.edge_count())?;
+    let node_iteration_work = checked_mul(input.node_order_slot_count(), 2)?;
+    // Every numeric node is inserted into the temporary graph's global node order and root
+    // compound bucket. Parent-bucket moves are charged separately by the atomic batch owner.
+    let numeric_update_count = checked_mul(input.array_index_node_count(), 2)?;
+    let numeric_order_work = checked_ordered_key_updates(input.node_count(), numeric_update_count)?;
+    let work = checked_add(
+        checked_add(
+            checked_add(1, node_iteration_work)?,
+            input.edge_slot_count(),
+        )?,
+        numeric_order_work,
+    )?;
     work_control.charge(work)?;
 
     let mut layout = graphlib::Graph::with_capacity(
@@ -82,10 +95,34 @@ fn build_layout_graph(
             },
         );
     }
+    let mut parent_assignments = Vec::new();
+    let mut numeric_parent_assignments = 0usize;
     for id in input.nodes() {
         if let Some(parent) = input.parent(id) {
-            layout.set_parent_ref(id, parent);
+            let child_ix = layout
+                .node_ix(id)
+                .expect("every copied child must exist in the layout graph");
+            let parent_ix = layout
+                .node_ix(parent)
+                .expect("every copied parent must exist in the layout graph");
+            parent_assignments.push((child_ix, parent_ix));
+            numeric_parent_assignments += usize::from(graphlib::is_javascript_array_index(id));
         }
+    }
+    if !parent_assignments.is_empty() {
+        // `layout` was created above and has not received any parent links yet. Graphlib still
+        // validates that construction-only contract atomically, while its work bound can use the
+        // exact zero existing-link count instead of treating every allocated slot as a forest edge.
+        let parent_work = checked_unparented_parent_batch_work(
+            layout.node_slot_count(),
+            0,
+            parent_assignments.len(),
+            numeric_parent_assignments,
+        )?;
+        work_control.charge(parent_work)?;
+        layout
+            .try_set_unparented_parents_ix(&parent_assignments)
+            .expect("copying a valid graph's first parent assignments must remain acyclic");
     }
     input.for_each_edge(|key, edge| {
         layout.set_edge_key(
@@ -110,14 +147,20 @@ fn update_input_graph(
     layout: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<(), WorkError> {
+    // Inspecting the derived point cardinality is itself an edge-slot scan. Charge that bounded
+    // preflight before traversing the temporary graph, then charge the complete mutation tranche
+    // before touching the caller-owned graph.
+    work_control.charge(layout.edge_slot_count())?;
     let edge_point_work = layout.edges().try_fold(0usize, |total, key| {
         checked_add(
             total,
             layout.edge_by_key(key).map_or(0, |edge| edge.points.len()),
         )
     })?;
+    let node_snapshot_work = checked_add(input.node_order_slot_count(), input.node_count())?;
+    let edge_snapshot_work = checked_add(input.edge_slot_count(), input.edge_count())?;
     let work = checked_add(
-        checked_add(checked_add(1, input.node_count())?, input.edge_count())?,
+        checked_add(checked_add(1, node_snapshot_work)?, edge_snapshot_work)?,
         edge_point_work,
     )?;
     work_control.charge(work)?;
@@ -196,7 +239,7 @@ fn run_layout(
     work_control.charge(g.edge_count())?;
     self_edges::remove_self_edges(g);
 
-    work_control.charge(g.node_count())?;
+    work_control.charge(g.node_order_slot_count())?;
     let mut has_compound_structure = false;
     g.for_each_node(|id, _n| {
         if g.parent(id).is_some() || g.children_iter(id).next().is_some() {
@@ -248,7 +291,12 @@ fn run_layout(
             }
         }
     } else {
-        charge_graph_scan(g, work_control)?;
+        let rank_copy_order_work =
+            checked_ordered_key_updates(g.node_count(), g.array_index_node_count())?;
+        work_control.charge(checked_add(
+            graph_scan_work_units(g)?,
+            rank_copy_order_work,
+        )?)?;
         let mut rank_graph = util::as_non_compound_graph(g);
         rank::rank_controlled(&mut rank_graph, work_control)?;
         // Mirror Dagre's JS behavior: `rank(asNonCompoundGraph(g))` mutates the same label objects
@@ -256,7 +304,7 @@ fn run_layout(
         //
         // In Rust we don't share label objects between graphs, so we copy ranks explicitly for leaf
         // nodes only.
-        work_control.charge(g.node_count())?;
+        work_control.charge(node_snapshot_work_units(g)?)?;
         for v in g.node_ids() {
             if g.children_iter(&v).next().is_some() {
                 continue;
@@ -275,7 +323,7 @@ fn run_layout(
     let mut edge_proxy_nodes: Vec<String> = Vec::new();
     // Only clone edge keys when a proxy is actually needed.
     let mut to_proxy: Vec<(graphlib::EdgeKey, i32)> = Vec::new();
-    work_control.charge(g.edge_count())?;
+    work_control.charge(g.edge_slot_count())?;
     g.for_each_edge(|ek, edge| {
         if edge.width <= 0.0 || edge.height <= 0.0 {
             return;
@@ -314,7 +362,7 @@ fn run_layout(
         nesting_graph::cleanup(g);
     }
 
-    work_control.charge(g.node_count())?;
+    work_control.charge(checked_mul(g.node_order_slot_count(), 2)?)?;
     util::normalize_ranks(g);
 
     // Finish every label-rank writeback before the single graph-wide proxy retirement pass.
@@ -325,7 +373,7 @@ fn run_layout(
     // the `nestingGraph` border top/bottom nodes. This rank span is later used by subgraph
     // ordering and border segment generation.
     if g.options().compound && !tiny_simple_chain {
-        work_control.charge(g.node_count())?;
+        work_control.charge(node_snapshot_work_units(g)?)?;
         let node_ids = g.node_ids();
         for v in node_ids {
             let Some(node) = g.node(&v).cloned() else {
@@ -354,7 +402,7 @@ fn run_layout(
         add_border_segments::add_border_segments_controlled(g, work_control)?;
     }
     if tiny_simple_chain {
-        work_control.charge(g.node_count())?;
+        work_control.charge(node_snapshot_work_units(g)?)?;
         let mut nodes: Vec<(i32, String)> = Vec::with_capacity(g.node_count());
         g.for_each_node(|id, n| nodes.push((n.rank.unwrap_or(0), id.to_string())));
         nodes.sort_by(|a, b| (a.0, a.1.as_str()).cmp(&(b.0, b.1.as_str())));
@@ -390,7 +438,7 @@ fn run_layout(
     self_edges::insert_self_edges(g);
 
     let rank_sep = g.graph().ranksep;
-    work_control.charge(g.node_count())?;
+    work_control.charge(node_snapshot_work_units(g)?)?;
     let layering = util::build_layer_matrix(g);
 
     let layering_nodes = layering
@@ -415,7 +463,7 @@ fn run_layout(
         }
     }
     let xs = position::bk::position_x_with_layering_controlled(g, &layering, work_control)?;
-    work_control.charge(g.node_count())?;
+    work_control.charge(g.node_order_slot_count())?;
     g.for_each_node_mut(|id, n| {
         n.x = Some(xs.get(id).copied().unwrap_or(0.0));
     });
@@ -433,7 +481,7 @@ fn run_layout(
 
     charge_graph_scan(g, work_control)?;
     normalize::undo(g);
-    work_control.charge(g.edge_count())?;
+    work_control.charge(g.edge_slot_count())?;
     fixup_edge_label_coords(g);
     charge_graph_scan(g, work_control)?;
     coordinate_system::undo(g);
@@ -600,7 +648,19 @@ fn charge_graph_scan(
     g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<(), WorkError> {
-    work_control.charge(checked_add(g.node_count(), g.edge_count())?)
+    work_control.charge(graph_scan_work_units(g)?)
+}
+
+fn graph_scan_work_units(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    checked_add(g.node_order_slot_count(), g.edge_slot_count())
+}
+
+fn node_snapshot_work_units(
+    g: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<usize, WorkError> {
+    checked_add(g.node_order_slot_count(), g.node_count())
 }
 
 fn normalize_work_units(
@@ -744,12 +804,155 @@ fn fixup_edge_label_coords(graph: &mut graphlib::Graph<NodeLabel, EdgeLabel, Gra
 mod tests {
     use super::*;
 
+    #[derive(Default)]
+    struct RecordingWorkControl {
+        charges: Vec<usize>,
+        remaining: Option<usize>,
+    }
+
+    impl RecordingWorkControl {
+        fn with_limit(limit: usize) -> Self {
+            Self {
+                remaining: Some(limit),
+                ..Self::default()
+            }
+        }
+    }
+
+    impl WorkControl for RecordingWorkControl {
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.charges.push(units);
+            let Some(remaining) = self.remaining else {
+                return Ok(());
+            };
+            let Some(next) = remaining.checked_sub(units) else {
+                return Err(WorkError::Interrupted);
+            };
+            self.remaining = Some(next);
+            Ok(())
+        }
+    }
+
     fn test_graph() -> graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel> {
         graphlib::Graph::new(graphlib::GraphOptions {
             multigraph: true,
             compound: true,
             ..Default::default()
         })
+    }
+
+    #[test]
+    fn build_layout_graph_precharges_descending_numeric_object_key_work() {
+        for width in (0..=10).map(|shift| 1usize << shift) {
+            let mut graph = test_graph();
+            for index in (0..width).rev() {
+                graph.set_node(index.to_string(), NodeLabel::default());
+            }
+
+            let height = crate::work::ceil_log2(width) + 1;
+            let numeric_updates = width * 2;
+            let expected = 1 + width * 2 + numeric_updates * height;
+
+            let mut measured = RecordingWorkControl::default();
+            let rebuilt = build_layout_graph(&graph, &mut measured)
+                .expect("the unbounded control admits the numeric graph rebuild");
+            assert_eq!(measured.charges, vec![expected]);
+            assert_eq!(
+                rebuilt.node_ids(),
+                (0..width)
+                    .map(|index| index.to_string())
+                    .collect::<Vec<_>>()
+            );
+
+            let mut below = RecordingWorkControl::with_limit(expected - 1);
+            assert!(matches!(
+                build_layout_graph(&graph, &mut below),
+                Err(WorkError::Interrupted)
+            ));
+            assert_eq!(below.charges, vec![expected]);
+
+            for limit in [expected, expected + 1] {
+                let mut admitted = RecordingWorkControl::with_limit(limit);
+                let rebuilt = build_layout_graph(&graph, &mut admitted)
+                    .expect("equal and above numeric object-key budgets succeed");
+                assert_eq!(rebuilt.node_count(), width);
+            }
+        }
+    }
+
+    #[test]
+    fn build_layout_graph_batches_deep_numeric_parent_chains_with_bounded_work() {
+        for width in (1..=10).map(|shift| 1usize << shift) {
+            let mut graph = test_graph();
+            for index in 0..width {
+                graph.set_node(index.to_string(), NodeLabel::default());
+            }
+            let source_assignments = (1..width)
+                .map(|index| {
+                    (
+                        graph.node_ix(&index.to_string()).unwrap(),
+                        graph.node_ix(&(index - 1).to_string()).unwrap(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            graph
+                .try_set_unparented_parents_ix(&source_assignments)
+                .expect("the source chain is acyclic and uses first assignments");
+
+            let height = crate::work::ceil_log2(width) + 1;
+            let initial_work = 1 + width * 2 + width * 2 * height;
+            let parent_work = checked_unparented_parent_batch_work(
+                width,
+                0,
+                source_assignments.len(),
+                source_assignments.len(),
+            )
+            .unwrap();
+
+            let mut measured = RecordingWorkControl::default();
+            let rebuilt = build_layout_graph(&graph, &mut measured)
+                .expect("the unbounded control admits the batched deep chain");
+            assert_eq!(measured.charges, vec![initial_work, parent_work]);
+            for index in 1..width {
+                let child = index.to_string();
+                let expected_parent = (index - 1).to_string();
+                assert_eq!(rebuilt.parent(&child), Some(expected_parent.as_str()));
+            }
+
+            let exact = initial_work + parent_work;
+            let mut below = RecordingWorkControl::with_limit(exact - 1);
+            assert!(matches!(
+                build_layout_graph(&graph, &mut below),
+                Err(WorkError::Interrupted)
+            ));
+            assert_eq!(below.charges, vec![initial_work, parent_work]);
+
+            for limit in [exact, exact + 1] {
+                let mut admitted = RecordingWorkControl::with_limit(limit);
+                let rebuilt = build_layout_graph(&graph, &mut admitted)
+                    .expect("equal and above deep-chain budgets succeed");
+                assert_eq!(rebuilt.node_count(), width);
+            }
+        }
+    }
+
+    #[test]
+    fn graph_work_helpers_include_interior_order_and_edge_tombstones() {
+        let mut graph = test_graph();
+        for id in ["a", "b", "c", "d"] {
+            graph.set_node(id, NodeLabel::default());
+        }
+        graph.set_edge("a", "c");
+        graph.set_edge("c", "d");
+        assert!(graph.remove_node("b"));
+        assert!(graph.remove_edge("a", "c", None));
+
+        assert_eq!(graph.node_count(), 3);
+        assert_eq!(graph.node_order_slot_count(), 4);
+        assert_eq!(graph.edge_count(), 1);
+        assert_eq!(graph.edge_slot_count(), 2);
+        assert_eq!(graph_scan_work_units(&graph), Ok(6));
+        assert_eq!(node_snapshot_work_units(&graph), Ok(7));
     }
 
     #[test]

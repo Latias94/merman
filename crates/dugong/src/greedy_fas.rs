@@ -111,9 +111,10 @@ where
 
     // Aggregate multi-edges into a simple graph with summed weights.
     //
-    // Note: Upstream Dagre (JS) preserves insertion order for `g.nodes()` / `g.edges()` and
-    // the derived `inEdges(v)` / `outEdges(v)` traversals. GreedyFAS is sensitive to that
-    // ordering because it uses stable queues (List.enqueue + List.dequeue).
+    // Note: Upstream Dagre preserves Graphlib's JavaScript property-enumeration order for
+    // `g.nodes()` / `g.edges()` and the derived `inEdges(v)` / `outEdges(v)` traversals.
+    // GreedyFAS is sensitive to that order because it uses stable queues
+    // (`List.enqueue` + `List.dequeue`).
     //
     // For parity, keep node initialization in `g.node_ids()` order and keep the aggregated
     // adjacency order based on the *first occurrence* of each `(v, w)` in `g.edges()`.
