@@ -861,6 +861,31 @@ fn directed_edge_callbacks_can_query_node_adjacency_without_prewarming() {
 }
 
 #[test]
+fn directed_node_adjacency_reuses_high_fanout_removals_without_historical_order() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    for index in 0..256 {
+        g.set_edge("source", format!("old-{index:03}"));
+    }
+
+    for index in 0..255 {
+        assert!(g.remove_edge("source", &format!("old-{index:03}"), None));
+    }
+    assert_eq!(g.successors("source"), vec!["old-255"]);
+    assert_eq!(g.first_successor("source"), Some("old-255"));
+
+    for index in 0..255 {
+        g.set_edge("source", format!("new-{index:03}"));
+    }
+    let successors = g.successors("source");
+    assert_eq!(successors.len(), 256);
+    assert_eq!(successors.first(), Some(&"old-255"));
+    assert_eq!(successors.get(1), Some(&"new-000"));
+    assert_eq!(successors.last(), Some(&"new-254"));
+    assert_eq!(g.predecessors("new-000"), vec!["source"]);
+    assert_eq!(g.predecessors("new-254"), vec!["source"]);
+}
+
+#[test]
 fn neighbors_returns_unique_in_and_out_neighbors() {
     let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
     g.set_edge("a", "b");

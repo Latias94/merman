@@ -474,6 +474,7 @@ where
         g.children_ix.reserve(node_capacity);
         if options.directed {
             g.directed_node_adj.reserve_nodes(node_capacity);
+            g.directed_node_adj.reserve_edges(edge_capacity);
         }
         g
     }
