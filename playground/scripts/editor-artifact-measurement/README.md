@@ -17,11 +17,17 @@ npm run measure:editor-artifacts
 The command creates fresh dedicated builds, runs balanced AB/BA cold and warm
 samples in Chromium, executes a separate semantic-equivalence probe, and writes
 the versioned receipt to
-`target/playground/editor-artifact-measurement/receipt-v1.json`. Use
+`target/playground/editor-artifact-measurement/receipt-v2.json`. Use
 `--skip-build` only for local smoke checks because it reuses existing build
 directories. A receipt records the Git revision and whether the worktree was
 dirty. Only a fresh-build receipt from an unchanged clean worktree is marked
 authoritative; dirty or reused-build receipts remain explicitly provisional.
+The checked receipt also binds the measurement contract, startup and Worker
+closures, Web surface, full/editor package provenance, and equivalence evidence
+through selection-input digests. `npm run verify:editor-artifact-authority`
+recomputes those digests and the derived decision without building or launching
+a browser, so unrelated lazy-workbench and documentation changes do not force an
+R16 rerun while decision-sensitive changes fail closed.
 
 The equivalence probe uses the production `WorkerClient` and the emitted
 `merman-language.worker` as an explicit module Worker. Its input is the generated

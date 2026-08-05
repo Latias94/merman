@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -21,7 +29,10 @@ import {
   canonicalize,
   compareCanonicalStrings,
 } from "./equivalence-shared.mjs";
-import { digestEntries } from "./selection-inputs.mjs";
+import {
+  digestEntries,
+  measurementContractDigest,
+} from "./selection-inputs.mjs";
 import { verifyEditorArtifactAuthority } from "./verify-editor-artifact-receipt.mjs";
 
 test("selects editor only when semantics and every R16 metric pass", () => {
@@ -371,6 +382,35 @@ test("selection input hashing is order-independent and path-bound", () => {
   assert.throws(() => digestEntries([first, first]), /duplicated/u);
 });
 
+test("measurement freshness ignores documentation but binds executable inputs", (t) => {
+  const repositoryRoot = mkdtempSync(
+    path.join(tmpdir(), "merman-editor-artifact-inputs-"),
+  );
+  t.after(() => rmSync(repositoryRoot, { recursive: true, force: true }));
+  writeFixture(
+    repositoryRoot,
+    "playground/scripts/typescript-source-graph.mjs",
+    "export {};\n",
+  );
+  writeFixture(
+    repositoryRoot,
+    "playground/vite.editor-artifact-measurement.config.ts",
+    "export default {};\n",
+  );
+  const contractPath =
+    "playground/scripts/editor-artifact-measurement/contract.mjs";
+  const readmePath = "playground/scripts/editor-artifact-measurement/README.md";
+  writeFixture(repositoryRoot, contractPath, "export const schema = 2;\n");
+  writeFixture(repositoryRoot, readmePath, "Initial documentation.\n");
+
+  const initial = measurementContractDigest(repositoryRoot);
+  writeFixture(repositoryRoot, readmePath, "Rewritten documentation.\n");
+  assert.equal(measurementContractDigest(repositoryRoot), initial);
+
+  writeFixture(repositoryRoot, contractPath, "export const schema = 3;\n");
+  assert.notEqual(measurementContractDigest(repositoryRoot), initial);
+});
+
 test("marks dirty or reused-build receipts as provisional", () => {
   const dirty = validReceiptInput();
   dirty.revision.dirty = true;
@@ -663,4 +703,10 @@ function build(label, mainWasm, workerWasm) {
     },
     workerWasm: structuredClone(workerWasm),
   };
+}
+
+function writeFixture(repositoryRoot, relativePath, contents) {
+  const file = path.join(repositoryRoot, relativePath);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, contents);
 }

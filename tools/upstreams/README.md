@@ -39,7 +39,7 @@ render, browser-security, resource, license, and release-surface evidence is ind
 reference bundle and fails on a missing or modified artifact.
 
 The selected `@zenuml/core@3.50.1` package declares an exact optional CLI peer on
-`playwright-core@1.57.0`, while the Playground browser-test harness uses `1.61.1`. The application
+`playwright-core@1.57.0`, while the Playground browser-test harness uses `1.62.1`. The application
 runtime and browser-test harness are therefore separate npm projects with separate locks. The
 runtime tree intentionally leaves the optional CLI peer absent; the test tree owns Playwright and
 Axe without making either visible to ZenUML Core. Both trees must pass independent `npm ci` and

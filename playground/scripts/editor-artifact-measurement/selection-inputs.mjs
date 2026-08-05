@@ -13,6 +13,13 @@ const MEASUREMENT_INPUTS = Object.freeze([
   "playground/scripts/typescript-source-graph.mjs",
   "playground/vite.editor-artifact-measurement.config.ts",
 ]);
+const MEASUREMENT_CONTRACT_EXTENSIONS = new Set([
+  ".html",
+  ".mjs",
+  ".mts",
+  ".ts",
+  ".tsx",
+]);
 const STARTUP_BUILD_INPUTS = Object.freeze([
   "playground/index.html",
   "playground/package-lock.json",
@@ -63,20 +70,7 @@ export function editorArtifactSelectionInputs(repositoryRoot) {
 
   return Object.freeze({
     schemaVersion: EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION,
-    measurementContractSha256: digestEntries(
-      [
-        ...entriesForFiles(repositoryRoot, MEASUREMENT_INPUTS),
-        ...collectDirectoryEntries(
-          repositoryRoot,
-          "playground/scripts/editor-artifact-measurement",
-          {
-            exclude: new Set(["verify-editor-artifact-receipt.mjs"]),
-            excludeTests: true,
-          },
-        ),
-      ],
-      "measurement-contract",
-    ),
+    measurementContractSha256: measurementContractDigest(repositoryRoot),
     startupClosureSha256: digestEntries(
       [
         ...entriesForFiles(repositoryRoot, STARTUP_BUILD_INPUTS),
@@ -118,6 +112,24 @@ export function editorArtifactSelectionInputs(repositoryRoot) {
     ),
     equivalenceEvidenceSha256: sha256(equivalenceEvidence),
   });
+}
+
+export function measurementContractDigest(repositoryRoot) {
+  return digestEntries(
+    [
+      ...entriesForFiles(repositoryRoot, MEASUREMENT_INPUTS),
+      ...collectDirectoryEntries(
+        repositoryRoot,
+        "playground/scripts/editor-artifact-measurement",
+        {
+          exclude: new Set(["verify-editor-artifact-receipt.mjs"]),
+          excludeTests: true,
+          extensions: MEASUREMENT_CONTRACT_EXTENSIONS,
+        },
+      ),
+    ],
+    "measurement-contract",
+  );
 }
 
 export function digestEntries(entries, namespace = "fixture") {
@@ -218,7 +230,7 @@ function packageProvenanceDigest(repositoryRoot, packageId) {
 function collectDirectoryEntries(
   repositoryRoot,
   relativeRoot,
-  { exclude = new Set(), excludeTests = false } = {},
+  { exclude = new Set(), excludeTests = false, extensions = null } = {},
 ) {
   const entries = [];
   const visit = (relativeDirectory) => {
@@ -232,6 +244,7 @@ function collectDirectoryEntries(
       if (member.isDirectory()) {
         visit(relativePath);
       } else if (member.isFile()) {
+        if (extensions && !extensions.has(path.extname(relativePath))) continue;
         if (
           excludeTests &&
           /\.(?:spec|test)\.(?:mjs|ts|tsx)$/u.test(relativePath)

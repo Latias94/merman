@@ -206,6 +206,10 @@ cross-origin-isolated peak memory. The measured choice is the complete `@mermanj
 the main renderer already requires it, while adding the editor WASM creates a second compiled
 artifact and does not satisfy the lower-cold-bytes/no-memory-regression selection rule. The
 measurement remains an explicit on-demand architectural receipt rather than a browser CI gate.
+Receipt schema 2 binds the decision to deterministic measurement, startup/Worker closure, Web
+surface, package-provenance, and semantic-evidence digests. A hermetic verifier checks those
+inputs, the selected dependency/import path, and every derived decision field during normal tests;
+only a selection-sensitive change requires the browser-heavy measurement to be rerun.
 
 The editor Worker owns one analyzed document URI and monotonically increasing version. `didOpen`,
 `didChange`, query, versioned result validation, and disposal cross its typed channel. Diagnostics,

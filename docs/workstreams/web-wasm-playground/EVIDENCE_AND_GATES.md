@@ -426,23 +426,25 @@ npm run measure:editor-artifacts --prefix playground
 Results:
 
 - Native TypeScript Worker tests passed: 53 tests.
-- Pure artifact-decision tests passed: 14 tests.
+- Pure artifact-decision and authority tests passed: 19 tests.
 - Focused build-graph tests passed: 41 tests.
-- Production Playground build and dist verification passed with Vite 8.1.5.
+- Production Playground build and dist verification passed with Vite 8.2.0.
 - Real Chromium Monaco Worker smoke passed: 5 tests, including all 35 semantic-token family
   baselines, request-local rename failure, Retry recovery, and Benchmark isolation.
-- The fresh same-commit measurement ran against commit
-  `16ddd1d94536514dcd962b03b998c6efecae7146` with a clean worktree and four balanced AB/BA
-  blocks. Its receipt is authoritative.
+- The fresh same-commit measurement ran against the clean revision recorded in the receipt with
+  four balanced AB/BA blocks. Its receipt is authoritative.
 - Full and editor Workers were exactly equivalent across 35 families and 11 query kinds: 385 cells
   per variant, zero mismatches, and aggregate SHA-256
   `e52016004129f4a12c0b316be1890f614898003afc1318fd543c4f07b674596c` for both.
 - All six cold/warm primary latency comparisons passed the joint 5% and 20 ms limit.
-- The editor split failed the selection rule because cold transfer was 7,495,593 bytes versus
-  6,133,137 bytes for full, and peak memory was 30,852,334 bytes versus 30,739,906 bytes for full.
+- The editor split failed the selection rule because cold transfer was 7,504,435 bytes versus
+  6,141,465 bytes for full, and peak memory was 30,960,210 bytes versus 30,749,462 bytes for full.
 - The authoritative result therefore retains `@mermanjs/web` for both the main renderer and the
-  language Worker. The complete receipt is checked in at
-  [`editor-artifact-receipt-v1.json`](./editor-artifact-receipt-v1.json).
+  language Worker. Receipt schema 2 binds the measurement contract, startup and Worker closures,
+  Web surface, package provenance, and semantic evidence to deterministic content digests. The
+  hermetic authority verifier recomputes those inputs and the derived decision without a browser.
+  The complete receipt is checked in at
+  [`editor-artifact-receipt-v2.json`](./editor-artifact-receipt-v2.json).
 
 ### 2026-08-05 - Canonical Opaque Artifacts And Authoritative Build Graphs
 
@@ -485,7 +487,7 @@ Results:
 
 - Hermetic artifact/source/Vite/CSP/package policy suite passed: 35 tests.
 - Complete prepared unit suite passed, including 53 Worker, 54 realm, and 98 benchmark tests.
-- Vite 8.1.5 production build and plan-driven dist verification passed. The manifest contains
+- Vite 8.2.0 production build and plan-driven dist verification passed. The manifest contains
   distinct `opaque-compare-artifact` and `opaque-mermaid-artifact` activation roots; all optional
   workbenches remain outside the initial static closure.
 - Chromium Benchmark controller and realm flows passed: 9 tests, including reversible settings,
