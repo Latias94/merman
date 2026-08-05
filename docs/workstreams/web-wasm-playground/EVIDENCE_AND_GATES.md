@@ -534,12 +534,13 @@ Results:
 
 - The previous mandatory configuration discovered 88 full Chromium cases: 44 desktop cases plus
   the same 44 cases under mobile emulation.
-- The new mandatory configuration discovers 45 cases: 43 Chromium desktop cases and one focused
-  smoke case in each of Firefox and WebKit. This removes 43 duplicated mandatory selections, a
-  48.9% reduction, while preserving browser-engine coverage.
-- The focused on-demand mobile lane contains 3 interaction cases and completed 3/3 in 6.4 seconds.
-- Firefox and WebKit smoke completed 2/2 in 12.6 seconds.
-- Chromium desktop completed 43/43 in 2.7 minutes. An earlier run exposed one stale focus
+- The final mandatory configuration discovers 48 cases: 46 Chromium desktop cases and one focused
+  smoke case in each of Firefox and WebKit. Even after adding focused idle-Worker and responsive
+  focus regressions, this is 40 fewer mandatory selections than the previous duplicated matrix, a
+  45.5% reduction, while preserving browser-engine coverage.
+- The focused on-demand mobile lane contains 4 interaction cases and completed 4/4 in 7.9 seconds.
+- Firefox and WebKit smoke completed 2/2 in 8.9 seconds.
+- Chromium desktop completed 46/46 in 1.6 minutes. An earlier run exposed one stale focus
   assumption in manual tab activation; the scenario was corrected, passed in isolation, and then
   passed again as part of this complete final run.
 - No exact historical wall-clock comparison is claimed. Reconstructing a self-consistent old
@@ -594,15 +595,16 @@ Results:
   vulnerabilities; the browser-test package has no production dependency graph to audit.
 - `npm outdated` reports only the intentional lines above: Node types 22.20.1, Mermaid 11.16.0,
   Monaco 0.55.1, and TypeScript 5.7.3. The Playwright runtime and test package are exactly 1.62.1.
-- Complete prepared tests passed: 38 build-graph, 53 editor Worker, 69 runtime/store/share,
-  54 realm, and 98 Benchmark tests, plus all focused config, requirement, example, and export tests.
-- Vite 8.2.0 transformed 3,075 modules. Dist verification found exactly one
+- Complete prepared tests passed, including 43 build-graph, 56 editor Worker, 22 R16
+  contract/authority, 4 dependency-policy, and 98 Benchmark tests, plus all focused runtime,
+  store/share, realm, config, requirement, example, and export tests.
+- Vite 8.2.0 transformed 3,083 modules. Dist verification found exactly one
   `merman_wasm_bg-Dpd0uUA1.wasm`, one JavaScript shim, and one WASM URL owner in the full Web
-  package closure. The initial JavaScript closure is 4,215.92 KiB raw and 1,106.27 KiB gzip.
+  package closure. The initial JavaScript closure is 4,217.52 KiB raw and 1,106.94 KiB gzip.
 - The trusted Merman engine artifact is 45,341 bytes with no embedded WASM data URL, down 99.86%
   from the measured 33,565,060-byte duplicated form. The Mermaid engine artifact is 10,179,147
   bytes with no embedded Merman WASM, down 76.72% from 43,717,823 bytes.
-- Chromium desktop passed 43/43 in 1.6 minutes. Firefox/WebKit smoke passed 2/2 in 9.9 seconds.
-  The on-demand mobile interaction lane passed 3/3 in 6.3 seconds.
+- Chromium desktop passed 46/46 in 1.6 minutes. Firefox/WebKit smoke passed 2/2 in 8.9 seconds.
+  The on-demand mobile interaction lane passed 4/4 in 7.9 seconds.
 - The focused 100-event viewport hot-path scenario passed 10/10 repeated executions after the
   commit probe was scoped to pointer frequency rather than unrelated document-level UI work.
