@@ -616,6 +616,13 @@ pub enum PortType {
     Output,
 }
 
+pub(crate) const fn collector_port_id_suffix(port_type: PortType) -> &'static str {
+    match port_type {
+        PortType::Input => ":collector:Input",
+        PortType::Output => ":collector:Output",
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PortSide {
     #[default]
@@ -849,7 +856,7 @@ impl LGraph {
 
         let port_index = node.ports.len();
         let mut port = LPort::new(
-            format!("{}:collector:{port_type:?}", node.id),
+            format!("{}{}", node.id, collector_port_id_suffix(port_type)),
             node_index,
             port_type,
         );

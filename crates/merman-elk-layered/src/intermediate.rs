@@ -274,6 +274,38 @@ pub fn reverse_edges_for_edge_and_layer_constraints(graph: &mut LGraph) {
     }
 }
 
+pub(crate) fn edge_and_layer_constraint_reversal_may_mutate(graph: &LGraph) -> bool {
+    for node in &graph.layerless_nodes {
+        let Some(target_port_type) = target_port_type_for_layer_constraint(node.layer_constraint)
+        else {
+            continue;
+        };
+        let reverses_direct_edge = node.ports.iter().any(|port| match target_port_type {
+            EdgeReversalPortType::Input => port
+                .outgoing_edges
+                .iter()
+                .copied()
+                .any(|edge| can_reverse_outgoing_edge(graph, node.layer_constraint, edge)),
+            EdgeReversalPortType::Output => port
+                .incoming_edges
+                .iter()
+                .copied()
+                .any(|edge| can_reverse_incoming_edge(graph, node.layer_constraint, edge)),
+            EdgeReversalPortType::All => unreachable!("direct constraints select one edge side"),
+        });
+        if reverses_direct_edge {
+            return true;
+        }
+    }
+
+    graph
+        .layerless_nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| target_port_type_for_layer_constraint(node.layer_constraint).is_none())
+        .any(|(node, _)| should_reverse_all_fixed_side_edges(graph, node))
+}
+
 fn target_port_type_for_layer_constraint(
     layer_constraint: LayerConstraint,
 ) -> Option<EdgeReversalPortType> {

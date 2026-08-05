@@ -78,6 +78,68 @@ pub fn break_cycles_interactive(graph: &mut LGraph) {
 }
 
 pub fn break_cycles_model_order(graph: &mut LGraph) {
+    let mut rev_edges = Vec::new();
+    visit_model_order_feedback_edges(graph, |edge| {
+        rev_edges.push(edge);
+        false
+    });
+    reverse_feedback_edges(graph, rev_edges, true);
+}
+
+pub(crate) fn depth_first_cycle_breaker_may_mutate(graph: &LGraph) -> bool {
+    !non_self_edges_follow_one_node_index_direction(graph)
+}
+
+pub(crate) fn interactive_cycle_breaker_may_mutate(graph: &LGraph) -> bool {
+    for (source, node) in graph.layerless_nodes.iter().enumerate() {
+        let source_x = interactive_reference_x(graph, source);
+        for port in &node.ports {
+            for &edge_index in &port.outgoing_edges {
+                let target = graph.edges[edge_index].target.node;
+                if target != source && interactive_reference_x(graph, target) < source_x {
+                    return true;
+                }
+            }
+        }
+    }
+
+    !non_self_edges_follow_one_node_index_direction(graph)
+}
+
+fn non_self_edges_follow_one_node_index_direction(graph: &LGraph) -> bool {
+    let mut increasing = true;
+    let mut decreasing = true;
+    for (source, node) in graph.layerless_nodes.iter().enumerate() {
+        for port in &node.ports {
+            for &edge_index in &port.outgoing_edges {
+                let Some(edge) = graph.edges.get(edge_index) else {
+                    return false;
+                };
+                let target = edge.target.node;
+                if target >= graph.layerless_nodes.len() {
+                    return false;
+                }
+                if source == target {
+                    continue;
+                }
+                increasing &= source < target;
+                decreasing &= source > target;
+                if !increasing && !decreasing {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+pub(crate) fn visit_model_order_feedback_edges(
+    graph: &LGraph,
+    mut visit: impl FnMut(usize) -> bool,
+) -> bool {
+    // Keep this aligned with Mermaid's pinned elkjs 0.9.3 worker: the runtime seeds the offset
+    // from the node count, raises it for explicit model order, and consumes FIRST_SEPARATE and
+    // LAST_SEPARATE counters in edge traversal order. Caching one score per node changes behavior.
     let offset = graph
         .layerless_nodes
         .iter()
@@ -86,23 +148,24 @@ pub fn break_cycles_model_order(graph: &mut LGraph) {
         .unwrap_or(graph.layerless_nodes.len())
         .max(graph.layerless_nodes.len()) as i64;
     let mut context = ModelOrderContext::default();
-    let mut rev_edges = Vec::new();
 
     for source in 0..graph.layerless_nodes.len() {
         let model_order_source = context.compute_constraint_model_order(graph, source, offset);
-        for edge_index in graph.node_outgoing_edges(source) {
-            let target = graph.edges[edge_index].target.node;
-            if target == source {
-                continue;
-            }
-            let model_order_target = context.compute_constraint_model_order(graph, target, offset);
-            if model_order_target < model_order_source {
-                rev_edges.push(edge_index);
+        for port in &graph.layerless_nodes[source].ports {
+            for &edge_index in &port.outgoing_edges {
+                let target = graph.edges[edge_index].target.node;
+                if target == source {
+                    continue;
+                }
+                let model_order_target =
+                    context.compute_constraint_model_order(graph, target, offset);
+                if model_order_target < model_order_source && visit(edge_index) {
+                    return true;
+                }
             }
         }
     }
-
-    reverse_feedback_edges(graph, rev_edges, true);
+    false
 }
 
 pub fn break_cycles_greedy(graph: &mut LGraph) {
@@ -624,6 +687,50 @@ mod tests {
         assert!(graph.cyclic);
         assert!(graph.edges[0].reversed);
         assert!(!has_directed_cycle(&graph));
+    }
+
+    #[test]
+    fn model_order_cycle_breaker_consumes_separate_counters_in_edge_order() {
+        let mut graph = graph(
+            vec![
+                node("first-source"),
+                node("first-target"),
+                node("last-source"),
+                node("last-target"),
+            ],
+            vec![
+                edge("first-0", "first-source", "first-target"),
+                edge("first-1", "first-source", "first-target"),
+                edge("last-0", "last-source", "last-target"),
+                edge("last-1", "last-source", "last-target"),
+            ],
+        );
+        for (id, constraint, model_order) in [
+            ("first-source", LayerConstraint::FirstSeparate, Some(2)),
+            ("first-target", LayerConstraint::FirstSeparate, Some(0)),
+            ("last-source", LayerConstraint::LastSeparate, Some(2)),
+            ("last-target", LayerConstraint::LastSeparate, Some(0)),
+        ] {
+            let node = graph
+                .layerless_nodes
+                .iter_mut()
+                .find(|node| node.id == id)
+                .unwrap();
+            node.layer_constraint = constraint;
+            node.model_order = model_order;
+        }
+
+        break_cycles_model_order(&mut graph);
+
+        let reversed = graph
+            .edges
+            .iter()
+            .filter(|edge| edge.reversed)
+            .map(|edge| edge.id.as_str())
+            .collect::<Vec<_>>();
+        // elkjs 0.9.3 increments the separate counter for every target evaluation. With a
+        // two-point model-order gap, only the first edge in each ordered pair compares lower.
+        assert_eq!(reversed, ["first-0", "last-0"]);
     }
 
     #[test]
