@@ -427,7 +427,7 @@ Results:
 
 - Native TypeScript Worker tests passed: 56 tests.
 - Pure artifact-decision and authority tests passed: 24 tests.
-- Focused build-graph tests passed: 44 tests.
+- Focused build-graph tests passed: 45 tests.
 - Production Playground build and dist verification passed with Vite 8.2.0.
 - Real Chromium Monaco Worker smoke passed: 6 tests, including all 35 semantic-token family
   baselines, request-local rename failure, Retry recovery, and Benchmark isolation.
@@ -436,11 +436,9 @@ Results:
 - Full and editor Workers were exactly equivalent across 35 families and 11 query kinds: 385 cells
   per variant, zero mismatches, and aggregate SHA-256
   `e52016004129f4a12c0b316be1890f614898003afc1318fd543c4f07b674596c` for both.
-- All three cold primary latency comparisons passed the joint 5% and 20 ms limit. All three warm
-  comparisons failed it: Worker ready regressed by 53.962 ms (16.56%), first diagnostics by
-  61.155 ms (17.55%), and the main renderer's first result by 71.527 ms (10.70%).
-- The editor split failed the selection rule because cold transfer was 7,504,884 bytes versus
-  6,141,915 bytes for full, and peak memory was 31,018,003 bytes versus 30,804,617 bytes for full.
+- All six cold/warm primary latency comparisons passed the joint 5% and 20 ms limit.
+- The editor split failed the selection rule because cold transfer was 7,504,756 bytes versus
+  6,141,789 bytes for full, and peak memory was 31,017,357 bytes versus 30,811,105 bytes for full.
 - The authoritative result therefore retains `@mermanjs/web` for both the main renderer and the
   language Worker. Receipt schema 2 carries selection-input schema 3, which binds the measurement
   contract, every production page runtime closure, the Worker/equivalence closure, exact runtime
@@ -461,6 +459,9 @@ Changes:
 - Replaced the handwritten extension/alias resolver with TypeScript configuration and module
   resolution. Source ownership includes type-only edges without reimplementing package exports,
   paths, or extension rules.
+- Disabled Tailwind v4 automatic source detection and limited production class scanning to `App`,
+  product components, and UI primitives. A compiler-backed test proves every scanned file belongs
+  to the production TypeScript runtime closure, excluding tests and tooling.
 - Added one Vite manifest adapter for entries, static/reachable closure, emitted files, and asset
   ownership. Optional-feature, realm-isolation, dist, and Playwright helpers consume that adapter.
 - Removed engine sentinels, source-marker/version/package searches, legacy output lists, duplicated
@@ -598,7 +599,7 @@ Results:
   vulnerabilities; the browser-test package has no production dependency graph to audit.
 - `npm outdated` reports only the intentional lines above: Node types 22.20.1, Mermaid 11.16.0,
   Monaco 0.55.1, and TypeScript 5.7.3. The Playwright runtime and test package are exactly 1.62.1.
-- Complete prepared tests passed, including 44 build-graph, 56 editor Worker, 24 R16
+- Complete prepared tests passed, including 45 build-graph, 56 editor Worker, 24 R16
   contract/authority, 4 dependency-policy, and 98 Benchmark tests, plus all focused runtime,
   store/share, realm, config, requirement, example, and export tests.
 - Vite 8.2.0 transformed 3,083 modules. Dist verification found exactly one
@@ -607,7 +608,7 @@ Results:
 - The trusted Merman engine artifact is 45,341 bytes with no embedded WASM data URL, down 99.86%
   from the measured 33,565,060-byte duplicated form. The Mermaid engine artifact is 10,179,147
   bytes with no embedded Merman WASM, down 76.72% from 43,717,823 bytes.
-- Chromium desktop passed 46/46 in 1.7 minutes. Firefox/WebKit smoke passed 2/2 in 9.0 seconds.
-  The on-demand mobile interaction lane passed 4/4 in 8.0 seconds.
+- Chromium desktop passed 46/46 in 1.6 minutes. Firefox/WebKit smoke passed 2/2 in 9.5 seconds.
+  The on-demand mobile interaction lane passed 4/4 in 7.1 seconds.
 - The focused 100-event viewport hot-path scenario passed 10/10 repeated executions after the
   commit probe was scoped to pointer frequency rather than unrelated document-level UI work.

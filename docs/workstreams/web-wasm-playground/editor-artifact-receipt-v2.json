@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-05T16:54:46.024Z",
+  "generatedAt": "2026-08-05T17:13:29.739Z",
   "revision": {
-    "commit": "e540209697f80411c57d09fd899632600bf9ae84",
+    "commit": "eb528d173e165b72b164e54b3dcbc114e576bf01",
     "dirty": false,
     "statusSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
@@ -41,7 +41,7 @@
   },
   "builds": {
     "full": {
-      "manifestSha256": "c5369e486fe7fae9e6a6b100618d56fbc1f552f4aef63aacb02a6c7b996450f9",
+      "manifestSha256": "921a7578c9ff8d22086751f95cf591b8f4726c36bc3cdbe5e2d443ec7c108bd0",
       "mainWasm": {
         "bytes": 12550314,
         "file": "assets/merman_wasm_bg-Dpd0uUA1.wasm",
@@ -51,8 +51,8 @@
       "outDir": "target/playground/editor-artifact-measurement/builds/full",
       "staticBytes": {
         "files": 88,
-        "gzipBytes": 9120353,
-        "rawBytes": 29712893
+        "gzipBytes": 9120226,
+        "rawBytes": 29711962
       },
       "workerBundle": {
         "bytes": 95324,
@@ -67,7 +67,7 @@
       }
     },
     "editor": {
-      "manifestSha256": "776ad14ef2f8e9c6e0d6b33cfa9f04d7baca517eb6a5ad43ac4dace5a26119e2",
+      "manifestSha256": "12b597efb2fdb09eabd84eae84af1195252b144a494057991d0a59d0dbc24ee8",
       "mainWasm": {
         "bytes": 12550314,
         "file": "assets/merman_wasm_bg-Dpd0uUA1.wasm",
@@ -77,8 +77,8 @@
       "outDir": "target/playground/editor-artifact-measurement/builds/editor",
       "staticBytes": {
         "files": 89,
-        "gzipBytes": 10483322,
-        "rawBytes": 33304860
+        "gzipBytes": 10483193,
+        "rawBytes": 33303929
       },
       "workerBundle": {
         "bytes": 68442,
@@ -96,7 +96,7 @@
   "selectionInputs": {
     "schemaVersion": 3,
     "measurementContractSha256": "566e76370bfb82d76cfdc0df3bea609fc9c2acdbd2f27b7e56e81145aa05da6e",
-    "buildRuntimeClosureSha256": "f5d750ab0c0657d54faaaccf5a46af6ce45a083d8d19a64307734d54ab2e00eb",
+    "buildRuntimeClosureSha256": "c675d78f30c54a45aaf5d0af5ec981eb56e72be35510e2b0d1e8ff05dca64621",
     "workerClosureSha256": "54fb9c7f0fa97f83171d39182bfb07f746d58dabb32230f04683912c2155f85b",
     "fullPackageProvenanceSha256": "7c4e01a8777d2f4c084699167ac81a4b5045e456dd69c734fd44ed08119dca0e",
     "editorPackageProvenanceSha256": "12b96d1e57d1c6715bd71d628f4c66540d292923095300239b5fbc57ec383303",
@@ -4587,17 +4587,17 @@
     {
       "block": 1,
       "cold": {
-        "firstDiagnosticsMs": 371,
-        "mainCompileInitializeMs": 42.909912109375,
-        "mainFirstResultMs": 718.9850001335144,
+        "firstDiagnosticsMs": 376.61500000953674,
+        "mainCompileInitializeMs": 47.519882917404175,
+        "mainFirstResultMs": 713.5699999332428,
         "network": {
-          "bodyBytes": 6141915,
+          "bodyBytes": 6141789,
           "requests": [
             {
               "bodyBytes": 952,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948781982,
+              "finishedWallTimeMs": 1785949909215,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -4605,15 +4605,15 @@
               "bodyBytes": 136382,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782022,
+              "finishedWallTimeMs": 1785949909258,
               "method": "GET",
-              "pathname": "/assets/playground-C4s7Z3K5.js"
+              "pathname": "/assets/playground-CkM9LlAG.js"
             },
             {
               "bodyBytes": 900003,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782024,
+              "finishedWallTimeMs": 1785949909259,
               "method": "GET",
               "pathname": "/assets/floatingMenu.contribution-DuHhsv9R.js"
             },
@@ -4621,55 +4621,55 @@
               "bodyBytes": 392,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782023,
+              "finishedWallTimeMs": 1785949909259,
               "method": "GET",
               "pathname": "/assets/modulepreload-polyfill-P2Xu9kJm.js"
-            },
-            {
-              "bodyBytes": 22987,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782024,
-              "method": "GET",
-              "pathname": "/assets/button-BtGM0zY7.js"
             },
             {
               "bodyBytes": 458,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782024,
+              "finishedWallTimeMs": 1785949909259,
               "method": "GET",
               "pathname": "/assets/public-catalog-DrZyL3wU.js"
-            },
-            {
-              "bodyBytes": 306,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782025,
-              "method": "GET",
-              "pathname": "/assets/diagram-font-BLaI7bPL.js"
-            },
-            {
-              "bodyBytes": 10693,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782025,
-              "method": "GET",
-              "pathname": "/assets/dist-C49XHtAg.js"
             },
             {
               "bodyBytes": 824,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782026,
+              "finishedWallTimeMs": 1785949909260,
               "method": "GET",
               "pathname": "/assets/mermaid-config-BSHDpJ6-.js"
+            },
+            {
+              "bodyBytes": 306,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949909260,
+              "method": "GET",
+              "pathname": "/assets/diagram-font-BLaI7bPL.js"
+            },
+            {
+              "bodyBytes": 22987,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949909261,
+              "method": "GET",
+              "pathname": "/assets/button-BtGM0zY7.js"
+            },
+            {
+              "bodyBytes": 10693,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949909266,
+              "method": "GET",
+              "pathname": "/assets/dist-C49XHtAg.js"
             },
             {
               "bodyBytes": 676,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782029,
+              "finishedWallTimeMs": 1785949909266,
               "method": "GET",
               "pathname": "/assets/preload-helper-Czpn1I53.js"
             },
@@ -4677,7 +4677,7 @@
               "bodyBytes": 18475,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782029,
+              "finishedWallTimeMs": 1785949909266,
               "method": "GET",
               "pathname": "/assets/full-ViggrOzk.js"
             },
@@ -4685,23 +4685,15 @@
               "bodyBytes": 275,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782030,
+              "finishedWallTimeMs": 1785949909267,
               "method": "GET",
               "pathname": "/assets/render-artifact-DROW6Oi7.js"
-            },
-            {
-              "bodyBytes": 2746,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782030,
-              "method": "GET",
-              "pathname": "/assets/dist-JvEuZ3eC.js"
             },
             {
               "bodyBytes": 1057,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782030,
+              "finishedWallTimeMs": 1785949909267,
               "method": "GET",
               "pathname": "/assets/error-projection-CB6_WWTl.js"
             },
@@ -4709,15 +4701,31 @@
               "bodyBytes": 11664,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782030,
+              "finishedWallTimeMs": 1785949909268,
               "method": "GET",
               "pathname": "/assets/dialog-BcjFEXNS.js"
+            },
+            {
+              "bodyBytes": 2746,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949909268,
+              "method": "GET",
+              "pathname": "/assets/dist-JvEuZ3eC.js"
+            },
+            {
+              "bodyBytes": 8443,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949909269,
+              "method": "GET",
+              "pathname": "/assets/monaco-BHFijZ5R.js"
             },
             {
               "bodyBytes": 1437,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782031,
+              "finishedWallTimeMs": 1785949909270,
               "method": "GET",
               "pathname": "/assets/ascii-capabilities-CZbPPOhF.js"
             },
@@ -4725,39 +4733,15 @@
               "bodyBytes": 3754,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782031,
+              "finishedWallTimeMs": 1785949909270,
               "method": "GET",
               "pathname": "/assets/channel-protocol-DYf9-bSu.js"
-            },
-            {
-              "bodyBytes": 10384,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782031,
-              "method": "GET",
-              "pathname": "/assets/playground-Cfy2Vqjq.css"
-            },
-            {
-              "bodyBytes": 8443,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782031,
-              "method": "GET",
-              "pathname": "/assets/monaco-BHFijZ5R.js"
-            },
-            {
-              "bodyBytes": 21112,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782032,
-              "method": "GET",
-              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
             },
             {
               "bodyBytes": 2310,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782033,
+              "finishedWallTimeMs": 1785949909270,
               "method": "GET",
               "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
             },
@@ -4765,15 +4749,31 @@
               "bodyBytes": 6753,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782033,
+              "finishedWallTimeMs": 1785949909270,
               "method": "GET",
               "pathname": "/assets/worker-client-D4JVBXBF.js"
+            },
+            {
+              "bodyBytes": 21112,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949909271,
+              "method": "GET",
+              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
+            },
+            {
+              "bodyBytes": 10258,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949909271,
+              "method": "GET",
+              "pathname": "/assets/playground-DcQmTnDu.css"
             },
             {
               "bodyBytes": 4741037,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782288,
+              "finishedWallTimeMs": 1785949909521,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-Dpd0uUA1.wasm"
             },
@@ -4781,7 +4781,7 @@
               "bodyBytes": 4449,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782140,
+              "finishedWallTimeMs": 1785949909377,
               "method": "GET",
               "pathname": "/assets/merman_wasm-DSG3Tue4.js"
             },
@@ -4789,7 +4789,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782184,
+              "finishedWallTimeMs": 1785949909423,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -4797,7 +4797,7 @@
               "bodyBytes": 25742,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782197,
+              "finishedWallTimeMs": 1785949909448,
               "method": "GET",
               "pathname": "/assets/merman-language.worker-B-xOMfYG.js"
             },
@@ -4805,7 +4805,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782278,
+              "finishedWallTimeMs": 1785949909518,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -4813,7 +4813,7 @@
               "bodyBytes": 85384,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948782296,
+              "finishedWallTimeMs": 1785949909534,
               "method": "GET",
               "pathname": "/assets/editor.worker-BAFxrcNT.js"
             },
@@ -4821,32 +4821,32 @@
               "bodyBytes": 121972,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "identity",
-              "finishedWallTimeMs": 1785948782553,
+              "finishedWallTimeMs": 1785949909787,
               "method": "GET",
               "pathname": "/assets/codicon-ngg6Pgfi.ttf"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 22606000,
+          "bytes": 22607415,
           "samples": [
             {
-              "atMs": 319.36500000953674,
-              "bytes": 22606000
+              "atMs": 322.914999961853,
+              "bytes": 22607415
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 6141915,
-        "workerCompileInitializeMs": 44.62491226196289,
-        "workerReadyMs": 351.2150001525879
+        "totalTransferBytes": 6141789,
+        "workerCompileInitializeMs": 49.8798828125,
+        "workerReadyMs": 356.25
       },
       "position": 1,
       "variant": "full",
       "warm": {
-        "firstDiagnosticsMs": 331.8400001525879,
-        "mainCompileInitializeMs": 302.24000000953674,
-        "mainFirstResultMs": 657.6350002288818,
+        "firstDiagnosticsMs": 330.8199999332428,
+        "mainCompileInitializeMs": 304.585000038147,
+        "mainFirstResultMs": 664.9400000572205,
         "network": {
           "bodyBytes": 2200,
           "requests": [
@@ -4854,7 +4854,7 @@
               "bodyBytes": 952,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948788057,
+              "finishedWallTimeMs": 1785949915285,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -4862,7 +4862,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948788254,
+              "finishedWallTimeMs": 1785949915481,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -4870,41 +4870,41 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948788313,
+              "finishedWallTimeMs": 1785949915542,
               "method": "GET",
               "pathname": "/icon.svg"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 30804617,
+          "bytes": 22613099,
           "samples": [
             {
-              "atMs": 317.11500000953674,
-              "bytes": 30804617
+              "atMs": 272.04500007629395,
+              "bytes": 22613099
             }
           ],
           "scope": "user-agent-specific-memory"
         },
         "totalTransferBytes": 2200,
-        "workerCompileInitializeMs": 311.4500000476837,
-        "workerReadyMs": 311.4500000476837
+        "workerCompileInitializeMs": 310.164999961853,
+        "workerReadyMs": 310.164999961853
       }
     },
     {
       "block": 1,
       "cold": {
-        "firstDiagnosticsMs": 402.75999999046326,
-        "mainCompileInitializeMs": 33.97505855560303,
-        "mainFirstResultMs": 750.75,
+        "firstDiagnosticsMs": 309.6100001335144,
+        "mainCompileInitializeMs": 35.68998050689697,
+        "mainFirstResultMs": 659.0400002002716,
         "network": {
-          "bodyBytes": 7504884,
+          "bodyBytes": 7504756,
           "requests": [
             {
-              "bodyBytes": 952,
+              "bodyBytes": 950,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795625,
+              "finishedWallTimeMs": 1785949921658,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -4912,15 +4912,15 @@
               "bodyBytes": 136382,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795648,
+              "finishedWallTimeMs": 1785949921696,
               "method": "GET",
-              "pathname": "/assets/playground-Bi8rBIbp.js"
+              "pathname": "/assets/playground-Db-sTEye.js"
             },
             {
               "bodyBytes": 900003,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795649,
+              "finishedWallTimeMs": 1785949921696,
               "method": "GET",
               "pathname": "/assets/floatingMenu.contribution-DuHhsv9R.js"
             },
@@ -4928,7 +4928,7 @@
               "bodyBytes": 392,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795649,
+              "finishedWallTimeMs": 1785949921697,
               "method": "GET",
               "pathname": "/assets/modulepreload-polyfill-P2Xu9kJm.js"
             },
@@ -4936,7 +4936,7 @@
               "bodyBytes": 458,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795649,
+              "finishedWallTimeMs": 1785949921697,
               "method": "GET",
               "pathname": "/assets/public-catalog-DrZyL3wU.js"
             },
@@ -4944,7 +4944,7 @@
               "bodyBytes": 306,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795649,
+              "finishedWallTimeMs": 1785949921697,
               "method": "GET",
               "pathname": "/assets/diagram-font-BLaI7bPL.js"
             },
@@ -4952,7 +4952,7 @@
               "bodyBytes": 824,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795649,
+              "finishedWallTimeMs": 1785949921697,
               "method": "GET",
               "pathname": "/assets/mermaid-config-BSHDpJ6-.js"
             },
@@ -4960,7 +4960,7 @@
               "bodyBytes": 22987,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795650,
+              "finishedWallTimeMs": 1785949921698,
               "method": "GET",
               "pathname": "/assets/button-BtGM0zY7.js"
             },
@@ -4968,7 +4968,7 @@
               "bodyBytes": 10693,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795654,
+              "finishedWallTimeMs": 1785949921702,
               "method": "GET",
               "pathname": "/assets/dist-C49XHtAg.js"
             },
@@ -4976,7 +4976,7 @@
               "bodyBytes": 676,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795658,
+              "finishedWallTimeMs": 1785949921702,
               "method": "GET",
               "pathname": "/assets/preload-helper-Czpn1I53.js"
             },
@@ -4984,7 +4984,7 @@
               "bodyBytes": 18475,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795658,
+              "finishedWallTimeMs": 1785949921703,
               "method": "GET",
               "pathname": "/assets/full-ViggrOzk.js"
             },
@@ -4992,15 +4992,39 @@
               "bodyBytes": 275,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795658,
+              "finishedWallTimeMs": 1785949921703,
               "method": "GET",
               "pathname": "/assets/render-artifact-DROW6Oi7.js"
+            },
+            {
+              "bodyBytes": 2746,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949921703,
+              "method": "GET",
+              "pathname": "/assets/dist-JvEuZ3eC.js"
+            },
+            {
+              "bodyBytes": 21112,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949921703,
+              "method": "GET",
+              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
+            },
+            {
+              "bodyBytes": 10258,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949921703,
+              "method": "GET",
+              "pathname": "/assets/playground-DcQmTnDu.css"
             },
             {
               "bodyBytes": 1057,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795658,
+              "finishedWallTimeMs": 1785949921704,
               "method": "GET",
               "pathname": "/assets/error-projection-CB6_WWTl.js"
             },
@@ -5008,39 +5032,15 @@
               "bodyBytes": 11664,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795659,
+              "finishedWallTimeMs": 1785949921704,
               "method": "GET",
               "pathname": "/assets/dialog-BcjFEXNS.js"
-            },
-            {
-              "bodyBytes": 21112,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795659,
-              "method": "GET",
-              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
-            },
-            {
-              "bodyBytes": 10384,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795662,
-              "method": "GET",
-              "pathname": "/assets/playground-Cfy2Vqjq.css"
-            },
-            {
-              "bodyBytes": 2746,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795662,
-              "method": "GET",
-              "pathname": "/assets/dist-JvEuZ3eC.js"
             },
             {
               "bodyBytes": 8443,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795662,
+              "finishedWallTimeMs": 1785949921705,
               "method": "GET",
               "pathname": "/assets/monaco-BHFijZ5R.js"
             },
@@ -5048,7 +5048,7 @@
               "bodyBytes": 1437,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795662,
+              "finishedWallTimeMs": 1785949921705,
               "method": "GET",
               "pathname": "/assets/ascii-capabilities-CZbPPOhF.js"
             },
@@ -5056,7 +5056,7 @@
               "bodyBytes": 3754,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795662,
+              "finishedWallTimeMs": 1785949921705,
               "method": "GET",
               "pathname": "/assets/channel-protocol-DYf9-bSu.js"
             },
@@ -5064,7 +5064,7 @@
               "bodyBytes": 2310,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795663,
+              "finishedWallTimeMs": 1785949921705,
               "method": "GET",
               "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
             },
@@ -5072,7 +5072,7 @@
               "bodyBytes": 6753,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795663,
+              "finishedWallTimeMs": 1785949921705,
               "method": "GET",
               "pathname": "/assets/worker-client-D4JVBXBF.js"
             },
@@ -5080,7 +5080,7 @@
               "bodyBytes": 4741037,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795944,
+              "finishedWallTimeMs": 1785949921910,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-Dpd0uUA1.wasm"
             },
@@ -5088,7 +5088,7 @@
               "bodyBytes": 4449,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795769,
+              "finishedWallTimeMs": 1785949921810,
               "method": "GET",
               "pathname": "/assets/merman_wasm-DSG3Tue4.js"
             },
@@ -5096,7 +5096,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795802,
+              "finishedWallTimeMs": 1785949921841,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -5104,7 +5104,7 @@
               "bodyBytes": 17204,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795827,
+              "finishedWallTimeMs": 1785949921866,
               "method": "GET",
               "pathname": "/assets/merman-language.worker-BnFEVXYl.js"
             },
@@ -5112,7 +5112,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795935,
+              "finishedWallTimeMs": 1785949921900,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -5120,7 +5120,7 @@
               "bodyBytes": 85384,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795941,
+              "finishedWallTimeMs": 1785949921903,
               "method": "GET",
               "pathname": "/assets/editor.worker-BAFxrcNT.js"
             },
@@ -5128,7 +5128,7 @@
               "bodyBytes": 1371507,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948795954,
+              "finishedWallTimeMs": 1785949921917,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-XknNdGoP.wasm"
             },
@@ -5136,40 +5136,40 @@
               "bodyBytes": 121972,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "identity",
-              "finishedWallTimeMs": 1785948796216,
+              "finishedWallTimeMs": 1785949922179,
               "method": "GET",
               "pathname": "/assets/codicon-ngg6Pgfi.ttf"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 22606081,
+          "bytes": 31017357,
           "samples": [
             {
-              "atMs": 350.1950001716614,
-              "bytes": 22606081
+              "atMs": 309.8800001144409,
+              "bytes": 31017357
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 7504884,
-        "workerCompileInitializeMs": 24.87505865097046,
-        "workerReadyMs": 380.69000005722046
+        "totalTransferBytes": 7504756,
+        "workerCompileInitializeMs": 28.834980487823486,
+        "workerReadyMs": 289.1050000190735
       },
       "position": 2,
       "variant": "editor",
       "warm": {
-        "firstDiagnosticsMs": 385.4800000190735,
-        "mainCompileInitializeMs": 335.3550000190735,
-        "mainFirstResultMs": 707.3799998760223,
+        "firstDiagnosticsMs": 341.84999990463257,
+        "mainCompileInitializeMs": 321.13499999046326,
+        "mainFirstResultMs": 690.2750000953674,
         "network": {
-          "bodyBytes": 2200,
+          "bodyBytes": 2198,
           "requests": [
             {
-              "bodyBytes": 952,
+              "bodyBytes": 950,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948801717,
+              "finishedWallTimeMs": 1785949927677,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -5177,7 +5177,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948801948,
+              "finishedWallTimeMs": 1785949927880,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -5185,41 +5185,41 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948802032,
+              "finishedWallTimeMs": 1785949927949,
               "method": "GET",
               "pathname": "/icon.svg"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 22055851,
+          "bytes": 22606877,
           "samples": [
             {
-              "atMs": 312.835000038147,
-              "bytes": 22055851
+              "atMs": 285.6800000667572,
+              "bytes": 22606877
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 2200,
-        "workerCompileInitializeMs": 356.3050000667572,
-        "workerReadyMs": 356.3050000667572
+        "totalTransferBytes": 2198,
+        "workerCompileInitializeMs": 321.24000000953674,
+        "workerReadyMs": 321.24000000953674
       }
     },
     {
       "block": 2,
       "cold": {
-        "firstDiagnosticsMs": 438.7550001144409,
-        "mainCompileInitializeMs": 47.82500982284546,
-        "mainFirstResultMs": 740.4649999141693,
+        "firstDiagnosticsMs": 308.95500016212463,
+        "mainCompileInitializeMs": 29.134970664978027,
+        "mainFirstResultMs": 657.5950000286102,
         "network": {
-          "bodyBytes": 7504884,
+          "bodyBytes": 7504756,
           "requests": [
             {
-              "bodyBytes": 952,
+              "bodyBytes": 950,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808534,
+              "finishedWallTimeMs": 1785949934089,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -5227,15 +5227,15 @@
               "bodyBytes": 136382,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808588,
+              "finishedWallTimeMs": 1785949934126,
               "method": "GET",
-              "pathname": "/assets/playground-Bi8rBIbp.js"
+              "pathname": "/assets/playground-Db-sTEye.js"
             },
             {
               "bodyBytes": 900003,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808589,
+              "finishedWallTimeMs": 1785949934127,
               "method": "GET",
               "pathname": "/assets/floatingMenu.contribution-DuHhsv9R.js"
             },
@@ -5243,7 +5243,7 @@
               "bodyBytes": 392,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808589,
+              "finishedWallTimeMs": 1785949934127,
               "method": "GET",
               "pathname": "/assets/modulepreload-polyfill-P2Xu9kJm.js"
             },
@@ -5251,7 +5251,7 @@
               "bodyBytes": 458,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808590,
+              "finishedWallTimeMs": 1785949934127,
               "method": "GET",
               "pathname": "/assets/public-catalog-DrZyL3wU.js"
             },
@@ -5259,31 +5259,31 @@
               "bodyBytes": 306,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808592,
+              "finishedWallTimeMs": 1785949934128,
               "method": "GET",
               "pathname": "/assets/diagram-font-BLaI7bPL.js"
-            },
-            {
-              "bodyBytes": 824,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808597,
-              "method": "GET",
-              "pathname": "/assets/mermaid-config-BSHDpJ6-.js"
             },
             {
               "bodyBytes": 22987,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808597,
+              "finishedWallTimeMs": 1785949934128,
               "method": "GET",
               "pathname": "/assets/button-BtGM0zY7.js"
+            },
+            {
+              "bodyBytes": 824,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949934128,
+              "method": "GET",
+              "pathname": "/assets/mermaid-config-BSHDpJ6-.js"
             },
             {
               "bodyBytes": 10693,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808598,
+              "finishedWallTimeMs": 1785949934129,
               "method": "GET",
               "pathname": "/assets/dist-C49XHtAg.js"
             },
@@ -5291,7 +5291,7 @@
               "bodyBytes": 676,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808598,
+              "finishedWallTimeMs": 1785949934129,
               "method": "GET",
               "pathname": "/assets/preload-helper-Czpn1I53.js"
             },
@@ -5299,7 +5299,7 @@
               "bodyBytes": 18475,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808598,
+              "finishedWallTimeMs": 1785949934129,
               "method": "GET",
               "pathname": "/assets/full-ViggrOzk.js"
             },
@@ -5307,7 +5307,7 @@
               "bodyBytes": 275,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808599,
+              "finishedWallTimeMs": 1785949934134,
               "method": "GET",
               "pathname": "/assets/render-artifact-DROW6Oi7.js"
             },
@@ -5315,7 +5315,7 @@
               "bodyBytes": 1057,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808600,
+              "finishedWallTimeMs": 1785949934134,
               "method": "GET",
               "pathname": "/assets/error-projection-CB6_WWTl.js"
             },
@@ -5323,7 +5323,7 @@
               "bodyBytes": 11664,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808600,
+              "finishedWallTimeMs": 1785949934134,
               "method": "GET",
               "pathname": "/assets/dialog-BcjFEXNS.js"
             },
@@ -5331,39 +5331,55 @@
               "bodyBytes": 2746,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808601,
+              "finishedWallTimeMs": 1785949934134,
               "method": "GET",
               "pathname": "/assets/dist-JvEuZ3eC.js"
             },
             {
-              "bodyBytes": 8443,
+              "bodyBytes": 21112,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808601,
+              "finishedWallTimeMs": 1785949934135,
               "method": "GET",
-              "pathname": "/assets/monaco-BHFijZ5R.js"
+              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
             },
             {
-              "bodyBytes": 1437,
+              "bodyBytes": 10258,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808601,
+              "finishedWallTimeMs": 1785949934135,
               "method": "GET",
-              "pathname": "/assets/ascii-capabilities-CZbPPOhF.js"
+              "pathname": "/assets/playground-DcQmTnDu.css"
             },
             {
               "bodyBytes": 3754,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808602,
+              "finishedWallTimeMs": 1785949934136,
               "method": "GET",
               "pathname": "/assets/channel-protocol-DYf9-bSu.js"
+            },
+            {
+              "bodyBytes": 1437,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949934136,
+              "method": "GET",
+              "pathname": "/assets/ascii-capabilities-CZbPPOhF.js"
+            },
+            {
+              "bodyBytes": 8443,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949934136,
+              "method": "GET",
+              "pathname": "/assets/monaco-BHFijZ5R.js"
             },
             {
               "bodyBytes": 2310,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808602,
+              "finishedWallTimeMs": 1785949934138,
               "method": "GET",
               "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
             },
@@ -5371,31 +5387,15 @@
               "bodyBytes": 6753,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808602,
+              "finishedWallTimeMs": 1785949934138,
               "method": "GET",
               "pathname": "/assets/worker-client-D4JVBXBF.js"
-            },
-            {
-              "bodyBytes": 21112,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808603,
-              "method": "GET",
-              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
-            },
-            {
-              "bodyBytes": 10384,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808603,
-              "method": "GET",
-              "pathname": "/assets/playground-Cfy2Vqjq.css"
             },
             {
               "bodyBytes": 4741037,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808857,
+              "finishedWallTimeMs": 1785949934348,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-Dpd0uUA1.wasm"
             },
@@ -5403,7 +5403,7 @@
               "bodyBytes": 4449,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808734,
+              "finishedWallTimeMs": 1785949934235,
               "method": "GET",
               "pathname": "/assets/merman_wasm-DSG3Tue4.js"
             },
@@ -5411,7 +5411,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808776,
+              "finishedWallTimeMs": 1785949934271,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -5419,23 +5419,15 @@
               "bodyBytes": 17204,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808887,
+              "finishedWallTimeMs": 1785949934294,
               "method": "GET",
               "pathname": "/assets/merman-language.worker-BnFEVXYl.js"
-            },
-            {
-              "bodyBytes": 85384,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808889,
-              "method": "GET",
-              "pathname": "/assets/editor.worker-BAFxrcNT.js"
             },
             {
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808910,
+              "finishedWallTimeMs": 1785949934332,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -5443,48 +5435,56 @@
               "bodyBytes": 1371507,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948808926,
+              "finishedWallTimeMs": 1785949934344,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-XknNdGoP.wasm"
+            },
+            {
+              "bodyBytes": 85384,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949934346,
+              "method": "GET",
+              "pathname": "/assets/editor.worker-BAFxrcNT.js"
             },
             {
               "bodyBytes": 121972,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "identity",
-              "finishedWallTimeMs": 1785948809118,
+              "finishedWallTimeMs": 1785949934612,
               "method": "GET",
               "pathname": "/assets/codicon-ngg6Pgfi.ttf"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 22057202,
+          "bytes": 22608361,
           "samples": [
             {
-              "atMs": 375.50999999046326,
-              "bytes": 22057202
+              "atMs": 256.289999961853,
+              "bytes": 22608361
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 7504884,
-        "workerCompileInitializeMs": 12.470009803771973,
-        "workerReadyMs": 404.835000038147
+        "totalTransferBytes": 7504756,
+        "workerCompileInitializeMs": 33.25997066497803,
+        "workerReadyMs": 288.914999961853
       },
       "position": 1,
       "variant": "editor",
       "warm": {
-        "firstDiagnosticsMs": 309.9849998950958,
-        "mainCompileInitializeMs": 288.80999994277954,
-        "mainFirstResultMs": 655.3050000667572,
+        "firstDiagnosticsMs": 310.3550000190735,
+        "mainCompileInitializeMs": 290.2850000858307,
+        "mainFirstResultMs": 658,
         "network": {
-          "bodyBytes": 2200,
+          "bodyBytes": 2198,
           "requests": [
             {
-              "bodyBytes": 952,
+              "bodyBytes": 950,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948814644,
+              "finishedWallTimeMs": 1785949940094,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -5492,7 +5492,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948814833,
+              "finishedWallTimeMs": 1785949940284,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -5500,41 +5500,41 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948814890,
+              "finishedWallTimeMs": 1785949940344,
               "method": "GET",
               "pathname": "/icon.svg"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 31018003,
+          "bytes": 22612482,
           "samples": [
             {
-              "atMs": 309.960000038147,
-              "bytes": 31018003
+              "atMs": 263.8699998855591,
+              "bytes": 22612482
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 2200,
-        "workerCompileInitializeMs": 288.97499990463257,
-        "workerReadyMs": 288.97499990463257
+        "totalTransferBytes": 2198,
+        "workerCompileInitializeMs": 290.3949999809265,
+        "workerReadyMs": 290.3949999809265
       }
     },
     {
       "block": 2,
       "cold": {
-        "firstDiagnosticsMs": 322.1050000190735,
-        "mainCompileInitializeMs": 44.41003894805908,
-        "mainFirstResultMs": 661.7599999904633,
+        "firstDiagnosticsMs": 340.02999997138977,
+        "mainCompileInitializeMs": 50.9849317073822,
+        "mainFirstResultMs": 672.5750000476837,
         "network": {
-          "bodyBytes": 6141915,
+          "bodyBytes": 6141789,
           "requests": [
             {
               "bodyBytes": 952,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821009,
+              "finishedWallTimeMs": 1785949946617,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -5542,15 +5542,15 @@
               "bodyBytes": 136382,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821047,
+              "finishedWallTimeMs": 1785949946663,
               "method": "GET",
-              "pathname": "/assets/playground-C4s7Z3K5.js"
+              "pathname": "/assets/playground-CkM9LlAG.js"
             },
             {
               "bodyBytes": 900003,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821051,
+              "finishedWallTimeMs": 1785949946663,
               "method": "GET",
               "pathname": "/assets/floatingMenu.contribution-DuHhsv9R.js"
             },
@@ -5558,7 +5558,7 @@
               "bodyBytes": 392,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821048,
+              "finishedWallTimeMs": 1785949946664,
               "method": "GET",
               "pathname": "/assets/modulepreload-polyfill-P2Xu9kJm.js"
             },
@@ -5566,15 +5566,23 @@
               "bodyBytes": 458,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821048,
+              "finishedWallTimeMs": 1785949946665,
               "method": "GET",
               "pathname": "/assets/public-catalog-DrZyL3wU.js"
+            },
+            {
+              "bodyBytes": 22987,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949946665,
+              "method": "GET",
+              "pathname": "/assets/button-BtGM0zY7.js"
             },
             {
               "bodyBytes": 306,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821049,
+              "finishedWallTimeMs": 1785949946665,
               "method": "GET",
               "pathname": "/assets/diagram-font-BLaI7bPL.js"
             },
@@ -5582,23 +5590,15 @@
               "bodyBytes": 824,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821049,
+              "finishedWallTimeMs": 1785949946666,
               "method": "GET",
               "pathname": "/assets/mermaid-config-BSHDpJ6-.js"
-            },
-            {
-              "bodyBytes": 22987,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821053,
-              "method": "GET",
-              "pathname": "/assets/button-BtGM0zY7.js"
             },
             {
               "bodyBytes": 10693,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821053,
+              "finishedWallTimeMs": 1785949946666,
               "method": "GET",
               "pathname": "/assets/dist-C49XHtAg.js"
             },
@@ -5606,7 +5606,7 @@
               "bodyBytes": 676,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821053,
+              "finishedWallTimeMs": 1785949946670,
               "method": "GET",
               "pathname": "/assets/preload-helper-Czpn1I53.js"
             },
@@ -5614,7 +5614,7 @@
               "bodyBytes": 18475,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821053,
+              "finishedWallTimeMs": 1785949946671,
               "method": "GET",
               "pathname": "/assets/full-ViggrOzk.js"
             },
@@ -5622,7 +5622,7 @@
               "bodyBytes": 275,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821054,
+              "finishedWallTimeMs": 1785949946671,
               "method": "GET",
               "pathname": "/assets/render-artifact-DROW6Oi7.js"
             },
@@ -5630,7 +5630,7 @@
               "bodyBytes": 1057,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821054,
+              "finishedWallTimeMs": 1785949946672,
               "method": "GET",
               "pathname": "/assets/error-projection-CB6_WWTl.js"
             },
@@ -5638,7 +5638,7 @@
               "bodyBytes": 11664,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821055,
+              "finishedWallTimeMs": 1785949946672,
               "method": "GET",
               "pathname": "/assets/dialog-BcjFEXNS.js"
             },
@@ -5646,7 +5646,7 @@
               "bodyBytes": 2746,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821055,
+              "finishedWallTimeMs": 1785949946672,
               "method": "GET",
               "pathname": "/assets/dist-JvEuZ3eC.js"
             },
@@ -5654,7 +5654,7 @@
               "bodyBytes": 8443,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821055,
+              "finishedWallTimeMs": 1785949946673,
               "method": "GET",
               "pathname": "/assets/monaco-BHFijZ5R.js"
             },
@@ -5662,55 +5662,55 @@
               "bodyBytes": 1437,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821055,
+              "finishedWallTimeMs": 1785949946673,
               "method": "GET",
               "pathname": "/assets/ascii-capabilities-CZbPPOhF.js"
-            },
-            {
-              "bodyBytes": 2310,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821057,
-              "method": "GET",
-              "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
-            },
-            {
-              "bodyBytes": 21112,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821057,
-              "method": "GET",
-              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
-            },
-            {
-              "bodyBytes": 6753,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821057,
-              "method": "GET",
-              "pathname": "/assets/worker-client-D4JVBXBF.js"
             },
             {
               "bodyBytes": 3754,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821058,
+              "finishedWallTimeMs": 1785949946673,
               "method": "GET",
               "pathname": "/assets/channel-protocol-DYf9-bSu.js"
             },
             {
-              "bodyBytes": 10384,
+              "bodyBytes": 2310,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821059,
+              "finishedWallTimeMs": 1785949946673,
               "method": "GET",
-              "pathname": "/assets/playground-Cfy2Vqjq.css"
+              "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
+            },
+            {
+              "bodyBytes": 6753,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949946674,
+              "method": "GET",
+              "pathname": "/assets/worker-client-D4JVBXBF.js"
+            },
+            {
+              "bodyBytes": 21112,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949946675,
+              "method": "GET",
+              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
+            },
+            {
+              "bodyBytes": 10258,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949946675,
+              "method": "GET",
+              "pathname": "/assets/playground-DcQmTnDu.css"
             },
             {
               "bodyBytes": 4741037,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821263,
+              "finishedWallTimeMs": 1785949946881,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-Dpd0uUA1.wasm"
             },
@@ -5718,7 +5718,7 @@
               "bodyBytes": 4449,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821163,
+              "finishedWallTimeMs": 1785949946781,
               "method": "GET",
               "pathname": "/assets/merman_wasm-DSG3Tue4.js"
             },
@@ -5726,7 +5726,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821195,
+              "finishedWallTimeMs": 1785949946817,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -5734,7 +5734,7 @@
               "bodyBytes": 25742,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821220,
+              "finishedWallTimeMs": 1785949946845,
               "method": "GET",
               "pathname": "/assets/merman-language.worker-B-xOMfYG.js"
             },
@@ -5742,7 +5742,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821257,
+              "finishedWallTimeMs": 1785949946879,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -5750,7 +5750,7 @@
               "bodyBytes": 85384,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948821269,
+              "finishedWallTimeMs": 1785949946885,
               "method": "GET",
               "pathname": "/assets/editor.worker-BAFxrcNT.js"
             },
@@ -5758,32 +5758,32 @@
               "bodyBytes": 121972,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "identity",
-              "finishedWallTimeMs": 1785948821534,
+              "finishedWallTimeMs": 1785949947154,
               "method": "GET",
               "pathname": "/assets/codicon-ngg6Pgfi.ttf"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 22619620,
+          "bytes": 30811105,
           "samples": [
             {
-              "atMs": 260.8049998283386,
-              "bytes": 22619620
+              "atMs": 331.3900001049042,
+              "bytes": 30811105
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 6141915,
-        "workerCompileInitializeMs": 47.3600389957428,
-        "workerReadyMs": 302.1949999332428
+        "totalTransferBytes": 6141789,
+        "workerCompileInitializeMs": 55.259931564331055,
+        "workerReadyMs": 320.07999992370605
       },
       "position": 2,
       "variant": "full",
       "warm": {
-        "firstDiagnosticsMs": 335.93499994277954,
-        "mainCompileInitializeMs": 298.5499999523163,
-        "mainFirstResultMs": 657.7999999523163,
+        "firstDiagnosticsMs": 322.99500012397766,
+        "mainCompileInitializeMs": 297.710000038147,
+        "mainFirstResultMs": 654.1849999427795,
         "network": {
           "bodyBytes": 2200,
           "requests": [
@@ -5791,7 +5791,7 @@
               "bodyBytes": 952,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948827028,
+              "finishedWallTimeMs": 1785949952646,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -5799,7 +5799,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948827223,
+              "finishedWallTimeMs": 1785949952836,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -5807,41 +5807,41 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948827287,
+              "finishedWallTimeMs": 1785949952897,
               "method": "GET",
               "pathname": "/icon.svg"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 22607933,
+          "bytes": 22609503,
           "samples": [
             {
-              "atMs": 274.27999997138977,
-              "bytes": 22607933
+              "atMs": 265.92000007629395,
+              "bytes": 22609503
             }
           ],
           "scope": "user-agent-specific-memory"
         },
         "totalTransferBytes": 2200,
-        "workerCompileInitializeMs": 314.8900001049042,
-        "workerReadyMs": 314.8900001049042
+        "workerCompileInitializeMs": 302.47500014305115,
+        "workerReadyMs": 302.47500014305115
       }
     },
     {
       "block": 3,
       "cold": {
-        "firstDiagnosticsMs": 437.4800000190735,
-        "mainCompileInitializeMs": 32.99500012397766,
-        "mainFirstResultMs": 709.1050000190735,
+        "firstDiagnosticsMs": 328.8899998664856,
+        "mainCompileInitializeMs": 30.935068368911743,
+        "mainFirstResultMs": 657.1849999427795,
         "network": {
-          "bodyBytes": 6141915,
+          "bodyBytes": 6141789,
           "requests": [
             {
               "bodyBytes": 952,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833786,
+              "finishedWallTimeMs": 1785949959017,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -5849,15 +5849,15 @@
               "bodyBytes": 136382,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833855,
+              "finishedWallTimeMs": 1785949959056,
               "method": "GET",
-              "pathname": "/assets/playground-C4s7Z3K5.js"
+              "pathname": "/assets/playground-CkM9LlAG.js"
             },
             {
               "bodyBytes": 900003,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833856,
+              "finishedWallTimeMs": 1785949959056,
               "method": "GET",
               "pathname": "/assets/floatingMenu.contribution-DuHhsv9R.js"
             },
@@ -5865,7 +5865,7 @@
               "bodyBytes": 392,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833856,
+              "finishedWallTimeMs": 1785949959056,
               "method": "GET",
               "pathname": "/assets/modulepreload-polyfill-P2Xu9kJm.js"
             },
@@ -5873,7 +5873,7 @@
               "bodyBytes": 458,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833856,
+              "finishedWallTimeMs": 1785949959057,
               "method": "GET",
               "pathname": "/assets/public-catalog-DrZyL3wU.js"
             },
@@ -5881,7 +5881,7 @@
               "bodyBytes": 306,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833856,
+              "finishedWallTimeMs": 1785949959057,
               "method": "GET",
               "pathname": "/assets/diagram-font-BLaI7bPL.js"
             },
@@ -5889,7 +5889,7 @@
               "bodyBytes": 824,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833863,
+              "finishedWallTimeMs": 1785949959058,
               "method": "GET",
               "pathname": "/assets/mermaid-config-BSHDpJ6-.js"
             },
@@ -5897,31 +5897,15 @@
               "bodyBytes": 22987,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833863,
+              "finishedWallTimeMs": 1785949959062,
               "method": "GET",
               "pathname": "/assets/button-BtGM0zY7.js"
-            },
-            {
-              "bodyBytes": 18475,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833864,
-              "method": "GET",
-              "pathname": "/assets/full-ViggrOzk.js"
-            },
-            {
-              "bodyBytes": 1057,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833864,
-              "method": "GET",
-              "pathname": "/assets/error-projection-CB6_WWTl.js"
             },
             {
               "bodyBytes": 10693,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833873,
+              "finishedWallTimeMs": 1785949959062,
               "method": "GET",
               "pathname": "/assets/dist-C49XHtAg.js"
             },
@@ -5929,39 +5913,47 @@
               "bodyBytes": 676,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833873,
+              "finishedWallTimeMs": 1785949959063,
               "method": "GET",
               "pathname": "/assets/preload-helper-Czpn1I53.js"
+            },
+            {
+              "bodyBytes": 18475,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949959063,
+              "method": "GET",
+              "pathname": "/assets/full-ViggrOzk.js"
             },
             {
               "bodyBytes": 275,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833873,
+              "finishedWallTimeMs": 1785949959063,
               "method": "GET",
               "pathname": "/assets/render-artifact-DROW6Oi7.js"
+            },
+            {
+              "bodyBytes": 1057,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949959064,
+              "method": "GET",
+              "pathname": "/assets/error-projection-CB6_WWTl.js"
             },
             {
               "bodyBytes": 11664,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833874,
+              "finishedWallTimeMs": 1785949959064,
               "method": "GET",
               "pathname": "/assets/dialog-BcjFEXNS.js"
-            },
-            {
-              "bodyBytes": 21112,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833874,
-              "method": "GET",
-              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
             },
             {
               "bodyBytes": 2746,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833874,
+              "finishedWallTimeMs": 1785949959064,
               "method": "GET",
               "pathname": "/assets/dist-JvEuZ3eC.js"
             },
@@ -5969,55 +5961,63 @@
               "bodyBytes": 8443,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833874,
+              "finishedWallTimeMs": 1785949959064,
               "method": "GET",
               "pathname": "/assets/monaco-BHFijZ5R.js"
-            },
-            {
-              "bodyBytes": 10384,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833874,
-              "method": "GET",
-              "pathname": "/assets/playground-Cfy2Vqjq.css"
-            },
-            {
-              "bodyBytes": 2310,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833875,
-              "method": "GET",
-              "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
-            },
-            {
-              "bodyBytes": 3754,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833875,
-              "method": "GET",
-              "pathname": "/assets/channel-protocol-DYf9-bSu.js"
             },
             {
               "bodyBytes": 1437,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833882,
+              "finishedWallTimeMs": 1785949959064,
               "method": "GET",
               "pathname": "/assets/ascii-capabilities-CZbPPOhF.js"
+            },
+            {
+              "bodyBytes": 3754,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949959065,
+              "method": "GET",
+              "pathname": "/assets/channel-protocol-DYf9-bSu.js"
+            },
+            {
+              "bodyBytes": 2310,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949959065,
+              "method": "GET",
+              "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
             },
             {
               "bodyBytes": 6753,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833882,
+              "finishedWallTimeMs": 1785949959065,
               "method": "GET",
               "pathname": "/assets/worker-client-D4JVBXBF.js"
+            },
+            {
+              "bodyBytes": 21112,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949959066,
+              "method": "GET",
+              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
+            },
+            {
+              "bodyBytes": 10258,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949959066,
+              "method": "GET",
+              "pathname": "/assets/playground-DcQmTnDu.css"
             },
             {
               "bodyBytes": 4741037,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948834100,
+              "finishedWallTimeMs": 1785949959282,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-Dpd0uUA1.wasm"
             },
@@ -6025,7 +6025,7 @@
               "bodyBytes": 4449,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948833979,
+              "finishedWallTimeMs": 1785949959173,
               "method": "GET",
               "pathname": "/assets/merman_wasm-DSG3Tue4.js"
             },
@@ -6033,7 +6033,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948834019,
+              "finishedWallTimeMs": 1785949959205,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -6041,56 +6041,56 @@
               "bodyBytes": 25742,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948834133,
+              "finishedWallTimeMs": 1785949959230,
               "method": "GET",
               "pathname": "/assets/merman-language.worker-B-xOMfYG.js"
-            },
-            {
-              "bodyBytes": 85384,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948834137,
-              "method": "GET",
-              "pathname": "/assets/editor.worker-BAFxrcNT.js"
             },
             {
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948834137,
+              "finishedWallTimeMs": 1785949959265,
               "method": "GET",
               "pathname": "/icon.svg"
+            },
+            {
+              "bodyBytes": 85384,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949959271,
+              "method": "GET",
+              "pathname": "/assets/editor.worker-BAFxrcNT.js"
             },
             {
               "bodyBytes": 121972,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "identity",
-              "finishedWallTimeMs": 1785948834376,
+              "finishedWallTimeMs": 1785949959550,
               "method": "GET",
               "pathname": "/assets/codicon-ngg6Pgfi.ttf"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 30625908,
+          "bytes": 30804598,
           "samples": [
             {
-              "atMs": 375.42000007629395,
-              "bytes": 30625908
+              "atMs": 314.8149998188019,
+              "bytes": 30804598
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 6141915,
-        "workerCompileInitializeMs": 91.76500010490417,
-        "workerReadyMs": 406.7650001049042
+        "totalTransferBytes": 6141789,
+        "workerCompileInitializeMs": 43.63506817817688,
+        "workerReadyMs": 308.8149998188019
       },
       "position": 1,
       "variant": "full",
       "warm": {
-        "firstDiagnosticsMs": 424.6400001049042,
-        "mainCompileInitializeMs": 373.2850000858307,
-        "mainFirstResultMs": 738.5700001716614,
+        "firstDiagnosticsMs": 338.88499999046326,
+        "mainCompileInitializeMs": 313.29500007629395,
+        "mainFirstResultMs": 671.9400000572205,
         "network": {
           "bodyBytes": 2200,
           "requests": [
@@ -6098,7 +6098,7 @@
               "bodyBytes": 952,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948839905,
+              "finishedWallTimeMs": 1785949965032,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -6106,7 +6106,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948840146,
+              "finishedWallTimeMs": 1785949965230,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -6114,41 +6114,41 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948840238,
+              "finishedWallTimeMs": 1785949965291,
               "method": "GET",
               "pathname": "/icon.svg"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 22594145,
+          "bytes": 30805138,
           "samples": [
             {
-              "atMs": 373.414999961853,
-              "bytes": 22594145
+              "atMs": 328.8400001525879,
+              "bytes": 30805138
             }
           ],
           "scope": "user-agent-specific-memory"
         },
         "totalTransferBytes": 2200,
-        "workerCompileInitializeMs": 400.29500007629395,
-        "workerReadyMs": 400.29500007629395
+        "workerCompileInitializeMs": 317.7000000476837,
+        "workerReadyMs": 317.7000000476837
       }
     },
     {
       "block": 3,
       "cold": {
-        "firstDiagnosticsMs": 463.19999980926514,
-        "mainCompileInitializeMs": 30.605048656463623,
-        "mainFirstResultMs": 790.2999999523163,
+        "firstDiagnosticsMs": 323.94000005722046,
+        "mainCompileInitializeMs": 45.14496088027954,
+        "mainFirstResultMs": 669.7749998569489,
         "network": {
-          "bodyBytes": 7504884,
+          "bodyBytes": 7504756,
           "requests": [
             {
-              "bodyBytes": 952,
+              "bodyBytes": 950,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846521,
+              "finishedWallTimeMs": 1785949971479,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -6156,39 +6156,23 @@
               "bodyBytes": 136382,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846617,
+              "finishedWallTimeMs": 1785949971520,
               "method": "GET",
-              "pathname": "/assets/playground-Bi8rBIbp.js"
-            },
-            {
-              "bodyBytes": 21112,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846617,
-              "method": "GET",
-              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
+              "pathname": "/assets/playground-Db-sTEye.js"
             },
             {
               "bodyBytes": 900003,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846621,
+              "finishedWallTimeMs": 1785949971521,
               "method": "GET",
               "pathname": "/assets/floatingMenu.contribution-DuHhsv9R.js"
-            },
-            {
-              "bodyBytes": 10384,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846619,
-              "method": "GET",
-              "pathname": "/assets/playground-Cfy2Vqjq.css"
             },
             {
               "bodyBytes": 392,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846619,
+              "finishedWallTimeMs": 1785949971521,
               "method": "GET",
               "pathname": "/assets/modulepreload-polyfill-P2Xu9kJm.js"
             },
@@ -6196,7 +6180,7 @@
               "bodyBytes": 458,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846620,
+              "finishedWallTimeMs": 1785949971521,
               "method": "GET",
               "pathname": "/assets/public-catalog-DrZyL3wU.js"
             },
@@ -6204,7 +6188,7 @@
               "bodyBytes": 306,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846620,
+              "finishedWallTimeMs": 1785949971522,
               "method": "GET",
               "pathname": "/assets/diagram-font-BLaI7bPL.js"
             },
@@ -6212,7 +6196,7 @@
               "bodyBytes": 824,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846621,
+              "finishedWallTimeMs": 1785949971522,
               "method": "GET",
               "pathname": "/assets/mermaid-config-BSHDpJ6-.js"
             },
@@ -6220,7 +6204,7 @@
               "bodyBytes": 22987,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846630,
+              "finishedWallTimeMs": 1785949971522,
               "method": "GET",
               "pathname": "/assets/button-BtGM0zY7.js"
             },
@@ -6228,7 +6212,7 @@
               "bodyBytes": 10693,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846630,
+              "finishedWallTimeMs": 1785949971524,
               "method": "GET",
               "pathname": "/assets/dist-C49XHtAg.js"
             },
@@ -6236,7 +6220,7 @@
               "bodyBytes": 676,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846630,
+              "finishedWallTimeMs": 1785949971528,
               "method": "GET",
               "pathname": "/assets/preload-helper-Czpn1I53.js"
             },
@@ -6244,7 +6228,7 @@
               "bodyBytes": 18475,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846630,
+              "finishedWallTimeMs": 1785949971528,
               "method": "GET",
               "pathname": "/assets/full-ViggrOzk.js"
             },
@@ -6252,7 +6236,7 @@
               "bodyBytes": 275,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846631,
+              "finishedWallTimeMs": 1785949971529,
               "method": "GET",
               "pathname": "/assets/render-artifact-DROW6Oi7.js"
             },
@@ -6260,15 +6244,23 @@
               "bodyBytes": 1057,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846631,
+              "finishedWallTimeMs": 1785949971529,
               "method": "GET",
               "pathname": "/assets/error-projection-CB6_WWTl.js"
+            },
+            {
+              "bodyBytes": 11664,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949971529,
+              "method": "GET",
+              "pathname": "/assets/dialog-BcjFEXNS.js"
             },
             {
               "bodyBytes": 2746,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846633,
+              "finishedWallTimeMs": 1785949971529,
               "method": "GET",
               "pathname": "/assets/dist-JvEuZ3eC.js"
             },
@@ -6276,31 +6268,23 @@
               "bodyBytes": 8443,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846633,
+              "finishedWallTimeMs": 1785949971530,
               "method": "GET",
               "pathname": "/assets/monaco-BHFijZ5R.js"
             },
             {
-              "bodyBytes": 11664,
+              "bodyBytes": 21112,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846633,
+              "finishedWallTimeMs": 1785949971530,
               "method": "GET",
-              "pathname": "/assets/dialog-BcjFEXNS.js"
-            },
-            {
-              "bodyBytes": 2310,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846633,
-              "method": "GET",
-              "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
+              "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
             },
             {
               "bodyBytes": 1437,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846634,
+              "finishedWallTimeMs": 1785949971531,
               "method": "GET",
               "pathname": "/assets/ascii-capabilities-CZbPPOhF.js"
             },
@@ -6308,15 +6292,31 @@
               "bodyBytes": 3754,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846634,
+              "finishedWallTimeMs": 1785949971531,
               "method": "GET",
               "pathname": "/assets/channel-protocol-DYf9-bSu.js"
+            },
+            {
+              "bodyBytes": 2310,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949971531,
+              "method": "GET",
+              "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
+            },
+            {
+              "bodyBytes": 10258,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949971531,
+              "method": "GET",
+              "pathname": "/assets/playground-DcQmTnDu.css"
             },
             {
               "bodyBytes": 6753,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846634,
+              "finishedWallTimeMs": 1785949971532,
               "method": "GET",
               "pathname": "/assets/worker-client-D4JVBXBF.js"
             },
@@ -6324,7 +6324,7 @@
               "bodyBytes": 4741037,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846887,
+              "finishedWallTimeMs": 1785949971736,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-Dpd0uUA1.wasm"
             },
@@ -6332,7 +6332,7 @@
               "bodyBytes": 4449,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846768,
+              "finishedWallTimeMs": 1785949971639,
               "method": "GET",
               "pathname": "/assets/merman_wasm-DSG3Tue4.js"
             },
@@ -6340,7 +6340,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846800,
+              "finishedWallTimeMs": 1785949971672,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -6348,31 +6348,31 @@
               "bodyBytes": 17204,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846911,
+              "finishedWallTimeMs": 1785949971710,
               "method": "GET",
               "pathname": "/assets/merman-language.worker-BnFEVXYl.js"
-            },
-            {
-              "bodyBytes": 85384,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846918,
-              "method": "GET",
-              "pathname": "/assets/editor.worker-BAFxrcNT.js"
             },
             {
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846922,
+              "finishedWallTimeMs": 1785949971736,
               "method": "GET",
               "pathname": "/icon.svg"
+            },
+            {
+              "bodyBytes": 85384,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949971738,
+              "method": "GET",
+              "pathname": "/assets/editor.worker-BAFxrcNT.js"
             },
             {
               "bodyBytes": 1371507,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948846947,
+              "finishedWallTimeMs": 1785949971748,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-XknNdGoP.wasm"
             },
@@ -6380,40 +6380,40 @@
               "bodyBytes": 121972,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "identity",
-              "finishedWallTimeMs": 1785948847146,
+              "finishedWallTimeMs": 1785949972009,
               "method": "GET",
               "pathname": "/assets/codicon-ngg6Pgfi.ttf"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 22066866,
+          "bytes": 31016466,
           "samples": [
             {
-              "atMs": 401.8199999332428,
-              "bytes": 22066866
+              "atMs": 324.2999999523163,
+              "bytes": 31016466
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 7504884,
-        "workerCompileInitializeMs": 11.11504864692688,
-        "workerReadyMs": 438.0649998188019
+        "totalTransferBytes": 7504756,
+        "workerCompileInitializeMs": 33.314960956573486,
+        "workerReadyMs": 302.8550000190735
       },
       "position": 2,
       "variant": "editor",
       "warm": {
-        "firstDiagnosticsMs": 433.710000038147,
-        "mainCompileInitializeMs": 402.7699999809265,
-        "mainFirstResultMs": 772.9199998378754,
+        "firstDiagnosticsMs": 319.7300000190735,
+        "mainCompileInitializeMs": 298.6099998950958,
+        "mainFirstResultMs": 665.9299998283386,
         "network": {
-          "bodyBytes": 2200,
+          "bodyBytes": 2198,
           "requests": [
             {
-              "bodyBytes": 952,
+              "bodyBytes": 950,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948852718,
+              "finishedWallTimeMs": 1785949977504,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -6421,7 +6421,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948852980,
+              "finishedWallTimeMs": 1785949977698,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -6429,41 +6429,41 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948853056,
+              "finishedWallTimeMs": 1785949977758,
               "method": "GET",
               "pathname": "/icon.svg"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 22607663,
+          "bytes": 31013634,
           "samples": [
             {
-              "atMs": 371.50499987602234,
-              "bytes": 22607663
+              "atMs": 319.9649999141693,
+              "bytes": 31013634
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 2200,
-        "workerCompileInitializeMs": 403.47499990463257,
-        "workerReadyMs": 403.47499990463257
+        "totalTransferBytes": 2198,
+        "workerCompileInitializeMs": 298.75,
+        "workerReadyMs": 298.75
       }
     },
     {
       "block": 4,
       "cold": {
-        "firstDiagnosticsMs": 403.87000012397766,
-        "mainCompileInitializeMs": 40.66489267349243,
-        "mainFirstResultMs": 746.9050002098083,
+        "firstDiagnosticsMs": 341.585000038147,
+        "mainCompileInitializeMs": 36.83001947402954,
+        "mainFirstResultMs": 688.5350000858307,
         "network": {
-          "bodyBytes": 7504884,
+          "bodyBytes": 7504756,
           "requests": [
             {
-              "bodyBytes": 952,
+              "bodyBytes": 950,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859681,
+              "finishedWallTimeMs": 1785949984036,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -6471,15 +6471,15 @@
               "bodyBytes": 136382,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859743,
+              "finishedWallTimeMs": 1785949984079,
               "method": "GET",
-              "pathname": "/assets/playground-Bi8rBIbp.js"
+              "pathname": "/assets/playground-Db-sTEye.js"
             },
             {
               "bodyBytes": 900003,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859748,
+              "finishedWallTimeMs": 1785949984083,
               "method": "GET",
               "pathname": "/assets/floatingMenu.contribution-DuHhsv9R.js"
             },
@@ -6487,7 +6487,7 @@
               "bodyBytes": 392,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859744,
+              "finishedWallTimeMs": 1785949984080,
               "method": "GET",
               "pathname": "/assets/modulepreload-polyfill-P2Xu9kJm.js"
             },
@@ -6495,7 +6495,7 @@
               "bodyBytes": 458,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859746,
+              "finishedWallTimeMs": 1785949984081,
               "method": "GET",
               "pathname": "/assets/public-catalog-DrZyL3wU.js"
             },
@@ -6503,7 +6503,7 @@
               "bodyBytes": 306,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859747,
+              "finishedWallTimeMs": 1785949984081,
               "method": "GET",
               "pathname": "/assets/diagram-font-BLaI7bPL.js"
             },
@@ -6511,7 +6511,7 @@
               "bodyBytes": 824,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859751,
+              "finishedWallTimeMs": 1785949984083,
               "method": "GET",
               "pathname": "/assets/mermaid-config-BSHDpJ6-.js"
             },
@@ -6519,7 +6519,7 @@
               "bodyBytes": 22987,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859751,
+              "finishedWallTimeMs": 1785949984088,
               "method": "GET",
               "pathname": "/assets/button-BtGM0zY7.js"
             },
@@ -6527,7 +6527,7 @@
               "bodyBytes": 10693,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859752,
+              "finishedWallTimeMs": 1785949984088,
               "method": "GET",
               "pathname": "/assets/dist-C49XHtAg.js"
             },
@@ -6535,7 +6535,7 @@
               "bodyBytes": 676,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859752,
+              "finishedWallTimeMs": 1785949984088,
               "method": "GET",
               "pathname": "/assets/preload-helper-Czpn1I53.js"
             },
@@ -6543,7 +6543,7 @@
               "bodyBytes": 18475,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859753,
+              "finishedWallTimeMs": 1785949984088,
               "method": "GET",
               "pathname": "/assets/full-ViggrOzk.js"
             },
@@ -6551,7 +6551,7 @@
               "bodyBytes": 275,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859753,
+              "finishedWallTimeMs": 1785949984090,
               "method": "GET",
               "pathname": "/assets/render-artifact-DROW6Oi7.js"
             },
@@ -6559,7 +6559,7 @@
               "bodyBytes": 1057,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859753,
+              "finishedWallTimeMs": 1785949984090,
               "method": "GET",
               "pathname": "/assets/error-projection-CB6_WWTl.js"
             },
@@ -6567,7 +6567,7 @@
               "bodyBytes": 11664,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859754,
+              "finishedWallTimeMs": 1785949984090,
               "method": "GET",
               "pathname": "/assets/dialog-BcjFEXNS.js"
             },
@@ -6575,7 +6575,7 @@
               "bodyBytes": 2746,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859754,
+              "finishedWallTimeMs": 1785949984090,
               "method": "GET",
               "pathname": "/assets/dist-JvEuZ3eC.js"
             },
@@ -6583,7 +6583,7 @@
               "bodyBytes": 8443,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859755,
+              "finishedWallTimeMs": 1785949984090,
               "method": "GET",
               "pathname": "/assets/monaco-BHFijZ5R.js"
             },
@@ -6591,7 +6591,7 @@
               "bodyBytes": 1437,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859755,
+              "finishedWallTimeMs": 1785949984092,
               "method": "GET",
               "pathname": "/assets/ascii-capabilities-CZbPPOhF.js"
             },
@@ -6599,7 +6599,7 @@
               "bodyBytes": 3754,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859755,
+              "finishedWallTimeMs": 1785949984093,
               "method": "GET",
               "pathname": "/assets/channel-protocol-DYf9-bSu.js"
             },
@@ -6607,7 +6607,7 @@
               "bodyBytes": 2310,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859756,
+              "finishedWallTimeMs": 1785949984093,
               "method": "GET",
               "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
             },
@@ -6615,7 +6615,7 @@
               "bodyBytes": 6753,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859756,
+              "finishedWallTimeMs": 1785949984093,
               "method": "GET",
               "pathname": "/assets/worker-client-D4JVBXBF.js"
             },
@@ -6623,23 +6623,23 @@
               "bodyBytes": 21112,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859757,
+              "finishedWallTimeMs": 1785949984093,
               "method": "GET",
               "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
             },
             {
-              "bodyBytes": 10384,
+              "bodyBytes": 10258,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859757,
+              "finishedWallTimeMs": 1785949984093,
               "method": "GET",
-              "pathname": "/assets/playground-Cfy2Vqjq.css"
+              "pathname": "/assets/playground-DcQmTnDu.css"
             },
             {
               "bodyBytes": 4741037,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948860016,
+              "finishedWallTimeMs": 1785949984318,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-Dpd0uUA1.wasm"
             },
@@ -6647,7 +6647,7 @@
               "bodyBytes": 4449,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859890,
+              "finishedWallTimeMs": 1785949984203,
               "method": "GET",
               "pathname": "/assets/merman_wasm-DSG3Tue4.js"
             },
@@ -6655,7 +6655,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859932,
+              "finishedWallTimeMs": 1785949984243,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -6663,7 +6663,7 @@
               "bodyBytes": 17204,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948859993,
+              "finishedWallTimeMs": 1785949984313,
               "method": "GET",
               "pathname": "/assets/merman-language.worker-BnFEVXYl.js"
             },
@@ -6671,7 +6671,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948860010,
+              "finishedWallTimeMs": 1785949984313,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -6679,7 +6679,7 @@
               "bodyBytes": 85384,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948860013,
+              "finishedWallTimeMs": 1785949984323,
               "method": "GET",
               "pathname": "/assets/editor.worker-BAFxrcNT.js"
             },
@@ -6687,7 +6687,7 @@
               "bodyBytes": 1371507,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948860037,
+              "finishedWallTimeMs": 1785949984337,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-XknNdGoP.wasm"
             },
@@ -6695,40 +6695,40 @@
               "bodyBytes": 121972,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "identity",
-              "finishedWallTimeMs": 1785948860287,
+              "finishedWallTimeMs": 1785949984592,
               "method": "GET",
               "pathname": "/assets/codicon-ngg6Pgfi.ttf"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 30826008,
+          "bytes": 22589687,
           "samples": [
             {
-              "atMs": 399.9100000858307,
-              "bytes": 30826008
+              "atMs": 292.17000007629395,
+              "bytes": 22589687
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 7504884,
-        "workerCompileInitializeMs": 20.57489275932312,
-        "workerReadyMs": 377.0600001811981
+        "totalTransferBytes": 7504756,
+        "workerCompileInitializeMs": 18.560019493103027,
+        "workerReadyMs": 319.789999961853
       },
       "position": 1,
       "variant": "editor",
       "warm": {
-        "firstDiagnosticsMs": 442.41999983787537,
-        "mainCompileInitializeMs": 386.34500002861023,
-        "mainFirstResultMs": 777.6899998188019,
+        "firstDiagnosticsMs": 398.66999983787537,
+        "mainCompileInitializeMs": 349.2849998474121,
+        "mainFirstResultMs": 721.4049999713898,
         "network": {
-          "bodyBytes": 2200,
+          "bodyBytes": 2198,
           "requests": [
             {
-              "bodyBytes": 952,
+              "bodyBytes": 950,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948865979,
+              "finishedWallTimeMs": 1785949990158,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -6736,7 +6736,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948866219,
+              "finishedWallTimeMs": 1785949990375,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -6744,41 +6744,41 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948866322,
+              "finishedWallTimeMs": 1785949990452,
               "method": "GET",
               "pathname": "/icon.svg"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 22606949,
+          "bytes": 22057150,
           "samples": [
             {
-              "atMs": 386.6099998950958,
-              "bytes": 22606949
+              "atMs": 326.1449999809265,
+              "bytes": 22057150
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 2200,
-        "workerCompileInitializeMs": 408.90499997138977,
-        "workerReadyMs": 408.90499997138977
+        "totalTransferBytes": 2198,
+        "workerCompileInitializeMs": 368.5549998283386,
+        "workerReadyMs": 368.5549998283386
       }
     },
     {
       "block": 4,
       "cold": {
-        "firstDiagnosticsMs": 503.2999999523163,
-        "mainCompileInitializeMs": 37.92505860328674,
-        "mainFirstResultMs": 760.0250000953674,
+        "firstDiagnosticsMs": 375.13499999046326,
+        "mainCompileInitializeMs": 26.554980516433716,
+        "mainFirstResultMs": 668.4049999713898,
         "network": {
-          "bodyBytes": 6141915,
+          "bodyBytes": 6141789,
           "requests": [
             {
               "bodyBytes": 952,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948872936,
+              "finishedWallTimeMs": 1785949996837,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -6786,39 +6786,47 @@
               "bodyBytes": 136382,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948872993,
+              "finishedWallTimeMs": 1785949996880,
               "method": "GET",
-              "pathname": "/assets/playground-C4s7Z3K5.js"
+              "pathname": "/assets/playground-CkM9LlAG.js"
             },
             {
               "bodyBytes": 900003,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948872998,
+              "finishedWallTimeMs": 1785949996884,
               "method": "GET",
               "pathname": "/assets/floatingMenu.contribution-DuHhsv9R.js"
-            },
-            {
-              "bodyBytes": 458,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948872996,
-              "method": "GET",
-              "pathname": "/assets/public-catalog-DrZyL3wU.js"
             },
             {
               "bodyBytes": 392,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948872996,
+              "finishedWallTimeMs": 1785949996880,
               "method": "GET",
               "pathname": "/assets/modulepreload-polyfill-P2Xu9kJm.js"
+            },
+            {
+              "bodyBytes": 458,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949996881,
+              "method": "GET",
+              "pathname": "/assets/public-catalog-DrZyL3wU.js"
+            },
+            {
+              "bodyBytes": 22987,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949996881,
+              "method": "GET",
+              "pathname": "/assets/button-BtGM0zY7.js"
             },
             {
               "bodyBytes": 306,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948872996,
+              "finishedWallTimeMs": 1785949996881,
               "method": "GET",
               "pathname": "/assets/diagram-font-BLaI7bPL.js"
             },
@@ -6826,31 +6834,15 @@
               "bodyBytes": 824,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873001,
+              "finishedWallTimeMs": 1785949996881,
               "method": "GET",
               "pathname": "/assets/mermaid-config-BSHDpJ6-.js"
-            },
-            {
-              "bodyBytes": 22987,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873002,
-              "method": "GET",
-              "pathname": "/assets/button-BtGM0zY7.js"
-            },
-            {
-              "bodyBytes": 275,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873002,
-              "method": "GET",
-              "pathname": "/assets/render-artifact-DROW6Oi7.js"
             },
             {
               "bodyBytes": 10693,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873002,
+              "finishedWallTimeMs": 1785949996882,
               "method": "GET",
               "pathname": "/assets/dist-C49XHtAg.js"
             },
@@ -6858,7 +6850,7 @@
               "bodyBytes": 676,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873002,
+              "finishedWallTimeMs": 1785949996887,
               "method": "GET",
               "pathname": "/assets/preload-helper-Czpn1I53.js"
             },
@@ -6866,15 +6858,31 @@
               "bodyBytes": 18475,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873002,
+              "finishedWallTimeMs": 1785949996887,
               "method": "GET",
               "pathname": "/assets/full-ViggrOzk.js"
+            },
+            {
+              "bodyBytes": 275,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949996887,
+              "method": "GET",
+              "pathname": "/assets/render-artifact-DROW6Oi7.js"
+            },
+            {
+              "bodyBytes": 1057,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949996887,
+              "method": "GET",
+              "pathname": "/assets/error-projection-CB6_WWTl.js"
             },
             {
               "bodyBytes": 11664,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873003,
+              "finishedWallTimeMs": 1785949996887,
               "method": "GET",
               "pathname": "/assets/dialog-BcjFEXNS.js"
             },
@@ -6882,63 +6890,39 @@
               "bodyBytes": 21112,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873003,
+              "finishedWallTimeMs": 1785949996888,
               "method": "GET",
               "pathname": "/assets/floatingMenu-Cg6a30Kc.css"
             },
             {
-              "bodyBytes": 10384,
+              "bodyBytes": 10258,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873003,
+              "finishedWallTimeMs": 1785949996888,
               "method": "GET",
-              "pathname": "/assets/playground-Cfy2Vqjq.css"
+              "pathname": "/assets/playground-DcQmTnDu.css"
             },
             {
               "bodyBytes": 2746,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873004,
+              "finishedWallTimeMs": 1785949996888,
               "method": "GET",
               "pathname": "/assets/dist-JvEuZ3eC.js"
-            },
-            {
-              "bodyBytes": 1057,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873004,
-              "method": "GET",
-              "pathname": "/assets/error-projection-CB6_WWTl.js"
             },
             {
               "bodyBytes": 8443,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873004,
+              "finishedWallTimeMs": 1785949996889,
               "method": "GET",
               "pathname": "/assets/monaco-BHFijZ5R.js"
-            },
-            {
-              "bodyBytes": 1437,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873006,
-              "method": "GET",
-              "pathname": "/assets/ascii-capabilities-CZbPPOhF.js"
-            },
-            {
-              "bodyBytes": 3754,
-              "cacheControl": "public, max-age=31536000, immutable",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873006,
-              "method": "GET",
-              "pathname": "/assets/channel-protocol-DYf9-bSu.js"
             },
             {
               "bodyBytes": 2310,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873007,
+              "finishedWallTimeMs": 1785949996889,
               "method": "GET",
               "pathname": "/assets/render-viewport-Bk7kWtiJ.js"
             },
@@ -6946,15 +6930,31 @@
               "bodyBytes": 6753,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873007,
+              "finishedWallTimeMs": 1785949996889,
               "method": "GET",
               "pathname": "/assets/worker-client-D4JVBXBF.js"
+            },
+            {
+              "bodyBytes": 1437,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949996890,
+              "method": "GET",
+              "pathname": "/assets/ascii-capabilities-CZbPPOhF.js"
+            },
+            {
+              "bodyBytes": 3754,
+              "cacheControl": "public, max-age=31536000, immutable",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949996890,
+              "method": "GET",
+              "pathname": "/assets/channel-protocol-DYf9-bSu.js"
             },
             {
               "bodyBytes": 4741037,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873288,
+              "finishedWallTimeMs": 1785949997118,
               "method": "GET",
               "pathname": "/assets/merman_wasm_bg-Dpd0uUA1.wasm"
             },
@@ -6962,7 +6962,7 @@
               "bodyBytes": 4449,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873157,
+              "finishedWallTimeMs": 1785949997002,
               "method": "GET",
               "pathname": "/assets/merman_wasm-DSG3Tue4.js"
             },
@@ -6970,15 +6970,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873195,
-              "method": "GET",
-              "pathname": "/icon.svg"
-            },
-            {
-              "bodyBytes": 624,
-              "cacheControl": "no-cache",
-              "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873332,
+              "finishedWallTimeMs": 1785949997040,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -6986,7 +6978,7 @@
               "bodyBytes": 25742,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873340,
+              "finishedWallTimeMs": 1785949997125,
               "method": "GET",
               "pathname": "/assets/merman-language.worker-B-xOMfYG.js"
             },
@@ -6994,40 +6986,48 @@
               "bodyBytes": 85384,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948873350,
+              "finishedWallTimeMs": 1785949997130,
               "method": "GET",
               "pathname": "/assets/editor.worker-BAFxrcNT.js"
+            },
+            {
+              "bodyBytes": 624,
+              "cacheControl": "no-cache",
+              "contentEncoding": "gzip",
+              "finishedWallTimeMs": 1785949997147,
+              "method": "GET",
+              "pathname": "/icon.svg"
             },
             {
               "bodyBytes": 121972,
               "cacheControl": "public, max-age=31536000, immutable",
               "contentEncoding": "identity",
-              "finishedWallTimeMs": 1785948873552,
+              "finishedWallTimeMs": 1785949997386,
               "method": "GET",
               "pathname": "/assets/codicon-ngg6Pgfi.ttf"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 30242936,
+          "bytes": 22061830,
           "samples": [
             {
-              "atMs": 414.710000038147,
-              "bytes": 30242936
+              "atMs": 307.9650001525879,
+              "bytes": 22061830
             }
           ],
           "scope": "user-agent-specific-memory"
         },
-        "totalTransferBytes": 6141915,
-        "workerCompileInitializeMs": 118.03005862236023,
-        "workerReadyMs": 470.84500002861023
+        "totalTransferBytes": 6141789,
+        "workerCompileInitializeMs": 71.60998058319092,
+        "workerReadyMs": 352.8800001144409
       },
       "position": 2,
       "variant": "full",
       "warm": {
-        "firstDiagnosticsMs": 360.9449999332428,
-        "mainCompileInitializeMs": 320.71999979019165,
-        "mainFirstResultMs": 679.4449999332428,
+        "firstDiagnosticsMs": 340.1050000190735,
+        "mainCompileInitializeMs": 310.60000014305115,
+        "mainFirstResultMs": 669.8050000667572,
         "network": {
           "bodyBytes": 2200,
           "requests": [
@@ -7035,7 +7035,7 @@
               "bodyBytes": 952,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948879094,
+              "finishedWallTimeMs": 1785950002869,
               "method": "GET",
               "pathname": "/index.html"
             },
@@ -7043,7 +7043,7 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948879293,
+              "finishedWallTimeMs": 1785950003073,
               "method": "GET",
               "pathname": "/icon.svg"
             },
@@ -7051,25 +7051,25 @@
               "bodyBytes": 624,
               "cacheControl": "no-cache",
               "contentEncoding": "gzip",
-              "finishedWallTimeMs": 1785948879364,
+              "finishedWallTimeMs": 1785950003138,
               "method": "GET",
               "pathname": "/icon.svg"
             }
           ]
         },
         "peakMemory": {
-          "bytes": 30797943,
+          "bytes": 22616598,
           "samples": [
             {
-              "atMs": 336.13499999046326,
-              "bytes": 30797943
+              "atMs": 283.4100000858307,
+              "bytes": 22616598
             }
           ],
           "scope": "user-agent-specific-memory"
         },
         "totalTransferBytes": 2200,
-        "workerCompileInitializeMs": 336.9649999141693,
-        "workerReadyMs": 336.9649999141693
+        "workerCompileInitializeMs": 320.10000014305115,
+        "workerReadyMs": 320.10000014305115
       }
     }
   ],
@@ -7077,46 +7077,46 @@
     "full": {
       "modes": {
         "cold": {
-          "totalTransferBytes": 6141915,
-          "workerReadyMs": 378.99000012874603,
-          "firstDiagnosticsMs": 404.24000000953674,
-          "mainFirstResultMs": 714.045000076294,
-          "mainCompileInitializeMs": 40.41748535633087,
-          "workerCompileInitializeMs": 69.56251955032349
+          "totalTransferBytes": 6141789,
+          "workerReadyMs": 336.4800000190735,
+          "firstDiagnosticsMs": 357.5824999809265,
+          "mainFirstResultMs": 670.4900000095367,
+          "mainCompileInitializeMs": 39.22747564315796,
+          "workerCompileInitializeMs": 52.56990718841553
         },
         "warm": {
           "totalTransferBytes": 2200,
-          "workerReadyMs": 325.92750000953674,
-          "firstDiagnosticsMs": 348.43999993801117,
-          "mainFirstResultMs": 668.6224999427795,
-          "mainCompileInitializeMs": 311.4799998998642,
-          "workerCompileInitializeMs": 325.92750000953674
+          "workerReadyMs": 313.9325000047684,
+          "firstDiagnosticsMs": 334.852499961853,
+          "mainFirstResultMs": 667.3725000619888,
+          "mainCompileInitializeMs": 307.59250009059906,
+          "workerCompileInitializeMs": 313.9325000047684
         }
       },
-      "peakMemoryBytes": 30804617,
+      "peakMemoryBytes": 30811105,
       "peakMemoryScope": "user-agent-specific-memory",
       "runCount": 4
     },
     "editor": {
       "modes": {
         "cold": {
-          "totalTransferBytes": 7504884,
-          "workerReadyMs": 392.7625000476837,
-          "firstDiagnosticsMs": 421.3125001192093,
-          "mainFirstResultMs": 748.8275001049042,
-          "mainCompileInitializeMs": 37.31997561454773,
-          "workerCompileInitializeMs": 16.522451281547546
+          "totalTransferBytes": 7504756,
+          "workerReadyMs": 295.9800000190735,
+          "firstDiagnosticsMs": 316.77500009536743,
+          "mainFirstResultMs": 664.4075000286102,
+          "mainCompileInitializeMs": 36.25999999046326,
+          "workerCompileInitializeMs": 31.047475576400757
         },
         "warm": {
-          "totalTransferBytes": 2200,
-          "workerReadyMs": 379.8899999856949,
-          "firstDiagnosticsMs": 409.59500002861023,
-          "mainFirstResultMs": 740.1499998569489,
-          "mainCompileInitializeMs": 360.85000002384186,
-          "workerCompileInitializeMs": 379.8899999856949
+          "totalTransferBytes": 2198,
+          "workerReadyMs": 309.9950000047684,
+          "firstDiagnosticsMs": 330.789999961853,
+          "mainFirstResultMs": 678.102499961853,
+          "mainCompileInitializeMs": 309.87249994277954,
+          "workerCompileInitializeMs": 309.9950000047684
         }
       },
-      "peakMemoryBytes": 31018003,
+      "peakMemoryBytes": 31017357,
       "peakMemoryScope": "user-agent-specific-memory",
       "runCount": 4
     }
@@ -7133,80 +7133,77 @@
         "editorAggregateSha256": "e52016004129f4a12c0b316be1890f614898003afc1318fd543c4f07b674596c"
       },
       "coldBytes": {
-        "editor": 7504884,
-        "full": 6141915,
+        "editor": 7504756,
+        "full": 6141789,
         "passes": false
       },
       "peakMemory": {
-        "editor": 31018003,
-        "full": 30804617,
+        "editor": 31017357,
+        "full": 30811105,
         "passes": false,
         "scope": "user-agent-specific-memory"
       },
       "primaryLatencies": [
         {
-          "editorMs": 392.7625000476837,
-          "fullMs": 378.99000012874603,
+          "editorMs": 295.9800000190735,
+          "fullMs": 336.4800000190735,
           "metric": "workerReadyMs",
           "mode": "cold",
           "passes": true,
-          "regressionMs": 13.772499918937683,
-          "regressionRatio": 0.03634000874497757
+          "regressionMs": -40.5,
+          "regressionRatio": -0.12036376604167928
         },
         {
-          "editorMs": 421.3125001192093,
-          "fullMs": 404.24000000953674,
+          "editorMs": 316.77500009536743,
+          "fullMs": 357.5824999809265,
           "metric": "firstDiagnosticsMs",
           "mode": "cold",
           "passes": true,
-          "regressionMs": 17.072500109672546,
-          "regressionRatio": 0.04223357438469665
+          "regressionMs": -40.80749988555908,
+          "regressionRatio": -0.11412051732882833
         },
         {
-          "editorMs": 748.8275001049042,
-          "fullMs": 714.045000076294,
+          "editorMs": 664.4075000286102,
+          "fullMs": 670.4900000095367,
           "metric": "mainFirstResultMs",
           "mode": "cold",
           "passes": true,
-          "regressionMs": 34.78250002861023,
-          "regressionRatio": 0.04871191595052665
+          "regressionMs": -6.082499980926514,
+          "regressionRatio": -0.009071723636206355
         },
         {
-          "editorMs": 379.8899999856949,
-          "fullMs": 325.92750000953674,
+          "editorMs": 309.9950000047684,
+          "fullMs": 313.9325000047684,
           "metric": "workerReadyMs",
           "mode": "warm",
-          "passes": false,
-          "regressionMs": 53.96249997615814,
-          "regressionRatio": 0.16556596167730303
+          "passes": true,
+          "regressionMs": -3.9375,
+          "regressionRatio": -0.012542505156172721
         },
         {
-          "editorMs": 409.59500002861023,
-          "fullMs": 348.43999993801117,
+          "editorMs": 330.789999961853,
+          "fullMs": 334.852499961853,
           "metric": "firstDiagnosticsMs",
           "mode": "warm",
-          "passes": false,
-          "regressionMs": 61.15500009059906,
-          "regressionRatio": 0.175510848643895
+          "passes": true,
+          "regressionMs": -4.0625,
+          "regressionRatio": -0.012132207465862752
         },
         {
-          "editorMs": 740.1499998569489,
-          "fullMs": 668.6224999427795,
+          "editorMs": 678.102499961853,
+          "fullMs": 667.3725000619888,
           "metric": "mainFirstResultMs",
           "mode": "warm",
-          "passes": false,
-          "regressionMs": 71.52749991416931,
-          "regressionRatio": 0.10697740491875551
+          "passes": true,
+          "regressionMs": 10.729999899864197,
+          "regressionRatio": 0.01607797728984569
         }
       ]
     },
     "editorEligible": false,
     "reasons": [
-      "Editor cold transfer 7504884 bytes is not lower than full 6141915 bytes.",
-      "Editor peak memory 31018003 bytes exceeds full 30804617 bytes.",
-      "Editor warm workerReadyMs regresses by 53.962 ms (16.56%).",
-      "Editor warm firstDiagnosticsMs regresses by 61.155 ms (17.55%).",
-      "Editor warm mainFirstResultMs regresses by 71.527 ms (10.70%)."
+      "Editor cold transfer 7504756 bytes is not lower than full 6141789 bytes.",
+      "Editor peak memory 31017357 bytes exceeds full 30811105 bytes."
     ],
     "selected": "full"
   }

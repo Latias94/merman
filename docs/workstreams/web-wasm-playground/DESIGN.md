@@ -143,6 +143,9 @@ input schema 3, which content-binds every production page runtime closure, the W
 closure, exact runtime package provenance, the measurement contract, and equivalence evidence.
 Normal prepared tests recompute those digests and the derived decision hermetically; only stale
 decision inputs require another browser measurement.
+Tailwind v4 automatic source detection is disabled. Its explicit `App`, product-component, and UI
+primitive roots are structurally checked as a subset of the production TypeScript runtime closure,
+so test or tooling strings cannot alter shipped CSS without entering R16's bound inputs.
 `didOpen` constructs its analyzed document, `didChange` atomically replaces the snapshot with a
 newer source/version, and queries do not resend or compare source text. Diagnostics, detection,
 completions, hover, code actions, symbols, definition, references, rename, and semantic tokens all

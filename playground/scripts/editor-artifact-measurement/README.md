@@ -32,7 +32,10 @@ independently invalidate a receipt. Documentation, browser-test-only changes,
 emitted declarations, and source maps do not force an R16 rerun. Playground
 runtime and transitive build-config changes do: Vite may split shared chunks
 across any production HTML entry, and the PostCSS/Tailwind build can project
-lazy-workbench classes into the initial stylesheet.
+lazy-workbench classes into the initial stylesheet. Tailwind automatic source
+detection is disabled; its explicit source roots are all members of the
+production TypeScript runtime closure, so test and tooling text cannot mutate
+the measured CSS.
 
 The equivalence probe uses the production `WorkerClient` and the emitted
 `merman-language.worker` as an explicit module Worker. Its input is the generated
