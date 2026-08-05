@@ -20,7 +20,7 @@
         "y": 250.0,
         "width": 60.0,
         "height": 105.6,
-        "path_d": "M 0 -52.79999999999998 L 0 52.79999999999998 Q 144 0 0 -52.79999999999998 Z",
+        "path_d": "M 0 -52.8 L 0 52.8 Q 144 0 0 -52.8 Z",
         "label": {
           "text": "Blurry\nPhoto",
           "lines": [
@@ -28,15 +28,15 @@
             "Photo"
           ],
           "class_name": "ishikawa-head-label",
-          "x": 42.0,
+          "x": 33.0,
           "y": 250.0,
-          "anchor": "middle",
+          "anchor": "start",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": 22.96,
+            "min_x": 13.96,
             "min_y": 233.6,
-            "max_x": 61.04,
+            "max_x": 52.04,
             "max_y": 266.4
           }
         }

@@ -20,7 +20,7 @@
         "y": 333.333,
         "width": 84.54,
         "height": 105.6,
-        "path_d": "M 0 -52.80000000000001 L 0 52.80000000000001 Q 202.896 0 0 -52.80000000000001 Z",
+        "path_d": "M 0 -52.8 L 0 52.8 Q 202.896 0 0 -52.8 Z",
         "label": {
           "text": "Manufacturing\nDefect",
           "lines": [
@@ -28,15 +28,15 @@
             "Defect"
           ],
           "class_name": "ishikawa-head-label",
-          "x": 42.0,
+          "x": 45.27,
           "y": 333.333,
-          "anchor": "middle",
+          "anchor": "start",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": 2.73,
+            "min_x": 6.0,
             "min_y": 316.933,
-            "max_x": 81.27,
+            "max_x": 84.54,
             "max_y": 349.733
           }
         }

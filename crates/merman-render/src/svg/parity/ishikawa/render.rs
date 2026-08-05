@@ -374,33 +374,28 @@ fn push_rough_group(
 }
 
 fn push_ishikawa_head_text(out: &mut String, text: &IshikawaTextLayout, dx: f64, dy: f64) {
-    let mut shifted = text.clone();
-    shifted.anchor = "start".to_string();
-    shifted.x = 0.0;
-    shifted.y += dy;
-    let transform_x = text.x + dx - (text.bbox.max_x - text.bbox.min_x) / 2.0;
-    let transform_y = text.y + dy - shifted.y;
-    let first_y =
-        shifted.y - ((shifted.lines.len().saturating_sub(1)) as f64 * shifted.line_height) / 2.0;
+    let transform_x = text.x + dx;
+    let transform_y = text.y + dy;
+    let first_y = -((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
     let _ = write!(
         out,
         r#"<text class="{}" text-anchor="{}" x="{}" y="{}" transform="translate({},{})">"#,
-        escape_attr_display(&shifted.class_name),
-        escape_attr_display(&shifted.anchor),
-        fmt(shifted.x),
+        escape_attr_display(&text.class_name),
+        escape_attr_display(&text.anchor),
+        fmt(0.0),
         fmt(first_y),
         fmt(transform_x),
         fmt(transform_y)
     );
-    for (idx, line) in shifted.lines.iter().enumerate() {
+    for (idx, line) in text.lines.iter().enumerate() {
         let _ = write!(
             out,
             r#"<tspan x="{}" dy="{}">"#,
-            fmt(shifted.x),
+            fmt(0.0),
             if idx == 0 {
                 "0".to_string()
             } else {
-                fmt_string(shifted.line_height)
+                fmt_string(text.line_height)
             }
         );
         escape_xml_into(out, line);
