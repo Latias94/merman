@@ -1836,8 +1836,6 @@ struct SimGraph {
     surrounding_seen: Vec<u32>,
     // Compound node indices in descending inclusion depth (deepest first), for updateBounds.
     compounds_deep_first: Vec<usize>,
-    // Descendant leaf indices for each node (empty for leaves).
-    descendant_leaves: Vec<Vec<usize>>,
     // Estimated size for each owner graph (static; computed from node sizes).
     owner_estimated_size: Vec<f64>,
     // layout-base `LNode.inclusionTreeDepth` (root-level nodes depth=1).
@@ -2096,34 +2094,18 @@ impl SimGraph {
             .collect();
         compounds_deep_first.sort_by_key(|&idx| std::cmp::Reverse(inclusion_depth[idx]));
 
-        // Compute `no_of_children` weights and descendant leaf lists.
-        let mut descendant_leaves: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
-        let mut no_of_children: Vec<f64> = vec![1.0; nodes.len()];
-
-        // Initialize leaf descendants for leaves.
-        for idx in 0..nodes.len() {
-            if !nodes[idx].is_compound {
-                descendant_leaves[idx] = vec![idx];
-                no_of_children[idx] = 1.0;
-            }
-        }
-
-        // For compounds, aggregate descendant leaves from immediate children (postorder).
+        // `LNode.getNoOfChildren()` is a scalar subtree weight: leaves and empty compounds count
+        // as one, while non-empty compounds sum the weights of their immediate children. Keep the
+        // postorder scalar only; materializing every compound-to-leaf relation turns a deep
+        // compound chain into quadratic setup memory and per-iteration displacement work.
+        let mut no_of_children: Vec<usize> = vec![1; nodes.len()];
         for &cidx in &compounds_deep_first {
             let children = &children_by_owner[cidx];
-            let mut leaves: Vec<usize> = Vec::new();
-            for &child in children {
-                leaves.extend(descendant_leaves[child].iter().copied());
-            }
-            leaves.sort_unstable();
-            leaves.dedup();
-            if leaves.is_empty() {
-                descendant_leaves[cidx] = Vec::new();
-                no_of_children[cidx] = 1.0;
-            } else {
-                no_of_children[cidx] = leaves.len() as f64;
-                descendant_leaves[cidx] = leaves;
-            }
+            no_of_children[cidx] = children
+                .iter()
+                .map(|&child| no_of_children[child])
+                .sum::<usize>()
+                .max(1);
         }
 
         // Compute estimated sizes (used for gravity ranges, and to match layout-base defaults).
@@ -2175,7 +2157,7 @@ impl SimGraph {
         }
 
         for (idx, n) in nodes.iter_mut().enumerate() {
-            n.no_of_children = no_of_children[idx].max(1.0);
+            n.no_of_children = no_of_children[idx] as f64;
         }
 
         Self {
@@ -2187,7 +2169,6 @@ impl SimGraph {
             children_by_owner,
             surrounding_seen: vec![0; leaf_count + compound_count],
             compounds_deep_first,
-            descendant_leaves,
             owner_estimated_size,
             inclusion_depth,
         }
@@ -2645,6 +2626,74 @@ impl SimGraph {
         out
     }
 
+    fn calculate_displacements(
+        &self,
+        all_nodes_in_layout_order: &[usize],
+        cooling_factor: f64,
+        max_displacement: f64,
+        displacements: &mut [(f64, f64)],
+        propagated_by_owner: &mut [(f64, f64)],
+    ) {
+        displacements.fill((0.0, 0.0));
+        propagated_by_owner.fill((0.0, 0.0));
+
+        // Port `CoSELayout.moveNodes()` and `CoSENode.calculateDisplacement()` without
+        // materializing every compound-to-leaf relationship. Upstream processes owner graphs in
+        // pre-order: a compound propagates its clamped displacement recursively to leaf
+        // descendants, while nested compounds do not inherit that displacement themselves.
+        // `propagated_by_owner` stores the ordered sum of ancestor compound displacements for the
+        // leaves in each child graph, reducing propagation from O(sum(descendant leaves)) to O(N).
+        for &idx in all_nodes_in_layout_order {
+            let Some(node) = self.nodes.get(idx) else {
+                continue;
+            };
+
+            let inherited = if node.is_compound {
+                (0.0, 0.0)
+            } else {
+                propagated_by_owner
+                    .get(node.owner_idx)
+                    .copied()
+                    .unwrap_or((0.0, 0.0))
+            };
+            let denominator = node.no_of_children.max(1.0);
+            let mut dx = inherited.0
+                + cooling_factor * (node.spring_fx + node.repulsion_fx + node.gravitation_fx)
+                    / denominator;
+            let mut dy = inherited.1
+                + cooling_factor * (node.spring_fy + node.repulsion_fy + node.gravitation_fy)
+                    / denominator;
+
+            if dx.abs() > max_displacement {
+                dx = max_displacement * imath_sign(dx);
+            }
+            if dy.abs() > max_displacement {
+                dy = max_displacement * imath_sign(dy);
+            }
+            if let Some(slot) = displacements.get_mut(idx) {
+                *slot = (dx, dy);
+            }
+
+            let is_non_empty_compound = node.is_compound
+                && self
+                    .children_by_owner
+                    .get(idx)
+                    .is_some_and(|children| !children.is_empty());
+            if !is_non_empty_compound {
+                continue;
+            }
+
+            let ancestor_displacement = propagated_by_owner
+                .get(node.owner_idx)
+                .copied()
+                .unwrap_or((0.0, 0.0));
+            if let Some(slot) = propagated_by_owner.get_mut(idx) {
+                slot.0 = ancestor_displacement.0 + dx;
+                slot.1 = ancestor_displacement.1 + dy;
+            }
+        }
+    }
+
     fn run_spring_embedder<W: WorkControl + ?Sized>(
         &mut self,
         context: SpringEmbedderContext<'_, W>,
@@ -2797,6 +2846,7 @@ impl SimGraph {
 
         let mut processed_generation: Vec<u32> = vec![0; self.nodes.len()];
         let mut disps: Vec<(f64, f64)> = vec![(0.0, 0.0); self.nodes.len()];
+        let mut propagated_displacements: Vec<(f64, f64)> = vec![(0.0, 0.0); self.nodes.len() + 1];
         let all_nodes_in_layout_order = self.all_nodes_layout_order();
         let mut current_processed_generation: u32 = 0;
         let mut surrounding_seen_generation: u32 = 1;
@@ -3065,53 +3115,13 @@ impl SimGraph {
             // positions after the move). Hard projection tends to over-separate constrained nodes
             // and can noticeably inflate root viewBox/max-width in parity-root mode.
             let max_d = cooling_factor * max_node_displacement;
-            disps.fill((0.0, 0.0));
-            // Port of `CoSELayout.moveNodes()`:
-            // - displacements are calculated in `getAllNodes()` order
-            // - compound displacements are propagated to (leaf) descendants before those leaves
-            //   compute/clamp their own displacement
-            for &idx in &all_nodes_in_layout_order {
-                let Some(n) = self.nodes.get(idx) else {
-                    continue;
-                };
-
-                let denom = n.no_of_children.max(1.0);
-                let dx = cooling_factor * (n.spring_fx + n.repulsion_fx + n.gravitation_fx) / denom;
-                let dy = cooling_factor * (n.spring_fy + n.repulsion_fy + n.gravitation_fy) / denom;
-
-                if let Some(slot) = disps.get_mut(idx) {
-                    slot.0 += dx;
-                    slot.1 += dy;
-
-                    if slot.0.abs() > max_d {
-                        slot.0 = max_d * imath_sign(slot.0);
-                    }
-                    if slot.1.abs() > max_d {
-                        slot.1 = max_d * imath_sign(slot.1);
-                    }
-                }
-
-                let is_non_empty_compound = n.is_compound
-                    && self
-                        .children_by_owner
-                        .get(idx)
-                        .is_some_and(|v| !v.is_empty());
-                if !is_non_empty_compound {
-                    continue;
-                }
-
-                let (pdx, pdy) = disps.get(idx).copied().unwrap_or((0.0, 0.0));
-                if pdx == 0.0 && pdy == 0.0 {
-                    continue;
-                }
-                for &leaf in self.descendant_leaves.get(idx).into_iter().flatten() {
-                    if leaf >= disps.len() {
-                        continue;
-                    }
-                    disps[leaf].0 += pdx;
-                    disps[leaf].1 += pdy;
-                }
-            }
+            self.calculate_displacements(
+                &all_nodes_in_layout_order,
+                cooling_factor,
+                max_d,
+                &mut disps,
+                &mut propagated_displacements,
+            );
 
             if let Some(rt) = constraint_rt.as_mut() {
                 rt.update_displacements(
@@ -5541,6 +5551,193 @@ mod tests {
         handle
             .join()
             .expect("deep compound SimGraph construction should not overflow");
+    }
+
+    #[test]
+    fn compound_child_weights_count_empty_compounds_like_layout_base() {
+        let graph = IndexedGraph {
+            nodes: vec![
+                IndexedNode {
+                    parent: Some(0),
+                    width: 10.0,
+                    height: 10.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: Some(2),
+                    width: 10.0,
+                    height: 10.0,
+                    x: 20.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+            ],
+            edges: Vec::new(),
+            compounds: vec![
+                IndexedCompound { parent: None },
+                IndexedCompound { parent: Some(0) },
+                IndexedCompound { parent: Some(0) },
+            ],
+        };
+
+        let sim = SimGraph::from_indexed(&graph);
+        let root = graph.nodes.len();
+        let empty = root + 1;
+        let non_empty = root + 2;
+
+        assert_eq!(sim.nodes[root].no_of_children, 3.0);
+        assert_eq!(sim.nodes[empty].no_of_children, 1.0);
+        assert_eq!(sim.nodes[non_empty].no_of_children, 1.0);
+    }
+
+    #[test]
+    fn linear_compound_displacement_matches_recursive_upstream_propagation() {
+        fn propagate_to_leaf_descendants(
+            sim: &SimGraph,
+            owner: usize,
+            dx: f64,
+            dy: f64,
+            displacements: &mut [(f64, f64)],
+        ) {
+            for &child in sim
+                .children_by_owner
+                .get(owner)
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
+            {
+                let Some(node) = sim.nodes.get(child) else {
+                    continue;
+                };
+                if node.is_compound {
+                    propagate_to_leaf_descendants(sim, child, dx, dy, displacements);
+                } else if let Some(slot) = displacements.get_mut(child) {
+                    slot.0 += dx;
+                    slot.1 += dy;
+                }
+            }
+        }
+
+        fn recursive_upstream_displacements(
+            sim: &SimGraph,
+            order: &[usize],
+            cooling_factor: f64,
+            max_displacement: f64,
+        ) -> Vec<(f64, f64)> {
+            let mut displacements = vec![(0.0, 0.0); sim.nodes.len()];
+            for &idx in order {
+                let Some(node) = sim.nodes.get(idx) else {
+                    continue;
+                };
+                let denominator = node.no_of_children.max(1.0);
+                let slot = &mut displacements[idx];
+                slot.0 += cooling_factor
+                    * (node.spring_fx + node.repulsion_fx + node.gravitation_fx)
+                    / denominator;
+                slot.1 += cooling_factor
+                    * (node.spring_fy + node.repulsion_fy + node.gravitation_fy)
+                    / denominator;
+                if slot.0.abs() > max_displacement {
+                    slot.0 = max_displacement * super::imath_sign(slot.0);
+                }
+                if slot.1.abs() > max_displacement {
+                    slot.1 = max_displacement * super::imath_sign(slot.1);
+                }
+
+                if node.is_compound
+                    && sim
+                        .children_by_owner
+                        .get(idx)
+                        .is_some_and(|children| !children.is_empty())
+                {
+                    let (dx, dy) = *slot;
+                    propagate_to_leaf_descendants(sim, idx, dx, dy, &mut displacements);
+                }
+            }
+            displacements
+        }
+
+        let graph = IndexedGraph {
+            nodes: vec![
+                IndexedNode {
+                    parent: Some(1),
+                    width: 10.0,
+                    height: 10.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: Some(0),
+                    width: 10.0,
+                    height: 10.0,
+                    x: 20.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: None,
+                    width: 10.0,
+                    height: 10.0,
+                    x: 40.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+            ],
+            edges: Vec::new(),
+            compounds: vec![
+                IndexedCompound { parent: None },
+                IndexedCompound { parent: Some(0) },
+                IndexedCompound { parent: Some(0) },
+            ],
+        };
+        let mut sim = SimGraph::from_indexed(&graph);
+        for (idx, node) in sim.nodes.iter_mut().enumerate() {
+            let scale = idx as f64 + 1.0;
+            node.spring_fx = 1.25 * scale;
+            node.spring_fy = -0.75 * scale;
+            node.repulsion_fx = 0.5 * scale;
+            node.repulsion_fy = 0.25 * scale;
+            node.gravitation_fx = -0.125 * scale;
+            node.gravitation_fy = 0.375 * scale;
+        }
+
+        let order = sim.all_nodes_layout_order();
+        let mut wide_actual = Vec::new();
+        for max_displacement in [100.0, 0.75] {
+            let expected = recursive_upstream_displacements(&sim, &order, 0.5, max_displacement);
+            let mut actual = vec![(0.0, 0.0); sim.nodes.len()];
+            let mut propagated = vec![(0.0, 0.0); sim.nodes.len() + 1];
+            sim.calculate_displacements(
+                &order,
+                0.5,
+                max_displacement,
+                &mut actual,
+                &mut propagated,
+            );
+
+            assert_eq!(
+                actual
+                    .iter()
+                    .map(|(x, y)| (x.to_bits(), y.to_bits()))
+                    .collect::<Vec<_>>(),
+                expected
+                    .iter()
+                    .map(|(x, y)| (x.to_bits(), y.to_bits()))
+                    .collect::<Vec<_>>()
+            );
+            if max_displacement == 100.0 {
+                wide_actual = actual;
+            }
+        }
+
+        let root_compound = graph.nodes.len();
+        let nested_compound = root_compound + 1;
+        let empty_compound = root_compound + 2;
+        assert_ne!(wide_actual[nested_compound], (0.0, 0.0));
+        assert_ne!(wide_actual[empty_compound], (0.0, 0.0));
+        assert_ne!(wide_actual[0], wide_actual[nested_compound]);
     }
 
     #[test]
