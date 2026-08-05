@@ -41,7 +41,7 @@ struct NativeFailure {
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
     resource: Option<BindingResourceErrorDetails>,
-    icon_registry: Option<BindingIconRegistryErrorDetails>,
+    icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
     message: String,
 }
 
@@ -162,10 +162,10 @@ impl NativeEngineRegistry {
     fn try_reserve(
         &mut self,
         engine: Arc<NativeEngineState>,
-    ) -> Result<MermanNativeEngineToken, (NativeFailure, Arc<NativeEngineState>)> {
+    ) -> Result<MermanNativeEngineToken, (Box<NativeFailure>, Arc<NativeEngineState>)> {
         let token = match self.issue_token() {
             Ok(token) => token,
-            Err(failure) => return Err((failure, engine)),
+            Err(failure) => return Err((Box::new(failure), engine)),
         };
         let previous = self.engines.insert(
             token,
@@ -363,7 +363,7 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
         if let Some(resource) = failure.resource {
             details.insert("resource".to_string(), serde_json::json!(resource));
         }
-        if let Some(icon_registry) = &failure.icon_registry {
+        if let Some(icon_registry) = failure.icon_registry.as_deref() {
             details.insert(
                 "icon_registry".to_string(),
                 serde_json::json!(icon_registry),
@@ -405,7 +405,7 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         BindingStatus::ResourceLimitExceeded => MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
         BindingStatus::Busy => MERMAN_NATIVE_STATUS_BUSY,
     };
-    let icon_registry = error.icon_registry_details().cloned();
+    let icon_registry = error.icon_registry_details().cloned().map(Box::new);
     let mut failure = NativeFailure::classified(
         status,
         error.kind(),
@@ -2072,7 +2072,7 @@ impl<'registry> PendingNativeEngine<'registry> {
             Ok(token) => token,
             Err((failure, state)) => {
                 drop(state);
-                return Err(failure);
+                return Err(*failure);
             }
         };
         Ok(Self {

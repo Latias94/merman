@@ -66,10 +66,10 @@ impl JniEngineRegistry {
     fn register(
         &mut self,
         state: Arc<JniEngineState>,
-    ) -> Result<jlong, (BindingError, Arc<JniEngineState>)> {
+    ) -> Result<jlong, (Box<BindingError>, Arc<JniEngineState>)> {
         let token = match next_jni_engine_token(self.last_token) {
             Ok(token) => token,
-            Err(error) => return Err((error, state)),
+            Err(error) => return Err((Box::new(error), state)),
         };
         self.last_token = token;
         let previous = self.states.insert(token, state);
@@ -532,7 +532,7 @@ fn native_engine_new<'local>(
             Ok(handle) => Ok(handle),
             Err((error, state)) => {
                 drop(state);
-                Err(error)
+                Err(*error)
             }
         }
     })();

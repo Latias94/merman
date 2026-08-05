@@ -118,7 +118,7 @@ pub struct BindingError {
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
     resource: Option<BindingResourceErrorDetails>,
-    icon_registry: Option<BindingIconRegistryErrorDetails>,
+    icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
     message: String,
 }
 
@@ -289,11 +289,11 @@ impl BindingError {
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource,
-            icon_registry: Some(BindingIconRegistryErrorDetails {
+            icon_registry: Some(Box::new(BindingIconRegistryErrorDetails {
                 kind_id: kind.stable_id(),
                 pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
                 registration_name: None,
-            }),
+            })),
             message: message.into(),
         }
     }
@@ -315,7 +315,7 @@ impl BindingError {
     }
 
     pub fn icon_registry_details(&self) -> Option<&BindingIconRegistryErrorDetails> {
-        self.icon_registry.as_ref()
+        self.icon_registry.as_deref()
     }
 
     pub fn message(&self) -> &str {
@@ -368,7 +368,7 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource,
-            icon_registry: Some(details),
+            icon_registry: Some(Box::new(details)),
             message,
         }
     }
@@ -653,7 +653,7 @@ pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
         error.kind(),
         error.capability_id(),
         error.resource.as_ref(),
-        error.icon_registry.as_ref(),
+        error.icon_registry.as_deref(),
         error.message(),
     )
 }
