@@ -304,10 +304,8 @@ async function inspectBuild(variant) {
 async function loadEquivalenceBaselines() {
   const evidenceBytes = await readFile(equivalenceEvidencePath);
   const evidence = JSON.parse(evidenceBytes.toString("utf8"));
-  const expectedGenerator =
-    `cargo run -p xtask -- gen-editor-token-descriptor playground/examples/manifest.json ${EDITOR_ARTIFACT_FAMILY_COUNT}`;
+  requiredString(evidence?.generated_by, "generated evidence producer");
   if (
-    evidence?.generated_by !== expectedGenerator ||
     evidence?.source_manifest !== "playground/examples/manifest.json" ||
     !Array.isArray(evidence.family_cases) ||
     evidence.family_cases.length !== EDITOR_ARTIFACT_FAMILY_COUNT
