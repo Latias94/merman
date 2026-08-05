@@ -1017,7 +1017,7 @@ fn detect_parent_cycles(graph: &Graph, parent: &[Option<usize>]) -> Result<()> {
                 2 => break,
                 1 => {
                     return Err(source_port::ImportError::ParentCycle {
-                        node_id: graph.nodes[start].id.clone(),
+                        node_id: graph.nodes[node].id.clone(),
                     }
                     .into());
                 }
@@ -2277,6 +2277,18 @@ mod tests {
             edges,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn parent_cycle_reports_the_revisited_cycle_member_after_a_stem() {
+        let graph = flat_graph(vec![leaf("stem"), leaf("A"), leaf("B")], vec![]);
+        let parent = [Some(1), Some(2), Some(1)];
+
+        assert!(matches!(
+            detect_parent_cycles(&graph, &parent),
+            Err(Error::SourceImport(source_port::ImportError::ParentCycle { node_id }))
+                if node_id == "A"
+        ));
     }
 
     fn group(id: &str, parent: Option<&str>, handling: HierarchyHandling) -> Node {

@@ -2482,7 +2482,7 @@ fn detect_parent_cycles<'a>(
                 2 => break,
                 1 => {
                     return Err(ImportError::ParentCycle {
-                        node_id: input.nodes[start].id.clone(),
+                        node_id: input.nodes[index].id.clone(),
                     });
                 }
                 _ => {
@@ -2614,6 +2614,28 @@ mod tests {
         assert_eq!(work_control.check_calls, 2);
         assert_eq!(work_control.checked, work_control.charged);
         work_control.charged
+    }
+
+    #[test]
+    fn parent_cycle_reports_the_revisited_cycle_member_after_a_stem() {
+        let mut stem = node("stem");
+        stem.parent = Some("A".to_string());
+        let mut a = node("A");
+        a.parent = Some("B".to_string());
+        let mut b = node("B");
+        b.parent = Some("A".to_string());
+        let input = graph(vec![stem, a, b], vec![]);
+        let node_order = input
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| (node.id.as_str(), index))
+            .collect();
+
+        assert!(matches!(
+            detect_parent_cycles(&input, &node_order),
+            Err(ImportError::ParentCycle { node_id }) if node_id == "A"
+        ));
     }
 
     fn measured_hierarchical_import(
