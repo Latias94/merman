@@ -31,9 +31,9 @@ The same-recipe stripped artifacts remain within the R26 budgets:
 | Profile / artifact | Delta | Budget | Result |
 | --- | ---: | ---: | --- |
 | `ffi-full-native` cdylib | +248,720 bytes | 524,288 bytes | green |
-| `ffi-full-native` staticlib | +1,873,584 bytes | 3,384,636 bytes | green |
-| `ffi-semantic` cdylib | -16 bytes | 65,536 bytes | green |
-| `ffi-semantic` staticlib | +24,384 bytes | 442,062 bytes | green |
+| `ffi-full-native` staticlib | +1,871,784 bytes | 3,384,636 bytes | green |
+| `ffi-semantic` cdylib | -16,528 bytes | 65,536 bytes | green |
+| `ffi-semantic` staticlib | +24,344 bytes | 442,062 bytes | green |
 
 These are stripped Apple native artifacts from the descriptor-owned recipes. They are weight
 signals, not universal performance claims. The SVG icon registry stays inside the existing `svg`
@@ -47,6 +47,11 @@ provenance, uses three or more odd-numbered alternating baseline/candidate pairs
 fresh target directory for every sample. The gate requires explicit review only when the median
 candidate regression is above both 10% and the measured relative-MAD noise floor. It does not
 hide a timing regression behind an unchanged dependency closure.
+
+The current matched capture compares baseline `5117c0ae12da2c0346b47061642286174cea3f5f`
+against candidate `fd9c7a1489c7200a1df64be2a1e84ebab91b273f`: the medians are 98.785 seconds
+and 104.984 seconds respectively, a 6.27% increase against a 0.22% noise floor. The configured
+10% review threshold is not crossed, so no timing review exception is required.
 
 Timing is measured on the recorded local Apple host and is not a cross-machine, universal, or
 runtime-rendering performance claim. `measure_ffi_contract_native_build_timing.py verify` is part

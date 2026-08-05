@@ -1,0 +1,182 @@
+{
+  "captured_at_utc": "2026-08-05T14:07:14.105943+00:00",
+  "machine": {
+    "logical_cpu_count": 14,
+    "machine": "arm64",
+    "memory_bytes": 51539607552,
+    "processor": "Apple M4 Pro",
+    "python_version": "3.14.6",
+    "release": "25.5.0",
+    "system": "Darwin"
+  },
+  "measurement_boundary": {
+    "build": {
+      "apple_toolchain": {
+        "deployment_target": "MACOSX_DEPLOYMENT_TARGET=11.0",
+        "developer_dir": "/Applications/Xcode.app/Contents/Developer",
+        "linker": {
+          "path": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld",
+          "sha256": "sha256:288b43f30218de352bbd5aaa9dd1eb89d416cedb823c19ba29c137b1785e95f1"
+        },
+        "linker_driver": {
+          "path": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+          "sha256": "sha256:bd27e506760168f19f1c82d80a6c9cdafd5fa7226f08c77b347c9d3e7cdb1028"
+        },
+        "sdk": {
+          "path": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+          "settings": {
+            "path": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/SDKSettings.json",
+            "sha256": "sha256:f8d005f09381389167f9e0aeaa169bc9e7dff162ef22ca2fd8e98df7ff1acafe"
+          },
+          "version": "26.5"
+        },
+        "strip": {
+          "path": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip",
+          "sha256": "sha256:66de52f97b570fd378ed6d2b7d3bd37441e259eb65c9d9353b1e6f281123ade3"
+        },
+        "xcode_version": "Xcode 26.5\nBuild version 17F42"
+      },
+      "artifact_selection": "current compiler-artifact event",
+      "cargo_message_format": "json-render-diagnostics",
+      "command": [
+        "$CARGO",
+        "build",
+        "--profile",
+        "native-sdk",
+        "--package",
+        "merman-ffi",
+        "--lib",
+        "--manifest-path",
+        "$REPO/crates/merman-ffi/Cargo.toml",
+        "--locked",
+        "--no-default-features",
+        "--features",
+        "analysis,ascii,jpeg,layout-cytoscape,layout-elk,math,pdf,png,svg,system-clock,system-random,system-timezone",
+        "--config",
+        "build.rustc=\"$RUSTC\"",
+        "--config",
+        "build.incremental=false",
+        "--config",
+        "target.aarch64-apple-darwin.linker=\"$LINKER_DRIVER\"",
+        "--config",
+        "target.aarch64-apple-darwin.rustflags=[\"-C\",\"link-arg=-isysroot\",\"-C\",\"link-arg=$SDK\"]",
+        "--config",
+        "env.DEVELOPER_DIR=\"$DEVELOPER_DIR\"",
+        "--config",
+        "env.SDKROOT=\"$SDK\"",
+        "--config",
+        "env.ZERO_AR_DATE=\"1\"",
+        "--message-format",
+        "json-render-diagnostics",
+        "--target-dir",
+        "$EVIDENCE/build/ffi-full-native"
+      ],
+      "target": "aarch64-apple-darwin",
+      "target_dir": "$EVIDENCE/build/ffi-full-native"
+    },
+    "clock": "time.perf_counter_ns",
+    "fresh_target_directory_per_sample": true,
+    "metric": "clean-cargo-build-and-link-wall-nanoseconds",
+    "noise_floor_method": "max-relative-mad-to-median",
+    "paired_order": "alternating-baseline-candidate",
+    "profile": {
+      "budget_class": "full",
+      "cargo": {
+        "build_target_kind": "host",
+        "crate_types": [
+          "cdylib",
+          "staticlib"
+        ],
+        "default_features": false,
+        "features": [
+          "analysis",
+          "ascii",
+          "jpeg",
+          "layout-cytoscape",
+          "layout-elk",
+          "math",
+          "pdf",
+          "png",
+          "svg",
+          "system-clock",
+          "system-random",
+          "system-timezone"
+        ],
+        "manifest": "crates/merman-ffi/Cargo.toml",
+        "package": "merman-ffi",
+        "profile": "native-sdk",
+        "target_name": "merman_ffi"
+      },
+      "label": "ffi-full-native",
+      "target": "aarch64-apple-darwin"
+    },
+    "review_threshold_ratio": 0.1,
+    "sample_count_per_revision": 3,
+    "timing_is_gating": true
+  },
+  "report_id": "merman-ffi-contract-native-build-timing",
+  "report_sha256": "sha256:115cf25de772631ad2b8fdd98dc963e6b00124de1280f6eade5d3f1f3181db7c",
+  "review": null,
+  "samples": [
+    {
+      "baseline_duration_ns": 98785330709,
+      "candidate_duration_ns": 104984012125,
+      "order": [
+        "baseline",
+        "candidate"
+      ],
+      "pair_index": 1
+    },
+    {
+      "baseline_duration_ns": 97018418583,
+      "candidate_duration_ns": 109012804709,
+      "order": [
+        "candidate",
+        "baseline"
+      ],
+      "pair_index": 2
+    },
+    {
+      "baseline_duration_ns": 98928610250,
+      "candidate_duration_ns": 104751397375,
+      "order": [
+        "baseline",
+        "candidate"
+      ],
+      "pair_index": 3
+    }
+  ],
+  "schema_version": 1,
+  "source_revisions": {
+    "baseline": {
+      "commit": "5117c0ae12da2c0346b47061642286174cea3f5f",
+      "tree": "4ebfe46d8f48508ac6489d0bfea09ed469d97746"
+    },
+    "candidate": {
+      "commit": "fd9c7a1489c7200a1df64be2a1e84ebab91b273f",
+      "tree": "7dd8769ce49e833028639dcfcc22466029a1125d"
+    }
+  },
+  "statistics": {
+    "baseline_median_ns": 98785330709,
+    "baseline_relative_mad": 0.0014504131329181882,
+    "candidate_median_ns": 104984012125,
+    "candidate_relative_mad": 0.0022157159484725683,
+    "median_regression_ratio": 0.06274900707940101,
+    "noise_floor_ratio": 0.0022157159484725683,
+    "review_required": false
+  },
+  "toolchain": {
+    "cargo": {
+      "path": "/Users/frankorz/.rustup/toolchains/1.95.0-aarch64-apple-darwin/bin/cargo",
+      "sha256": "sha256:c512bff73c86143b557463f021d0c3d5b0490d97d65040ba59ea2b3427784758"
+    },
+    "cargo_version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "host_target": "aarch64-apple-darwin",
+    "rustc": {
+      "path": "/Users/frankorz/.rustup/toolchains/1.95.0-aarch64-apple-darwin/bin/rustc",
+      "sha256": "sha256:b829b733131d4e1673eeebd1f34d06ae1e9ff4977b051313cf42e2a9e79ecf1c"
+    },
+    "rustc_verbose": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  }
+}
