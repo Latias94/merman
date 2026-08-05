@@ -198,21 +198,9 @@ function packageProvenanceDigest(repositoryRoot, packageId) {
     };
   });
   const normalizedProvenance = Buffer.from(
-    JSON.stringify({
-      schemaVersion: provenance.schema_version,
-      package: provenance.package,
-      artifactProfile: provenance.artifact_profile,
-      runtimeCapabilityIds: provenance.runtime_capability_ids,
-      outputs: provenance.outputs,
-      artifactFiles: runtimeArtifactPaths.map((relativePath) =>
-        provenanceArtifacts.get(relativePath),
-      ),
-      wasm: {
-        path: provenance.wasm?.path,
-        inputDigest: provenance.wasm?.input_digest,
-        sourceDigest: provenance.wasm?.source_digest,
-      },
-    }),
+    JSON.stringify(
+      runtimePackageProvenanceContract(provenance, runtimeArtifactPaths),
+    ),
   );
   return digestEntries(
     [
@@ -228,6 +216,25 @@ function packageProvenanceDigest(repositoryRoot, packageId) {
     ],
     `${packageId}-package-provenance`,
   );
+}
+
+export function runtimePackageProvenanceContract(
+  provenance,
+  runtimeArtifactPaths,
+) {
+  const artifactsByPath = new Map(
+    provenance.artifact_files.map((artifact) => [artifact.path, artifact]),
+  );
+  return {
+    schemaVersion: provenance.schema_version,
+    package: provenance.package,
+    artifactProfile: provenance.artifact_profile,
+    runtimeCapabilityIds: provenance.runtime_capability_ids,
+    outputs: provenance.outputs,
+    artifactFiles: runtimeArtifactPaths.map((relativePath) =>
+      artifactsByPath.get(relativePath),
+    ),
+  };
 }
 
 export function runtimePackageArtifactPaths({

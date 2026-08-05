@@ -34,6 +34,7 @@ import {
   editorArtifactStartupClosure,
   measurementContractDigest,
   runtimePackageArtifactPaths,
+  runtimePackageProvenanceContract,
 } from "./selection-inputs.mjs";
 import { verifyEditorArtifactAuthority } from "./verify-editor-artifact-receipt.mjs";
 
@@ -483,6 +484,54 @@ test("package provenance freshness binds runtime modules without declarations or
       "dist/package-entries/editor.js",
       "dist/runtime-core.js",
     ],
+  );
+});
+
+test("package freshness ignores source provenance after binding runtime bytes", () => {
+  const provenance = {
+    schema_version: 2,
+    package: { id: "editor", name: "@mermanjs/web-editor" },
+    artifact_profile: "web-editor",
+    runtime_capability_ids: ["analysis", "editor"],
+    outputs: [],
+    artifact_files: [
+      {
+        path: "dist/package-entries/editor.js",
+        bytes: 12,
+        sha256: `sha256:${digest("entry")}`,
+      },
+      {
+        path: "artifacts/wasm/merman_wasm_bg.wasm",
+        bytes: 34,
+        sha256: `sha256:${digest("wasm")}`,
+      },
+    ],
+    wasm: {
+      path: "wasm/merman_wasm_bg.wasm",
+      input_digest: digest("inputs"),
+      source_digest: digest("sources"),
+      tool_versions: { rustc: "rustc old" },
+    },
+  };
+  const paths = [
+    "artifacts/wasm/merman_wasm_bg.wasm",
+    "dist/package-entries/editor.js",
+  ];
+  const contract = runtimePackageProvenanceContract(provenance, paths);
+  const sourceDrift = structuredClone(provenance);
+  sourceDrift.wasm.input_digest = digest("new-inputs");
+  sourceDrift.wasm.source_digest = digest("new-sources");
+  sourceDrift.wasm.tool_versions.rustc = "rustc new";
+
+  assert.deepEqual(
+    runtimePackageProvenanceContract(sourceDrift, paths),
+    contract,
+  );
+  const runtimeDrift = structuredClone(provenance);
+  runtimeDrift.runtime_capability_ids = ["analysis", "editor", "svg"];
+  assert.notDeepEqual(
+    runtimePackageProvenanceContract(runtimeDrift, paths),
+    contract,
   );
 });
 
