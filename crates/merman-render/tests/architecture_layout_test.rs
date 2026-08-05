@@ -1,10 +1,14 @@
 #![cfg(feature = "layout-cytoscape")]
 
 use merman_core::{Engine, ParseOptions};
+use merman_render::Error;
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
+use merman_render::resources::{
+    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+};
 
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
     let engine = Engine::new();
@@ -160,6 +164,54 @@ fn architecture_default_layout_options_execute_fcose_layout() {
             );
         }
     }
+}
+
+#[test]
+fn architecture_single_node_budget_includes_compound_topology_setup() {
+    let source = r#"%%{init: {"architecture": {"numIter": 5, "randomize": false}}}%%
+architecture-beta
+  service api(server)[API]
+"#;
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let exact_session = RenderEnvironment::deterministic()
+        .with_resource_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 55)
+                .unwrap(),
+        )
+        .begin_session()
+        .unwrap();
+
+    family::prepare(parsed, &LayoutOptions::default(), exact_session)
+        .expect("the exact public FCoSE work budget should be accepted");
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let below_session = RenderEnvironment::deterministic()
+        .with_resource_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 54)
+                .unwrap(),
+        )
+        .begin_session()
+        .unwrap();
+    let error = match family::prepare(parsed, &LayoutOptions::default(), below_session) {
+        Ok(_) => panic!("a below-exact FCoSE work budget must be rejected"),
+        Err(error) => error,
+    };
+    let Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected a layout work resource error");
+    };
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+    assert_eq!(limit.limit, "max_layout_work_units");
+    assert_eq!(limit.actual, 55);
+    assert_eq!(limit.max, 54);
 }
 
 #[test]

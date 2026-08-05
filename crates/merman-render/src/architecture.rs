@@ -1579,14 +1579,10 @@ fn build_architecture_fcose_input_plan<'a>(
         alignment_member_count,
         relative_constraint_count,
     };
-    let indexed_node_upper_bound = model
-        .nodes
-        .len()
-        .checked_add(model.groups.len())
-        .ok_or_else(|| work_meter.arithmetic_overflow())?;
-    let schedule = manatee::algo::fcose::FcoseIterationSchedule::from_normalized_counts(
+    let schedule = manatee::algo::fcose::FcoseIterationSchedule::from_normalized_graph_counts(
         fcose_num_iter,
-        indexed_node_upper_bound,
+        model.nodes.len(),
+        model.groups.len(),
         model.edges.len(),
         true,
     )
@@ -1955,14 +1951,10 @@ fn layout_architecture_diagram_model(
     let kernel_admission_units = if model.nodes.is_empty() {
         0
     } else {
-        let indexed_node_upper_bound = model
-            .nodes
-            .len()
-            .checked_add(model.groups.len())
-            .ok_or_else(|| work_meter.arithmetic_overflow())?;
-        let schedule = manatee::algo::fcose::FcoseIterationSchedule::from_normalized_counts(
+        let schedule = manatee::algo::fcose::FcoseIterationSchedule::from_normalized_graph_counts(
             fcose_num_iter,
-            indexed_node_upper_bound,
+            model.nodes.len(),
+            model.groups.len(),
             model.edges.len(),
             true,
         )
@@ -2693,9 +2685,10 @@ mod tests {
         };
         let adapter = super::checked_architecture_adapter_work_plan(&model)
             .expect("adapter work plan should fit");
-        let schedule =
-            manatee::algo::fcose::FcoseIterationSchedule::from_normalized_counts(5, 2, 1, true)
-                .unwrap();
+        let schedule = manatee::algo::fcose::FcoseIterationSchedule::from_normalized_graph_counts(
+            5, 1, 1, 1, true,
+        )
+        .unwrap();
 
         assert_eq!(adapter.work_units, 9);
         assert_eq!(adapter.declared_constraints.alignment_group_count, 3);
@@ -2706,7 +2699,7 @@ mod tests {
                 schedule,
                 adapter.declared_constraints,
             ),
-            Some(435)
+            Some(472)
         );
     }
 
@@ -2721,12 +2714,12 @@ mod tests {
         let measurer = crate::text::DeterministicTextMeasurer::default();
 
         let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 45)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 55)
             .unwrap();
         let exact_meter = OperationWorkMeter::new(exact_policy);
         super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &exact_meter)
             .unwrap();
-        assert_eq!(exact_meter.used(), 45);
+        assert_eq!(exact_meter.used(), 55);
 
         let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 9)
