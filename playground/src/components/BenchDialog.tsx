@@ -86,6 +86,7 @@ import {
   projectError,
   type ErrorProjection,
 } from "@/src/runtime/error-projection";
+import { configuredMermanOperationInput } from "@/src/runtime/merman-operation-input";
 
 const ITERATION_OPTIONS = [2, 4, 6, 10, 20] as const;
 const COLD_METRICS = [
@@ -263,10 +264,12 @@ export function BenchDialog({
         textMeasurementMode,
       } as const;
       const detection = facade.detectDiagram(
-        code,
-        diagramTheme,
-        mermaidConfig,
-        options,
+        configuredMermanOperationInput(
+          code,
+          diagramTheme,
+          mermaidConfig,
+          options,
+        ),
       );
       const request: BenchmarkRunRequest = {
         mode,

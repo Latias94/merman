@@ -20,16 +20,19 @@ const MAX_ENTRIES = 50;
 
 export function projectError(error: unknown): ErrorProjection {
   try {
-    return projectErrorValue(error);
+    return Object.freeze(projectErrorValue(error));
   } catch {
-    return {
+    return Object.freeze({
       summary: "Unexpected error.",
       detail: '"[unreadable error]"',
-    };
+    });
   }
 }
 
 function projectErrorValue(error: unknown): ErrorProjection {
+  const projected = readProjectedError(error);
+  if (projected) return projected;
+
   if (isBindingErrorPayload(error)) {
     return {
       summary: boundedSummary(nonEmpty(error.message, error.code_name)),
@@ -95,6 +98,27 @@ function boundedSummary(summary: string): string {
     : `${summary.slice(0, MAX_SUMMARY_LENGTH)}\n... [truncated]`;
 }
 
+function boundedDetail(detail: string | null): string | null {
+  if (detail === null || detail.length <= MAX_DETAIL_LENGTH) return detail;
+  return `${detail.slice(0, MAX_DETAIL_LENGTH)}\n... [truncated]`;
+}
+
+function readProjectedError(error: unknown): ErrorProjection | null {
+  if (!error || typeof error !== "object") return null;
+  const summary = readProperty(error, "summary");
+  const detail = readProperty(error, "detail");
+  if (
+    typeof summary !== "string" ||
+    (detail !== null && typeof detail !== "string")
+  ) {
+    return null;
+  }
+  return {
+    summary: boundedSummary(nonEmpty(summary)),
+    detail: boundedDetail(detail),
+  };
+}
+
 export function isBindingErrorPayload(
   error: unknown
 ): error is BindingErrorPayload {
@@ -149,8 +173,7 @@ function serializeDetail(value: unknown): string {
   const seen = new WeakSet<object>();
   const normalized = normalizeValue(value, 0, seen);
   const detail = JSON.stringify(normalized, null, 2);
-  if (detail.length <= MAX_DETAIL_LENGTH) return detail;
-  return `${detail.slice(0, MAX_DETAIL_LENGTH)}\n... [truncated]`;
+  return boundedDetail(detail) ?? "";
 }
 
 function normalizeValue(

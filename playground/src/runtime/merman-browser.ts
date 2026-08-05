@@ -25,11 +25,6 @@ import {
   type MermanWasmModule,
 } from "@mermanjs/web";
 
-import {
-  DEFAULT_MERMAID_CONFIG,
-  sourceWithConfig,
-} from "../lib/mermaid-config.ts";
-import { configuredMermanOperationInput } from "./merman-operation-input.ts";
 import { projectError } from "./error-projection.ts";
 import { projectSafeInlineSvg } from "./render-artifact.ts";
 import type {
@@ -72,21 +67,11 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
     presentationCatalog,
     runtimeCatalog,
 
-    detectDiagram(
-      code,
-      theme = "default",
-      configJson = DEFAULT_MERMAID_CONFIG,
-      options,
-    ) {
+    detectDiagram(input) {
+      if (input.configurationError) return UNAVAILABLE_DIAGRAM_DETECTION;
       try {
-        const input = configuredMermanOperationInput(
-          code,
-          theme,
-          configJson,
-          options,
-        );
         return detectDiagramFacts(
-          input.source,
+          input.configuredSource,
           input.bindingOptions,
         );
       } catch {
@@ -99,60 +84,43 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
     getSupportedDiagrams: supportedDiagrams,
     getThemes: supportedThemes,
 
-    layoutJson(
-      code,
-      theme = "default",
-      configJson = DEFAULT_MERMAID_CONFIG,
-      options,
-    ) {
-      const input = configuredMermanOperationInput(
-        code,
-        theme,
-        configJson,
-        options,
-      );
-      return options?.textMeasurementMode === "browser"
+    layoutJson(input) {
+      assertConfiguredOperation(input);
+      return input.textMeasurementMode === "browser"
         ? layoutJsonWithTextMeasurer(
-            input.source,
+            input.configuredSource,
             measureText,
             input.bindingOptions,
           )
-        : layoutJson(input.source, input.bindingOptions);
+        : layoutJson(input.configuredSource, input.bindingOptions);
     },
 
-    parseJson(
-      code,
-      theme = "default",
-      configJson = DEFAULT_MERMAID_CONFIG,
-      options,
-    ) {
-      const input = configuredMermanOperationInput(
-        code,
-        theme,
-        configJson,
-        options,
-      );
-      return parseJson(input.source, input.bindingOptions);
+    parseJson(input) {
+      assertConfiguredOperation(input);
+      return parseJson(input.configuredSource, input.bindingOptions);
     },
 
-    render(code, theme, configJson = DEFAULT_MERMAID_CONFIG, options) {
+    render(input) {
       const startedAt = performance.now();
+      if (input.configurationError) {
+        return {
+          artifact: null,
+          error: input.configurationError,
+          renderTime: 0,
+          stage: "render",
+          status: "failure",
+        };
+      }
       let svg: string;
       try {
-        const input = configuredMermanOperationInput(
-          code,
-          theme,
-          configJson,
-          options,
-        );
         svg =
-          options?.textMeasurementMode === "browser"
+          input.textMeasurementMode === "browser"
             ? renderSvgWithTextMeasurer(
-                input.source,
+                input.configuredSource,
                 measureText,
                 input.bindingOptions,
               )
-            : renderSvg(input.source, input.bindingOptions);
+            : renderSvg(input.configuredSource, input.bindingOptions);
       } catch (error) {
         return {
           artifact: null,
@@ -180,10 +148,17 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       }
     },
 
-    renderAscii(code, theme = "default", configJson = DEFAULT_MERMAID_CONFIG) {
+    renderAscii(input) {
+      if (input.configurationError) {
+        return {
+          ascii: null,
+          error: input.configurationError,
+          status: "failure",
+        };
+      }
       try {
         return {
-          ascii: renderAscii(sourceWithConfig(code, theme, configJson)),
+          ascii: renderAscii(input.configuredSource),
           error: null,
           status: "success",
         };
@@ -196,21 +171,17 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       }
     },
 
-    svgPlan(
-      code,
-      theme = "default",
-      configJson = DEFAULT_MERMAID_CONFIG,
-      options,
-    ) {
-      const input = configuredMermanOperationInput(
-        code,
-        theme,
-        configJson,
-        options,
-      );
-      return svgPlanJson(input.source, input.bindingOptions);
+    svgPlan(input) {
+      assertConfiguredOperation(input);
+      return svgPlanJson(input.configuredSource, input.bindingOptions);
     },
 
     validate,
   };
+}
+
+function assertConfiguredOperation(
+  input: Parameters<MermanDomainFacade["render"]>[0]
+): void {
+  if (input.configurationError) throw input.configurationError;
 }

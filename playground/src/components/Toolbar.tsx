@@ -28,13 +28,8 @@ import {
   type DiagramFont,
 } from "@/src/lib/diagram-font";
 import { copyShareUrl } from "@/src/lib/share";
-import {
-  exportSVG,
-  exportPNG,
-  exportASCII,
-  copySVGToClipboard,
-  copyCodeToClipboard,
-} from "@/src/lib/export";
+import { copyCodeToClipboard } from "@/src/lib/export";
+import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
 import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
 import { LazyFeatureBoundary } from "@/src/components/LazyFeatureBoundary";
@@ -365,80 +360,56 @@ export function Toolbar() {
   const currentMerman =
     currentBatch?.merman.status === "success" ? currentBatch.merman : null;
   const artifactActionsEnabled = currentMerman !== null;
-  const renderCurrentSvgArtifact = useCallback(
-    (pipeline?: "resvg-safe") => {
-      if (!currentBatch || !currentMerman) {
-        throw new Error("Current Merman render is unavailable.");
-      }
-      if (!pipeline) return currentMerman.artifact;
-      if (!facade) throw new Error("Merman runtime is not ready.");
-      const snapshot = currentBatch.snapshot;
-      const result = facade.render(
-        snapshot.source,
-        snapshot.theme,
-        snapshot.configJson,
-        { ...snapshot.options, svgPipeline: pipeline }
-      );
-      if (result.status === "failure") {
-        throw new Error(result.error.summary);
-      }
-      return result.artifact;
-    },
-    [currentBatch, currentMerman, facade]
-  );
 
-  // Export actions consume only the completed, current render batch.
-  const handleExportSVG = useCallback(() => {
+  const handleExportSVG = useCallback(async () => {
     try {
-      exportSVG(renderCurrentSvgArtifact(), "merman-diagram");
+      if (!currentBatch) throw new Error("Current render is unavailable.");
+      await executeArtifactAction({
+        action: "download-svg",
+        engine: "merman",
+        publicationId: currentBatch.snapshot.publicationId,
+      });
       toast.success(t("export.svgSuccess"));
     } catch {
       toast.error(t("export.failed"));
     }
-  }, [renderCurrentSvgArtifact, t]);
+  }, [currentBatch, t]);
 
   const handleExportPNG = useCallback(async () => {
     setIsExporting(true);
-    let notificationId: string | number | undefined;
     try {
-      const plan = await exportPNG(
-        renderCurrentSvgArtifact("resvg-safe"),
-        "merman-diagram",
-        2,
-        {
-          onPlan: ({ outputWidth, outputHeight }) => {
-            notificationId = toast.loading(
-              t("export.pngPreparing", {
-                width: outputWidth,
-                height: outputHeight,
-              })
-            );
-          },
-        }
-      );
+      if (!currentBatch) throw new Error("Current render is unavailable.");
+      const plan = await executeArtifactAction({
+        action: "download-png",
+        engine: "merman",
+        publicationId: currentBatch.snapshot.publicationId,
+        scale: 2,
+      });
       toast.success(
         t("export.pngSuccess", {
           width: plan.outputWidth,
           height: plan.outputHeight,
-        }),
-        { id: notificationId }
+        })
       );
     } catch (error) {
-      toast.error(pngExportErrorMessage(error, t), { id: notificationId });
+      toast.error(pngExportErrorMessage(error, t));
     } finally {
       setIsExporting(false);
     }
-  }, [renderCurrentSvgArtifact, t]);
+  }, [currentBatch, t]);
 
-  const handleExportASCII = useCallback(() => {
-    const ascii = currentMerman?.ascii;
-    if (!ascii) {
+  const handleExportASCII = useCallback(async () => {
+    try {
+      if (!currentBatch) throw new Error("Current render is unavailable.");
+      await executeArtifactAction({
+        action: "download-ascii",
+        publicationId: currentBatch.snapshot.publicationId,
+      });
+      toast.success(t("export.asciiSuccess"));
+    } catch {
       toast.error(t("export.asciiNotSupported"));
-      return;
     }
-    exportASCII(ascii, "merman-diagram");
-    toast.success(t("export.asciiSuccess"));
-  }, [currentMerman, t]);
+  }, [currentBatch, t]);
 
   const handleCopyCode = useCallback(async () => {
     if (!code.trim()) {
@@ -470,12 +441,17 @@ export function Toolbar() {
 
   const handleCopySVG = useCallback(async () => {
     try {
-      await copySVGToClipboard(renderCurrentSvgArtifact());
+      if (!currentBatch) throw new Error("Current render is unavailable.");
+      await executeArtifactAction({
+        action: "copy-svg",
+        engine: "merman",
+        publicationId: currentBatch.snapshot.publicationId,
+      });
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [renderCurrentSvgArtifact, t]);
+  }, [currentBatch, t]);
 
   const handleShare = useCallback(async () => {
     const snapshot = selectWorkspaceSnapshot(useAppStore.getState());

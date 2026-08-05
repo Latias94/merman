@@ -2,24 +2,24 @@ export const DEFAULT_PNG_MAX_SIDE = 8192;
 export const DEFAULT_PNG_MAX_PIXELS = 8192 * 8192;
 
 export interface PngRasterLimits {
-  maxSide: number;
-  maxPixels: number;
+  readonly maxSide: number;
+  readonly maxPixels: number;
 }
 
 export interface PngRasterPlan {
-  sourceWidth: number;
-  sourceHeight: number;
-  requestedScale: number;
-  effectiveScale: number;
-  outputWidth: number;
-  outputHeight: number;
-  downscaled: boolean;
+  readonly sourceWidth: number;
+  readonly sourceHeight: number;
+  readonly requestedScale: number;
+  readonly effectiveScale: number;
+  readonly outputWidth: number;
+  readonly outputHeight: number;
+  readonly downscaled: boolean;
 }
 
-const DEFAULT_LIMITS: PngRasterLimits = {
+const DEFAULT_LIMITS: Readonly<PngRasterLimits> = Object.freeze({
   maxSide: DEFAULT_PNG_MAX_SIDE,
   maxPixels: DEFAULT_PNG_MAX_PIXELS,
-};
+});
 
 /**
  * Browser mirror of `raster_plan_for_geometry` in Merman's Rust raster planner.
@@ -30,13 +30,14 @@ export function planPngRaster(
   sourceWidth: number,
   sourceHeight: number,
   requestedScale: number = 2,
-  limits: PngRasterLimits = DEFAULT_LIMITS
+  limits: Readonly<PngRasterLimits> = DEFAULT_LIMITS
 ): PngRasterPlan {
+  const { maxSide, maxPixels } = limits;
   requirePositiveFinite(sourceWidth, "SVG width");
   requirePositiveFinite(sourceHeight, "SVG height");
   requirePositiveFinite(requestedScale, "PNG scale");
-  requirePositiveInteger(limits.maxSide, "PNG maximum side");
-  requirePositiveInteger(limits.maxPixels, "PNG maximum pixel count");
+  requirePositiveInteger(maxSide, "PNG maximum side");
+  requirePositiveInteger(maxPixels, "PNG maximum pixel count");
 
   const baseWidth = Math.max(1, Math.ceil(sourceWidth));
   const baseHeight = Math.max(1, Math.ceil(sourceHeight));
@@ -45,8 +46,8 @@ export function planPngRaster(
 
   let limitScale = Math.min(
     1,
-    limits.maxSide / (baseWidth * requestedScale),
-    limits.maxSide / (baseHeight * requestedScale)
+    maxSide / (baseWidth * requestedScale),
+    maxSide / (baseHeight * requestedScale)
   );
   const limitedPixels =
     baseWidth *
@@ -55,8 +56,8 @@ export function planPngRaster(
     requestedScale *
     limitScale *
     limitScale;
-  if (limitedPixels > limits.maxPixels) {
-    limitScale *= Math.sqrt(limits.maxPixels / limitedPixels);
+  if (limitedPixels > maxPixels) {
+    limitScale *= Math.sqrt(maxPixels / limitedPixels);
   }
 
   let effectiveScale = requestedScale * Math.min(1, Math.max(0, limitScale));
@@ -65,25 +66,25 @@ export function planPngRaster(
     baseWidth,
     baseHeight,
     effectiveScale,
-    limits.maxSide
+    maxSide
   );
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const outputPixels = outputWidth * outputHeight;
-    if (outputPixels <= limits.maxPixels) break;
+    if (outputPixels <= maxPixels) break;
 
     const shrink =
-      Math.sqrt(limits.maxPixels / outputPixels) * 0.999_999;
+      Math.sqrt(maxPixels / outputPixels) * 0.999_999;
     effectiveScale *= shrink;
     [outputWidth, outputHeight] = limitedDimensions(
       baseWidth,
       baseHeight,
       effectiveScale,
-      limits.maxSide
+      maxSide
     );
   }
 
-  return {
+  return Object.freeze({
     sourceWidth,
     sourceHeight,
     requestedScale,
@@ -92,7 +93,7 @@ export function planPngRaster(
     outputHeight,
     downscaled:
       outputWidth !== requestedWidth || outputHeight !== requestedHeight,
-  };
+  });
 }
 
 function limitedDimensions(
