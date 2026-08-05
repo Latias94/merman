@@ -10,9 +10,9 @@ use crate::model::{
     Bounds as LayoutBounds, VennAreaLayout, VennCircleLayout, VennDiagramLayout,
     VennTextAreaLayout, VennTextDebugCellLayout, VennTextNodeLayout,
 };
-use crate::resources::RenderResourcePolicy;
+use crate::resources::OperationWorkMeter;
 #[cfg(test)]
-use crate::resources::ResourceLimitId;
+use crate::resources::{RenderResourcePolicy, ResourceLimitId};
 use crate::{Error, Result};
 use indexmap::IndexMap;
 use merman_core::diagrams::venn::VennDiagramRenderModel;
@@ -27,11 +27,22 @@ mod config;
 
 use config::VennConfigView;
 
+#[cfg(test)]
 pub(crate) fn layout_venn_diagram_typed(
     model: &VennDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
     resource_limits: RenderResourcePolicy,
+) -> Result<VennDiagramLayout> {
+    let work_meter = OperationWorkMeter::new(resource_limits);
+    layout_venn_diagram_typed_with_work_meter(model, diagram_title, effective_config, &work_meter)
+}
+
+pub(crate) fn layout_venn_diagram_typed_with_work_meter(
+    model: &VennDiagramRenderModel,
+    diagram_title: Option<&str>,
+    effective_config: &serde_json::Value,
+    work_meter: &OperationWorkMeter,
 ) -> Result<VennDiagramLayout> {
     let cfg = VennConfigView::new(effective_config).layout_settings();
     let title = model
@@ -59,7 +70,7 @@ pub(crate) fn layout_venn_diagram_typed(
                 label: subset.label.clone(),
             })
             .collect::<Vec<_>>(),
-        resource_limits,
+        work_meter,
     )?;
     let layout_areas = if areas.is_empty() {
         Vec::new()
@@ -70,7 +81,7 @@ pub(crate) fn layout_venn_diagram_typed(
             padding: cfg.padding,
             ..Default::default()
         };
-        resource_limits.check_layout_work_units(venn_layout_work_units(&areas, &layout_options))?;
+        work_meter.charge(venn_layout_work_units(&areas, &layout_options))?;
         compute_venn_layout(&areas, &layout_options).map_err(|err| Error::InvalidModel {
             message: err.to_string(),
         })?
@@ -247,9 +258,9 @@ fn stable_sets_key(sets: &[String]) -> String {
 
 fn ensure_pairwise_subsets_for_layout(
     mut areas: Vec<VennArea>,
-    resource_limits: RenderResourcePolicy,
+    work_meter: &OperationWorkMeter,
 ) -> Result<Vec<VennArea>> {
-    resource_limits.check_layout_work_units(areas.len())?;
+    work_meter.preflight(areas.len())?;
     let mut existing_pairs = areas
         .iter()
         .filter(|area| area.sets.len() == 2)
@@ -291,7 +302,7 @@ fn ensure_pairwise_subsets_for_layout(
                 if existing_pairs.contains(&pair) {
                     continue;
                 }
-                resource_limits.check_layout_work_units(
+                work_meter.preflight(
                     areas
                         .len()
                         .saturating_add(synthetic.len())
@@ -332,7 +343,7 @@ fn ensure_pairwise_subsets_for_layout(
                 continue;
             }
             expanded_area_count = expanded_area_count.saturating_add(1);
-            resource_limits.check_layout_work_units(expanded_area_count)?;
+            work_meter.preflight(expanded_area_count)?;
         }
     }
 
@@ -2506,6 +2517,7 @@ mod tests {
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 32)
             .unwrap();
+        let work_meter = OperationWorkMeter::new(limits);
         let error = ensure_pairwise_subsets_for_layout(
             vec![VennArea {
                 sets: members,
@@ -2513,7 +2525,7 @@ mod tests {
                 weight: None,
                 label: None,
             }],
-            limits,
+            &work_meter,
         )
         .unwrap_err();
         let Error::ResourceLimitExceeded(error) = error else {
@@ -2530,11 +2542,12 @@ mod tests {
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 6)
             .unwrap();
+        let work_meter = OperationWorkMeter::new(limits);
         let areas = ["A", "B", "C", "D"]
             .into_iter()
             .map(|set| VennArea::new([set], 10.0))
             .collect();
-        let error = ensure_pairwise_subsets_for_layout(areas, limits).unwrap_err();
+        let error = ensure_pairwise_subsets_for_layout(areas, &work_meter).unwrap_err();
         let Error::ResourceLimitExceeded(error) = error else {
             panic!("expected Venn area resource limit");
         };
@@ -2553,10 +2566,12 @@ mod tests {
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 10)
             .unwrap();
+        let work_meter = OperationWorkMeter::new(limits);
 
-        let checked = ensure_pairwise_subsets_for_layout(areas.clone(), limits)
+        let checked = ensure_pairwise_subsets_for_layout(areas.clone(), &work_meter)
             .expect("four source areas plus six private pairs fit exactly");
         assert_eq!(checked, areas);
+        assert_eq!(work_meter.used(), 0);
     }
 
     #[test]
@@ -2569,11 +2584,14 @@ mod tests {
             duplicate_singletons.len()
         );
 
-        let expanded = ensure_pairwise_subsets_for_layout(
-            vec![VennArea::new(["A", "A", "B", "B", "C"], 1.0)],
+        let work_meter = OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 6)
                 .unwrap(),
+        );
+        let expanded = ensure_pairwise_subsets_for_layout(
+            vec![VennArea::new(["A", "A", "B", "B", "C"], 1.0)],
+            &work_meter,
         )
         .expect("five upstream pair constraints plus the source area fit exactly");
         assert_eq!(

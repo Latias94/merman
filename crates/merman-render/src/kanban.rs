@@ -1,6 +1,8 @@
 use crate::Result;
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
-use crate::resources::{ModelComplexity, RenderResourcePolicy};
+#[cfg(test)]
+use crate::resources::RenderResourcePolicy;
+use crate::resources::{ModelComplexity, OperationWorkMeter};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use std::collections::HashMap;
@@ -175,24 +177,22 @@ pub(crate) fn layout_kanban_diagram_typed(
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanDiagramLayout> {
     let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
-    prepare_kanban_diagram_typed_with_resource_policy(
-        model,
-        &effective_config,
-        measurer,
-        RenderResourcePolicy::interactive(),
-    )
-    .map(|prepared| prepared.layout)
+    let work_meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+    prepare_kanban_diagram_typed_with_work_meter(model, &effective_config, measurer, &work_meter)
+        .map(|prepared| prepared.layout)
 }
 
-/// Prepares a Kanban model under the resource policy owned by the render operation.
-pub(crate) fn prepare_kanban_diagram_typed_with_resource_policy(
+/// Prepares a Kanban model under the cumulative work meter owned by the render operation.
+pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
     model: &KanbanDiagramRenderModel,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
-    resource_limits: RenderResourcePolicy,
+    work_meter: &OperationWorkMeter,
 ) -> Result<KanbanPreparedArtifact> {
-    resource_limits.check_model_complexity(ModelComplexity::from_kanban(model))?;
-    resource_limits.check_layout_work_units(kanban_layout_work_units(model))?;
+    work_meter
+        .policy()
+        .check_model_complexity(ModelComplexity::from_kanban(model))?;
+    work_meter.charge(kanban_layout_work_units(model))?;
     let cfg = KanbanConfigView::new(effective_config.as_value()).layout_settings();
     let section_width = cfg.section_width;
     let viewbox_padding = cfg.viewbox_padding;

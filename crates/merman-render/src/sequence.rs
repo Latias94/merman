@@ -1,7 +1,8 @@
+use crate::Result;
 use crate::math::MathRenderer;
 use crate::model::{LayoutCluster, SequenceDiagramLayout};
+use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
-use crate::{RenderResourcePolicy, Result};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use rustc_hash::FxHashMap;
@@ -112,17 +113,17 @@ pub(crate) fn sequence_block_widths_for_render(
     .collect()
 }
 
-/// Lays out a Sequence model under the resource policy owned by the render operation.
-pub(crate) fn layout_sequence_diagram_typed_with_title_and_resource_policy(
+/// Lays out a Sequence model under the cumulative work meter owned by the render operation.
+pub(crate) fn layout_sequence_diagram_typed_with_title_and_work_meter(
     model: &SequenceDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    resource_limits: RenderResourcePolicy,
+    work_meter: &OperationWorkMeter,
 ) -> Result<SequenceDiagramLayout> {
-    resource_limits.check_sequence_complexity(model)?;
-    resource_limits.check_layout_work_units(sequence_layout_work_units(model))?;
+    work_meter.policy().check_sequence_complexity(model)?;
+    work_meter.charge(sequence_layout_work_units(model))?;
 
     let math_config = MermaidConfig::from_value(effective_config.clone());
     let settings = SequenceLayoutSettings::from_effective_config(effective_config);

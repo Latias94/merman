@@ -1163,13 +1163,13 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Sequence(model) => {
             BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
-                crate::sequence::layout_sequence_diagram_typed_with_title_and_resource_policy(
+                crate::sequence::layout_sequence_diagram_typed_with_title_and_work_meter(
                     model,
                     title,
                     effective_config,
                     execution.text_measurer(),
                     execution.math_renderer(),
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
@@ -1266,11 +1266,11 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Kanban(model) => {
             BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
-                crate::kanban::prepare_kanban_diagram_typed_with_resource_policy(
+                crate::kanban::prepare_kanban_diagram_typed_with_work_meter(
                     model,
                     &meta.effective_config,
                     execution.text_measurer(),
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
@@ -1326,31 +1326,31 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Requirement(model) => {
             BuiltinFamilyArtifact::Requirement(prepare_pair(model, |model| {
-                crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+                crate::requirement::layout_requirement_diagram_typed_with_work_meter(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
         RenderSemanticModel::Sankey(model) => {
             BuiltinFamilyArtifact::Sankey(prepare_pair(model, |model| {
-                crate::sankey::layout_sankey_diagram_typed_with_resource_policy(
+                crate::sankey::layout_sankey_diagram_typed_with_work_meter(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
         RenderSemanticModel::Radar(model) => {
             BuiltinFamilyArtifact::Radar(prepare_pair(model, |model| {
-                crate::radar::layout_radar_diagram_typed_with_resource_policy(
+                crate::radar::layout_radar_diagram_typed_with_work_meter(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
@@ -1461,11 +1461,11 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Venn(model) => {
             BuiltinFamilyArtifact::Venn(prepare_pair(model, |model| {
-                crate::venn::layout_venn_diagram_typed(
+                crate::venn::layout_venn_diagram_typed_with_work_meter(
                     model,
                     title,
                     effective_config,
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
@@ -1566,6 +1566,51 @@ mod tests {
         assert_eq!(limit.limit, "max_model_items");
         assert_eq!(limit.actual, actual);
         assert_eq!(limit.max, max);
+    }
+
+    #[test]
+    fn session_report_accounts_for_every_metered_layout_family() {
+        let cases = [
+            (
+                "classDiagram\nclass A\nclass B\nA --> B\n",
+                RenderFamilyKind::Class,
+            ),
+            (
+                "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: hello\n",
+                RenderFamilyKind::Sequence,
+            ),
+            (
+                "kanban\n  todo[Todo]\n    task[Task]\n",
+                RenderFamilyKind::Kanban,
+            ),
+            (
+                "requirementDiagram\nrequirement req1 {\n  id: 1\n  text: Login\n  risk: high\n}\n",
+                RenderFamilyKind::Requirement,
+            ),
+            ("sankey-beta\nA,B,10\n", RenderFamilyKind::Sankey),
+            (
+                "radar-beta\naxis A,B,C\ncurve score{1,2,3}\n",
+                RenderFamilyKind::Radar,
+            ),
+            (
+                "venn-beta\nset A[\"Core\"]:20\nset B[\"Editor\"]:14\nunion A,B[\"Shared\"]:4\n",
+                RenderFamilyKind::Venn,
+            ),
+        ];
+
+        for (source, expected_family) in cases {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+                .unwrap()
+                .expect("the layout-work fixture should produce a render model");
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+
+            assert_eq!(artifact.family_kind(), expected_family);
+            assert!(
+                artifact.session.report().layout_work_units() > 0,
+                "{expected_family} must contribute layout work to the session report"
+            );
+        }
     }
 
     #[test]

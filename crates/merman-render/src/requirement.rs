@@ -1,7 +1,9 @@
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
 };
-use crate::resources::{ModelComplexity, RenderResourcePolicy};
+#[cfg(test)]
+use crate::resources::RenderResourcePolicy;
+use crate::resources::{ModelComplexity, OperationWorkMeter};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
@@ -457,14 +459,33 @@ fn requirement_measurement_styles(
 }
 
 /// Lays out a Requirement model under the resource policy owned by the render operation.
+#[cfg(test)]
 pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     model: &RequirementDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     resource_limits: RenderResourcePolicy,
 ) -> Result<RequirementPreparedArtifact> {
-    resource_limits.check_model_complexity(ModelComplexity::from_requirement(model))?;
-    resource_limits.check_layout_work_units(requirement_layout_work_units(model))?;
+    let work_meter = OperationWorkMeter::new(resource_limits);
+    layout_requirement_diagram_typed_with_work_meter(
+        model,
+        effective_config,
+        text_measurer,
+        &work_meter,
+    )
+}
+
+/// Lays out a Requirement model under the cumulative work meter owned by the render operation.
+pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
+    model: &RequirementDiagramRenderModel,
+    effective_config: &Value,
+    text_measurer: &dyn TextMeasurer,
+    work_meter: &OperationWorkMeter,
+) -> Result<RequirementPreparedArtifact> {
+    work_meter
+        .policy()
+        .check_model_complexity(ModelComplexity::from_requirement(model))?;
+    work_meter.charge(requirement_layout_work_units(model))?;
     let direction = if model.direction.trim().is_empty() {
         normalize_dir("TB")
     } else {

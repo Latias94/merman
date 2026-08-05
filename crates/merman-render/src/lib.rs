@@ -253,6 +253,10 @@ impl<'a> LayoutExecution<'a> {
         std::sync::Arc::clone(self.session.work_meter())
     }
 
+    pub(crate) fn work_meter_ref(&self) -> &crate::resources::OperationWorkMeter {
+        self.session.work_meter().as_ref()
+    }
+
     pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
         self.session.local_time_zone()
     }
@@ -295,8 +299,8 @@ pub(crate) fn layout_class_typed_by_engine(
 
     options.resource_policy().check_class_complexity(model)?;
     options
-        .resource_policy()
-        .check_layout_work_units(class::class_layout_work_units(model))?;
+        .work_meter_ref()
+        .charge(class::class_layout_work_units(model))?;
     class::layout_class_diagram_typed_with_config(
         model,
         effective_config,
@@ -314,8 +318,8 @@ fn layout_class_elk_typed_by_feature(
 ) -> Result<model::ClassDiagramLayout> {
     options.resource_policy().check_class_complexity(model)?;
     options
-        .resource_policy()
-        .check_layout_work_units(class::class_layout_work_units(model))?;
+        .work_meter_ref()
+        .charge(class::class_layout_work_units(model))?;
     class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
         model,
         effective_config,

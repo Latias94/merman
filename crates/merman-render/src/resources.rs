@@ -595,6 +595,10 @@ impl OperationWorkMeter {
         }
     }
 
+    pub(crate) const fn policy(&self) -> RenderResourcePolicy {
+        self.policy
+    }
+
     /// Checks whether a phase estimate fits without reserving or consuming the estimate.
     pub(crate) fn preflight(&self, additional: usize) -> Result<(), ResourceLimitExceeded> {
         if additional == 0 {

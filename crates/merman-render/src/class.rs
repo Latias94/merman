@@ -377,9 +377,7 @@ fn class_cluster_candidates(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> 
         .collect()
 }
 
-fn class_nodes_in_hierarchy_order<'a>(
-    graph: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
-) -> Vec<&'a str> {
+fn class_nodes_in_hierarchy_order(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<&str> {
     // Mermaid's Dagre renderer inserts cluster elements using a hierarchy preorder. Parent
     // clusters must therefore precede their descendants so an opaque parent fill cannot cover
     // the child cluster's frame and label.
