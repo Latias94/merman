@@ -1,4 +1,4 @@
-use super::cross_count::{cross_count_ix_controlled, is_zero_crossing_ix_controlled};
+use super::cross_count::cross_count_ix_controlled;
 use super::workspace::OrderWorkspace;
 use super::{EMPTY_LAYER_SLOT, OrderEdgeWeight, OrderNodeLabel, Relationship, init_order};
 use crate::graphlib::Graph;
@@ -121,10 +121,12 @@ where
         let primary_order_changed =
             run_sweep_round(g, &ranks_down, &ranks_up, i, &mut workspace, work_control)?;
 
-        // Crossing count is a pure function of the primary layer matrix and edge weights. Keep
-        // running every Dagre sweep so bias, constraints, and range-only node side effects remain
-        // intact, but do not rebuild and recount a matrix that is byte-for-byte unchanged.
-        if have_scored_layering && !primary_order_changed {
+        // Mermaid's dagre-d3-es companion replaces the best layering only on a strictly lower
+        // crossing score. Keep running its four non-improving sweeps so the constraint workspace
+        // evolves identically, but avoid rebuilding a matrix that cannot improve the first best:
+        // either the primary order did not change, or the accepted score already proved the global
+        // zero lower bound.
+        if have_scored_layering && (!primary_order_changed || best_is_proven_minimum) {
             i += 1;
             last_best += 1;
             continue;
@@ -132,30 +134,13 @@ where
 
         let layering_now = build_layer_matrix_ix_controlled(g, max_rank, work_control)?;
         have_scored_layering = true;
-        if best_is_proven_minimum && layering_now.has_unique_rank_orders {
-            let is_zero = is_zero_crossing_ix_controlled(g, &layering_now.layers, work_control)?;
-            if is_zero {
-                // Pinned Dagre keeps the most recent layering when crossing scores tie. The full
-                // weighted count is unnecessary once zero is proved to be the exact global lower
-                // bound, but the latest zero-crossing layering remains observable.
-                best_layering = Some(layering_now.layers);
-            }
-        } else {
-            let cross_count = cross_count_ix_controlled(g, &layering_now.layers, work_control)?;
-            let proves_minimum =
+        let cross_count = cross_count_ix_controlled(g, &layering_now.layers, work_control)?;
+        if cross_count.value < best_cc {
+            last_best = 0;
+            best_cc = cross_count.value;
+            best_is_proven_minimum =
                 layering_now.has_unique_rank_orders && cross_count.is_proven_minimum;
-            if cross_count.value < best_cc {
-                last_best = 0;
-                best_cc = cross_count.value;
-                best_is_proven_minimum = proves_minimum;
-                best_layering = Some(layering_now.layers);
-            } else if cross_count.value == best_cc {
-                // Pinned Dagre keeps the most recent layering when crossing scores tie. Bias
-                // alternates across sweeps, so replacing the previous best here is observable in
-                // final node order.
-                best_is_proven_minimum |= proves_minimum;
-                best_layering = Some(layering_now.layers);
-            }
+            best_layering = Some(layering_now.layers);
         }
 
         i += 1;
@@ -740,7 +725,7 @@ mod tests {
     }
 
     #[test]
-    fn equal_crossing_sweeps_keep_mermaid_dagres_last_layering() {
+    fn equal_crossing_sweeps_keep_mermaid_dagres_first_layering() {
         let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
             Graph::new(GraphOptions::default());
         graph.set_graph(GraphLabel::default());
@@ -763,8 +748,8 @@ mod tests {
                 "a",
                 id,
                 EdgeLabel {
-                    // Explicit zero weights exercise the structural proof's ignored-edge path;
-                    // the sweep must still preserve Dagre's observable tie-last replacement.
+                    // Explicit zero weights exercise the structural proof's ignored-edge path.
+                    // Equal sweeps must retain the first accepted layering.
                     weight: 0.0,
                     ..Default::default()
                 },
@@ -777,14 +762,14 @@ mod tests {
 
         order_controlled(&mut graph, OrderOptions::default(), &mut work_control).unwrap();
 
-        // Pinned Dagre replaces the best layering on an equal crossing score. The fourth sweep
-        // uses right bias, so the equal-barycenter siblings finish in reverse insertion order.
-        assert_eq!(graph.node("b").and_then(|node| node.order), Some(1));
-        assert_eq!(graph.node("c").and_then(|node| node.order), Some(0));
+        // Mermaid's dagre-d3-es 7.0.14 updates `best` only for `cc < bestCC`, so later equal
+        // right-biased sweeps do not replace the first left-biased result.
+        assert_eq!(graph.node("b").and_then(|node| node.order), Some(0));
+        assert_eq!(graph.node("c").and_then(|node| node.order), Some(1));
     }
 
     #[test]
-    fn zero_crossing_sweep_does_not_short_circuit_dagres_tie_last_search() {
+    fn zero_crossing_sweep_preserves_dagres_first_global_minimum() {
         let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
             Graph::new(GraphOptions::default());
         graph.set_graph(GraphLabel::default());
@@ -821,13 +806,12 @@ mod tests {
 
         order_controlled(&mut graph, OrderOptions::default(), &mut work_control).unwrap();
 
-        // Pinned Dagre scores these sweeps 0, 1, 0, 1. A zero global minimum therefore permits a
-        // cheaper zero/non-zero proof, but it must still preserve the later equal minimum from the
-        // right-biased third sweep rather than the first zero or the final working order.
+        // Mermaid's Dagre companion scores these sweeps 0, 1, 0, 1 and retains the first zero.
+        // Once zero is structurally proved, later matrices and crossing counts cannot improve it.
         for (id, expected) in [
             ("anchor", 0),
-            ("b2", 0),
-            ("b0", 1),
+            ("b0", 0),
+            ("b2", 1),
             ("b1", 2),
             ("c0", 0),
             ("c1", 1),

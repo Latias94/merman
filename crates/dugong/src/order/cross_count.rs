@@ -136,37 +136,6 @@ where
     })
 }
 
-/// Proves whether the current layering still has the already-established global minimum of zero.
-///
-/// The caller must first establish [`ControlledCrossCount::is_proven_minimum`] for this graph.
-/// Ordering sweeps mutate only node orders. The caller additionally verifies that every ranked
-/// node still has a unique layer slot, so adjacent-layer edge membership is unchanged. Under that
-/// exact non-negative, finite-accumulator domain, a positive crossing exists iff a later north
-/// group reaches a south position below the greatest position reached by an earlier group.
-pub(crate) fn is_zero_crossing_ix_controlled<N, E, G>(
-    g: &Graph<N, E, G>,
-    layering: &[Vec<usize>],
-    work_control: &mut dyn WorkControl,
-) -> Result<bool, WorkError>
-where
-    N: Default + 'static,
-    E: Default + OrderEdgeWeight + 'static,
-    G: Default,
-{
-    charge_nonzero(work_control, layering.len().saturating_sub(1))?;
-    for i in 1..layering.len() {
-        if !two_layer_is_zero_crossing_ix_controlled(
-            g,
-            &layering[i - 1],
-            &layering[i],
-            work_control,
-        )? {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
 fn two_layer_cross_count<N, E, G>(g: &Graph<N, E, G>, north: &[String], south: &[String]) -> f64
 where
     N: Default + 'static,
@@ -308,72 +277,6 @@ where
     zero_domain.finish_layer(participating_edge_count, maximum_weight);
 
     Ok(cc)
-}
-
-fn two_layer_is_zero_crossing_ix_controlled<N, E, G>(
-    g: &Graph<N, E, G>,
-    north: &[usize],
-    south: &[usize],
-    work_control: &mut dyn WorkControl,
-) -> Result<bool, WorkError>
-where
-    N: Default + 'static,
-    E: Default + OrderEdgeWeight + 'static,
-    G: Default,
-{
-    if south.is_empty() {
-        return Ok(true);
-    }
-
-    charge_nonzero(work_control, south.len())?;
-    let mut south_pos: HashMap<usize, usize> = HashMap::default();
-    for (position, &node_ix) in south.iter().enumerate() {
-        if node_ix != EMPTY_LAYER_SLOT {
-            south_pos.insert(node_ix, position);
-        }
-    }
-
-    charge_nonzero(work_control, north.len())?;
-    let mut previous_max: Option<usize> = None;
-    for &node_ix in north {
-        if node_ix == EMPTY_LAYER_SLOT {
-            continue;
-        }
-
-        let mut group_min: Option<usize> = None;
-        let mut group_max: Option<usize> = None;
-        let mut observe_target = |target_ix: usize, label: &E| {
-            if label.weight() <= 0.0 {
-                return;
-            }
-            let Some(&position) = south_pos.get(&target_ix) else {
-                return;
-            };
-            group_min = Some(group_min.map_or(position, |minimum| minimum.min(position)));
-            group_max = Some(group_max.map_or(position, |maximum| maximum.max(position)));
-        };
-        if g.is_directed() {
-            charge_nonzero(work_control, g.out_edge_count_ix(node_ix))?;
-            g.for_each_out_edge_ix(node_ix, None, |_u_ix, target_ix, _ek, label| {
-                observe_target(target_ix, label);
-            });
-        } else {
-            charge_nonzero(work_control, g.undirected_edge_count_ix(node_ix))?;
-            g.for_each_undirected_edge_ix(node_ix, |_node_ix, target_ix, _ek, label| {
-                observe_target(target_ix, label);
-            });
-        }
-
-        let (Some(group_min), Some(group_max)) = (group_min, group_max) else {
-            continue;
-        };
-        if previous_max.is_some_and(|maximum| group_min < maximum) {
-            return Ok(false);
-        }
-        previous_max = Some(previous_max.map_or(group_max, |maximum| maximum.max(group_max)));
-    }
-
-    Ok(true)
 }
 
 #[cfg(test)]
@@ -539,102 +442,6 @@ mod tests {
     }
 
     #[test]
-    fn zero_crossing_proof_distinguishes_crossing_north_groups() {
-        let mut graph: Graph<(), WeightLabel, ()> = Graph::new(GraphOptions::default());
-        graph.set_edge_with_label("north-a", "south-a", weighted_edge(1.0));
-        graph.set_edge_with_label("north-b", "south-b", weighted_edge(1.0));
-        let north = ["north-a", "north-b"]
-            .map(|node| graph.node_ix(node).unwrap())
-            .to_vec();
-        let south = ["south-a", "south-b"]
-            .map(|node| graph.node_ix(node).unwrap())
-            .to_vec();
-        let mut work_control = RecordingWorkControl {
-            max: usize::MAX,
-            ..Default::default()
-        };
-
-        assert!(
-            is_zero_crossing_ix_controlled(
-                &graph,
-                &[north.clone(), south.clone()],
-                &mut work_control,
-            )
-            .unwrap()
-        );
-
-        let crossing = [north[1], north[0]];
-        assert!(
-            !is_zero_crossing_ix_controlled(
-                &graph,
-                &[crossing.to_vec(), south],
-                &mut work_control,
-            )
-            .unwrap()
-        );
-    }
-
-    #[test]
-    fn zero_crossing_probe_ignores_a_finite_zero_weight_crossing() {
-        let mut graph: Graph<(), WeightLabel, ()> = Graph::new(GraphOptions::default());
-        graph.set_edge_with_label("north-a", "south-b", weighted_edge(0.0));
-        graph.set_edge_with_label("north-b", "south-a", weighted_edge(1.0));
-        let layering = vec![
-            ["north-a", "north-b"]
-                .map(|node| graph.node_ix(node).unwrap())
-                .to_vec(),
-            ["south-a", "south-b"]
-                .map(|node| graph.node_ix(node).unwrap())
-                .to_vec(),
-        ];
-        let mut work_control = RecordingWorkControl {
-            max: usize::MAX,
-            ..Default::default()
-        };
-
-        assert!(is_zero_crossing_ix_controlled(&graph, &layering, &mut work_control).unwrap());
-        assert_eq!(
-            cross_count_ix_controlled(&graph, &layering, &mut work_control).unwrap(),
-            ControlledCrossCount {
-                value: 0.0,
-                is_proven_minimum: true,
-            }
-        );
-    }
-
-    #[test]
-    fn zero_crossing_probe_has_an_exact_interrupt_boundary() {
-        let mut graph: Graph<(), WeightLabel, ()> = Graph::new(GraphOptions::default());
-        graph.set_edge_with_label("north-a", "south-a", weighted_edge(1.0));
-        graph.set_edge_with_label("north-b", "south-b", weighted_edge(1.0));
-        let layering = vec![
-            ["north-a", "north-b"]
-                .map(|node| graph.node_ix(node).unwrap())
-                .to_vec(),
-            ["south-a", "south-b"]
-                .map(|node| graph.node_ix(node).unwrap())
-                .to_vec(),
-        ];
-        let mut exact = RecordingWorkControl {
-            max: 7,
-            ..Default::default()
-        };
-
-        assert!(is_zero_crossing_ix_controlled(&graph, &layering, &mut exact).unwrap());
-        assert_eq!(exact.used, 7);
-
-        let mut below = RecordingWorkControl {
-            max: 6,
-            ..Default::default()
-        };
-        assert_eq!(
-            is_zero_crossing_ix_controlled(&graph, &layering, &mut below),
-            Err(WorkError::Interrupted)
-        );
-        assert_eq!(below.used, 6);
-    }
-
-    #[test]
     fn undirected_crossings_use_the_incident_endpoint_in_both_scorers() {
         let mut graph: Graph<(), WeightLabel, ()> = Graph::new(GraphOptions {
             directed: false,
@@ -664,8 +471,5 @@ mod tests {
         assert_eq!(cross_count(&graph, &public_layering), 1.0);
         assert_eq!(controlled.value, 1.0);
         assert!(!controlled.is_proven_minimum);
-        assert!(
-            !is_zero_crossing_ix_controlled(&graph, &indexed_layering, &mut work_control).unwrap()
-        );
     }
 }
