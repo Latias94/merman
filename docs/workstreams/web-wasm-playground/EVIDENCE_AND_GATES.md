@@ -438,7 +438,7 @@ Results:
   `e52016004129f4a12c0b316be1890f614898003afc1318fd543c4f07b674596c` for both.
 - All six cold/warm primary latency comparisons passed the joint 5% and 20 ms limit.
 - The editor split failed the selection rule because cold transfer was 7,504,435 bytes versus
-  6,141,465 bytes for full, and peak memory was 30,960,210 bytes versus 30,749,462 bytes for full.
+  6,141,465 bytes for full, and peak memory was 30,961,757 bytes versus 30,751,189 bytes for full.
 - The authoritative result therefore retains `@mermanjs/web` for both the main renderer and the
   language Worker. Receipt schema 2 binds the measurement contract, startup and Worker closures,
   Web surface, package provenance, and semantic evidence to deterministic content digests. The
