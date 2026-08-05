@@ -22,16 +22,17 @@ the versioned receipt to
 directories. A receipt records the Git revision and whether the worktree was
 dirty. Only a fresh-build receipt from an unchanged clean worktree is marked
 authoritative; dirty or reused-build receipts remain explicitly provisional.
-The checked receipt also binds the measurement contract, startup and Worker
-closures, exact full/editor runtime package provenance, and equivalence evidence
-through selection-input digests. `npm run verify:editor-artifact-authority`
-recomputes those digests and the derived decision without building or launching
-a browser. Web source and build-script changes do not independently invalidate a
-receipt because the measured, provenance-verified JS/WASM artifacts are the
-runtime authority. Documentation, browser-test-only changes, emitted declarations,
-and source maps do not force an R16 rerun. Runtime production closures do: Vite embeds
-dynamic chunk identities in the startup entry, and the PostCSS/Tailwind build
-can project lazy-workbench classes into the initial stylesheet.
+The checked receipt also binds the measurement contract, every production page
+runtime closure, the Worker/equivalence closure, exact full/editor runtime
+package provenance, and equivalence evidence through selection-input digests.
+`npm run verify:editor-artifact-authority` recomputes those digests and the
+derived decision without building or launching a browser. Once the exact Web
+package JS/WASM bytes are bound, package source and tool provenance do not
+independently invalidate a receipt. Documentation, browser-test-only changes,
+emitted declarations, and source maps do not force an R16 rerun. Playground
+runtime and transitive build-config changes do: Vite may split shared chunks
+across any production HTML entry, and the PostCSS/Tailwind build can project
+lazy-workbench classes into the initial stylesheet.
 
 The equivalence probe uses the production `WorkerClient` and the emitted
 `merman-language.worker` as an explicit module Worker. Its input is the generated

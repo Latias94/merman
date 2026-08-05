@@ -426,8 +426,8 @@ npm run measure:editor-artifacts --prefix playground
 Results:
 
 - Native TypeScript Worker tests passed: 56 tests.
-- Pure artifact-decision and authority tests passed: 22 tests.
-- Focused build-graph tests passed: 43 tests.
+- Pure artifact-decision and authority tests passed: 24 tests.
+- Focused build-graph tests passed: 44 tests.
 - Production Playground build and dist verification passed with Vite 8.2.0.
 - Real Chromium Monaco Worker smoke passed: 6 tests, including all 35 semantic-token family
   baselines, request-local rename failure, Retry recovery, and Benchmark isolation.
@@ -436,14 +436,17 @@ Results:
 - Full and editor Workers were exactly equivalent across 35 families and 11 query kinds: 385 cells
   per variant, zero mismatches, and aggregate SHA-256
   `e52016004129f4a12c0b316be1890f614898003afc1318fd543c4f07b674596c` for both.
-- All six cold/warm primary latency comparisons passed the joint 5% and 20 ms limit.
+- All three cold primary latency comparisons passed the joint 5% and 20 ms limit. All three warm
+  comparisons failed it: Worker ready regressed by 53.962 ms (16.56%), first diagnostics by
+  61.155 ms (17.55%), and the main renderer's first result by 71.527 ms (10.70%).
 - The editor split failed the selection rule because cold transfer was 7,504,884 bytes versus
-  6,141,915 bytes for full, and peak memory was 31,009,516 bytes versus 30,807,321 bytes for full.
+  6,141,915 bytes for full, and peak memory was 31,018,003 bytes versus 30,804,617 bytes for full.
 - The authoritative result therefore retains `@mermanjs/web` for both the main renderer and the
-  language Worker. Receipt schema 2 binds the measurement contract, startup and Worker closures,
-  exact runtime package provenance and semantic evidence to deterministic content digests. The
-  hermetic authority verifier recomputes those inputs and the derived decision without a browser.
-  The complete receipt is checked in at
+  language Worker. Receipt schema 2 carries selection-input schema 3, which binds the measurement
+  contract, every production page runtime closure, the Worker/equivalence closure, exact runtime
+  package provenance, and semantic evidence to deterministic content digests. The hermetic
+  authority verifier recomputes those inputs and the derived decision without a browser. The
+  complete receipt is checked in at
   [`editor-artifact-receipt-v2.json`](./editor-artifact-receipt-v2.json).
 
 ### 2026-08-05 - Canonical Opaque Artifacts And Authoritative Build Graphs
@@ -595,7 +598,7 @@ Results:
   vulnerabilities; the browser-test package has no production dependency graph to audit.
 - `npm outdated` reports only the intentional lines above: Node types 22.20.1, Mermaid 11.16.0,
   Monaco 0.55.1, and TypeScript 5.7.3. The Playwright runtime and test package are exactly 1.62.1.
-- Complete prepared tests passed, including 43 build-graph, 56 editor Worker, 22 R16
+- Complete prepared tests passed, including 44 build-graph, 56 editor Worker, 24 R16
   contract/authority, 4 dependency-policy, and 98 Benchmark tests, plus all focused runtime,
   store/share, realm, config, requirement, example, and export tests.
 - Vite 8.2.0 transformed 3,083 modules. Dist verification found exactly one
