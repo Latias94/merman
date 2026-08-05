@@ -22,12 +22,14 @@ fn longest_path_work_plan(
 ) -> Result<LongestPathWorkPlan, crate::WorkError> {
     let prepare_adjacency_cache = !g.is_adjacency_cache_current();
     // The admitted algorithm scans Graphlib node order for sources, validates every edge slot,
-    // then visits each live node and outgoing edge. A stale CSR additionally initializes and
-    // clones its node-slot offset/cursor arrays, scans edge slots twice, and materializes both
-    // directed endpoint arrays. Keep that cold-only work distinct so warm callers are not charged
-    // for historical node tombstones that they do not inspect.
+    // visits each live node and outgoing edge, then commits the staged rank of each live node.
+    // A stale CSR additionally initializes and clones its node-slot offset/cursor arrays, scans
+    // edge slots twice, and materializes both directed endpoint arrays. Keep that cold-only work
+    // distinct so warm callers are not charged for historical node tombstones that they do not
+    // inspect.
+    let node_work = checked_mul(g.node_count(), 2)?;
     let base_work = checked_add(
-        checked_add(g.node_order_slot_count(), g.node_count())?,
+        checked_add(g.node_order_slot_count(), node_work)?,
         checked_add(g.edge_slot_count(), checked_mul(g.edge_count(), 2)?)?,
     )?;
     let cold_csr_work = if prepare_adjacency_cache {
@@ -74,6 +76,7 @@ pub(crate) fn longest_path_controlled(
 
     let sources: Vec<String> = g.sources().into_iter().map(|s| s.to_string()).collect();
     let mut visited: HashMap<String, i128> = HashMap::default();
+    let mut staged_ranks = Vec::with_capacity(g.node_count());
     for v in sources {
         if visited.contains_key(&v) {
             continue;
@@ -123,13 +126,19 @@ pub(crate) fn longest_path_controlled(
             };
             let rank = frame.rank.unwrap_or(0);
             let rank_i32 = i32::try_from(rank).map_err(|_| crate::WorkError::ArithmeticOverflow)?;
-            if let Some(label) = g.node_mut(&frame.v) {
-                label.rank = Some(rank_i32);
+            if let Some(node_ix) = g.node_ix(&frame.v) {
+                staged_ranks.push((node_ix, rank_i32));
             }
             visited.insert(frame.v, rank);
             if let (Some(parent), Some(minlen)) = (stack.last_mut(), frame.incoming_minlen) {
                 apply_candidate(&mut parent.rank, rank - minlen);
             }
+        }
+    }
+
+    for (node_ix, rank) in staged_ranks {
+        if let Some(label) = g.node_label_mut_by_ix(node_ix) {
+            label.rank = Some(rank);
         }
     }
     Ok(())
@@ -221,6 +230,27 @@ mod tests {
         graph
     }
 
+    fn overflowing_chain_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = graph_with_nodes(&["a", "b", "c"]);
+        graph.set_edge_with_label(
+            "a",
+            "b",
+            EdgeLabel {
+                minlen: 2,
+                ..EdgeLabel::default()
+            },
+        );
+        graph.set_edge_with_label(
+            "b",
+            "c",
+            EdgeLabel {
+                minlen: i32::MAX as usize,
+                ..EdgeLabel::default()
+            },
+        );
+        graph
+    }
+
     fn rank_snapshot(
         graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     ) -> Vec<(String, Option<i32>)> {
@@ -302,9 +332,41 @@ mod tests {
     }
 
     #[test]
+    fn longest_path_overflow_preserves_every_existing_rank() {
+        let mut graph = overflowing_chain_graph();
+        for (rank, id) in [11, 12, 13].into_iter().zip(["a", "b", "c"]) {
+            graph.node_mut(id).unwrap().rank = Some(rank);
+        }
+        let source_ranks = rank_snapshot(&graph);
+        let plan = longest_path_work_plan(&graph).unwrap();
+        let mut work_control = RecordingWorkControl::with_limit(plan.work_units);
+
+        assert_eq!(
+            longest_path_controlled(&mut graph, &mut work_control),
+            Err(WorkError::ArithmeticOverflow)
+        );
+        assert_eq!(work_control.charges, [plan.work_units]);
+        assert_eq!(work_control.remaining, Some(0));
+        assert_eq!(rank_snapshot(&graph), source_ranks);
+    }
+
+    #[test]
     fn longest_path_accounts_for_each_slot_domain() {
         let dense_edges = chain_graph();
         let sparse_edges = sparse_chain_graph();
+        let expected_dense_warm = checked_add(
+            checked_add(
+                dense_edges.node_order_slot_count(),
+                checked_mul(dense_edges.node_count(), 2).unwrap(),
+            )
+            .unwrap(),
+            checked_add(
+                dense_edges.edge_slot_count(),
+                checked_mul(dense_edges.edge_count(), 2).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             sparse_edges.edge_slot_count(),
             dense_edges.edge_slot_count() + 1
@@ -314,6 +376,10 @@ mod tests {
         assert_eq!(sparse_edges_cold, dense_edges_cold + 3);
         dense_edges.prepare_adjacency_cache();
         sparse_edges.prepare_adjacency_cache();
+        assert_eq!(
+            longest_path_work_plan(&dense_edges).unwrap().work_units,
+            expected_dense_warm
+        );
         assert_eq!(
             longest_path_work_plan(&sparse_edges).unwrap().work_units,
             longest_path_work_plan(&dense_edges).unwrap().work_units + 1

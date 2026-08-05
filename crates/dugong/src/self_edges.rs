@@ -42,23 +42,49 @@ pub(crate) fn remove_self_edges_with_count(
 }
 
 pub fn insert_self_edges(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    // This public compatibility helper accepts arbitrary caller-assigned `order` values. Preserve
-    // its compact live-entry behavior instead of allocating a sentinel span up to max(order);
-    // canonical layout uses the exact indexed matrix returned by the controlled ordering owner.
-    let layers = crate::util::build_layer_matrix(g)
-        .into_iter()
-        .map(|layer| {
-            layer
-                .into_iter()
-                .filter_map(|id| g.node_ix(&id))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
+    let mut has_pending_self_edges = false;
+    g.for_each_node(|_id, node| {
+        has_pending_self_edges |= !node.self_edges.is_empty();
+    });
+    if !has_pending_self_edges {
+        return;
+    }
+
+    // This public compatibility helper accepts arbitrary caller-assigned ranks and orders. Group
+    // only ranks that actually exist so extreme sparse i32 values remain O(V) in memory. The
+    // canonical layout path keeps using the exact indexed matrix owned by controlled ordering.
+    let layers = compact_public_layering(g);
     let mut work_control = NoopWorkControl;
     let mut layering = IndexedLayerMatrix::from_dense_layers(layers)
         .expect("an already materialized compact layering has representable entry counts");
     insert_self_edges_with_layering_controlled(g, &mut layering, &mut work_control)
         .expect("the checked no-op Dugong work control cannot reject self-edge insertion");
+}
+
+fn compact_public_layering(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<Vec<usize>> {
+    let mut entries = Vec::with_capacity(g.node_count());
+    g.for_each_node_ix(|graph_ix, _id, node| {
+        if let Some(rank) = node.rank {
+            entries.push((rank, node.order.unwrap_or(0), graph_ix));
+        }
+    });
+
+    // Rust's stable sort preserves pinned Graphlib Object.keys order when rank and order tie.
+    entries.sort_by_key(|&(rank, order, _graph_ix)| (rank, order));
+
+    let mut layers: Vec<Vec<usize>> = Vec::new();
+    let mut previous_rank = None;
+    for (rank, _order, graph_ix) in entries {
+        if previous_rank != Some(rank) {
+            layers.push(Vec::new());
+            previous_rank = Some(rank);
+        }
+        layers
+            .last_mut()
+            .expect("a rank transition always creates its compact layer")
+            .push(graph_ix);
+    }
+    layers
 }
 
 pub(crate) fn insert_self_edges_with_layering_controlled(
@@ -523,6 +549,144 @@ mod tests {
         for (order, id) in layering[0].iter().enumerate() {
             assert_eq!(graph.node(id).and_then(|node| node.order), Some(order));
         }
+    }
+
+    fn rank_members(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>, rank: i32) -> Vec<String> {
+        let mut members = graph
+            .nodes()
+            .filter_map(|id| {
+                let node = graph.node(id)?;
+                (node.rank == Some(rank)).then(|| (node.order.unwrap_or(0), id.to_string()))
+            })
+            .collect::<Vec<_>>();
+        members.sort_by_key(|(order, _id)| *order);
+        members.into_iter().map(|(_order, id)| id).collect()
+    }
+
+    fn self_edge_source(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>, id: &str) -> String {
+        graph
+            .node(id)
+            .and_then(|node| node.edge_obj.as_ref())
+            .and_then(|edge| edge.name.as_deref())
+            .unwrap_or(id)
+            .to_string()
+    }
+
+    #[test]
+    fn public_insertion_groups_extreme_actual_ranks_without_span_allocation() {
+        let mut graph = test_graph();
+        graph.set_graph(GraphLabel::default());
+        for (id, rank, order) in [
+            ("min-late", i32::MIN, Some(usize::MAX)),
+            ("min-missing", i32::MIN, None),
+            ("max", i32::MAX, Some(0)),
+        ] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(rank),
+                    order,
+                    ..NodeLabel::default()
+                },
+            );
+            graph.set_edge_named(
+                id,
+                id,
+                Some(format!("{id}-self")),
+                Some(EdgeLabel::default()),
+            );
+        }
+        remove_self_edges(&mut graph);
+
+        insert_self_edges(&mut graph);
+
+        let min_members = rank_members(&graph, i32::MIN)
+            .into_iter()
+            .map(|id| self_edge_source(&graph, &id))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            min_members,
+            [
+                "min-missing",
+                "min-missing-self",
+                "min-late",
+                "min-late-self"
+            ]
+        );
+        let max_members = rank_members(&graph, i32::MAX)
+            .into_iter()
+            .map(|id| self_edge_source(&graph, &id))
+            .collect::<Vec<_>>();
+        assert_eq!(max_members, ["max", "max-self"]);
+    }
+
+    #[test]
+    fn public_insertion_preserves_graphlib_order_for_equal_missing_orders() {
+        let mut graph = test_graph();
+        graph.set_graph(GraphLabel::default());
+        for id in ["ordinary-first", "10", "2", "ordinary-second"] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(i32::MIN),
+                    order: None,
+                    ..NodeLabel::default()
+                },
+            );
+            graph.set_edge_named(
+                id,
+                id,
+                Some(format!("{id}-self")),
+                Some(EdgeLabel::default()),
+            );
+        }
+        assert_eq!(
+            graph.node_ids(),
+            ["2", "10", "ordinary-first", "ordinary-second"]
+        );
+        remove_self_edges(&mut graph);
+
+        insert_self_edges(&mut graph);
+
+        let members = rank_members(&graph, i32::MIN)
+            .into_iter()
+            .map(|id| self_edge_source(&graph, &id))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            members,
+            [
+                "2",
+                "2-self",
+                "10",
+                "10-self",
+                "ordinary-first",
+                "ordinary-first-self",
+                "ordinary-second",
+                "ordinary-second-self"
+            ]
+        );
+    }
+
+    #[test]
+    fn public_insertion_without_pending_self_edges_ignores_extreme_rank_span() {
+        let mut graph = test_graph();
+        graph.set_graph(GraphLabel::default());
+        for (id, rank) in [("min", i32::MIN), ("max", i32::MAX)] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(rank),
+                    order: Some(usize::MAX),
+                    ..NodeLabel::default()
+                },
+            );
+        }
+        let source_nodes = graph.node_ids();
+
+        insert_self_edges(&mut graph);
+
+        assert_eq!(graph.node_ids(), source_nodes);
+        assert_eq!(graph.edge_count(), 0);
     }
 
     #[test]
