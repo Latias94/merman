@@ -109,6 +109,34 @@ class SemanticOperationFixtureTests(unittest.TestCase):
 
 
 class NativeSdkRecipeTests(unittest.TestCase):
+    def test_flutter_format_contract_excludes_generator_owned_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            handwritten = (
+                root / "lib" / "merman.dart",
+                root / "example" / "smoke.dart",
+                root / "tool" / "abi3_contract_test.dart",
+            )
+            generated = (
+                root / "lib" / "src" / "generated" / "binding_contract.dart",
+                root / "lib" / "src" / "generated" / "native_abi.dart",
+            )
+            for path in (*handwritten, *generated):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("void main() {}\n", encoding="utf-8")
+
+            paths = verify_platform_bindings.flutter_format_paths(root)
+
+        self.assertEqual(
+            paths,
+            [
+                "lib/merman.dart",
+                "example/smoke.dart",
+                "tool/abi3_contract_test.dart",
+            ],
+        )
+        self.assertTrue(all("/generated/" not in path for path in paths))
+
     def test_android_transport_checks_use_each_exact_descriptor_recipe(self) -> None:
         target = "aarch64-linux-android"
         for recipe in (
@@ -410,6 +438,13 @@ class GeneratedBindingFreshnessTests(unittest.TestCase):
         step = workflow_step(job, name="Verify platform bindings")
         self.assertEqual(step["run"], "python3 scripts/verify-platform-bindings.py")
 
+        checkout = next(
+            step
+            for step in job["steps"]
+            if step.get("uses", "").startswith("actions/checkout@")
+        )
+        self.assertEqual(str(checkout.get("with", {}).get("fetch-depth")), "0")
+
 
 class AndroidAarVerificationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -563,8 +598,8 @@ class AndroidConsumerRulesTests(unittest.TestCase):
         rules = ANDROID_CONSUMER_RULES.read_text(encoding="utf-8")
 
         for class_name in (
+            "io.merman.Merman",
             "io.merman.MermanEngine",
-            "io.merman.MermanReusableEngine",
             "io.merman.MermanOperationResult",
         ):
             with self.subTest(class_name=class_name):
@@ -695,6 +730,7 @@ class AndroidInstrumentationReportTests(unittest.TestCase):
                   </testsuite>
                   <testsuite name="io.merman.MermanSemanticOperationFixtureTest">
                     <testcase name="consumesSharedSemanticOperationFixtures" />
+                    <testcase name="consumesGeneratedThirteenOperationMatrix" />
                   </testsuite>
                 </testsuites>
                 """,
@@ -818,8 +854,17 @@ def write_android_maven_publication(
             "index.html",
             "merman-android/package-list",
             "merman-android/io.merman/index.html",
+            "merman-android/io.merman/-merman/index.html",
             "merman-android/io.merman/-merman-engine/index.html",
-            "merman-android/io.merman/-merman-reusable-engine/index.html",
+            "merman-android/io.merman/-merman-engine-services/index.html",
+            "merman-android/io.merman/-merman-icon-pack/index.html",
+            "merman-android/io.merman/-merman-icon-registry/index.html",
+            "merman-android/io.merman/-merman-operation-metadata/index.html",
+            "merman-android/io.merman/-merman-operation-result/index.html",
+            "merman-android/io.merman/-merman-output-plan/index.html",
+            "merman-android/io.merman/-merman-raster-output-plan/index.html",
+            "merman-android/io.merman/-merman-pdf-filter-images-output-plan/index.html",
+            "merman-android/io.merman/-merman-unknown-output-plan/index.html",
         ]:
             archive.writestr(entry, b"")
 

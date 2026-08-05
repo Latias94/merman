@@ -471,6 +471,22 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             python,
         )
 
+    def test_python_release_smoke_uses_current_native_sdk_object_model(self) -> None:
+        python = job_contract_text(
+            WORKFLOW_ROOT / "release-python.yml",
+            "build",
+        )
+
+        self.assertIn("e = merman.Merman()", python)
+        self.assertIn("merman.MermanEngineServices(None, measurer)", python)
+        self.assertIn("reusable.close()", python)
+        self.assertIn("platforms/python/merman/examples/smoke.py", python)
+        self.assertNotIn("merman.MermanEngine()", python)
+        self.assertNotIn(".reusable_engine(", python)
+        self.assertNotIn(".reusable_engine_with_text_measurer(", python)
+        self.assertNotIn(".set_text_measurer(", python)
+        self.assertNotIn(".clear_text_measurer(", python)
+
     def test_flutter_release_smokes_the_packaged_macos_library(self) -> None:
         build_job = job_contract_text(
             WORKFLOW_ROOT / "release-flutter.yml",
@@ -1478,6 +1494,13 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         workflow = workflow_document(WORKFLOW_ROOT / "ci.yml")
         self.assertEqual(workflow["permissions"], {"contents": "read"})
 
+    def test_ci_workflow_does_not_skip_changes_with_path_filters(self) -> None:
+        workflow = workflow_document(WORKFLOW_ROOT / "ci.yml")
+        self.assertNotRegex(
+            workflow["header"],
+            re.compile(r"(?m)^\s+(?:paths|paths-ignore):"),
+        )
+
     def test_ci_checkouts_do_not_persist_credentials(self) -> None:
         steps = checkout_steps(workflow_document(WORKFLOW_ROOT / "ci.yml"))
 
@@ -1496,14 +1519,117 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         verify = workflow_step(
             job, name="Verify Node candidate contracts and nested lock freshness"
         )
+        install_wasm_pack = workflow_step(
+            job, name="Install pinned wasm-pack for Node candidate builds"
+        )
+        build_node_wasm = workflow_step(
+            job, name="Build and probe the Node-WASM candidate"
+        )
+        build_napi = workflow_step(
+            job, name="Build and probe the Node N-API candidate"
+        )
 
+        self.assertNotIn("if", job)
+        self.assertNotIn("continue-on-error", job)
         self.assertEqual(
             setup["with"]["cache-dependency-path"],
             "platforms/node/package-lock.json\ntools/mermaid-cli/package-lock.json\n",
         )
         self.assertEqual(install["run"], "npm ci --prefix platforms/node")
         self.assertEqual(verify["run"], "npm test --prefix platforms/node")
+        self.assertEqual(
+            install_wasm_pack["run"],
+            "cargo install wasm-pack --version 0.15.0 --locked",
+        )
+        self.assertEqual(
+            build_node_wasm["run"],
+            "npm run --prefix platforms/node build:candidate -- --candidate node-wasm",
+        )
+        self.assertEqual(
+            build_napi["run"],
+            "npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu",
+        )
+        for step in (
+            setup,
+            install,
+            verify,
+            install_wasm_pack,
+            build_node_wasm,
+            build_napi,
+        ):
+            self.assertEqual(step["if"], "matrix.parity")
+            self.assertNotIn("continue-on-error", step)
         self.assertLess(job["steps"].index(install), job["steps"].index(verify))
+        self.assertLess(
+            job["steps"].index(verify),
+            job["steps"].index(install_wasm_pack),
+        )
+        self.assertLess(
+            job["steps"].index(install_wasm_pack),
+            job["steps"].index(build_node_wasm),
+        )
+        self.assertLess(
+            job["steps"].index(build_node_wasm),
+            job["steps"].index(build_napi),
+        )
+
+    def test_ci_verifies_native_ffi_artifact_sizes_on_pinned_apple_host(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "ci.yml")
+        job = workflow_job(workflow, "ffi-native-artifact-sizes")
+
+        self.assertEqual(job["runs-on"], "macos-26")
+        self.assertFalse(job["permissions_declared"])
+        self.assertEqual(job["permissions"], {})
+        self.assertEqual(job["env"], {})
+        self.assertNotIn("if", job)
+        self.assertNotIn("continue-on-error", job)
+        self.assertNotIn(
+            "Swatinem/rust-cache@v2",
+            {step.get("uses") for step in job["steps"]},
+        )
+
+        host = workflow_step(
+            job, name="Select and verify the native artifact measurement host"
+        )
+        self.assertIn(
+            "sudo xcode-select --switch "
+            "/Applications/Xcode_26.5.app/Contents/Developer",
+            host["run"],
+        )
+        self.assertIn('test "$(uname -m)" = "arm64"', host["run"])
+        self.assertIn(
+            "test \"$(xcodebuild -version)\" = $'Xcode 26.5\\nBuild version 17F42'",
+            host["run"],
+        )
+        self.assertIn(
+            'test "$(xcrun --sdk macosx --show-sdk-version)" = "26.5"',
+            host["run"],
+        )
+
+        toolchain = workflow_step(job, name="Install Rust toolchain")
+        self.assertEqual(toolchain["uses"], "dtolnay/rust-toolchain@1.95.0")
+
+        prefetch = workflow_step(job, name="Prefetch locked Cargo dependencies")
+        self.assertEqual(
+            prefetch["run"],
+            "cargo fetch --locked --target aarch64-apple-darwin",
+        )
+
+        verify = workflow_step(job, name="Verify native FFI artifact sizes")
+        self.assertEqual(
+            verify["run"],
+            "unset CARGO_INCREMENTAL\n"
+            "python3 scripts/verify_native_artifact_sizes.py --baseline "
+            "abi/ffi-contract-baseline/native-artifact-sizes.json\n",
+        )
+        for step in (host, toolchain, prefetch, verify):
+            self.assertNotIn("continue-on-error", step)
+        self.assertLess(job["steps"].index(host), job["steps"].index(toolchain))
+        self.assertLess(
+            job["steps"].index(toolchain),
+            job["steps"].index(prefetch),
+        )
+        self.assertLess(job["steps"].index(prefetch), job["steps"].index(verify))
 
     def test_ci_compiles_the_apple_package_with_swift_5_9(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "ci.yml")

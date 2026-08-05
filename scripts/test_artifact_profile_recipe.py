@@ -94,6 +94,18 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertNotIn("output_ids\"]).issubset", script)
         self.assertIn("assert_shared_semantic_operation_fixtures(engine)", script)
 
+    def test_python_wheel_smoke_uses_current_native_sdk_object_model(self) -> None:
+        script = wheel_builder.python_wheel_smoke_script("python-uniffi-native")
+
+        self.assertIn("engine = merman.Merman()", script)
+        self.assertIn("reusable = merman.MermanEngine(None, services)", script)
+        self.assertIn("reusable.close()", script)
+        self.assertNotIn("merman.MermanEngine()", script)
+        self.assertNotIn(".reusable_engine(", script)
+        self.assertNotIn(".reusable_engine_with_text_measurer(", script)
+        self.assertNotIn(".set_text_measurer(", script)
+        self.assertNotIn(".clear_text_measurer(", script)
+
     def test_python_wheel_smoke_keeps_operation_and_output_ids_independent(self) -> None:
         profiles = json.loads(
             wheel_builder.DEFAULT_DESCRIPTOR.read_text(encoding="utf-8")
@@ -249,6 +261,31 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 self.assertEqual(recipe.cargo_profile, "native-sdk")
                 self.assertFalse(recipe.default_features)
                 self.assertTrue(recipe.features)
+
+    def test_all_public_native_sdk_profiles_share_one_full_sku(self) -> None:
+        profile_ids = (
+            "android-native",
+            "apple-uniffi-native",
+            "c-abi-native",
+            "flutter-android-native",
+            "flutter-desktop-native",
+            "flutter-ios-native",
+            "python-uniffi-native",
+        )
+        descriptor = json.loads(
+            artifact_profile_recipe.DEFAULT_DESCRIPTOR.read_text(encoding="utf-8")
+        )
+        profiles = {profile["id"]: profile for profile in descriptor["profiles"]}
+        baseline = profiles[profile_ids[0]]
+
+        for profile_id in profile_ids[1:]:
+            with self.subTest(profile_id=profile_id):
+                candidate = profiles[profile_id]
+                self.assertEqual(
+                    candidate["cargo"]["features"],
+                    baseline["cargo"]["features"],
+                )
+                self.assertEqual(candidate["expected"], baseline["expected"])
 
     def test_native_sdk_commands_reject_profile_environment_overrides(self) -> None:
         recipe = load_artifact_profile("c-abi-native")

@@ -1176,7 +1176,7 @@ def validate_native_artifact_report(
                 f"native artifact profile recipe drifted: {expected.label}"
             )
         labels.append(expected.label)
-        apple_toolchain = _validate_build_record(
+        apple_toolchain = validate_native_artifact_build_record(
             record.get("build"),
             expected,
             host_target,
@@ -1262,7 +1262,7 @@ def _validate_artifact_rows(
         raise NativeArtifactSizeError(f"{label} artifacts must be cdylib then staticlib")
 
 
-def _validate_build_record(
+def validate_native_artifact_build_record(
     value: Any,
     profile: NativeArtifactProfile,
     host_target: str,

@@ -179,6 +179,35 @@ jobs:
           python3 scripts/artifact_profile_recipe.py cli-analysis --build-host --locked
           python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
 
+  ffi-native-artifact-sizes:
+    name: ffi-native-artifact-sizes
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Select and verify the native artifact measurement host
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch /Applications/Xcode_26.5.app/Contents/Developer
+          test "$(uname -m)" = "arm64"
+          test "$(xcodebuild -version)" = $'Xcode 26.5\nBuild version 17F42'
+          test "$(xcrun --sdk macosx --show-sdk-version)" = "26.5"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Prefetch locked Cargo dependencies
+        run: cargo fetch --locked --target aarch64-apple-darwin
+
+      - name: Verify native FFI artifact sizes
+        run: |
+          unset CARGO_INCREMENTAL
+          python3 scripts/verify_native_artifact_sizes.py --baseline abi/ffi-contract-baseline/native-artifact-sizes.json
+
   build-test:
     name: build-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -439,6 +468,18 @@ jobs:
         if: matrix.parity
         run: npm test --prefix platforms/node
 
+      - name: Install pinned wasm-pack for Node candidate builds
+        if: matrix.parity
+        run: cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Build and probe the Node-WASM candidate
+        if: matrix.parity
+        run: npm run --prefix platforms/node build:candidate -- --candidate node-wasm
+
+      - name: Build and probe the Node N-API candidate
+        if: matrix.parity
+        run: npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu
+
       - name: Verify Cypress corpus against pinned Mermaid source
         if: matrix.parity
         run: cargo run --locked -p xtask -- import-upstream-cypress --check-11-16-corpus-manifest-source
@@ -636,6 +677,8 @@ jobs:
         run: |
           python3 -m py_compile \
             scripts/verify-platform-bindings.py \
+            scripts/ffi_contract_docs.py \
+            scripts/measure_ffi_contract_native_build_timing.py \
             scripts/build-python-uniffi-wheel.py \
             scripts/python_wheel_licenses.py \
             platforms/android/build-android.py \
@@ -654,6 +697,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Read Android toolchain versions

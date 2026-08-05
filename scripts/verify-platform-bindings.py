@@ -47,11 +47,19 @@ ANDROID_MAVEN_MODULE_ROOT = (
 )
 ANDROID_TEST_RESULTS_ROOT = ANDROID_ROOT / "build" / "outputs" / "androidTest-results"
 ANDROID_PACKAGING_SENTINEL_CLASSES = [
+    "io/merman/Merman.class",
     "io/merman/MermanEngine.class",
+    "io/merman/MermanEngineServices.class",
+    "io/merman/MermanIconPack.class",
+    "io/merman/MermanIconRegistry.class",
+    "io/merman/MermanOperationMetadata.class",
     "io/merman/MermanOperationResult.class",
-    "io/merman/MermanReusableEngine.class",
+    "io/merman/MermanOutputPlan.class",
+    "io/merman/MermanPdfFilterImagesOutputPlan.class",
+    "io/merman/MermanRasterOutputPlan.class",
     "io/merman/MermanResourceOptions.class",
     "io/merman/MermanTextMeasurer.class",
+    "io/merman/MermanUnknownOutputPlan.class",
 ]
 ANDROID_NATIVE_LIBRARIES = [
     "jni/arm64-v8a/libmerman_android_jni.so",
@@ -125,6 +133,19 @@ def cargo_android_clippy_args(
         args.extend(["--features", recipe.feature_argument])
     args.extend(["--target", target])
     return args
+
+
+def flutter_format_paths(root: Path = FLUTTER_ROOT) -> list[str]:
+    generated_root = root / "lib" / "src" / "generated"
+    paths = [
+        path.relative_to(root).as_posix()
+        for source_root in (root / "lib", root / "example", root / "tool")
+        for path in sorted(source_root.rglob("*.dart"))
+        if not path.is_relative_to(generated_root)
+    ]
+    if not paths:
+        raise RuntimeError("Flutter format contract found no handwritten Dart sources")
+    return paths
 
 
 def parse_args() -> argparse.Namespace:
@@ -642,8 +663,17 @@ def _assert_android_javadoc_jar(javadoc_jar: Path) -> None:
         "index.html",
         "merman-android/package-list",
         "merman-android/io.merman/index.html",
+        "merman-android/io.merman/-merman/index.html",
         "merman-android/io.merman/-merman-engine/index.html",
-        "merman-android/io.merman/-merman-reusable-engine/index.html",
+        "merman-android/io.merman/-merman-engine-services/index.html",
+        "merman-android/io.merman/-merman-icon-pack/index.html",
+        "merman-android/io.merman/-merman-icon-registry/index.html",
+        "merman-android/io.merman/-merman-operation-metadata/index.html",
+        "merman-android/io.merman/-merman-operation-result/index.html",
+        "merman-android/io.merman/-merman-output-plan/index.html",
+        "merman-android/io.merman/-merman-raster-output-plan/index.html",
+        "merman-android/io.merman/-merman-pdf-filter-images-output-plan/index.html",
+        "merman-android/io.merman/-merman-unknown-output-plan/index.html",
     }
     with zipfile.ZipFile(javadoc_jar) as archive:
         names = set(archive.namelist())
@@ -765,6 +795,10 @@ def assert_android_instrumentation_smoke_report(
         (
             "MermanSemanticOperationFixtureTest",
             "consumesSharedSemanticOperationFixtures",
+        ),
+        (
+            "MermanSemanticOperationFixtureTest",
+            "consumesGeneratedThirteenOperationMatrix",
         ),
     }
     observed: set[tuple[str, str]] = set()
@@ -897,6 +931,30 @@ def main() -> int:
             print("Android instrumentation smoke completed.")
             return 0
 
+        step("FFI documentation contract")
+        run([sys.executable, str(REPO_ROOT / "scripts" / "ffi_contract_docs.py")])
+
+        step("FFI native timing evidence")
+        run(
+            [
+                sys.executable,
+                str(
+                    REPO_ROOT
+                    / "scripts"
+                    / "measure_ffi_contract_native_build_timing.py"
+                ),
+                "verify",
+                "--report",
+                str(
+                    REPO_ROOT
+                    / "docs"
+                    / "release"
+                    / "evidence"
+                    / "ffi-contract-native-build-timing.json"
+                ),
+            ]
+        )
+
         step("Rust FFI host tests")
         run(
             [
@@ -945,7 +1003,10 @@ def main() -> int:
         run([dart, "run", "ffigen", "--config", "ffigen.yaml"], cwd=FLUTTER_ROOT)
         verify_tracked_generated_file(FLUTTER_GENERATED_ABI)
         run([flutter, "analyze"], cwd=FLUTTER_ROOT)
-        run([dart, "format", "--set-exit-if-changed", "lib", "example", "tool"], cwd=FLUTTER_ROOT)
+        run(
+            [dart, "format", "--set-exit-if-changed", *flutter_format_paths()],
+            cwd=FLUTTER_ROOT,
+        )
         run([dart, "run", "tool/abi3_contract_test.dart"], cwd=FLUTTER_ROOT)
 
         step("Dart FFI native smoke")
