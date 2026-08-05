@@ -1414,6 +1414,9 @@ fn processor_work_units(graph: &LGraph, kind: ProcessorKind) -> Result<usize, Wo
     ) {
         return greedy_cycle_breaker_work_units(graph);
     }
+    if let Some((traversal_passes, reversal_passes)) = edge_reversal_processor_shape(kind) {
+        return edge_reversal_processor_work_units(graph, traversal_passes, reversal_passes);
+    }
     if kind == ProcessorKind::LongEdgeSplitter {
         return long_edge_splitter_work_units(graph);
     }
@@ -1451,6 +1454,34 @@ fn processor_work_units(graph: &LGraph, kind: ProcessorKind) -> Result<usize, Wo
         _ => 1,
     };
     checked_mul(base, multiplier.max(1))
+}
+
+fn edge_reversal_processor_shape(kind: ProcessorKind) -> Option<(usize, usize)> {
+    match kind {
+        // Depth-first first scans incoming edges to find sources, then scans outgoing edges during
+        // the DFS. Model-order has only the outgoing pass. Interactive performs two outgoing
+        // passes and may reverse the same edge in both batches.
+        ProcessorKind::DepthFirstCycleBreaker => Some((2, 1)),
+        ProcessorKind::InteractiveCycleBreaker => Some((2, 2)),
+        ProcessorKind::ModelOrderCycleBreaker => Some((1, 1)),
+        ProcessorKind::EdgeAndLayerConstraintEdgeReverser => Some((2, 1)),
+        ProcessorKind::ReversedEdgeRestorer => Some((1, 1)),
+        _ => None,
+    }
+}
+
+fn edge_reversal_processor_work_units(
+    graph: &LGraph,
+    traversal_passes: usize,
+    reversal_passes: usize,
+) -> Result<usize, WorkError> {
+    let base = local_graph_work_units(graph)?;
+    let (_, adjacency) = graph_port_and_adjacency_work_units(graph)?;
+    checked_sum([
+        base,
+        checked_mul(adjacency, traversal_passes)?,
+        checked_mul(edge_reversal_work_units(graph)?, reversal_passes)?,
+    ])
 }
 
 fn end_label_sorter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
@@ -1858,46 +1889,34 @@ fn graph_port_and_adjacency_work_units(graph: &LGraph) -> Result<(usize, usize),
 }
 
 fn edge_reversal_adjacency_work_units(graph: &LGraph) -> Result<usize, WorkError> {
-    let mut port_incidence = Vec::with_capacity(graph.layerless_nodes.len());
-    let mut collector_incidence = Vec::with_capacity(graph.layerless_nodes.len());
+    // Compute endpoint degrees in owner order without materializing per-node/per-port scratch
+    // arrays. This estimator runs before the processor budget check; allocating incidence caches
+    // here would let a rejected request consume uncharged input-sized memory.
+    let mut total = 0usize;
     for node in &graph.layerless_nodes {
-        let mut node_port_incidence = Vec::with_capacity(node.ports.len());
-        let mut node_collector_incidence = 0usize;
+        let collector_incidence = node
+            .ports
+            .iter()
+            .filter(|port| port.collector_type.is_some())
+            .try_fold(0usize, |total, port| {
+                checked_add(
+                    total,
+                    checked_add(port.incoming_edges.len(), port.outgoing_edges.len())?,
+                )
+            })?;
         for port in &node.ports {
             let incidence = checked_add(port.incoming_edges.len(), port.outgoing_edges.len())?;
-            node_port_incidence.push(incidence);
-            if port.collector_type.is_some() {
-                node_collector_incidence = checked_add(node_collector_incidence, incidence)?;
-            }
+            let degree = if port.collector_type.is_some() {
+                collector_incidence
+            } else {
+                incidence
+            };
+            // Every adjacency entry is one endpoint of one reversal. `reverse_edge` performs a
+            // linear search plus a shifting removal, hence the factor of two.
+            total = checked_add(total, checked_mul(incidence, degree)?)?;
         }
-        port_incidence.push(node_port_incidence);
-        collector_incidence.push(node_collector_incidence);
     }
-
-    let mut total = 0usize;
-    for edge in &graph.edges {
-        let source_port = &graph.layerless_nodes[edge.source.node].ports[edge.source.port];
-        let target_port = &graph.layerless_nodes[edge.target.node].ports[edge.target.port];
-        let source_degree = if source_port.collector_type.is_some() {
-            collector_incidence[edge.source.node]
-        } else {
-            port_incidence[edge.source.node][edge.source.port]
-        };
-        let target_degree = if target_port.collector_type.is_some() {
-            collector_incidence[edge.target.node]
-        } else {
-            port_incidence[edge.target.node][edge.target.port]
-        };
-        // `reverse_edge` performs a linear search and then a shifting `Vec::remove` at both
-        // endpoints. A normal port can only exchange incoming/outgoing incidence with itself;
-        // collector adaptation can exchange incidence across the node's collector pair. Charge
-        // those stable local bounds without turning unrelated per-edge ports into a false E^2.
-        total = checked_add(
-            total,
-            checked_mul(checked_add(source_degree, target_degree)?, 2)?,
-        )?;
-    }
-    Ok(total)
+    checked_mul(total, 2)
 }
 
 fn edge_reversal_work_units(graph: &LGraph) -> Result<usize, WorkError> {
@@ -3002,11 +3021,15 @@ mod tests {
     #[test]
     fn superlinear_processors_enforce_transactional_budget_boundaries() {
         let cycle_graph = bidirected_cycle_graph(4);
-        assert_processor_budget_boundaries(&cycle_graph, ProcessorKind::GreedyCycleBreaker);
-        assert_processor_budget_boundaries(
-            &cycle_graph,
+        for kind in [
+            ProcessorKind::GreedyCycleBreaker,
             ProcessorKind::GreedyModelOrderCycleBreaker,
-        );
+            ProcessorKind::DepthFirstCycleBreaker,
+            ProcessorKind::InteractiveCycleBreaker,
+            ProcessorKind::ModelOrderCycleBreaker,
+        ] {
+            assert_processor_budget_boundaries(&cycle_graph, kind);
+        }
 
         let long_edge_graph = parallel_long_edge_graph(3);
         assert_processor_budget_boundaries(&long_edge_graph, ProcessorKind::LongEdgeSplitter);
@@ -3280,6 +3303,35 @@ mod tests {
                 assert_eq!(adjacency_work, previous * 4);
             }
             previous = Some(adjacency_work);
+        }
+    }
+
+    #[test]
+    fn non_greedy_reversal_work_tracks_shared_port_removal_amplification() {
+        for parallel_edge_count in [8usize, 16, 32, 64] {
+            let graph = shared_port_cycle_graph(parallel_edge_count);
+            let base = local_graph_work_units(&graph).unwrap();
+            let (_, adjacency) = graph_port_and_adjacency_work_units(&graph).unwrap();
+            let reversal = edge_reversal_work_units(&graph).unwrap();
+
+            for kind in [
+                ProcessorKind::DepthFirstCycleBreaker,
+                ProcessorKind::InteractiveCycleBreaker,
+                ProcessorKind::ModelOrderCycleBreaker,
+                ProcessorKind::EdgeAndLayerConstraintEdgeReverser,
+                ProcessorKind::ReversedEdgeRestorer,
+            ] {
+                let (traversal_passes, reversal_passes) =
+                    edge_reversal_processor_shape(kind).expect("reversal processor shape");
+                assert_eq!(
+                    processor_work_units(&graph, kind),
+                    checked_sum([
+                        base,
+                        checked_mul(adjacency, traversal_passes).unwrap(),
+                        checked_mul(reversal, reversal_passes).unwrap(),
+                    ])
+                );
+            }
         }
     }
 
