@@ -21,7 +21,8 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   await openPlayground(page);
   await waitForPreviewSvg(page);
 
-  await page.getByRole("button", { name: "Bench", exact: true }).click();
+  const benchButton = page.getByRole("button", { name: "Bench", exact: true });
+  await benchButton.click();
   const dialog = page.getByRole("dialog", { name: "Browser Benchmark" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(
@@ -99,9 +100,11 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   expect(requests).toHaveLength(requestCount);
 
   await dialog.getByRole("button", { name: "Close benchmark" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(benchButton).toBeFocused();
   const rerunSource = "flowchart LR\n  Before --> After";
   await replaceEditorSource(page, rerunSource);
-  await page.getByRole("button", { name: "Bench", exact: true }).click();
+  await benchButton.click();
   await expect(dialog.getByRole("heading", { name: "Complete" })).toBeVisible();
   await expect(dialog.getByText("Source changed", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Run again" }).click();
