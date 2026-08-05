@@ -16,7 +16,7 @@ Do not use these packages for Node.js or SSR. They require a browser main-thread
 | `@mermanjs/web-ascii` | Supported ASCII diagram output. | Admitted slim release surface. |
 | `@mermanjs/web-render` | Complete SVG-only workflow with both layouts and math. | Admitted complete rendering surface. |
 
-Public packages use one version and one release contract. Workflow-specific slim packages are published only when their independently measured installed size is at least 15% below the complete package. The complete SVG-only renderer is admitted for its distinct capability contract, with its smaller artifact recorded separately. The Playground deliberately uses `@mermanjs/web` for both editor and renderer until its two-realm measurement proves that a split improves the real user path.
+Public packages use one version and one release contract. Workflow-specific slim packages are published only when their independently measured installed size is at least 15% below the complete package. The complete SVG-only renderer is admitted for its distinct capability contract, with its smaller artifact recorded separately. The Playground uses `@mermanjs/web` in both the main renderer and editor Worker because its same-revision whole-site R16 measurement found that adding the editor artifact did not lower cold transfer or preserve peak memory. That application-specific result does not change the supported `@mermanjs/web-editor` package surface.
 
 ## Browser Quick Start
 

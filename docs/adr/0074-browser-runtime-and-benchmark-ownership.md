@@ -180,10 +180,13 @@ headless and foreground browsers without letting the hidden benchmark UI affect 
 ### 6. Editor Intelligence Belongs To A Dedicated Worker
 
 The Playground loads local Monaco code and its editor worker; it does not use Monaco's default CDN
-loader. Merman language intelligence runs in a dedicated module Worker using the editor artifact
-selected by ADR-0076 (`@mermanjs/web-editor`, backed by the `web-editor` artifact profile).
-The selected editor artifact includes invariant language semantics, analysis, and editor APIs but
-excludes SVG rendering, ASCII, layout, math, and system adapters.
+loader. Merman language intelligence runs in a dedicated module Worker. A same-revision R16
+whole-site measurement compares the full package in both realms with a dedicated `web-editor`
+Worker, including exact 35-family/11-query results, cold and warm transfer, startup latency, and
+cross-origin-isolated peak memory. The measured choice is the complete `@mermanjs/web` artifact:
+the main renderer already requires it, while adding the editor WASM creates a second compiled
+artifact and does not satisfy the lower-cold-bytes/no-memory-regression selection rule. The
+measurement remains an explicit on-demand architectural receipt rather than a browser CI gate.
 
 The editor Worker owns one analyzed document URI and monotonically increasing version. `didOpen`,
 `didChange`, query, versioned result validation, and disposal cross its typed channel. Diagnostics,

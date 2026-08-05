@@ -11,6 +11,7 @@ import type {
   EditorWorkspaceEdit,
 } from "@mermanjs/web";
 import type {
+  EditorDocumentIdentity,
   EditorDocumentSnapshot,
   EditorWorkerQuery,
 } from "@/src/editor/protocol";
@@ -19,7 +20,7 @@ import {
   type EditorCancellationToken,
   type EditorLanguageIdentity,
   type MermanLanguageWorkerClient,
-} from "../editor/worker-client";
+} from "../editor/worker-client.ts";
 
 export const MERMAID_LANGUAGE_ID = "mermaid";
 export const MERMAID_DOCUMENT_URI = "file:///merman/playground.mmd";
@@ -42,7 +43,7 @@ export interface MermaidLanguageRequestRejection {
 
 export interface MermaidLanguageCallbacks {
   readonly onRequestRejected?: (
-    rejection: MermaidLanguageRequestRejection
+    rejection: MermaidLanguageRequestRejection,
   ) => void;
   readonly onUnavailable?: (error: Error) => void;
 }
@@ -69,7 +70,7 @@ export function registerMermaidLanguage(
   monaco: typeof import("monaco-editor"),
   client: MermanLanguageWorkerClient,
   identity: EditorLanguageIdentity,
-  callbacks: MermaidLanguageCallbacks = {}
+  callbacks: MermaidLanguageCallbacks = {},
 ): MermaidLanguageRegistration {
   ensureMermaidLanguageRegistered(monaco);
   const disposables: IDisposable[] = [];
@@ -91,7 +92,7 @@ export function registerMermaidLanguage(
   const rejectRename = (
     message: string,
     detail: string | null = null,
-    nativeCode: string | null = null
+    nativeCode: string | null = null,
   ) => {
     callbacks.onRequestRejected?.({
       detail,
@@ -106,7 +107,7 @@ export function registerMermaidLanguage(
     model: editor.ITextModel,
     request: Query,
     token: EditorCancellationToken | undefined,
-    fallback: Fallback
+    fallback: Fallback,
   ) => queryOr(client, model, request, token, fallback, notifyUnavailable);
   const legend = identity.legend;
 
@@ -121,17 +122,17 @@ export function registerMermaidLanguage(
             position: toEditorPosition(position),
           },
           token,
-          null
+          null,
         );
         if (!completions) return { suggestions: [] };
         return {
           incomplete: completions.is_incomplete,
           suggestions: completions.items.map((item) =>
-            toEditorCompletionItem(monaco, item, position)
+            toEditorCompletionItem(monaco, item, position),
           ),
         };
       },
-    })
+    }),
   );
 
   disposables.push(
@@ -141,7 +142,7 @@ export function registerMermaidLanguage(
           model,
           { kind: "hover", position: toEditorPosition(position) },
           token,
-          null
+          null,
         );
         if (!hover) return null;
         return {
@@ -149,32 +150,27 @@ export function registerMermaidLanguage(
           contents: [{ value: hover.contents.value }],
         };
       },
-    })
+    }),
   );
 
   disposables.push(
     monaco.languages.registerCodeActionProvider(MERMAID_LANGUAGE_ID, {
       async provideCodeActions(model, _range, context, token) {
-        const actions = await query(
-          model,
-          { kind: "codeActions" },
-          token,
-          []
-        );
+        const actions = await query(model, { kind: "codeActions" }, token, []);
         return {
           actions: actions
             .filter((action) =>
               action.diagnostics.some((diagnostic) =>
                 context.markers.some((marker) =>
-                  markerMatchesDiagnostic(monaco, model, marker, diagnostic)
-                )
-              )
+                  markerMatchesDiagnostic(monaco, model, marker, diagnostic),
+                ),
+              ),
             )
             .map((action) => toMonacoCodeAction(monaco, model, action)),
           dispose() {},
         };
       },
-    })
+    }),
   );
 
   disposables.push(
@@ -184,13 +180,11 @@ export function registerMermaidLanguage(
           model,
           { kind: "documentSymbols" },
           token,
-          []
+          [],
         );
-        return symbols.map((symbol) =>
-          toMonacoDocumentSymbol(monaco, symbol)
-        );
+        return symbols.map((symbol) => toMonacoDocumentSymbol(monaco, symbol));
       },
-    })
+    }),
   );
 
   disposables.push(
@@ -200,13 +194,11 @@ export function registerMermaidLanguage(
           model,
           { kind: "definition", position: toEditorPosition(position) },
           token,
-          null
+          null,
         );
-        return location
-          ? toMonacoLocation(monaco, model, location)
-          : null;
+        return location ? toMonacoLocation(monaco, model, location) : null;
       },
-    })
+    }),
   );
 
   disposables.push(
@@ -220,13 +212,13 @@ export function registerMermaidLanguage(
             includeDeclaration: context.includeDeclaration,
           },
           token,
-          []
+          [],
         );
         return locations.map((location) =>
-          toMonacoLocation(monaco, model, location)
+          toMonacoLocation(monaco, model, location),
         );
       },
-    })
+    }),
   );
 
   disposables.push(
@@ -236,7 +228,7 @@ export function registerMermaidLanguage(
           model,
           { kind: "prepareRename", position: toEditorPosition(position) },
           token,
-          null
+          null,
         );
         return prepare
           ? {
@@ -249,13 +241,13 @@ export function registerMermaidLanguage(
         let edit: EditorWorkspaceEdit | null;
         try {
           edit = await client.query(
-            snapshotForModel(model),
+            identityForModel(model),
             {
               kind: "rename",
               position: toEditorPosition(position),
               newName,
             },
-            token
+            token,
           );
         } catch (error) {
           if (isExpectedDiscard(error)) {
@@ -282,7 +274,7 @@ export function registerMermaidLanguage(
           throw error;
         }
       },
-    })
+    }),
   );
 
   disposables.push(
@@ -299,7 +291,7 @@ export function registerMermaidLanguage(
             model,
             { kind: "semanticTokens" },
             token,
-            new Uint32Array()
+            new Uint32Array(),
           );
           return {
             data: tokens,
@@ -307,20 +299,21 @@ export function registerMermaidLanguage(
           };
         },
         releaseDocumentSemanticTokens() {},
-      }
-    )
+      },
+    ),
   );
 
   return {
     async bindModel(model) {
-      if (disposed) throw new Error("Mermaid language registration is disposed.");
+      if (disposed)
+        throw new Error("Mermaid language registration is disposed.");
       if (managedModel) {
         throw new Error("Mermaid language registration already owns a model.");
       }
       const snapshot = snapshotForModel(model);
       if (snapshot.uri !== MERMAID_DOCUMENT_URI) {
         throw new Error(
-          `Mermaid editor model must use ${MERMAID_DOCUMENT_URI}; received ${snapshot.uri}.`
+          `Mermaid editor model must use ${MERMAID_DOCUMENT_URI}; received ${snapshot.uri}.`,
         );
       }
       managedModel = model;
@@ -335,12 +328,12 @@ export function registerMermaidLanguage(
       let diagnosticTimer: ReturnType<typeof setTimeout> | null = null;
       let bindingDisposed = false;
       const publishDiagnostics = async () => {
-        const current = snapshotForModel(model);
+        const current = identityForModel(model);
         const result = await query(
           model,
           { kind: "diagnostics" },
           undefined,
-          null
+          null,
         );
         if (
           result &&
@@ -406,7 +399,7 @@ export function registerMermaidLanguage(
 }
 
 export function ensureMermaidLanguageRegistered(
-  monaco: typeof import("monaco-editor")
+  monaco: typeof import("monaco-editor"),
 ): void {
   if (configuredMonacoInstances.has(monaco)) return;
   if (
@@ -419,7 +412,7 @@ export function ensureMermaidLanguageRegistered(
   }
   monaco.languages.setLanguageConfiguration(
     MERMAID_LANGUAGE_ID,
-    mermaidLanguageConfig
+    mermaidLanguageConfig,
   );
   configuredMonacoInstances.add(monaco);
 }
@@ -430,10 +423,10 @@ async function queryOr<Query extends EditorWorkerQuery, Fallback>(
   query: Query,
   token: EditorCancellationToken | undefined,
   fallback: Fallback,
-  onFailure: (error: unknown) => void
+  onFailure: (error: unknown) => void,
 ) {
   try {
-    return await client.query(snapshotForModel(model), query, token);
+    return await client.query(identityForModel(model), query, token);
   } catch (error) {
     if (isExpectedDiscard(error)) return fallback;
     if (isRequestLocalWorkerError(error)) return fallback;
@@ -443,39 +436,45 @@ async function queryOr<Query extends EditorWorkerQuery, Fallback>(
 }
 
 function isRequestLocalWorkerError(
-  error: unknown
+  error: unknown,
 ): error is EditorWorkerProtocolError {
   return (
     error instanceof EditorWorkerProtocolError &&
-    error.code === "OPERATION_REJECTED"
+    (error.code === "OPERATION_REJECTED" || error.code === "QUERY_FAILED")
   );
 }
 
 function snapshotForModel(model: editor.ITextModel): EditorDocumentSnapshot {
   return {
-    uri: model.uri.toString(),
-    version: model.getVersionId(),
+    ...identityForModel(model),
     source: model.getValue(),
   };
 }
 
-function toEditorPosition(position: {
-  lineNumber: number;
-  column: number;
-}): { line: number; character: number } {
+function identityForModel(model: editor.ITextModel): EditorDocumentIdentity {
+  return {
+    uri: model.uri.toString(),
+    version: model.getVersionId(),
+  };
+}
+
+function toEditorPosition(position: { lineNumber: number; column: number }): {
+  line: number;
+  character: number;
+} {
   return { line: position.lineNumber - 1, character: position.column - 1 };
 }
 
 function toEditorCompletionItem(
   monaco: typeof import("monaco-editor"),
   item: EditorCompletionItem,
-  position: { lineNumber: number; column: number }
+  position: { lineNumber: number; column: number },
 ): languages.CompletionItem {
   const fallbackRange = new monaco.Range(
     position.lineNumber,
     position.column,
     position.lineNumber,
-    position.column
+    position.column,
   );
   return {
     label: item.label_details
@@ -500,7 +499,7 @@ function toEditorCompletionItem(
 
 function completionKind(
   monaco: typeof import("monaco-editor"),
-  kind: EditorCompletionItem["kind"]
+  kind: EditorCompletionItem["kind"],
 ): languages.CompletionItemKind {
   switch (kind) {
     case "class":
@@ -517,13 +516,13 @@ function completionKind(
 function toMonacoCodeAction(
   monaco: typeof import("monaco-editor"),
   model: editor.ITextModel,
-  action: EditorCodeAction
+  action: EditorCodeAction,
 ): languages.CodeAction {
   return {
     title: action.title,
     kind: action.kind,
     diagnostics: action.diagnostics.map((diagnostic) =>
-      toMarkerData(monaco, model, diagnostic)
+      toMarkerData(monaco, model, diagnostic),
     ),
     edit: toMonacoWorkspaceEdit(monaco, model, action.edit),
     isPreferred: action.isPreferred,
@@ -533,14 +532,14 @@ function toMonacoCodeAction(
 function toMonacoWorkspaceEdit(
   monaco: typeof import("monaco-editor"),
   model: editor.ITextModel,
-  edit: EditorWorkspaceEdit
+  edit: EditorWorkspaceEdit,
 ): languages.WorkspaceEdit {
   const managedUri = model.uri.toString();
   const entries = Object.entries(edit.changes);
   const unmanaged = entries.find(([uri]) => uri !== managedUri);
   if (unmanaged) {
     throw new UnmanagedDocumentEditError(
-      `Rename is limited to the current document; received an edit for ${unmanaged[0]}.`
+      `Rename is limited to the current document; received an edit for ${unmanaged[0]}.`,
     );
   }
   return {
@@ -552,7 +551,7 @@ function toMonacoWorkspaceEdit(
           range: toMonacoRange(monaco, textEdit.range),
           text: textEdit.newText,
         },
-      }))
+      })),
     ),
   };
 }
@@ -560,11 +559,11 @@ function toMonacoWorkspaceEdit(
 function toMonacoLocation(
   monaco: typeof import("monaco-editor"),
   model: editor.ITextModel,
-  location: EditorLocation
+  location: EditorLocation,
 ): languages.Location {
   if (location.uri !== model.uri.toString()) {
     throw new UnmanagedDocumentEditError(
-      `Navigation is limited to the current document; received ${location.uri}.`
+      `Navigation is limited to the current document; received ${location.uri}.`,
     );
   }
   return { uri: model.uri, range: toMonacoRange(monaco, location.range) };
@@ -572,7 +571,7 @@ function toMonacoLocation(
 
 function toMonacoDocumentSymbol(
   monaco: typeof import("monaco-editor"),
-  symbol: EditorDocumentSymbol
+  symbol: EditorDocumentSymbol,
 ): languages.DocumentSymbol {
   return {
     name: symbol.name,
@@ -582,7 +581,7 @@ function toMonacoDocumentSymbol(
     range: toMonacoRange(monaco, symbol.range),
     selectionRange: toMonacoRange(monaco, symbol.selectionRange),
     children: symbol.children.map((child) =>
-      toMonacoDocumentSymbol(monaco, child)
+      toMonacoDocumentSymbol(monaco, child),
     ),
   };
 }
@@ -590,18 +589,18 @@ function toMonacoDocumentSymbol(
 function updateMermaidEditorMarkers(
   monaco: typeof import("monaco-editor"),
   model: editor.ITextModel,
-  diagnostics: EditorDiagnostic[]
+  diagnostics: EditorDiagnostic[],
 ): void {
   monaco.editor.setModelMarkers(
     model,
     MARKER_OWNER,
-    diagnostics.map((diagnostic) => toMarkerData(monaco, model, diagnostic))
+    diagnostics.map((diagnostic) => toMarkerData(monaco, model, diagnostic)),
   );
 }
 
 function clearMermaidMarkers(
   monaco: typeof import("monaco-editor"),
-  model: editor.ITextModel
+  model: editor.ITextModel,
 ): void {
   monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
 }
@@ -609,7 +608,7 @@ function clearMermaidMarkers(
 function toMarkerData(
   monaco: typeof import("monaco-editor"),
   model: editor.ITextModel,
-  diagnostic: EditorDiagnostic
+  diagnostic: EditorDiagnostic,
 ): editor.IMarkerData {
   const range = toMonacoDisplayRange(monaco, diagnostic.range);
   const relatedRanges = diagnostic.related.map((related) => ({
@@ -628,14 +627,16 @@ function toMarkerData(
       typeof diagnostic.code === "number"
         ? String(diagnostic.code)
         : diagnostic.code,
-    relatedInformation: relatedRanges.map(({ related, range: relatedRange }) => ({
-      resource: model.uri,
-      message: related.message,
-      startLineNumber: relatedRange.startLineNumber,
-      startColumn: relatedRange.startColumn,
-      endLineNumber: relatedRange.endLineNumber,
-      endColumn: relatedRange.endColumn,
-    })),
+    relatedInformation: relatedRanges.map(
+      ({ related, range: relatedRange }) => ({
+        resource: model.uri,
+        message: related.message,
+        startLineNumber: relatedRange.startLineNumber,
+        startColumn: relatedRange.startColumn,
+        endLineNumber: relatedRange.endLineNumber,
+        endColumn: relatedRange.endColumn,
+      }),
+    ),
   };
 }
 
@@ -643,7 +644,7 @@ function markerMatchesDiagnostic(
   monaco: typeof import("monaco-editor"),
   model: editor.ITextModel,
   marker: editor.IMarkerData,
-  diagnostic: EditorDiagnostic
+  diagnostic: EditorDiagnostic,
 ): boolean {
   const expected = toMarkerData(monaco, model, diagnostic);
   return (
@@ -664,19 +665,19 @@ function normalizeMarkerCode(code: editor.IMarkerData["code"]): string {
 
 function toMonacoRange(
   monaco: typeof import("monaco-editor"),
-  range: EditorRange
+  range: EditorRange,
 ): InstanceType<typeof monaco.Range> {
   return new monaco.Range(
     range.start.line + 1,
     range.start.character + 1,
     range.end.line + 1,
-    Math.max(range.end.character + 1, 1)
+    Math.max(range.end.character + 1, 1),
   );
 }
 
 function toMonacoDisplayRange(
   monaco: typeof import("monaco-editor"),
-  range: EditorRange
+  range: EditorRange,
 ): InstanceType<typeof monaco.Range> {
   const monacoRange = toMonacoRange(monaco, range);
   if (
@@ -687,7 +688,7 @@ function toMonacoDisplayRange(
       monacoRange.startLineNumber,
       monacoRange.startColumn,
       monacoRange.endLineNumber,
-      monacoRange.endColumn + 1
+      monacoRange.endColumn + 1,
     );
   }
   return monacoRange;
@@ -695,7 +696,7 @@ function toMonacoDisplayRange(
 
 function diagnosticSeverity(
   monaco: typeof import("monaco-editor"),
-  severity: EditorDiagnostic["severity"]
+  severity: EditorDiagnostic["severity"],
 ): (typeof monaco.MarkerSeverity)[keyof typeof monaco.MarkerSeverity] {
   switch (severity) {
     case "hint":
@@ -711,7 +712,7 @@ function diagnosticSeverity(
 
 function symbolKind(
   monaco: typeof import("monaco-editor"),
-  kind: EditorSymbolKind
+  kind: EditorSymbolKind,
 ): languages.SymbolKind {
   switch (kind) {
     case "class":

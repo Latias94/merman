@@ -113,7 +113,12 @@ Evidence can be downloaded locally as versioned JSON; it is not uploaded.
 The Playground configures a local Monaco instance before mounting the editor. Monaco's editor
 worker and the Merman language Worker are local module workers; no CDN loader is used.
 
-The Merman Worker imports `@mermanjs/web-editor` and owns one disposable `BrowserEditorSession`.
+The Merman Worker imports the selected complete `@mermanjs/web` artifact and owns one disposable
+`BrowserEditorSession`. The dedicated `@mermanjs/web-editor` package remains a supported public
+surface, but the Playground does not load it in addition to the full renderer: same-revision
+whole-site evidence showed that the split did not lower cold transfer or preserve peak memory under
+the R16 rule. The full/editor comparison and its exact 35-family/11-query semantic matrix are
+on-demand architecture evidence, not a normal browser gate.
 `didOpen` constructs its analyzed document, `didChange` atomically replaces the snapshot with a
 newer source/version, and queries do not resend or compare source text. Diagnostics, detection,
 completions, hover, code actions, symbols, definition, references, rename, and semantic tokens all

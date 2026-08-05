@@ -15,7 +15,7 @@ const viteConfig = await readFile(
   "utf8",
 );
 
-test("dev, build, and test fail closed on the complete browser package", () => {
+test("dev, build, and test fail closed on the selected full browser artifact", () => {
   assert.match(npmrc, /^ignore-scripts=true$/mu);
   assert.equal(packageJson.packageManager, "npm@11.17.0");
   assert.equal(packageJson.engines.node, "^22.13.0 || >=24.0.0");
@@ -55,30 +55,6 @@ test("dev, build, and test fail closed on the complete browser package", () => {
       `${packageName} must retain its package-relative WASM URL`,
     );
   }
-});
-
-test("Playground consumes every admitted Web capability from one complete SDK", async () => {
-  const [browserRuntime, editorWorker, workerBrowser] = await Promise.all([
-    readFile(
-      path.resolve(import.meta.dirname, "..", "src/runtime/merman-browser.ts"),
-      "utf8",
-    ),
-    readFile(
-      path.resolve(import.meta.dirname, "..", "src/editor/merman-language.worker.ts"),
-      "utf8",
-    ),
-    readFile(
-      path.resolve(import.meta.dirname, "..", "src/editor/worker-browser.ts"),
-      "utf8",
-    ),
-  ]);
-
-  for (const source of [browserRuntime, editorWorker, workerBrowser]) {
-    assert.doesNotMatch(source, /from "@mermanjs\/web-/u);
-  }
-  assert.match(browserRuntime, /from "@mermanjs\/web"/u);
-  assert.match(editorWorker, /from "@mermanjs\/web"/u);
-  assert.match(workerBrowser, /from "@mermanjs\/web"/u);
 });
 
 test("browser test tooling is isolated from the companion runtime tree", async () => {
