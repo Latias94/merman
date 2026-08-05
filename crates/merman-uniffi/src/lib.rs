@@ -75,7 +75,7 @@ impl MermanError {
         let resource = error
             .resource_details()
             .map(|details| MermanResourceErrorDetails {
-                cause: details.cause.to_string(),
+                cause: details.cause.as_str().to_string(),
                 limit_id: details.limit_id.to_string(),
                 phase: details.phase.to_string(),
                 actual: details.actual,
@@ -2513,7 +2513,7 @@ mod tests {
         );
 
         let error = MermanError::from_binding(BindingError::resource_limit_with_cause(
-            "arithmetic_overflow",
+            merman_bindings_core::BindingResourceLimitCause::ArithmeticOverflow,
             "layout_model",
             "max_layout_work_units",
             u64::MAX,

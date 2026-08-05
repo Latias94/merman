@@ -1518,7 +1518,7 @@ mod tests {
         assert_eq!(payload["details"]["resource"]["cause"], "ceiling");
 
         let failure = native_failure_from_binding(BindingError::resource_limit_with_cause(
-            "arithmetic_overflow",
+            merman_bindings_core::BindingResourceLimitCause::ArithmeticOverflow,
             "layout_model",
             "max_layout_work_units",
             u64::MAX,

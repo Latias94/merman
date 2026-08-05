@@ -839,7 +839,7 @@ mod tests {
         assert_eq!(json["details"]["resource"]["cause"], "ceiling");
 
         let err = BindingError::resource_limit_with_cause(
-            "arithmetic_overflow",
+            merman_bindings_core::BindingResourceLimitCause::ArithmeticOverflow,
             "layout_model",
             "max_layout_work_units",
             u64::MAX,
