@@ -46,20 +46,25 @@ export default defineConfig({
   projects: [
     {
       name: "chromium-desktop",
+      testIgnore: [
+        /cross-browser\.smoke\.spec\.ts/u,
+        /mobile\.interactions\.spec\.ts/u,
+      ],
       use: { ...devices["Desktop Chrome"] },
     },
     {
-      name: "chromium-mobile",
+      name: "chromium-mobile-interactions",
+      testMatch: /mobile\.interactions\.spec\.ts/u,
       use: { ...devices["Pixel 7"] },
     },
     {
       name: "firefox-smoke",
-      grep: /@smoke/,
+      testMatch: /cross-browser\.smoke\.spec\.ts/u,
       use: { ...devices["Desktop Firefox"] },
     },
     {
       name: "webkit-smoke",
-      grep: /@smoke/,
+      testMatch: /cross-browser\.smoke\.spec\.ts/u,
       use: { ...devices["Desktop Safari"] },
     },
   ],

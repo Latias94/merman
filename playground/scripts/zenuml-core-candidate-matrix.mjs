@@ -67,9 +67,9 @@ const FIXTURE_COUNT_ADMISSION_SUMMARIES = Object.freeze({
 });
 const BROWSER_ADMISSION_SUMMARIES = Object.freeze({
   "execution-isolation":
-    "Desktop and mobile Chromium prove opaque execution, authenticated containment, navigation poisoning, failure replacement, and strict ZenUML parent publication.",
+    "Desktop Chromium proves opaque execution, authenticated containment, navigation poisoning, failure replacement, and strict ZenUML parent publication.",
   security:
-    "Desktop and mobile Chromium prove ambient authority denial, zero server egress, and bounded ephemeral storage with machine-recorded probe observations.",
+    "Desktop Chromium proves ambient authority denial, zero server egress, and bounded ephemeral storage with machine-recorded probe observations.",
 });
 const attestationArtifactSchemaVersion = 1;
 const maxAttestationArtifactBytes = 64 * 1024;

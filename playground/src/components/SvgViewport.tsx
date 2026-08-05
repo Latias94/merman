@@ -372,25 +372,35 @@ export function SvgViewport({
     });
   }, [fitToView]);
 
+  const disableAutoFit = useCallback(() => {
+    cancelScheduledFrame(fitFrameRef);
+    stateRef.current.autoFit = false;
+  }, []);
+
   const zoomBy = useCallback(
     (factor: number) => {
+      disableAutoFit();
       const state = stateRef.current;
-      state.autoFit = false;
       state.zoom = clampZoom(state.zoom * factor, state.fitZoom);
       scheduleTransform();
     },
-    [scheduleTransform]
+    [disableAutoFit, scheduleTransform]
   );
 
   const reset = useCallback(() => {
+    disableAutoFit();
     cancelGesture(true);
     const state = stateRef.current;
-    state.autoFit = false;
     state.position = { x: 0, y: 0 };
     state.zoom = 1;
     scheduleTransform();
     schedulePresentationReady();
-  }, [cancelGesture, schedulePresentationReady, scheduleTransform]);
+  }, [
+    cancelGesture,
+    disableAutoFit,
+    schedulePresentationReady,
+    scheduleTransform,
+  ]);
 
   useEffect(() => {
     return internalController(controller).connect({
@@ -535,12 +545,12 @@ export function SvgViewport({
       } catch {
         // Synthetic accessibility tooling may not create a capturable pointer.
       }
+      disableAutoFit();
       const state = stateRef.current;
-      state.autoFit = false;
       state.pointers.set(event.pointerId, eventPoint(event));
       beginGesture();
     },
-    [beginGesture]
+    [beginGesture, disableAutoFit]
   );
 
   const handlePointerMove = useCallback(
@@ -603,15 +613,15 @@ export function SvgViewport({
   const handleWheel = useCallback(
     (event: globalThis.WheelEvent) => {
       event.preventDefault();
+      disableAutoFit();
       const state = stateRef.current;
-      state.autoFit = false;
       state.zoom = clampZoom(
         state.zoom * Math.exp(-event.deltaY * 0.001),
         state.fitZoom
       );
       scheduleTransform();
     },
-    [scheduleTransform]
+    [disableAutoFit, scheduleTransform]
   );
 
   useEffect(() => {

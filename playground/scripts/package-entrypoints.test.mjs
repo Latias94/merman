@@ -121,8 +121,18 @@ test("browser test tooling is isolated from the companion runtime tree", async (
   );
   assert.match(browserTestsNpmrc, /^ignore-scripts=true$/mu);
   assert.match(packageJson.scripts["test:browser:typecheck"], /--prefix tests/u);
-  assert.match(packageJson.scripts["test:browser:chromium"], /--prefix tests/u);
-  assert.match(packageJson.scripts["test:browser:smoke:built"], /--prefix tests/u);
+  assert.match(
+    packageJson.scripts["test:browser:chromium:desktop:built"],
+    /--prefix tests/u,
+  );
+  assert.match(
+    packageJson.scripts["test:browser:mobile:built"],
+    /--prefix tests/u,
+  );
+  assert.match(
+    packageJson.scripts["test:browser:smoke:non-chromium:built"],
+    /--prefix tests/u,
+  );
 
   for (const packagePath of [
     "node_modules/@playwright/test",

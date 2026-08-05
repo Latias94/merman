@@ -166,7 +166,6 @@ async function runBrowserAdmission(workspaceRoot) {
       "test",
       "benchmark.realm.spec.ts",
       "--project=chromium-desktop",
-      "--project=chromium-mobile",
       `--reporter=${reporterPath}`,
     ],
     {

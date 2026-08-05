@@ -4,7 +4,7 @@
   "command": "npm run test:zenuml-browser-admission",
   "probeContract": {
     "path": "tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json",
-    "sha256": "9cf221b645c46cc0358c20f828f67ee51ebb5d687f7ab69e1edcb95fb5f87f40"
+    "sha256": "fdd5bf5a83571ef6aa897be15d3c61d62afca4e27ad01cf3fb54dea41e59e4b9"
   },
   "sourceFiles": [
     {
@@ -33,7 +33,7 @@
     },
     {
       "path": "playground/scripts/zenuml-browser-admission.mjs",
-      "sha256": "7f62f111dd2f0e44ae7db3d0cc0fa55086b20eb9d9dc39096981509d9af246b1"
+      "sha256": "768d1c3879fc829adc47393f9262f66f156d5bf53a69f0c2ab476da87e16e4e1"
     },
     {
       "path": "playground/src/benchmark/realm/bootstrap.ts",
@@ -85,14 +85,13 @@
     }
   ],
   "projects": [
-    "chromium-desktop",
-    "chromium-mobile"
+    "chromium-desktop"
   ],
   "executionIsolation": {
-    "projectCount": 2,
+    "projectCount": 1,
     "probeCount": 13,
-    "observationCount": 26,
-    "passedObservationCount": 26,
+    "observationCount": 13,
+    "passedObservationCount": 13,
     "probes": [
       {
         "id": "sandbox-allows-scripts-only",
@@ -100,13 +99,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
             "expected": true,
             "observed": true,
@@ -124,13 +116,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -140,13 +125,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
             "expected": true,
             "observed": true,
@@ -164,13 +142,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -180,13 +151,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
             "expected": true,
             "observed": true,
@@ -204,13 +168,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-tree",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -220,13 +177,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
             "expected": true,
             "observed": true,
@@ -244,13 +194,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -260,13 +203,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque self-navigation records the first-request residual then poisons the realm",
             "expected": true,
             "observed": true,
@@ -284,13 +220,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -300,13 +229,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
             "expected": true,
             "observed": true,
@@ -324,13 +246,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -344,23 +259,16 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "invalid source poisons one opaque realm and a replacement renders ZenUML",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       }
     ]
   },
   "security": {
-    "projectCount": 2,
+    "projectCount": 1,
     "probeCount": 18,
-    "observationCount": 36,
-    "passedObservationCount": 36,
+    "observationCount": 18,
+    "passedObservationCount": 18,
     "probes": [
       {
         "id": "parent-access-denied",
@@ -368,13 +276,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
             "expected": true,
             "observed": true,
@@ -392,13 +293,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -408,13 +302,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
             "expected": true,
             "observed": true,
@@ -432,13 +319,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -448,13 +328,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
             "expected": true,
             "observed": true,
@@ -472,13 +345,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -488,13 +354,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
             "expected": true,
             "observed": true,
@@ -512,13 +371,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -528,13 +380,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
             "expected": true,
             "observed": true,
@@ -552,13 +397,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -568,13 +406,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
             "expected": true,
             "observed": true,
@@ -592,13 +423,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -608,13 +432,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
             "expected": true,
             "observed": true,
@@ -632,13 +449,6 @@
             "expected": true,
             "observed": true,
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
           }
         ]
       },
@@ -648,13 +458,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": true,
-            "observed": true,
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
             "expected": true,
             "observed": true,
@@ -672,13 +475,6 @@
             "expected": "local-value",
             "observed": "local-value",
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": "local-value",
-            "observed": "local-value",
-            "passed": true
           }
         ]
       },
@@ -692,13 +488,6 @@
             "expected": "session-value",
             "observed": "session-value",
             "passed": true
-          },
-          {
-            "project": "chromium-mobile",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": "session-value",
-            "observed": "session-value",
-            "passed": true
           }
         ]
       },
@@ -708,13 +497,6 @@
         "observations": [
           {
             "project": "chromium-desktop",
-            "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
-            "expected": "QuotaExceededError",
-            "observed": "QuotaExceededError",
-            "passed": true
-          },
-          {
-            "project": "chromium-mobile",
             "testTitle": "opaque Mermaid denies ambient authority and installs only bounded ephemeral storage",
             "expected": "QuotaExceededError",
             "observed": "QuotaExceededError",

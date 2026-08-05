@@ -169,33 +169,6 @@ test("Compare panes retain independent viewport transforms", async ({ page }) =>
   errors.assertNone();
 });
 
-test("@mobile a preview rendered while hidden fits when the narrow pane becomes visible", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 320, height: 568 });
-  const errors = monitorBrowserErrors(page);
-  await openPlayground(page);
-  const host = page.locator(".preview-container > div").first();
-  await expect
-    .poll(() =>
-      host.evaluate((element) =>
-        Boolean(element.shadowRoot?.querySelector("svg"))
-      )
-    )
-    .toBe(true);
-  await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  await expect(host).toBeVisible();
-  await expect
-    .poll(() =>
-      host.evaluate(
-        (element) => element.shadowRoot?.querySelector("svg")?.getBoundingClientRect().width ?? 0
-      )
-    )
-    .toBeGreaterThan(0);
-  await expect.poll(() => viewportZoom(primaryViewport(page))).toBeGreaterThan(0.01);
-  errors.assertNone();
-});
-
 test("a current share hash is restored before the first visible publication", async ({
   page,
 }) => {

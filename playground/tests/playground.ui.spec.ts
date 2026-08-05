@@ -10,10 +10,7 @@ import {
 } from "./helpers/playground";
 import { optionalFeatureOutput } from "./helpers/build-manifest";
 
-test("manual tabs preserve the editor model, selection, and undo history", async ({
-  page,
-  isMobile,
-}) => {
+test("manual tabs preserve the editor model, selection, and undo history", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
 
@@ -53,26 +50,11 @@ test("manual tabs preserve the editor model, selection, and undo history", async
   await page.keyboard.insertText("C");
   await expect(page.locator("footer")).toContainText(`${source.length} Chars`);
 
-  if (isMobile) {
-    const editorPanel = page.getByRole("tabpanel", { name: "Editor" });
-    const previewPanel = page.getByRole("tabpanel", { name: "Preview" });
-    await expect(editorPanel).toBeVisible();
-    await expect(previewPanel).toBeHidden();
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-    await expect(editorPanel).toBeHidden();
-    await expect(previewPanel).toBeVisible();
-  }
   await waitForPreviewSvg(page);
   await expect.poll(() => previewSvgText(page)).toContain("C");
 
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Editor", exact: true }).click();
-  }
   await editor.focus();
   await page.keyboard.press("Control+Z");
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await expect.poll(() => previewSvgText(page)).toContain("B");
 
   errors.assertNone();
@@ -220,25 +202,12 @@ test("example dialog traps focus, closes with Escape, and restores its trigger",
   errors.assertNone();
 });
 
-test("preview tabs use manual keyboard activation", async ({
-  page,
-  isMobile,
-}) => {
+test("preview tabs use manual keyboard activation", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
-  if (isMobile) {
-    const editorTab = page.getByRole("tab", { name: "Editor", exact: true });
-    const previewTab = page.getByRole("tab", { name: "Preview", exact: true });
-    await editorTab.focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(previewTab).toBeFocused();
-    await expect(editorTab).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("Enter");
-    await expect(previewTab).toHaveAttribute("aria-selected", "true");
-  }
-
   const svgTab = page.getByRole("tab", { name: "SVG", exact: true });
-  await svgTab.press("End");
+  await svgTab.focus();
+  await page.keyboard.press("End");
   const diagnosticsTab = page.getByRole("tab", {
     name: "Diagnostics",
     exact: true,

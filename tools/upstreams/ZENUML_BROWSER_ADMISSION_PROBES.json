@@ -1,9 +1,6 @@
 {
   "schemaVersion": 1,
-  "projects": [
-    "chromium-desktop",
-    "chromium-mobile"
-  ],
+  "projects": ["chromium-desktop"],
   "categories": {
     "execution-isolation": [
       {

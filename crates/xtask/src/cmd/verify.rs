@@ -298,7 +298,8 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
             "test:prepared",
             "lint",
             "build:prepared",
-            "test:browser:chromium",
+            "test:browser:smoke:non-chromium:built",
+            "test:browser:chromium:desktop:built",
         ] {
             run_npm_script(&workspace_root, "playground", script, &mut run_checked)?;
         }

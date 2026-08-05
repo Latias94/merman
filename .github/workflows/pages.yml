@@ -141,8 +141,8 @@ jobs:
       - name: Smoke playground in Firefox and WebKit
         run: npm run test:browser:smoke:non-chromium:built --prefix playground
 
-      - name: Test playground in Chromium
-        run: npm run test:browser:chromium --prefix playground
+      - name: Test playground in desktop Chromium
+        run: npm run test:browser:chromium:desktop:built --prefix playground
 
       - name: Upload browser failure evidence
         if: failure()

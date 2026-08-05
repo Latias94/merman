@@ -5,12 +5,7 @@ import { BENCHMARK_REPORT_SCHEMA_VERSION } from "../src/benchmark/report-schema"
 
 const FIXTURE_ID = "basic-flowchart" as const;
 
-test("@smoke non-UI corpus page returns exactly one cold and warm fixture envelope", async ({
-  browserName,
-  isMobile,
-  page,
-}) => {
-  test.skip(browserName !== "chromium" || isMobile);
+test("non-UI corpus page returns exactly one cold and warm fixture envelope", async ({ page }) => {
   test.setTimeout(240_000);
 
   await page.goto("./benchmark-corpus.html");

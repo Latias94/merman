@@ -11,11 +11,10 @@
   "scripts": {
     "benchmark:corpus": "node --experimental-strip-types run-benchmark-corpus.mjs",
     "install:browsers": "playwright install --with-deps chromium firefox webkit",
-    "test": "playwright test",
-    "test:chromium": "playwright test --project=chromium-desktop --project=chromium-mobile",
-    "test:smoke": "playwright test --grep @smoke",
-    "test:smoke:non-chromium": "playwright test --grep @smoke --project=firefox-smoke --project=webkit-smoke",
-    "test:zenuml-isolation": "playwright test benchmark.realm.spec.ts --project=chromium-desktop --project=chromium-mobile",
+    "test": "playwright test --project=chromium-desktop",
+    "test:desktop": "playwright test --project=chromium-desktop",
+    "test:mobile": "playwright test --project=chromium-mobile-interactions",
+    "test:smoke:non-chromium": "playwright test --project=firefox-smoke --project=webkit-smoke",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

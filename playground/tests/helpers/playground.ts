@@ -13,7 +13,15 @@ export interface PlaygroundResourceCounts {
 export function monitorBrowserErrors(page: Page): BrowserErrorMonitor {
   const messages: string[] = [];
 
-  page.on("pageerror", (error) => messages.push(`pageerror: ${error.message}`));
+  page.on("pageerror", (error) => {
+    const isWebKitInspectorSecurityError =
+      error.name === "SecurityError" &&
+      error.message === "The operation is insecure." &&
+      error.stack?.includes("web-inspector://bootstrap.js") === true;
+    if (!isWebKitInspectorSecurityError) {
+      messages.push(`pageerror: ${error.message}`);
+    }
+  });
   page.on("console", (message) => {
     if (message.type() === "error") {
       messages.push(`console: ${message.text()}`);

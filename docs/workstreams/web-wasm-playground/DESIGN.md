@@ -178,8 +178,13 @@ The closed lane is protected by:
 - runtime, render coordinator, realm protocol, queue, benchmark, and Worker unit tests;
 - TypeScript-resolved source/type ownership and Vite-manifest emitted ownership as separate graphs;
 - plan-driven prepared artifact, CSP, public-byte, and production dist checks;
-- real-browser startup, render, Compare, Monaco Worker, BFCache/teardown, accessibility, responsive,
-  CSP, and benchmark tests.
+- mandatory Chromium desktop coverage for startup, render, Compare, Monaco Worker,
+  BFCache/teardown, accessibility, CSP, and benchmark behavior;
+- one focused mandatory startup/render/Compare/theme/focus flow with BFCache Compare-realm cleanup
+  in each of Firefox and WebKit;
+- an on-demand Chromium mobile-interaction lane for compact controls, dialog scrolling, workspace
+  tabs, touch pan/zoom, shortened visual viewports, and overflow. Real iOS Safari and Android
+  Chrome remain an explicit release residual documented in [MOBILE_QA.md](./MOBILE_QA.md).
 
 Historical `TODO.md`, `MILESTONES.md`, `EVIDENCE_AND_GATES.md`, and journal entries record how the
 lane was built. They are not current runtime or release contracts.

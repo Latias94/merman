@@ -494,3 +494,53 @@ Results:
 - Chromium Compare activation and coherent publication passed without fetching its artifact before
   user activation: 1 test.
 - ZenUML browser admission evidence was regenerated from the final source list and verified.
+
+### 2026-08-05 - Right-Sized Browser Verification And Mobile Interaction Coverage
+
+Changes:
+
+- Replaced the duplicated full desktop/mobile Playwright matrix with three explicit ownership
+  lanes: mandatory Chromium desktop coverage, mandatory focused Firefox/WebKit smoke coverage, and
+  an on-demand Chromium mobile-interaction suite.
+- Added one linear non-Chromium smoke flow that covers production WASM startup, the initial render,
+  dialog focus restoration, Compare realm publication, system-theme changes, and Compare realm
+  cleanup on a persisted BFCache `pagehide` event.
+- Added focused portrait, shortened-viewport, and landscape mobile contracts for compact toolbar
+  controls, workspace navigation, dialog scroll ownership, Preview touch pan/zoom/fit, and
+  document overflow.
+- Made benchmark settings reversible and retained their selected inputs after a run, so users can
+  return to the configuration step without discarding the last result.
+- Narrowed Playwright WebKit error normalization to the exact `SecurityError` name,
+  `The operation is insecure.` message, and injected `web-inspector://bootstrap.js` stack tuple.
+  Other init-script and application-origin errors remain failures.
+- Removed stale mobile branches from desktop scenarios and removed an unused ZenUML test alias.
+- Added [MOBILE_QA.md](./MOBILE_QA.md) for the remaining real-device iOS Safari and Android Chrome
+  checks instead of representing emulation as complete device evidence.
+
+Commands:
+
+```bash
+npm run test:browser:chromium:desktop:built --prefix playground
+npm run test:browser:smoke:non-chromium:built --prefix playground
+npm run test:browser:mobile:built --prefix playground
+npm run test:browser:typecheck --prefix playground
+npm run record:zenuml-browser-admission --prefix playground
+npm run verify:zenuml-browser-admission --prefix playground
+```
+
+Results:
+
+- The previous mandatory configuration discovered 88 full Chromium cases: 44 desktop cases plus
+  the same 44 cases under mobile emulation.
+- The new mandatory configuration discovers 45 cases: 43 Chromium desktop cases and one focused
+  smoke case in each of Firefox and WebKit. This removes 43 duplicated mandatory selections, a
+  48.9% reduction, while preserving browser-engine coverage.
+- The focused on-demand mobile lane contains 3 interaction cases and completed 3/3 in 6.4 seconds.
+- Firefox and WebKit smoke completed 2/2 in 12.6 seconds.
+- Chromium desktop completed 43/43 in 2.7 minutes. An earlier run exposed one stale focus
+  assumption in manual tab activation; the scenario was corrected, passed in isolation, and then
+  passed again as part of this complete final run.
+- No exact historical wall-clock comparison is claimed. Reconstructing a self-consistent old
+  generated browser artifact would have required a second ad hoc validation/build path, so the
+  comparison intentionally uses reproducible Playwright discovery counts plus current measured
+  lane times.

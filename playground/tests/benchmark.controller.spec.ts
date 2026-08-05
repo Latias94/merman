@@ -13,16 +13,12 @@ import {
 
 test("benchmark controller explains runtime reuse and downloads matching evidence", async ({
   page,
-  isMobile,
 }) => {
   test.setTimeout(180_000);
   const errors = monitorBrowserErrors(page);
   const requests: string[] = [];
   page.on("request", (request) => requests.push(request.url()));
   await openPlayground(page);
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await waitForPreviewSvg(page);
 
   await page.getByRole("button", { name: "Bench", exact: true }).click();
@@ -104,9 +100,6 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
 
   await dialog.getByRole("button", { name: "Close benchmark" }).click();
   const rerunSource = "flowchart LR\n  Before --> After";
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Editor", exact: true }).click();
-  }
   await replaceEditorSource(page, rerunSource);
   await page.getByRole("button", { name: "Bench", exact: true }).click();
   await expect(dialog.getByRole("heading", { name: "Complete" })).toBeVisible();
@@ -132,14 +125,10 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
 
 test("closing an active rerun preserves the last completed report and removes every realm", async ({
   page,
-  isMobile,
 }) => {
   test.setTimeout(60_000);
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await waitForPreviewSvg(page);
 
   await page.getByRole("button", { name: "Bench", exact: true }).click();
@@ -187,14 +176,10 @@ test("closing an active rerun preserves the last completed report and removes ev
 
 test("page lifecycle invalidation suppresses aggregates and allows a clean rerun", async ({
   page,
-  isMobile,
 }) => {
   test.setTimeout(60_000);
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await waitForPreviewSvg(page);
 
   await page.getByRole("button", { name: "Bench", exact: true }).click();
