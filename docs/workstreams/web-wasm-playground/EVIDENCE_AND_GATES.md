@@ -1,7 +1,7 @@
 # Web WASM Playground - Evidence And Gates
 
 Status: Closed
-Last updated: 2026-06-29
+Last updated: 2026-08-05
 
 ## Smallest Current Repro
 
@@ -395,3 +395,51 @@ Verification claim:
 
 - Verified claim: the lane is closed; residual npm publishing, raster/PDF export, and broader
   browser QA are explicit follow-on candidates rather than active lane debt.
+
+### 2026-08-05 - R16 Editor Worker Artifact Decision
+
+Changes:
+
+- Replaced the VM/transpile semantic-token harness with importable TypeScript protocol, client,
+  runtime, and Monaco adapter tests.
+- Bound read-only Worker queries to URI/version, retained one in-flight plus one latest source
+  snapshot, added request deadlines and bounded tombstones, and validated all 11 query result
+  shapes before Monaco projection.
+- Kept message envelopes and request payloads exact while projecting away unknown nested result
+  fields, matching the forward-compatible diagnostics contract.
+- Added an on-demand dual-build measurement for the complete and editor Worker artifacts. Browser
+  measurement is deliberately not a CI gate.
+- Removed the duplicate JSON Schema projection; `contract.mjs` plus the receipt `schemaVersion` is
+  the single executable evidence contract.
+
+Commands:
+
+```bash
+npm run test:editor-worker --prefix playground
+npm run test:editor-artifact-decision --prefix playground
+npm run test:build-graph --prefix playground
+npm run build --prefix playground
+npm --prefix playground/tests test -- monaco.worker.spec.ts --project=chromium-desktop
+npm run measure:editor-artifacts --prefix playground
+```
+
+Results:
+
+- Native TypeScript Worker tests passed: 53 tests.
+- Pure artifact-decision tests passed: 14 tests.
+- Focused build-graph tests passed: 41 tests.
+- Production Playground build and dist verification passed with Vite 8.1.5.
+- Real Chromium Monaco Worker smoke passed: 5 tests, including all 35 semantic-token family
+  baselines, request-local rename failure, Retry recovery, and Benchmark isolation.
+- The fresh same-commit measurement ran against commit
+  `16ddd1d94536514dcd962b03b998c6efecae7146` with a clean worktree and four balanced AB/BA
+  blocks. Its receipt is authoritative.
+- Full and editor Workers were exactly equivalent across 35 families and 11 query kinds: 385 cells
+  per variant, zero mismatches, and aggregate SHA-256
+  `e52016004129f4a12c0b316be1890f614898003afc1318fd543c4f07b674596c` for both.
+- All six cold/warm primary latency comparisons passed the joint 5% and 20 ms limit.
+- The editor split failed the selection rule because cold transfer was 7,495,593 bytes versus
+  6,133,137 bytes for full, and peak memory was 30,852,334 bytes versus 30,739,906 bytes for full.
+- The authoritative result therefore retains `@mermanjs/web` for both the main renderer and the
+  language Worker. The complete receipt is checked in at
+  [`editor-artifact-receipt-v1.json`](./editor-artifact-receipt-v1.json).
