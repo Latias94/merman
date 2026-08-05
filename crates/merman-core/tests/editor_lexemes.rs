@@ -1,7 +1,8 @@
 use merman_core::time::CivilDate;
 use merman_core::{
-    EditorLexemeKind, EditorLexemeProducerKind, EditorSemanticCompleteness, EditorSemanticFacts,
-    Engine, Error, MermaidConfig, SourceSpan, diagram_family_capabilities,
+    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeProducerKind,
+    EditorSemanticCompleteness, EditorSemanticFacts, Engine, Error, MermaidConfig, SourceSpan,
+    diagram_family_capabilities,
 };
 use merman_fixture_render_context::RenderContextCatalog;
 use serde_json::Value;
@@ -507,6 +508,38 @@ fn flowchart_compound_tokens_emit_parser_owned_components() {
     assert!(!facts.lexemes().iter().any(|lexeme| {
         let span = lexeme.span();
         source[span.start..span.end].starts_with("style A")
+    }));
+    assert_lexemes_are_valid_and_non_overlapping("flowchart", source, facts.lexemes());
+}
+
+#[test]
+fn flowchart_labeled_edge_lexemes_keep_operator_spans_disjoint() {
+    let source = "flowchart TD\nA-- \"go\" -->\u{FEFF}";
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("flowchart", source)
+        .expect("flowchart editor recovery")
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert_eq!(facts.lexeme_failure(), None);
+
+    let operator_text = facts
+        .lexemes()
+        .iter()
+        .filter(|lexeme| lexeme.kind() == EditorLexemeKind::Operator)
+        .map(|lexeme| {
+            let span = lexeme.span();
+            &source[span.start..span.end]
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(operator_text, ["--", "-->"]);
+    assert!(facts.lexemes().iter().any(|lexeme| {
+        let span = lexeme.span();
+        lexeme.kind() == EditorLexemeKind::String && &source[span.start..span.end] == "\"go\""
+    }));
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+            && expected.span == SourceSpan::new(source.len(), source.len())
     }));
     assert_lexemes_are_valid_and_non_overlapping("flowchart", source, facts.lexemes());
 }

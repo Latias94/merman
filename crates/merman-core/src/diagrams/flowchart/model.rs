@@ -41,6 +41,68 @@ impl FlowchartModel {
     }
 }
 
+#[doc(hidden)]
+#[derive(Debug, Clone, Default)]
+pub struct FlowchartRenderLabelSources {
+    nodes: FxHashMap<String, String>,
+    edges: FxHashMap<String, String>,
+    subgraphs: FxHashMap<String, String>,
+}
+
+impl FlowchartRenderLabelSources {
+    #[doc(hidden)]
+    pub fn node_label_for_render<'a>(&'a self, node: &'a FlowNode) -> Option<&'a str> {
+        self.nodes
+            .get(&node.id)
+            .map(String::as_str)
+            .or(node.label.as_deref())
+    }
+
+    #[doc(hidden)]
+    pub fn edge_label_for_render<'a>(&'a self, edge: &'a FlowEdge) -> Option<&'a str> {
+        self.edges
+            .get(&edge.id)
+            .map(String::as_str)
+            .or(edge.label.as_deref())
+    }
+
+    #[doc(hidden)]
+    pub fn subgraph_title_for_render<'a>(&'a self, subgraph: &'a FlowSubgraph) -> &'a str {
+        self.subgraphs
+            .get(&subgraph.id)
+            .map(String::as_str)
+            .unwrap_or(subgraph.title.as_str())
+    }
+
+    pub(crate) fn insert_node(&mut self, id: String, source: String) {
+        self.nodes.insert(id, source);
+    }
+
+    pub(crate) fn insert_edge(&mut self, id: String, source: String) {
+        self.edges.insert(id, source);
+    }
+
+    pub(crate) fn set_subgraph(&mut self, id: String, source: Option<String>) {
+        if let Some(source) = source {
+            self.subgraphs.insert(id, source);
+        } else {
+            // Flowchart's renderer indexes subgraphs by id with last-declaration-wins semantics.
+            // A later ordinary title must therefore retire an earlier provenance override.
+            self.subgraphs.remove(&id);
+        }
+    }
+
+    pub(crate) fn retained_bytes(&self) -> usize {
+        self.nodes
+            .iter()
+            .chain(&self.edges)
+            .chain(&self.subgraphs)
+            .fold(0usize, |total, (id, label)| {
+                total.saturating_add(id.len()).saturating_add(label.len())
+            })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowEdgeDefaults {
     #[serde(default)]

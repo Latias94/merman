@@ -1,7 +1,7 @@
 // auto-generated: "lalrpop 0.23.1"
-// sha3: f7f96e85653f22a1df848b620a52794fc3738804f0b4f2e60d336d0c256672a2
+// sha3: 4f3bb5d09b2771cb65955dab00bb9251825bd7cf51a8bf1e75e861b28a84bd25
 use crate::diagrams::flowchart::{
-  ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
+  ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
   LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock,
   SubgraphHeader, TitleKind, Tok
 };
@@ -18,7 +18,7 @@ extern crate alloc;
 mod __parse__FlowchartAst {
 
     use crate::diagrams::flowchart::{
-  ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
+  ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
   LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock,
   SubgraphHeader, TitleKind, Tok
 };
@@ -37,7 +37,7 @@ mod __parse__FlowchartAst {
         Variant1(String),
         Variant2(DirectionStatementToken),
         Variant3(NodeLabelToken),
-        Variant4(LinkToken),
+        Variant4(ArrowToken),
         Variant5(LabeledText),
         Variant6(SubgraphHeader),
         Variant7(StyleStmt),
@@ -1424,6 +1424,16 @@ mod __parse__FlowchartAst {
             _ => __symbol_type_mismatch()
         }
     }
+    fn __pop_Variant4<
+    >(
+        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+    ) -> (usize, ArrowToken, usize)
+     {
+        match __symbols.pop() {
+            Some((__l, __Symbol::Variant4(__v), __r)) => (__l, __v, __r),
+            _ => __symbol_type_mismatch()
+        }
+    }
     fn __pop_Variant9<
     >(
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
@@ -1491,16 +1501,6 @@ mod __parse__FlowchartAst {
      {
         match __symbols.pop() {
             Some((__l, __Symbol::Variant11(__v), __r)) => (__l, __v, __r),
-            _ => __symbol_type_mismatch()
-        }
-    }
-    fn __pop_Variant4<
-    >(
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
-    ) -> (usize, LinkToken, usize)
-     {
-        match __symbols.pop() {
-            Some((__l, __Symbol::Variant4(__v), __r)) => (__l, __v, __r),
             _ => __symbol_type_mismatch()
         }
     }
@@ -3043,12 +3043,12 @@ fn __action25<
 fn __action26<
 >(
     (_, eid, _): (usize, Option<String>, usize),
-    (_, a, _): (usize, LinkToken, usize),
+    (_, a, _): (usize, ArrowToken, usize),
     (_, l, _): (usize, Option<LabeledText>, usize),
     (_, n, _): (usize, Vec<Node>, usize),
 ) -> (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)
 {
-    (eid, a, l, n)
+    (eid, a.link, l, n)
 }
 
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
@@ -4106,7 +4106,7 @@ fn __action82<
 fn __action83<
 >(
     __0: (usize, String, usize),
-    __1: (usize, LinkToken, usize),
+    __1: (usize, ArrowToken, usize),
     __2: (usize, Option<LabeledText>, usize),
     __3: (usize, Vec<Node>, usize),
 ) -> (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)
@@ -4129,7 +4129,7 @@ fn __action83<
     clippy::just_underscores_and_digits)]
 fn __action84<
 >(
-    __0: (usize, LinkToken, usize),
+    __0: (usize, ArrowToken, usize),
     __1: (usize, Option<LabeledText>, usize),
     __2: (usize, Vec<Node>, usize),
 ) -> (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)
@@ -4154,7 +4154,7 @@ fn __action84<
 fn __action85<
 >(
     __0: (usize, String, usize),
-    __1: (usize, LinkToken, usize),
+    __1: (usize, ArrowToken, usize),
     __2: (usize, LabeledText, usize),
     __3: (usize, Vec<Node>, usize),
 ) -> (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)
@@ -4178,7 +4178,7 @@ fn __action85<
 fn __action86<
 >(
     __0: (usize, String, usize),
-    __1: (usize, LinkToken, usize),
+    __1: (usize, ArrowToken, usize),
     __2: (usize, Vec<Node>, usize),
 ) -> (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)
 {
@@ -4201,7 +4201,7 @@ fn __action86<
     clippy::just_underscores_and_digits)]
 fn __action87<
 >(
-    __0: (usize, LinkToken, usize),
+    __0: (usize, ArrowToken, usize),
     __1: (usize, LabeledText, usize),
     __2: (usize, Vec<Node>, usize),
 ) -> (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)
@@ -4223,7 +4223,7 @@ fn __action87<
     clippy::just_underscores_and_digits)]
 fn __action88<
 >(
-    __0: (usize, LinkToken, usize),
+    __0: (usize, ArrowToken, usize),
     __1: (usize, Vec<Node>, usize),
 ) -> (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)
 {

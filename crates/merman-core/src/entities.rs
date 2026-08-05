@@ -9,9 +9,20 @@ use std::borrow::Cow;
 /// - layout measurements operate on the same final text
 /// - SVG output matches upstream DOM output
 pub fn decode_mermaid_entities_to_unicode(input: &str) -> Cow<'_, str> {
-    // Fast path: nothing to decode.
-    if !input.contains('#') && !input.contains('&') && !input.contains('ﬂ') && !input.contains('¶')
-    {
+    let entities = restore_mermaid_entity_spelling(input);
+    if !entities.contains('&') {
+        return entities;
+    }
+
+    Cow::Owned(decode_html_entities_to_unicode(entities.as_ref()).into_owned())
+}
+
+/// Restores Mermaid preprocessor placeholders and `#...;` shorthand to HTML entity spelling.
+///
+/// This intentionally stops before browser entity decoding. Flowchart SVG text labels need the
+/// literal `&nbsp;` spelling, while HTML labels decode the same spelling when inserted as markup.
+pub fn restore_mermaid_entity_spelling(input: &str) -> Cow<'_, str> {
+    if !input.contains('#') && !input.contains('ﬂ') && !input.contains('¶') {
         return Cow::Borrowed(input);
     }
 
@@ -83,10 +94,7 @@ pub fn decode_mermaid_entities_to_unicode(input: &str) -> Cow<'_, str> {
         s = out;
     }
 
-    // Step 3: HTML entity decode (`&nbsp;`, `&#9829;`, `&infin;`, ...)
-    //
-    // Use a standards-based entity decoder so named entities match browser behavior.
-    Cow::Owned(decode_html_entities_to_unicode(&s).into_owned())
+    Cow::Owned(s)
 }
 
 /// Decodes browser-facing HTML entities into Unicode without Mermaid shorthand handling.
@@ -100,7 +108,10 @@ pub fn decode_html_entities_to_unicode(input: &str) -> Cow<'_, str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_html_entities_to_unicode, decode_mermaid_entities_to_unicode};
+    use super::{
+        decode_html_entities_to_unicode, decode_mermaid_entities_to_unicode,
+        restore_mermaid_entity_spelling,
+    };
 
     #[test]
     fn html_entity_decode_does_not_apply_mermaid_shorthand() {
@@ -116,5 +127,13 @@ mod tests {
         assert_eq!(decode_mermaid_entities_to_unicode("#quot;"), "\"");
         assert_eq!(decode_mermaid_entities_to_unicode("ﬂ°quot¶ß"), "\"");
         assert_eq!(decode_mermaid_entities_to_unicode("ﬂ°°39¶ß"), "'");
+    }
+
+    #[test]
+    fn mermaid_entity_spelling_restoration_stops_before_browser_decode() {
+        assert_eq!(restore_mermaid_entity_spelling("#nbsp;"), "&nbsp;");
+        assert_eq!(restore_mermaid_entity_spelling("ﬂ°nbsp¶ß"), "&nbsp;");
+        assert_eq!(restore_mermaid_entity_spelling("ﬂ°°160¶ß"), "&#160;");
+        assert_eq!(restore_mermaid_entity_spelling("&nbsp;"), "&nbsp;");
     }
 }

@@ -1,4 +1,7 @@
-use super::{FlowSubGraph, Stmt, SubgraphBlock, TitleKind, strip_wrapping_backticks, unquote};
+use super::{
+    FlowSubGraph, Stmt, SubgraphBlock, TitleKind, is_ecmascript_trim_char,
+    strip_wrapping_backticks, trim_flowdb_label_text, unquote,
+};
 use crate::{ParseControl, ParseControlResult};
 use std::collections::HashSet;
 
@@ -129,7 +132,7 @@ impl SubgraphBuilder {
             match item {
                 StatementItem::Dir(d) => dir = Some(d),
                 StatementItem::Id(id) => {
-                    if id.trim().is_empty() {
+                    if trim_flowdb_label_text(&id).is_empty() {
                         continue;
                     }
                     if seen.insert(id.clone()) {
@@ -148,20 +151,21 @@ impl SubgraphBuilder {
             }
         });
 
-        let raw_id = sg.header.raw_id.trim();
+        let raw_id = sg.header.raw_id.as_str();
         let (title_raw, title_kind) =
             parse_subgraph_title(&sg.header.raw_title, sg.header.id_equals_title);
         let id_raw = if raw_id.starts_with('"') && raw_id.ends_with('"') {
             // Only a double-quoted header enters Mermaid's string state. Markdown backticks are
             // meaningful after that quote has been removed; bare backticks stay in the id.
             let unquoted = unquote(raw_id);
-            strip_wrapping_backticks(unquoted.trim()).0
+            let (without_backticks, _) = strip_wrapping_backticks(&unquoted);
+            trim_flowdb_label_text(&without_backticks).to_string()
         } else {
             raw_id.to_string()
         };
 
         let mut id: Option<String> = {
-            let trimmed = id_raw.trim();
+            let trimmed = trim_flowdb_label_text(&id_raw);
             if trimmed.is_empty() {
                 None
             } else {
@@ -174,12 +178,12 @@ impl SubgraphBuilder {
         //
         // The important nuance is that this checks the untrimmed title token (including any
         // extra whitespace that may have been captured into the header).
-        if sg.header.id_equals_title && sg.header.raw_title.chars().any(|c| c.is_whitespace()) {
+        if sg.header.id_equals_title && sg.header.raw_title.chars().any(is_ecmascript_trim_char) {
             id = None;
         }
 
         let id = id.unwrap_or_else(|| format!("subGraph{}", self.sub_count));
-        let title = title_raw.trim().to_string();
+        let title = trim_flowdb_label_text(&title_raw).to_string();
         let label_type = match title_kind {
             TitleKind::Text => "text",
             TitleKind::String => "string",
@@ -276,26 +280,34 @@ pub(super) fn subgraphs_exist(subgraphs: &[FlowSubGraph], node_id: &str) -> bool
 }
 
 fn parse_subgraph_title(raw_title: &str, id_equals_title: bool) -> (String, TitleKind) {
-    let trimmed = raw_title.trim();
-    let quoted = trimmed.starts_with('"') && trimmed.ends_with('"');
+    let quoted = raw_title.starts_with('"') && raw_title.ends_with('"');
     let unquoted = if quoted {
         // Keep flowchart subgraph titles raw (strip only surrounding quotes).
         // This matches upstream and avoids mangling backslash-heavy labels.
-        unquote(trimmed)
+        unquote(raw_title)
     } else {
-        trimmed.to_string()
+        raw_title.to_string()
     };
 
     if quoted {
-        let (no_backticks, is_markdown) = strip_wrapping_backticks(unquoted.trim());
+        let (no_backticks, is_markdown) = strip_wrapping_backticks(&unquoted);
         if is_markdown {
-            return (no_backticks, TitleKind::Markdown);
+            return (
+                trim_flowdb_label_text(&no_backticks).to_string(),
+                TitleKind::Markdown,
+            );
         }
     }
 
     if !id_equals_title && quoted {
-        return (unquoted, TitleKind::String);
+        return (
+            trim_flowdb_label_text(&unquoted).to_string(),
+            TitleKind::String,
+        );
     }
 
-    (unquoted, TitleKind::Text)
+    (
+        trim_flowdb_label_text(&unquoted).to_string(),
+        TitleKind::Text,
+    )
 }
