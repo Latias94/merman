@@ -59,10 +59,13 @@ pub(crate) fn run_controlled(
             lbl.weight.round() as i64
         })
     } else {
-        work_control.charge(checked_add(
-            g.node_count(),
-            checked_mul(g.edge_count(), 2)?,
-        )?)?;
+        let plan = dfs_work_plan(g)?;
+        work_control.charge(plan.work_units)?;
+        if plan.prepare_adjacency_cache {
+            // `out_edges` rebuilds the CSR cache through interior mutability. Materialize it only
+            // after the complete slot-backed rebuild has been admitted.
+            g.prepare_adjacency_cache();
+        }
         dfs_fas(g)
     };
 
@@ -83,12 +86,53 @@ pub(crate) fn run_controlled(
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy)]
+struct DfsWorkPlan {
+    work_units: usize,
+    prepare_adjacency_cache: bool,
+}
+
+fn dfs_work_plan(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<DfsWorkPlan, WorkError> {
+    let prepare_adjacency_cache = !g.is_adjacency_cache_current();
+    let edge_tombstones = g
+        .edge_slot_count()
+        .checked_sub(g.edge_count())
+        .ok_or(WorkError::ArithmeticOverflow)?;
+    let tombstone_rebuild_work = if prepare_adjacency_cache {
+        // The existing two live-edge units cover CSR materialization plus the DFS edge visit.
+        // A stale cache additionally scans every tombstone in both CSR construction passes.
+        checked_mul(edge_tombstones, 2)?
+    } else {
+        0
+    };
+    let work_units = checked_add(
+        checked_add(g.node_order_slot_count(), checked_mul(g.edge_count(), 2)?)?,
+        tombstone_rebuild_work,
+    )?;
+    Ok(DfsWorkPlan {
+        work_units,
+        prepare_adjacency_cache,
+    })
+}
+
 fn greedy_work_units(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<usize, WorkError> {
     let nodes = g.node_count();
     let edges = g.edge_count();
     let node_work = checked_mul(checked_n_log_n(nodes)?, 3)?;
     let edge_steps = checked_add(ceil_log2(nodes).max(1), 6)?;
-    checked_add(node_work, checked_mul(edges, edge_steps)?)
+    let live_work = checked_add(node_work, checked_mul(edges, edge_steps)?)?;
+    let node_order_tombstones = g
+        .node_order_slot_count()
+        .checked_sub(nodes)
+        .ok_or(WorkError::ArithmeticOverflow)?;
+    let edge_tombstones = g
+        .edge_slot_count()
+        .checked_sub(edges)
+        .ok_or(WorkError::ArithmeticOverflow)?;
+    checked_add(
+        live_work,
+        checked_add(node_order_tombstones, edge_tombstones)?,
+    )
 }
 
 pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
@@ -111,7 +155,7 @@ pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
 }
 
 fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
-    // Ported from Dagre `lib/acyclic.js` (dfsFAS) as used by Mermaid `@11.12.2`.
+    // Ported from `dagre-d3-es 7.0.14`, the Dagre companion pinned by Mermaid 11.16.0.
     let mut fas: Vec<EdgeKey> = Vec::new();
     let mut stack: HashSet<String> = HashSet::default();
     let mut visited: HashSet<String> = HashSet::default();
@@ -192,4 +236,156 @@ fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
         dfs_iterative(g, v, &mut visited, &mut stack, &mut fas);
     }
     fas
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graphlib::GraphOptions;
+
+    struct RecordingWorkControl {
+        used: usize,
+        max: usize,
+    }
+
+    impl RecordingWorkControl {
+        fn unlimited() -> Self {
+            Self {
+                used: 0,
+                max: usize::MAX,
+            }
+        }
+    }
+
+    impl WorkControl for RecordingWorkControl {
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            let next = self
+                .used
+                .checked_add(units)
+                .ok_or(WorkError::ArithmeticOverflow)?;
+            if next > self.max {
+                return Err(WorkError::Interrupted);
+            }
+            self.used = next;
+            Ok(())
+        }
+    }
+
+    fn cycle_graph(
+        acyclicer: &str,
+        edge_tombstones: usize,
+    ) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel {
+            acyclicer: Some(acyclicer.to_string()),
+            ..Default::default()
+        });
+        for id in ["a", "b", "c"] {
+            graph.set_node(id, NodeLabel::default());
+        }
+        for (from, to) in [("a", "b"), ("b", "c")] {
+            graph.set_edge_with_label(
+                from,
+                to,
+                EdgeLabel {
+                    minlen: 1,
+                    weight: 1.0,
+                    ..Default::default()
+                },
+            );
+        }
+        let mut dead_edges = Vec::with_capacity(edge_tombstones);
+        for index in 0..edge_tombstones {
+            let name = format!("dead-{index}");
+            let key = EdgeKey::new("a", "a", Some(name.clone()));
+            graph.set_edge_named("a", "a", Some(name), Some(EdgeLabel::default()));
+            dead_edges.push(key);
+        }
+        graph.set_edge_with_label(
+            "c",
+            "a",
+            EdgeLabel {
+                minlen: 1,
+                weight: 1.0,
+                ..Default::default()
+            },
+        );
+        for key in dead_edges {
+            assert!(graph.remove_edge_key(&key));
+        }
+        assert_eq!(
+            graph.edge_slot_count(),
+            graph.edge_count() + edge_tombstones
+        );
+        graph
+    }
+
+    fn run_and_measure(
+        mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ) -> (usize, Vec<EdgeKey>) {
+        let mut control = RecordingWorkControl::unlimited();
+        run_controlled(&mut graph, &mut control).unwrap();
+        (control.used, graph.edge_keys())
+    }
+
+    #[test]
+    fn dfs_precharges_both_stale_csr_tombstone_scans() {
+        let tombstones = 7;
+        let dense = cycle_graph("dfs", 0);
+        let sparse = cycle_graph("dfs", tombstones);
+        assert!(!dense.is_adjacency_cache_current());
+        assert!(!sparse.is_adjacency_cache_current());
+
+        let (dense_work, dense_edges) = run_and_measure(dense);
+        let (sparse_work, sparse_edges) = run_and_measure(sparse);
+
+        assert_eq!(sparse_work, dense_work + 2 * tombstones);
+        assert_eq!(sparse_edges, dense_edges);
+    }
+
+    #[test]
+    fn dfs_does_not_recharge_an_already_materialized_sparse_cache() {
+        let dense = cycle_graph("dfs", 0);
+        let sparse = cycle_graph("dfs", 7);
+        dense.prepare_adjacency_cache();
+        sparse.prepare_adjacency_cache();
+
+        let (dense_work, dense_edges) = run_and_measure(dense);
+        let (sparse_work, sparse_edges) = run_and_measure(sparse);
+
+        assert_eq!(sparse_work, dense_work);
+        assert_eq!(sparse_edges, dense_edges);
+    }
+
+    #[test]
+    fn dfs_rejection_precedes_cache_materialization_and_graph_mutation() {
+        let mut graph = cycle_graph("dfs", 3);
+        let initial_edges = graph.edge_keys();
+        let plan = dfs_work_plan(&graph).unwrap();
+        let mut control = RecordingWorkControl {
+            used: 0,
+            max: plan.work_units - 1,
+        };
+
+        assert_eq!(
+            run_controlled(&mut graph, &mut control),
+            Err(WorkError::Interrupted)
+        );
+        assert_eq!(graph.edge_keys(), initial_edges);
+        assert!(!graph.is_adjacency_cache_current());
+        assert_eq!(control.used, 0);
+    }
+
+    #[test]
+    fn greedy_precharges_the_complete_edge_slot_scan() {
+        let tombstones = 7;
+        let (dense_work, dense_edges) = run_and_measure(cycle_graph("greedy", 0));
+        let (sparse_work, sparse_edges) = run_and_measure(cycle_graph("greedy", tombstones));
+
+        assert_eq!(sparse_work, dense_work + tombstones);
+        assert_eq!(sparse_edges, dense_edges);
+    }
 }
