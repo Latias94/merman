@@ -40,7 +40,7 @@
       },
       {
         "id": "B",
-        "label": "Ends with spaces  ",
+        "label": "Ends with spaces",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",

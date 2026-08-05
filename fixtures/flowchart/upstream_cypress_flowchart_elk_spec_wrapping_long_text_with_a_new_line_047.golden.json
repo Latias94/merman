@@ -19,7 +19,7 @@
     "nodes": [
       {
         "id": "b",
-        "label": "The dog in **the** hog.(1).. a a a a *very long text* about it\nWord!\n\nAnother line with many, many words. Another line with many, many words. Another line with many, many words. Another line with many, many words. Another line with many, many words. Another line with many, many words. Another line with many, many words. Another line with many, many words. ",
+        "label": "The dog in **the** hog.(1).. a a a a *very long text* about it\nWord!\n\nAnother line with many, many words. Another line with many, many words. Another line with many, many words. Another line with many, many words. Another line with many, many words. Another line with many, many words. Another line with many, many words. Another line with many, many words.",
         "labelType": "markdown",
         "shape": "round",
         "layoutShape": "roundedRect",
