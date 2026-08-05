@@ -856,11 +856,7 @@ pub(crate) fn network_simplex_controlled(
     work_control: &mut dyn WorkControl,
 ) -> Result<(), RankError> {
     let mut simplified = build_simplified_graph(g, work_control)?;
-    work_control.charge(checked_add(
-        simplified.node_count(),
-        checked_mul(simplified.edge_count(), 2)?,
-    )?)?;
-    util::longest_path_controlled(&mut simplified)?;
+    util::longest_path_controlled(&mut simplified, work_control)?;
     let t = feasible_tree::feasible_tree_controlled(&mut simplified, work_control)?;
     let mut t_state = build_tree_state_controlled(&t, &simplified, None, work_control)?;
     drop(t);
@@ -1746,7 +1742,8 @@ mod tests {
         let mut work_control = NoopWorkControl;
         let mut graph = build_simplified_graph(&source, &mut work_control)
             .expect("the fixture simplify step succeeds");
-        util::longest_path_controlled(&mut graph).expect("the fixture ranks fit i32");
+        util::longest_path_controlled(&mut graph, &mut work_control)
+            .expect("the fixture ranks fit i32");
         let tree = feasible_tree::feasible_tree_controlled(&mut graph, &mut work_control)
             .expect("the fixture feasible tree succeeds");
         let mut state = TreeState::new(&tree, &graph).expect("the tree is a graph-edge subset");
@@ -2679,12 +2676,55 @@ mod tests {
     }
 
     #[test]
+    fn network_simplex_initial_longest_path_owns_cold_csr_once() {
+        let source = ranking_graph();
+        let simplify_units = simplify_work_units(&source).unwrap();
+        let mut preparation_control = NoopWorkControl;
+        let mut simplified = build_simplified_graph(&source, &mut preparation_control)
+            .expect("the fixture simplify step succeeds");
+        assert!(!simplified.is_adjacency_cache_current());
+        let mut longest_control = RecordingWorkControl::default();
+        util::longest_path_controlled(&mut simplified, &mut longest_control)
+            .expect("the fixture longest-path step succeeds");
+        assert_eq!(longest_control.charges.len(), 1);
+        let longest_units = longest_control.charges[0];
+        assert!(simplified.is_adjacency_cache_current());
+
+        let exact_prefix = checked_add(simplify_units, longest_units).unwrap();
+        let mut rejected_graph = ranking_graph();
+        let source_nodes = rejected_graph.node_ids();
+        let source_edges = rejected_graph.edge_keys();
+        let mut rejected = RecordingWorkControl::with_limit(exact_prefix - 1);
+        assert_eq!(
+            network_simplex_controlled(&mut rejected_graph, &mut rejected),
+            Err(RankError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(rejected.charges, [simplify_units, longest_units]);
+        assert_eq!(rejected.remaining, Some(longest_units - 1));
+        assert_eq!(rejected_graph.node_ids(), source_nodes);
+        assert_eq!(rejected_graph.edge_keys(), source_edges);
+        assert!(rejected_graph.nodes().all(|id| {
+            rejected_graph
+                .node(id)
+                .is_some_and(|node| node.rank.is_none())
+        }));
+
+        let mut admitted_graph = ranking_graph();
+        let mut admitted = RecordingWorkControl::default();
+        network_simplex_controlled(&mut admitted_graph, &mut admitted)
+            .expect("the unbounded control admits network simplex");
+        assert_eq!(admitted.charges[0], simplify_units);
+        assert_eq!(admitted.charges[1], longest_units);
+    }
+
+    #[test]
     fn dense_tree_matches_the_pinned_six_pivot_trace_without_slot_growth() {
         let source = multi_pivot_graph();
         let mut work_control = NoopWorkControl;
         let mut graph = build_simplified_graph(&source, &mut work_control)
             .expect("the fixture simplify step succeeds");
-        util::longest_path_controlled(&mut graph).expect("the fixture ranks fit i32");
+        util::longest_path_controlled(&mut graph, &mut work_control)
+            .expect("the fixture ranks fit i32");
         let spanning_tree = feasible_tree::feasible_tree_controlled(&mut graph, &mut work_control)
             .expect("the fixture feasible tree succeeds");
         let mut state =

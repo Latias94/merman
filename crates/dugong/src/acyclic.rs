@@ -98,16 +98,20 @@ fn dfs_work_plan(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<DfsWorkP
         .edge_slot_count()
         .checked_sub(g.edge_count())
         .ok_or(WorkError::ArithmeticOverflow)?;
-    let tombstone_rebuild_work = if prepare_adjacency_cache {
+    let cold_csr_work = if prepare_adjacency_cache {
         // The existing two live-edge units cover CSR materialization plus the DFS edge visit.
-        // A stale cache additionally scans every tombstone in both CSR construction passes.
-        checked_mul(edge_tombstones, 2)?
+        // A stale cache additionally initializes, prefixes, and clones the two node-slot offset
+        // arrays, and scans every edge tombstone in both CSR construction passes.
+        checked_add(
+            checked_mul(g.node_slot_count(), 6)?,
+            checked_mul(edge_tombstones, 2)?,
+        )?
     } else {
         0
     };
     let work_units = checked_add(
         checked_add(g.node_order_slot_count(), checked_mul(g.edge_count(), 2)?)?,
-        tombstone_rebuild_work,
+        cold_csr_work,
     )?;
     Ok(DfsWorkPlan {
         work_units,
@@ -361,6 +365,33 @@ mod tests {
     }
 
     #[test]
+    fn dfs_precharges_cold_csr_node_slots_but_not_warm_tombstones() {
+        let dense = cycle_graph_with_numeric_nodes(false);
+        let sparse = cycle_graph_with_numeric_nodes(true);
+        assert_eq!(sparse.node_slot_count(), dense.node_slot_count() + 1);
+        assert_eq!(
+            sparse.node_order_slot_count(),
+            dense.node_order_slot_count()
+        );
+        assert_eq!(sparse.edge_slot_count(), dense.edge_slot_count());
+
+        let dense_cold = dfs_work_plan(&dense).unwrap();
+        let sparse_cold = dfs_work_plan(&sparse).unwrap();
+        assert_eq!(sparse_cold.work_units, dense_cold.work_units + 6);
+
+        dense.prepare_adjacency_cache();
+        sparse.prepare_adjacency_cache();
+        let dense_warm = dfs_work_plan(&dense).unwrap();
+        let sparse_warm = dfs_work_plan(&sparse).unwrap();
+        assert_eq!(sparse_warm.work_units, dense_warm.work_units);
+
+        let (dense_work, dense_edges) = run_and_measure(dense);
+        let (sparse_work, sparse_edges) = run_and_measure(sparse);
+        assert_eq!(sparse_work, dense_work);
+        assert_eq!(sparse_edges, dense_edges);
+    }
+
+    #[test]
     fn dfs_rejection_precedes_cache_materialization_and_graph_mutation() {
         let mut graph = cycle_graph("dfs", 3);
         let initial_edges = graph.edge_keys();
@@ -387,5 +418,41 @@ mod tests {
 
         assert_eq!(sparse_work, dense_work + tombstones);
         assert_eq!(sparse_edges, dense_edges);
+    }
+
+    fn cycle_graph_with_numeric_nodes(
+        leave_interior_tombstone: bool,
+    ) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel {
+            acyclicer: Some("dfs".to_string()),
+            ..Default::default()
+        });
+        let node_ids: &[&str] = if leave_interior_tombstone {
+            &["0", "1", "2", "3"]
+        } else {
+            &["0", "2", "3"]
+        };
+        for id in node_ids {
+            graph.set_node(*id, NodeLabel::default());
+        }
+        if leave_interior_tombstone {
+            assert!(graph.remove_node("1"));
+        }
+        for (from, to) in [("0", "2"), ("2", "3"), ("3", "0")] {
+            graph.set_edge_with_label(
+                from,
+                to,
+                EdgeLabel {
+                    minlen: 1,
+                    weight: 1.0,
+                    ..Default::default()
+                },
+            );
+        }
+        graph
     }
 }

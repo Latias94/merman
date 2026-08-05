@@ -44,13 +44,11 @@ pub(crate) fn rank_controlled(
     match ranker.as_deref() {
         Some("network-simplex") => network_simplex::network_simplex_controlled(g, work_control)?,
         Some("tight-tree") => {
-            work_control.charge(longest_path_work_units(g)?)?;
-            util::longest_path_controlled(g)?;
+            util::longest_path_controlled(g, work_control)?;
             let _ = feasible_tree::feasible_tree_controlled(g, work_control)?;
         }
         Some("longest-path") => {
-            work_control.charge(longest_path_work_units(g)?)?;
-            util::longest_path_controlled(g)?;
+            util::longest_path_controlled(g, work_control)?;
         }
         _ => network_simplex::network_simplex_controlled(g, work_control)?,
     }
@@ -69,8 +67,52 @@ pub(crate) fn validate_rank_arithmetic(
     Ok(())
 }
 
-fn longest_path_work_units(
-    g: &crate::graphlib::Graph<crate::NodeLabel, crate::EdgeLabel, crate::GraphLabel>,
-) -> Result<usize, crate::WorkError> {
-    crate::work::checked_add(g.node_count(), crate::work::checked_mul(g.edge_count(), 2)?)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graphlib::{Graph, GraphOptions};
+    use crate::{EdgeLabel, GraphLabel, NodeLabel, WorkControl, WorkError};
+
+    #[derive(Default)]
+    struct RecordingWorkControl {
+        charges: Vec<usize>,
+    }
+
+    impl WorkControl for RecordingWorkControl {
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.charges.push(units);
+            Ok(())
+        }
+    }
+
+    fn chain(ranker: &str) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel {
+            ranker: Some(ranker.to_string()),
+            ..GraphLabel::default()
+        });
+        graph.set_default_node_label(NodeLabel::default);
+        graph.set_default_edge_label(|| EdgeLabel {
+            minlen: 1,
+            weight: 1.0,
+            ..EdgeLabel::default()
+        });
+        graph.set_path(&["a", "b", "c"]);
+        graph
+    }
+
+    #[test]
+    fn rankers_share_one_longest_path_owner_tranche() {
+        let mut longest_graph = chain("longest-path");
+        let mut longest_control = RecordingWorkControl::default();
+        rank_controlled(&mut longest_graph, &mut longest_control)
+            .expect("longest-path ranking succeeds");
+        assert_eq!(longest_control.charges.len(), 1);
+
+        let mut tight_graph = chain("tight-tree");
+        let mut tight_control = RecordingWorkControl::default();
+        rank_controlled(&mut tight_graph, &mut tight_control).expect("tight-tree ranking succeeds");
+        assert!(tight_control.charges.len() > 1);
+        assert_eq!(tight_control.charges[0], longest_control.charges[0]);
+    }
 }
