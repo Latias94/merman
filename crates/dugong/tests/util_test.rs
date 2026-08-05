@@ -76,6 +76,68 @@ fn util_simplify_collapses_multi_edges() {
 }
 
 #[test]
+fn util_simplify_preserves_first_endpoint_pair_occurrence_order() {
+    let mut g: Graph<serde_json::Value, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: false,
+        ..Default::default()
+    });
+    g.set_edge_named(
+        "z",
+        "a",
+        Some("first"),
+        Some(EdgeLabel {
+            weight: 1.0,
+            minlen: 0,
+            ..Default::default()
+        }),
+    );
+    g.set_edge_named(
+        "b",
+        "c",
+        Some("middle"),
+        Some(EdgeLabel {
+            weight: 2.0,
+            minlen: 2,
+            ..Default::default()
+        }),
+    );
+    g.set_edge_named(
+        "a",
+        "z",
+        Some("last-pair"),
+        Some(EdgeLabel {
+            weight: 3.0,
+            minlen: 3,
+            ..Default::default()
+        }),
+    );
+    g.set_edge_named(
+        "z",
+        "a",
+        Some("parallel"),
+        Some(EdgeLabel {
+            weight: 4.0,
+            minlen: 4,
+            ..Default::default()
+        }),
+    );
+
+    let simplified = util::simplify(&g);
+    let endpoint_order: Vec<_> = simplified
+        .edges()
+        .map(|edge| (edge.v.as_str(), edge.w.as_str()))
+        .collect();
+    assert_eq!(endpoint_order, [("z", "a"), ("b", "c"), ("a", "z")]);
+    assert_eq!(
+        simplified
+            .edge("z", "a", None)
+            .map(|edge| (edge.weight, edge.minlen)),
+        Some((5.0, 4))
+    );
+}
+
+#[test]
 fn util_simplify_copies_the_graph_object() {
     let mut g: Graph<serde_json::Value, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: true,

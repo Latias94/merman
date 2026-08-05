@@ -35,30 +35,32 @@ where
         }
     }
 
-    // Merge multi-edges deterministically while avoiding per-edge String clones.
-    let mut merged: BTreeMap<(usize, usize), (f64, usize)> = BTreeMap::new();
+    // Pinned Dagre creates each simplified edge at the first occurrence of its endpoint pair and
+    // only updates the label for later parallel edges. Preserve that insertion order explicitly;
+    // sorting endpoint pairs changes network-simplex tie-breaking because `g.edges()` is ordered.
+    let mut merged_index: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+    let mut merged: Vec<(usize, usize, f64, usize)> = Vec::new();
     g.for_each_edge_ix(|v_ix, w_ix, _key, lbl| {
-        let entry = merged.entry((v_ix, w_ix)).or_insert((0.0, 1));
-        entry.0 += lbl.weight;
-        entry.1 = entry.1.max(lbl.minlen.max(1));
+        if let Some(&merged_ix) = merged_index.get(&(v_ix, w_ix)) {
+            let entry = &mut merged[merged_ix];
+            entry.2 += lbl.weight;
+            entry.3 = entry.3.max(lbl.minlen);
+        } else {
+            merged_index.insert((v_ix, w_ix), merged.len());
+            merged.push((v_ix, w_ix, lbl.weight, lbl.minlen.max(1)));
+        }
     });
 
-    let mut merged_edges: Vec<(String, String, f64, usize)> = Vec::with_capacity(merged.len());
-    for ((v_ix, w_ix), (weight, minlen)) in merged {
+    for (v_ix, w_ix, weight, minlen) in merged {
         let Some(v) = g.node_id_by_ix(v_ix) else {
             continue;
         };
         let Some(w) = g.node_id_by_ix(w_ix) else {
             continue;
         };
-        merged_edges.push((v.to_string(), w.to_string(), weight, minlen));
-    }
-    merged_edges.sort_by(|a, b| (a.0.as_str(), a.1.as_str()).cmp(&(b.0.as_str(), b.1.as_str())));
-
-    for (v, w, weight, minlen) in merged_edges {
         simplified.set_edge_with_label(
-            v,
-            w,
+            v.to_string(),
+            w.to_string(),
             EdgeLabel {
                 weight,
                 minlen,

@@ -602,9 +602,15 @@ fn simplify_work_units(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<us
         g.node_count(),
         g.directed_array_index_adjacency_entry_count(),
     )?;
+    // Rank validation and endpoint aggregation each scan the slot-backed edge storage. The
+    // ordered endpoint index gives the merge a deterministic logarithmic bound while the separate
+    // first-occurrence vector avoids the second endpoint-string sort used by the legacy path.
+    let slot_scan_work = checked_mul(g.edge_slot_count(), 2)?;
+    let live_edge_work = checked_mul(g.edge_count(), 3)?;
+    let ordered_merge_work = checked_n_log_n(g.edge_count())?;
     let edge_work = checked_add(
-        checked_mul(g.edge_count(), 3)?,
-        checked_mul(checked_n_log_n(g.edge_count())?, 2)?,
+        checked_add(slot_scan_work, live_edge_work)?,
+        ordered_merge_work,
     )?;
     checked_add(
         checked_add(
@@ -1326,6 +1332,43 @@ mod tests {
             let ordered_work = checked_ordered_key_updates(width, numeric_updates).unwrap();
             assert_eq!(numeric_work, ordinary_work + ordered_work);
         }
+    }
+
+    #[test]
+    fn simplify_work_uses_one_ordered_merge_and_charges_tombstone_slots() {
+        let mut graph = mixed_simplify_graph(false);
+        let expected_dense = checked_add(
+            checked_mul(graph.node_count(), 2).unwrap(),
+            checked_add(
+                checked_add(
+                    checked_mul(graph.edge_slot_count(), 2).unwrap(),
+                    checked_mul(graph.edge_count(), 3).unwrap(),
+                )
+                .unwrap(),
+                checked_n_log_n(graph.edge_count()).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(simplify_work_units(&graph), Ok(expected_dense));
+
+        assert!(graph.remove_edge("node-0", "node-a", Some("parallel-0")));
+        assert_eq!(graph.edge_slot_count(), 6);
+        assert_eq!(graph.edge_count(), 5);
+        let expected_sparse = checked_add(
+            checked_mul(graph.node_count(), 2).unwrap(),
+            checked_add(
+                checked_add(
+                    checked_mul(graph.edge_slot_count(), 2).unwrap(),
+                    checked_mul(graph.edge_count(), 3).unwrap(),
+                )
+                .unwrap(),
+                checked_n_log_n(graph.edge_count()).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(simplify_work_units(&graph), Ok(expected_sparse));
     }
 
     #[test]
