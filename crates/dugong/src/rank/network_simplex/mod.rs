@@ -769,7 +769,7 @@ fn enter_edge_fast(
 
                         let v_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
                         let w_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                        let minlen = lbl.minlen.max(1) as i128;
+                        let minlen = lbl.minlen as i128;
                         let slack = w_rank - v_rank - minlen;
                         match &best {
                             Some(best_key) if (slack, edge_ix) >= *best_key => {}
@@ -805,7 +805,7 @@ fn enter_edge_fast(
 
                         let v_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
                         let w_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                        let minlen = lbl.minlen.max(1) as i128;
+                        let minlen = lbl.minlen as i128;
                         let slack = w_rank - v_rank - minlen;
                         match &best {
                             Some(best_key) if (slack, edge_ix) >= *best_key => {}
@@ -822,7 +822,7 @@ fn enter_edge_fast(
             if flip == v_desc && flip != w_desc {
                 let v_rank = rank_by_ix.get(g_v_ix).copied().unwrap_or(0);
                 let w_rank = rank_by_ix.get(g_w_ix).copied().unwrap_or(0);
-                let minlen = lbl.minlen.max(1) as i128;
+                let minlen = lbl.minlen as i128;
                 let slack = w_rank - v_rank - minlen;
                 match &best {
                     Some(best_key) if (slack, edge_ix) >= *best_key => {}
@@ -873,9 +873,9 @@ fn update_ranks_fast(
 
                 let (minlen, flipped) =
                     if let Some(e) = g.edge_by_endpoints_ix(child_gix, parent_gix) {
-                        (e.minlen.max(1) as i128, false)
+                        (e.minlen as i128, false)
                     } else if let Some(e) = g.edge_by_endpoints_ix(parent_gix, child_gix) {
-                        (e.minlen.max(1) as i128, true)
+                        (e.minlen as i128, true)
                     } else {
                         continue;
                     };

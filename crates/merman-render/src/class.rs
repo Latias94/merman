@@ -956,7 +956,7 @@ fn layout_prepared_node(
     // Mermaid's dagre wrapper always sets `compound: true`, and Dagre's ranker expects a connected
     // graph. `dugong::layout` mirrors Dagre's full pipeline (including `nestingGraph`)
     // and should be used for class diagrams even when there are no explicit clusters.
-    dugong::layout(&mut prepared.graph);
+    dugong::layout(&mut prepared.graph)?;
 
     // Mermaid does not render Dagre's internal dummy nodes/edges (border nodes, edge label nodes,
     // nesting artifacts). Filter them out before computing bounds and before merging extracted

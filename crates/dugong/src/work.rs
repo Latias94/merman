@@ -6,6 +6,7 @@
 /// interruption to their own cancellation or resource error while arithmetic overflow remains a
 /// deterministic kernel failure even when the caller otherwise has no ceiling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum WorkError {
     Interrupted,
     ArithmeticOverflow,

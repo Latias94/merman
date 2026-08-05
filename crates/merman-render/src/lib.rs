@@ -148,6 +148,14 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+impl From<dugong::LayoutError> for Error {
+    fn from(error: dugong::LayoutError) -> Self {
+        Self::InvalidModel {
+            message: error.to_string(),
+        }
+    }
+}
+
 impl Error {
     pub fn svg_postprocess(pass: impl Into<String>, message: impl Into<String>) -> Self {
         Self::SvgPostprocess {

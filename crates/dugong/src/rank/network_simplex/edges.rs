@@ -97,7 +97,7 @@ pub fn enter_edge(
         if flip == v_desc && flip != w_desc {
             let v_rank = rank_by_ix.get(g_v_ix).copied().unwrap_or(0);
             let w_rank = rank_by_ix.get(g_w_ix).copied().unwrap_or(0);
-            let minlen = lbl.minlen.max(1) as i128;
+            let minlen = lbl.minlen as i128;
             let slack = i128::from(w_rank) - i128::from(v_rank) - minlen;
 
             match &best {
@@ -151,9 +151,9 @@ fn update_ranks(
             continue;
         };
         let (minlen, flipped) = if let Some(e) = g.edge_by_endpoints_ix(v_ix, parent_ix) {
-            (e.minlen.max(1) as i128, false)
+            (e.minlen as i128, false)
         } else if let Some(e) = g.edge_by_endpoints_ix(parent_ix, v_ix) {
-            (e.minlen.max(1) as i128, true)
+            (e.minlen as i128, true)
         } else {
             continue;
         };

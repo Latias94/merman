@@ -76,6 +76,27 @@ fn util_simplify_collapses_multi_edges() {
 }
 
 #[test]
+fn util_simplify_keeps_dagres_default_minlen_floor() {
+    let mut g: Graph<serde_json::Value, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: false,
+        ..Default::default()
+    });
+    g.set_edge_with_label(
+        "a",
+        "b",
+        EdgeLabel {
+            minlen: 0,
+            ..Default::default()
+        },
+    );
+
+    let simplified = util::simplify(&g);
+
+    assert_eq!(simplified.edge("a", "b", None).unwrap().minlen, 1);
+}
+
+#[test]
 fn util_simplify_preserves_first_endpoint_pair_occurrence_order() {
     let mut g: Graph<serde_json::Value, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: true,

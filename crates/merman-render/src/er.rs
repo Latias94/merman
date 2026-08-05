@@ -789,7 +789,7 @@ fn layout_er_diagram_dagre_typed(
         );
     }
 
-    dugong::layout(&mut g);
+    dugong::layout(&mut g)?;
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     for id in g.node_ids() {

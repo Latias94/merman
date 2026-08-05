@@ -30,7 +30,6 @@ pub(crate) fn rank_controlled(
             work_control.charge(longest_path_work_units(g)?)?;
             util::longest_path_controlled(g)?;
         }
-        Some("none") => {}
         _ => network_simplex::network_simplex_controlled(g, work_control)?,
     }
     Ok(())
@@ -40,7 +39,7 @@ pub(crate) fn validate_rank_arithmetic(
     g: &crate::graphlib::Graph<crate::NodeLabel, crate::EdgeLabel, crate::GraphLabel>,
 ) -> Result<(), crate::WorkError> {
     for edge in g.edges() {
-        let minlen = g.edge_by_key(edge).map_or(1, |label| label.minlen.max(1));
+        let minlen = g.edge_by_key(edge).map_or(1, |label| label.minlen);
         if minlen > i32::MAX as usize {
             return Err(crate::WorkError::ArithmeticOverflow);
         }

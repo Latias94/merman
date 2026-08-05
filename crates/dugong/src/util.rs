@@ -149,8 +149,9 @@ pub fn intersect_rect(rect: Rect, point: Point) -> Point {
     let mut w = rect.width / 2.0;
     let mut h = rect.height / 2.0;
 
-    // Upstream throws here. In headless Rust usage this can become input-reachable for degenerate
-    // edges, so return a deterministic point on the right edge instead.
+    // The canonical layout pipeline detects this source error before calling the helper and
+    // returns `LayoutError::DegenerateEdgeGeometry`. Keep this lower-level geometry utility total
+    // for direct callers that intentionally need a deterministic fallback point.
     if dx == 0.0 && dy == 0.0 {
         return Point { x: x + w, y };
     }

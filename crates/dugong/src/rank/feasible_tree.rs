@@ -129,7 +129,7 @@ fn tight_tree(
 
                 let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
                 let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                let minlen = lbl.minlen.max(1) as i128;
+                let minlen = lbl.minlen as i128;
                 let slack = head_rank - tail_rank - minlen;
                 if slack == 0 {
                     let Some(w_id) = g.node_id_by_ix(head_ix) else {
@@ -155,7 +155,7 @@ fn tight_tree(
 
                 let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
                 let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                let minlen = lbl.minlen.max(1) as i128;
+                let minlen = lbl.minlen as i128;
                 let slack = head_rank - tail_rank - minlen;
                 if slack == 0 {
                     let Some(w_id) = g.node_id_by_ix(tail_ix) else {
@@ -189,7 +189,7 @@ fn tight_tree(
                         return;
                     }
 
-                    let minlen = lbl.minlen.max(1) as i128;
+                    let minlen = lbl.minlen as i128;
 
                     let Some(tail_ix) = g.node_ix(&ek.v) else {
                         return;
@@ -234,7 +234,7 @@ fn find_min_slack_edge(
 
         let v_rank = rank_by_ix.get(v_ix).copied().unwrap_or(0);
         let w_rank = rank_by_ix.get(w_ix).copied().unwrap_or(0);
-        let minlen = lbl.minlen.max(1) as i128;
+        let minlen = lbl.minlen as i128;
         let slack = w_rank - v_rank - minlen;
 
         match &best {

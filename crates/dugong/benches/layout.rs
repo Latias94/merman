@@ -118,7 +118,7 @@ fn bench_layout(c: &mut Criterion) {
             b.iter_batched(
                 || spec.build(),
                 |mut g| {
-                    layout(black_box(&mut g));
+                    layout(black_box(&mut g)).expect("benchmark graph must be valid for layout");
                     black_box(g.node_count());
                 },
                 BatchSize::LargeInput,

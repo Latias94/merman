@@ -856,7 +856,7 @@ fn layout_prepared_node(
 
     // State diagrams use Mermaid's unified Dagre renderer, so use Dugong's canonical pipeline
     // here (edge label proxies, BK positioning, etc.).
-    dugong::layout(&mut prepared.graph);
+    dugong::layout(&mut prepared.graph)?;
 
     for id in prepared.graph.node_ids() {
         let Some(n) = prepared.graph.node(&id) else {

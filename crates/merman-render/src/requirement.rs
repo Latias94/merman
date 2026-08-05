@@ -686,7 +686,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
         }
     }
 
-    dugong::layout(&mut g);
+    dugong::layout(&mut g)?;
 
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for v in g.nodes() {

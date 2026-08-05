@@ -58,7 +58,7 @@ pub(crate) fn longest_path_controlled(
                 frame.next_edge += 1;
                 let minlen = g
                     .edge_by_key(&edge)
-                    .map(|lbl| lbl.minlen.max(1) as i128)
+                    .map(|lbl| lbl.minlen as i128)
                     .unwrap_or(1);
                 if let Some(child_rank) = visited.get(edge.w.as_str()).copied() {
                     apply_candidate(&mut frame.rank, child_rank - minlen);
@@ -103,7 +103,7 @@ pub(crate) fn slack_checked(
     // as `0` so layout can degrade gracefully instead of panicking.
     let w_rank = g.node(&e.w).and_then(|n| n.rank).unwrap_or(0);
     let v_rank = g.node(&e.v).and_then(|n| n.rank).unwrap_or(0);
-    let minlen = g.edge_by_key(e).map_or(1, |lbl| lbl.minlen.max(1)) as i128;
+    let minlen = g.edge_by_key(e).map_or(1, |lbl| lbl.minlen) as i128;
     let slack = i128::from(w_rank) - i128::from(v_rank) - minlen;
     i32::try_from(slack).map_err(|_| crate::WorkError::ArithmeticOverflow)
 }

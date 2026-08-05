@@ -61,10 +61,49 @@ fn rank_network_simplex_respects_the_minlen_attribute() {
 
 #[test]
 fn rank_unknown_should_still_work_respects_the_minlen_attribute() {
-    let mut g = gansner_graph();
-    g.graph_mut().ranker = Some("unknown-should-still-work".to_string());
-    rank::rank(&mut g);
-    assert_respects_minlen(&g);
+    for ranker in ["unknown-should-still-work", "none"] {
+        let mut g = gansner_graph();
+        g.graph_mut().ranker = Some(ranker.to_string());
+        rank::rank(&mut g);
+        assert_respects_minlen(&g);
+    }
+}
+
+#[test]
+fn rankers_match_dagres_zero_minlen_boundary() {
+    fn zero_minlen_graph(ranker: &str) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel {
+            ranker: Some(ranker.to_string()),
+            ..Default::default()
+        });
+        graph.set_node("a", NodeLabel::default());
+        graph.set_node("b", NodeLabel::default());
+        graph.set_edge_with_label(
+            "a",
+            "b",
+            EdgeLabel {
+                minlen: 0,
+                weight: 1.0,
+                ..Default::default()
+            },
+        );
+        graph
+    }
+
+    for ranker in ["longest-path", "tight-tree"] {
+        let mut graph = zero_minlen_graph(ranker);
+        rank::rank(&mut graph);
+        assert_eq!(graph.node("a").unwrap().rank, graph.node("b").unwrap().rank);
+    }
+
+    let mut network_simplex = zero_minlen_graph("network-simplex");
+    rank::rank(&mut network_simplex);
+    assert_eq!(
+        network_simplex.node("b").unwrap().rank.unwrap()
+            - network_simplex.node("a").unwrap().rank.unwrap(),
+        1
+    );
 }
 
 #[test]

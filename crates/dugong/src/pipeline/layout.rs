@@ -15,12 +15,16 @@ use crate::{
     coordinate_system, nesting_graph, normalize, order, parent_dummy_chains, position, rank,
     self_edges, util,
 };
-use crate::{NoopWorkControl, WorkControl, WorkError};
+use crate::{LayoutError, NoopWorkControl, WorkControl, WorkError};
 
-pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+/// Runs the canonical Mermaid-compatible Dagre pipeline transactionally.
+///
+/// The caller graph is updated only after the temporary layout graph completes successfully.
+pub fn layout(
+    g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Result<(), LayoutError> {
     let mut work_control = NoopWorkControl;
     layout_controlled(g, &mut work_control)
-        .expect("the checked no-op Dugong work control cannot reject layout work");
 }
 
 /// Runs the canonical Dagre pipeline under caller-owned work control.
@@ -30,10 +34,11 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
 pub fn layout_controlled(
     g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
-) -> Result<(), WorkError> {
+) -> Result<(), LayoutError> {
     let mut layout_graph = build_layout_graph(g, work_control)?;
     run_layout(&mut layout_graph, work_control)?;
-    update_input_graph(g, &layout_graph, work_control)
+    update_input_graph(g, &layout_graph, work_control)?;
+    Ok(())
 }
 
 // Dagre runs its mutating phases on a temporary graph built from a whitelist of layout inputs.
@@ -277,14 +282,14 @@ fn update_input_graph(
 fn run_layout(
     g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
-) -> Result<(), WorkError> {
+) -> Result<(), LayoutError> {
     // Mirror Dagre's `makeSpaceForEdgeLabels` so edge-label proxy ranks become integers
     // (we later materialize label nodes in `normalize::run`).
     work_control.charge(g.edge_count())?;
     let spaced_minlens = g
         .edges()
         .map(|edge_key| {
-            let minlen = g.edge_by_key(edge_key).map_or(1, |edge| edge.minlen.max(1));
+            let minlen = g.edge_by_key(edge_key).map_or(1, |edge| edge.minlen);
             let minlen = checked_mul(minlen, 2)?;
             if minlen > i32::MAX as usize {
                 return Err(WorkError::ArithmeticOverflow);
@@ -320,7 +325,14 @@ fn run_layout(
             has_compound_structure = true;
         }
     });
-    let tiny_simple_chain = g.node_count() == 2 && g.edge_count() == 1 && !has_compound_structure;
+    let uses_network_simplex = !matches!(
+        g.graph().ranker.as_deref(),
+        Some("longest-path" | "tight-tree")
+    );
+    let tiny_simple_chain = g.node_count() == 2
+        && g.edge_count() == 1
+        && !has_compound_structure
+        && uses_network_simplex;
     let first_edge_pre = if tiny_simple_chain {
         g.edges().next().cloned()
     } else {
@@ -352,6 +364,8 @@ fn run_layout(
         g.for_each_node_mut(|_id, n| n.rank = Some(0));
         if let Some(ek) = first_edge_pre.clone() {
             let minlen = match g.edge_by_key(&ek) {
+                // The shortcut replaces network-simplex, whose `simplify` stage floors a simple
+                // edge to one even when the source label explicitly carries zero.
                 Some(edge) => {
                     i32::try_from(edge.minlen.max(1)).map_err(|_| WorkError::ArithmeticOverflow)?
                 }
@@ -583,7 +597,7 @@ fn run_layout(
         });
         edge_route_materialization_work = edge_route_materialization_work.and_then(|total| {
             total
-                .checked_add(lbl.points.len().max(1))
+                .checked_add(lbl.points.len())
                 .and_then(|next| next.checked_add(2))
         });
         // Match Dagre's `translateGraph(...)`: it computes min/max based on nodes and edge-label
@@ -639,8 +653,8 @@ fn run_layout(
         g.graph_mut().width = graph_width;
         g.graph_mut().height = graph_height;
     }
-    // Ensure every edge has at least one internal point (so D3 `curveBasis` emits cubic beziers),
-    // and add node intersection endpoints to better match Dagre/Mermaid edge point semantics.
+    // Match Dagre's `assignNodeIntersects`: preserve normalized internal points exactly, or aim
+    // directly at the opposite node center when normalization produced none.
     work_control.charge(edge_route_materialization_work)?;
     for e in edge_keys {
         let Some((sx, sy, sw, sh)) = g
@@ -660,27 +674,27 @@ fn run_layout(
             continue;
         };
 
-        let mut internal: Vec<Point> = if lbl.points.is_empty() {
-            vec![Point {
-                x: (sx + tx) / 2.0,
-                y: (sy + ty) / 2.0,
-            }]
-        } else {
-            lbl.points.clone()
+        let internal = lbl.points.clone();
+        let (first, last) = match (internal.first().copied(), internal.last().copied()) {
+            (Some(first), Some(last)) => (first, last),
+            _ => (Point { x: tx, y: ty }, Point { x: sx, y: sy }),
         };
-        if internal.is_empty() {
-            internal.push(Point {
-                x: (sx + tx) / 2.0,
-                y: (sy + ty) / 2.0,
+
+        // Mermaid's Dagre companion throws when either route point is exactly at the center of
+        // its endpoint rectangle. Preserve that observable failure boundary, but keep the caller
+        // graph transactional and return a typed Rust error.
+        if first.x == sx && first.y == sy {
+            return Err(LayoutError::DegenerateEdgeGeometry {
+                edge: e.clone(),
+                node: e.v.clone(),
             });
         }
-
-        let Some(first) = internal.first().copied() else {
-            continue;
-        };
-        let Some(last) = internal.last().copied() else {
-            continue;
-        };
+        if last.x == tx && last.y == ty {
+            return Err(LayoutError::DegenerateEdgeGeometry {
+                edge: e.clone(),
+                node: e.w.clone(),
+            });
+        }
 
         let mut pts: Vec<Point> = Vec::with_capacity(internal.len() + 2);
 

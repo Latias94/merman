@@ -74,15 +74,18 @@ impl DagreOperationWorkControl {
         error
     }
 
-    fn map_dugong_error(&mut self, error: dugong::WorkError) -> Error {
-        match error {
-            dugong::WorkError::Interrupted => {
+    fn map_dugong_error(&mut self, error: impl Into<dugong::LayoutError>) -> Error {
+        match error.into() {
+            dugong::LayoutError::Work(dugong::WorkError::Interrupted) => {
                 let rejection = self.rejection.borrow().clone();
                 rejection
                     .unwrap_or_else(|| self.record_arithmetic_overflow())
                     .into()
             }
-            dugong::WorkError::ArithmeticOverflow => self.record_arithmetic_overflow().into(),
+            dugong::LayoutError::Work(dugong::WorkError::ArithmeticOverflow) => {
+                self.record_arithmetic_overflow().into()
+            }
+            error => error.into(),
         }
     }
 }

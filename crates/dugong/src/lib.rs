@@ -11,6 +11,9 @@ pub mod data;
 mod model;
 pub use model::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, SelfEdge};
 
+mod error;
+pub use error::LayoutError;
+
 mod work;
 pub use work::{NoopWorkControl, WorkControl, WorkError};
 
