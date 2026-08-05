@@ -481,6 +481,45 @@ fn layered_adjacency_work(
     )
 }
 
+enum GraphToLocal {
+    // A dense table is faster on the canonical graph, where participating graph indices are
+    // contiguous. Never allocate it when tombstones make the index span larger than the live
+    // participating entry budget.
+    Dense(Vec<usize>),
+    Sparse(HashMap<usize, usize>),
+}
+
+impl GraphToLocal {
+    fn new(required_graph_slots: usize, capacity: usize) -> Self {
+        if required_graph_slots <= capacity {
+            Self::Dense(vec![NONE; required_graph_slots])
+        } else {
+            let mut map = HashMap::default();
+            map.reserve(capacity);
+            Self::Sparse(map)
+        }
+    }
+
+    fn get(&self, graph_ix: usize) -> Option<usize> {
+        match self {
+            Self::Dense(values) => values
+                .get(graph_ix)
+                .copied()
+                .filter(|&local_ix| local_ix != NONE),
+            Self::Sparse(values) => values.get(&graph_ix).copied(),
+        }
+    }
+
+    fn insert(&mut self, graph_ix: usize, local_ix: usize) {
+        match self {
+            Self::Dense(values) => values[graph_ix] = local_ix,
+            Self::Sparse(values) => {
+                values.insert(graph_ix, local_ix);
+            }
+        }
+    }
+}
+
 struct BkWorkspace<'a> {
     g: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
     layering: Vec<Vec<usize>>,
@@ -540,7 +579,10 @@ impl<'a> BkWorkspace<'a> {
         charge_nonzero(
             work_control,
             checked_add(
-                checked_add(source_layering.len(), source_layer_entries)?,
+                checked_add(
+                    checked_add(source_layering.len(), source_layer_entries)?,
+                    source_layer_entries,
+                )?,
                 edge_scan_entries,
             )?,
         )?;
@@ -561,11 +603,77 @@ impl<'a> BkWorkspace<'a> {
             layering.push(layer);
         }
 
+        Self::new_indexed_owned_controlled(
+            g,
+            layering,
+            source_layer_entries,
+            required_graph_slots,
+            work_control,
+        )
+    }
+
+    fn new_indexed_controlled(
+        g: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        source_layering: &[Vec<usize>],
+        work_control: &mut dyn WorkControl,
+    ) -> Result<Self, WorkError> {
+        charge_nonzero(work_control, source_layering.len())?;
+        let source_layer_entries = source_layering
+            .iter()
+            .try_fold(0usize, |total, layer| checked_add(total, layer.len()))?;
+        let edge_scan_entries = if g.is_directed() {
+            g.edge_slot_count()
+        } else {
+            checked_add(g.edge_slot_count(), g.edge_count())?
+        };
         charge_nonzero(
             work_control,
-            checked_add(required_graph_slots, source_layer_entries)?,
+            checked_add(
+                checked_add(source_layering.len(), source_layer_entries)?,
+                edge_scan_entries,
+            )?,
         )?;
-        let mut graph_to_local = vec![NONE; required_graph_slots];
+
+        let mut required_graph_slots = 0usize;
+        let mut layering = Vec::with_capacity(source_layering.len());
+        for source_layer in source_layering {
+            let mut layer = Vec::with_capacity(source_layer.len());
+            for &graph_ix in source_layer {
+                if g.node_label_by_ix(graph_ix).is_none() {
+                    continue;
+                }
+                required_graph_slots = required_graph_slots.max(checked_add(graph_ix, 1)?);
+                layer.push(graph_ix);
+            }
+            layering.push(layer);
+        }
+
+        Self::new_indexed_owned_controlled(
+            g,
+            layering,
+            source_layer_entries,
+            required_graph_slots,
+            work_control,
+        )
+    }
+
+    fn new_indexed_owned_controlled(
+        g: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        mut layering: Vec<Vec<usize>>,
+        source_layer_entries: usize,
+        required_graph_slots: usize,
+        work_control: &mut dyn WorkControl,
+    ) -> Result<Self, WorkError> {
+        let lookup_capacity = source_layer_entries.min(g.node_count());
+
+        charge_nonzero(
+            work_control,
+            checked_add(
+                required_graph_slots.min(lookup_capacity),
+                source_layer_entries,
+            )?,
+        )?;
+        let mut graph_to_local = GraphToLocal::new(required_graph_slots, lookup_capacity);
         let mut nodes: Vec<BkNode> = Vec::with_capacity(source_layer_entries.min(g.node_count()));
         let mut can_preorder_neighbors = true;
         let mut layer_entries = 0usize;
@@ -573,8 +681,7 @@ impl<'a> BkWorkspace<'a> {
 
         for (layer_index, layer) in layering.iter_mut().enumerate() {
             for (position, graph_ix) in layer.iter_mut().enumerate() {
-                let local_ix = graph_to_local[*graph_ix];
-                if local_ix != NONE {
+                if let Some(local_ix) = graph_to_local.get(*graph_ix) {
                     // Repeated layering occurrences make orientation-specific stable tie order
                     // observable. Preserve Dagre's per-orientation stable-sort path in that case.
                     can_preorder_neighbors = false;
@@ -587,7 +694,7 @@ impl<'a> BkWorkspace<'a> {
                     .expect("a live graph node index must retain its label");
 
                 let local_ix = nodes.len();
-                graph_to_local[*graph_ix] = local_ix;
+                graph_to_local.insert(*graph_ix, local_ix);
                 nodes.push(BkNode {
                     graph_ix: *graph_ix,
                     order: label.order,
@@ -627,7 +734,6 @@ impl<'a> BkWorkspace<'a> {
             g.for_each_edge_ix(|from_graph_ix, to_graph_ix, _, _| {
                 let to_local = graph_to_local
                     .get(to_graph_ix)
-                    .copied()
                     .filter(|&ix| ix < node_count);
                 let Some(to_local) = to_local else {
                     return;
@@ -637,7 +743,6 @@ impl<'a> BkWorkspace<'a> {
                 }
                 let from_local = graph_to_local
                     .get(from_graph_ix)
-                    .copied()
                     .filter(|&ix| ix < node_count);
 
                 if !saw_predecessor[to_local] {
@@ -691,7 +796,6 @@ impl<'a> BkWorkspace<'a> {
                 {
                     let node_local = graph_to_local
                         .get(node_graph_ix)
-                        .copied()
                         .filter(|&ix| ix < node_count);
                     let Some(node_local) = node_local else {
                         continue;
@@ -702,7 +806,6 @@ impl<'a> BkWorkspace<'a> {
 
                     let neighbor_local = graph_to_local
                         .get(neighbor_graph_ix)
-                        .copied()
                         .filter(|&ix| ix < node_count);
                     if !saw_predecessor[node_local] {
                         saw_predecessor[node_local] = true;
@@ -827,11 +930,28 @@ impl<'a> BkWorkspace<'a> {
     }
 
     fn run_controlled(
-        mut self,
+        self,
         work_control: &mut dyn WorkControl,
     ) -> Result<HashMap<String, f64>, WorkError> {
+        let graph = self.g;
+        let indexed = self.run_indexed_controlled(work_control)?;
+        charge_nonzero(work_control, checked_mul(indexed.len(), 2)?)?;
+        let mut out = HashMap::default();
+        out.reserve(indexed.len());
+        for (graph_ix, x) in indexed {
+            if let Some(id) = graph.node_id_by_ix(graph_ix) {
+                out.insert(id.to_string(), x);
+            }
+        }
+        Ok(out)
+    }
+
+    fn run_indexed_controlled(
+        mut self,
+        work_control: &mut dyn WorkControl,
+    ) -> Result<Vec<(usize, f64)>, WorkError> {
         if self.nodes.is_empty() {
-            return Ok(HashMap::default());
+            return Ok(Vec::new());
         }
 
         charge_nonzero(work_control, self.conflict_work_units()?)?;
@@ -858,7 +978,7 @@ impl<'a> BkWorkspace<'a> {
         )?;
         self.align_coordinates(smallest);
         charge_nonzero(work_control, self.nodes.len())?;
-        Ok(self.balance())
+        Ok(self.balance_indexed())
     }
 
     fn conflict_work_units(&self) -> Result<usize, WorkError> {
@@ -1264,7 +1384,7 @@ impl<'a> BkWorkspace<'a> {
         }
     }
 
-    fn balance(&self) -> HashMap<String, f64> {
+    fn balance_indexed(&self) -> Vec<(usize, f64)> {
         let align = self.g.graph().align.as_deref().map(str::to_ascii_lowercase);
         let selected = match align.as_deref() {
             Some("ul") => Some(0),
@@ -1276,8 +1396,7 @@ impl<'a> BkWorkspace<'a> {
         };
         let invalid_alignment = align.is_some() && selected.is_none();
 
-        let mut out: HashMap<String, f64> = HashMap::default();
-        out.reserve(self.nodes.len());
+        let mut out = Vec::with_capacity(self.nodes.len());
         for node in 0..self.nodes.len() {
             let x = if invalid_alignment {
                 0.0
@@ -1293,9 +1412,7 @@ impl<'a> BkWorkspace<'a> {
                 values.sort_by(f64::total_cmp);
                 (values[1] + values[2]) / 2.0
             };
-            if let Some(id) = self.g.node_id_by_ix(self.nodes[node].graph_ix) {
-                out.insert(id.to_string(), x);
-            }
+            out.push((self.nodes[node].graph_ix, x));
         }
         out
     }
@@ -1318,6 +1435,15 @@ pub fn position_x_with_layering_controlled(
     work_control: &mut dyn WorkControl,
 ) -> Result<HashMap<String, f64>, WorkError> {
     BkWorkspace::new_controlled(g, layering, work_control)?.run_controlled(work_control)
+}
+
+pub(crate) fn position_x_with_indexed_layering_controlled(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    layering: &[Vec<usize>],
+    work_control: &mut dyn WorkControl,
+) -> Result<Vec<(usize, f64)>, WorkError> {
+    BkWorkspace::new_indexed_controlled(g, layering, work_control)?
+        .run_indexed_controlled(work_control)
 }
 
 pub fn horizontal_compaction(
@@ -1948,6 +2074,39 @@ mod tests {
         assert_eq!(workspace.nodes.len(), 1);
         // The third setup tranche covers the graph-index lookup allocation plus the source
         // entries. It must follow the participating index span (1 + 1), not all graph slots.
+        assert_eq!(work_control.charges, vec![1, 3, 2, 1]);
+    }
+
+    #[test]
+    fn indexed_workspace_bounds_a_participating_high_tombstone_slot() {
+        let mut g = Graph::new(GraphOptions::default());
+        g.set_graph(GraphLabel::default());
+        for index in 0..4_096 {
+            g.set_node(format!("retired-{index}"), NodeLabel::default());
+        }
+        g.set_node(
+            "layered",
+            NodeLabel {
+                rank: Some(0),
+                order: Some(0),
+                ..Default::default()
+            },
+        );
+        let layered_ix = g.node_ix("layered").expect("layered node index");
+        for index in 0..4_096 {
+            assert!(g.remove_node(&format!("retired-{index}")));
+        }
+        let layering = vec![vec![layered_ix]];
+        let mut work_control = RecordingWorkControl::default();
+
+        let workspace =
+            BkWorkspace::new_indexed_controlled(&g, &layering, &mut work_control).unwrap();
+
+        assert!(layered_ix > 4_000);
+        assert_eq!(g.node_count(), 1);
+        assert_eq!(workspace.nodes.len(), 1);
+        // Both indexed setup tranches stay proportional to the participating entry count. The
+        // retained Graphlib slot index only selects the sparse lookup representation.
         assert_eq!(work_control.charges, vec![1, 2, 2, 1]);
     }
 
@@ -1955,7 +2114,7 @@ mod tests {
     fn controlled_bk_rejects_setup_before_workspace_allocation() {
         let (g, layering) = fanout_graph(&[8]);
         let source_entries = layering.iter().map(Vec::len).sum::<usize>();
-        let setup_work = layering.len() + source_entries + g.edge_count();
+        let setup_work = layering.len() + 2 * source_entries + g.edge_slot_count();
         let mut work_control = RecordingWorkControl {
             reject_units: Some(setup_work),
             ..Default::default()
@@ -2003,6 +2162,43 @@ mod tests {
 
         assert_eq!(actual, expected);
         assert!(!work_control.charges.is_empty());
+    }
+
+    #[test]
+    fn indexed_bk_matches_the_public_string_adapter_exactly() {
+        let (g, layering) = fanout_graph(&[3, 5, 7]);
+        let indexed_layering = layering
+            .iter()
+            .map(|layer| {
+                layer
+                    .iter()
+                    .map(|id| g.node_ix(id).expect("fixture node index"))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let mut string_work = RecordingWorkControl::default();
+        let mut indexed_work = RecordingWorkControl::default();
+
+        let string_positions =
+            position_x_with_layering_controlled(&g, &layering, &mut string_work).unwrap();
+        let indexed_positions =
+            position_x_with_indexed_layering_controlled(&g, &indexed_layering, &mut indexed_work)
+                .unwrap()
+                .into_iter()
+                .map(|(graph_ix, x)| {
+                    (
+                        g.node_id_by_ix(graph_ix)
+                            .expect("positioned fixture node")
+                            .to_owned(),
+                        x,
+                    )
+                })
+                .collect::<HashMap<_, _>>();
+
+        assert_eq!(indexed_positions, string_positions);
+        assert!(
+            indexed_work.charges.iter().sum::<usize>() < string_work.charges.iter().sum::<usize>()
+        );
     }
 
     fn fallback_graph(

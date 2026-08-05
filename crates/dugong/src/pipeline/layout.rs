@@ -547,12 +547,20 @@ fn run_layout(
             prev_y += rank_sep;
         }
     }
-    let layering_ids = layering.to_node_ids_controlled(g, work_control)?;
-    let xs = position::bk::position_x_with_layering_controlled(g, &layering_ids, work_control)?;
-    work_control.charge(g.node_order_slot_count())?;
-    g.for_each_node_mut(|id, n| {
-        n.x = Some(xs.get(id).copied().unwrap_or(0.0));
+    let xs = position::bk::position_x_with_indexed_layering_controlled(
+        g,
+        layering.layers(),
+        work_control,
+    )?;
+    work_control.charge(checked_add(g.node_order_slot_count(), xs.len())?)?;
+    g.for_each_node_mut(|_id, node| {
+        node.x = Some(0.0);
     });
+    for (graph_ix, x) in xs {
+        if let Some(node) = g.node_label_mut_by_ix(graph_ix) {
+            node.x = Some(x);
+        }
+    }
     // Convert dummy self-edge nodes into self-loop edge point sequences and remove the dummy nodes.
     charge_graph_scan(g, work_control)?;
     self_edges::position_self_edges(g);

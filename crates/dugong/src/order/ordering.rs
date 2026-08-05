@@ -433,32 +433,6 @@ impl IndexedLayerMatrix {
         self.has_unique_rank_orders && self.slot_count == self.occupied_entries
     }
 
-    pub(crate) fn to_node_ids_controlled<N, E, G>(
-        &self,
-        g: &Graph<N, E, G>,
-        work_control: &mut dyn WorkControl,
-    ) -> Result<Vec<Vec<String>>, WorkError>
-    where
-        N: Default + 'static,
-        E: Default + 'static,
-        G: Default,
-    {
-        work_control.charge(checked_add(
-            checked_add(self.rank_count(), self.slot_count())?,
-            self.occupied_entries,
-        )?)?;
-        Ok(self
-            .layers
-            .iter()
-            .map(|layer| {
-                layer
-                    .iter()
-                    .filter_map(|&graph_ix| g.node_id_by_ix(graph_ix).map(str::to_owned))
-                    .collect()
-            })
-            .collect())
-    }
-
     pub(crate) fn record_entry_counts(&mut self, slot_count: usize, occupied_entries: usize) {
         self.slot_count = slot_count;
         self.occupied_entries = occupied_entries;
@@ -1017,7 +991,9 @@ mod tests {
             ..Default::default()
         };
 
-        order_controlled(&mut graph, OrderOptions::default(), &mut work_control).unwrap();
+        let layering =
+            order_with_layering_controlled(&mut graph, OrderOptions::default(), &mut work_control)
+                .unwrap();
 
         // Mermaid's Dagre companion scores these sweeps 0, 1, 0, 1 and retains the first zero.
         // Once zero is structurally proved, later matrices and crossing counts cannot improve it.
@@ -1035,6 +1011,10 @@ mod tests {
                 "unexpected final order for {id}"
             );
         }
+
+        let mut noop = NoopWorkControl;
+        let rebuilt = build_current_layer_matrix_ix_controlled(&graph, &mut noop).unwrap();
+        assert_eq!(layering, rebuilt);
     }
 
     #[test]

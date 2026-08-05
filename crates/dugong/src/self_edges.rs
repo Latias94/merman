@@ -387,6 +387,33 @@ mod tests {
         graph
     }
 
+    #[test]
+    fn removal_reports_exact_named_self_edges_without_reordering_survivors() {
+        let mut graph = test_graph();
+        graph.set_graph(GraphLabel::default());
+        for id in ["a", "b"] {
+            graph.set_node(id, NodeLabel::default());
+        }
+        graph.set_edge_named("a", "a", Some("first"), Some(EdgeLabel::default()));
+        graph.set_edge_named("a", "b", Some("survivor"), Some(EdgeLabel::default()));
+        graph.set_edge_named("a", "a", Some("second"), Some(EdgeLabel::default()));
+
+        assert_eq!(remove_self_edges_with_count(&mut graph), 2);
+        assert_eq!(
+            graph
+                .node("a")
+                .expect("source node")
+                .self_edges
+                .iter()
+                .map(|edge| edge.edge_obj.name.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("first"), Some("second")]
+        );
+        assert!(graph.has_edge("a", "b", Some("survivor")));
+        assert_eq!(graph.edge_count(), 1);
+        assert_eq!(remove_self_edges_with_count(&mut graph), 0);
+    }
+
     fn build_indexed_layering(
         graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     ) -> IndexedLayerMatrix {
@@ -408,10 +435,16 @@ mod tests {
         assert_eq!(layering.slot_count(), 6);
         assert!(layering.has_dense_unique_orders());
 
-        let mut noop = crate::NoopWorkControl;
         let ids = layering
-            .to_node_ids_controlled(&graph, &mut noop)
-            .expect("indexed IDs materialize");
+            .layers()
+            .iter()
+            .map(|layer| {
+                layer
+                    .iter()
+                    .filter_map(|&graph_ix| graph.node_id_by_ix(graph_ix).map(str::to_owned))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         let first_layer = ids[0]
             .iter()
             .map(|id| {
