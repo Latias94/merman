@@ -42,9 +42,21 @@ pub(crate) fn remove_self_edges_with_count(
 }
 
 pub fn insert_self_edges(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    // This public compatibility helper accepts arbitrary caller-assigned `order` values. Preserve
+    // its compact live-entry behavior instead of allocating a sentinel span up to max(order);
+    // canonical layout uses the exact indexed matrix returned by the controlled ordering owner.
+    let layers = crate::util::build_layer_matrix(g)
+        .into_iter()
+        .map(|layer| {
+            layer
+                .into_iter()
+                .filter_map(|id| g.node_ix(&id))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
     let mut work_control = NoopWorkControl;
-    let mut layering = crate::order::build_current_layer_matrix_ix_controlled(g, &mut work_control)
-        .expect("the checked no-op Dugong work control cannot reject self-edge layering");
+    let mut layering = IndexedLayerMatrix::from_dense_layers(layers)
+        .expect("an already materialized compact layering has representable entry counts");
     insert_self_edges_with_layering_controlled(g, &mut layering, &mut work_control)
         .expect("the checked no-op Dugong work control cannot reject self-edge insertion");
 }
@@ -452,6 +464,32 @@ mod tests {
         assert_eq!(layering[1], ["c"]);
         assert_eq!(graph.node("a").and_then(|node| node.order), Some(0));
         assert_eq!(graph.node("b").and_then(|node| node.order), Some(3));
+    }
+
+    #[test]
+    fn public_insertion_compacts_extreme_sparse_orders() {
+        let mut graph = ranked_self_edge_graph();
+        graph.node_mut("a").unwrap().order = Some(usize::MAX);
+        graph.node_mut("b").unwrap().order = Some(0);
+
+        insert_self_edges(&mut graph);
+
+        let layering = crate::util::build_layer_matrix(&graph);
+        let first_layer = layering[0]
+            .iter()
+            .map(|id| {
+                graph
+                    .node(id)
+                    .and_then(|node| node.edge_obj.as_ref())
+                    .and_then(|edge| edge.name.as_deref())
+                    .unwrap_or(id)
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(first_layer, ["b", "b-only", "a", "a-first", "a-second"]);
+        for (order, id) in layering[0].iter().enumerate() {
+            assert_eq!(graph.node(id).and_then(|node| node.order), Some(order));
+        }
     }
 
     #[test]

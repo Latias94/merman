@@ -397,6 +397,18 @@ impl Default for IndexedLayerMatrix {
 }
 
 impl IndexedLayerMatrix {
+    pub(crate) fn from_dense_layers(layers: Vec<Vec<usize>>) -> Result<Self, WorkError> {
+        let slot_count = layers
+            .iter()
+            .try_fold(0usize, |total, layer| checked_add(total, layer.len()))?;
+        Ok(Self {
+            layers,
+            slot_count,
+            occupied_entries: slot_count,
+            has_unique_rank_orders: true,
+        })
+    }
+
     pub(crate) fn layers(&self) -> &[Vec<usize>] {
         &self.layers
     }
