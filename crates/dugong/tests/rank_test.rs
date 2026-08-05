@@ -39,7 +39,7 @@ fn assert_respects_minlen(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) {
 fn rank_longest_path_respects_the_minlen_attribute() {
     let mut g = gansner_graph();
     g.graph_mut().ranker = Some("longest-path".to_string());
-    rank::rank(&mut g);
+    rank::rank(&mut g).expect("longest-path ranking succeeds");
     assert_respects_minlen(&g);
 }
 
@@ -47,7 +47,7 @@ fn rank_longest_path_respects_the_minlen_attribute() {
 fn rank_tight_tree_respects_the_minlen_attribute() {
     let mut g = gansner_graph();
     g.graph_mut().ranker = Some("tight-tree".to_string());
-    rank::rank(&mut g);
+    rank::rank(&mut g).expect("tight-tree ranking succeeds");
     assert_respects_minlen(&g);
 }
 
@@ -55,7 +55,7 @@ fn rank_tight_tree_respects_the_minlen_attribute() {
 fn rank_network_simplex_respects_the_minlen_attribute() {
     let mut g = gansner_graph();
     g.graph_mut().ranker = Some("network-simplex".to_string());
-    rank::rank(&mut g);
+    rank::rank(&mut g).expect("network-simplex ranking succeeds");
     assert_respects_minlen(&g);
 }
 
@@ -64,7 +64,7 @@ fn rank_unknown_should_still_work_respects_the_minlen_attribute() {
     for ranker in ["unknown-should-still-work", "none"] {
         let mut g = gansner_graph();
         g.graph_mut().ranker = Some(ranker.to_string());
-        rank::rank(&mut g);
+        rank::rank(&mut g).expect("unknown rankers fall back to network simplex");
         assert_respects_minlen(&g);
     }
 }
@@ -93,12 +93,12 @@ fn rankers_match_dagres_zero_minlen_boundary() {
 
     for ranker in ["longest-path", "tight-tree"] {
         let mut graph = zero_minlen_graph(ranker);
-        rank::rank(&mut graph);
+        rank::rank(&mut graph).expect("zero-minlen ranking succeeds");
         assert_eq!(graph.node("a").unwrap().rank, graph.node("b").unwrap().rank);
     }
 
     let mut network_simplex = zero_minlen_graph("network-simplex");
-    rank::rank(&mut network_simplex);
+    rank::rank(&mut network_simplex).expect("zero-minlen network simplex succeeds");
     assert_eq!(
         network_simplex.node("b").unwrap().rank.unwrap()
             - network_simplex.node("a").unwrap().rank.unwrap(),
@@ -120,7 +120,7 @@ fn rank_can_rank_a_single_node_graph_for_each_ranker() {
             ..Default::default()
         });
         g.set_node("a", NodeLabel::default());
-        rank::rank(&mut g);
+        rank::rank(&mut g).expect("single-node ranking succeeds");
         assert_eq!(g.node("a").unwrap().rank, Some(0));
     }
 }

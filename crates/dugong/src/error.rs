@@ -12,6 +12,7 @@ use crate::graphlib::EdgeKey;
 #[non_exhaustive]
 pub enum LayoutError {
     DegenerateEdgeGeometry { edge: EdgeKey, node: String },
+    InvalidNetworkSimplexTree,
     Work(WorkError),
 }
 
@@ -29,6 +30,9 @@ impl std::fmt::Display for LayoutError {
                 }
                 Ok(())
             }
+            Self::InvalidNetworkSimplexTree => {
+                f.write_str("network simplex encountered an invalid mutable tree state")
+            }
             Self::Work(error) => error.fmt(f),
         }
     }
@@ -38,7 +42,7 @@ impl std::error::Error for LayoutError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Work(error) => Some(error),
-            Self::DegenerateEdgeGeometry { .. } => None,
+            Self::DegenerateEdgeGeometry { .. } | Self::InvalidNetworkSimplexTree => None,
         }
     }
 }

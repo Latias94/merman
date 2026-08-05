@@ -6,6 +6,106 @@ use crate::work::{checked_add, checked_mul, checked_ordered_key_updates};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
 use crate::{NoopWorkControl, WorkControl, WorkError};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TightTreeEdge {
+    v_ix: usize,
+    w_ix: usize,
+    minlen: i128,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TightTreeFrame {
+    v_ix: usize,
+    next_incoming: usize,
+    incoming_end: usize,
+    next_outgoing: usize,
+    outgoing_end: usize,
+}
+
+#[derive(Debug, Default)]
+struct TightTreeScratch {
+    roots: Vec<usize>,
+    frames: Vec<TightTreeFrame>,
+}
+
+fn tight_tree_frame(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    v_ix: usize,
+) -> Option<TightTreeFrame> {
+    g.node_id_by_ix(v_ix)?;
+    let (incoming_end, outgoing_end) = if g.is_directed() {
+        (g.in_edge_count_ix(v_ix), g.out_edge_count_ix(v_ix))
+    } else {
+        let incident = g.undirected_edge_count_ix(v_ix);
+        (incident, incident)
+    };
+    Some(TightTreeFrame {
+        v_ix,
+        next_incoming: 0,
+        incoming_end,
+        next_outgoing: 0,
+        outgoing_end,
+    })
+}
+
+fn next_tight_tree_edge(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    frame: &mut TightTreeFrame,
+) -> Option<TightTreeEdge> {
+    if g.is_directed() {
+        if frame.next_incoming < frame.incoming_end {
+            let position = frame.next_incoming;
+            frame.next_incoming += 1;
+            let (v_ix, w_ix, _key, label) = g.in_edge_entry_ix_at(frame.v_ix, position)?;
+            return Some(TightTreeEdge {
+                v_ix,
+                w_ix,
+                minlen: label.minlen as i128,
+            });
+        }
+        if frame.next_outgoing < frame.outgoing_end {
+            let position = frame.next_outgoing;
+            frame.next_outgoing += 1;
+            let (v_ix, w_ix, _key, label) = g.out_edge_entry_ix_at(frame.v_ix, position)?;
+            return Some(TightTreeEdge {
+                v_ix,
+                w_ix,
+                minlen: label.minlen as i128,
+            });
+        }
+        return None;
+    }
+
+    // Graphlib `nodeEdges(v)` is canonical incoming edges followed by canonical outgoing edges.
+    // The undirected CSR stores global incident order, so scan that shared slice twice and filter
+    // by the canonical endpoint without allocating a second adjacency index.
+    while frame.next_incoming < frame.incoming_end {
+        let position = frame.next_incoming;
+        frame.next_incoming += 1;
+        let (v_ix, w_ix, _key, label) = g.undirected_edge_entry_ix_at(frame.v_ix, position)?;
+        if w_ix == frame.v_ix {
+            return Some(TightTreeEdge {
+                v_ix,
+                w_ix,
+                minlen: label.minlen as i128,
+            });
+        }
+    }
+    while frame.next_outgoing < frame.outgoing_end {
+        let position = frame.next_outgoing;
+        frame.next_outgoing += 1;
+        let (v_ix, w_ix, _key, label) = g.undirected_edge_entry_ix_at(frame.v_ix, position)?;
+        if v_ix == frame.v_ix {
+            return Some(TightTreeEdge {
+                v_ix,
+                w_ix,
+                minlen: label.minlen as i128,
+            });
+        }
+    }
+    None
+}
+
 pub fn feasible_tree(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
 ) -> Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()> {
@@ -18,8 +118,12 @@ pub(crate) fn feasible_tree_controlled(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     work_control: &mut dyn WorkControl,
 ) -> Result<Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>, WorkError> {
+    let prepare_adjacency_cache = !g.is_adjacency_cache_current();
     work_control.charge(feasible_tree_setup_work_units(g)?)?;
     crate::rank::validate_rank_arithmetic(g)?;
+    if prepare_adjacency_cache {
+        g.prepare_adjacency_cache();
+    }
     let mut rank_by_ix: Vec<i128> = Vec::new();
     g.for_each_node_ix(|ix, _id, lbl| {
         if ix >= rank_by_ix.len() {
@@ -34,6 +138,7 @@ pub(crate) fn feasible_tree_controlled(
         directed: false,
         ..Default::default()
     });
+    let mut tight_scratch = TightTreeScratch::default();
 
     let Some(start) = g.nodes().next().map(|s| s.to_string()) else {
         return Ok(t);
@@ -51,7 +156,15 @@ pub(crate) fn feasible_tree_controlled(
 
     loop {
         work_control.charge(feasible_tree_iteration_work_units(g)?)?;
-        if tight_tree(&mut t, g, &rank_by_ix, &mut in_tree_by_ix, &mut tree_g_ixs) >= size {
+        if tight_tree(
+            &mut t,
+            g,
+            &rank_by_ix,
+            &mut in_tree_by_ix,
+            &mut tree_g_ixs,
+            &mut tight_scratch,
+        ) >= size
+        {
             break;
         }
         let Some((slack, in_v)) = find_min_slack_edge(g, &rank_by_ix, &in_tree_by_ix) else {
@@ -89,20 +202,39 @@ pub(crate) fn feasible_tree_controlled(
 fn feasible_tree_setup_work_units(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
 ) -> Result<usize, WorkError> {
-    let linear_work = checked_add(
-        checked_mul(g.node_count(), 4)?,
-        checked_mul(g.edge_count(), 2)?,
-    )?;
+    // Rank state and the owner-local DFS frame buffers use a bounded number of node-slot passes.
+    let node_work = checked_mul(g.node_slot_count(), 10)?;
+    // Rank validation scans every slot once. A stale shared CSR cache performs two additional slot
+    // scans, then initializes one flat entry per directed endpoint (or two per undirected edge)
+    // before filling those entries. Materialization begins only after the complete setup tranche
+    // is accepted.
+    let edge_work = if g.is_adjacency_cache_current() {
+        g.edge_slot_count()
+    } else {
+        checked_add(
+            checked_mul(g.edge_slot_count(), 3)?,
+            checked_mul(g.edge_count(), 2)?,
+        )?
+    };
     let numeric_node_work =
         checked_ordered_key_updates(g.node_count(), g.array_index_node_count())?;
-    checked_add(linear_work, numeric_node_work)
+    // The undirected feasible tree preserves Graphlib's counted predecessor/successor Object.keys
+    // state while it is assembled. Every tree edge is selected from `g`, so the source graph's
+    // numeric endpoint-property count is a sound upper bound for all ordered adjacency inserts.
+    let numeric_adjacency_work =
+        checked_ordered_key_updates(g.node_count(), g.pinned_array_index_adjacency_entry_count())?;
+    checked_add(
+        checked_add(node_work, edge_work)?,
+        checked_add(numeric_node_work, numeric_adjacency_work)?,
+    )
 }
 
 fn feasible_tree_iteration_work_units(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
 ) -> Result<usize, WorkError> {
     let node_work = checked_mul(g.node_count(), 4)?;
-    let edge_work = checked_mul(g.edge_count(), 3)?;
+    let adjacency_work = checked_mul(g.edge_count(), if g.is_directed() { 2 } else { 4 })?;
+    let edge_work = checked_add(g.edge_slot_count(), adjacency_work)?;
     checked_add(node_work, edge_work)
 }
 
@@ -110,109 +242,55 @@ fn tight_tree(
     t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     rank_by_ix: &[i128],
-    in_tree_by_ix: &mut Vec<bool>,
+    in_tree_by_ix: &mut [bool],
     tree_g_ixs: &mut Vec<usize>,
+    scratch: &mut TightTreeScratch,
 ) -> usize {
-    if g.is_directed() {
-        let mut stack_ix: Vec<usize> = Vec::new();
-        stack_ix.extend(tree_g_ixs.iter().copied());
-        while let Some(v_ix) = stack_ix.pop() {
-            let Some(v_id) = g.node_id_by_ix(v_ix) else {
+    let TightTreeScratch { roots, frames } = scratch;
+    roots.clear();
+    t.for_each_node(|id, _label| {
+        if let Some(g_ix) = g.node_ix(id) {
+            roots.push(g_ix);
+        }
+    });
+    for &root_ix in roots.iter() {
+        frames.clear();
+        let Some(root_frame) = tight_tree_frame(g, root_ix) else {
+            continue;
+        };
+        frames.push(root_frame);
+        while let Some(frame) = frames.last_mut() {
+            let tree_v_ix = frame.v_ix;
+            let Some(edge) = next_tight_tree_edge(g, frame) else {
+                frames.pop();
                 continue;
             };
-            let v = v_id.to_string();
+            let w_ix = if tree_v_ix == edge.v_ix {
+                edge.w_ix
+            } else if tree_v_ix == edge.w_ix {
+                edge.v_ix
+            } else {
+                continue;
+            };
+            if in_tree_by_ix.get(w_ix).copied().unwrap_or(false) {
+                continue;
+            }
 
-            g.for_each_out_edge_ix(v_ix, None, |tail_ix, head_ix, _ek, lbl| {
-                if in_tree_by_ix.get(head_ix).copied().unwrap_or(false) {
-                    return;
-                }
+            let v_rank = rank_by_ix.get(edge.v_ix).copied().unwrap_or(0);
+            let w_rank = rank_by_ix.get(edge.w_ix).copied().unwrap_or(0);
+            if w_rank - v_rank - edge.minlen != 0 {
+                continue;
+            }
 
-                let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
-                let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                let minlen = lbl.minlen as i128;
-                let slack = head_rank - tail_rank - minlen;
-                if slack == 0 {
-                    let Some(w_id) = g.node_id_by_ix(head_ix) else {
-                        return;
-                    };
-                    let w = w_id.to_string();
-
-                    stack_ix.push(head_ix);
-                    if head_ix >= in_tree_by_ix.len() {
-                        in_tree_by_ix.resize(head_ix + 1, false);
-                    }
-                    in_tree_by_ix[head_ix] = true;
-                    tree_g_ixs.push(head_ix);
-                    t.set_edge(v.clone(), w);
-                }
-            });
-
-            g.for_each_in_edge_ix(v_ix, None, |tail_ix, head_ix, _ek, lbl| {
-                debug_assert_eq!(head_ix, v_ix);
-                if in_tree_by_ix.get(tail_ix).copied().unwrap_or(false) {
-                    return;
-                }
-
-                let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
-                let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                let minlen = lbl.minlen as i128;
-                let slack = head_rank - tail_rank - minlen;
-                if slack == 0 {
-                    let Some(w_id) = g.node_id_by_ix(tail_ix) else {
-                        return;
-                    };
-                    let w = w_id.to_string();
-
-                    stack_ix.push(tail_ix);
-                    if tail_ix >= in_tree_by_ix.len() {
-                        in_tree_by_ix.resize(tail_ix + 1, false);
-                    }
-                    in_tree_by_ix[tail_ix] = true;
-                    tree_g_ixs.push(tail_ix);
-                    t.set_edge(v.clone(), w);
-                }
-            });
-        }
-    } else {
-        let roots: Vec<String> = t.node_ids();
-        for root in roots {
-            let mut stack: Vec<String> = vec![root];
-
-            while let Some(v) = stack.pop() {
-                g.for_each_out_edge(&v, None, |ek, lbl| {
-                    let w = if v == ek.v {
-                        ek.w.as_str()
-                    } else {
-                        ek.v.as_str()
-                    };
-                    if t.has_node(w) {
-                        return;
-                    }
-
-                    let minlen = lbl.minlen as i128;
-
-                    let Some(tail_ix) = g.node_ix(&ek.v) else {
-                        return;
-                    };
-                    let Some(head_ix) = g.node_ix(&ek.w) else {
-                        return;
-                    };
-                    let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
-                    let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                    let slack = head_rank - tail_rank - minlen;
-                    if slack == 0 {
-                        let w = w.to_string();
-                        stack.push(w.clone());
-                        if let Some(w_ix) = g.node_ix(&w) {
-                            if w_ix >= in_tree_by_ix.len() {
-                                in_tree_by_ix.resize(w_ix + 1, false);
-                            }
-                            in_tree_by_ix[w_ix] = true;
-                            tree_g_ixs.push(w_ix);
-                        }
-                        t.set_edge(v.clone(), w);
-                    }
-                });
+            let (Some(v_id), Some(w_id)) = (g.node_id_by_ix(tree_v_ix), g.node_id_by_ix(w_ix))
+            else {
+                continue;
+            };
+            in_tree_by_ix[w_ix] = true;
+            tree_g_ixs.push(w_ix);
+            t.set_edge(v_id, w_id);
+            if let Some(child_frame) = tight_tree_frame(g, w_ix) {
+                frames.push(child_frame);
             }
         }
     }
@@ -334,15 +412,23 @@ mod tests {
     }
 
     #[test]
-    fn feasible_tree_precharges_numeric_node_order_without_directed_adjacency() {
+    fn feasible_tree_precharges_numeric_node_and_tree_adjacency_order() {
         let mut numeric = tight_chain(true);
         let mut ordinary = tight_chain(false);
         let numeric_order_work =
             checked_ordered_key_updates(numeric.node_count(), numeric.array_index_node_count())
                 .unwrap();
+        let numeric_adjacency_work = checked_ordered_key_updates(
+            numeric.node_count(),
+            numeric.pinned_array_index_adjacency_entry_count(),
+        )
+        .unwrap();
         let numeric_setup = feasible_tree_setup_work_units(&numeric).unwrap();
         let ordinary_setup = feasible_tree_setup_work_units(&ordinary).unwrap();
-        assert_eq!(numeric_setup, ordinary_setup + numeric_order_work);
+        assert_eq!(
+            numeric_setup,
+            ordinary_setup + numeric_order_work + numeric_adjacency_work
+        );
         assert!(numeric.directed_array_index_adjacency_entry_count() > 0);
 
         let iteration_work = feasible_tree_iteration_work_units(&numeric).unwrap();
@@ -412,5 +498,58 @@ mod tests {
                 .expect("equal and above numeric feasible-tree budgets succeed");
             assert_eq!(tree.node_count(), admitted_graph.node_count());
         }
+    }
+
+    #[test]
+    fn feasible_tree_precharges_stale_csr_slots_and_reuses_a_warm_cache() {
+        let mut sparse = tight_chain(false);
+        assert!(sparse.remove_edge("node-1", "node-2", None));
+        sparse.set_edge_with_label(
+            "node-1",
+            "node-2",
+            EdgeLabel {
+                minlen: 1,
+                weight: 1.0,
+                ..EdgeLabel::default()
+            },
+        );
+        assert_eq!(sparse.edge_count(), 3);
+        assert_eq!(sparse.edge_slot_count(), 4);
+        assert!(!sparse.is_adjacency_cache_current());
+
+        let cold_setup = feasible_tree_setup_work_units(&sparse).unwrap();
+        let dense = tight_chain(false);
+        let dense_setup = feasible_tree_setup_work_units(&dense).unwrap();
+        assert_eq!(cold_setup, dense_setup + 3);
+
+        let mut rejected = RecordingWorkControl::with_limit(cold_setup - 1);
+        assert!(matches!(
+            feasible_tree_controlled(&mut sparse, &mut rejected),
+            Err(WorkError::Interrupted)
+        ));
+        assert_eq!(rejected.charges, [cold_setup]);
+        assert!(!sparse.is_adjacency_cache_current());
+
+        let iteration_work = feasible_tree_iteration_work_units(&sparse).unwrap();
+        let mut admitted =
+            RecordingWorkControl::with_limit(checked_add(cold_setup, iteration_work).unwrap());
+        let spanning_tree = feasible_tree_controlled(&mut sparse, &mut admitted)
+            .expect("the cold CSR path fits its exact setup and iteration budget");
+        assert_eq!(spanning_tree.node_count(), sparse.node_count());
+        assert_eq!(admitted.remaining, Some(0));
+        assert!(sparse.is_adjacency_cache_current());
+        let warm_setup = feasible_tree_setup_work_units(&sparse).unwrap();
+        assert_eq!(
+            cold_setup,
+            checked_add(
+                warm_setup,
+                checked_add(
+                    checked_mul(sparse.edge_slot_count(), 2).unwrap(),
+                    checked_mul(sparse.edge_count(), 2).unwrap(),
+                )
+                .unwrap()
+            )
+            .unwrap()
+        );
     }
 }

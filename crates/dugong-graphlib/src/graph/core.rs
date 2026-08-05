@@ -246,14 +246,15 @@ where
     root_children: ObjectKeyOrder,
     child_ordinary_positions: Vec<usize>,
 
-    // Many Dagre algorithms call `predecessors` / `successors` / `in_edges` / `out_edges`
-    // repeatedly. Scanning `self.edges` each time is O(E) per query and dominates runtime
-    // for large graphs. We keep a lazily rebuilt adjacency cache for directed graphs.
+    // Graphlib stores predecessor/successor endpoint counts for every graph, including undirected
+    // graphs whose endpoints are canonicalized first. Maintaining the same counted Object.keys
+    // state preserves neighbor order across parallel-edge removal without rescanning edge slots.
+    // Directed in/out edge enumeration still uses the lazy CSR cache below.
     //
     // Note: This uses interior mutability to keep query APIs on `&self`.
     directed_adj_gen: u64,
     directed_edge_adj_cache: RefCell<Option<DirectedEdgeAdjCache>>,
-    directed_node_adj: DirectedNodeAdjacency,
+    endpoint_key_adj: DirectedNodeAdjacency,
 
     // Some Dagre helpers (especially `network-simplex`) use undirected trees. Make adjacency
     // queries for undirected graphs fast as well.
@@ -286,9 +287,7 @@ where
         if self.options.compound {
             self.insert_child_in_object_key_order(None, idx);
         }
-        if self.options.directed {
-            self.directed_node_adj.add_node();
-        }
+        self.endpoint_key_adj.add_node();
         idx
     }
 
@@ -342,9 +341,7 @@ where
             self.parent_ix.pop();
             self.children_ix.pop();
             self.child_ordinary_positions.pop();
-            if self.options.directed {
-                self.directed_node_adj.truncate_nodes(self.nodes.len());
-            }
+            self.endpoint_key_adj.truncate_nodes(self.nodes.len());
         }
     }
 
@@ -398,7 +395,7 @@ where
             self.children_ix.clear();
             self.root_children = ObjectKeyOrder::default();
             self.child_ordinary_positions.clear();
-            self.directed_node_adj.clear();
+            self.endpoint_key_adj.clear();
             return;
         }
 
@@ -436,9 +433,7 @@ where
         self.node_order = new_node_order;
         self.node_ordinary_positions = new_node_ordinary_positions;
         self.node_len = self.nodes.len();
-        if self.options.directed {
-            self.directed_node_adj.remap(&node_remap, self.nodes.len());
-        }
+        self.endpoint_key_adj.remap(&node_remap, self.nodes.len());
 
         self.parent_ix = vec![None; self.nodes.len()];
         self.children_ix = (0..self.nodes.len())
@@ -697,7 +692,7 @@ where
             child_ordinary_positions: Vec::new(),
             directed_adj_gen: 0,
             directed_edge_adj_cache: RefCell::new(None),
-            directed_node_adj: DirectedNodeAdjacency::default(),
+            endpoint_key_adj: DirectedNodeAdjacency::default(),
             undirected_adj_gen: 0,
             undirected_adj_cache: RefCell::new(None),
         }
@@ -721,10 +716,8 @@ where
             g.root_children.reserve_ordinary(node_capacity);
         }
         g.child_ordinary_positions.reserve(node_capacity);
-        if options.directed {
-            g.directed_node_adj.reserve_nodes(node_capacity);
-            g.directed_node_adj.reserve_edges(edge_capacity);
-        }
+        g.endpoint_key_adj.reserve_nodes(node_capacity);
+        g.endpoint_key_adj.reserve_edges(edge_capacity);
         g
     }
 
@@ -936,6 +929,12 @@ where
         self.node_order.numeric_len()
     }
 
+    /// Returns the parsed ECMAScript array-index value for one live node slot.
+    #[doc(hidden)]
+    pub fn javascript_array_index_by_node_ix(&self, node_ix: usize) -> Option<u32> {
+        self.node_id_by_ix(node_ix).and_then(javascript_array_index)
+    }
+
     /// Returns the number of directed neighbor entries stored in numeric `Object.keys` order.
     ///
     /// A unique directed endpoint pair contributes once when its successor key is a JavaScript
@@ -944,10 +943,17 @@ where
     /// the graph into another Graphlib-compatible directed graph.
     pub fn directed_array_index_adjacency_entry_count(&self) -> usize {
         if self.options.directed {
-            self.directed_node_adj.numeric_ordered_entry_count()
+            self.endpoint_key_adj.numeric_ordered_entry_count()
         } else {
             0
         }
+    }
+
+    /// Returns the exact numeric Object.keys entries in the canonical predecessor/successor
+    /// endpoint index. Unlike the directed-only public metric, this also covers undirected graphs.
+    #[doc(hidden)]
+    pub fn pinned_array_index_adjacency_entry_count(&self) -> usize {
+        self.endpoint_key_adj.numeric_ordered_entry_count()
     }
 
     fn node_indices_in_object_key_order(&self) -> impl Iterator<Item = usize> + '_ {
@@ -1224,10 +1230,8 @@ where
             (self.default_edge_label)(key.v.as_str(), key.w.as_str(), key.name.as_deref())
         });
         self.invalidate_adj();
-        if self.options.directed {
-            self.directed_node_adj
-                .add_edge(v_ix, w_ix, v_array_index, w_array_index);
-        }
+        self.endpoint_key_adj
+            .add_edge(v_ix, w_ix, v_array_index, w_array_index);
         let idx = self.edges.len();
         self.edges.push(Some(EdgeEntry {
             key: key.clone(),
@@ -1315,9 +1319,7 @@ where
         let key = edge.key.clone();
         let (v_ix, w_ix) = (edge.v_ix, edge.w_ix);
         self.invalidate_adj();
-        if self.options.directed {
-            self.directed_node_adj.remove_edge(v_ix, w_ix);
-        }
+        self.endpoint_key_adj.remove_edge(v_ix, w_ix);
         let _ = self.edge_index.remove_entry(&key);
         self.edges[idx] = None;
         self.edge_len = self.edge_len.saturating_sub(1);
@@ -1395,9 +1397,7 @@ where
             };
             let key = edge.key.clone();
             let (v_ix, w_ix) = (edge.v_ix, edge.w_ix);
-            if self.options.directed {
-                self.directed_node_adj.remove_edge(v_ix, w_ix);
-            }
+            self.endpoint_key_adj.remove_edge(v_ix, w_ix);
             let _ = self.edge_index.remove_entry(&key);
             self.edges[edge_idx] = None;
             self.edge_len = self.edge_len.saturating_sub(1);
@@ -1482,9 +1482,7 @@ where
             }
         }
 
-        if self.options.directed {
-            self.directed_node_adj.remove_incident_edges(&removed_by_ix);
-        }
+        self.endpoint_key_adj.remove_incident_edges(&removed_by_ix);
         for edge_ix in 0..self.edges.len() {
             let should_remove = self.edges[edge_ix]
                 .as_ref()
@@ -1511,7 +1509,7 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return Vec::new();
         };
-        self.directed_node_adj
+        self.endpoint_key_adj
             .successors(v_idx)
             .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
@@ -1524,7 +1522,7 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return Vec::new();
         };
-        self.directed_node_adj
+        self.endpoint_key_adj
             .predecessors(v_idx)
             .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
@@ -1535,7 +1533,7 @@ where
             return self.adjacent_nodes(v).into_iter().next();
         }
         let &v_idx = self.node_index.get(v)?;
-        let node_ix = self.directed_node_adj.first_successor(v_idx)?;
+        let node_ix = self.endpoint_key_adj.first_successor(v_idx)?;
         self.node_id_by_ix(node_ix)
     }
 
@@ -1544,7 +1542,7 @@ where
             return self.adjacent_nodes(v).into_iter().next();
         }
         let &v_idx = self.node_index.get(v)?;
-        let node_ix = self.directed_node_adj.first_predecessor(v_idx)?;
+        let node_ix = self.endpoint_key_adj.first_predecessor(v_idx)?;
         self.node_id_by_ix(node_ix)
     }
 
@@ -1556,8 +1554,8 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        out.reserve(self.directed_node_adj.successor_count(v_idx));
-        for node_ix in self.directed_node_adj.successors(v_idx) {
+        out.reserve(self.endpoint_key_adj.successor_count(v_idx));
+        for node_ix in self.endpoint_key_adj.successors(v_idx) {
             if let Some(node) = self.node_id_by_ix(node_ix) {
                 out.push(node);
             }
@@ -1572,8 +1570,8 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        out.reserve(self.directed_node_adj.predecessor_count(v_idx));
-        for node_ix in self.directed_node_adj.predecessors(v_idx) {
+        out.reserve(self.endpoint_key_adj.predecessor_count(v_idx));
+        for node_ix in self.endpoint_key_adj.predecessors(v_idx) {
             if let Some(node) = self.node_id_by_ix(node_ix) {
                 out.push(node);
             }
@@ -1593,7 +1591,7 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        for node_ix in self.directed_node_adj.successors(v_idx) {
+        for node_ix in self.endpoint_key_adj.successors(v_idx) {
             if let Some(node) = self.node_id_by_ix(node_ix) {
                 f(node);
             }
@@ -1613,7 +1611,7 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        for node_ix in self.directed_node_adj.predecessors(v_idx) {
+        for node_ix in self.endpoint_key_adj.predecessors(v_idx) {
             if let Some(node) = self.node_id_by_ix(node_ix) {
                 f(node);
             }
@@ -1621,22 +1619,27 @@ where
     }
 
     pub fn neighbors(&self, v: &str) -> Vec<&str> {
-        if !self.options.directed {
-            return self.adjacent_nodes(v);
-        }
+        let Some(&v_idx) = self.node_index.get(v) else {
+            return Vec::new();
+        };
         let mut out: Vec<&str> = Vec::new();
-        // Pinned Graphlib implements `neighbors` as `union(predecessors, successors)`, so a node
-        // reachable in both directions keeps its predecessor-side position.
-        self.for_each_predecessor(v, |u| {
-            if !out.iter().any(|x| x == &u) {
-                out.push(u);
+        let mut seen: HashSet<usize> = HashSet::default();
+        // Pinned Graphlib implements `neighbors` with a Set seeded by predecessors and then
+        // successors, so a node reachable in both directions keeps its predecessor-side position.
+        for node_ix in self.endpoint_key_adj.predecessors(v_idx) {
+            if seen.insert(node_ix)
+                && let Some(node) = self.node_id_by_ix(node_ix)
+            {
+                out.push(node);
             }
-        });
-        self.for_each_successor(v, |w| {
-            if !out.iter().any(|x| x == &w) {
-                out.push(w);
+        }
+        for node_ix in self.endpoint_key_adj.successors(v_idx) {
+            if seen.insert(node_ix)
+                && let Some(node) = self.node_id_by_ix(node_ix)
+            {
+                out.push(node);
             }
-        });
+        }
         out
     }
 
@@ -1827,6 +1830,27 @@ where
         self.ensure_directed_edge_adj().out_edges(v_ix).len()
     }
 
+    /// Returns one directed outgoing edge by its owner-local adjacency position.
+    ///
+    /// This hidden cursor hook lets iterative graph algorithms retain only a node-sized frame stack
+    /// while reusing the shared CSR cache instead of copying every incident edge into scratch Vecs.
+    #[doc(hidden)]
+    pub fn out_edge_entry_ix_at(
+        &self,
+        v_ix: usize,
+        position: usize,
+    ) -> Option<(usize, usize, &EdgeKey, &E)> {
+        if !self.options.directed {
+            return None;
+        }
+        let edge_ix = {
+            let cache = self.ensure_directed_edge_adj();
+            *cache.out_edges(v_ix).get(position)?
+        };
+        let edge = self.edges.get(edge_ix)?.as_ref()?;
+        Some((edge.v_ix, edge.w_ix, &edge.key, &edge.label))
+    }
+
     /// Visits every undirected edge incident to an indexed node without allocating edge keys.
     ///
     /// The callback receives the queried node first and the opposite endpoint second. Parallel
@@ -1861,6 +1885,24 @@ where
             return 0;
         }
         self.ensure_undirected_adj().edges(v_ix).len()
+    }
+
+    /// Returns one canonical undirected edge by its owner-local incident position.
+    #[doc(hidden)]
+    pub fn undirected_edge_entry_ix_at(
+        &self,
+        v_ix: usize,
+        position: usize,
+    ) -> Option<(usize, usize, &EdgeKey, &E)> {
+        if self.options.directed {
+            return None;
+        }
+        let edge_ix = {
+            let cache = self.ensure_undirected_adj();
+            *cache.edges(v_ix).get(position)?
+        };
+        let edge = self.edges.get(edge_ix)?.as_ref()?;
+        Some((edge.v_ix, edge.w_ix, &edge.key, &edge.label))
     }
 
     pub fn for_each_out_edge_entry_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
@@ -1915,6 +1957,31 @@ where
         }
     }
 
+    /// Iterates canonical predecessor properties in pinned JavaScript Object.keys order.
+    ///
+    /// This hidden hook is valid for both directed graphs and endpoint-canonicalized undirected
+    /// graphs. Parallel edges contribute one property until the final edge is removed.
+    #[doc(hidden)]
+    pub fn for_each_pinned_predecessor_ix<F>(&self, v_ix: usize, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        for node_ix in self.endpoint_key_adj.predecessors(v_ix) {
+            f(node_ix);
+        }
+    }
+
+    /// Iterates canonical successor properties in pinned JavaScript Object.keys order.
+    #[doc(hidden)]
+    pub fn for_each_pinned_successor_ix<F>(&self, v_ix: usize, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        for node_ix in self.endpoint_key_adj.successors(v_ix) {
+            f(node_ix);
+        }
+    }
+
     pub fn for_each_in_edge_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
     where
         F: FnMut(usize, usize, &EdgeKey, &E),
@@ -1932,6 +1999,32 @@ where
                 f(e.v_ix, e.w_ix, &e.key, &e.label);
             }
         }
+    }
+
+    /// Returns the number of directed incoming edge entries for an indexed node.
+    pub fn in_edge_count_ix(&self, v_ix: usize) -> usize {
+        if !self.options.directed {
+            return 0;
+        }
+        self.ensure_directed_edge_adj().in_edges(v_ix).len()
+    }
+
+    /// Returns one directed incoming edge by its owner-local adjacency position.
+    #[doc(hidden)]
+    pub fn in_edge_entry_ix_at(
+        &self,
+        v_ix: usize,
+        position: usize,
+    ) -> Option<(usize, usize, &EdgeKey, &E)> {
+        if !self.options.directed {
+            return None;
+        }
+        let edge_ix = {
+            let cache = self.ensure_directed_edge_adj();
+            *cache.in_edges(v_ix).get(position)?
+        };
+        let edge = self.edges.get(edge_ix)?.as_ref()?;
+        Some((edge.v_ix, edge.w_ix, &edge.key, &edge.label))
     }
 
     pub fn for_each_in_edge_entry_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
@@ -2370,7 +2463,7 @@ where
             return self.nodes().collect();
         }
         self.node_indices_in_object_key_order()
-            .filter(|&node_ix| self.directed_node_adj.predecessor_count(node_ix) == 0)
+            .filter(|&node_ix| self.endpoint_key_adj.predecessor_count(node_ix) == 0)
             .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
     }
@@ -2380,7 +2473,7 @@ where
             return self.nodes().collect();
         }
         self.node_indices_in_object_key_order()
-            .filter(|&node_ix| self.directed_node_adj.successor_count(node_ix) == 0)
+            .filter(|&node_ix| self.endpoint_key_adj.successor_count(node_ix) == 0)
             .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
     }

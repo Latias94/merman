@@ -4082,6 +4082,26 @@ mod tests {
     }
 
     #[test]
+    fn dagre_kernel_invalid_tree_maps_to_invalid_model() {
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let mut work_control = DagreOperationWorkControl::new(Arc::clone(&meter));
+
+        let Error::InvalidModel { message } =
+            work_control.map_dugong_error(dugong::LayoutError::InvalidNetworkSimplexTree)
+        else {
+            panic!("expected InvalidModel");
+        };
+
+        assert_eq!(
+            message,
+            "network simplex encountered an invalid mutable tree state"
+        );
+        assert_eq!(meter.used(), 0);
+    }
+
+    #[test]
     fn dagre_kernel_arithmetic_overflow_maps_to_the_resource_contract() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync("flowchart TB\nA-->B\n", ParseOptions::default())

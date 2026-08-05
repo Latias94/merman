@@ -1,10 +1,10 @@
 //! Owner-local work control for the Dagre layout kernel.
 
-/// Neutral failure returned by caller-provided layout work controls.
+/// Neutral failure returned by the layout kernel or a caller-provided work control.
 ///
 /// Dugong deliberately does not depend on renderer resource-policy types. Callers can map an
-/// interruption to their own cancellation or resource error while arithmetic overflow remains a
-/// deterministic kernel failure even when the caller otherwise has no ceiling.
+/// interruption to their own cancellation or resource error, while arithmetic overflow remains a
+/// deterministic resource failure even without a configured ceiling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WorkError {

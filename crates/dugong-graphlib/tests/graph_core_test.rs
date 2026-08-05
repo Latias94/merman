@@ -89,6 +89,131 @@ fn indexed_undirected_edge_iteration_reports_the_opposite_endpoint() {
 }
 
 #[test]
+fn undirected_neighbors_preserve_counted_graphlib_property_order() {
+    let mut graph: Graph<(), (), ()> = Graph::new(GraphOptions {
+        directed: false,
+        multigraph: true,
+        ..GraphOptions::default()
+    });
+    graph.set_edge_named("m", "b", Some("first"), None);
+    graph.set_edge_named("m", "a", Some("only"), None);
+    graph.set_edge_named("m", "c", Some("only"), None);
+    graph.set_edge_named("m", "b", Some("second"), None);
+
+    assert!(graph.remove_edge("m", "b", Some("first")));
+
+    // Graphlib keeps the `b` predecessor property in its original position until the last
+    // parallel edge is removed. Scanning only live edge slots would incorrectly yield a, c, b.
+    assert_eq!(graph.neighbors("m"), ["b", "a", "c"]);
+}
+
+#[test]
+fn indexed_edge_cursors_follow_cached_insertion_order_after_tombstones() {
+    let mut graph: Graph<(), i32, ()> = Graph::new(GraphOptions::default());
+    graph.set_edge_with_label("b", "z", 1);
+    graph.set_edge_with_label("a", "z", 2);
+    graph.set_edge_with_label("z", "c", 3);
+
+    let z_ix = graph.node_ix("z").unwrap();
+    assert_eq!(graph.in_edge_count_ix(z_ix), 2);
+    assert_eq!(graph.out_edge_count_ix(z_ix), 1);
+
+    let incoming = (0..graph.in_edge_count_ix(z_ix))
+        .map(|position| {
+            let (v_ix, w_ix, key, label) = graph.in_edge_entry_ix_at(z_ix, position).unwrap();
+            (
+                graph.node_id_by_ix(v_ix).unwrap().to_string(),
+                graph.node_id_by_ix(w_ix).unwrap().to_string(),
+                key.v.clone(),
+                *label,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        incoming,
+        vec![
+            ("b".to_string(), "z".to_string(), "b".to_string(), 1),
+            ("a".to_string(), "z".to_string(), "a".to_string(), 2),
+        ]
+    );
+
+    let (v_ix, w_ix, key, label) = graph.out_edge_entry_ix_at(z_ix, 0).unwrap();
+    assert_eq!(
+        (
+            graph.node_id_by_ix(v_ix),
+            graph.node_id_by_ix(w_ix),
+            key.w.as_str(),
+            *label,
+        ),
+        (Some("z"), Some("c"), "c", 3)
+    );
+    assert!(graph.in_edge_entry_ix_at(z_ix, 2).is_none());
+    assert!(graph.out_edge_entry_ix_at(z_ix, 1).is_none());
+
+    assert!(graph.remove_edge("b", "z", None));
+    graph.set_edge_with_label("d", "z", 4);
+    assert_eq!(graph.in_edge_count_ix(z_ix), 2);
+    let incoming_after = (0..graph.in_edge_count_ix(z_ix))
+        .map(|position| {
+            let (v_ix, _, _, label) = graph.in_edge_entry_ix_at(z_ix, position).unwrap();
+            (graph.node_id_by_ix(v_ix).unwrap().to_string(), *label)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        incoming_after,
+        vec![("a".to_string(), 2), ("d".to_string(), 4)]
+    );
+}
+
+#[test]
+fn indexed_undirected_edge_cursor_returns_canonical_edges_in_cache_order() {
+    let mut graph: Graph<(), i32, ()> = Graph::new(GraphOptions {
+        directed: false,
+        multigraph: true,
+        ..GraphOptions::default()
+    });
+    graph.set_edge_named("z", "a", Some("first"), Some(1));
+    graph.set_edge_named("b", "z", Some("second"), Some(2));
+    let z_ix = graph.node_ix("z").unwrap();
+
+    let entries = (0..graph.undirected_edge_count_ix(z_ix))
+        .map(|position| {
+            let (v_ix, w_ix, key, label) =
+                graph.undirected_edge_entry_ix_at(z_ix, position).unwrap();
+            (
+                graph.node_id_by_ix(v_ix).unwrap().to_string(),
+                graph.node_id_by_ix(w_ix).unwrap().to_string(),
+                key.name.clone(),
+                *label,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        entries,
+        vec![
+            (
+                "a".to_string(),
+                "z".to_string(),
+                Some("first".to_string()),
+                1
+            ),
+            (
+                "b".to_string(),
+                "z".to_string(),
+                Some("second".to_string()),
+                2
+            ),
+        ]
+    );
+    assert!(
+        graph
+            .undirected_edge_entry_ix_at(z_ix, entries.len())
+            .is_none()
+    );
+}
+
+#[test]
 fn explicit_adjacency_cache_preparation_tracks_graph_mutations() {
     for directed in [true, false] {
         let mut graph: Graph<(), (), ()> = Graph::new(GraphOptions {

@@ -8,16 +8,38 @@ pub mod network_simplex;
 pub mod tree;
 pub mod util;
 
-pub fn rank(g: &mut crate::graphlib::Graph<crate::NodeLabel, crate::EdgeLabel, crate::GraphLabel>) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RankError {
+    Work(crate::WorkError),
+    InvalidNetworkSimplexTree,
+}
+
+impl From<crate::WorkError> for RankError {
+    fn from(error: crate::WorkError) -> Self {
+        Self::Work(error)
+    }
+}
+
+impl From<RankError> for crate::LayoutError {
+    fn from(error: RankError) -> Self {
+        match error {
+            RankError::Work(error) => Self::Work(error),
+            RankError::InvalidNetworkSimplexTree => Self::InvalidNetworkSimplexTree,
+        }
+    }
+}
+
+pub fn rank(
+    g: &mut crate::graphlib::Graph<crate::NodeLabel, crate::EdgeLabel, crate::GraphLabel>,
+) -> Result<(), crate::LayoutError> {
     let mut work_control = crate::NoopWorkControl;
-    rank_controlled(g, &mut work_control)
-        .expect("the checked no-op Dugong work control cannot reject rank work");
+    rank_controlled(g, &mut work_control).map_err(crate::LayoutError::from)
 }
 
 pub(crate) fn rank_controlled(
     g: &mut crate::graphlib::Graph<crate::NodeLabel, crate::EdgeLabel, crate::GraphLabel>,
     work_control: &mut dyn crate::WorkControl,
-) -> Result<(), crate::WorkError> {
+) -> Result<(), RankError> {
     let ranker = g.graph().ranker.clone();
     match ranker.as_deref() {
         Some("network-simplex") => network_simplex::network_simplex_controlled(g, work_control)?,
