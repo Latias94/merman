@@ -102,12 +102,18 @@ fn checked_architecture_adapter_work_plan(
                 ))
             },
         )?;
+    let spatial_planning_work_units = model
+        .nodes
+        .len()
+        .checked_mul(2)?
+        .checked_add(model.edges.len().checked_mul(4)?)?;
     let work_units = model
         .nodes
         .len()
         .checked_add(model.groups.len())?
         .checked_add(model.edges.len())?
-        .checked_add(hint_members)?;
+        .checked_add(hint_members)?
+        .checked_add(spatial_planning_work_units)?;
 
     Some(ArchitectureAdapterWorkPlan {
         work_units,
@@ -718,11 +724,11 @@ fn js_object_i32_key_index_order<V>(obj: &IndexMap<i32, V>) -> Vec<usize> {
         .collect()
 }
 
-fn js_object_string_key_index_order<V>(obj: &IndexMap<String, V>) -> Vec<usize> {
+fn js_object_string_key_index_order<K: AsRef<str>, V>(obj: &IndexMap<K, V>) -> Vec<usize> {
     let mut array_indices: Vec<(u32, usize)> = Vec::new();
     let mut other_indices: Vec<usize> = Vec::new();
     for (index, (key, _)) in obj.iter().enumerate() {
-        if let Some(array_index) = js_array_index_key(key) {
+        if let Some(array_index) = js_array_index_key(key.as_ref()) {
             array_indices.push((array_index, index));
         } else {
             other_indices.push(index);
@@ -933,6 +939,285 @@ impl<'a> ArchitectureModelView<'a> {
     }
 }
 
+#[derive(Debug)]
+struct ArchitectureSpatialTraversal<'a> {
+    spatial_maps: Vec<IndexMap<&'a str, (i32, i32)>>,
+    incident_edges: FxHashMap<&'a str, Vec<usize>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ArchitectureSpatialComponentAdmission {
+    exact_traversal_work_units: Option<usize>,
+    js_enumeration_work_units: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ArchitectureSpatialAdmission {
+    components: Vec<ArchitectureSpatialComponentAdmission>,
+    preflight_work_units: usize,
+}
+
+fn checked_architecture_spatial_admission<'a>(
+    node_ids: &[&'a str],
+    adj_list: &FxHashMap<&'a str, IndexMap<&'static str, &'a str>>,
+) -> Option<ArchitectureSpatialAdmission> {
+    let mut globally_visited: FxHashSet<&str> = FxHashSet::default();
+    globally_visited.reserve(node_ids.len().saturating_mul(2));
+    let mut components = Vec::with_capacity(node_ids.len());
+    let mut preflight_work_units = 0usize;
+    let mut distances: FxHashMap<&str, usize> = FxHashMap::default();
+    let mut multiplicities: FxHashMap<&str, usize> = FxHashMap::default();
+    let mut discovery = Vec::new();
+    let mut unique_queue = std::collections::VecDeque::new();
+
+    for &start_id in node_ids {
+        if globally_visited.contains(start_id) {
+            continue;
+        }
+
+        distances.clear();
+        multiplicities.clear();
+        discovery.clear();
+        unique_queue.clear();
+        distances.insert(start_id, 0);
+        unique_queue.push_back(start_id);
+
+        while let Some(id) = unique_queue.pop_front() {
+            discovery.push(id);
+            let next_distance = distances.get(id)?.checked_add(1)?;
+            let Some(adj) = adj_list.get(id) else {
+                continue;
+            };
+            for &rhs_id in adj.values() {
+                if globally_visited.contains(rhs_id) || distances.contains_key(rhs_id) {
+                    continue;
+                }
+                distances.insert(rhs_id, next_distance);
+                unique_queue.push_back(rhs_id);
+            }
+        }
+
+        let numeric_key_count = discovery
+            .iter()
+            .filter(|id| js_array_index_key(id).is_some())
+            .count();
+        let js_enumeration_work_units = if numeric_key_count == 0 {
+            0
+        } else {
+            discovery
+                .len()
+                .checked_mul(3)?
+                .checked_add(checked_sort_work_units(numeric_key_count)?)?
+        };
+
+        multiplicities.insert(start_id, 1);
+        let mut queue_entry_count = 0usize;
+        let mut adjacency_scan_count = 0usize;
+        let mut exact_traversal = true;
+        'propagate: for &id in &discovery {
+            let distance = *distances.get(id)?;
+            let multiplicity = *multiplicities.get(id)?;
+            queue_entry_count = queue_entry_count.checked_add(multiplicity)?;
+            let Some(adj) = adj_list.get(id) else {
+                continue;
+            };
+            adjacency_scan_count =
+                adjacency_scan_count.checked_add(multiplicity.checked_mul(adj.len())?)?;
+            let next_distance = distance.checked_add(1)?;
+            for &rhs_id in adj.values() {
+                let Some(&rhs_distance) = distances.get(rhs_id) else {
+                    // The target belongs to an earlier one-way component and is already visited
+                    // when Mermaid starts this component.
+                    continue;
+                };
+                if rhs_distance == distance {
+                    // Same-layer edges make the exact duplicate queue depend on first-pop order.
+                    // Keep this component on the runtime-charged path without throwing away exact
+                    // preflight evidence from independent strictly layered components.
+                    exact_traversal = false;
+                    break 'propagate;
+                }
+                if rhs_distance == next_distance {
+                    let entry = multiplicities.entry(rhs_id).or_default();
+                    *entry = entry.checked_add(multiplicity)?;
+                }
+            }
+        }
+
+        let exact_traversal_work_units = if exact_traversal {
+            let queue_bytes = queue_entry_count.checked_mul(std::mem::size_of::<&str>())?;
+            if queue_bytes > isize::MAX as usize {
+                return None;
+            }
+            Some(
+                queue_entry_count
+                    .checked_mul(2)?
+                    .checked_add(adjacency_scan_count)?,
+            )
+        } else {
+            None
+        };
+        let component = ArchitectureSpatialComponentAdmission {
+            exact_traversal_work_units,
+            js_enumeration_work_units,
+        };
+        preflight_work_units = preflight_work_units
+            .checked_add(component.exact_traversal_work_units.unwrap_or(0))?
+            .checked_add(component.js_enumeration_work_units)?;
+        components.push(component);
+        globally_visited.extend(discovery.iter().copied());
+    }
+
+    Some(ArchitectureSpatialAdmission {
+        components,
+        preflight_work_units,
+    })
+}
+
+fn order_architecture_spatial_map_like_js<'a>(
+    spatial: IndexMap<&'a str, (i32, i32)>,
+    work_units: usize,
+    work_meter: &OperationWorkMeter,
+) -> Result<IndexMap<&'a str, (i32, i32)>> {
+    if work_units == 0 {
+        return Ok(spatial);
+    }
+
+    let order_bytes = spatial
+        .len()
+        .checked_mul(std::mem::size_of::<usize>())
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    if order_bytes > isize::MAX as usize {
+        return Err(work_meter.arithmetic_overflow().into());
+    }
+    work_meter.charge(work_units)?;
+
+    let order = js_object_string_key_index_order(&spatial);
+    let mut ordered = IndexMap::with_capacity(spatial.len());
+    for index in order {
+        let Some((&id, &position)) = spatial.get_index(index) else {
+            return Err(work_meter.arithmetic_overflow().into());
+        };
+        ordered.insert(id, position);
+    }
+    Ok(ordered)
+}
+
+fn build_architecture_spatial_maps<'a>(
+    model: &ArchitectureModelView<'a>,
+    node_ids: &[&'a str],
+    work_meter: &OperationWorkMeter,
+) -> Result<ArchitectureSpatialTraversal<'a>> {
+    let mut incident_edges: FxHashMap<&'a str, Vec<usize>> = FxHashMap::default();
+    incident_edges.reserve(model.nodes.len().saturating_mul(2));
+    for (edge_idx, e) in model.edges.iter().enumerate() {
+        incident_edges.entry(e.lhs_id).or_default().push(edge_idx);
+        incident_edges.entry(e.rhs_id).or_default().push(edge_idx);
+    }
+
+    let mut adj_list: FxHashMap<&'a str, IndexMap<&'static str, &'a str>> = FxHashMap::default();
+    adj_list.reserve(model.nodes.len().saturating_mul(2));
+    for &id in node_ids {
+        let mut adj: IndexMap<&'static str, &str> = IndexMap::new();
+        let Some(edges) = incident_edges.get(id) else {
+            adj_list.insert(id, adj);
+            continue;
+        };
+        for &edge_idx in edges {
+            let e = &model.edges[edge_idx];
+            let (rhs_id, lhs_dir, rhs_dir) = if e.lhs_id == id {
+                (e.rhs_id, e.lhs_dir, e.rhs_dir)
+            } else {
+                (e.lhs_id, e.rhs_dir, e.lhs_dir)
+            };
+            let (Some(lhs_dir), Some(rhs_dir)) = (
+                lhs_dir.and_then(Dir::from_char),
+                rhs_dir.and_then(Dir::from_char),
+            ) else {
+                continue;
+            };
+            let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) else {
+                continue;
+            };
+            if let Some(existing) = adj.get_mut(pair) {
+                *existing = rhs_id;
+            } else {
+                adj.insert(pair, rhs_id);
+            }
+        }
+        adj_list.insert(id, adj);
+    }
+
+    let admission = checked_architecture_spatial_admission(node_ids, &adj_list)
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    work_meter.preflight(admission.preflight_work_units)?;
+    let mut component_admissions = admission.components.into_iter();
+
+    // Mermaid marks a node as visited when it is dequeued, but intentionally processes every
+    // queued copy. A later dequeue may therefore overwrite the coordinates of descendants that
+    // are still waiting in the queue. Charge before every queue mutation and adjacency scan so
+    // this source-compatible path multiplicity cannot allocate or scan beyond the work budget.
+    let mut spatial_maps: Vec<IndexMap<&str, (i32, i32)>> = Vec::new();
+    let mut visited: FxHashSet<&str> = FxHashSet::default();
+    visited.reserve(model.nodes.len().saturating_mul(2));
+    for &start_id in node_ids {
+        if visited.contains(start_id) {
+            continue;
+        }
+        let component_admission = component_admissions
+            .next()
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+
+        let mut spatial: IndexMap<&str, (i32, i32)> = IndexMap::new();
+        let mut queue: std::collections::VecDeque<&str> = std::collections::VecDeque::new();
+        work_meter.charge(1)?;
+        spatial.insert(start_id, (0, 0));
+        queue.push_back(start_id);
+
+        while !queue.is_empty() {
+            work_meter.charge(1)?;
+            let Some(id) = queue.pop_front() else {
+                break;
+            };
+            visited.insert(id);
+            let Some(&(pos_x, pos_y)) = spatial.get(id) else {
+                continue;
+            };
+            let Some(adj) = adj_list.get(id) else {
+                continue;
+            };
+            work_meter.charge(adj.len())?;
+            for (&pair, &rhs_id) in adj.iter() {
+                if visited.contains(rhs_id) {
+                    continue;
+                }
+                // Admit the enqueue before updating either local structure. On rejection the
+                // partially built component is dropped and no caller-visible plan is returned.
+                work_meter.charge(1)?;
+                let (nx, ny) = shift_position_by_arch_pair(pos_x, pos_y, pair);
+                spatial.insert(rhs_id, (nx, ny));
+                queue.push_back(rhs_id);
+            }
+        }
+
+        let spatial = order_architecture_spatial_map_like_js(
+            spatial,
+            component_admission.js_enumeration_work_units,
+            work_meter,
+        )?;
+        spatial_maps.push(spatial);
+    }
+
+    if component_admissions.next().is_some() {
+        return Err(work_meter.arithmetic_overflow().into());
+    }
+
+    Ok(ArchitectureSpatialTraversal {
+        spatial_maps,
+        incident_edges,
+    })
+}
+
 struct ArchitectureFcoseNodeBoundsExtrasInput<'m, 'a> {
     model: &'m ArchitectureModelView<'a>,
     text_measurer: &'m dyn TextMeasurer,
@@ -1073,86 +1358,12 @@ fn build_architecture_fcose_input_plan<'a>(
         }
     }
 
-    let mut incident_edges: FxHashMap<&str, Vec<usize>> = FxHashMap::default();
-    incident_edges.reserve(model.nodes.len().saturating_mul(2));
-    for (edge_idx, e) in model.edges.iter().enumerate() {
-        incident_edges.entry(e.lhs_id).or_default().push(edge_idx);
-        incident_edges.entry(e.rhs_id).or_default().push(edge_idx);
-    }
-
-    let mut adj_list: FxHashMap<&str, IndexMap<&'static str, &str>> = FxHashMap::default();
-    adj_list.reserve(model.nodes.len().saturating_mul(2));
-    for &id in &node_ids {
-        let mut adj: IndexMap<&'static str, &str> = IndexMap::new();
-        let Some(edges) = incident_edges.get(id) else {
-            adj_list.insert(id, adj);
-            continue;
-        };
-        for &edge_idx in edges {
-            let e = &model.edges[edge_idx];
-            let (rhs_id, lhs_dir, rhs_dir) = if e.lhs_id == id {
-                (e.rhs_id, e.lhs_dir, e.rhs_dir)
-            } else {
-                (e.lhs_id, e.rhs_dir, e.lhs_dir)
-            };
-            let (Some(lhs_dir), Some(rhs_dir)) = (
-                lhs_dir.and_then(Dir::from_char),
-                rhs_dir.and_then(Dir::from_char),
-            ) else {
-                continue;
-            };
-            let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) else {
-                continue;
-            };
-            if let Some(existing) = adj.get_mut(pair) {
-                *existing = rhs_id;
-            } else {
-                adj.insert(pair, rhs_id);
-            }
-        }
-        adj_list.insert(id, adj);
-    }
-
     // Deterministic component discovery: mimic Mermaid's `Object.keys(notVisited)[0]` by walking
     // node order and taking the first not-yet-visited id for each component.
-    let mut spatial_maps: Vec<IndexMap<&str, (i32, i32)>> = Vec::new();
-    let mut visited: FxHashSet<&str> = FxHashSet::default();
-    visited.reserve(model.nodes.len().saturating_mul(2));
-    for &start_id in &node_ids {
-        if visited.contains(start_id) {
-            continue;
-        }
-
-        let mut spatial: IndexMap<&str, (i32, i32)> = IndexMap::new();
-        spatial.insert(start_id, (0, 0));
-
-        let mut queue: std::collections::VecDeque<&str> = std::collections::VecDeque::new();
-        queue.push_back(start_id);
-
-        while let Some(id) = queue.pop_front() {
-            if !visited.insert(id) {
-                continue;
-            }
-            let Some(&(pos_x, pos_y)) = spatial.get(id) else {
-                continue;
-            };
-            let Some(adj) = adj_list.get(id) else {
-                continue;
-            };
-            for (&pair, &rhs_id) in adj.iter() {
-                if visited.contains(rhs_id) {
-                    continue;
-                }
-                let (nx, ny) = shift_position_by_arch_pair(pos_x, pos_y, pair);
-                // Mermaid updates `spatialMap[rhsId]` even if the node is already enqueued,
-                // because `visited[rhsId]` is only set when the node is dequeued.
-                spatial.insert(rhs_id, (nx, ny));
-                queue.push_back(rhs_id);
-            }
-        }
-
-        spatial_maps.push(spatial);
-    }
+    let ArchitectureSpatialTraversal {
+        spatial_maps,
+        incident_edges,
+    } = build_architecture_spatial_maps(model, &node_ids, work_meter)?;
 
     let mut node_group: std::collections::BTreeMap<&str, Option<&str>> =
         std::collections::BTreeMap::new();
@@ -2104,6 +2315,156 @@ mod tests {
         }
     }
 
+    fn architecture_duplicate_pop_counterexample() -> super::ArchitectureModelView<'static> {
+        super::ArchitectureModelView {
+            nodes: ["n0", "n1", "n2", "n3", "n4"]
+                .into_iter()
+                .map(|id| super::ArchitectureNodeView {
+                    id,
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: None,
+                    in_group: None,
+                })
+                .collect(),
+            groups: Vec::new(),
+            // Mermaid processes these in declaration order. The final edge re-enqueues `n3`, so
+            // its second dequeue must overwrite the still-unvisited `n4` back to `(1, 0)`.
+            edges: vec![
+                super::ArchitectureEdgeView {
+                    lhs_id: "n0",
+                    rhs_id: "n2",
+                    lhs_dir: Some('L'),
+                    rhs_dir: Some('B'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "n1",
+                    rhs_id: "n2",
+                    lhs_dir: Some('L'),
+                    rhs_dir: Some('R'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "n1",
+                    rhs_id: "n4",
+                    lhs_dir: Some('B'),
+                    rhs_dir: Some('R'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "n0",
+                    rhs_id: "n3",
+                    lhs_dir: Some('R'),
+                    rhs_dir: Some('L'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "n3",
+                    rhs_id: "n4",
+                    lhs_dir: Some('R'),
+                    rhs_dir: Some('L'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "n2",
+                    rhs_id: "n3",
+                    lhs_dir: Some('R'),
+                    rhs_dir: Some('T'),
+                    title: None,
+                },
+            ],
+            layout_hints: Vec::new(),
+        }
+    }
+
+    fn architecture_layered_diamond() -> super::ArchitectureModelView<'static> {
+        super::ArchitectureModelView {
+            nodes: ["d0", "d1", "d2", "d3"]
+                .into_iter()
+                .map(|id| super::ArchitectureNodeView {
+                    id,
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: None,
+                    in_group: None,
+                })
+                .collect(),
+            groups: Vec::new(),
+            edges: vec![
+                super::ArchitectureEdgeView {
+                    lhs_id: "d0",
+                    rhs_id: "d1",
+                    lhs_dir: Some('L'),
+                    rhs_dir: Some('R'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "d0",
+                    rhs_id: "d2",
+                    lhs_dir: Some('T'),
+                    rhs_dir: Some('B'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "d1",
+                    rhs_id: "d3",
+                    lhs_dir: Some('T'),
+                    rhs_dir: Some('B'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "d2",
+                    rhs_id: "d3",
+                    lhs_dir: Some('L'),
+                    rhs_dir: Some('R'),
+                    title: None,
+                },
+            ],
+            layout_hints: Vec::new(),
+        }
+    }
+
+    fn architecture_numeric_id_collision() -> super::ArchitectureModelView<'static> {
+        super::ArchitectureModelView {
+            nodes: ["1", "10", "3", "2"]
+                .into_iter()
+                .map(|id| super::ArchitectureNodeView {
+                    id,
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: None,
+                    in_group: None,
+                })
+                .collect(),
+            groups: Vec::new(),
+            // Mermaid inserts `10` before `2`, but `Object.entries()` later enumerates numeric
+            // property keys as `1, 2, 3, 10`. The later `10` entry must therefore win the shared
+            // `(1, 0)` inverse-coordinate slot used by automatic relative constraints.
+            edges: vec![
+                super::ArchitectureEdgeView {
+                    lhs_id: "1",
+                    rhs_id: "10",
+                    lhs_dir: Some('R'),
+                    rhs_dir: Some('L'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "1",
+                    rhs_id: "3",
+                    lhs_dir: Some('T'),
+                    rhs_dir: Some('B'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "3",
+                    rhs_id: "2",
+                    lhs_dir: Some('R'),
+                    rhs_dir: Some('B'),
+                    title: None,
+                },
+            ],
+            layout_hints: Vec::new(),
+        }
+    }
+
     fn flatten_alignment_object(
         group_sizes: &[usize],
     ) -> indexmap::IndexMap<i32, indexmap::IndexMap<String, Vec<usize>>> {
@@ -2360,12 +2721,12 @@ mod tests {
         let measurer = crate::text::DeterministicTextMeasurer::default();
 
         let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 33)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 45)
             .unwrap();
         let exact_meter = OperationWorkMeter::new(exact_policy);
         super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &exact_meter)
             .unwrap();
-        assert_eq!(exact_meter.used(), 33);
+        assert_eq!(exact_meter.used(), 45);
 
         let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 9)
@@ -2378,9 +2739,212 @@ mod tests {
             panic!("expected layout work resource error");
         };
         assert_eq!(error.cause, ResourceLimitCause::Ceiling);
-        assert_eq!(error.actual, 10);
+        assert_eq!(error.actual, 12);
         assert_eq!(error.max, 9);
         assert_eq!(narrow_meter.used(), 0);
+    }
+
+    #[test]
+    fn architecture_spatial_bfs_preserves_mermaid_duplicate_pop_constraint_order() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+        let model = architecture_duplicate_pop_counterexample();
+        let node_ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 35)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        let traversal = super::build_architecture_spatial_maps(&model, &node_ids, &meter)
+            .expect("exact Mermaid BFS work budget");
+        let spatial_maps = traversal.spatial_maps;
+
+        assert_eq!(meter.used(), 35);
+        assert_eq!(spatial_maps.len(), 1);
+        assert_eq!(spatial_maps[0].get("n4"), Some(&(1, 0)));
+
+        let node_index_by_id = node_ids
+            .iter()
+            .enumerate()
+            .map(|(index, &id)| (id, index))
+            .collect::<rustc_hash::FxHashMap<_, _>>();
+        let declared_pairs = rustc_hash::FxHashSet::default();
+        let relative_plan = super::checked_architecture_relative_constraint_plan(
+            &spatial_maps,
+            &node_index_by_id,
+            &declared_pairs,
+        )
+        .expect("relative constraint plan");
+        let constraints = super::materialize_architecture_relative_placement_constraints(
+            &relative_plan,
+            &node_index_by_id,
+            120.0,
+            &declared_pairs,
+        )
+        .expect("relative constraints");
+
+        assert_eq!(
+            constraints
+                .iter()
+                .map(|constraint| {
+                    (
+                        constraint.left,
+                        constraint.right,
+                        constraint.top,
+                        constraint.bottom,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            vec![
+                (Some(3), Some(4), None, None),
+                (None, None, Some(3), Some(1)),
+                (Some(2), Some(1), None, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn architecture_spatial_bfs_exact_admission_matches_layered_diamond_work() {
+        use crate::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+        };
+
+        let model = architecture_layered_diamond();
+        let node_ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 20)
+            .unwrap();
+        let exact_meter = OperationWorkMeter::new(exact_policy);
+        super::build_architecture_spatial_maps(&model, &node_ids, &exact_meter)
+            .expect("the exact layered-diamond traversal budget");
+        assert_eq!(exact_meter.used(), 20);
+
+        let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 19)
+            .unwrap();
+        let narrow_meter = OperationWorkMeter::new(narrow_policy);
+        let error = super::build_architecture_spatial_maps(&model, &node_ids, &narrow_meter)
+            .expect_err("the layered diamond must be rejected before queue materialization");
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected layout work resource error");
+        };
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(error.actual, 20);
+        assert_eq!(error.max, 19);
+        assert_eq!(narrow_meter.used(), 0);
+    }
+
+    #[test]
+    fn architecture_spatial_bfs_keeps_exact_preflight_for_mixed_components() {
+        use crate::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+        };
+
+        let mut model = architecture_duplicate_pop_counterexample();
+        let diamond = architecture_layered_diamond();
+        model.nodes.extend(diamond.nodes);
+        model.edges.extend(diamond.edges);
+        let node_ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 19)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        let error = super::build_architecture_spatial_maps(&model, &node_ids, &meter)
+            .expect_err("the exact diamond must remain preflighted beside a runtime component");
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected layout work resource error");
+        };
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(error.actual, 20);
+        assert_eq!(error.max, 19);
+        assert_eq!(meter.used(), 0);
+    }
+
+    #[test]
+    fn architecture_spatial_maps_follow_javascript_numeric_property_order() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+
+        let model = architecture_numeric_id_collision();
+        let node_ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let traversal = super::build_architecture_spatial_maps(&model, &node_ids, &meter)
+            .expect("numeric architecture spatial map");
+
+        assert_eq!(meter.used(), 34);
+        assert_eq!(
+            traversal.spatial_maps[0]
+                .keys()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec!["1", "2", "3", "10"]
+        );
+
+        let node_index_by_id = node_ids
+            .iter()
+            .enumerate()
+            .map(|(index, &id)| (id, index))
+            .collect::<rustc_hash::FxHashMap<_, _>>();
+        let declared_pairs = rustc_hash::FxHashSet::default();
+        let relative_plan = super::checked_architecture_relative_constraint_plan(
+            &traversal.spatial_maps,
+            &node_index_by_id,
+            &declared_pairs,
+        )
+        .expect("relative constraint plan");
+        let constraints = super::materialize_architecture_relative_placement_constraints(
+            &relative_plan,
+            &node_index_by_id,
+            120.0,
+            &declared_pairs,
+        )
+        .expect("relative constraints");
+
+        assert_eq!(
+            constraints
+                .iter()
+                .map(|constraint| {
+                    (
+                        constraint.left,
+                        constraint.right,
+                        constraint.top,
+                        constraint.bottom,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            vec![
+                (Some(0), Some(1), None, None),
+                (None, None, Some(2), Some(0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn architecture_spatial_bfs_rejects_before_over_budget_enqueue() {
+        use crate::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+            ResourceLimitPhase,
+        };
+
+        let model = architecture_duplicate_pop_counterexample();
+        let node_ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 4)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        let error = super::build_architecture_spatial_maps(&model, &node_ids, &meter)
+            .expect_err("the first child enqueue must exceed the budget");
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected layout work resource error");
+        };
+
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(error.actual, 5);
+        assert_eq!(error.max, 4);
+        assert_eq!(meter.used(), 4);
     }
 
     #[test]
