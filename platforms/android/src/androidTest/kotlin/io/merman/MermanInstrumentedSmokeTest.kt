@@ -31,7 +31,7 @@ class MermanInstrumentedSmokeTest {
 
     @Test
     fun rejectsCoercedOrIncompatibleRuntimeCatalogHandshakeFields() {
-        val canonical = MermanEngine.runtimeCatalogJson()
+        val canonical = Merman.runtimeCatalogJson()
         for ((expected, replacement) in listOf(
             "\"schema_version\":1" to "\"schema_version\":\"1\"",
             "\"schema_version\":1" to "\"schema_version\":1.0",
@@ -77,17 +77,51 @@ class MermanInstrumentedSmokeTest {
 
     @Test
     fun acceptsAdditiveRuntimeCatalogFields() {
-        val catalog = JSONObject(MermanEngine.runtimeCatalogJson())
+        val catalog = JSONObject(Merman.runtimeCatalogJson())
         catalog.put("future_catalog_field", JSONObject().put("version", 1))
         catalog.getJSONObject("resources").put("future_resource_field", true)
         catalog.getJSONArray("options_schema_versions").put(99)
 
-        check(MermanEngine.validateRuntimeCatalogPayload(catalog.toString()) == catalog.toString())
+        check(Merman.validateRuntimeCatalogPayload(catalog.toString()) == catalog.toString())
+
+        val supportedDiagrams = Merman.metadataJson("supported-diagrams")
+        check(supportedDiagrams == Merman.supportedDiagramsJson())
+    }
+
+    @Test
+    fun emptyIconRegistryIsNormalizedToNoService() {
+        val services = MermanEngineServices(
+            iconRegistry = MermanIconRegistry.fromPacks(emptyList()),
+        )
+        MermanEngine(services = services).use { engine ->
+            check(engine.parseJson("flowchart TD\nA --> B").contains("flowchart-v2"))
+        }
+    }
+
+    @Test
+    fun rejectsUnpairedUtf16BeforeIconPackDecoding() {
+        val invalidPacks = listOf(
+            MermanIconPack("{\"prefix\":\"bad\",\"icons\":{},\"future\":\"\uD800\"}"),
+            MermanIconPack("{\"prefix\":\"ok\",\"icons\":{}}", "\uDC00"),
+        )
+
+        for (pack in invalidPacks) {
+            val error = runCatching {
+                MermanEngine(
+                    services = MermanEngineServices(
+                        iconRegistry = MermanIconRegistry.fromPacks(listOf(pack)),
+                    ),
+                ).use { }
+            }.exceptionOrNull()
+            check(error is MermanException)
+            check(error.iconRegistryDetails?.kindId == "invalid_utf8")
+            check(error.iconRegistryDetails?.packIndex == 0L)
+        }
     }
 
     private fun checkCatalogRejected(catalog: String) {
         val error = runCatching {
-            MermanEngine.validateRuntimeCatalogPayload(catalog)
+            Merman.validateRuntimeCatalogPayload(catalog)
         }.exceptionOrNull()
         check(error is MermanException) {
             "malformed runtime catalog was accepted: $catalog"

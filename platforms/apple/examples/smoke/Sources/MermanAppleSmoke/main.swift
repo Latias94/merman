@@ -238,33 +238,18 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], client: Merman) th
           profiles.contains(where: { ($0["id"] as? String) == "constrained" }) else {
         throw SmokeError.failed("runtime catalog resource descriptors were malformed")
     }
-    let requiredResourceIDs: Set<String> = [
-        "max_ascii_grid_cells",
-        "max_document_diagrams",
-        "max_embedded_image_bytes",
-        "max_embedded_image_pixels",
-        "max_layout_work_units",
-        "max_model_items",
-        "max_model_nesting_depth",
-        "max_model_text_bytes",
-        "max_nested_svg_images",
-        "max_raster_height",
-        "max_raster_pixels",
-        "max_raster_width",
-        "max_source_bytes",
-        "max_svg_bytes",
-        "max_svg_conversion_filter_primitives_per_filter",
-        "max_svg_conversion_isolation_depth",
-        "max_svg_conversion_subroots",
-        "max_svg_elements",
-        "max_total_embedded_image_bytes",
-        "max_total_embedded_image_pixels",
-        "max_total_svg_conversion_filter_primitives",
-        "svg_backend_tree_nodes",
-    ]
+    let requiredResourceIDs = Set(MermanResourceLimitId.knownValues.map(\.id))
     let resourceIDs = Set(limits.compactMap { $0["id"] as? String })
     guard requiredResourceIDs.isSubset(of: resourceIDs) else {
         throw SmokeError.failed("runtime catalog omitted a native SDK resource limit")
+    }
+    let futureResourceID = MermanResourceLimitId.fromId("future_limit")
+    guard futureResourceID.id == "future_limit",
+          !futureResourceID.isKnown,
+          futureResourceID.metadata == nil,
+          MermanResourceLimitId.fromId(MermanResourceLimitId.maxSourceBytes.id) ==
+          .maxSourceBytes else {
+        throw SmokeError.failed("Swift resource-limit IDs are not open and generated")
     }
     return operationIDs
 }

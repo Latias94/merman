@@ -42,8 +42,8 @@ engine = merman.MermanEngine(
 svg = engine.render_svg(source, '{"svg":{"diagram_id":"preview"}}')
 facts = engine.analyze_document_facts_json(
     "```mermaid\n" + source + "\n```",
-    None,
     "file:///workspace/README.md",
+    None,
 )
 engine.close()
 ````

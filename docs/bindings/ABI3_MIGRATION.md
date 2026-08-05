@@ -1,6 +1,10 @@
 # Native ABI 3 Migration
 
-Native ABI 3 freezes a single discovery symbol and a five-slot minimum function-table prefix. ABI 2 and earlier, pre-freeze ABI 3 drafts are intentionally incompatible. Rebuild every C, C++, Dart FFI, or custom native host against the release-matched generated headers.
+Native ABI 3 freezes a single discovery symbol, a five-slot minimum function-table prefix, and the
+published six-slot prefix that adds `metadata_collect`. The published `0.8.0-alpha.3` packages used
+ABI 2; the current source uses ABI 3. ABI 2 and earlier pre-freeze ABI 3 drafts are intentionally
+incompatible, while the reviewed ABI 3 prefix remains append-only. Rebuild every C, C++, Dart FFI,
+or custom native host against the release-matched generated headers.
 
 ## Required Host Changes
 
@@ -14,7 +18,14 @@ Native ABI 3 freezes a single discovery symbol and a five-slot minimum function-
 8. Keep the callback and `user_data` immutable for the engine lifetime. Create another engine to use another callback.
 9. Ensure callbacks return normally. Catch every host-language exception before it crosses C, C++, Dart FFI, or another foreign boundary and return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`.
 10. Use the generated text-measurement constants in `merman_text_measurement_abi.h`. Do not hand-code wrap mode, direction, white-space, phase, operation, or result-kind numbers.
-11. Treat fields after `result_free` as optional appended slots. The current header adds `metadata_collect` at code `5`; check the returned producer table size and pointer before calling it, then free every written metadata result.
+11. Treat fields after `result_free` as optional appended slots. `metadata_collect` is the published
+    slot at code `5`; check the returned producer table size and pointer before calling it, then free
+    every written metadata result.
+12. The current table appends `engine_new_with_services` at code `6`. Use it only when the returned
+    table reaches `MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE`. Empty services may fall
+    back to `engine_new` for an older producer; **non-empty icon-pack services** must fail
+    explicitly rather than being ignored. A text measurer can still use the legacy
+    callback-bearing constructor when that constructor is present; it is not silently dropped.
 
 ## Digest Roles
 
@@ -22,7 +33,16 @@ Native ABI 3 freezes a single discovery symbol and a five-slot minimum function-
 
 `full_descriptor_digest` identifies the complete producer descriptor. Append-only codes or slots can change it while remaining compatible with the frozen prefix.
 
-The current producer has a sixth `metadata_collect` slot. It returns the six named binding catalogs through one generic function and does not change discovery compatibility. A producer that exposes only the frozen five-slot prefix can still be loaded; its host must report named metadata as unavailable rather than reading beyond the returned table.
+The published six-slot prefix ends with `metadata_collect`. It returns binding metadata collections
+through one generic function and does not change minimum-prefix discovery compatibility. A producer
+that exposes only the frozen five-slot prefix can still be loaded; its host must report named
+metadata as unavailable rather than reading beyond the returned table.
+
+The current full table appends `engine_new_with_services`. Its records carry constructor-owned text
+measurement and bounded Iconify packs without adding a registry handle or changing the six-slot
+prefix. A compatible older producer remains usable for empty-service engines and legacy
+text-measurer requests. It cannot accept non-empty icon-pack input, and a high-level binding must
+report that incompatibility instead of silently dropping the packs.
 
 `capability_catalog_digest` identifies the loaded artifact's callable capabilities. It can differ between full and capability-focused artifacts that implement the same native ABI.
 
@@ -50,9 +70,11 @@ Regenerate and verify the checked-in ABI projections before packaging:
 
 ```sh
 cargo run -p xtask -- gen-native-abi
-cargo run -p xtask -- verify-generated
-cargo nextest run --locked -p merman-ffi --all-features
+cargo run --locked -p xtask -- verify-native-abi
+cargo nextest run --locked -p merman-ffi --no-default-features
 python3 -m unittest scripts/test_native_symbol_contract.py
 ```
 
-The FFI test suite compiles a consumer against both the current generated header and the frozen minimum ABI 3 header. The native symbol contract permits exactly one Merman-owned C export: `merman_get_native_api`.
+The FFI test suite compiles consumers against the current generated header, the frozen minimum ABI
+3 header, and the published six-slot header. The native symbol contract permits exactly one
+Merman-owned C export: `merman_get_native_api`.

@@ -85,7 +85,7 @@ impl BindingEngineServices {
     #[cfg(feature = "svg")]
     #[must_use]
     pub fn with_icon_registry(mut self, registry: BindingIconRegistry) -> Self {
-        self.icon_registry = Some(registry);
+        self.icon_registry = (!registry.is_empty()).then_some(registry);
         self
     }
 
@@ -168,6 +168,18 @@ mod tests {
         let services = BindingEngineServices::new();
         assert!(services.is_empty());
         assert!(services.clone().is_empty());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn empty_icon_registry_is_normalized_to_no_service() {
+        let registry = build_icon_registry(std::iter::empty::<crate::IconPack<'_>>())
+            .expect("an empty registry is a valid immutable value");
+        let services = BindingEngineServices::new().with_icon_registry(registry);
+
+        assert!(services.is_empty());
+        assert!(services.icon_registry().is_none());
+        assert_eq!(services.service_keys().count(), 0);
     }
 
     #[cfg(feature = "svg")]

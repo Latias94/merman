@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:merman/merman.dart';
+import 'package:merman/src/generated/binding_contract.dart' as binding;
 import 'package:merman/src/generated/native_abi.dart' as native;
 import 'package:merman/src/merman_ffi.dart' as ffi_transport;
 
@@ -15,7 +16,14 @@ void main() {
   acceptsAdditiveTypedMetadataFields();
   matchesThePubPackageVersionProjection();
   acceptsAFlatAbi3Catalog();
+  acceptsLegacyCatalogWithoutAdditiveTransportSections();
+  acceptsAdditiveConstructorResourceLimits();
+  rejectsMalformedAdditiveTransportSections();
+  normalizesEmptyIconRegistryToNoService();
+  rejectsUnboundedIconRegistryStaging();
+  rejectsMalformedIconRegistryUtf16();
   rejectsCatalogsMissingCurrentBindingSchemas();
+  decodesTypedOperationMetadata();
   projectsSvgPlanOperationFromGeneratedAbi();
   requiresSdkUpgradeForUnknownCatalogOperation();
   preservesTypedRuntimeOutputContracts();
@@ -26,6 +34,9 @@ void main() {
   rejectsMissingRuntimeOutputContracts();
   rejectsOutputContractIdDrift();
   rejectsMalformedOutputContracts();
+  rejectsMissingOriginalSchemaOneFields();
+  rejectsInconsistentGeneratedCatalogRelations();
+  enforcesRuntimeIdentifierGrammarWithoutClosingFutureVocabularies();
   rejectsDuplicateCapabilityIds();
   rejectsUncallableOutputIds();
   rejectsInconsistentAdapters();
@@ -37,8 +48,187 @@ void main() {
   decodesMachineReadableNativeErrors();
   rejectsMismatchedNativeErrorSchema();
   preservesAllocationTokenExhaustionStatus();
+  preservesUnpublishedEngineProducerProvenance();
+  poisonsUnpublishedEnginesWithoutReleasingCallbacks();
+  retainsEveryUnpublishedEngineEntry();
   fuzzesNativeErrorPayloadDecoding();
   print('ABI 3 Dart contract tests passed');
+}
+
+void preservesUnpublishedEngineProducerProvenance() {
+  const producerA = 0xa1;
+  const producerB = 0xb1;
+  const collidingToken = 5;
+  final harness = ffi_transport.UnpublishedEngineQuarantineTestHarness();
+  final retryStatuses = <int>[
+    native.MERMAN_NATIVE_STATUS_BUSY,
+    native.MERMAN_NATIVE_STATUS_OK,
+  ];
+  final closedTokens = <int>[];
+  var releasedCallbacks = 0;
+  harness.retain(
+    producerIdentity: producerA,
+    token: collidingToken,
+    closeStatus: native.MERMAN_NATIVE_STATUS_BUSY,
+    close: (token) {
+      closedTokens.add(token);
+      return retryStatuses.removeAt(0);
+    },
+    releaseCallbackState: () => releasedCallbacks += 1,
+  );
+
+  final otherProducer = harness.sweepFor(producerB);
+  _expect(
+    !otherProducer.blocked &&
+        otherProducer.producerEntryCount == 0 &&
+        otherProducer.totalEntryCount == 1 &&
+        closedTokens.length == 1 &&
+        closedTokens.single == collidingToken &&
+        releasedCallbacks == 0,
+    'another producer must retry a quarantined token only through its '
+    'originating close function and must remain unblocked while that close is busy',
+  );
+
+  final originatingProducer = harness.sweepFor(producerA);
+  _expect(
+    !originatingProducer.blocked &&
+        originatingProducer.totalEntryCount == 0 &&
+        closedTokens.length == 2 &&
+        closedTokens.every((token) => token == collidingToken) &&
+        releasedCallbacks == 1,
+    'the originating producer must release callback state exactly after its '
+    'own close function confirms quiescence',
+  );
+
+  final repeatedSweep = harness.sweepFor(producerA);
+  _expect(
+    !repeatedSweep.blocked &&
+        closedTokens.length == 2 &&
+        releasedCallbacks == 1,
+    'a retired quarantine entry must not be closed or released twice',
+  );
+}
+
+void poisonsUnpublishedEnginesWithoutReleasingCallbacks() {
+  for (final terminalStatus in const [
+    native.MERMAN_NATIVE_STATUS_INVALID_ENGINE,
+    native.MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+  ]) {
+    final harness = ffi_transport.UnpublishedEngineQuarantineTestHarness();
+    final producer = 0xc0 + terminalStatus;
+    final otherProducer = producer + 0x100;
+    var closeCalls = 0;
+    var releasedCallbacks = 0;
+    harness.retain(
+      producerIdentity: producer,
+      token: 9,
+      closeStatus: native.MERMAN_NATIVE_STATUS_REENTRANT_CALL,
+      close: (token) {
+        closeCalls += 1;
+        _expect(token == 9, 'quarantine retried an unexpected engine token');
+        return terminalStatus;
+      },
+      releaseCallbackState: () => releasedCallbacks += 1,
+    );
+
+    final unrelated = harness.sweepFor(otherProducer);
+    _expect(
+      !unrelated.blocked &&
+          unrelated.totalEntryCount == 1 &&
+          closeCalls == 1 &&
+          releasedCallbacks == 0,
+      'a terminal rollback status must retain callback state without blocking '
+      'an unrelated native producer',
+    );
+
+    final owner = harness.sweepFor(producer);
+    _expect(
+      owner.blocked &&
+          owner.poisoned &&
+          owner.status == terminalStatus &&
+          owner.producerEntryCount == 1 &&
+          closeCalls == 1 &&
+          releasedCallbacks == 0,
+      'INVALID_ENGINE and unexpected close statuses must poison only the '
+      'originating producer and must never establish callback quiescence',
+    );
+
+    final repeatedOwnerSweep = harness.sweepFor(producer);
+    _expect(
+      repeatedOwnerSweep.blocked &&
+          repeatedOwnerSweep.poisoned &&
+          closeCalls == 1 &&
+          releasedCallbacks == 0,
+      'a poisoned quarantine entry must not retry close or release callback state',
+    );
+
+    final directlyPoisoned =
+        ffi_transport.UnpublishedEngineQuarantineTestHarness();
+    var directCloseCalls = 0;
+    var directReleases = 0;
+    directlyPoisoned.retain(
+      producerIdentity: producer,
+      token: 21,
+      closeStatus: terminalStatus,
+      close: (token) {
+        directCloseCalls += 1;
+        return native.MERMAN_NATIVE_STATUS_OK;
+      },
+      releaseCallbackState: () => directReleases += 1,
+    );
+    final directOwner = directlyPoisoned.sweepFor(producer);
+    _expect(
+      directOwner.blocked &&
+          directOwner.poisoned &&
+          directOwner.status == terminalStatus &&
+          directCloseCalls == 0 &&
+          directReleases == 0,
+      'a terminal initial rollback status must enter poison state without '
+      'being retried or releasing callback ownership',
+    );
+  }
+}
+
+void retainsEveryUnpublishedEngineEntry() {
+  const producer = 0xd1;
+  final harness = ffi_transport.UnpublishedEngineQuarantineTestHarness();
+  final closedTokens = <int>[];
+  var releasedCallbacks = 0;
+  for (final entry in const [
+    (token: 13, status: native.MERMAN_NATIVE_STATUS_BUSY),
+    (token: 17, status: native.MERMAN_NATIVE_STATUS_REENTRANT_CALL),
+  ]) {
+    harness.retain(
+      producerIdentity: producer,
+      token: entry.token,
+      closeStatus: entry.status,
+      close: (token) {
+        closedTokens.add(token);
+        return native.MERMAN_NATIVE_STATUS_OK;
+      },
+      releaseCallbackState: () => releasedCallbacks += 1,
+    );
+  }
+
+  final state = harness.sweepFor(producer);
+  _expect(
+    !state.blocked &&
+        state.totalEntryCount == 0 &&
+        closedTokens.length == 2 &&
+        closedTokens.toSet().containsAll(const [13, 17]) &&
+        releasedCallbacks == 2,
+    'quarantine must retain every published token and treat BUSY and '
+    'REENTRANT close failures as independently retryable',
+  );
+}
+
+void normalizesEmptyIconRegistryToNoService() {
+  final registry = MermanIconRegistry.fromPacks(const []);
+  final services = MermanEngineServices(iconRegistry: registry);
+  _expect(
+    registry.isEmpty && services.isEmpty && !services.hasIconPacks,
+    'an empty icon registry must normalize to an empty constructor service',
+  );
 }
 
 void projectsFrozenAbi3MinimumPrefix() {
@@ -408,6 +598,224 @@ void acceptsAFlatAbi3Catalog() {
   );
 }
 
+void acceptsLegacyCatalogWithoutAdditiveTransportSections() {
+  final legacy = _catalog()
+    ..remove('option_group_ids')
+    ..remove('constructor_service_ids')
+    ..remove('constructor_service_contracts');
+  final catalog = MermanRuntimeCatalog.fromJson(legacy);
+  _expect(
+    !catalog.hasDeclaredOptionGroups &&
+        !catalog.hasDeclaredConstructorServices &&
+        catalog.optionGroupIds.isEmpty &&
+        catalog.constructorServiceIds.isEmpty &&
+        catalog.constructorServiceContracts.isEmpty,
+    'missing additive transport sections must normalize to legacy-empty',
+  );
+  catalog.requireEngineServices(
+    const MermanEngineServices(),
+    hasServiceConstructor: false,
+  );
+  catalog.requireEngineServices(
+    MermanEngineServices(textMeasurer: (_) => null),
+    hasServiceConstructor: false,
+  );
+  _expectContractFailure(
+    () => catalog.requireEngineServices(
+      MermanEngineServices(
+        iconRegistry: MermanIconRegistry.fromPacks([
+          MermanIconPack(json: '{"prefix":"test","icons":{}}'),
+        ]),
+      ),
+      hasServiceConstructor: false,
+    ),
+  );
+}
+
+void acceptsAdditiveConstructorResourceLimits() {
+  final catalog = _catalog();
+  final iconRegistry = _constructorServiceContract(catalog, 'icon-registry');
+  final limits = iconRegistry['resource_limits'] as List<Object?>;
+  limits.insert(0, <String, Object?>{
+    'id': 'future_constructor_limit',
+    'phase': 'future_constructor_phase',
+    'unit': 'items',
+    'description': 'Future additive constructor resource limit',
+    'value': 7,
+    'future_limit_metadata': <String, Object?>{'version': 2},
+  });
+
+  final validated = MermanRuntimeCatalog.fromJson(catalog);
+  final contract = validated.constructorServiceContracts
+      .firstWhere((candidate) => candidate.id == 'icon-registry');
+  final future = contract.resourceLimits
+      .firstWhere((candidate) => candidate.id == 'future_constructor_limit');
+  final rawContracts =
+      validated.jsonObject['constructor_service_contracts'] as List<Object?>;
+  final rawIconRegistry = rawContracts
+      .cast<Map<String, Object?>>()
+      .firstWhere((candidate) => candidate['id'] == 'icon-registry');
+  final rawFuture = (rawIconRegistry['resource_limits'] as List<Object?>)
+      .cast<Map<String, Object?>>()
+      .firstWhere((candidate) => candidate['id'] == 'future_constructor_limit');
+  _expect(
+    future.phase == 'future_constructor_phase' &&
+        future.unit == 'items' &&
+        future.value == 7 &&
+        (rawFuture['future_limit_metadata']
+                as Map<String, Object?>)['version'] ==
+            2,
+    'unknown future constructor limits must remain discoverable and preserved',
+  );
+}
+
+void rejectsMalformedAdditiveTransportSections() {
+  for (final mutation in <void Function(Map<String, Object?>)>[
+    (catalog) => (catalog['option_group_ids'] as List<Object?>).remove('svg'),
+    (catalog) =>
+        (catalog['option_group_ids'] as List<Object?>).add('not-valid!'),
+    (catalog) => catalog.remove('constructor_service_contracts'),
+    (catalog) => (catalog['constructor_service_contracts'] as List<Object?>)
+        .removeLast(),
+    (catalog) => (((catalog['constructor_service_contracts'] as List<Object?>)
+                .first as Map<String, Object?>)[
+            'provided_text_measurement_provider_ids'] as List<Object?>)
+        .add('unavailable-provider'),
+    (catalog) => ((((catalog['constructor_service_contracts'] as List<Object?>)
+            .last as Map<String, Object?>)['resource_limits'] as List<Object?>)
+        .first as Map<String, Object?>)['value'] = -1,
+    (catalog) {
+      final iconRegistry =
+          _constructorServiceContract(catalog, 'icon-registry');
+      final first = (iconRegistry['resource_limits'] as List<Object?>).first
+          as Map<String, Object?>;
+      first['value'] = (first['value'] as int) + 1;
+    },
+    (catalog) {
+      final hostText =
+          _constructorServiceContract(catalog, 'host-text-measurement');
+      final iconRegistry =
+          _constructorServiceContract(catalog, 'icon-registry');
+      final knownIconLimit = Map<String, Object?>.from(
+        (iconRegistry['resource_limits'] as List<Object?>).first
+            as Map<String, Object?>,
+      );
+      (hostText['resource_limits'] as List<Object?>).add(knownIconLimit);
+    },
+  ]) {
+    final catalog = _catalog();
+    mutation(catalog);
+    _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+  }
+
+  final noSvg = _catalog(
+    capabilityIds: const [],
+    outputIds: const [],
+    operationIds: const ['semantic-json'],
+  );
+  noSvg['constructor_service_ids'] = const ['icon-registry'];
+  noSvg['constructor_service_contracts'] = const [
+    {
+      'id': 'icon-registry',
+      'provided_text_measurement_provider_ids': <String>[],
+      'resource_limits': <Object?>[],
+    },
+  ];
+  _expectContractFailure(() => MermanRuntimeCatalog.fromJson(noSvg));
+}
+
+void rejectsUnboundedIconRegistryStaging() {
+  var iterated = 0;
+  Iterable<MermanIconPack> tooManyPacks() sync* {
+    for (var index = 0; index < 100; index += 1) {
+      iterated += 1;
+      yield MermanIconPack(json: '{"prefix":"p$index","icons":{}}');
+    }
+  }
+
+  final countError = _expectMermanException(
+    () => MermanIconRegistry.fromPacks(tooManyPacks()),
+  );
+  _expect(
+    iterated == 17 &&
+        countError.code ==
+            native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED &&
+        countError.resourceDetails?.limitId.id == 'max_icon_registry_packs' &&
+        countError.resourceDetails?.actual == 17 &&
+        countError.iconRegistryDetails?.kindId == 'resource_limit_exceeded',
+    'icon registry factory must stop at limit plus one before unbounded staging',
+  );
+
+  final prefixError = _expectMermanException(
+    () => MermanIconRegistry.fromPacks([
+      MermanIconPack(
+        json: '{"prefix":"test","icons":{}}',
+        registrationName: 'a' * 65,
+      ),
+    ]),
+  );
+  _expect(
+    prefixError.resourceDetails?.limitId.id ==
+            'max_icon_registry_prefix_bytes' &&
+        prefixError.resourceDetails?.actual == 65 &&
+        prefixError.iconRegistryDetails?.packIndex == 0,
+    'icon registry factory must enforce exact UTF-8 registration-name bytes',
+  );
+}
+
+void rejectsMalformedIconRegistryUtf16() {
+  final isolatedHighSurrogate = String.fromCharCode(0xd800);
+  final isolatedLowSurrogate = String.fromCharCode(0xdc00);
+
+  final jsonError = _expectMermanException(
+    () => MermanIconRegistry.fromPacks([
+      MermanIconPack(
+        json:
+            '{"prefix":"test","icons":{"broken":{"body":"$isolatedHighSurrogate"}}}',
+        registrationName: 'smoke',
+      ),
+    ]),
+  );
+  _expect(
+    jsonError.code == native.MERMAN_NATIVE_STATUS_UTF8_ERROR &&
+        jsonError.codeName == 'utf8-error' &&
+        jsonError.resourceDetails == null &&
+        jsonError.iconRegistryDetails?.kindId == 'invalid_utf8' &&
+        jsonError.iconRegistryDetails?.packIndex == 0 &&
+        jsonError.iconRegistryDetails?.registrationName == 'smoke',
+    'isolated JSON surrogates must fail with the native invalid-UTF-8 contract',
+  );
+
+  final registrationNameError = _expectMermanException(
+    () => MermanIconRegistry.fromPacks([
+      MermanIconPack(
+        json: '{"prefix":"test","icons":{}}',
+        registrationName: 'bad$isolatedLowSurrogate',
+      ),
+    ]),
+  );
+  _expect(
+    registrationNameError.code == native.MERMAN_NATIVE_STATUS_UTF8_ERROR &&
+        registrationNameError.codeName == 'utf8-error' &&
+        registrationNameError.iconRegistryDetails?.kindId == 'invalid_utf8' &&
+        registrationNameError.iconRegistryDetails?.packIndex == 0 &&
+        registrationNameError.iconRegistryDetails?.registrationName == null,
+    'isolated registration-name surrogates must not be echoed in error details',
+  );
+
+  final validPair = String.fromCharCodes(const [0xd83d, 0xde00]);
+  final registry = MermanIconRegistry.fromPacks([
+    MermanIconPack(
+      json:
+          '{"prefix":"test","icons":{"valid":{"body":"<text>$validPair</text>"}}}',
+    ),
+  ]);
+  _expect(
+    registry.length == 1,
+    'valid UTF-16 surrogate pairs must remain admissible UTF-8 input',
+  );
+}
+
 void rejectsCatalogsMissingCurrentBindingSchemas() {
   final legacyOptions = _catalog();
   legacyOptions['options_schema_versions'] = [1];
@@ -423,6 +831,115 @@ void rejectsCatalogsMissingCurrentBindingSchemas() {
   _expectContractFailure(
     () => MermanRuntimeCatalog.fromJson(missingResult)
         .requireCurrentBindingSchemas(),
+  );
+
+  final missingMetadata = _catalog();
+  missingMetadata['payload_schemas'] = const [
+    {'id': 'binding-result', 'version': 1},
+  ];
+  _expectContractFailure(
+    () => MermanRuntimeCatalog.fromJson(missingMetadata)
+        .requireCurrentBindingSchemas(),
+  );
+}
+
+void decodesTypedOperationMetadata() {
+  final raster = binding.decodeMermanOperationMetadata(jsonEncode({
+    'version': 1,
+    'operation_id': 'png',
+    'media_type': 'image/png',
+    'runtime_policy': 'deterministic',
+    'byte_length': 128,
+    'output_plan': {
+      'kind': 'raster',
+      'requested_width_px': 100.5,
+      'requested_height_px': 50.25,
+      'width_px': 100,
+      'height_px': 50,
+      'requested_scale': 1.0,
+      'effective_scale': 0.5,
+      'limited': true,
+    },
+    'future_metadata': {'preserved': true},
+  }));
+  final rasterPlan = raster.outputPlan;
+  _expect(
+    rasterPlan is MermanRasterOutputPlan &&
+        rasterPlan.requestedWidthPx == 100.5 &&
+        rasterPlan.widthPx == 100 &&
+        rasterPlan.limited &&
+        raster.jsonObject['future_metadata'] is Map,
+    'generated metadata decoder must project raster plans and preserve raw JSON',
+  );
+
+  final pdf = binding.decodeMermanOperationMetadata(jsonEncode({
+    'version': 1,
+    'operation_id': 'pdf',
+    'media_type': 'application/pdf',
+    'runtime_policy': 'deterministic',
+    'byte_length': 256,
+    'output_plan': {
+      'kind': 'pdf-filter-images',
+      'filtered_groups': 2,
+      'requested_scale': 1.0,
+      'effective_scale': 0.75,
+      'requested_image_pixels': 1000,
+      'effective_image_pixels': 750,
+      'limited': true,
+    },
+  }));
+  _expect(
+    pdf.outputPlan is MermanPdfFilterImagesOutputPlan &&
+        (pdf.outputPlan! as MermanPdfFilterImagesOutputPlan).filteredGroups ==
+            2,
+    'generated metadata decoder must project PDF filter-image plans',
+  );
+
+  final unknown = binding.decodeMermanOperationMetadata(jsonEncode({
+    'version': 1,
+    'operation_id': 'future',
+    'media_type': 'application/x-future',
+    'runtime_policy': 'future-policy',
+    'byte_length': 7,
+    'output_plan': {
+      'kind': 'future-plan',
+      'nested': {'answer': 42},
+    },
+  }));
+  _expect(
+    unknown.outputPlan is MermanUnknownOutputPlan &&
+        (unknown.outputPlan! as MermanUnknownOutputPlan).jsonObject['nested']
+            is Map,
+    'unknown future output plans must preserve their complete JSON object',
+  );
+  _expectThrows<UnsupportedError>(
+    () => ((unknown.outputPlan! as MermanUnknownOutputPlan)
+        .jsonObject['nested']! as Map<String, Object?>)['answer'] = 0,
+  );
+
+  _expectThrows<FormatException>(
+    () => binding.decodeMermanOperationMetadata(
+      '{"version":1,"operation_id":"png"}',
+    ),
+  );
+  _expectThrows<FormatException>(
+    () => binding.decodeMermanOperationMetadata(jsonEncode({
+      'version': 1,
+      'operation_id': 'png',
+      'media_type': 'image/png',
+      'runtime_policy': 'deterministic',
+      'byte_length': 1,
+      'output_plan': {
+        'kind': 'raster',
+        'requested_width_px': 1.0,
+        'requested_height_px': 1.0,
+        'width_px': 0x100000000,
+        'height_px': 1,
+        'requested_scale': 1.0,
+        'effective_scale': 1.0,
+        'limited': false,
+      },
+    })),
   );
 }
 
@@ -514,9 +1031,27 @@ void acceptsAdditiveRuntimeCatalogFields() {
       true;
 
   final validated = MermanRuntimeCatalog.fromJson(catalog);
+  final preserved = validated.jsonObject;
   _expect(
-    validated.supportsCapability('svg'),
-    'schema 1 consumers must tolerate additive catalog fields',
+    identical(preserved, validated.jsonObject),
+    'runtime catalog JSON must be decoded and frozen once',
+  );
+  _expect(
+    validated.supportsCapability('svg') &&
+        preserved['future_root'] == true &&
+        ((preserved['capabilities']
+                    as Map<String, Object?>)['future_capability_metadata']
+                as Map<String, Object?>)
+            .isEmpty &&
+        ((preserved['output_contracts'] as List<Object?>)
+                    .cast<Map<String, Object?>>()
+                    .firstWhere((output) => output['id'] == 'png'))[
+                'future_output_metadata'] ==
+            true,
+    'schema 1 consumers must preserve additive catalog fields',
+  );
+  _expectThrows<UnsupportedError>(
+    () => (preserved['capabilities'] as Map<String, Object?>)['future'] = true,
   );
 }
 
@@ -669,6 +1204,94 @@ void rejectsMalformedOutputContracts() {
         as Map<String, Object?>)['max_total_pixels'] = '4096',
   ]) {
     final catalog = _catalogWithExportOutput();
+    mutation(catalog);
+    _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+  }
+}
+
+void rejectsMissingOriginalSchemaOneFields() {
+  for (final field in const [
+    'options_schema_versions',
+    'payload_schemas',
+    'metadata_ids',
+  ]) {
+    for (final validator in <void Function(Map<String, Object?>)>[
+      (catalog) => MermanRuntimeCatalog.fromJson(catalog),
+      (catalog) =>
+          MermanRuntimeCatalog.fromJson(catalog).requireCurrentBindingSchemas(),
+    ]) {
+      final catalog = _clonedCatalog()..remove(field);
+      _expectContractFailure(() => validator(catalog));
+    }
+  }
+}
+
+void rejectsInconsistentGeneratedCatalogRelations() {
+  for (final catalog in <Map<String, Object?>>[
+    _catalog(
+      capabilityIds: const ['math'],
+      outputIds: const [],
+      operationIds: const ['semantic-json'],
+    ),
+    _catalog(
+      capabilityIds: const [],
+      outputIds: const [],
+      operationIds: const ['semantic-json'],
+      metadataIds: const ['lint-rule-catalog'],
+    ),
+    _catalog(
+      capabilityIds: const ['png'],
+      outputIds: const [],
+      operationIds: const ['png', 'semantic-json'],
+    ),
+  ]) {
+    _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+  }
+}
+
+void enforcesRuntimeIdentifierGrammarWithoutClosingFutureVocabularies() {
+  final valid = _catalog();
+  final capabilities = _runtimeCapabilities(valid);
+  capabilities['capability_ids'] = <String>['future-capability', 'svg'];
+  capabilities['operation_ids'] = <String>[
+    'future-operation',
+    'semantic-json',
+    'svg',
+  ];
+  (valid['metadata_ids'] as List<String>)
+    ..add('future-metadata')
+    ..sort();
+  (valid['option_group_ids'] as List<String>)
+    ..add('future_group')
+    ..sort();
+  valid['payload_schemas'] = <Object?>[
+    ...valid['payload_schemas'] as List<Object?>,
+    <String, Object>{'id': 'future-schema', 'version': 7},
+  ]..sort((left, right) => (left as Map<String, Object?>)['id']
+      .toString()
+      .compareTo((right as Map<String, Object?>)['id'].toString()));
+  final validated = MermanRuntimeCatalog.fromJson(valid);
+  _expect(
+    validated.supportsCapability('future-capability') &&
+        validated.supportsOperation('future-operation') &&
+        validated.metadataIds.contains('future-metadata') &&
+        validated.optionGroupIds.contains('future_group') &&
+        validated.supportsPayloadSchema('future-schema', 7),
+    'valid future IDs must remain discoverable across open runtime vocabularies',
+  );
+
+  for (final mutation in <void Function(Map<String, Object?>)>[
+    (catalog) =>
+        _runtimeCapabilities(catalog)['capability_ids'] = const ['SVG'],
+    (catalog) => catalog['metadata_ids'] = const ['future metadata'],
+    (catalog) => catalog['option_group_ids'] = const ['future.option'],
+    (catalog) => catalog['payload_schemas'] = const [
+          {'id': 'future_schema', 'version': 1},
+        ],
+    (catalog) => _limitAt(catalog, 0)['id'] = 'Future_limit',
+    (catalog) => _profileAt(catalog, 0)['id'] = 'future_profile',
+  ]) {
+    final catalog = _clonedCatalog();
     mutation(catalog);
     _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
   }
@@ -893,6 +1516,36 @@ void decodesMachineReadableNativeErrors() {
         resource.resourceDetails?.profile == 'constrained',
     'resource metadata should survive the Dart boundary',
   );
+
+  final iconRegistry = MermanException.fromNative(
+    native.MERMAN_NATIVE_STATUS_RENDER_ERROR,
+    Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'version': 1,
+          'ok': false,
+          'status': native.MERMAN_NATIVE_STATUS_RENDER_ERROR,
+          'status_name': 'render-error',
+          'kind': 'generic',
+          'capability_id': null,
+          'details': {
+            'icon_registry': {
+              'kind_id': 'invalid_xml',
+              'pack_index': 2,
+              'registration_name': 'smoke',
+            },
+          },
+          'message': 'icon body is invalid',
+        }),
+      ),
+    ),
+  );
+  _expect(
+    iconRegistry.iconRegistryDetails?.kindId == 'invalid_xml' &&
+        iconRegistry.iconRegistryDetails?.packIndex == 2 &&
+        iconRegistry.iconRegistryDetails?.registrationName == 'smoke',
+    'icon-registry metadata should survive the Dart boundary',
+  );
 }
 
 void rejectsMismatchedNativeErrorSchema() {
@@ -992,7 +1645,43 @@ Map<String, Object?> _catalog({
   List<String> outputIds = const ['svg'],
   List<String> operationIds = const ['semantic-json', 'svg'],
   List<String> systemAdapterIds = const [],
+  List<String>? metadataIds,
 }) {
+  final usesSvgPipeline = capabilityIds.contains('svg');
+  final optionGroupIds = binding.mermanBindingOptionGroupSpecs.values
+      .where(
+        (spec) =>
+            spec.alwaysAvailable ||
+            (spec.requiresSvgPipeline && usesSvgPipeline) ||
+            spec.anyCapabilityIds.any(capabilityIds.contains),
+      )
+      .map((spec) => spec.id)
+      .toList()
+    ..sort();
+  final transport = binding.mermanBindingTransportExposureSpecs['native-c']!;
+  final serviceSpecs = binding.mermanBindingConstructorServiceSpecs.values
+      .where(
+        (spec) =>
+            transport.constructorServiceCandidateIds.contains(spec.id) &&
+            (!spec.requiresSvgPipeline || usesSvgPipeline),
+      )
+      .toList()
+    ..sort((left, right) => left.id.compareTo(right.id));
+  final providers = <String>{
+    if (usesSvgPipeline) 'vendored',
+    for (final spec in serviceSpecs) ...spec.providedTextMeasurementProviderIds,
+  }.toList()
+    ..sort();
+  final effectiveMetadataIds = metadataIds ??
+      (binding.mermanBindingMetadataSpecs.values
+          .where(
+            (spec) =>
+                spec.requiredCapabilityId == null ||
+                capabilityIds.contains(spec.requiredCapabilityId),
+          )
+          .map((spec) => spec.id)
+          .toList()
+        ..sort());
   return {
     'schema_version': 1,
     'transport_api_version': 3,
@@ -1000,27 +1689,41 @@ Map<String, Object?> _catalog({
     'options_schema_versions': const [2],
     'payload_schemas': const [
       {'id': 'binding-result', 'version': 1},
+      {'id': 'operation-metadata', 'version': 1},
     ],
-    'metadata_ids': const [
-      'ascii-capabilities',
-      'diagram-family-capabilities',
-      'lint-rule-catalog',
-      'presentation-catalog',
-      'supported-diagrams',
-      'supported-themes',
-    ],
+    'metadata_ids': effectiveMetadataIds,
     'capabilities': {
       'capability_ids': capabilityIds,
       'output_ids': outputIds,
       'operation_ids': operationIds,
       'system_adapter_ids': systemAdapterIds,
-      'text_measurement': capabilityIds.contains('svg')
+      'text_measurement': usesSvgPipeline
           ? {
               'protocol_version': 1,
-              'provider_ids': ['vendored'],
+              'provider_ids': providers,
             }
           : null,
     },
+    'option_group_ids': optionGroupIds,
+    'constructor_service_ids': serviceSpecs.map((spec) => spec.id).toList(),
+    'constructor_service_contracts': <Object?>[
+      for (final spec in serviceSpecs)
+        <String, Object?>{
+          'id': spec.id,
+          'provided_text_measurement_provider_ids':
+              spec.providedTextMeasurementProviderIds.toList()..sort(),
+          'resource_limits': <Object?>[
+            for (final limit in spec.resourceLimits)
+              <String, Object?>{
+                'id': limit.id,
+                'phase': limit.phase,
+                'unit': limit.unit,
+                'description': limit.description,
+                'value': limit.value,
+              },
+          ],
+        },
+    ],
     'output_contracts': <Object?>[
       for (final outputId in outputIds) _outputContract(outputId),
     ],
@@ -1122,6 +1825,14 @@ Map<String, Object?> _profileAt(Map<String, Object?> catalog, int index) =>
 
 Map<String, Object?> _runtimeCapabilities(Map<String, Object?> catalog) =>
     catalog['capabilities']! as Map<String, Object?>;
+
+Map<String, Object?> _constructorServiceContract(
+  Map<String, Object?> catalog,
+  String serviceId,
+) =>
+    (catalog['constructor_service_contracts'] as List<Object?>)
+        .cast<Map<String, Object?>>()
+        .firstWhere((contract) => contract['id'] == serviceId);
 
 List<Object?> _outputContracts(Map<String, Object?> catalog) =>
     catalog['output_contracts']! as List<Object?>;

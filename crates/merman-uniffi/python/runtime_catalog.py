@@ -525,7 +525,7 @@ def _validate_constructor_service_resource_limits(
         raise MermanRuntimeCatalogError(
             f"runtime constructor service {service_id} resource limits must be an array"
         )
-    limit_ids: List[str] = []
+    limits: List[Dict[str, Any]] = []
     for value_item in value:
         item = _expect_object(
             value_item,
@@ -536,14 +536,13 @@ def _validate_constructor_service_resource_limits(
             {"id", "phase", "unit", "description", "value"},
             f"runtime constructor service {service_id} resource limit",
         )
-        limit_ids.append(
-            _expect_field_identifier(
-                item["id"],
-                f"runtime constructor service {service_id} resource limit ID",
-            )
+        limit_id = _expect_field_identifier(
+            item["id"],
+            f"runtime constructor service {service_id} resource limit ID",
         )
+        fields: Dict[str, Any] = {"id": limit_id}
         for field in ["phase", "unit", "description"]:
-            _expect_non_empty_string(
+            fields[field] = _expect_non_empty_string(
                 item[field],
                 f"runtime constructor service {service_id} resource limit {field}",
             )
@@ -552,10 +551,24 @@ def _validate_constructor_service_resource_limits(
                 f"runtime constructor service {service_id} resource limit value "
                 "must be a non-negative JSON-safe integer"
             )
+        fields["value"] = item["value"]
+        limits.append(fields)
+    limit_ids = [limit["id"] for limit in limits]
     if limit_ids != sorted(set(limit_ids)):
         raise MermanRuntimeCatalogError(
             f"runtime constructor service {service_id} resource limits must be "
             "sorted and unique by ID"
+        )
+    service_spec = _CONSTRUCTOR_SERVICE_SPEC_BY_ID.get(service_id)
+    if service_spec is None:
+        return
+    expected = [dict(limit) for limit in service_spec["resource_limits"]]
+    expected_ids = {limit["id"] for limit in expected}
+    actual_known = [limit for limit in limits if limit["id"] in expected_ids]
+    if actual_known != expected:
+        raise MermanRuntimeCatalogError(
+            f"runtime constructor service {service_id} known resource limits "
+            "do not match the generated contract"
         )
 
 

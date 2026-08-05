@@ -4,7 +4,7 @@
 
 Render and analyze Mermaid diagrams in Flutter without a browser or JavaScript runtime. The plugin is a Dart-friendly facade over Merman's native ABI 3 table and ships the native library for its supported Flutter targets.
 
-> `Merman.open()` accepts only the exact native package version bundled with this Dart release and requires the current ABI 3 metadata slot. `Merman.openPath(...)` accepts any library that passes ABI 3 minimum-prefix discovery. A compatible five-slot producer can still render and analyze, but metadata queries report `DART_NATIVE_CONTRACT_ERROR`. ABI 2 symbols and pre-freeze ABI 3 layouts are not fallback paths.
+> `Merman.open()` accepts only the exact native package version bundled with this Dart release and requires the current metadata and payload schemas. `Merman.openPath(...)` accepts any library that passes ABI 3 minimum-prefix discovery. Older producers may omit additive option/service catalog sections; they decode as legacy-empty. Engines with no icon packs still use the legacy constructor when the appended service slot is absent, and a legacy text measurer may use the callback-bearing constructor; non-empty icon-pack services fail explicitly instead of being ignored. ABI 2 symbols and pre-freeze ABI 3 layouts are not fallback paths.
 
 ## Install
 
@@ -35,29 +35,29 @@ The public Dart API can load a host-owned compatible native library with `Merman
 
 ## Render A Diagram
 
-`Merman` owns a default native engine. Close it when the application no longer needs it.
+`Merman` is a stateless discovery and one-shot facade. It creates and closes a fresh native engine for each operation, so the facade itself has no `close()` method.
 
 ```dart
 import 'package:merman/merman.dart';
 
 const source = 'flowchart TD\nA[Hello] --> B[World]';
 final merman = Merman.open();
-try {
-  final svg = merman.renderSvg(source);
-  print(svg.substring(0, 4)); // <svg
-} finally {
-  merman.close();
-}
+final svg = merman.renderSvg(source);
+print(svg.substring(0, 4)); // <svg
 ```
 
-The generic API is available when an application needs to select an output at runtime. It returns a structured `MermanOperationResult` with the selected operation, media type, copied Dart bytes, and decoded metadata:
+The generic API is available when an application needs to select an output at runtime. It returns a structured `MermanOperationResult` with the selected operation, media type, copied Dart bytes, and typed `MermanOperationMetadata`:
 
 ```dart
 final output = merman.execute(MermanOperation.semanticJson, source);
 final semantic = output.jsonObject;
+print(output.metadata.runtimePolicy);
+print(output.metadata.rawJson); // Includes additive fields from newer producers.
 ```
 
-Convenience methods are projections over `execute` and cover SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation. A native artifact can intentionally omit some outputs. Inspect `merman.runtimeCatalog` before enabling optional UI or export paths; an unavailable operation raises `MermanUnsupportedOperationException` rather than silently falling back. `MermanUnknownOperationException` identifies an ID outside the ABI vocabulary; `MermanMissingCapabilityException.capabilityId` identifies the backend absent from a valid native request.
+Convenience methods are projections over `execute` and cover all 13 generated operations, including `analysisFactsJson` and `svgPlanJson`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
+
+A native artifact can intentionally omit some outputs. Inspect `merman.runtimeCatalog` before enabling optional UI or export paths; an unavailable operation raises `MermanUnsupportedOperationException` rather than silently falling back. `MermanUnknownOperationException` identifies an ID outside the generated ABI vocabulary; `MermanMissingCapabilityException.capabilityId` identifies the backend absent from a valid native request.
 
 ## Inspect Native Metadata
 
@@ -70,16 +70,17 @@ final families = merman.diagramFamilyCapabilities();
 final lintRules = merman.lintRuleCatalog();
 final themes = merman.supportedThemes();
 final presentation = merman.presentationCatalog();
+final rawCatalog = merman.metadataJson('supported-diagrams');
 ```
 
 All six methods use the appended ABI 3 `metadata_collect` table slot. `Merman.open()` requires that slot because the bundled Dart and native package versions are exact peers. `Merman.openPath(...)` deliberately keeps minimum-prefix compatibility with older ABI 3 producers and reports a contract error only if one of these metadata methods is called without the appended slot.
 
 ## Options And Resource Limits
 
-Options passed when opening `Merman` or creating a reusable engine form the baseline for later calls. `execute` and every convenience method also accept `optionsJson`; request values deeply override that baseline for one call while unspecified nested values remain inherited. Select `runtime_policy` only at engine construction.
+One-shot `Merman` methods accept the complete options document for that operation. `MermanEngine` accepts constructor options as a reusable baseline; method-level `optionsJson` values deeply override that baseline for one call while unspecified nested values remain inherited. Select `runtime_policy` only in the constructor options.
 
 ```dart
-final merman = Merman.open(
+final engine = MermanEngine(
   optionsJson: '''
     {
       "version": 2,
@@ -88,32 +89,39 @@ final merman = Merman.open(
     }
   ''',
 );
+try {
+  final svg = engine.renderSvg(source);
+} finally {
+  engine.close();
+}
 ```
 
 Omitting `runtime_policy` keeps the engine deterministic even when the packaged library includes native adapters. Set `"runtime_policy":"native"` only when the operation should consult the host clock, time-zone rules, and random source. Generic operation metadata reports the selected policy, and a custom slim artifact missing a requested adapter raises `MermanUnsupportedOperationException`.
 
-Use `constrained` for untrusted or multi-tenant input, `interactive` for cooperative local editing, and `trusted-native` for local native automation. `MermanResourceOptionsBuilder` is available when an application only needs to produce the shared resource-options fragment. Its profile is optional: omit it for a reusable request that must inherit the constructor ceiling, and use `MermanResourceOverrideId` for limits. The generic native operation envelope has no Dart-facing fields in schema 1, so the Flutter facade keeps it internal until a real per-output contract exists. The runtime catalog is the source of truth for the compiled capabilities and enforced resource limits. See the [options contract](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md) for profile selection and the complete option schema.
+Use `constrained` for untrusted or multi-tenant input, `interactive` for cooperative local editing, and `trusted-native` for local native automation. `MermanResourceOptionsBuilder` produces the shared resource-options fragment. Its profile is optional: omit it for a reusable request that must inherit its constructor ceiling, and use `MermanResourceOverrideId` for limits. The runtime catalog is the source of truth for compiled capabilities, accepted option groups, constructor services, service limits, and enforced operation limits. See the [options contract](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md) for the complete schema.
 
 `MermanResourceLimitId` describes every catalog limit; `MermanResourceOverrideId` is the narrower option-construction ID set. Inspect `runtimeCatalog.resourceLimits` and `runtimeCatalog.resourceProfiles` for the loaded ABI 3 library's complete phase, description, minimum, hard-cap, applicable operation IDs, purpose, trust, recommendation, and nullable budget metadata. Those typed collections preserve additive IDs reported by a host-owned library; a `null` profile limit means unbounded, while hard caps are always finite.
 
 For an older ABI 3 producer opened through `openPath()`, a schema 1 resource descriptor that predates `minimum_value` is interpreted with the historical positive-integer minimum of `1`. Current producers always report the field explicitly; the only zero-minimum limit, `max_document_diagrams`, was introduced together with that field.
 
-## Reusable Engines And Text Measurement
+## Reusable Engines And Constructor Services
 
-Pass `textMeasurer:` to `Merman.open(...)` when the default engine needs host measurement, or use an independent `MermanReusableEngine` when a workflow needs its own options, lifecycle, or measurer. The optional synchronous callback is immutable constructor state.
+Use `MermanEngine` when options, icon packs, or host text measurement should be reused. `MermanEngineServices` is immutable constructor state; there are no post-construction mutators or callback-specialized constructors.
 
 ```dart
-final engine = merman.reusableEngine(
-  textMeasurer: (request) {
-    if (request.operation == MermanTextMeasurementOperation.measure) {
-      return MermanTextMeasureResult.metrics(
-        width: 42,
-        height: 18,
-        lineCount: 1,
-      );
-    }
-    return null; // Use Merman's deterministic fallback for this operation.
-  },
+final engine = MermanEngine(
+  services: MermanEngineServices(
+    textMeasurer: (request) {
+      if (request.operation == MermanTextMeasurementOperation.measure) {
+        return MermanTextMeasureResult.metrics(
+          width: 42,
+          height: 18,
+          lineCount: 1,
+        );
+      }
+      return null; // Use the deterministic fallback for this operation.
+    },
+  ),
 );
 try {
   final svg = engine.renderSvg(source);
@@ -124,7 +132,28 @@ try {
 
 The callback is isolate-local and synchronous. Create, render with, and close the measured engine on the same Dart isolate. Do not call back into that engine from the measurer. Precompute or cache WebView, platform-channel, and font results instead of blocking inside the callback. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) describes result shapes and cache keys.
 
-`close()` never waits. `MermanBusyException` means another operation is active, while `MermanReentrantCallException` means the same engine is inside its callback. Both failures retain the native engine token and callback registration so close can be retried. Only a successful close clears the Dart handle; later closes are idempotent.
+`MermanIconPack` accepts one in-memory IconifyJSON collection and an optional registration-name override. `MermanIconRegistry.fromPacks` enforces the fixed transport byte/count limits and snapshots packs into immutable UTF-8 buffers, so the source strings need not be retained. Flutter's C ABI has no separate native registry handle: those buffers are borrowed only during each `MermanEngine` constructor call, and the engine owns the parsed registry after construction returns. Native semantic validation is transactional at engine construction; a failure publishes no engine and exposes `MermanException.iconRegistryDetails` when available.
+
+```dart
+final icons = MermanIconRegistry.fromPacks([
+  MermanIconPack(
+    json: iconifyJson,
+    registrationName: 'product',
+  ),
+]);
+final engine = MermanEngine(
+  services: MermanEngineServices(iconRegistry: icons),
+);
+try {
+  final svg = engine.renderSvg(source);
+} finally {
+  engine.close();
+}
+```
+
+Merman does not read files, fetch URLs, or trim icon collections. Hosts must acquire packs and pre-trim collections that exceed the fixed limits reported by `runtimeCatalog.constructorServiceContracts`. Icon bodies are XML-scoped and sanitized immediately before embedding under the effective render configuration, but SVG remains active document content: use a trusted WebView policy or an appropriate sanitizer/content-security boundary when displaying untrusted diagrams.
+
+`close()` never waits. `MermanBusyException` means another operation is active, while `MermanReentrantCallException` means the same engine is inside its callback. Both failures retain the complete native engine and service graph so close can be retried. Only a confirmed native close releases the Dart callback registration; later closes are idempotent. Always close callback-owning engines explicitly because a callback may capture its engine and form a cycle.
 
 Outputs are returned as owned Dart byte arrays. Internally, each written native result is released exactly once through its opaque ABI allocation token after the bytes and metadata are copied. The sole zero-token terminal case is native allocation-token exhaustion: `INTERNAL_ERROR` with the result otherwise untouched in its caller-initialized state. This keeps native pointers and allocators out of the public API.
 
@@ -138,7 +167,15 @@ Choose the SVG pipeline for the final consumer:
 - `readable` favors text fallbacks and inspectability.
 - `resvg-safe` is the explicit choice for stricter SVG consumers, rasterizers, and PDF conversion.
 
-Set the usual pipeline in `Merman.open(optionsJson: ...)` or `reusableEngine(optionsJson: ...)`. Override it for one call with `renderSvg(source, optionsJson: ...)` when required.
+Set the usual reusable pipeline in `MermanEngine(optionsJson: ...)`. Override it for one call with `renderSvg(source, optionsJson: ...)`, or pass the complete options document directly to a one-shot `Merman.renderSvg` call.
+
+## Migrating From The Previous Prerelease API
+
+- Replace the engine-owning `Merman` usage with stateless `Merman` for one-shot calls or direct `MermanEngine(...)` construction for reuse.
+- Delete `MermanReusableEngine`, `Merman.reusableEngine(...)`, `dispose()`, and constructor-level `textMeasurer:` arguments. Use `MermanEngineServices` and `close()`.
+- Replace map access such as `result.metadata['runtime_policy']` with typed fields such as `result.metadata.runtimePolicy`; use `rawJson` for additive fields.
+- Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning matters; byte-returning methods remain available.
+- Treat runtime operation, resource-limit, option-group, and service IDs as discovered open vocabularies. Unknown runtime operations remain discoverable but require an updated generated SDK before numeric invocation.
 
 ## Supported Platforms
 

@@ -215,6 +215,8 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         "func renderSvg(source: String, optionsJson: String?) throws",
         "func renderPngResult(",
         "func analysisFactsJson(",
+        "func analyzeDocumentJson(source: String, uri: String, optionsJson: String?) throws",
+        "func analyzeDocumentFactsJson(source: String, uri: String, optionsJson: String?) throws",
         "func svgPlanJson(",
         "func close() throws",
         "static func fromPacks(packs: [MermanIconPack])",

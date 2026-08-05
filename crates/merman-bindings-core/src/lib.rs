@@ -32,7 +32,10 @@ mod ascii;
 #[cfg(feature = "svg")]
 mod render;
 
-pub use artifact_contract::{ArtifactContractSpec, ValidatedArtifactContract};
+pub use artifact_contract::{
+    ArtifactContractSpec, ValidatedArtifactContract, full_native_artifact_contract,
+    node_static_svg_artifact_contract, web_artifact_contract,
+};
 pub use capability::{
     CAPABILITY_DESCRIPTOR_DIGEST, CAPABILITY_DESCRIPTOR_SCHEMA_VERSION, CapabilityDescriptor,
     CapabilityKey, OperationKey, OperationSpec, OutputDescriptor, OutputKey, TargetDescriptor,
@@ -66,7 +69,8 @@ pub use metadata::{
     ascii_supported_diagrams, ascii_supported_diagrams_json, configurable_lint_rule_catalog,
     configurable_lint_rule_catalog_json, diagram_family_capabilities,
     diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
-    supported_diagrams, supported_diagrams_json, supported_themes, supported_themes_json,
+    runtime_constructor_resource_limits, supported_diagrams, supported_diagrams_json,
+    supported_themes, supported_themes_json,
 };
 pub use metadata_registry::{MetadataKey, MetadataSpec};
 pub use operation::{
@@ -146,16 +150,16 @@ pub fn analysis_facts_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>
 
 pub fn analyze_document_json(
     source: &[u8],
-    options_json: &[u8],
     uri: &[u8],
+    options_json: &[u8],
 ) -> Result<Vec<u8>, BindingError> {
     execute_once_data("document-analysis-json", source, Some(uri), options_json)
 }
 
 pub fn analyze_document_facts_json(
     source: &[u8],
-    options_json: &[u8],
     uri: &[u8],
+    options_json: &[u8],
 ) -> Result<Vec<u8>, BindingError> {
     execute_once_data(
         "document-analysis-facts-json",
@@ -279,10 +283,10 @@ mod tests {
         assert_missing_capability(&err, "analysis");
 
         let err =
-            analyze_document_json(b"flowchart TD\nA", b"", b"file:///tmp/example.mmd").unwrap_err();
+            analyze_document_json(b"flowchart TD\nA", b"file:///tmp/example.mmd", b"").unwrap_err();
         assert_missing_capability(&err, "analysis");
 
-        let err = analyze_document_facts_json(b"flowchart TD\nA", b"", b"file:///tmp/example.mmd")
+        let err = analyze_document_facts_json(b"flowchart TD\nA", b"file:///tmp/example.mmd", b"")
             .unwrap_err();
         assert_missing_capability(&err, "analysis");
 
@@ -341,7 +345,7 @@ mod tests {
     fn analyze_document_json_reports_markdown_source_and_host_ranges() {
         let source = b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n";
         let json: Value = serde_json::from_slice(
-            &analyze_document_json(source, b"", b"file:///tmp/example.md").unwrap(),
+            &analyze_document_json(source, b"file:///tmp/example.md", b"").unwrap(),
         )
         .unwrap();
 
@@ -363,7 +367,7 @@ mod tests {
     fn analyze_document_json_reports_mdx_source_with_uri_fragment() {
         let source = b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n";
         let json: Value = serde_json::from_slice(
-            &analyze_document_json(source, b"", b"file:///tmp/example.mdx?rev=1#fence").unwrap(),
+            &analyze_document_json(source, b"file:///tmp/example.mdx?rev=1#fence", b"").unwrap(),
         )
         .unwrap();
 
@@ -390,7 +394,7 @@ mod tests {
             }
         }"#;
         let json: Value = serde_json::from_slice(
-            &analyze_document_json(source.as_bytes(), options, b"file:///tmp/limited.md").unwrap(),
+            &analyze_document_json(source.as_bytes(), b"file:///tmp/limited.md", options).unwrap(),
         )
         .unwrap();
 
@@ -407,7 +411,7 @@ mod tests {
     fn analyze_document_facts_json_reports_markdown_fence_facts_with_host_ranges() {
         let source = b"before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n";
         let json: Value = serde_json::from_slice(
-            &analyze_document_facts_json(source, b"", b"file:///tmp/example.md").unwrap(),
+            &analyze_document_facts_json(source, b"file:///tmp/example.md", b"").unwrap(),
         )
         .unwrap();
 

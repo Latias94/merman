@@ -7,8 +7,9 @@
 
 Alpha.4 is a broad prerelease upgrade, not a drop-in patch. It expands the Mermaid baseline to
 11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with
-observable capabilities, splits the browser SDK into standalone packages, and moves native hosts
-to ABI 3.
+observable capabilities, splits the browser SDK into standalone packages, and finalizes separate
+native transport contracts: C/Flutter use ABI 3, Android uses direct JNI transport API 1, and
+Apple/Python use UniFFI API 3.
 
 The practical upgrade rule is:
 
@@ -25,7 +26,8 @@ The practical upgrade rule is:
 | Explicit Cargo features | Replace removed alpha.3 names with alpha.4 capability leaves. There are no compatibility aliases. |
 | `merman-cli` root `-i/-o` flags | Existing scripts still route to the compatibility parser, but new scripts should choose `render`, `batch`, or `mmdc` explicitly. |
 | `@mermanjs/web/<subpath>` or `@mermanjs/web/pkg/**` | Replace the import with one standalone browser package. Subpaths and raw WASM files are no longer public API. |
-| Native C, Flutter, or Android bindings | Rebuild or upgrade the complete host package and migrate from ABI 2 to ABI 3. Reject an ABI mismatch during initialization. |
+| Native C or Flutter bindings | Rebuild or upgrade the complete host package and migrate from ABI 2 to ABI 3. Reject an ABI mismatch during initialization. |
+| Android JNI/Kotlin | Upgrade the complete AAR and Kotlin sources together. The alpha.4 surface is direct `JNI_OnLoad`/`RegisterNatives` transport API 1, not the C ABI; do not link the old `libmerman_ffi.so` JNI path. |
 | Python or Apple bindings | Upgrade the generated UniFFI wrapper and matching native artifact together; do not mix alpha.3 and alpha.4 components. |
 | Analysis, editor, or LSP APIs | Follow the [Rust and embedding API migration](#rust-and-embedding-api-migration) section for exact type, method, ownership, and capability replacements. |
 | Node.js or SSR | Continue to invoke `merman-cli` as a subprocess. No in-process Node package is admitted for alpha.4. |
@@ -150,15 +152,35 @@ details.
 
 ## Native ABI migration
 
-Alpha.4 C, Flutter, and Android hosts use ABI 3. Python and Apple use generated UniFFI bindings
-from the matching native artifact. Upgrade each language package and native artifact together; do
-not mix an alpha.3 generated wrapper with an alpha.4 library. ABI 3 hosts must validate the ABI and
-generated runtime capability catalog before requesting optional outputs, resources, or host text
-measurement.
+Alpha.4 C and Flutter hosts use ABI 3. Android uses direct JNI transport API 1; Python and Apple
+use UniFFI API 3 from the matching native artifact. Upgrade each language package and native
+artifact together; do not mix an alpha.3 generated wrapper with an alpha.4 library. C/Flutter hosts
+validate ABI 3 and the generated runtime catalog, while Android validates its transport catalog
+handshake before requesting optional outputs, resources, or host text measurement.
 
 Follow the [ABI 3 migration guide](../bindings/ABI3_MIGRATION.md) and the surface-specific Python,
 Flutter, Android, or Apple documentation. A channel listed in the repository is not proof that the
 alpha.4 artifact has already been published there.
+
+### Language SDK object-model migration
+
+All high-level alpha.4 bindings use the same object model, even though each transport owns a
+different wire boundary:
+
+- `Merman` is the stateless discovery/one-shot facade. `MermanEngine(options, services)` is the
+  reusable, explicitly closeable engine. Delete `MermanReusableEngine`, facade factories,
+  callback-specialized constructors, and post-construction service mutators.
+- Put `MermanTextMeasurer` and `MermanIconRegistry` in immutable `MermanEngineServices`. An icon
+  registry is created from immutable `MermanIconPack` values; an empty pack list means no icon
+  service. UniFFI may share its sealed native registry, while Android JNI and Flutter borrow pack
+  buffers only during each engine constructor and return after the engine owns parsed state.
+- Use generic `execute` for the complete operation envelope, or the named helpers and `*Result`
+  binary helpers when convenient. Result metadata and output plans are no longer discarded.
+- Document helpers have one order in every language: `analyze_document_json(source, uri,
+  options_json)` / `analyzeDocumentJson(source:uri:optionsJson:)`. The URI is required; options are
+  the final optional overlay.
+- Close reusable engines deterministically. Busy/reentrant close leaves the complete engine usable
+  for retry; quiescent close is idempotent. Constructors never invoke host callbacks.
 
 ## Rust and embedding API migration
 

@@ -2,6 +2,12 @@ import json
 import unittest
 
 import merman
+from merman._binding_contract import CONSTRUCTOR_SERVICE_SPECS
+
+
+CONSTRUCTOR_SERVICE_SPEC_BY_ID = {
+    spec["id"]: spec for spec in CONSTRUCTOR_SERVICE_SPECS
+}
 
 
 def valid_catalog():
@@ -42,12 +48,22 @@ def valid_catalog():
             {
                 "id": "host-text-measurement",
                 "provided_text_measurement_provider_ids": ["host-callback"],
-                "resource_limits": [],
+                "resource_limits": [
+                    dict(limit)
+                    for limit in CONSTRUCTOR_SERVICE_SPEC_BY_ID[
+                        "host-text-measurement"
+                    ]["resource_limits"]
+                ],
             },
             {
                 "id": "icon-registry",
                 "provided_text_measurement_provider_ids": [],
-                "resource_limits": [],
+                "resource_limits": [
+                    dict(limit)
+                    for limit in CONSTRUCTOR_SERVICE_SPEC_BY_ID["icon-registry"][
+                        "resource_limits"
+                    ]
+                ],
             },
         ],
         "capabilities": {
@@ -460,6 +476,24 @@ class RuntimeCatalogTest(unittest.TestCase):
                 ):
                     merman.get_runtime_catalog(FakeEngine(catalog))
 
+    def test_rejects_missing_or_mutated_known_constructor_resource_limits(self):
+        missing = valid_catalog()
+        missing["constructor_service_contracts"][1]["resource_limits"].pop(0)
+
+        mutated = valid_catalog()
+        mutated_limit = mutated["constructor_service_contracts"][1][
+            "resource_limits"
+        ][0]
+        mutated_limit["value"] += 1
+
+        for catalog in [missing, mutated]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "known resource limits",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
     def test_rejects_catalog_without_current_options_schema(self):
         catalog = valid_catalog()
         catalog["options_schema_versions"] = [1]
@@ -547,6 +581,20 @@ class RuntimeCatalogTest(unittest.TestCase):
                 ],
                 "future_service_metadata": {"version": 1},
             },
+        )
+        icon_contract = next(
+            contract
+            for contract in catalog["constructor_service_contracts"]
+            if contract["id"] == "icon-registry"
+        )
+        icon_contract["resource_limits"].append(
+            {
+                "id": "zz_future_constructor_limit",
+                "phase": "icon_registry_future",
+                "unit": "items",
+                "description": "Future additive constructor limit.",
+                "value": 1,
+            }
         )
         catalog["resources"]["limits"][0]["future_limit_metadata"] = True
         catalog["resources"]["limits"].append(

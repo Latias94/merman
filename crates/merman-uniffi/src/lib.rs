@@ -7,10 +7,9 @@
 
 use merman_bindings_core::BindingEngineServices;
 use merman_bindings_core::{
-    ArtifactContractSpec, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError,
-    BindingEngineAdmissionMode, BindingError, BindingErrorKind, BindingOperationMetadata,
-    BindingOutputPlan, BindingStatus, BindingTransportKey, CapabilityKey, ConstructorServiceKey,
-    OperationKey, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
+    BindingError, BindingErrorKind, BindingOperationMetadata, BindingOutputPlan, BindingStatus,
+    BindingTransportKey, OperationKey, ValidatedArtifactContract, full_native_artifact_contract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
@@ -29,65 +28,8 @@ pub const UNIFFI_BINDING_API_VERSION: u32 = 3;
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
 static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
-const NATIVE_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
-    #[cfg(feature = "svg")]
-    ConstructorServiceKey::HostTextMeasurement,
-    #[cfg(feature = "svg")]
-    ConstructorServiceKey::IconRegistry,
-];
-const NATIVE_OPERATIONS: &[OperationKey] = &[
-    #[cfg(feature = "analysis")]
-    OperationKey::AnalysisFactsJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::AnalysisJson,
-    #[cfg(feature = "ascii")]
-    OperationKey::Ascii,
-    #[cfg(feature = "analysis")]
-    OperationKey::DocumentAnalysisFactsJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::DocumentAnalysisJson,
-    #[cfg(feature = "jpeg")]
-    OperationKey::Jpeg,
-    #[cfg(feature = "svg")]
-    OperationKey::LayoutJson,
-    #[cfg(feature = "pdf")]
-    OperationKey::Pdf,
-    #[cfg(feature = "png")]
-    OperationKey::Png,
-    OperationKey::SemanticJson,
-    #[cfg(feature = "svg")]
-    OperationKey::Svg,
-    #[cfg(feature = "svg")]
-    OperationKey::SvgPlanJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::ValidationJson,
-];
-const NATIVE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
-    #[cfg(feature = "layout-cytoscape")]
-    CapabilityKey::LayoutCytoscape,
-    #[cfg(feature = "layout-elk")]
-    CapabilityKey::LayoutElk,
-    #[cfg(feature = "math")]
-    CapabilityKey::Math,
-];
-const NATIVE_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
-    #[cfg(feature = "system-clock")]
-    CapabilityKey::SystemClock,
-    #[cfg(feature = "system-random")]
-    CapabilityKey::SystemRandom,
-    #[cfg(feature = "system-timezone")]
-    CapabilityKey::SystemTimezone,
-];
-const NATIVE_RUNTIME_POLICY: RuntimePolicyExposure = RuntimePolicyExposure::BindingOptions;
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
-    ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::UniFfi)
-        .with_operations(NATIVE_OPERATIONS)
-        .with_supplemental_capabilities(NATIVE_SUPPLEMENTAL_CAPABILITIES)
-        .with_all_available_metadata()
-        .with_constructor_services(NATIVE_CONSTRUCTOR_SERVICES)
-        .with_system_adapters(NATIVE_SYSTEM_ADAPTERS)
-        .with_runtime_policy_exposure(NATIVE_RUNTIME_POLICY)
-        .materialize();
+    full_native_artifact_contract(BindingTransportKey::UniFfi);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MermanErrorKind {
@@ -447,6 +389,9 @@ impl MermanIconRegistry {
         }
         #[cfg(not(feature = "svg"))]
         {
+            if packs.is_empty() {
+                return Ok(Arc::new(Self {}));
+            }
             drop(packs);
             Err(missing_capability_error(
                 "svg",
@@ -647,7 +592,11 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request("svg", source, options_json)))
+        string_operation_output(self.execute(operation_request(
+            OperationKey::Svg,
+            source,
+            options_json,
+        )))
     }
 
     pub fn render_png(
@@ -655,7 +604,11 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request("png", source, options_json)))
+        binary_operation_output(self.execute(operation_request(
+            OperationKey::Png,
+            source,
+            options_json,
+        )))
     }
 
     pub fn render_png_result(
@@ -663,7 +616,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<MermanOperationResult, MermanError> {
-        self.execute(operation_request("png", source, options_json))
+        self.execute(operation_request(OperationKey::Png, source, options_json))
     }
 
     pub fn render_jpeg(
@@ -671,7 +624,11 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request("jpeg", source, options_json)))
+        binary_operation_output(self.execute(operation_request(
+            OperationKey::Jpeg,
+            source,
+            options_json,
+        )))
     }
 
     pub fn render_jpeg_result(
@@ -679,7 +636,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<MermanOperationResult, MermanError> {
-        self.execute(operation_request("jpeg", source, options_json))
+        self.execute(operation_request(OperationKey::Jpeg, source, options_json))
     }
 
     pub fn render_pdf(
@@ -687,7 +644,11 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request("pdf", source, options_json)))
+        binary_operation_output(self.execute(operation_request(
+            OperationKey::Pdf,
+            source,
+            options_json,
+        )))
     }
 
     pub fn render_pdf_result(
@@ -695,7 +656,7 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<MermanOperationResult, MermanError> {
-        self.execute(operation_request("pdf", source, options_json))
+        self.execute(operation_request(OperationKey::Pdf, source, options_json))
     }
 
     pub fn render_ascii(
@@ -703,7 +664,11 @@ impl Merman {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request("ascii", source, options_json)))
+        string_operation_output(self.execute(operation_request(
+            OperationKey::Ascii,
+            source,
+            options_json,
+        )))
     }
 
     pub fn parse_json(
@@ -712,7 +677,7 @@ impl Merman {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
-            "semantic-json",
+            OperationKey::SemanticJson,
             source,
             options_json,
         )))
@@ -724,7 +689,7 @@ impl Merman {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
-            "layout-json",
+            OperationKey::LayoutJson,
             source,
             options_json,
         )))
@@ -736,7 +701,7 @@ impl Merman {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
-            "svg-plan-json",
+            OperationKey::SvgPlanJson,
             source,
             options_json,
         )))
@@ -748,7 +713,7 @@ impl Merman {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
-            "analysis-json",
+            OperationKey::AnalysisJson,
             source,
             options_json,
         )))
@@ -760,7 +725,7 @@ impl Merman {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
-            "analysis-facts-json",
+            OperationKey::AnalysisFactsJson,
             source,
             options_json,
         )))
@@ -769,11 +734,11 @@ impl Merman {
     pub fn analyze_document_json(
         &self,
         source: String,
-        options_json: Option<String>,
         uri: String,
+        options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request_with_uri(
-            "document-analysis-json",
+            OperationKey::DocumentAnalysisJson,
             source,
             uri,
             options_json,
@@ -783,11 +748,11 @@ impl Merman {
     pub fn analyze_document_facts_json(
         &self,
         source: String,
-        options_json: Option<String>,
         uri: String,
+        options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request_with_uri(
-            "document-analysis-facts-json",
+            OperationKey::DocumentAnalysisFactsJson,
             source,
             uri,
             options_json,
@@ -800,7 +765,7 @@ impl Merman {
         options_json: Option<String>,
     ) -> Result<MermanValidationResult, MermanError> {
         validation_operation_output(self.execute(operation_request(
-            "validation-json",
+            OperationKey::ValidationJson,
             source,
             options_json,
         )))
@@ -922,7 +887,11 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request("svg", source, options_json)))
+        string_operation_output(self.execute(operation_request(
+            OperationKey::Svg,
+            source,
+            options_json,
+        )))
     }
 
     pub fn render_png(
@@ -930,7 +899,11 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request("png", source, options_json)))
+        binary_operation_output(self.execute(operation_request(
+            OperationKey::Png,
+            source,
+            options_json,
+        )))
     }
 
     pub fn render_png_result(
@@ -938,7 +911,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<MermanOperationResult, MermanError> {
-        self.execute(operation_request("png", source, options_json))
+        self.execute(operation_request(OperationKey::Png, source, options_json))
     }
 
     pub fn render_jpeg(
@@ -946,7 +919,11 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request("jpeg", source, options_json)))
+        binary_operation_output(self.execute(operation_request(
+            OperationKey::Jpeg,
+            source,
+            options_json,
+        )))
     }
 
     pub fn render_jpeg_result(
@@ -954,7 +931,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<MermanOperationResult, MermanError> {
-        self.execute(operation_request("jpeg", source, options_json))
+        self.execute(operation_request(OperationKey::Jpeg, source, options_json))
     }
 
     pub fn render_pdf(
@@ -962,7 +939,11 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<Vec<u8>, MermanError> {
-        binary_operation_output(self.execute(operation_request("pdf", source, options_json)))
+        binary_operation_output(self.execute(operation_request(
+            OperationKey::Pdf,
+            source,
+            options_json,
+        )))
     }
 
     pub fn render_pdf_result(
@@ -970,7 +951,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<MermanOperationResult, MermanError> {
-        self.execute(operation_request("pdf", source, options_json))
+        self.execute(operation_request(OperationKey::Pdf, source, options_json))
     }
 
     /// Executes an operation using the reusable baseline plus request-local option overrides.
@@ -992,7 +973,11 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_operation_output(self.execute(operation_request("ascii", source, options_json)))
+        string_operation_output(self.execute(operation_request(
+            OperationKey::Ascii,
+            source,
+            options_json,
+        )))
     }
 
     pub fn parse_json(
@@ -1001,7 +986,7 @@ impl MermanEngine {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
-            "semantic-json",
+            OperationKey::SemanticJson,
             source,
             options_json,
         )))
@@ -1013,7 +998,7 @@ impl MermanEngine {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
-            "layout-json",
+            OperationKey::LayoutJson,
             source,
             options_json,
         )))
@@ -1025,7 +1010,7 @@ impl MermanEngine {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
-            "svg-plan-json",
+            OperationKey::SvgPlanJson,
             source,
             options_json,
         )))
@@ -1037,7 +1022,7 @@ impl MermanEngine {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
-            "analysis-json",
+            OperationKey::AnalysisJson,
             source,
             options_json,
         )))
@@ -1049,7 +1034,7 @@ impl MermanEngine {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
-            "analysis-facts-json",
+            OperationKey::AnalysisFactsJson,
             source,
             options_json,
         )))
@@ -1058,11 +1043,11 @@ impl MermanEngine {
     pub fn analyze_document_json(
         &self,
         source: String,
-        options_json: Option<String>,
         uri: String,
+        options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request_with_uri(
-            "document-analysis-json",
+            OperationKey::DocumentAnalysisJson,
             source,
             uri,
             options_json,
@@ -1072,11 +1057,11 @@ impl MermanEngine {
     pub fn analyze_document_facts_json(
         &self,
         source: String,
-        options_json: Option<String>,
         uri: String,
+        options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request_with_uri(
-            "document-analysis-facts-json",
+            OperationKey::DocumentAnalysisFactsJson,
             source,
             uri,
             options_json,
@@ -1089,7 +1074,7 @@ impl MermanEngine {
         options_json: Option<String>,
     ) -> Result<MermanValidationResult, MermanError> {
         validation_operation_output(self.execute(operation_request(
-            "validation-json",
+            OperationKey::ValidationJson,
             source,
             options_json,
         )))
@@ -1147,7 +1132,11 @@ fn uniffi_engine_services(
     #[cfg(feature = "svg")]
     {
         let mut result = BindingEngineServices::new();
-        if let Some(registry) = services.icon_registry.as_ref() {
+        if let Some(registry) = services
+            .icon_registry
+            .as_ref()
+            .filter(|registry| !registry.is_empty())
+        {
             result = result.with_icon_registry(registry.registry.clone());
         }
         if let Some(measurer) = services.text_measurer.as_ref() {
@@ -1161,7 +1150,12 @@ fn uniffi_engine_services(
     #[cfg(not(feature = "svg"))]
     {
         let _ = admission;
-        if services.icon_registry.is_some() || services.text_measurer.is_some() {
+        if services
+            .icon_registry
+            .as_ref()
+            .is_some_and(|registry| !registry.is_empty())
+            || services.text_measurer.is_some()
+        {
             return Err(missing_capability_error(
                 "svg",
                 "constructor services require the svg capability",
@@ -1192,12 +1186,12 @@ fn execute_once_operation(
 }
 
 fn operation_request(
-    operation_id: &str,
+    operation: OperationKey,
     source: String,
     options_json: Option<String>,
 ) -> MermanOperationRequest {
     MermanOperationRequest {
-        operation_id: operation_id.to_string(),
+        operation_id: operation.id().to_string(),
         source,
         uri: None,
         options_json,
@@ -1205,17 +1199,14 @@ fn operation_request(
 }
 
 fn operation_request_with_uri(
-    operation_id: &str,
+    operation: OperationKey,
     source: String,
     uri: String,
     options_json: Option<String>,
 ) -> MermanOperationRequest {
-    MermanOperationRequest {
-        operation_id: operation_id.to_string(),
-        source,
-        uri: Some(uri),
-        options_json,
-    }
+    let mut request = operation_request(operation, source, options_json);
+    request.uri = Some(uri);
+    request
 }
 
 fn execute_operation(
@@ -2115,16 +2106,20 @@ mod tests {
             uri: None,
             options_json: Some(r#"{"runtime_policy":"native"}"#.to_string()),
         };
-        assert_eq!(NATIVE_RUNTIME_POLICY, RuntimePolicyExposure::BindingOptions);
-        let capabilities = native_artifact_contract().runtime_capabilities();
-        let missing_adapter = [
-            CapabilityKey::SystemClock,
-            CapabilityKey::SystemTimezone,
-            CapabilityKey::SystemRandom,
-        ]
-        .into_iter()
-        .find(|adapter| !NATIVE_SYSTEM_ADAPTERS.contains(adapter))
-        .map(|adapter| adapter.id());
+        let artifact_contract = native_artifact_contract();
+        assert_eq!(
+            artifact_contract.runtime_policy_exposure(),
+            merman_bindings_core::RuntimePolicyExposure::BindingOptions
+        );
+        let capabilities = artifact_contract.runtime_capabilities();
+        let missing_adapter = ["system-clock", "system-timezone", "system-random"]
+            .into_iter()
+            .find(|adapter| {
+                !capabilities
+                    .system_adapter_ids
+                    .iter()
+                    .any(|id| id == adapter)
+            });
 
         if let Some(missing_adapter) = missing_adapter {
             assert!(capabilities.system_adapter_ids.is_empty());
@@ -2487,8 +2482,8 @@ mod tests {
             &engine()
                 .analyze_document_json(
                     source.to_string(),
-                    None,
                     "file:///tmp/example.md".to_string(),
+                    None,
                 )
                 .unwrap(),
         )
@@ -2507,8 +2502,8 @@ mod tests {
             &engine()
                 .analyze_document_facts_json(
                     source.to_string(),
-                    None,
                     "file:///tmp/example.md".to_string(),
+                    None,
                 )
                 .unwrap(),
         )
@@ -2533,8 +2528,8 @@ mod tests {
             &engine()
                 .analyze_document_facts_json(
                     "```mermaid\nunknownDiagram\nPretendNode --> OtherNode\n```\n".to_string(),
-                    None,
                     "file:///tmp/unknown.md".to_string(),
+                    None,
                 )
                 .unwrap(),
         )
@@ -2868,8 +2863,8 @@ mod tests {
             &reusable
                 .analyze_document_json(
                     source.to_string(),
-                    None,
                     "file:///tmp/example.md".to_string(),
+                    None,
                 )
                 .unwrap(),
         )
@@ -2954,6 +2949,30 @@ A@{ icon: "test:rocket", label: "A" }"#
                 )
                 .unwrap();
             assert!(svg.contains(r#"data-icon="uniffi-registry""#), "{svg}");
+        }
+    }
+
+    #[test]
+    fn empty_icon_registry_is_normalized_to_no_service() {
+        let registry = MermanIconRegistry::from_packs(Vec::new()).unwrap();
+        assert_eq!(registry.len(), 0);
+        assert!(registry.is_empty());
+
+        let services = MermanEngineServices::new(Some(registry), None);
+        let engine = MermanEngine::new(None, Some(services)).unwrap();
+        let semantic = engine
+            .parse_json("flowchart TD\nA --> B".to_string(), None)
+            .unwrap();
+        assert!(semantic.contains("flowchart-v2"), "{semantic}");
+
+        #[cfg(feature = "svg")]
+        {
+            let source = "flowchart TD\nA --> B".to_string();
+            let without_services = MermanEngine::new(None, None).unwrap();
+            assert_eq!(
+                engine.svg_plan_json(source.clone(), None).unwrap(),
+                without_services.svg_plan_json(source, None).unwrap()
+            );
         }
     }
 

@@ -14,17 +14,19 @@ Application code imports `package:merman/merman.dart`. Generated raw FFI declara
 
 ```dart
 final merman = Merman.open();
-try {
-  final catalog = merman.runtimeCatalog;
-  if (catalog.supportsOutput('svg')) {
-    final svg = merman.renderSvg(source);
-  }
-} finally {
-  merman.close();
+final catalog = merman.runtimeCatalog;
+if (catalog.supportsOutput('svg')) {
+  final svg = merman.renderSvg(source);
 }
 ```
 
-`Merman.runtimeCatalog` is the primary runtime capability API. The facade validates flat runtime-catalog schema `1`, ABI transport version `3`, supported options and payload schema versions, named metadata IDs, sorted capability/output/operation/adapter IDs, text measurement availability, complete resource-to-operation relations, and agreement between the table and catalog package versions before it creates a usable engine.
+`Merman` is a stateless discovery and one-shot facade; it owns no native engine token and therefore
+has no `close()` method. Each operation constructs a fresh deterministic engine and closes it before
+returning. `Merman.runtimeCatalog` is the primary runtime capability API. The facade validates flat
+runtime-catalog schema `1`, ABI transport version `3`, supported options and payload schema
+versions, named metadata IDs, sorted capability/output/operation/adapter IDs, text measurement
+availability, complete resource-to-operation relations, and agreement between the table and catalog
+package versions before it becomes usable.
 
 Detailed registries remain separate from that flat catalog. `supportedDiagrams()`, `asciiCapabilities()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`, `supportedThemes()`, and `presentationCatalog()` call the generic appended ABI 3 `metadata_collect` slot and return immutable typed Dart values. This keeps the metadata surface extensible without adding per-catalog native symbols or copying detailed catalogs into the runtime catalog.
 
@@ -97,42 +99,54 @@ This ownership path applies to runtime catalog loading, named metadata loading, 
 
 ## Engine Lifecycle
 
-The native engine is an opaque nonzero `uint64_t` token stored privately as a Dart `int`. `Merman` owns one default engine, and `MermanReusableEngine` owns an independent token.
+The native engine is an opaque nonzero `uint64_t` token stored privately as a Dart `int` by
+`MermanEngine`. Constructor options and services are immutable for that engine. `Merman` does not
+retain a token.
 
-An optional `MermanTextMeasurer` is immutable constructor state:
+An optional `MermanTextMeasurer` is installed through `MermanEngineServices`:
 
 ```dart
-final merman = Merman.open(
-  textMeasurer: (request) {
-    if (request.operation == MermanTextMeasurementOperation.measure) {
-      return MermanTextMeasureResult.metrics(
-        width: 42,
-        height: 18,
-        lineCount: 1,
-      );
-    }
-    return null;
-  },
+final engine = MermanEngine(
+  services: MermanEngineServices(
+    textMeasurer: (request) {
+      if (request.operation == MermanTextMeasurementOperation.measure) {
+        return MermanTextMeasureResult.metrics(
+          width: 42,
+          height: 18,
+          lineCount: 1,
+        );
+      }
+      return null;
+    },
+  ),
 );
+try {
+  engine.renderSvg(source);
+} finally {
+  engine.close();
+}
 ```
 
-Pass the callback to `Merman.open`, `Merman.openPath`, `Merman.fromDynamicLibrary`, or `Merman.reusableEngine`. Create another engine to use another callback.
+Create another engine to use another callback. Construction validates the service contract but does
+not invoke the callback.
 
-`close()` and its compatibility alias `dispose()` call `engine_try_close` and never wait:
+`MermanEngine.close()` calls `engine_try_close` and never waits:
 
 - `MERMAN_NATIVE_STATUS_OK` retires the token, clears the Dart handle, and releases callback state;
 - `MERMAN_NATIVE_STATUS_BUSY` throws `MermanBusyException` and retains the token and callback for retry;
 - `MERMAN_NATIVE_STATUS_REENTRANT_CALL` throws `MermanReentrantCallException` and retains the token and callback for retry;
 - a second close after success is idempotent.
 
-`Merman` marks itself closed only after its default engine closes successfully. Closing or re-entering a reusable engine from its active callback is rejected locally with the same REENTRANT classification. This mirrors the native admission contract without blocking the Dart isolate.
+A close or execution attempted from the engine's active callback is rejected locally with the same
+REENTRANT classification. This mirrors the native admission contract without blocking the Dart
+isolate. There is no `dispose()` compatibility alias.
 
 ## Options And Output
 
 Pass SVG, resource, layout, environment, and theme options to engine construction:
 
 ```dart
-final merman = Merman.open(
+final engine = MermanEngine(
   optionsJson: '''
     {
       "version": 2,
@@ -147,6 +161,20 @@ Each `execute` call accepts the operation, source, optional URI, and generic `op
 
 Every current backend materializes its output, so the transport returns one owned result instead of exposing a chunk sink. The public facade copies bytes before native cleanup, making SVG, bitmap, PDF, and JSON lifetimes identical.
 
+## Immutable Icon Registries
+
+`MermanIconPack` accepts one in-memory IconifyJSON collection and an optional registration-name
+override. `MermanIconRegistry.fromPacks(...)` validates fixed byte/count ceilings and snapshots
+immutable UTF-8 buffers. Those buffers are borrowed only during `MermanEngine` construction; the
+engine owns the parsed registry when construction returns. The same Dart registry can therefore be
+reused for multiple engine constructions without exposing a native mutable handle.
+
+Merman performs no filesystem, package, or network acquisition and does not trim collections.
+Hosts must acquire and pre-trim packs that exceed the fixed limits reported by the runtime catalog.
+Icon fragments are XML-validated, deterministically ID-scoped, and sanitized under the effective
+Mermaid configuration before embedding. This does not make parity/readable SVG safe for direct
+browser DOM insertion; use `SafeInlineSvg`, CSP, or a sandbox at that boundary.
+
 ## Text Measurement
 
 The callback runs synchronously through `NativeCallable.isolateLocal`. Create, use, and close a measured engine on the same isolate. Do not wait for WebView JavaScript, a platform channel, another isolate, or font loading inside the callback. Precompute or cache a measurement service and return `null` when it has no faithful answer so Merman can use its deterministic fallback.
@@ -154,6 +182,20 @@ The callback runs synchronously through `NativeCallable.isolateLocal`. Create, u
 The callback bridge catches every Dart exception and returns `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`; no Dart exception may unwind across the C boundary. Request and result operation codes come from the generated text-measurement header rather than handwritten Dart numbers.
 
 See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cache keys and display-surface guidance.
+
+## Migrating From The Previous Prerelease API
+
+- Keep `Merman` only for stateless discovery and one-shot calls; it no longer owns an engine or
+  exposes `close()`/`dispose()`.
+- Delete `MermanReusableEngine` and `Merman.reusableEngine(...)`; construct `MermanEngine(...)`
+  directly.
+- Delete constructor-level `textMeasurer:` parameters and use `MermanEngineServices`.
+- Call `MermanEngine.close()` deterministically. Busy and re-entrant failures preserve the complete
+  engine and callback for retry.
+- Use typed `MermanOperationMetadata`; its raw JSON preserves additive fields and unknown future
+  output-plan kinds.
+- Treat runtime operation and resource-limit IDs as open value objects. A newly appended numeric C
+  operation still requires an updated generated Dart SDK before invocation.
 
 ## Platform Packaging
 

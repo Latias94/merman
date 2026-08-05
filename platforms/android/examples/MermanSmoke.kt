@@ -1,10 +1,17 @@
 package io.merman.examples
 
+import io.merman.MERMAN_BINDING_OPERATION_EXPECTATIONS
+import io.merman.Merman
 import io.merman.MermanEngine
+import io.merman.MermanEngineServices
 import io.merman.MermanErrorKind
 import io.merman.MermanException
-import io.merman.MermanReusableEngine
+import io.merman.MermanIconPack
+import io.merman.MermanIconRegistry
+import io.merman.MermanPdfFilterImagesOutputPlan
+import io.merman.MermanRasterOutputPlan
 import io.merman.MermanTextMeasureResult
+import io.merman.MermanTextMeasurer
 import io.merman.MermanTextMeasurementOperation
 import io.merman.MermanTextMeasurementResultKind
 import java.util.Collections
@@ -28,21 +35,8 @@ private val expectedRuntimeCapabilities = setOf(
     "system-timezone",
 )
 private val expectedRuntimeOutputs = setOf("ascii", "jpeg", "pdf", "png", "svg")
-private val expectedRuntimeOperations = setOf(
-    "analysis-facts-json",
-    "analysis-json",
-    "ascii",
-    "document-analysis-facts-json",
-    "document-analysis-json",
-    "jpeg",
-    "layout-json",
-    "pdf",
-    "png",
-    "semantic-json",
-    "svg",
-    "svg-plan-json",
-    "validation-json",
-)
+private val expectedRuntimeOperations =
+    MERMAN_BINDING_OPERATION_EXPECTATIONS.mapTo(linkedSetOf()) { it.operationId }
 private val expectedSystemAdapters = setOf(
     "system-clock",
     "system-random",
@@ -195,7 +189,7 @@ fun runMermanSmoke() {
         "CreateTextMiddleBBoxYOffset must preserve signed lengths"
     }
 
-    val earlyReusableEngine = MermanReusableEngine()
+    val earlyReusableEngine = MermanEngine()
     try {
         val earlyReusableAnalysisJson = earlyReusableEngine.analyzeJson(source)
         check(earlyReusableAnalysisJson.contains("\"valid\":true")) {
@@ -205,33 +199,78 @@ fun runMermanSmoke() {
         earlyReusableEngine.close()
     }
 
-    val svg = MermanEngine.renderSvg(source)
+    val svg = Merman.renderSvg(source)
     check(svg.contains("<svg") && svg.contains("Hello") && svg.contains("World")) {
         "SVG smoke failed"
     }
 
-    val ascii = MermanEngine.renderAscii(source)
+    val ascii = Merman.renderAscii(source)
     check(ascii.contains("Hello") && ascii.contains("World")) {
         "ASCII smoke failed"
     }
 
-    val semanticJson = MermanEngine.parseJson(source)
+    val semanticJson = Merman.parseJson(source)
     check(semanticJson.contains("flowchart-v2")) {
         "semantic JSON smoke failed"
     }
 
-    val operationResult = MermanEngine.execute("svg", source)
+    val operationResult = Merman.execute("svg", source)
     check(
         operationResult.operationId == "svg" &&
             operationResult.mediaType == "image/svg+xml" &&
             operationResult.data.contentEquals(svg.toByteArray()) &&
-            JSONObject(operationResult.metadataJson).getString("operation_id") == "svg",
+            operationResult.metadata.operationId == "svg" &&
+            operationResult.metadata.rawJson.isNotEmpty(),
     ) {
         "structured operation result smoke failed"
     }
 
+    check(Merman.metadataJson("supported-diagrams") == Merman.supportedDiagramsJson()) {
+        "generic metadata dispatch disagrees with its named helper"
+    }
+    check(Merman.analysisFactsJson(source).contains("\"version\":1")) {
+        "analysis facts JSON smoke failed"
+    }
+    check(Merman.svgPlanJson(source).contains("\"schema_version\":1")) {
+        "SVG plan JSON smoke failed"
+    }
+
+    val limitedPngOptions = """
+        {
+          "version":2,
+          "raster":{"scale":20},
+          "resources":{"limits":{"max_raster_pixels":4096}}
+        }
+    """.trimIndent()
+    val pngResult = Merman.renderPngResult(source, limitedPngOptions)
+    val pngPlan = pngResult.metadata.outputPlan as MermanRasterOutputPlan
+    check(
+        pngResult.data.startsWithBytes(0x89, 0x50, 0x4e, 0x47) &&
+            pngPlan.limited &&
+            pngPlan.widthPx.toLong() * pngPlan.heightPx <= 4096 &&
+            pngResult.data.contentEquals(Merman.renderPng(source, limitedPngOptions)),
+    ) {
+        "typed PNG result smoke failed"
+    }
+    val jpegResult = Merman.renderJpegResult(source)
+    check(
+        jpegResult.data.startsWithBytes(0xff, 0xd8, 0xff) &&
+            jpegResult.metadata.outputPlan is MermanRasterOutputPlan,
+    ) {
+        "typed JPEG result smoke failed"
+    }
+    val pdfOptions = """{"version":2,"pdf":{"filterScale":0.1}}"""
+    val pdfResult = Merman.renderPdfResult(source, pdfOptions)
+    check(
+        pdfResult.data.startsWithBytes(0x25, 0x50, 0x44, 0x46) &&
+            pdfResult.metadata.outputPlan is MermanPdfFilterImagesOutputPlan &&
+            pdfResult.data.contentEquals(Merman.renderPdf(source, pdfOptions)),
+    ) {
+        "typed PDF result smoke failed"
+    }
+
     val unknownOperationError = runCatching {
-        MermanEngine.execute("not-an-operation", source)
+        Merman.execute("not-an-operation", source)
     }.exceptionOrNull()
     check(
         unknownOperationError is MermanException &&
@@ -241,30 +280,30 @@ fun runMermanSmoke() {
         "unknown operation did not preserve its machine-readable binding error"
     }
 
-    val layoutJson = MermanEngine.layoutJson(source)
+    val layoutJson = Merman.layoutJson(source)
     check(layoutJson.contains("layout")) {
         "layout JSON smoke failed"
     }
 
-    val analysisJson = MermanEngine.analyzeJson(source)
+    val analysisJson = Merman.analyzeJson(source)
     check(analysisJson.contains("\"version\":1") && analysisJson.contains("\"valid\":true")) {
         "analysis JSON smoke failed"
     }
 
-    val validationJson = MermanEngine.validateJson(source)
+    val validationJson = Merman.validateJson(source)
     check(validationJson.contains("\"valid\":true")) {
         "validation JSON smoke failed"
     }
 
     val documentSource = "Intro\n```mermaid\n$source\n```\n"
-    val documentJson = MermanEngine.analyzeDocumentJson(
+    val documentJson = Merman.analyzeDocumentJson(
         documentSource,
         "file:///tmp/example.md",
     )
     check(documentJson.contains("\"kind\":\"markdown\"") && documentJson.contains("\"valid\":true")) {
         "document analysis JSON smoke failed"
     }
-    val documentFactsJson = MermanEngine.analyzeDocumentFactsJson(
+    val documentFactsJson = Merman.analyzeDocumentFactsJson(
         documentSource,
         "file:///tmp/example.md",
     )
@@ -275,16 +314,16 @@ fun runMermanSmoke() {
         "document facts JSON smoke failed"
     }
 
-    check(MermanEngine.supportedDiagramsJson().contains("flowchart")) {
+    check(Merman.supportedDiagramsJson().contains("flowchart")) {
         "supported diagrams smoke failed"
     }
-    check(MermanEngine.asciiCapabilitiesJson().contains("\"support_level\":\"summary\"")) {
+    check(Merman.asciiCapabilitiesJson().contains("\"support_level\":\"summary\"")) {
         "ASCII capabilities smoke failed"
     }
-    check(MermanEngine.diagramFamilyCapabilitiesJson().contains("\"diagram_type\":\"flowchart\"")) {
+    check(Merman.diagramFamilyCapabilitiesJson().contains("\"diagram_type\":\"flowchart\"")) {
         "diagram family capabilities smoke failed"
     }
-    val runtimeCatalogJson = MermanEngine.runtimeCatalogJson()
+    val runtimeCatalogJson = Merman.runtimeCatalogJson()
     val runtimeCatalog = JSONObject(runtimeCatalogJson)
     val runtimeCapabilities = runtimeCatalog.getJSONObject("capabilities")
     val runtimeOutputContracts = runtimeCatalog.getJSONArray("output_contracts").objectMapById()
@@ -324,26 +363,90 @@ fun runMermanSmoke() {
     )) {
         checkBinaryOutputContract(runtimeOutputContracts.getValue(id), mediaType)
     }
-    check(MermanEngine.lintRuleCatalogJson().contains("\"version\":1")) {
+    check(Merman.lintRuleCatalogJson().contains("\"version\":1")) {
         "lint rule catalog envelope smoke failed"
     }
-    check(MermanEngine.lintRuleCatalogJson().contains("\"rules\":")) {
+    check(Merman.lintRuleCatalogJson().contains("\"rules\":")) {
         "lint rule catalog rules envelope smoke failed"
     }
-    check(MermanEngine.lintRuleCatalogJson().contains("merman.authoring.flowchart.explicit_direction")) {
+    check(Merman.lintRuleCatalogJson().contains("merman.authoring.flowchart.explicit_direction")) {
         "lint rule catalog smoke failed"
     }
-    check(MermanEngine.lintRuleCatalogJson().contains("docs/adr/0072-lint-rule-governance.md")) {
+    check(Merman.lintRuleCatalogJson().contains("docs/adr/0072-lint-rule-governance.md")) {
         "lint rule catalog evidence smoke failed"
     }
-    check(MermanEngine.supportedThemesJson().contains("default")) {
+    check(Merman.supportedThemesJson().contains("default")) {
         "themes smoke failed"
     }
-    check(MermanEngine.presentationCatalogJson().contains("one-dark")) {
+    check(Merman.presentationCatalogJson().contains("one-dark")) {
         "presentation catalog theme preset smoke failed"
     }
-    check(MermanEngine.presentationCatalogJson().contains("merman-modern")) {
+    check(Merman.presentationCatalogJson().contains("merman-modern")) {
         "presentation catalog profile smoke failed"
+    }
+
+    val iconRegistry = MermanIconRegistry.fromPacks(
+        listOf(
+            MermanIconPack(
+                json = """
+                    {
+                      "icons":{
+                        "rocket":{
+                          "body":"<path data-icon=\"android-registry\" d=\"M0 0H16V16H0z\"/>"
+                        }
+                      }
+                    }
+                """.trimIndent(),
+                registrationName = "smoke",
+            ),
+        ),
+    )
+    val iconServices = MermanEngineServices(iconRegistry = iconRegistry)
+    val iconEngines = listOf(
+        MermanEngine(services = iconServices),
+        MermanEngine(services = iconServices),
+    )
+    val iconSource = "flowchart TD\nA@{ icon: \"smoke:rocket\", label: \"A\" }"
+    for ((index, iconEngine) in iconEngines.withIndex()) {
+        try {
+            check(iconEngine.renderSvg(iconSource).contains("android-registry")) {
+                "icon registry snapshot reuse failed for engine $index"
+            }
+        } finally {
+            iconEngine.close()
+        }
+    }
+    MermanEngine(services = iconServices).use { iconEngine ->
+        check(iconEngine.renderSvg(iconSource).contains("android-registry")) {
+            "icon registry snapshot could not be reused after earlier engines closed"
+        }
+    }
+    val invalidRegistry =
+        MermanIconRegistry.fromPacks(
+            listOf(MermanIconPack("""{"prefix":"bad","icons":{"broken":{"body":"<path>"}}}""")),
+        )
+    check(
+        runCatching {
+            MermanEngine(services = MermanEngineServices(iconRegistry = invalidRegistry)).use { }
+        }.exceptionOrNull() is MermanException,
+    ) {
+        "invalid icon XML unexpectedly published an engine"
+    }
+
+    var conflictCallbackCalls = 0
+    val conflictError = runCatching {
+        MermanEngine(
+            optionsJson = """{"environment":{"text_measurement":"deterministic"}}""",
+            services = MermanEngineServices(
+                textMeasurer = {
+                    conflictCallbackCalls += 1
+                    null
+                },
+            ),
+        )
+    }.exceptionOrNull()
+    check(conflictError is MermanException && conflictCallbackCalls == 0) {
+        "constructor service conflict must fail before invoking the callback"
     }
 
     var measureCalls = 0
@@ -365,8 +468,7 @@ fun runMermanSmoke() {
             "operations=${seenOperations.joinToString("|")}, " +
             "maxWidth=${seenMaxWidthStates.joinToString("|")}"
 
-    val engine = MermanReusableEngine(
-        textMeasurer = { request ->
+    val engine = engineWithTextMeasurer { request ->
             measureCalls += 1
             if (seenMeasureTexts.size < 8) {
                 seenMeasureTexts += request.text
@@ -394,8 +496,7 @@ fun runMermanSmoke() {
             } else {
                 null
             }
-        },
-    )
+        }
     try {
         val perCallOptionsSvg = engine.renderSvg(
             source,
@@ -451,10 +552,9 @@ fun runMermanSmoke() {
         engine.close()
     }
 
-    lateinit var reentrantEngine: MermanReusableEngine
+    lateinit var reentrantEngine: MermanEngine
     var reentryRejected = false
-    reentrantEngine = MermanReusableEngine(
-        textMeasurer = {
+    reentrantEngine = engineWithTextMeasurer {
             if (!reentryRejected) {
                 try {
                     reentrantEngine.renderSvg(textMeasureSource)
@@ -467,8 +567,7 @@ fun runMermanSmoke() {
                 }
             }
             null
-        },
-    )
+        }
     try {
         val reentrantSvg = reentrantEngine.renderSvg(textMeasureSource)
         check(reentrantSvg.contains("<svg") && reentryRejected) {
@@ -478,10 +577,9 @@ fun runMermanSmoke() {
         reentrantEngine.close()
     }
 
-    lateinit var closingEngine: MermanReusableEngine
+    lateinit var closingEngine: MermanEngine
     var closeFromCallbackRejected = false
-    closingEngine = MermanReusableEngine(
-        textMeasurer = {
+    closingEngine = engineWithTextMeasurer {
             if (!closeFromCallbackRejected) {
                 try {
                     closingEngine.close()
@@ -494,8 +592,7 @@ fun runMermanSmoke() {
                 }
             }
             null
-        },
-    )
+        }
     try {
         val closingSvg = closingEngine.renderSvg(textMeasureSource)
         check(closingSvg.contains("<svg") && closeFromCallbackRejected) {
@@ -508,10 +605,9 @@ fun runMermanSmoke() {
         closingEngine.close()
     }
 
-    lateinit var crossThreadEngine: MermanReusableEngine
+    lateinit var crossThreadEngine: MermanEngine
     var crossThreadChecked = false
-    crossThreadEngine = MermanReusableEngine(
-        textMeasurer = {
+    crossThreadEngine = engineWithTextMeasurer {
             if (!crossThreadChecked) {
                 var nestedError: Throwable? = null
                 val nested = Thread {
@@ -533,8 +629,7 @@ fun runMermanSmoke() {
                 crossThreadChecked = true
             }
             null
-        },
-    )
+        }
     try {
         val outerSvg = crossThreadEngine.renderSvg(textMeasureSource)
         check(outerSvg.contains("<svg") && crossThreadChecked) {
@@ -545,16 +640,14 @@ fun runMermanSmoke() {
     }
 
     var independentEngineRendered = false
-    val independentEngine = MermanReusableEngine()
-    val callbackEngine = MermanReusableEngine(
-        textMeasurer = {
+    val independentEngine = MermanEngine()
+    val callbackEngine = engineWithTextMeasurer {
             if (!independentEngineRendered) {
                 independentEngineRendered =
                     independentEngine.renderSvg(textMeasureSource).contains("<svg")
             }
             null
-        },
-    )
+        }
     try {
         val callbackSvg = callbackEngine.renderSvg(textMeasureSource)
         check(callbackSvg.contains("<svg") && independentEngineRendered) {
@@ -565,11 +658,9 @@ fun runMermanSmoke() {
         independentEngine.close()
     }
 
-    val throwingEngine = MermanReusableEngine(
-        textMeasurer = {
+    val throwingEngine = engineWithTextMeasurer {
             throw IllegalStateException("host measurement failed")
-        },
-    )
+        }
     try {
         val fallbackSvg = throwingEngine.renderSvg(textMeasureSource)
         check(fallbackSvg.contains("<svg") && fallbackSvg.contains("Condition?")) {
@@ -583,7 +674,7 @@ fun runMermanSmoke() {
         throwingEngine.close()
     }
 
-    val concurrentEngine = MermanReusableEngine()
+    val concurrentEngine = MermanEngine()
     try {
         val start = CountDownLatch(1)
         val done = CountDownLatch(2)
@@ -611,6 +702,34 @@ fun runMermanSmoke() {
         concurrentEngine.close()
     }
 
+    val concurrentlyClosedEngine = MermanEngine()
+    val closeStart = CountDownLatch(1)
+    val closeDone = CountDownLatch(2)
+    val closeFailures = Collections.synchronizedList(mutableListOf<Throwable>())
+    repeat(2) {
+        Thread {
+            try {
+                closeStart.await()
+                concurrentlyClosedEngine.close()
+            } catch (error: Throwable) {
+                closeFailures += error
+            } finally {
+                closeDone.countDown()
+            }
+        }.start()
+    }
+    closeStart.countDown()
+    check(closeDone.await(10, TimeUnit.SECONDS) && closeFailures.isEmpty()) {
+        "concurrent idempotent close failed: $closeFailures"
+    }
+    concurrentlyClosedEngine.close()
+    check(
+        runCatching { concurrentlyClosedEngine.parseJson(source) }
+            .exceptionOrNull() is MermanException,
+    ) {
+        "post-close engine call unexpectedly succeeded"
+    }
+
     val admissionSource = buildString {
         append("flowchart TD\n")
         repeat(8_000) { index ->
@@ -621,7 +740,7 @@ fun runMermanSmoke() {
             append('\n')
         }
     }
-    val busyEngine = MermanReusableEngine(textMeasurer = { null })
+    val busyEngine = engineWithTextMeasurer { null }
     try {
         val start = CountDownLatch(1)
         val done = CountDownLatch(2)
@@ -654,7 +773,7 @@ fun runMermanSmoke() {
     var closeBusyObserved = false
     repeat(3) {
         if (closeBusyObserved) return@repeat
-        val closeEngine = MermanReusableEngine(textMeasurer = { null })
+        val closeEngine = engineWithTextMeasurer { null }
         val started = CountDownLatch(1)
         val finished = CountDownLatch(1)
         val worker = Thread {
@@ -684,6 +803,13 @@ fun runMermanSmoke() {
         "nonblocking close did not expose BUSY during an active operation"
     }
 }
+
+private fun engineWithTextMeasurer(textMeasurer: MermanTextMeasurer): MermanEngine =
+    MermanEngine(services = MermanEngineServices(textMeasurer = textMeasurer))
+
+private fun ByteArray.startsWithBytes(vararg prefix: Int): Boolean =
+    size >= prefix.size &&
+        prefix.indices.all { index -> (this[index].toInt() and 0xff) == prefix[index] }
 
 private fun JSONArray.stringSet(): Set<String> =
     buildSet {

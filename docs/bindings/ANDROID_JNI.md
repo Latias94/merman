@@ -12,7 +12,7 @@ not linked into the Kotlin AAR.
 ## Layers
 
 ```text
-Kotlin MermanEngine / MermanReusableEngine / MermanOperationResult
+Kotlin Merman / MermanEngine / MermanEngineServices / MermanOperationResult
                  |
                  v
 JNI_OnLoad + RegisterNatives (libmerman_android_jni.so)
@@ -29,16 +29,26 @@ WASM transport versions.
 The primary API is generic and returns a complete operation envelope:
 
 ```kotlin
-val result = MermanEngine.execute(
+val result = Merman.execute(
     operationId = "svg",
     source = "flowchart TD\nA --> B",
 )
 val svg = result.data.toString(Charsets.UTF_8)
 ```
 
-`MermanOperationResult` contains `operationId`, `mediaType`, `data`, and `metadataJson`. `MermanEngine` also exposes convenience methods for SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis JSON, document analysis, facts, and validation. Binary methods return `ByteArray`; JSON/SVG/ASCII methods decode the output as UTF-8.
+`MermanOperationResult` contains `operationId`, `mediaType`, `data`, and typed operation metadata
+that retains its original JSON. `Merman` also exposes convenience methods for SVG, ASCII, PNG,
+JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, document analysis, and
+validation. Binary methods retain byte-returning conveniences and add `*Result` forms that preserve
+the effective output plan.
 
-Use `MermanReusableEngine(optionsJson, textMeasurer)` when calls share base options. Its `execute` method accepts per-call `optionsJson` overlays and uses the same operation IDs while retaining a native engine for its lifetime. `textMeasurer` is immutable after construction. A callback-free reusable engine accepts concurrent calls. An engine with a callback rejects a competing operation immediately with `BUSY`; a call or close from its callback returns `REENTRANT_CALL`. `close()` is nonblocking and retains the Kotlin handle when it fails, so callers can retry after the active operation returns.
+Use the direct `MermanEngine(optionsJson, services)` constructor when calls share base options or
+host services. Its `execute` method accepts per-call `optionsJson` overlays and uses the same
+operation IDs while retaining a native engine for its lifetime. `MermanEngineServices` is immutable
+and can contain an optional text measurer and immutable icon-pack snapshot. A callback-free engine accepts
+concurrent calls. An engine with a callback rejects a competing operation immediately with `BUSY`;
+a call or close from its callback returns `REENTRANT_CALL`. `close()` is nonblocking and idempotent,
+and retains the Kotlin handle when it fails so callers can retry after the active operation returns.
 
 ## Runtime Catalog
 
@@ -48,14 +58,21 @@ validates:
 - flat runtime-catalog schema `1`;
 - Android transport API version `1`;
 - non-empty native package metadata;
-- Options JSON schema `2` and binding-result payload schema `1`; and
-- the independent text-measurement protocol version when that capability is present.
+- Options JSON schema `2` and both binding payload schemas;
+- the generated full-native Android capability/output/operation/metadata identity and capability
+  implication closure;
+- output media/resource policies, constructor-service ownership, and resource profile relations;
+  and
+- the independent text-measurement protocol version and provider ownership.
 
-The package-owned AAR deliberately does not revalidate every producer-owned catalog relation in
-Kotlin. Rust owner tests and the AAR smoke prove those relations; the wrapper checks only the
-protocol fields it consumes and tolerates additive catalog fields.
+The published Android AAR is a complete native SKU, so known IDs must match the generated Android
+artifact contract in sorted order. This prevents a Kotlin facade from advertising methods whose
+native implementation was omitted. Unknown future IDs and fields are accepted only as additive
+values and must retain the catalog's sorted-ID rules. Legacy schema-1 producers may omit the
+option-group and constructor-service sections; if either section is present, its known entries are
+validated. Exact package-version equality is intentionally not required.
 
-Read the validated catalog with `MermanEngine.runtimeCatalogJson()`:
+Read the validated catalog with `Merman.runtimeCatalogJson()`:
 
 ```json
 {
@@ -67,15 +84,15 @@ Read the validated catalog with `MermanEngine.runtimeCatalogJson()`:
     { "id": "binding-result", "version": 1 },
     { "id": "operation-metadata", "version": 1 }
   ],
-  "metadata_ids": ["supported-diagrams", "..."],
+  "metadata_ids": ["ascii-capabilities", "..."],
   "capabilities": {
-    "capability_ids": ["svg"],
-    "operation_ids": ["svg"],
-    "output_ids": ["svg"],
-    "system_adapter_ids": [],
-    "text_measurement": { "protocol_version": 1, "provider_ids": ["vendored"] }
+    "capability_ids": ["analysis", "ascii", "...", "svg"],
+    "operation_ids": ["analysis-json", "...", "svg"],
+    "output_ids": ["ascii", "...", "svg"],
+    "system_adapter_ids": ["system-clock", "system-random", "system-timezone"],
+    "text_measurement": { "protocol_version": 1, "provider_ids": ["host-callback", "vendored"] }
   },
-  "output_contracts": [],
+  "output_contracts": [{ "id": "ascii", "media_type": "text/plain; charset=utf-8" }, "..."],
   "registry": { "diagram_family_count": 35 },
   "resources": { "general_binding_default_profile": "interactive" }
 }
@@ -95,7 +112,24 @@ these fields rather than parse `message`.
 
 ## Text Measurement
 
-Pass a synchronous `MermanTextMeasurer` to `MermanReusableEngine` at construction only when Android text geometry must match the final surface. Native previews should measure with the same `TextPaint`/`StaticLayout` configuration used for display; WebView previews should use a prepared DOM/canvas cache rather than block a render thread on UI work.
+Pass a synchronous `MermanTextMeasurer` through `MermanEngineServices` only when Android text
+geometry must match the final surface:
+
+```kotlin
+val services = MermanEngineServices(
+    textMeasurer = MermanTextMeasurer { request ->
+        // Return null when the host cannot reproduce this operation faithfully.
+        null
+    },
+)
+MermanEngine(services = services).use { engine ->
+    engine.renderSvg("flowchart TD\nA --> B")
+}
+```
+
+Native previews should measure with the same `TextPaint`/`StaticLayout` configuration used for
+display; WebView previews should use a prepared DOM/canvas cache rather than block a render thread
+on UI work. Construction never invokes the callback.
 
 The independent text-measurement protocol has 19 operations (`0..18`). Construct handled results
 with `MermanTextMeasureResult.metrics`, `.length`, `.horizontalExtents`, or
@@ -103,6 +137,34 @@ with `MermanTextMeasureResult.metrics`, `.length`, `.horizontalExtents`, or
 cannot be answered accurately and Merman falls back per request. Callback exceptions are cleared at
 the JNI boundary and likewise fall back for that request, but hosts should log them because repeated
 fallback can change geometry.
+
+## Immutable Icon Registry Inputs
+
+`MermanIconRegistry.fromPacks(...)` snapshots complete IconifyJSON collections or host-curated
+subsets as immutable Kotlin values. The snapshot can be shared through `MermanEngineServices`
+across multiple engine constructors and exposes neither mutation nor lifecycle methods. Each
+constructor borrows fresh string arrays for one synchronous native call, validates and parses the
+packs transactionally within the fixed limits reported by the runtime catalog, and returns only
+after that engine owns the parsed registry. JNI therefore publishes no separate registry handle.
+Merman performs no filesystem, package, or network acquisition, so hosts must acquire and pre-trim
+packs themselves.
+
+Pack input is untrusted: parsing, retained data, aliases, XML structure, identifier scoping, and
+per-operation expansion are bounded. Icon fragments are sanitized under the effective Mermaid
+configuration immediately before embedding. This does not make parity/readable SVG safe for direct
+browser DOM insertion; use `SafeInlineSvg`, an appropriate CSP, or a sandbox at that boundary.
+
+## Migrating From The Previous Prerelease API
+
+- Replace static one-shot calls on the old `MermanEngine` with `Merman`.
+- Delete `MermanReusableEngine` and callback-specialized constructors; construct
+  `MermanEngine(optionsJson, services)` directly.
+- Put text measurement and icon registries in `MermanEngineServices`; there are no service
+  mutators.
+- Use typed result metadata and `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when the
+  effective output plan matters.
+- Treat operation, metadata, resource-limit, option-group, and service IDs from runtime discovery
+  as open values. Generated known constants are conveniences, not exhaustive runtime enums.
 
 ## Verification
 

@@ -7,11 +7,10 @@
 //! allocation or Rust object pointer crosses this boundary.
 
 use merman_bindings_core::{
-    ArtifactContractSpec, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError,
-    BindingEngineAdmissionMode, BindingEngineServices, BindingError, BindingErrorKind,
-    BindingIconRegistryErrorDetails, BindingOperationRequest, BindingResourceErrorDetails,
-    BindingStatus, BindingTransportKey, CapabilityKey, ConstructorServiceKey, OperationKey,
-    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
+    BindingEngineServices, BindingError, BindingErrorKind, BindingIconRegistryErrorDetails,
+    BindingOperationRequest, BindingResourceErrorDetails, BindingStatus, BindingTransportKey,
+    OperationKey, ValidatedArtifactContract, full_native_artifact_contract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
@@ -121,7 +120,18 @@ struct NativeEngineState {
 #[derive(Default)]
 struct NativeEngineRegistry {
     last_counter: u64,
-    engines: BTreeMap<MermanNativeEngineToken, Arc<NativeEngineState>>,
+    engines: BTreeMap<MermanNativeEngineToken, NativeEngineEntry>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativeEnginePublication {
+    Reserved,
+    Published,
+}
+
+struct NativeEngineEntry {
+    publication: NativeEnginePublication,
+    state: Arc<NativeEngineState>,
 }
 
 impl NativeEngineRegistry {
@@ -133,16 +143,23 @@ impl NativeEngineRegistry {
         )
     }
 
+    #[cfg(test)]
     fn publish(&mut self, token: MermanNativeEngineToken, engine: Arc<NativeEngineState>) {
         debug_assert!(token_has_domain(
             token,
             MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG
         ));
-        let previous = self.engines.insert(token, engine);
+        let previous = self.engines.insert(
+            token,
+            NativeEngineEntry {
+                publication: NativeEnginePublication::Published,
+                state: engine,
+            },
+        );
         debug_assert!(previous.is_none(), "native engine tokens are never reused");
     }
 
-    fn try_publish(
+    fn try_reserve(
         &mut self,
         engine: Arc<NativeEngineState>,
     ) -> Result<MermanNativeEngineToken, (NativeFailure, Arc<NativeEngineState>)> {
@@ -150,16 +167,47 @@ impl NativeEngineRegistry {
             Ok(token) => token,
             Err(failure) => return Err((failure, engine)),
         };
-        self.publish(token, engine);
+        let previous = self.engines.insert(
+            token,
+            NativeEngineEntry {
+                publication: NativeEnginePublication::Reserved,
+                state: engine,
+            },
+        );
+        debug_assert!(previous.is_none(), "native engine tokens are never reused");
         Ok(token)
     }
 
     fn acquire(&self, token: MermanNativeEngineToken) -> Option<Arc<NativeEngineState>> {
-        self.engines.get(&token).map(Arc::clone)
+        self.engines.get(&token).and_then(|entry| {
+            (entry.publication == NativeEnginePublication::Published)
+                .then(|| Arc::clone(&entry.state))
+        })
+    }
+
+    fn cancel_reservation(
+        &mut self,
+        token: MermanNativeEngineToken,
+    ) -> Option<Arc<NativeEngineState>> {
+        if self
+            .engines
+            .get(&token)
+            .is_none_or(|entry| entry.publication != NativeEnginePublication::Reserved)
+        {
+            return None;
+        }
+        self.engines.remove(&token).map(|entry| entry.state)
     }
 
     fn retire(&mut self, token: MermanNativeEngineToken) -> Option<Arc<NativeEngineState>> {
-        self.engines.remove(&token)
+        if self
+            .engines
+            .get(&token)
+            .is_none_or(|entry| entry.publication != NativeEnginePublication::Published)
+        {
+            return None;
+        }
+        self.engines.remove(&token).map(|entry| entry.state)
     }
 }
 
@@ -223,65 +271,8 @@ static ENGINE_REGISTRY: OnceLock<Mutex<NativeEngineRegistry>> = OnceLock::new();
 static ALLOCATION_REGISTRY: OnceLock<Mutex<NativeAllocationRegistry>> = OnceLock::new();
 static RUNTIME_CATALOG: OnceLock<Box<[u8]>> = OnceLock::new();
 static RUNTIME_CATALOG_DIGEST: OnceLock<Box<[u8]>> = OnceLock::new();
-const NATIVE_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
-    #[cfg(feature = "svg")]
-    ConstructorServiceKey::HostTextMeasurement,
-    #[cfg(feature = "svg")]
-    ConstructorServiceKey::IconRegistry,
-];
-const NATIVE_OPERATIONS: &[OperationKey] = &[
-    #[cfg(feature = "analysis")]
-    OperationKey::AnalysisFactsJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::AnalysisJson,
-    #[cfg(feature = "ascii")]
-    OperationKey::Ascii,
-    #[cfg(feature = "analysis")]
-    OperationKey::DocumentAnalysisFactsJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::DocumentAnalysisJson,
-    #[cfg(feature = "jpeg")]
-    OperationKey::Jpeg,
-    #[cfg(feature = "svg")]
-    OperationKey::LayoutJson,
-    #[cfg(feature = "pdf")]
-    OperationKey::Pdf,
-    #[cfg(feature = "png")]
-    OperationKey::Png,
-    OperationKey::SemanticJson,
-    #[cfg(feature = "svg")]
-    OperationKey::Svg,
-    #[cfg(feature = "svg")]
-    OperationKey::SvgPlanJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::ValidationJson,
-];
-const NATIVE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
-    #[cfg(feature = "layout-cytoscape")]
-    CapabilityKey::LayoutCytoscape,
-    #[cfg(feature = "layout-elk")]
-    CapabilityKey::LayoutElk,
-    #[cfg(feature = "math")]
-    CapabilityKey::Math,
-];
-const NATIVE_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
-    #[cfg(feature = "system-clock")]
-    CapabilityKey::SystemClock,
-    #[cfg(feature = "system-random")]
-    CapabilityKey::SystemRandom,
-    #[cfg(feature = "system-timezone")]
-    CapabilityKey::SystemTimezone,
-];
-const NATIVE_RUNTIME_POLICY: RuntimePolicyExposure = RuntimePolicyExposure::BindingOptions;
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
-    ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::NativeC)
-        .with_operations(NATIVE_OPERATIONS)
-        .with_supplemental_capabilities(NATIVE_SUPPLEMENTAL_CAPABILITIES)
-        .with_all_available_metadata()
-        .with_constructor_services(NATIVE_CONSTRUCTOR_SERVICES)
-        .with_system_adapters(NATIVE_SYSTEM_ADAPTERS)
-        .with_runtime_policy_exposure(NATIVE_RUNTIME_POLICY)
-        .materialize();
+    full_native_artifact_contract(BindingTransportKey::NativeC);
 
 fn reentrant_call_failure() -> NativeFailure {
     NativeFailure::reentrant_call("a host callback must not re-enter the same native engine")
@@ -1020,22 +1011,11 @@ fn acquire_engine(token: MermanNativeEngineToken) -> Result<Arc<NativeEngineStat
     })
 }
 
-fn execute_with_engine<T>(
-    token: MermanNativeEngineToken,
-    request: NativeOperationRequest<'_>,
-    consume: impl FnOnce(NativeExecution) -> Result<T, NativeFailure>,
-) -> Result<T, NativeFailure> {
-    let state = acquire_engine(token)?;
-    let _operation = state
-        .admission
-        .enter_operation()
-        .map_err(native_failure_from_admission)?;
-
-    let descriptor = merman_native_operation_descriptor(request.operation).ok_or_else(|| {
-        NativeFailure::unknown_operation(format!(
-            "unknown native operation code `{}`",
-            request.operation
-        ))
+fn resolve_executable_native_operation(
+    operation: MermanNativeOperationCode,
+) -> Result<OperationKey, NativeFailure> {
+    let descriptor = merman_native_operation_descriptor(operation).ok_or_else(|| {
+        NativeFailure::unknown_operation(format!("unknown native operation code `{operation}`"))
     })?;
     if !descriptor.executable {
         let failure = descriptor
@@ -1049,8 +1029,23 @@ fn execute_with_engine<T>(
             "native operation NONE is a non-executable sentinel",
         ));
     }
-    let operation = merman_native_operation_key(request.operation)
-        .expect("validated executable native operations map to binding operation keys");
+    Ok(merman_native_operation_key(operation)
+        .expect("validated executable native operations map to binding operation keys"))
+}
+
+fn execute_with_engine<T>(
+    token: MermanNativeEngineToken,
+    request: NativeOperationRequest<'_>,
+    consume: impl FnOnce(NativeExecution) -> Result<T, NativeFailure>,
+) -> Result<T, NativeFailure> {
+    let state = acquire_engine(token)?;
+    // Freeze request classification before lifecycle admission. For a live token, NONE and
+    // unknown numeric codes are caller errors regardless of transient busy/reentrant state.
+    let operation = resolve_executable_native_operation(request.operation)?;
+    let _operation = state
+        .admission
+        .enter_operation()
+        .map_err(native_failure_from_admission)?;
     let result = state
         .engine
         .execute(
@@ -1599,7 +1594,22 @@ unsafe fn engine_new_with_services_impl(
         return failure.status;
     }
     if out_engine.is_null() {
-        return MERMAN_NATIVE_STATUS_INVALID_ARGUMENT;
+        // A null out_engine does not describe storage, so only preflight config/out_result here.
+        if let Err(failure) = validate_disjoint_storage(
+            config_ptr.cast::<u8>(),
+            size_of::<MermanNativeEngineServicesConfig>(),
+            "config",
+            out_result.cast::<u8>(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        ) {
+            return failure.status;
+        }
+        let failure = NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "out_engine must not be null",
+        );
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
     }
 
     let fixed_storage_validation = (|| {
@@ -1632,7 +1642,7 @@ unsafe fn engine_new_with_services_impl(
         return failure.status;
     }
     if let Err(failure) = validate_pointer_alignment(out_engine, "out_engine") {
-        return failure.status;
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
     }
 
     let config = match unsafe { read_engine_services_config(config_ptr) } {
@@ -2001,17 +2011,21 @@ fn create_native_engine_state(
     Ok(Arc::new(NativeEngineState { engine, admission }))
 }
 
-struct PendingNativeEngine {
+struct PendingNativeEngine<'registry> {
+    registry: &'registry Mutex<NativeEngineRegistry>,
     token: Option<MermanNativeEngineToken>,
 }
 
-impl PendingNativeEngine {
-    fn publish(state: Arc<NativeEngineState>) -> Result<Self, NativeFailure> {
+impl<'registry> PendingNativeEngine<'registry> {
+    fn reserve(
+        registry: &'registry Mutex<NativeEngineRegistry>,
+        state: Arc<NativeEngineState>,
+    ) -> Result<Self, NativeFailure> {
         let publication = {
-            let mut registry = engine_registry()
+            let mut registry = registry
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            registry.try_publish(state)
+            registry.try_reserve(state)
         };
         let token = match publication {
             Ok(token) => token,
@@ -2020,34 +2034,57 @@ impl PendingNativeEngine {
                 return Err(failure);
             }
         };
-        Ok(Self { token: Some(token) })
+        Ok(Self {
+            registry,
+            token: Some(token),
+        })
     }
 
     fn token(&self) -> MermanNativeEngineToken {
         self.token
-            .expect("a pending native engine owns one published token")
+            .expect("a pending native engine owns one reserved token")
     }
 
-    fn commit(mut self) {
+    unsafe fn commit(mut self, out_engine: *mut MermanNativeEngineToken) {
+        let token = self.token();
+        let mut registry = self
+            .registry
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let entry = registry
+            .engines
+            .get_mut(&token)
+            .expect("a pending native engine owns one reserved token");
+        assert_eq!(
+            entry.publication,
+            NativeEnginePublication::Reserved,
+            "a native engine reservation may be committed exactly once"
+        );
+        // Everything that can fail is complete before this point. The caller-visible token and
+        // registry visibility are committed in the same critical section, and publication is the
+        // final infallible state transition.
+        unsafe { ptr::write(out_engine, token) };
+        entry.publication = NativeEnginePublication::Published;
         self.token = None;
     }
 }
 
-impl Drop for PendingNativeEngine {
+impl Drop for PendingNativeEngine<'_> {
     fn drop(&mut self) {
         let Some(token) = self.token.take() else {
             return;
         };
-        let retired = {
-            let mut registry = engine_registry()
+        let cancelled = {
+            let mut registry = self
+                .registry
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if let Some(state) = registry.acquire(token) {
-                let _ = state.admission.try_close();
-            }
-            registry.retire(token)
+            registry.cancel_reservation(token)
         };
-        drop(retired);
+        if let Some(state) = cancelled {
+            let _ = state.admission.try_close();
+            drop(state);
+        }
     }
 }
 
@@ -2077,14 +2114,30 @@ unsafe fn publish_native_engine_result_with_writer(
     out_result: *mut MermanNativeResult,
     write_success: impl FnOnce(*mut MermanNativeResult) -> MermanNativeStatus,
 ) -> Result<MermanNativeStatus, NativeFailure> {
-    let pending = PendingNativeEngine::publish(state)?;
-    let token = pending.token();
+    unsafe {
+        publish_native_engine_result_with_writer_in_registry(
+            engine_registry(),
+            state,
+            out_engine,
+            out_result,
+            write_success,
+        )
+    }
+}
+
+unsafe fn publish_native_engine_result_with_writer_in_registry(
+    registry: &Mutex<NativeEngineRegistry>,
+    state: Arc<NativeEngineState>,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+    write_success: impl FnOnce(*mut MermanNativeResult) -> MermanNativeStatus,
+) -> Result<MermanNativeStatus, NativeFailure> {
+    let pending = PendingNativeEngine::reserve(registry, state)?;
     let status = write_success(out_result);
     if status != MERMAN_NATIVE_STATUS_OK {
         return Ok(status);
     }
-    unsafe { ptr::write(out_engine, token) };
-    pending.commit();
+    unsafe { pending.commit(out_engine) };
     Ok(status)
 }
 
@@ -3103,6 +3156,59 @@ mod tests {
     }
 
     #[test]
+    fn engine_new_with_services_writes_structured_failure_for_null_out_engine() {
+        let api = api_table();
+        let config = native_services_config(native_config(), &[]);
+        let mut result = native_result();
+
+        let status =
+            unsafe { api.engine_new_with_services.unwrap()(&config, ptr::null_mut(), &mut result) };
+
+        assert_eq!(status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert_eq!(result.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert_ne!(result.allocation_token, 0);
+        let failure = result_json(&result);
+        assert_eq!(
+            failure["status"].as_i64(),
+            Some(i64::from(MERMAN_NATIVE_STATUS_INVALID_ARGUMENT))
+        );
+        assert_eq!(failure["message"], "out_engine must not be null");
+
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(result.allocation_token, 0);
+    }
+
+    #[test]
+    fn engine_new_with_services_writes_structured_failure_for_misaligned_out_engine() {
+        let api = api_table();
+        let config = native_services_config(native_config(), &[]);
+        let (_engine_storage, out_engine) = misaligned_record(0 as MermanNativeEngineToken);
+        let mut result = native_result();
+
+        let status =
+            unsafe { api.engine_new_with_services.unwrap()(&config, out_engine, &mut result) };
+
+        assert_eq!(status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert_eq!(result.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert_ne!(result.allocation_token, 0);
+        let failure = result_json(&result);
+        assert_eq!(
+            failure["status"].as_i64(),
+            Some(i64::from(MERMAN_NATIVE_STATUS_INVALID_ARGUMENT))
+        );
+        assert_eq!(
+            failure["message"],
+            format!(
+                "out_engine must be aligned to {} bytes for its native record type",
+                align_of::<MermanNativeEngineToken>()
+            )
+        );
+
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(result.allocation_token, 0);
+    }
+
+    #[test]
     fn service_constructor_is_strict_without_retroactively_breaking_legacy_engine_new() {
         let api = api_table();
         let orphan_user_data = ptr::NonNull::<u8>::dangling().as_ptr().cast();
@@ -3518,6 +3624,8 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
         );
         assert_eq!(result.allocation_token, 0);
+        assert_eq!(result.status, 0);
+        assert!(result.metadata_or_error_json.data.is_null());
 
         let pack = MermanNativeIconPack {
             struct_size: native_struct_size::<MermanNativeIconPack>(),
@@ -4179,7 +4287,7 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         };
 
         let (failure, returned_state) = registry
-            .try_publish(state)
+            .try_reserve(state)
             .expect_err("exhausted engine token space must reject publication");
         assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
         assert!(registry.engines.is_empty());
@@ -4192,7 +4300,59 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
     }
 
     #[test]
+    fn reserved_engine_is_not_acquirable_until_success_outputs_are_committed() {
+        let registry = Mutex::new(NativeEngineRegistry::default());
+        let state = Arc::new(NativeEngineState {
+            engine: native_artifact_contract()
+                .create_engine(&[])
+                .expect("test engine"),
+            admission: BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent),
+        });
+        let predicted_token =
+            (1 << MERMAN_NATIVE_TOKEN_COUNTER_SHIFT) | MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG;
+        let mut token = 0;
+        let mut result = native_result();
+
+        let status = unsafe {
+            publish_native_engine_result_with_writer_in_registry(
+                &registry,
+                state,
+                &mut token,
+                &mut result,
+                |_| {
+                    let registry = registry
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    assert_eq!(
+                        registry.engines[&predicted_token].publication,
+                        NativeEnginePublication::Reserved
+                    );
+                    assert!(registry.acquire(predicted_token).is_none());
+                    MERMAN_NATIVE_STATUS_OK
+                },
+            )
+        }
+        .expect("engine reservation");
+
+        assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
+        assert_eq!(token, predicted_token);
+        let published = registry
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .acquire(token)
+            .expect("successful commit publishes the engine");
+        let _ = published.admission.try_close();
+        drop(published);
+        let retired = registry
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retire(token);
+        drop(retired);
+    }
+
+    #[test]
     fn engine_publication_rolls_back_result_failure_and_panic_before_exposure() {
+        let registry = Mutex::new(NativeEngineRegistry::default());
         let state = Arc::new(NativeEngineState {
             engine: native_artifact_contract()
                 .create_engine(&[])
@@ -4203,16 +4363,38 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         let mut token = 0;
         let mut result = native_result();
         let status = unsafe {
-            publish_native_engine_result_with_writer(state, &mut token, &mut result, |_| {
-                MERMAN_NATIVE_STATUS_INTERNAL_ERROR
-            })
+            publish_native_engine_result_with_writer_in_registry(
+                &registry,
+                state,
+                &mut token,
+                &mut result,
+                |_| {
+                    let registry = registry
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    assert!(
+                        registry
+                            .acquire(registry.engines.keys().copied().next().unwrap())
+                            .is_none()
+                    );
+                    MERMAN_NATIVE_STATUS_INTERNAL_ERROR
+                },
+            )
         }
         .expect("a result-writer status is not a constructor failure");
         assert_eq!(status, MERMAN_NATIVE_STATUS_INTERNAL_ERROR);
         assert_eq!(token, 0);
         assert_eq!(result.allocation_token, 0);
+        assert!(
+            registry
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .engines
+                .is_empty()
+        );
         assert!(weak.upgrade().is_none());
 
+        let registry = Mutex::new(NativeEngineRegistry::default());
         let state = Arc::new(NativeEngineState {
             engine: native_artifact_contract()
                 .create_engine(&[])
@@ -4221,14 +4403,34 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         });
         let weak = Arc::downgrade(&state);
         let unwind = catch_unwind(AssertUnwindSafe(|| unsafe {
-            let _ =
-                publish_native_engine_result_with_writer(state, &mut token, &mut result, |_| {
+            let _ = publish_native_engine_result_with_writer_in_registry(
+                &registry,
+                state,
+                &mut token,
+                &mut result,
+                |_| {
+                    let registry = registry
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    assert!(
+                        registry
+                            .acquire(registry.engines.keys().copied().next().unwrap())
+                            .is_none()
+                    );
                     panic!("synthetic result writer panic")
-                });
+                },
+            );
         }));
         assert!(unwind.is_err());
         assert_eq!(token, 0);
         assert_eq!(result.allocation_token, 0);
+        assert!(
+            registry
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .engines
+                .is_empty()
+        );
         assert!(weak.upgrade().is_none());
     }
 
@@ -4431,6 +4633,14 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
         );
+
+        let mut stale_result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &none_request, &mut stale_result) },
+            MERMAN_NATIVE_STATUS_INVALID_ENGINE
+        );
+        assert_eq!(stale_result.status, MERMAN_NATIVE_STATUS_INVALID_ENGINE);
+        unsafe { api.result_free.unwrap()(&mut stale_result) };
     }
 
     #[test]
@@ -4648,16 +4858,20 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         let mut token = 0;
         let status = unsafe { api.engine_new.unwrap()(&config, &mut token, &mut result) };
 
-        assert_eq!(NATIVE_RUNTIME_POLICY, RuntimePolicyExposure::BindingOptions);
-        let capabilities = native_artifact_contract().runtime_capabilities();
-        let missing_adapter = [
-            CapabilityKey::SystemClock,
-            CapabilityKey::SystemTimezone,
-            CapabilityKey::SystemRandom,
-        ]
-        .into_iter()
-        .find(|adapter| !NATIVE_SYSTEM_ADAPTERS.contains(adapter))
-        .map(|adapter| adapter.id());
+        let artifact_contract = native_artifact_contract();
+        assert_eq!(
+            artifact_contract.runtime_policy_exposure(),
+            merman_bindings_core::RuntimePolicyExposure::BindingOptions
+        );
+        let capabilities = artifact_contract.runtime_capabilities();
+        let missing_adapter = ["system-clock", "system-timezone", "system-random"]
+            .into_iter()
+            .find(|adapter| {
+                !capabilities
+                    .system_adapter_ids
+                    .iter()
+                    .any(|id| id == adapter)
+            });
 
         if let Some(missing_adapter) = missing_adapter {
             assert!(capabilities.system_adapter_ids.is_empty());
@@ -4765,7 +4979,7 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
 
     #[cfg(feature = "svg")]
     #[test]
-    fn callback_enabled_engine_rejects_a_competing_operation_as_busy() {
+    fn operation_code_errors_precede_busy_and_reentrant_admission() {
         let api = api_table();
         let context = Box::new(ConcurrentFreeTextMeasureContext {
             blocked_once: std::sync::atomic::AtomicBool::new(true),
@@ -4790,19 +5004,67 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             .admission
             .enter_operation()
             .expect("first operation");
-        let request = native_request(
-            MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
-            b"flowchart TD\nA --> B",
-        );
-        let mut result = native_result();
-        assert_eq!(
-            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
-            MERMAN_NATIVE_STATUS_BUSY
-        );
-        assert_eq!(result.status, MERMAN_NATIVE_STATUS_BUSY);
-        assert_eq!(result_json(&result)["kind"], MERMAN_NATIVE_ERROR_KIND_BUSY);
-        unsafe { api.result_free.unwrap()(&mut result) };
+        for (operation_code, status, kind) in [
+            (
+                MERMAN_NATIVE_OPERATION_NONE,
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                MERMAN_NATIVE_ERROR_KIND_GENERIC,
+            ),
+            (
+                i32::MAX,
+                MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+                MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION,
+            ),
+            (
+                MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+                MERMAN_NATIVE_STATUS_BUSY,
+                MERMAN_NATIVE_ERROR_KIND_BUSY,
+            ),
+        ] {
+            let request = native_request(operation_code, b"flowchart TD\nA --> B");
+            let mut result = native_result();
+            assert_eq!(
+                unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+                status
+            );
+            assert_eq!(result.status, status);
+            assert_eq!(result_json(&result)["kind"], kind);
+            unsafe { api.result_free.unwrap()(&mut result) };
+        }
 
+        let callback = acquired
+            .admission
+            .enter_callback()
+            .expect("synthetic active callback");
+        for (operation_code, status, kind) in [
+            (
+                MERMAN_NATIVE_OPERATION_NONE,
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                MERMAN_NATIVE_ERROR_KIND_GENERIC,
+            ),
+            (
+                i32::MAX,
+                MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+                MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION,
+            ),
+            (
+                MERMAN_NATIVE_OPERATION_SEMANTIC_JSON,
+                MERMAN_NATIVE_STATUS_REENTRANT_CALL,
+                MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL,
+            ),
+        ] {
+            let request = native_request(operation_code, b"flowchart TD\nA --> B");
+            let mut result = native_result();
+            assert_eq!(
+                unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+                status
+            );
+            assert_eq!(result.status, status);
+            assert_eq!(result_json(&result)["kind"], kind);
+            unsafe { api.result_free.unwrap()(&mut result) };
+        }
+
+        drop(callback);
         drop(operation);
         assert_eq!(
             unsafe { api.engine_try_close.unwrap()(token) },

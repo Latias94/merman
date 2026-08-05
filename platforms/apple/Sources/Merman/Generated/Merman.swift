@@ -627,9 +627,9 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func analysisFactsJson(source: String, optionsJson: String?) throws  -> String
 
-    func analyzeDocumentFactsJson(source: String, optionsJson: String?, uri: String) throws  -> String
+    func analyzeDocumentFactsJson(source: String, uri: String, optionsJson: String?) throws  -> String
 
-    func analyzeDocumentJson(source: String, optionsJson: String?, uri: String) throws  -> String
+    func analyzeDocumentJson(source: String, uri: String, optionsJson: String?) throws  -> String
 
     func analyzeJson(source: String, optionsJson: String?) throws  -> String
 
@@ -770,26 +770,26 @@ open func analysisFactsJson(source: String, optionsJson: String?)throws  -> Stri
 })
 }
 
-open func analyzeDocumentFactsJson(source: String, optionsJson: String?, uri: String)throws  -> String  {
+open func analyzeDocumentFactsJson(source: String, uri: String, optionsJson: String?)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_merman_analyze_document_facts_json(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(source),
-        FfiConverterOptionString.lower(optionsJson),
-        FfiConverterString.lower(uri),uniffiCallStatus
+        FfiConverterString.lower(uri),
+        FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
     )
 })
 }
 
-open func analyzeDocumentJson(source: String, optionsJson: String?, uri: String)throws  -> String  {
+open func analyzeDocumentJson(source: String, uri: String, optionsJson: String?)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_merman_analyze_document_json(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(source),
-        FfiConverterOptionString.lower(optionsJson),
-        FfiConverterString.lower(uri),uniffiCallStatus
+        FfiConverterString.lower(uri),
+        FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
     )
 })
 }
@@ -1124,9 +1124,9 @@ public protocol MermanEngineProtocol: AnyObject, Sendable {
 
     func analysisFactsJson(source: String, optionsJson: String?) throws  -> String
 
-    func analyzeDocumentFactsJson(source: String, optionsJson: String?, uri: String) throws  -> String
+    func analyzeDocumentFactsJson(source: String, uri: String, optionsJson: String?) throws  -> String
 
-    func analyzeDocumentJson(source: String, optionsJson: String?, uri: String) throws  -> String
+    func analyzeDocumentJson(source: String, uri: String, optionsJson: String?) throws  -> String
 
     func analyzeJson(source: String, optionsJson: String?) throws  -> String
 
@@ -1250,26 +1250,26 @@ open func analysisFactsJson(source: String, optionsJson: String?)throws  -> Stri
 })
 }
 
-open func analyzeDocumentFactsJson(source: String, optionsJson: String?, uri: String)throws  -> String  {
+open func analyzeDocumentFactsJson(source: String, uri: String, optionsJson: String?)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_mermanengine_analyze_document_facts_json(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(source),
-        FfiConverterOptionString.lower(optionsJson),
-        FfiConverterString.lower(uri),uniffiCallStatus
+        FfiConverterString.lower(uri),
+        FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
     )
 })
 }
 
-open func analyzeDocumentJson(source: String, optionsJson: String?, uri: String)throws  -> String  {
+open func analyzeDocumentJson(source: String, uri: String, optionsJson: String?)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_mermanengine_analyze_document_json(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(source),
-        FfiConverterOptionString.lower(optionsJson),
-        FfiConverterString.lower(uri),uniffiCallStatus
+        FfiConverterString.lower(uri),
+        FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
     )
 })
 }
@@ -4597,10 +4597,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_analysis_facts_json() != 34597) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_analyze_document_facts_json() != 32520) {
+    if (uniffi_merman_uniffi_checksum_method_merman_analyze_document_facts_json() != 10429) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_analyze_document_json() != 34287) {
+    if (uniffi_merman_uniffi_checksum_method_merman_analyze_document_json() != 36597) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_analyze_json() != 55557) {
@@ -4681,10 +4681,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_mermanengine_analysis_facts_json() != 23426) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_mermanengine_analyze_document_facts_json() != 21106) {
+    if (uniffi_merman_uniffi_checksum_method_mermanengine_analyze_document_facts_json() != 5641) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_mermanengine_analyze_document_json() != 7557) {
+    if (uniffi_merman_uniffi_checksum_method_mermanengine_analyze_document_json() != 64746) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_analyze_json() != 23169) {

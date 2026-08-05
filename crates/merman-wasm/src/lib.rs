@@ -6,9 +6,8 @@
 //! classification are delegated to `merman-bindings-core`.
 
 use merman_bindings_core::{
-    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingTransportKey,
-    CapabilityKey, OperationKey, RuntimeCatalog, RuntimePolicyExposure, TargetKey,
-    TransportCompiledExtensionKey, ValidatedArtifactContract,
+    BindingError, BindingOperationRequest, RuntimeCatalog, TransportCompiledExtensionKey,
+    ValidatedArtifactContract, web_artifact_contract,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -41,50 +40,12 @@ const WASM_TRANSPORT_EXTENSIONS: &[TransportCompiledExtensionKey] = &[
     #[cfg(feature = "editor")]
     TransportCompiledExtensionKey::Editor,
 ];
-const WASM_OPERATIONS: &[OperationKey] = &[
-    #[cfg(feature = "analysis")]
-    OperationKey::AnalysisFactsJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::AnalysisJson,
-    #[cfg(feature = "ascii")]
-    OperationKey::Ascii,
-    #[cfg(feature = "analysis")]
-    OperationKey::DocumentAnalysisFactsJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::DocumentAnalysisJson,
-    #[cfg(feature = "svg")]
-    OperationKey::LayoutJson,
-    OperationKey::SemanticJson,
-    #[cfg(feature = "svg")]
-    OperationKey::Svg,
-    #[cfg(feature = "svg")]
-    OperationKey::SvgPlanJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::ValidationJson,
-];
-const WASM_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
-    #[cfg(feature = "editor")]
-    CapabilityKey::Editor,
-    #[cfg(feature = "layout-cytoscape")]
-    CapabilityKey::LayoutCytoscape,
-    #[cfg(feature = "layout-elk")]
-    CapabilityKey::LayoutElk,
-    #[cfg(feature = "math")]
-    CapabilityKey::Math,
-];
 const WASM_CONSTRUCTOR_SERVICES: &[merman_bindings_core::ConstructorServiceKey] = &[
     #[cfg(all(feature = "svg", target_arch = "wasm32"))]
     merman_bindings_core::ConstructorServiceKey::HostTextMeasurement,
 ];
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
-    ArtifactContractSpec::new(TargetKey::Web, BindingTransportKey::Web)
-        .with_operations(WASM_OPERATIONS)
-        .with_supplemental_capabilities(WASM_SUPPLEMENTAL_CAPABILITIES)
-        .with_all_available_metadata()
-        .with_constructor_services(WASM_CONSTRUCTOR_SERVICES)
-        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
-        .with_transport_extensions(WASM_TRANSPORT_EXTENSIONS)
-        .materialize();
+    web_artifact_contract(WASM_CONSTRUCTOR_SERVICES, WASM_TRANSPORT_EXTENSIONS);
 
 fn wasm_artifact_contract() -> &'static ValidatedArtifactContract {
     &ARTIFACT_CONTRACT
@@ -793,8 +754,8 @@ mod tests {
         let value: Value = serde_json::from_slice(
             &merman_bindings_core::analyze_document_json(
                 b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
-                b"",
                 b"file:///tmp/example.md",
+                b"",
             )
             .unwrap(),
         )
@@ -837,8 +798,8 @@ mod tests {
         let value: Value = serde_json::from_slice(
             &merman_bindings_core::analyze_document_facts_json(
                 b"before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
-                b"",
                 b"file:///tmp/example.md",
+                b"",
             )
             .unwrap(),
         )

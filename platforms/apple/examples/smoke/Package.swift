@@ -8,7 +8,7 @@ let package = Package(
         .macOS(.v12),
     ],
     dependencies: [
-        .package(path: "../../../.."),
+        .package(name: "Merman", path: "../../../.."),
     ],
     targets: [
         .executableTarget(

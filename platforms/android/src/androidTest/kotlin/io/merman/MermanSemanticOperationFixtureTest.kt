@@ -21,7 +21,7 @@ class MermanSemanticOperationFixtureTest {
 
         for ((index, fixture) in loadFixtures(fixtureJson).withIndex()) {
             val result = runCatching {
-                MermanEngine.execute(
+                Merman.execute(
                     operationId = fixture.operationId,
                     source = fixture.source,
                     optionsJson = fixture.optionsJson,
@@ -68,8 +68,7 @@ class MermanSemanticOperationFixtureTest {
                     label
                 }
                 "metadata-operation-id" -> check(
-                    JSONObject(result.metadataJson).getString("operation_id") ==
-                        fixture.operationId,
+                    result.metadata.operationId == fixture.operationId,
                 ) {
                     label
                 }
@@ -88,6 +87,37 @@ class MermanSemanticOperationFixtureTest {
                 "error-message-nonempty" -> check(!exception.message.isNullOrEmpty()) { label }
                 else -> error("$label has unsupported error invariant `$invariant`")
             }
+        }
+    }
+
+    @Test
+    fun consumesGeneratedThirteenOperationMatrix() {
+        val source = "flowchart TD\nA --> B"
+        val documentSource = "```mermaid\n$source\n```\n"
+        val expectations = MERMAN_BINDING_OPERATION_EXPECTATIONS
+
+        check(expectations.size == 13)
+        val runtimeOperationIds = JSONObject(Merman.runtimeCatalogJson())
+            .getJSONObject("capabilities")
+            .getJSONArray("operation_ids")
+            .strings()
+            .toSet()
+        check(runtimeOperationIds == expectations.map { it.operationId }.toSet())
+
+        for (expectation in expectations) {
+            val result = Merman.execute(
+                operationId = expectation.operationId,
+                source = if (expectation.requiresUri) documentSource else source,
+                uri = if (expectation.requiresUri) "file:///fixtures/generated-matrix.md" else null,
+            )
+            check(result.operationId == expectation.operationId) { expectation.operationId }
+            check(result.mediaType == expectation.mediaType) { expectation.operationId }
+            check(result.metadata.version == expectation.metadataSchemaVersion) {
+                expectation.operationId
+            }
+            check(result.metadata.operationId == expectation.operationId) { expectation.operationId }
+            check(result.metadata.mediaType == expectation.mediaType) { expectation.operationId }
+            check(result.metadata.byteLength == result.data.size.toLong()) { expectation.operationId }
         }
     }
 }

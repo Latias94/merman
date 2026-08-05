@@ -326,8 +326,8 @@ def main() -> None:
     document_json = json.loads(
         engine.analyze_document_json(
             document_source,
-            None,
             "file:///tmp/example.md",
+            None,
         )
     )
     if document_json["source"]["kind"] != "markdown" or not document_json["valid"]:
@@ -335,8 +335,8 @@ def main() -> None:
     document_facts_json = json.loads(
         engine.analyze_document_facts_json(
             document_source,
-            None,
             "file:///tmp/example.md",
+            None,
         )
     )
     if (
@@ -529,15 +529,15 @@ def main() -> None:
         raise RuntimeError("reusable request changed the constructor-owned runtime policy")
 
     reusable_document_json = json.loads(
-        reusable.analyze_document_json(document_source, None, "file:///tmp/example.md")
+        reusable.analyze_document_json(document_source, "file:///tmp/example.md", None)
     )
     if reusable_document_json["source"]["kind"] != "markdown":
         raise RuntimeError("reusable document analysis smoke failed")
     reusable_document_facts_json = json.loads(
         reusable.analyze_document_facts_json(
             document_source,
-            None,
             "file:///tmp/example.md",
+            None,
         )
     )
     if (

@@ -46,6 +46,53 @@ const RUNTIME_POLICY_CONFIGURED: u8 = 1 << 4;
 const TRANSPORT_EXTENSIONS_CONFIGURED: u8 = 1 << 5;
 const SYSTEM_ADAPTERS_CONFIGURED: u8 = 1 << 6;
 
+const NODE_STATIC_SVG_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
+const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+];
+const WEB_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson,
+    #[cfg(feature = "ascii")]
+    OperationKey::Ascii,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisJson,
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::ValidationJson,
+];
+const WEB_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
+
 impl ArtifactContractSpec {
     #[must_use]
     pub const fn new(target: TargetKey, transport: BindingTransportKey) -> Self {
@@ -166,7 +213,11 @@ impl ArtifactContractSpec {
         let operations = operation_slice_bits(self.operations);
         validate_operation_bits(operations, self.target, compiled_capabilities);
 
-        let supplemental_capabilities = capability_slice_bits(self.capabilities);
+        let declared_supplemental_capabilities = capability_slice_bits(self.capabilities);
+        if declared_supplemental_capabilities & extension_capabilities != 0 {
+            panic!("transport extension capability was selected more than once");
+        }
+        let supplemental_capabilities = declared_supplemental_capabilities | extension_capabilities;
         validate_supplemental_capability_bits(
             supplemental_capabilities,
             self.target,
@@ -253,6 +304,41 @@ impl ArtifactContractSpec {
             runtime_policy: self.runtime_policy,
         }
     }
+}
+
+/// Materializes the package-owned private Node static-SVG artifact contract.
+///
+/// Keeping this typed recipe in bindings-core gives the Rust transport and host-language
+/// generators one authority for capability, operation, metadata, option, and provider discovery.
+#[must_use]
+pub const fn node_static_svg_artifact_contract(target: TargetKey) -> ValidatedArtifactContract {
+    ArtifactContractSpec::new(target, crate::BindingTransportKey::Node)
+        .with_operations(NODE_STATIC_SVG_OPERATIONS)
+        .with_supplemental_capabilities(NODE_STATIC_SVG_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+        .materialize()
+}
+
+/// Materializes the shared Web/WASM artifact recipe.
+///
+/// Binding-core owns the feature-gated operation and supplemental capability selection. The
+/// transport crate supplies only constructor services it actually implements for the current
+/// target and typed transport extensions such as the editor facade. Extension capabilities are
+/// exposed by construction, so callers cannot compile and advertise them through separate lists.
+#[must_use]
+pub const fn web_artifact_contract(
+    constructor_services: &'static [ConstructorServiceKey],
+    transport_extensions: &'static [TransportCompiledExtensionKey],
+) -> ValidatedArtifactContract {
+    ArtifactContractSpec::new(TargetKey::Web, BindingTransportKey::Web)
+        .with_operations(WEB_OPERATIONS)
+        .with_supplemental_capabilities(WEB_SUPPLEMENTAL_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_constructor_services(constructor_services)
+        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+        .with_transport_extensions(transport_extensions)
+        .materialize()
 }
 
 const fn transport_extension_bits(extensions: &[TransportCompiledExtensionKey]) -> u64 {
@@ -790,13 +876,13 @@ impl ValidatedArtifactContract {
 
 static DEFAULT_ARTIFACT_CONTRACT: OnceLock<Arc<ValidatedArtifactContract>> = OnceLock::new();
 
-const DEFAULT_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
+const FULL_NATIVE_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
     #[cfg(feature = "svg")]
     ConstructorServiceKey::HostTextMeasurement,
     #[cfg(feature = "svg")]
     ConstructorServiceKey::IconRegistry,
 ];
-const DEFAULT_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
+const FULL_NATIVE_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
     #[cfg(feature = "system-clock")]
     CapabilityKey::SystemClock,
     #[cfg(feature = "system-random")]
@@ -804,7 +890,7 @@ const DEFAULT_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
     #[cfg(feature = "system-timezone")]
     CapabilityKey::SystemTimezone,
 ];
-const DEFAULT_OPERATIONS: &[OperationKey] = &[
+const FULL_NATIVE_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::AnalysisFactsJson,
     #[cfg(feature = "analysis")]
@@ -831,7 +917,7 @@ const DEFAULT_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::ValidationJson,
 ];
-const DEFAULT_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+const FULL_NATIVE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     #[cfg(feature = "layout-cytoscape")]
     CapabilityKey::LayoutCytoscape,
     #[cfg(feature = "layout-elk")]
@@ -842,15 +928,37 @@ const DEFAULT_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
 pub(crate) const DEFAULT_RUNTIME_POLICY: RuntimePolicyExposure =
     RuntimePolicyExposure::BindingOptions;
 
-pub(crate) const DEFAULT_ARTIFACT_SNAPSHOT: ValidatedArtifactContract =
-    ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::Rust)
-        .with_operations(DEFAULT_OPERATIONS)
-        .with_supplemental_capabilities(DEFAULT_SUPPLEMENTAL_CAPABILITIES)
+/// Materializes the shared full native SDK surface for one maintained native transport.
+///
+/// C, UniFFI, Android JNI, and the Rust facade intentionally expose the same compiled operation,
+/// metadata, option, constructor-service, and system-adapter selection. Keeping the recipe here
+/// prevents transport crates and host-language generators from growing parallel handwritten
+/// capability vocabularies.
+#[must_use]
+pub const fn full_native_artifact_contract(
+    transport: BindingTransportKey,
+) -> ValidatedArtifactContract {
+    match transport {
+        BindingTransportKey::AndroidJni
+        | BindingTransportKey::NativeC
+        | BindingTransportKey::Rust
+        | BindingTransportKey::UniFfi => {}
+        BindingTransportKey::Node | BindingTransportKey::Typst | BindingTransportKey::Web => {
+            panic!("transport is not a full native SDK facade")
+        }
+    }
+    ArtifactContractSpec::new(TargetKey::Native, transport)
+        .with_operations(FULL_NATIVE_OPERATIONS)
+        .with_supplemental_capabilities(FULL_NATIVE_SUPPLEMENTAL_CAPABILITIES)
         .with_all_available_metadata()
-        .with_constructor_services(DEFAULT_CONSTRUCTOR_SERVICES)
-        .with_system_adapters(DEFAULT_SYSTEM_ADAPTERS)
+        .with_constructor_services(FULL_NATIVE_CONSTRUCTOR_SERVICES)
+        .with_system_adapters(FULL_NATIVE_SYSTEM_ADAPTERS)
         .with_runtime_policy_exposure(DEFAULT_RUNTIME_POLICY)
-        .materialize();
+        .materialize()
+}
+
+pub(crate) const DEFAULT_ARTIFACT_SNAPSHOT: ValidatedArtifactContract =
+    full_native_artifact_contract(BindingTransportKey::Rust);
 
 pub(crate) fn default_artifact_contract() -> Arc<ValidatedArtifactContract> {
     Arc::clone(DEFAULT_ARTIFACT_CONTRACT.get_or_init(|| Arc::new(DEFAULT_ARTIFACT_SNAPSHOT)))

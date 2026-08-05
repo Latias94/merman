@@ -144,6 +144,8 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         "def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:",
         "def render_png_result(",
         "def analysis_facts_json(",
+        "def analyze_document_json(self, source: str,uri: str,options_json: typing.Optional[str]) -> str:",
+        "def analyze_document_facts_json(self, source: str,uri: str,options_json: typing.Optional[str]) -> str:",
         "def svg_plan_json(",
         "def close(self",
         "def from_packs(",
@@ -716,6 +718,8 @@ mod tests {
              def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
              def render_png_result(self):\n    pass\n\
              def analysis_facts_json(self):\n    pass\n\
+             def analyze_document_json(self, source: str,uri: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
+             def analyze_document_facts_json(self, source: str,uri: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
              def svg_plan_json(self):\n    pass\n\
              def close(self):\n    pass\n\
              def from_packs(cls):\n    pass\n";

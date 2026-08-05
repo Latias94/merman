@@ -6,9 +6,8 @@
 
 use crate::XtaskError;
 use merman_bindings_core::{
-    ArtifactContractSpec, BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract,
-    BindingTransportKey, OperationKey, RuntimeResourceContract, TargetKey,
-    binding_resource_contract,
+    BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract, RuntimeResourceContract,
+    binding_resource_contract, web_artifact_contract,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -23,6 +22,7 @@ const UNIFFI_RUST_OUTPUT: &str = "crates/merman-uniffi/src/generated/resource_co
 const WEB_OUTPUT: &str = "platforms/web/src/generated/resource-contract.ts";
 const ANDROID_OUTPUT: &str = "platforms/android/src/main/kotlin/io/merman/MermanResourceOptions.kt";
 const FLUTTER_OUTPUT: &str = "platforms/flutter/lib/src/generated/resource_options.dart";
+const SWIFT_OUTPUT: &str = "platforms/apple/Sources/Merman/Generated/MermanResourceContract.swift";
 // `generate_python_package` exclusively owns the package-local `_resource_options.py` copy.
 const UNIFFI_PYTHON_TEMPLATE_OUTPUT: &str = "crates/merman-uniffi/python/resource_options.py";
 const DART_RESERVED_WORDS: &[&str] = &[
@@ -128,6 +128,75 @@ const DART_OVERRIDE_FIXED_MEMBERS: &[&str] = &[
     "toString",
     "values",
 ];
+const SWIFT_RESERVED_WORDS: &[&str] = &[
+    "Any",
+    "Self",
+    "Type",
+    "Protocol",
+    "as",
+    "associatedtype",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "continue",
+    "default",
+    "defer",
+    "deinit",
+    "do",
+    "else",
+    "enum",
+    "extension",
+    "fallthrough",
+    "false",
+    "fileprivate",
+    "for",
+    "func",
+    "guard",
+    "if",
+    "import",
+    "in",
+    "init",
+    "inout",
+    "internal",
+    "is",
+    "let",
+    "nil",
+    "open",
+    "operator",
+    "private",
+    "protocol",
+    "public",
+    "repeat",
+    "rethrows",
+    "return",
+    "some",
+    "static",
+    "struct",
+    "subscript",
+    "super",
+    "switch",
+    "throw",
+    "throws",
+    "true",
+    "try",
+    "typealias",
+    "var",
+    "where",
+    "while",
+];
+const SWIFT_LIMIT_FIXED_MEMBERS: &[&str] = &[
+    "description",
+    "fromId",
+    "hashValue",
+    "id",
+    "isKnown",
+    "knownValues",
+    "metadata",
+    "minimumValue",
+    "overridable",
+    "phase",
+];
 const RUST_PASCAL_RESERVED_WORDS: &[&str] = &["Self"];
 #[derive(Clone, Copy)]
 struct ProjectionRules {
@@ -158,6 +227,13 @@ const DART_OVERRIDE_PROJECTION: ProjectionRules = ProjectionRules {
     project: camel_case,
     reserved_words: DART_RESERVED_WORDS,
     fixed_members: DART_OVERRIDE_FIXED_MEMBERS,
+};
+const SWIFT_LIMIT_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Swift",
+    namespace: "MermanResourceLimitId",
+    project: camel_case,
+    reserved_words: SWIFT_RESERVED_WORDS,
+    fixed_members: SWIFT_LIMIT_FIXED_MEMBERS,
 };
 const RUST_PROFILE_PROJECTION: ProjectionRules = ProjectionRules {
     language: "Rust",
@@ -318,6 +394,11 @@ fn validate_resource_projections(contract: &BindingResourceContract) -> Result<(
         DART_LIMIT_PROJECTION,
     )?;
     validate_projected_members(
+        contract.limits.iter().map(|limit| limit.stable_id),
+        "resource limit",
+        SWIFT_LIMIT_PROJECTION,
+    )?;
+    validate_projected_members(
         contract
             .limits
             .iter()
@@ -407,22 +488,8 @@ fn generated_preamble(comment: &str) -> String {
 }
 
 fn web_resource_contract() -> RuntimeResourceContract {
-    const WEB_OPERATIONS: &[OperationKey] = &[
-        OperationKey::AnalysisFactsJson,
-        OperationKey::AnalysisJson,
-        OperationKey::Ascii,
-        OperationKey::DocumentAnalysisFactsJson,
-        OperationKey::DocumentAnalysisJson,
-        OperationKey::LayoutJson,
-        OperationKey::SemanticJson,
-        OperationKey::Svg,
-        OperationKey::SvgPlanJson,
-        OperationKey::ValidationJson,
-    ];
     const WEB_CONTRACT: merman_bindings_core::ValidatedArtifactContract =
-        ArtifactContractSpec::new(TargetKey::Web, BindingTransportKey::Web)
-            .with_operations(WEB_OPERATIONS)
-            .materialize();
+        web_artifact_contract(&[], &[]);
 
     WEB_CONTRACT.runtime_catalog(0).resources
 }
@@ -844,6 +911,76 @@ fn render_python(contract: &BindingResourceContract) -> String {
     out
 }
 
+fn render_swift(contract: &BindingResourceContract) -> String {
+    let limits = &contract.limits;
+    let mut out = generated_preamble("//");
+    out.push_str(
+        r#"public struct MermanResourceLimitMetadata: Hashable, Sendable {
+    public let id: String
+    public let phase: String
+    public let overridable: Bool
+    public let minimumValue: UInt64
+}
+
+/// Open, string-backed runtime resource-limit identifier.
+///
+/// Known constants and metadata are generated from the Rust descriptor authority. Unknown future
+/// identifiers remain representable through `fromId(_:)`.
+public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible {
+    public let id: String
+
+    public init(_ id: String) {
+        precondition(!id.isEmpty, "Resource limit id must not be empty")
+        self.id = id
+    }
+
+    public static func fromId(_ id: String) -> MermanResourceLimitId {
+        precondition(!id.isEmpty, "Resource limit id must not be empty")
+        return knownById[id] ?? MermanResourceLimitId(id)
+    }
+
+    public var metadata: MermanResourceLimitMetadata? {
+        Self.metadataById[id]
+    }
+
+    public var phase: String? { metadata?.phase }
+    public var overridable: Bool? { metadata?.overridable }
+    public var minimumValue: UInt64? { metadata?.minimumValue }
+    public var isKnown: Bool { metadata != nil }
+    public var description: String { id }
+
+"#,
+    );
+    for limit in limits {
+        writeln!(
+            out,
+            "    public static let {} = MermanResourceLimitId({:?})",
+            camel_case(limit.stable_id),
+            limit.stable_id,
+        )
+        .unwrap();
+    }
+    out.push_str("\n    public static let knownValues: [MermanResourceLimitId] = [\n");
+    for limit in limits {
+        writeln!(out, "        .{},", camel_case(limit.stable_id)).unwrap();
+    }
+    out.push_str("    ]\n\n    private static let knownById: [String: MermanResourceLimitId] =\n        Dictionary(uniqueKeysWithValues: knownValues.map { ($0.id, $0) })\n\n    private static let metadataById: [String: MermanResourceLimitMetadata] = [\n");
+    for limit in limits {
+        writeln!(
+            out,
+            "        {:?}: MermanResourceLimitMetadata(id: {:?}, phase: {:?}, overridable: {}, minimumValue: {}),",
+            limit.stable_id,
+            limit.stable_id,
+            limit.phase,
+            limit.overridable,
+            limit.minimum_value,
+        )
+        .unwrap();
+    }
+    out.push_str("    ]\n}\n");
+    out
+}
+
 fn render_uniffi(contract: &BindingResourceContract) -> String {
     let profiles = &contract.profiles;
     let limits = &contract.limits;
@@ -907,6 +1044,7 @@ fn generated_artifacts() -> Result<Vec<(PathBuf, String)>, XtaskError> {
             PathBuf::from(FLUTTER_OUTPUT),
             render_dart(&binding_contract),
         ),
+        (PathBuf::from(SWIFT_OUTPUT), render_swift(&binding_contract)),
         (PathBuf::from(UNIFFI_PYTHON_TEMPLATE_OUTPUT), python),
     ])
 }
@@ -1002,6 +1140,13 @@ mod tests {
         assert!(python.contains("class ResourceProfile(str, Enum):"));
         assert!(python.contains("class ResourceOverrideId(str, Enum):"));
 
+        let swift = render_swift(&binding);
+        assert!(swift.contains("public struct MermanResourceLimitId"));
+        assert!(swift.contains("public static let knownValues: [MermanResourceLimitId]"));
+        assert!(swift.contains("public static func fromId(_ id: String)"));
+        assert!(swift.contains("public var metadata: MermanResourceLimitMetadata?"));
+        assert!(!swift.contains("enum MermanResourceLimitId"));
+
         let typescript = render_typescript(&web);
         assert!(typescript.contains("export type ResourceLimitId = string;"));
         assert!(typescript.contains("export const RESOURCE_LIMIT_METADATA:"));
@@ -1035,6 +1180,7 @@ mod tests {
                 PathBuf::from(WEB_OUTPUT),
                 PathBuf::from(ANDROID_OUTPUT),
                 PathBuf::from(FLUTTER_OUTPUT),
+                PathBuf::from(SWIFT_OUTPUT),
                 PathBuf::from(UNIFFI_PYTHON_TEMPLATE_OUTPUT),
             ]
         );

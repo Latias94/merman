@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:merman/merman.dart';
+import 'package:merman/src/generated/binding_contract.dart' as binding;
 
 final class _SemanticOperationFixture {
   const _SemanticOperationFixture({
@@ -29,14 +30,57 @@ void main(List<String> args) {
   }
   final fixtures = _loadFixtures();
   final merman = args.isEmpty ? Merman.open() : Merman.openPath(args.single);
-  try {
-    for (var index = 0; index < fixtures.length; index += 1) {
-      _runFixture(merman, fixtures[index], index);
-    }
-  } finally {
-    merman.close();
+  for (var index = 0; index < fixtures.length; index += 1) {
+    _runFixture(merman, fixtures[index], index);
   }
+  _runGeneratedOperationMatrix(merman);
   print('Shared semantic operation fixture tests passed');
+}
+
+void _runGeneratedOperationMatrix(Merman merman) {
+  final generatedIds = binding.mermanBindingOperationExpectations
+      .map((expectation) => expectation.operationId)
+      .toSet();
+  final sdkIds = MermanOperation.knownValues
+      .map((operation) => operation.operationId)
+      .toSet();
+  _expect(
+    generatedIds.length == 13 &&
+        generatedIds.length == sdkIds.length &&
+        generatedIds.containsAll(sdkIds) &&
+        sdkIds.containsAll(generatedIds),
+    'generated Dart invocation mapping must cover the shared 13-operation matrix',
+  );
+
+  const diagramSource = 'flowchart TD\nA --> B';
+  const documentSource = 'Intro\n```mermaid\nflowchart TD\nA --> B\n```\n';
+  for (final expectation in binding.mermanBindingOperationExpectations) {
+    final operation = MermanOperation.fromOperationId(expectation.operationId);
+    try {
+      final result = merman.execute(
+        operation,
+        expectation.requiresUri ? documentSource : diagramSource,
+        uri: expectation.requiresUri ? 'file:///tmp/matrix.md' : null,
+      );
+      _expect(
+        merman.runtimeCatalog.supportsOperation(expectation.operationId),
+        '`${expectation.operationId}` succeeded without runtime advertisement',
+      );
+      _expect(
+        result.mediaType == expectation.mediaType &&
+            result.metadata.operationId == expectation.operationId &&
+            result.metadata.version == expectation.metadataSchemaVersion,
+        '`${expectation.operationId}` violated the generated operation contract',
+      );
+    } on MermanMissingCapabilityException catch (error) {
+      _expect(
+        !merman.runtimeCatalog.supportsOperation(expectation.operationId) &&
+            expectation.availabilityCapabilityId != null &&
+            error.capabilityId == expectation.availabilityCapabilityId,
+        '`${expectation.operationId}` returned the wrong unavailable contract',
+      );
+    }
+  }
 }
 
 void _runFixture(
@@ -108,7 +152,7 @@ void _assertSuccessInvariants(
         );
       case 'metadata-operation-id':
         _expect(
-          result.metadata['operation_id'] == fixture.operationId,
+          result.metadata.operationId == fixture.operationId,
           '$label metadata returned the wrong operation',
         );
       default:

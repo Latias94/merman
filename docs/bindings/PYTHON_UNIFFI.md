@@ -54,44 +54,45 @@ cargo run -p merman-uniffi --no-default-features --features 'svg,analysis,ascii,
 The package re-exports the generated UniFFI API:
 
 ```python
+import json
 import merman
 
-engine = merman.MermanEngine()
+api = merman.Merman()
 merman.require_text_measurement_protocol_version(
     merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
 )
-print(engine.package_version())
-assert engine.binding_api_version() == 3
-catalog = merman.get_runtime_catalog(engine)
+print(api.package_version())
+assert api.binding_api_version() == 3
+catalog = merman.get_runtime_catalog(api)
 capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
-assert catalog["transport_api_version"] == engine.binding_api_version()
+assert catalog["transport_api_version"] == api.binding_api_version()
 assert "svg" in capabilities["capability_ids"]
 
-svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
-png = engine.render_png("flowchart TD\nA[Hello] --> B[World]", None)
-jpeg = engine.render_jpeg("flowchart TD\nA[Hello] --> B[World]", None)
-pdf = engine.render_pdf("flowchart TD\nA[Hello] --> B[World]", None)
-ascii_text = engine.render_ascii("flowchart TD\nA[Hello] --> B[World]", None)
-semantic_json = engine.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
-layout_json = engine.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
-document_json = engine.analyze_document_json(
+svg = api.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
+png = api.render_png("flowchart TD\nA[Hello] --> B[World]", None)
+jpeg = api.render_jpeg("flowchart TD\nA[Hello] --> B[World]", None)
+pdf = api.render_pdf("flowchart TD\nA[Hello] --> B[World]", None)
+ascii_text = api.render_ascii("flowchart TD\nA[Hello] --> B[World]", None)
+semantic_json = api.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
+layout_json = api.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
+document_json = api.analyze_document_json(
     "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
-    None,
     "file:///tmp/example.md",
+    None,
 )
-document_facts_json = engine.analyze_document_facts_json(
+document_facts_json = api.analyze_document_facts_json(
     "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
-    None,
     "file:///tmp/example.md",
+    None,
 )
-validation = engine.validate("flowchart TD\nA[Hello] --> B[World]", None)
-diagrams = engine.supported_diagrams()
-ascii_capabilities = engine.ascii_capabilities()
-themes = engine.supported_themes()
-presentation_catalog = json.loads(engine.presentation_catalog_json())
-family_capabilities = engine.diagram_family_capabilities()
-lint_rules = engine.lint_rule_catalog()
+validation = api.validate("flowchart TD\nA[Hello] --> B[World]", None)
+diagrams = api.supported_diagrams()
+ascii_capabilities = api.ascii_capabilities()
+themes = api.supported_themes()
+presentation_catalog = json.loads(api.presentation_catalog_json())
+family_capabilities = api.diagram_family_capabilities()
+lint_rules = api.lint_rule_catalog()
 
 class PreviewMeasurer(merman.MermanTextMeasurer):
     def measure(self, request):
@@ -99,18 +100,20 @@ class PreviewMeasurer(merman.MermanTextMeasurer):
         # Merman to use its operation-specific vendored fallback.
         return None
 
-reusable = engine.reusable_engine_with_text_measurer(None, PreviewMeasurer())
-svg_with_host_metrics = reusable.render_svg(
-    "flowchart TD\nA[Hello] --> B[World]",
-    None,
-)
-
-reusable = engine.reusable_engine(None)
-reusable_document_json = reusable.analyze_document_json(
-    "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
-    None,
-    "file:///tmp/example.md",
-)
+services = merman.MermanEngineServices(None, PreviewMeasurer())
+engine = merman.MermanEngine(None, services)
+try:
+    svg_with_host_metrics = engine.render_svg(
+        "flowchart TD\nA[Hello] --> B[World]",
+        None,
+    )
+    reusable_document_json = engine.analyze_document_json(
+        "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
+        "file:///tmp/example.md",
+        None,
+    )
+finally:
+    engine.close()
 ```
 
 Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the
@@ -122,7 +125,7 @@ parse the message to distinguish these cases.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 `ResourceOptionsBuilder` emits Options JSON schema `2`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
-`MermanEngine.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
+`Merman.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
 references, for editor settings, diagnostic explanations, or LSP rule configuration.
 
 The direct UniFFI binding API is `3`, independently versioned from the native C ABI and the
@@ -137,11 +140,12 @@ The Python UniFFI package uses Merman's built-in headless text measurer by defau
 right default for CLI tools, documentation generation, tests, and server-side batch rendering
 because it is deterministic and does not require GUI or browser dependencies.
 
-Python GUI or WebView hosts that need label geometry to match their own font stack use
-`MermanEngine.reusable_engine_with_text_measurer` when constructing a reusable engine. The callback
-is immutable for that engine; construct another engine to change it or return to the built-in
-measurer. Inspect `request.phase` for the routing stage and `request.operation` for the exact
-platform primitive. Return a record tagged with the matching
+Python GUI or WebView hosts that need label geometry to match their own font stack place a
+`MermanTextMeasurer` in `MermanEngineServices` and pass that value to the direct
+`MermanEngine(options_json, services)` constructor. The callback is immutable for that engine;
+construct another engine to change it or return to the built-in measurer. Inspect `request.phase`
+for the routing stage and `request.operation` for the exact platform primitive. Return a record
+tagged with the matching
 `MermanTextMeasurementResultKind`: metrics, length, horizontal extents, or wrapped metrics with raw
 width. `None`, wrong-kind or invalid results, and Python exceptions reported through UniFFI's
 generated callback trampoline use the operation's vendored fallback for that request instead of
@@ -156,11 +160,11 @@ Text-measurement protocol 1 exposes 19 operations with contiguous codes 0 throug
 interchangeable and both may return a finite negative value. `RAW_B_BOX_HEIGHT` returns the
 non-negative height from a direct raw SVG `<text>.getBBox()` probe.
 
-The generated callback method is `measure(self, request)`, not `measure_text`. One-shot engine
-methods receive `options_json` explicitly (`engine.render_svg(source, options_json)`). Generic
+The generated callback method is `measure(self, request)`, not `measure_text`. One-shot facade
+methods receive `options_json` explicitly (`api.render_svg(source, options_json)`). Generic
 operations put the same value in `MermanOperationRequest.options_json` and call
-`engine.execute(request)`. A reusable engine accepts baseline options at construction and
-request-local overrides on each operation, such as `reusable.render_svg(source, options_json)`;
+`api.execute(request)`. A reusable engine accepts baseline options at construction and
+request-local overrides on each operation, such as `engine.render_svg(source, options_json)`;
 those overrides are deeply merged without changing the baseline or its runtime policy. Do not
 estimate width from character count in production; return `None` when the host cannot reproduce
 the requested operation with the display surface's real font API.
@@ -168,8 +172,23 @@ the requested operation with the display surface's real font API.
 Callback-free reusable engines admit concurrent calls. A callback engine serializes operation
 admission and raises typed `BUSY` for a competing call. Same-engine entry while the callback is
 active raises typed `REENTRANT_CALL`, including an attempted call dispatched from the callback to
-another thread. UniFFI object reference counting owns the callback lifetime; there is no separate
-close or callback-mutation lifecycle.
+another thread. A close from the callback also raises `REENTRANT_CALL` and preserves the complete
+engine for retry. `close()` is explicit and idempotent; always call it for a callback-owning engine
+because the callback may capture the engine and form a reference cycle. There is no callback
+mutation lifecycle.
+
+## Migrating From The Previous Prerelease API
+
+- Replace the old one-shot `MermanEngine()` with `Merman()`.
+- Delete `MermanReusableEngine`, `reusable_engine(...)`, and
+  `reusable_engine_with_text_measurer(...)` usage. Construct `MermanEngine(options_json, services)`
+  directly.
+- Put text measurement and immutable icon registries in `MermanEngineServices`.
+- Call `close()` deterministically; busy and re-entrant failures retain the engine for retry.
+- Use the result-returning binary methods when callers need typed operation metadata or the
+  effective output plan.
+- Preserve unknown runtime discovery IDs instead of treating generated known constants as a closed
+  enum.
 
 ## Verification
 
@@ -183,16 +202,10 @@ cargo nextest run -p merman-uniffi --no-default-features \
 The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
 it, and runs the repository's canonical
 [`platforms/python/merman/examples/smoke.py`](../../platforms/python/merman/examples/smoke.py)
-against that fresh package. The executable example calls `MermanEngine.render_svg`,
-`MermanEngine.render_ascii`, `MermanEngine.parse_json`, `MermanEngine.layout_json`,
-`MermanEngine.analyze_document_json`, `MermanEngine.analyze_document_facts_json`,
-`MermanEngine.validate`, metadata methods, `MermanEngine.ascii_capabilities`,
-`MermanEngine.diagram_family_capabilities`,
-`MermanEngine.lint_rule_catalog`, `MermanEngine.configurable_lint_rule_catalog`,
-`MermanEngine.reusable_engine_with_text_measurer`,
-`MermanReusableEngine.analyze_document_json`,
-`MermanReusableEngine.analyze_document_facts_json`, `MermanEngine.binding_api_version`,
-`MermanEngine.runtime_catalog_json`, and `MermanEngine.package_version`, and checks
+against that fresh package. The executable example calls the `Merman` one-shot, metadata, and
+runtime-catalog methods; constructs `MermanEngine(options_json, services)` directly; exercises
+generic and named operations, binary result metadata, icon registry reuse, callback-backed
+execution, deterministic close, and post-close failure; and checks
 `MermanError.Binding` fields for invalid options JSON.
 The generated-package smoke also asserts direct UniFFI binding API 3, flat runtime catalog schema 1,
 local runtime ID relations, SVG/PNG/JPEG/PDF output signatures, all 19 operation

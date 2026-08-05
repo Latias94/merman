@@ -11,12 +11,37 @@ const STATIC_EMPTY_CONTRACT: ValidatedArtifactContract =
 const STATIC_WEB_EDITOR_CONTRACT: ValidatedArtifactContract =
     ArtifactContractSpec::new(TargetKey::Web, crate::BindingTransportKey::Web)
         .with_operations(&[OperationKey::SemanticJson])
-        .with_supplemental_capabilities(&[CapabilityKey::Editor])
         .with_transport_extensions(&[TransportCompiledExtensionKey::Editor])
         .materialize();
 
 fn panics(action: impl FnOnce()) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(action)).is_err()
+}
+
+#[test]
+fn full_native_recipe_is_identical_across_public_native_facades() {
+    let rust = full_native_artifact_contract(crate::BindingTransportKey::Rust);
+
+    for transport in [
+        crate::BindingTransportKey::AndroidJni,
+        crate::BindingTransportKey::NativeC,
+        crate::BindingTransportKey::UniFfi,
+    ] {
+        assert_eq!(full_native_artifact_contract(transport), rust);
+    }
+}
+
+#[test]
+fn full_native_recipe_rejects_private_or_non_native_facades() {
+    for transport in [
+        crate::BindingTransportKey::Node,
+        crate::BindingTransportKey::Typst,
+        crate::BindingTransportKey::Web,
+    ] {
+        assert!(panics(|| {
+            let _ = full_native_artifact_contract(transport);
+        }));
+    }
 }
 
 #[test]
@@ -269,7 +294,7 @@ fn full_default_snapshot_matches_the_feature_owned_declaration() {
         DEFAULT_ARTIFACT_SNAPSHOT
             .operation_keys()
             .collect::<Vec<_>>(),
-        DEFAULT_OPERATIONS
+        FULL_NATIVE_OPERATIONS
     );
     assert_eq!(
         DEFAULT_ARTIFACT_SNAPSHOT
@@ -281,10 +306,10 @@ fn full_default_snapshot_matches_the_feature_owned_declaration() {
         DEFAULT_ARTIFACT_SNAPSHOT
             .constructor_service_keys()
             .collect::<Vec<_>>(),
-        DEFAULT_CONSTRUCTOR_SERVICES
+        FULL_NATIVE_CONSTRUCTOR_SERVICES
     );
-    let expected_system_adapters = if DEFAULT_SYSTEM_ADAPTERS.len() == 3 {
-        DEFAULT_SYSTEM_ADAPTERS
+    let expected_system_adapters = if FULL_NATIVE_SYSTEM_ADAPTERS.len() == 3 {
+        FULL_NATIVE_SYSTEM_ADAPTERS
     } else {
         &[]
     };
@@ -315,7 +340,7 @@ fn full_default_snapshot_matches_the_feature_owned_declaration() {
         expected_metadata
     );
 
-    for operation in DEFAULT_OPERATIONS {
+    for operation in FULL_NATIVE_OPERATIONS {
         assert!(
             operation
                 .spec()
@@ -357,6 +382,41 @@ fn typed_transport_extensions_are_explicit_and_exact() {
             .with_supplemental_capabilities(&[CapabilityKey::Editor])
             .materialize();
     }));
+    assert!(panics(|| {
+        let _ = ArtifactContractSpec::new(TargetKey::Web, crate::BindingTransportKey::Web)
+            .with_operations(&[OperationKey::SemanticJson])
+            .with_supplemental_capabilities(&[CapabilityKey::Editor])
+            .with_transport_extensions(&[TransportCompiledExtensionKey::Editor])
+            .materialize();
+    }));
+}
+
+#[test]
+fn shared_web_recipe_owns_operations_and_feature_capabilities() {
+    let contract = web_artifact_contract(&[], &[]);
+    assert_eq!(contract.target(), TargetKey::Web);
+    assert_eq!(
+        contract.operation_keys().collect::<Vec<_>>(),
+        WEB_OPERATIONS
+    );
+    assert_eq!(
+        contract.capability_keys().collect::<Vec<_>>(),
+        ArtifactContractSpec::new(TargetKey::Web, crate::BindingTransportKey::Web)
+            .with_operations(WEB_OPERATIONS)
+            .with_supplemental_capabilities(WEB_SUPPLEMENTAL_CAPABILITIES)
+            .with_all_available_metadata()
+            .with_constructor_services(&[])
+            .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+            .with_transport_extensions(&[])
+            .materialize()
+            .capability_keys()
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        web_artifact_contract(&[], &[TransportCompiledExtensionKey::Editor])
+            .capability_keys()
+            .any(|capability| capability == CapabilityKey::Editor)
+    );
 }
 
 #[test]

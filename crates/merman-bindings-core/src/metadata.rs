@@ -451,33 +451,35 @@ fn runtime_constructor_service_contracts_for(
 ) -> Vec<RuntimeConstructorServiceContract> {
     artifact_contract
         .constructor_service_keys()
-        .map(|service| {
-            let spec = service.spec();
-            RuntimeConstructorServiceContract {
-                id: service.id(),
-                provided_text_measurement_provider_ids: stable_ids(
-                    crate::TextMeasurementProviderKey::ALL
-                        .iter()
-                        .copied()
-                        .filter(|provider| {
-                            matches!(
-                                provider.source(),
-                                crate::TextMeasurementProviderSource::ConstructorService(owner)
-                                    if owner == service
-                            )
-                        }),
-                    crate::TextMeasurementProviderKey::id,
-                ),
-                resource_limits: runtime_constructor_resource_limits(spec.resource_catalog()),
-            }
+        .map(|service| RuntimeConstructorServiceContract {
+            id: service.id(),
+            provided_text_measurement_provider_ids: stable_ids(
+                crate::TextMeasurementProviderKey::ALL
+                    .iter()
+                    .copied()
+                    .filter(|provider| {
+                        matches!(
+                            provider.source(),
+                            crate::TextMeasurementProviderSource::ConstructorService(owner)
+                                if owner == service
+                        )
+                    }),
+                crate::TextMeasurementProviderKey::id,
+            ),
+            resource_limits: runtime_constructor_resource_limits(service),
         })
         .collect()
 }
 
-fn runtime_constructor_resource_limits(
-    resource_catalog: Option<crate::service_contract::ConstructorServiceResourceCatalog>,
+/// Returns the descriptor-owned resource ceilings for one constructor service.
+///
+/// Runtime catalogs and generated SDK projections share this function so service ownership and
+/// resource values cannot drift between the producer and its host-language contracts.
+#[must_use]
+pub fn runtime_constructor_resource_limits(
+    service: crate::ConstructorServiceKey,
 ) -> Vec<RuntimeConstructorResourceLimit> {
-    match resource_catalog {
+    match service.spec().resource_catalog() {
         None => Vec::new(),
         Some(crate::service_contract::ConstructorServiceResourceCatalog::IconRegistry) => {
             #[cfg(feature = "svg")]

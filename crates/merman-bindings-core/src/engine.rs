@@ -1086,6 +1086,25 @@ mod tests {
         assert_eq!(registry.len(), 1);
     }
 
+    #[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
+    #[test]
+    fn empty_icon_registry_matches_no_service_svg_output() {
+        let registry = crate::build_icon_registry(std::iter::empty::<crate::IconPack<'_>>())
+            .expect("an empty registry is a valid immutable value");
+        let with_empty_registry = BindingEngine::from_options_and_services(
+            b"",
+            BindingEngineServices::new().with_icon_registry(registry),
+        )
+        .unwrap();
+        let without_services = BindingEngine::new(b"").unwrap();
+        let source = b"architecture-beta\n  service api(server)[API]";
+
+        assert_eq!(
+            with_empty_registry.render_svg(source).unwrap(),
+            without_services.render_svg(source).unwrap()
+        );
+    }
+
     #[test]
     fn semantic_parse_accepts_exact_semantic_model_item_budget() {
         let engine = BindingEngine::new(

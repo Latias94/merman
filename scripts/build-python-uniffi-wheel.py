@@ -184,7 +184,10 @@ def assert_shared_semantic_operation_fixtures(engine):
             elif invariant == "svg-root":
                 assert result.data.lstrip().startswith(b"<svg"), label
             elif invariant == "metadata-operation-id":
-                metadata = json.loads(result.metadata_json)
+                assert result.metadata.operation_id == case["operation_id"], label
+                assert result.metadata.media_type == result.media_type, label
+                assert result.metadata.byte_length == len(result.data), label
+                metadata = json.loads(result.metadata.raw_json)
                 assert metadata["operation_id"] == case["operation_id"], label
             else:
                 raise AssertionError(f"{label} has unsupported invariant `{invariant}`")
@@ -318,7 +321,7 @@ middle_y_offset = measurement_result(
 assert middle_y_offset.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
 assert middle_y_offset.length < 0.0
 
-engine = merman.MermanEngine()
+engine = merman.Merman()
 assert engine.binding_api_version() == 3
 assert engine.package_version()
 catalog = merman.get_runtime_catalog(engine)
@@ -335,6 +338,9 @@ assert capabilities["capability_ids"] == EXPECTED_CAPABILITY_IDS
 assert capabilities["capability_ids"] == EXPECTED_RUNTIME_IDS
 assert capabilities["output_ids"] == EXPECTED_OUTPUT_IDS
 assert capabilities["operation_ids"] == EXPECTED_OPERATION_IDS
+assert not hasattr(merman, "MermanReusableEngine")
+assert not hasattr(engine, "reusable_engine")
+assert not hasattr(engine, "reusable_engine_with_text_measurer")
 source = "flowchart TD\\nA[Hello] --> B[World]"
 try:
     engine.execute(
@@ -401,22 +407,26 @@ assert any(
 assert all(rule.configurable for rule in configurable_rules)
 
 measurer = Measurer()
-reusable = engine.reusable_engine_with_text_measurer(None, measurer)
-assert reusable.render_svg(source, None).startswith("<svg")
-assert "Hello" in reusable.render_ascii(source, None)
-assert "flowchart-v2" in reusable.parse_json(source, None)
-assert "layout" in reusable.layout_json(source, None)
-assert reusable.validate(source, None).valid
-assert measurer.calls > 0
+services = merman.MermanEngineServices(None, measurer)
+reusable = merman.MermanEngine(None, services)
+try:
+    assert reusable.render_svg(source, None).startswith("<svg")
+    assert "Hello" in reusable.render_ascii(source, None)
+    assert "flowchart-v2" in reusable.parse_json(source, None)
+    assert "layout" in reusable.layout_json(source, None)
+    assert reusable.validate(source, None).valid
+    assert measurer.calls > 0
+    assert not hasattr(reusable, "set_text_measurer")
+    assert not hasattr(reusable, "clear_text_measurer")
+finally:
+    reusable.close()
+reusable.close()
 
-setter_measurer = Measurer()
-callback_engine = engine.reusable_engine_with_text_measurer(None, setter_measurer)
-assert callback_engine.render_svg(source, None).startswith("<svg")
-assert setter_measurer.calls > 0
-plain_engine = engine.reusable_engine(None)
-assert plain_engine.render_svg(source, None).startswith("<svg")
-assert not hasattr(callback_engine, "set_text_measurer")
-assert not hasattr(callback_engine, "clear_text_measurer")
+plain_engine = merman.MermanEngine(None, None)
+try:
+    assert plain_engine.render_svg(source, None).startswith("<svg")
+finally:
+    plain_engine.close()
 
 
 class FailingMeasurer(merman.MermanTextMeasurer):
@@ -429,11 +439,22 @@ class FailingMeasurer(merman.MermanTextMeasurer):
 
 
 failing_measurer = FailingMeasurer()
-failing = engine.reusable_engine_with_text_measurer(None, failing_measurer)
-assert failing.render_svg(source, None).startswith("<svg")
-assert failing_measurer.calls > 0
-replacement = engine.reusable_engine_with_text_measurer(None, Measurer())
-assert replacement.render_svg(source, None).startswith("<svg")
+failing_services = merman.MermanEngineServices(None, failing_measurer)
+failing = merman.MermanEngine(None, failing_services)
+try:
+    assert failing.render_svg(source, None).startswith("<svg")
+    assert failing_measurer.calls > 0
+finally:
+    failing.close()
+
+replacement = merman.MermanEngine(
+    None,
+    merman.MermanEngineServices(None, Measurer()),
+)
+try:
+    assert replacement.render_svg(source, None).startswith("<svg")
+finally:
+    replacement.close()
 print("python wheel smoke passed")
 """
 
