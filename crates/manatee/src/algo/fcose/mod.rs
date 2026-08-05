@@ -28,6 +28,17 @@ pub trait WorkControl {
     fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure>;
 }
 
+fn admit_dynamic_work<W: WorkControl + ?Sized>(
+    work_control: &mut W,
+    units: usize,
+) -> std::result::Result<(), WorkFailure> {
+    if units == 0 {
+        return Ok(());
+    }
+    work_control.check(units)?;
+    work_control.charge(units)
+}
+
 /// Work control used by compatibility entry points that do not impose a caller budget.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopWorkControl;
@@ -1166,10 +1177,10 @@ struct SimNode {
 
     // layout-base FR-grid repulsion caches a per-node "surrounding" list, refreshed periodically.
     surrounding: Vec<usize>,
-    grid_start_x: i32,
-    grid_finish_x: i32,
-    grid_start_y: i32,
-    grid_finish_y: i32,
+    grid_start_x: i64,
+    grid_finish_x: i64,
+    grid_start_y: i64,
+    grid_finish_y: i64,
 }
 
 impl SimNode {
@@ -2894,13 +2905,14 @@ impl SimGraph {
                     &mut self.nodes,
                     repulsion_range,
                     &all_nodes_in_layout_order,
-                );
+                    work_control,
+                )?;
             }
 
             if repulsion_range.is_finite() && repulsion_range > 0.0 {
-                for &i in &all_nodes_in_layout_order {
-                    if refresh_surrounding {
-                        if let Some(g) = &repulsion_grid {
+                if refresh_surrounding {
+                    for &i in &all_nodes_in_layout_order {
+                        if let Some(g) = &mut repulsion_grid {
                             g.refresh_node_surrounding(
                                 i,
                                 &mut self.nodes,
@@ -2909,12 +2921,29 @@ impl SimGraph {
                                 repulsion_range,
                                 &mut self.surrounding_seen,
                                 &mut surrounding_seen_generation,
-                            );
+                                work_control,
+                            )?;
                         } else {
                             self.nodes[i].surrounding.clear();
                         }
+                        processed_generation[i] = current_processed_generation;
                     }
+                }
 
+                let surrounding_pair_work = all_nodes_in_layout_order
+                    .iter()
+                    .try_fold(0usize, |work, &idx| {
+                        work.checked_add(
+                            self.nodes
+                                .get(idx)
+                                .map(|node| node.surrounding.len())
+                                .unwrap_or_default(),
+                        )
+                    })
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+                admit_dynamic_work(work_control, surrounding_pair_work)?;
+
+                for &i in &all_nodes_in_layout_order {
                     let surrounding = std::mem::take(&mut self.nodes[i].surrounding);
                     let node_i_center_x = self.nodes[i].center_x();
                     let node_i_center_y = self.nodes[i].center_y();
@@ -2942,10 +2971,21 @@ impl SimGraph {
                         self.nodes[j].repulsion_fy -= rfy;
                     }
                     self.nodes[i].surrounding = surrounding;
-                    processed_generation[i] = current_processed_generation;
                 }
             } else {
                 // Fallback: unbounded repulsion (all pairs).
+                let pair_work = self
+                    .children_by_owner
+                    .iter()
+                    .try_fold(0usize, |work, children| {
+                        let pairs = children
+                            .len()
+                            .checked_mul(children.len().saturating_sub(1))?
+                            / 2;
+                        work.checked_add(pairs)
+                    })
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+                admit_dynamic_work(work_control, pair_work)?;
                 for i in 0..self.nodes.len() {
                     let node_i_center_x = self.nodes[i].center_x();
                     let node_i_center_y = self.nodes[i].center_y();
@@ -4674,10 +4714,11 @@ mod tests {
         BoundsExtras, Constraints, FcoseConstraintWorkShape, FcoseIterationSchedule, FcoseRandom,
         FcoseRandomPolicy, FcoseRandomSource, FcoseWorkPlan, IndexedAlignmentConstraint,
         IndexedCompound, IndexedEdge, IndexedFcoseOptions, IndexedGraph, IndexedNode,
-        IndexedRelativePlacementConstraint, Mulberry32, RelConstraint, RepulsionGrid, SimGraph,
-        SimNode, Vec2, WorkControl, XorShift64Star, apply_reflection_for_relative_placement,
-        layout, layout_indexed, layout_indexed_with_random_policy_and_work_control,
-        new_fcose_random, procrustes_transform_for_alignments, reset_fcose_random_for_run,
+        IndexedRelativePlacementConstraint, Mulberry32, NoopWorkControl, RelConstraint,
+        RepulsionGrid, RepulsionGridPlan, RepulsionGridStorageKind, SimGraph, SimNode, Vec2,
+        WorkControl, XorShift64Star, apply_reflection_for_relative_placement, layout,
+        layout_indexed, layout_indexed_with_random_policy_and_work_control, new_fcose_random,
+        procrustes_transform_for_alignments, reset_fcose_random_for_run,
     };
     use crate::algo::{AlignmentConstraint, FcoseOptions, RelativePlacementConstraint};
     use crate::error::{Error, WorkFailure};
@@ -4932,7 +4973,7 @@ mod tests {
     }
 
     #[test]
-    fn controlled_layout_charges_each_executed_iteration_once() {
+    fn controlled_layout_charges_each_iteration_and_grid_refresh_once() {
         let graph = IndexedGraph {
             nodes: vec![IndexedNode {
                 parent: None,
@@ -4961,7 +5002,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(control.charges, vec![1; 9]);
+        assert_eq!(
+            control.charges,
+            vec![1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1]
+        );
     }
 
     #[test]
@@ -5989,7 +6033,8 @@ mod tests {
             bottom = bottom.max(n.top + n.height);
         }
         let node_order = [0usize, 1, 2];
-        let grid = RepulsionGrid::build_or_reuse(
+        let mut work_control = NoopWorkControl;
+        let mut grid = RepulsionGrid::build_or_reuse(
             None,
             left,
             top,
@@ -5998,7 +6043,9 @@ mod tests {
             &mut nodes,
             repulsion_range,
             &node_order,
+            &mut work_control,
         )
+        .unwrap()
         .expect("grid");
 
         let mut processed_generation = vec![0u32; nodes.len()];
@@ -6013,7 +6060,9 @@ mod tests {
             repulsion_range,
             &mut surrounding_seen,
             &mut surrounding_seen_generation,
-        );
+            &mut work_control,
+        )
+        .unwrap();
         assert_eq!(nodes[0].surrounding, vec![1]);
 
         processed_generation[0] = current_processed_generation;
@@ -6025,11 +6074,440 @@ mod tests {
             repulsion_range,
             &mut surrounding_seen,
             &mut surrounding_seen_generation,
-        );
+            &mut work_control,
+        )
+        .unwrap();
         assert!(
             !nodes[1].surrounding.contains(&0),
             "node1 should not include already-processed node0"
         );
+    }
+
+    #[test]
+    fn repulsion_grid_plan_prefers_sparse_storage_for_large_coordinate_span() {
+        let repulsion_range = 100.0;
+        let mut nodes = vec![
+            node_at(0.0, 0.0, 10.0, 10.0),
+            node_at(100_000_000_000.0, 100_000_000_000.0, 10.0, 10.0),
+        ];
+        let node_order = [0usize, 1];
+
+        let plan = RepulsionGridPlan::from_geometry(
+            0.0,
+            0.0,
+            100_000_000_010.0,
+            100_000_000_010.0,
+            &nodes,
+            repulsion_range,
+            &node_order,
+        )
+        .unwrap()
+        .expect("grid plan");
+
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Sparse);
+        assert_eq!(plan.cell_reference_count(), 2);
+        assert_eq!(plan.total_cell_count(), 1_000_000_002_000_000_001);
+
+        let mut control = RecordingWorkControl::default();
+        let grid = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            100_000_000_010.0,
+            100_000_000_010.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+            &mut control,
+        )
+        .unwrap()
+        .expect("sparse grid");
+        assert!(matches!(
+            grid.cells,
+            super::RepulsionGridCells::Implicit { .. }
+        ));
+        assert_eq!(control.charges, vec![4, 6]);
+    }
+
+    #[test]
+    fn repulsion_grid_plan_prefers_dense_storage_when_costs_are_equal() {
+        let nodes = vec![node_at(0.0, 0.0, 1.0, 1.0)];
+        let plan = RepulsionGridPlan::from_geometry(0.0, 0.0, 1.0, 1.0, &nodes, 10.0, &[0])
+            .unwrap()
+            .expect("single-cell plan");
+
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Dense);
+        assert_eq!(plan.work_units(), 2);
+    }
+
+    #[test]
+    fn repulsion_grid_plan_rejects_overflowing_finite_coordinate_span() {
+        let nodes = vec![node_at(0.0, 0.0, 1.0, 1.0)];
+        let error =
+            RepulsionGridPlan::from_geometry(-f64::MAX, 0.0, f64::MAX, 1.0, &nodes, 10.0, &[0])
+                .unwrap_err();
+
+        assert_eq!(error, WorkFailure::ArithmeticOverflow);
+    }
+
+    #[test]
+    fn repulsion_grid_plan_prefers_implicit_storage_for_a_huge_node_rect() {
+        let repulsion_range = 100.0;
+        let mut nodes = vec![node_at(0.0, 0.0, 100_000_000_000.0, 100_000_000_000.0)];
+        let node_order = [0usize];
+
+        let plan = RepulsionGridPlan::from_geometry(
+            0.0,
+            0.0,
+            100_000_000_000.0,
+            100_000_000_000.0,
+            &nodes,
+            repulsion_range,
+            &node_order,
+        )
+        .unwrap()
+        .expect("grid plan");
+
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Implicit);
+        assert_eq!(plan.work_units(), 2);
+
+        let mut control = RecordingWorkControl::default();
+        let mut grid = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            100_000_000_000.0,
+            100_000_000_000.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+            &mut control,
+        )
+        .unwrap()
+        .expect("implicit grid");
+        assert!(matches!(
+            grid.cells,
+            super::RepulsionGridCells::Implicit { .. }
+        ));
+        assert_eq!(control.charges, vec![2]);
+
+        let mut surrounding_seen = [0u32];
+        let mut surrounding_seen_generation = 1u32;
+        grid.refresh_node_surrounding(
+            0,
+            &mut nodes,
+            &[0],
+            1,
+            repulsion_range,
+            &mut surrounding_seen,
+            &mut surrounding_seen_generation,
+            &mut control,
+        )
+        .unwrap();
+        assert!(nodes[0].surrounding.is_empty());
+    }
+
+    #[test]
+    fn repulsion_grid_plan_ignores_overflowed_unselected_storage_costs() {
+        let extent = 8_000_000_000_000_000_000.0;
+        let nodes = vec![
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+        ];
+
+        let plan =
+            RepulsionGridPlan::from_geometry(0.0, 0.0, extent, extent, &nodes, 1.0, &[0, 1, 2])
+                .unwrap()
+                .expect("implicit grid plan");
+
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Implicit);
+        assert_eq!(plan.work_units(), 21);
+    }
+
+    #[test]
+    fn repulsion_grid_plan_saturates_reference_count_for_implicit_storage() {
+        let extent = 8_500_000_000_000_000_000.0;
+        let nodes = vec![
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+        ];
+
+        let plan = RepulsionGridPlan::from_geometry(
+            0.0,
+            0.0,
+            extent,
+            extent,
+            &nodes,
+            1.0,
+            &[0, 1, 2, 3, 4],
+        )
+        .unwrap()
+        .expect("implicit grid plan");
+
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Implicit);
+        assert_eq!(plan.work_units(), 80);
+    }
+
+    #[test]
+    fn rejected_repulsion_grid_plan_does_not_mutate_node_grid_bounds() {
+        let repulsion_range = 10.0;
+        let mut nodes = vec![node_at(0.0, 0.0, 10.0, 10.0)];
+        nodes[0].grid_start_x = -7;
+        nodes[0].grid_finish_x = -6;
+        nodes[0].grid_start_y = -5;
+        nodes[0].grid_finish_y = -4;
+        let mut control = RejectingPreflight::default();
+
+        let result = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            10.0,
+            10.0,
+            &mut nodes,
+            repulsion_range,
+            &[0],
+            &mut control,
+        );
+
+        assert!(matches!(result, Err(WorkFailure::Interrupted)));
+        assert_eq!(
+            (
+                nodes[0].grid_start_x,
+                nodes[0].grid_finish_x,
+                nodes[0].grid_start_y,
+                nodes[0].grid_finish_y,
+            ),
+            (-7, -6, -5, -4)
+        );
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn repulsion_grid_storage_variants_preserve_surrounding_order() {
+        fn surroundings_for(
+            storage_kind: RepulsionGridStorageKind,
+            source_nodes: &[SimNode],
+            node_order: &[usize],
+            repulsion_range: f64,
+        ) -> Vec<Vec<usize>> {
+            let mut nodes = source_nodes.to_vec();
+            let mut plan = RepulsionGridPlan::from_geometry(
+                0.0,
+                0.0,
+                25.0,
+                25.0,
+                &nodes,
+                repulsion_range,
+                node_order,
+            )
+            .unwrap()
+            .expect("grid plan");
+            plan.storage_kind = storage_kind;
+            let mut grid = RepulsionGrid::build_from_plan(
+                None,
+                plan,
+                0.0,
+                0.0,
+                &mut nodes,
+                repulsion_range,
+                node_order,
+            )
+            .unwrap();
+            let mut work_control = NoopWorkControl;
+            grid.prepare_refresh(&nodes, node_order, false, &mut work_control)
+                .unwrap();
+            let mut processed_generation = vec![0u32; nodes.len()];
+            let mut surrounding_seen = vec![0u32; nodes.len()];
+            let mut surrounding_seen_generation = 1u32;
+            for &idx in node_order {
+                grid.refresh_node_surrounding(
+                    idx,
+                    &mut nodes,
+                    &processed_generation,
+                    1,
+                    repulsion_range,
+                    &mut surrounding_seen,
+                    &mut surrounding_seen_generation,
+                    &mut work_control,
+                )
+                .unwrap();
+                processed_generation[idx] = 1;
+            }
+            nodes.into_iter().map(|node| node.surrounding).collect()
+        }
+
+        let nodes = vec![
+            node_at(0.0, 0.0, 15.0, 15.0),
+            node_at(15.0, 0.0, 10.0, 10.0),
+            node_at(0.0, 15.0, 10.0, 10.0),
+            node_at(15.0, 15.0, 10.0, 10.0),
+        ];
+        let node_order = [0usize, 2, 1, 3];
+        let dense = surroundings_for(RepulsionGridStorageKind::Dense, &nodes, &node_order, 10.0);
+        let sparse = surroundings_for(RepulsionGridStorageKind::Sparse, &nodes, &node_order, 10.0);
+        let implicit = surroundings_for(
+            RepulsionGridStorageKind::Implicit,
+            &nodes,
+            &node_order,
+            10.0,
+        );
+
+        assert_eq!(sparse, dense);
+        assert_eq!(implicit, dense);
+    }
+
+    #[test]
+    fn repulsion_grid_promotes_cubic_materialized_queries_to_implicit() {
+        fn assert_promoted(node_count: usize) {
+            let repulsion_range = 10.0;
+            let extent = node_count as f64 * repulsion_range;
+            let mut nodes = (0..node_count)
+                .map(|_| node_at(0.0, 0.0, extent, repulsion_range))
+                .collect::<Vec<_>>();
+            let node_order = (0..node_count).collect::<Vec<_>>();
+            let plan = RepulsionGridPlan::from_geometry(
+                0.0,
+                0.0,
+                extent,
+                repulsion_range,
+                &nodes,
+                repulsion_range,
+                &node_order,
+            )
+            .unwrap()
+            .expect("dense preliminary plan");
+            assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Dense);
+
+            let implicit_work = usize::try_from(
+                super::implicit_grid_work_units(node_count as u128).expect("implicit work"),
+            )
+            .unwrap();
+            let scan_work = node_count * node_count;
+            let mut control = RecordingWorkControl::default();
+            let grid = RepulsionGrid::build_or_reuse(
+                None,
+                0.0,
+                0.0,
+                extent,
+                repulsion_range,
+                &mut nodes,
+                repulsion_range,
+                &node_order,
+                &mut control,
+            )
+            .unwrap()
+            .expect("promoted grid");
+
+            assert!(matches!(
+                grid.cells,
+                super::RepulsionGridCells::Implicit { .. }
+            ));
+            assert_eq!(
+                control.charges.iter().copied().sum::<usize>(),
+                plan.work_units() + scan_work + implicit_work
+            );
+        }
+
+        assert_promoted(32);
+        assert_promoted(64);
+    }
+
+    #[test]
+    fn sparse_repulsion_grid_charges_cluster_candidate_visits_before_refresh() {
+        let repulsion_range = 10.0;
+        let mut nodes = (0..31)
+            .map(|_| node_at(0.0, 0.0, 1.0, 1.0))
+            .collect::<Vec<_>>();
+        nodes.push(node_at(1_000_000_000.0, 0.0, 1.0, 1.0));
+        let node_order = (0..nodes.len()).collect::<Vec<_>>();
+        let mut control = RecordingWorkControl::default();
+        let mut grid = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            1_000_000_001.0,
+            1.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+            &mut control,
+        )
+        .unwrap()
+        .expect("sparse grid");
+        assert!(matches!(grid.cells, super::RepulsionGridCells::Sparse(_)));
+
+        let charges_before_refresh = control.charges.len();
+        let processed_generation = vec![0u32; nodes.len()];
+        let mut surrounding_seen = vec![0u32; nodes.len()];
+        let mut surrounding_seen_generation = 1u32;
+        grid.refresh_node_surrounding(
+            0,
+            &mut nodes,
+            &processed_generation,
+            1,
+            repulsion_range,
+            &mut surrounding_seen,
+            &mut surrounding_seen_generation,
+            &mut control,
+        )
+        .unwrap();
+
+        assert_eq!(control.charges[charges_before_refresh..], [31]);
+        assert_eq!(nodes[0].surrounding.len(), 30);
+    }
+
+    #[test]
+    fn rejected_materialized_refresh_preserves_existing_surrounding() {
+        let repulsion_range = 10.0;
+        let mut nodes = (0..31)
+            .map(|_| node_at(0.0, 0.0, 1.0, 1.0))
+            .collect::<Vec<_>>();
+        nodes.push(node_at(1_000_000_000.0, 0.0, 1.0, 1.0));
+        let node_order = (0..nodes.len()).collect::<Vec<_>>();
+        let mut build_control = RecordingWorkControl::default();
+        let mut grid = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            1_000_000_001.0,
+            1.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+            &mut build_control,
+        )
+        .unwrap()
+        .expect("sparse grid");
+        assert!(matches!(grid.cells, super::RepulsionGridCells::Sparse(_)));
+
+        let sentinel = nodes.len() - 1;
+        nodes[0].surrounding = vec![sentinel];
+        let processed_generation = vec![0u32; nodes.len()];
+        let mut surrounding_seen = vec![0u32; nodes.len()];
+        let mut surrounding_seen_generation = 1u32;
+        let mut rejecting = RejectingPreflight::default();
+        let error = grid
+            .refresh_node_surrounding(
+                0,
+                &mut nodes,
+                &processed_generation,
+                1,
+                repulsion_range,
+                &mut surrounding_seen,
+                &mut surrounding_seen_generation,
+                &mut rejecting,
+            )
+            .unwrap_err();
+
+        assert_eq!(error, WorkFailure::Interrupted);
+        assert_eq!(rejecting.checks, [31]);
+        assert!(rejecting.charges.is_empty());
+        assert_eq!(nodes[0].surrounding, [sentinel]);
     }
 
     #[test]
@@ -6678,35 +7156,556 @@ fn calc_repulsion_force_with_centers(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RepulsionGridStorageKind {
+    Dense,
+    Sparse,
+    Implicit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GridNodeBounds {
+    start_x: i64,
+    finish_x: i64,
+    start_y: i64,
+    finish_y: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GridScanBounds {
+    start_x: i64,
+    finish_x: i64,
+    start_y: i64,
+    finish_y: i64,
+}
+
+impl GridScanBounds {
+    fn cell_count(self) -> u128 {
+        let width = (self.finish_x as i128 - self.start_x as i128 + 1) as u128;
+        let height = (self.finish_y as i128 - self.start_y as i128 + 1) as u128;
+        width * height
+    }
+}
+
+impl GridNodeBounds {
+    fn from_node(
+        node: &SimNode,
+        left: f64,
+        top: f64,
+        repulsion_range: f64,
+    ) -> std::result::Result<Self, WorkFailure> {
+        Ok(Self {
+            start_x: grid_coordinate((node.left - left) / repulsion_range)?,
+            finish_x: grid_coordinate((node.right() - left) / repulsion_range)?,
+            start_y: grid_coordinate((node.top - top) / repulsion_range)?,
+            finish_y: grid_coordinate((node.bottom() - top) / repulsion_range)?,
+        })
+    }
+
+    fn clipped_axis(start: i64, finish: i64, size: i64) -> Option<(i64, i64)> {
+        let first = start.max(0);
+        let last = finish.min(size.saturating_sub(1));
+        (first <= last).then_some((first, last))
+    }
+
+    fn clipped_x(self, size_x: i64) -> Option<(i64, i64)> {
+        Self::clipped_axis(self.start_x, self.finish_x, size_x)
+    }
+
+    fn clipped_y(self, size_y: i64) -> Option<(i64, i64)> {
+        Self::clipped_axis(self.start_y, self.finish_y, size_y)
+    }
+
+    fn cell_reference_count(self, size_x: i64, size_y: i64) -> u128 {
+        let Some((start_x, finish_x)) = self.clipped_x(size_x) else {
+            return 0;
+        };
+        let Some((start_y, finish_y)) = self.clipped_y(size_y) else {
+            return 0;
+        };
+        let width = (finish_x as i128 - start_x as i128 + 1) as u128;
+        let height = (finish_y as i128 - start_y as i128 + 1) as u128;
+        width * height
+    }
+}
+
+fn grid_dimension(span: f64, repulsion_range: f64) -> std::result::Result<i64, WorkFailure> {
+    let cells = (span / repulsion_range).ceil().max(1.0);
+    if !cells.is_finite() || cells >= i64::MAX as f64 {
+        return Err(WorkFailure::ArithmeticOverflow);
+    }
+    Ok(cells as i64)
+}
+
+fn grid_coordinate(value: f64) -> std::result::Result<i64, WorkFailure> {
+    let coordinate = value.floor();
+    if !coordinate.is_finite() || coordinate < i64::MIN as f64 || coordinate >= i64::MAX as f64 {
+        return Err(WorkFailure::ArithmeticOverflow);
+    }
+    Ok(coordinate as i64)
+}
+
+fn implicit_grid_work_units(node_entry_count: u128) -> Option<u128> {
+    if node_entry_count == 0 {
+        return Some(0);
+    }
+    let comparison_levels = if node_entry_count <= 1 {
+        1
+    } else {
+        128u128.checked_sub((node_entry_count - 1).leading_zeros() as u128)?
+    };
+    node_entry_count
+        .checked_mul(node_entry_count)?
+        .checked_mul(comparison_levels)?
+        .checked_add(node_entry_count)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RepulsionGridPlan {
+    size_x: i64,
+    size_y: i64,
+    total_cell_count: u128,
+    cell_reference_count: u128,
+    storage_kind: RepulsionGridStorageKind,
+    work_units: usize,
+}
+
+impl RepulsionGridPlan {
+    #[allow(clippy::too_many_arguments)]
+    fn from_geometry(
+        left: f64,
+        top: f64,
+        right: f64,
+        bottom: f64,
+        nodes: &[SimNode],
+        repulsion_range: f64,
+        node_order: &[usize],
+    ) -> std::result::Result<Option<Self>, WorkFailure> {
+        if nodes.is_empty() || !repulsion_range.is_finite() || repulsion_range <= 0.0 {
+            return Ok(None);
+        }
+        if !(left.is_finite() && top.is_finite() && right.is_finite() && bottom.is_finite()) {
+            return Ok(None);
+        }
+
+        let width = right - left;
+        let height = bottom - top;
+        if !(width.is_finite() && height.is_finite()) {
+            return Err(WorkFailure::ArithmeticOverflow);
+        }
+        let width = width.max(1.0);
+        let height = height.max(1.0);
+
+        let size_x = grid_dimension(width, repulsion_range)?;
+        let size_y = grid_dimension(height, repulsion_range)?;
+        let total_cell_count = (size_x as u128)
+            .checked_mul(size_y as u128)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let mut cell_reference_count = 0u128;
+        let mut node_entry_count = 0u128;
+        for &idx in node_order {
+            node_entry_count = node_entry_count
+                .checked_add(1)
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            let Some(node) = nodes.get(idx) else {
+                continue;
+            };
+            let bounds = GridNodeBounds::from_node(node, left, top, repulsion_range)?;
+            // Saturation marks Dense/Sparse as unavailable while leaving the independent
+            // implicit representation eligible. The selected concrete cost is still required to
+            // fit `usize` below.
+            cell_reference_count =
+                cell_reference_count.saturating_add(bounds.cell_reference_count(size_x, size_y));
+        }
+
+        // Dense storage preserves the upstream shape for compact graphs. Sparse storage omits
+        // empty cells but keeps each cell's insertion order. When a single large rectangle would
+        // itself touch more cells than an exact all-node candidate pass, the implicit form derives
+        // the same first-hit `(x, y, insertion-order)` sequence without materializing those cells.
+        let candidates = [
+            (
+                RepulsionGridStorageKind::Dense,
+                total_cell_count.checked_add(cell_reference_count),
+            ),
+            (
+                RepulsionGridStorageKind::Sparse,
+                cell_reference_count.checked_mul(2),
+            ),
+            (
+                RepulsionGridStorageKind::Implicit,
+                implicit_grid_work_units(node_entry_count),
+            ),
+        ];
+        let (storage_kind, selected_work) = candidates
+            .into_iter()
+            .filter_map(|(kind, work)| work.map(|work| (kind, work)))
+            .min_by_key(|(_, work)| *work)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+
+        let work_units =
+            usize::try_from(selected_work).map_err(|_| WorkFailure::ArithmeticOverflow)?;
+        Ok(Some(Self {
+            size_x,
+            size_y,
+            total_cell_count,
+            cell_reference_count,
+            storage_kind,
+            work_units,
+        }))
+    }
+
+    #[cfg(test)]
+    const fn storage_kind(self) -> RepulsionGridStorageKind {
+        self.storage_kind
+    }
+
+    #[cfg(test)]
+    const fn total_cell_count(self) -> u128 {
+        self.total_cell_count
+    }
+
+    #[cfg(test)]
+    const fn cell_reference_count(self) -> u128 {
+        self.cell_reference_count
+    }
+
+    const fn work_units(self) -> usize {
+        self.work_units
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ImplicitGridCandidate {
+    first_x: i64,
+    first_y: i64,
+    insertion_order: usize,
+    node_idx: usize,
+}
+
+#[derive(Debug, Clone)]
+enum RepulsionGridCells {
+    Dense(Vec<Vec<usize>>),
+    Sparse(FxHashMap<(i64, i64), Vec<usize>>),
+    Implicit {
+        node_order: Vec<usize>,
+        candidates: Vec<ImplicitGridCandidate>,
+    },
+}
+
 #[derive(Debug, Clone)]
 struct RepulsionGrid {
-    size_x: i32,
-    size_y: i32,
-    // Flat grid: cells[x * size_y + y] contains node indices.
-    cells: Vec<Vec<usize>>,
+    size_x: i64,
+    size_y: i64,
+    cells: RepulsionGridCells,
+    candidate_visit_counts: Vec<usize>,
+    materialized_refresh_prepared: bool,
 }
 
 impl RepulsionGrid {
-    fn idx(&self, x: i32, y: i32) -> usize {
-        (x as usize) * (self.size_y as usize) + (y as usize)
-    }
-
-    fn cell(&self, x: i32, y: i32) -> &[usize] {
-        &self.cells[self.idx(x, y)]
-    }
-
-    fn reset(&mut self, size_x: i32, size_y: i32) {
-        self.size_x = size_x;
-        self.size_y = size_y;
-        let target = (size_x as usize) * (size_y as usize);
-        self.cells.resize_with(target, Vec::new);
-        for cell in &mut self.cells {
-            cell.clear();
+    fn new(storage_kind: RepulsionGridStorageKind) -> Self {
+        let cells = match storage_kind {
+            RepulsionGridStorageKind::Dense => RepulsionGridCells::Dense(Vec::new()),
+            RepulsionGridStorageKind::Sparse => RepulsionGridCells::Sparse(FxHashMap::default()),
+            RepulsionGridStorageKind::Implicit => RepulsionGridCells::Implicit {
+                node_order: Vec::new(),
+                candidates: Vec::new(),
+            },
+        };
+        Self {
+            size_x: 1,
+            size_y: 1,
+            cells,
+            candidate_visit_counts: Vec::new(),
+            materialized_refresh_prepared: false,
         }
     }
 
+    fn reset(
+        &mut self,
+        plan: RepulsionGridPlan,
+        node_order: &[usize],
+    ) -> std::result::Result<(), WorkFailure> {
+        self.size_x = plan.size_x;
+        self.size_y = plan.size_y;
+        self.candidate_visit_counts.clear();
+        self.materialized_refresh_prepared = false;
+        match plan.storage_kind {
+            RepulsionGridStorageKind::Dense => {
+                if !matches!(self.cells, RepulsionGridCells::Dense(_)) {
+                    self.cells = RepulsionGridCells::Dense(Vec::new());
+                }
+                let RepulsionGridCells::Dense(cells) = &mut self.cells else {
+                    unreachable!("dense storage selected above")
+                };
+                let target = usize::try_from(plan.total_cell_count)
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                if target > cells.len() {
+                    cells
+                        .try_reserve_exact(target - cells.len())
+                        .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                    cells.resize_with(target, Vec::new);
+                } else {
+                    cells.truncate(target);
+                }
+                for cell in cells {
+                    cell.clear();
+                }
+            }
+            RepulsionGridStorageKind::Sparse => {
+                if !matches!(self.cells, RepulsionGridCells::Sparse(_)) {
+                    self.cells = RepulsionGridCells::Sparse(FxHashMap::default());
+                }
+                let RepulsionGridCells::Sparse(cells) = &mut self.cells else {
+                    unreachable!("sparse storage selected above")
+                };
+                cells.clear();
+                let reserve = usize::try_from(plan.cell_reference_count.min(plan.total_cell_count))
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                cells
+                    .try_reserve(reserve)
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+            }
+            RepulsionGridStorageKind::Implicit => {
+                if !matches!(self.cells, RepulsionGridCells::Implicit { .. }) {
+                    self.cells = RepulsionGridCells::Implicit {
+                        node_order: Vec::new(),
+                        candidates: Vec::new(),
+                    };
+                }
+                let RepulsionGridCells::Implicit {
+                    node_order: stored_order,
+                    candidates,
+                } = &mut self.cells
+                else {
+                    unreachable!("implicit storage selected above")
+                };
+                stored_order.clear();
+                stored_order
+                    .try_reserve_exact(node_order.len())
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                stored_order.extend_from_slice(node_order);
+                candidates.clear();
+                candidates
+                    .try_reserve_exact(node_order.len())
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn cell(&self, x: i64, y: i64) -> &[usize] {
+        match &self.cells {
+            RepulsionGridCells::Dense(cells) => {
+                let Some(index) = self.dense_index(x, y) else {
+                    return &[];
+                };
+                cells.get(index).map(Vec::as_slice).unwrap_or(&[])
+            }
+            RepulsionGridCells::Sparse(cells) => {
+                cells.get(&(x, y)).map(Vec::as_slice).unwrap_or(&[])
+            }
+            RepulsionGridCells::Implicit { .. } => &[],
+        }
+    }
+
+    fn dense_index(&self, x: i64, y: i64) -> Option<usize> {
+        if x < 0 || x >= self.size_x || y < 0 || y >= self.size_y {
+            return None;
+        }
+        let x = usize::try_from(x).ok()?;
+        let y = usize::try_from(y).ok()?;
+        let size_y = usize::try_from(self.size_y).ok()?;
+        x.checked_mul(size_y)?.checked_add(y)
+    }
+
+    fn scan_bounds(&self, node: &SimNode) -> Option<GridScanBounds> {
+        let start_x = node.grid_start_x.saturating_sub(1).max(0);
+        let finish_x = node
+            .grid_finish_x
+            .saturating_add(1)
+            .min(self.size_x.saturating_sub(1));
+        if start_x > finish_x {
+            return None;
+        }
+        let start_y = node.grid_start_y.saturating_sub(1).max(0);
+        let finish_y = node
+            .grid_finish_y
+            .saturating_add(1)
+            .min(self.size_y.saturating_sub(1));
+        (start_y <= finish_y).then_some(GridScanBounds {
+            start_x,
+            finish_x,
+            start_y,
+            finish_y,
+        })
+    }
+
+    fn switch_to_implicit(&mut self, node_order: &[usize]) -> std::result::Result<(), WorkFailure> {
+        let mut stored_order = Vec::new();
+        stored_order
+            .try_reserve_exact(node_order.len())
+            .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+        stored_order.extend_from_slice(node_order);
+        let mut candidates = Vec::new();
+        candidates
+            .try_reserve_exact(node_order.len())
+            .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+        self.cells = RepulsionGridCells::Implicit {
+            node_order: stored_order,
+            candidates,
+        };
+        self.candidate_visit_counts.clear();
+        self.materialized_refresh_prepared = false;
+        Ok(())
+    }
+
+    fn prepare_refresh<W: WorkControl + ?Sized>(
+        &mut self,
+        nodes: &[SimNode],
+        node_order: &[usize],
+        allow_implicit_promotion: bool,
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
+        if matches!(self.cells, RepulsionGridCells::Implicit { .. }) {
+            return Ok(());
+        }
+
+        let implicit_work = allow_implicit_promotion
+            .then(|| implicit_grid_work_units(node_order.len() as u128))
+            .flatten()
+            .and_then(|work| usize::try_from(work).ok());
+        let mut scan_cell_counts = Vec::new();
+        scan_cell_counts
+            .try_reserve_exact(node_order.len())
+            .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+        let mut total_scan_cell_work = 0u128;
+        for &idx in node_order {
+            let count = nodes
+                .get(idx)
+                .and_then(|node| self.scan_bounds(node))
+                .map(GridScanBounds::cell_count)
+                .unwrap_or_default();
+            scan_cell_counts.push(count);
+            total_scan_cell_work = total_scan_cell_work.saturating_add(count);
+        }
+        if implicit_work.is_some_and(|work| total_scan_cell_work > work as u128) {
+            let implicit_work = implicit_work.expect("checked by is_some_and");
+            admit_dynamic_work(work_control, implicit_work)?;
+            return self.switch_to_implicit(node_order);
+        }
+
+        let mut candidate_visit_counts_u128 = Vec::new();
+        candidate_visit_counts_u128
+            .try_reserve_exact(nodes.len())
+            .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+        candidate_visit_counts_u128.resize(nodes.len(), 0u128);
+        let mut total_candidate_visits = 0u128;
+        for (&idx, &scan_cell_count) in node_order.iter().zip(&scan_cell_counts) {
+            let Some(node) = nodes.get(idx) else {
+                continue;
+            };
+            let Some(bounds) = self.scan_bounds(node) else {
+                continue;
+            };
+            let scan_cell_count =
+                usize::try_from(scan_cell_count).map_err(|_| WorkFailure::ArithmeticOverflow)?;
+            admit_dynamic_work(work_control, scan_cell_count)?;
+
+            let mut visits = 0u128;
+            for gx in bounds.start_x..=bounds.finish_x {
+                for gy in bounds.start_y..=bounds.finish_y {
+                    visits = visits.saturating_add(self.cell(gx, gy).len() as u128);
+                }
+            }
+            candidate_visit_counts_u128[idx] = visits;
+            total_candidate_visits = total_candidate_visits.saturating_add(visits);
+        }
+
+        if implicit_work.is_some_and(|work| total_candidate_visits > work as u128) {
+            let implicit_work = implicit_work.expect("checked by is_some_and");
+            admit_dynamic_work(work_control, implicit_work)?;
+            return self.switch_to_implicit(node_order);
+        }
+
+        self.candidate_visit_counts = candidate_visit_counts_u128
+            .into_iter()
+            .map(|visits| usize::try_from(visits).map_err(|_| WorkFailure::ArithmeticOverflow))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        self.materialized_refresh_prepared = true;
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
-    fn build_or_reuse(
+    fn build_from_plan(
+        grid: Option<Self>,
+        plan: RepulsionGridPlan,
+        left: f64,
+        top: f64,
+        nodes: &mut [SimNode],
+        repulsion_range: f64,
+        node_order: &[usize],
+    ) -> std::result::Result<Self, WorkFailure> {
+        let mut grid = grid.unwrap_or_else(|| Self::new(plan.storage_kind));
+        grid.reset(plan, node_order)?;
+
+        // Mirror layout-base `addNodeToGrid`: visit nodes in `getAllNodes()` order and preserve
+        // insertion order within every materialized cell. The implicit representation stores only
+        // the bounds; its query path reconstructs the same first-hit cell order.
+        for &idx in node_order {
+            let Some(node) = nodes.get(idx) else {
+                continue;
+            };
+            let bounds = GridNodeBounds::from_node(node, left, top, repulsion_range)?;
+            if let Some(node) = nodes.get_mut(idx) {
+                node.grid_start_x = bounds.start_x;
+                node.grid_finish_x = bounds.finish_x;
+                node.grid_start_y = bounds.start_y;
+                node.grid_finish_y = bounds.finish_y;
+            }
+
+            let Some((start_x, finish_x)) = bounds.clipped_x(grid.size_x) else {
+                continue;
+            };
+            let Some((start_y, finish_y)) = bounds.clipped_y(grid.size_y) else {
+                continue;
+            };
+            match &mut grid.cells {
+                RepulsionGridCells::Dense(cells) => {
+                    let size_y = usize::try_from(grid.size_y)
+                        .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                    for gx in start_x..=finish_x {
+                        let gx =
+                            usize::try_from(gx).map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                        for gy in start_y..=finish_y {
+                            let gy =
+                                usize::try_from(gy).map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                            let cell_idx = gx
+                                .checked_mul(size_y)
+                                .and_then(|base| base.checked_add(gy))
+                                .ok_or(WorkFailure::ArithmeticOverflow)?;
+                            cells
+                                .get_mut(cell_idx)
+                                .ok_or(WorkFailure::ArithmeticOverflow)?
+                                .push(idx);
+                        }
+                    }
+                }
+                RepulsionGridCells::Sparse(cells) => {
+                    for gx in start_x..=finish_x {
+                        for gy in start_y..=finish_y {
+                            cells.entry((gx, gy)).or_default().push(idx);
+                        }
+                    }
+                }
+                RepulsionGridCells::Implicit { .. } => {}
+            }
+        }
+
+        Ok(grid)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_or_reuse<W: WorkControl + ?Sized>(
         grid: Option<Self>,
         left: f64,
         top: f64,
@@ -6715,74 +7714,33 @@ impl RepulsionGrid {
         nodes: &mut [SimNode],
         repulsion_range: f64,
         node_order: &[usize],
-    ) -> Option<Self> {
-        if nodes.is_empty() {
-            return None;
-        }
-        if !repulsion_range.is_finite() || repulsion_range <= 0.0 {
-            return None;
-        }
-        if !(left.is_finite() && top.is_finite() && right.is_finite() && bottom.is_finite()) {
-            return None;
-        }
+        work_control: &mut W,
+    ) -> std::result::Result<Option<Self>, WorkFailure> {
+        let Some(plan) = RepulsionGridPlan::from_geometry(
+            left,
+            top,
+            right,
+            bottom,
+            nodes,
+            repulsion_range,
+            node_order,
+        )?
+        else {
+            return Ok(None);
+        };
 
-        let w = (right - left).max(1.0);
-        let h = (bottom - top).max(1.0);
-        if !(w.is_finite() && h.is_finite()) {
-            return None;
-        }
-
-        // layout-base `FDLayout.calcGrid`: size = ceil((graph.right - graph.left) / repulsionRange).
-        let size_x = ((w / repulsion_range).ceil() as i32).max(1);
-        let size_y = ((h / repulsion_range).ceil() as i32).max(1);
-        let mut grid = grid.unwrap_or_else(|| Self {
-            size_x,
-            size_y,
-            cells: Vec::new(),
-        });
-        grid.reset(size_x, size_y);
-
-        // Mirror layout-base `addNodeToGrid`: push the node into every cell that intersects the
-        // node's rect, using top-left anchored coordinates.
-        //
-        // Important: layout-base inserts nodes into the grid in `getAllNodes()` order (see
-        // `FDLayout.updateGrid()`), which is observable because the surrounding list is built
-        // by iterating over the grid cells and preserving insertion order. Matching this order
-        // reduces floating-point accumulation drift in parity tests.
-        for &idx in node_order {
-            let Some(n) = nodes.get_mut(idx) else {
-                continue;
-            };
-            let start_x = ((n.left - left) / repulsion_range).floor() as i32;
-            let finish_x = ((n.right() - left) / repulsion_range).floor() as i32;
-            let start_y = ((n.top - top) / repulsion_range).floor() as i32;
-            let finish_y = ((n.bottom() - top) / repulsion_range).floor() as i32;
-
-            n.grid_start_x = start_x;
-            n.grid_finish_x = finish_x;
-            n.grid_start_y = start_y;
-            n.grid_finish_y = finish_y;
-
-            for gx in start_x..=finish_x {
-                if gx < 0 || gx >= size_x {
-                    continue;
-                }
-                for gy in start_y..=finish_y {
-                    if gy < 0 || gy >= size_y {
-                        continue;
-                    }
-                    let cell_idx = (gx as usize) * (size_y as usize) + (gy as usize);
-                    grid.cells[cell_idx].push(idx);
-                }
-            }
-        }
-
-        Some(grid)
+        // The plan is computed without mutating node grid coordinates. Reject before allocating
+        // the selected representation or populating any cell.
+        admit_dynamic_work(work_control, plan.work_units())?;
+        let mut grid =
+            Self::build_from_plan(grid, plan, left, top, nodes, repulsion_range, node_order)?;
+        grid.prepare_refresh(nodes, node_order, true, work_control)?;
+        Ok(Some(grid))
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn refresh_node_surrounding(
-        &self,
+    fn refresh_node_surrounding<W: WorkControl + ?Sized>(
+        &mut self,
         node_idx: usize,
         nodes: &mut [SimNode],
         processed_generation: &[u32],
@@ -6790,19 +7748,72 @@ impl RepulsionGrid {
         repulsion_range: f64,
         surrounding_seen: &mut [u32],
         surrounding_seen_generation: &mut u32,
-    ) {
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
         if node_idx >= nodes.len() {
-            return;
+            return Ok(());
         }
-        let start_x = nodes[node_idx].grid_start_x;
-        let finish_x = nodes[node_idx].grid_finish_x;
-        let start_y = nodes[node_idx].grid_start_y;
-        let finish_y = nodes[node_idx].grid_finish_y;
+        let Some(scan_bounds) = self.scan_bounds(&nodes[node_idx]) else {
+            nodes[node_idx].surrounding.clear();
+            return Ok(());
+        };
+        let GridScanBounds {
+            start_x: scan_start_x,
+            finish_x: scan_finish_x,
+            start_y: scan_start_y,
+            finish_y: scan_finish_y,
+        } = scan_bounds;
+
+        if !matches!(self.cells, RepulsionGridCells::Implicit { .. }) {
+            if !self.materialized_refresh_prepared {
+                return Err(WorkFailure::ArithmeticOverflow);
+            }
+            let candidate_visit_count = self
+                .candidate_visit_counts
+                .get(node_idx)
+                .copied()
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            admit_dynamic_work(work_control, candidate_visit_count)?;
+        }
+
+        if let RepulsionGridCells::Implicit {
+            node_order,
+            candidates,
+        } = &mut self.cells
+        {
+            candidates.clear();
+            for (insertion_order, &other) in node_order.iter().enumerate() {
+                let Some(other_node) = nodes.get(other) else {
+                    continue;
+                };
+                let first_x = other_node.grid_start_x.max(scan_start_x);
+                let last_x = other_node.grid_finish_x.min(scan_finish_x);
+                let first_y = other_node.grid_start_y.max(scan_start_y);
+                let last_y = other_node.grid_finish_y.min(scan_finish_y);
+                if first_x <= last_x && first_y <= last_y {
+                    candidates.push(ImplicitGridCandidate {
+                        first_x,
+                        first_y,
+                        insertion_order,
+                        node_idx: other,
+                    });
+                }
+            }
+            candidates.sort_unstable_by_key(|candidate| {
+                (
+                    candidate.first_x,
+                    candidate.first_y,
+                    candidate.insertion_order,
+                )
+            });
+        }
+
         let node_owner_idx = nodes[node_idx].owner_idx;
         let node_center_x = nodes[node_idx].center_x();
         let node_center_y = nodes[node_idx].center_y();
         let node_half_w = nodes[node_idx].half_w();
         let node_half_h = nodes[node_idx].half_h();
+        let node_count = nodes.len();
         let (left, rest) = nodes.split_at_mut(node_idx);
         let (node, right) = rest
             .split_first_mut()
@@ -6817,47 +7828,52 @@ impl RepulsionGrid {
             *surrounding_seen_generation = 1;
         }
         let generation = *surrounding_seen_generation;
-        for gx in (start_x - 1)..=(finish_x + 1) {
-            if gx < 0 || gx >= self.size_x {
-                continue;
+        let mut consider = |other: usize| {
+            if other == node_idx
+                || other >= node_count
+                || other >= processed_generation.len()
+                || other >= surrounding_seen.len()
+                || processed_generation[other] == current_processed_generation
+                || surrounding_seen[other] == generation
+            {
+                return;
             }
-            for gy in (start_y - 1)..=(finish_y + 1) {
-                if gy < 0 || gy >= self.size_y {
-                    continue;
+            let other_node = if other < node_idx {
+                &left[other]
+            } else {
+                &right[other - node_idx - 1]
+            };
+            if node_owner_idx != other_node.owner_idx {
+                return;
+            }
+
+            let dx =
+                (node_center_x - other_node.center_x()).abs() - (node_half_w + other_node.half_w());
+            let dy =
+                (node_center_y - other_node.center_y()).abs() - (node_half_h + other_node.half_h());
+            if dx <= repulsion_range && dy <= repulsion_range {
+                surrounding_seen[other] = generation;
+                surrounding.push(other);
+            }
+        };
+
+        match &self.cells {
+            RepulsionGridCells::Dense(_) | RepulsionGridCells::Sparse(_) => {
+                for gx in scan_start_x..=scan_finish_x {
+                    for gy in scan_start_y..=scan_finish_y {
+                        for &other in self.cell(gx, gy) {
+                            consider(other);
+                        }
+                    }
                 }
-                for &other in self.cell(gx, gy) {
-                    if other == node_idx {
-                        continue;
-                    }
-                    if processed_generation[other] == current_processed_generation {
-                        continue;
-                    }
-                    if surrounding_seen[other] == generation {
-                        continue;
-                    }
-                    let other_node = if other < node_idx {
-                        &left[other]
-                    } else {
-                        &right[other - node_idx - 1]
-                    };
-                    if node_owner_idx != other_node.owner_idx {
-                        continue;
-                    }
-
-                    let other_center_x = other_node.center_x();
-                    let other_center_y = other_node.center_y();
-                    let other_half_w = other_node.half_w();
-                    let other_half_h = other_node.half_h();
-
-                    let dx = (node_center_x - other_center_x).abs() - (node_half_w + other_half_w);
-                    let dy = (node_center_y - other_center_y).abs() - (node_half_h + other_half_h);
-                    if dx <= repulsion_range && dy <= repulsion_range {
-                        surrounding_seen[other] = generation;
-                        surrounding.push(other);
-                    }
+            }
+            RepulsionGridCells::Implicit { candidates, .. } => {
+                for candidate in candidates {
+                    consider(candidate.node_idx);
                 }
             }
         }
+        Ok(())
     }
 }
 
