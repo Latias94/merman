@@ -62,13 +62,13 @@ impl manatee::algo::fcose::WorkControl for ArchitectureManateeWorkControl<'_> {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct ArchitectureDeclaredConstraintWork {
+struct ArchitectureConstraintWork {
     alignment_group_count: usize,
     alignment_member_count: usize,
     relative_constraint_count: usize,
 }
 
-impl ArchitectureDeclaredConstraintWork {
+impl ArchitectureConstraintWork {
     fn checked_work_units(self) -> Option<usize> {
         self.alignment_group_count
             .checked_add(self.alignment_member_count)?
@@ -79,7 +79,7 @@ impl ArchitectureDeclaredConstraintWork {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ArchitectureAdapterWorkPlan {
     work_units: usize,
-    declared_constraints: ArchitectureDeclaredConstraintWork,
+    declared_constraints: ArchitectureConstraintWork,
 }
 
 fn checked_architecture_adapter_work_plan(
@@ -111,7 +111,7 @@ fn checked_architecture_adapter_work_plan(
 
     Some(ArchitectureAdapterWorkPlan {
         work_units,
-        declared_constraints: ArchitectureDeclaredConstraintWork {
+        declared_constraints: ArchitectureConstraintWork {
             alignment_group_count: alignment_groups,
             alignment_member_count: constraint_members,
             relative_constraint_count: relative_constraints,
@@ -121,9 +121,9 @@ fn checked_architecture_adapter_work_plan(
 
 fn checked_architecture_fcose_work_upper_bound(
     schedule: manatee::algo::fcose::FcoseIterationSchedule,
-    declared_constraints: ArchitectureDeclaredConstraintWork,
+    constraints: ArchitectureConstraintWork,
 ) -> Option<usize> {
-    let constraint_work_units = declared_constraints.checked_work_units()?;
+    let constraint_work_units = constraints.checked_work_units()?;
     let run_count = schedule.run_count();
     let executed_iterations = schedule.effective_max_iterations().checked_sub(1)?;
     let run_setup_work_units = constraint_work_units.checked_mul(run_count)?;
@@ -138,13 +138,68 @@ fn checked_architecture_fcose_work_upper_bound(
         .checked_add(iteration_work_units)
 }
 
-fn architecture_relative_placement_constraints<'a>(
+const ARCHITECTURE_RELATIVE_DIRS: [(char, (i32, i32)); 4] =
+    [('L', (-1, 0)), ('R', (1, 0)), ('T', (0, 1)), ('B', (0, -1))];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ArchitectureRelativePositionPlan {
+    distance: usize,
+    queue_multiplicity: usize,
+}
+
+#[derive(Debug)]
+struct ArchitectureRelativeSpatialPlan<'a> {
+    inverse: FxHashMap<(i32, i32), &'a str>,
+    queue_entry_count: usize,
+    constraint_count: usize,
+}
+
+#[derive(Debug)]
+struct ArchitectureRelativeConstraintPlan<'a> {
+    spatial: Vec<ArchitectureRelativeSpatialPlan<'a>>,
+    queue_entry_count: usize,
+    constraint_count: usize,
+}
+
+impl ArchitectureRelativeConstraintPlan<'_> {
+    fn checked_materialization_work_units(&self) -> Option<usize> {
+        let constraint_bytes = self.constraint_count.checked_mul(std::mem::size_of::<
+            manatee::algo::fcose::IndexedRelativePlacementConstraint,
+        >())?;
+        let queue_bytes = self
+            .queue_entry_count
+            .checked_mul(std::mem::size_of::<(i32, i32)>())?;
+        if constraint_bytes > isize::MAX as usize || queue_bytes > isize::MAX as usize {
+            return None;
+        }
+        // Each queued position is pushed, popped, marked visited, looked up, and probes all four
+        // grid directions. Constraint construction is charged separately because declared pairs
+        // still enqueue and traverse without emitting an FCoSE object.
+        self.queue_entry_count
+            .checked_mul(8)?
+            .checked_add(self.constraint_count)
+    }
+}
+
+fn checked_architecture_relative_planning_work_units(
+    spatial_maps: &[IndexMap<&str, (i32, i32)>],
+) -> Option<usize> {
+    let source_positions = spatial_maps
+        .iter()
+        .try_fold(0usize, |total, map| total.checked_add(map.len()))?;
+    spatial_maps
+        .len()
+        .checked_add(source_positions.checked_mul(6)?)
+}
+
+fn checked_architecture_relative_constraint_plan<'a>(
     spatial_maps: &[IndexMap<&'a str, (i32, i32)>],
     node_index_by_id: &FxHashMap<&'a str, usize>,
-    gap: f64,
     declared_pairs: &FxHashSet<(usize, usize)>,
-) -> Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> {
-    let mut relative: Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> = Vec::new();
+) -> Option<ArchitectureRelativeConstraintPlan<'a>> {
+    let mut spatial = Vec::with_capacity(spatial_maps.len());
+    let mut total_queue_entries = 0usize;
+    let mut total_constraints = 0usize;
 
     for spatial_map in spatial_maps {
         let mut inv: FxHashMap<(i32, i32), &str> = FxHashMap::default();
@@ -153,27 +208,116 @@ fn architecture_relative_placement_constraints<'a>(
             inv.insert((*x, *y), *id);
         }
 
-        let mut pos_queue: std::collections::VecDeque<(i32, i32)> =
-            std::collections::VecDeque::new();
-        let mut visited_pos: FxHashSet<(i32, i32)> = FxHashSet::default();
-        visited_pos.reserve(spatial_map.len().saturating_mul(2));
-        pos_queue.push_back((0, 0));
+        let mut positions: FxHashMap<(i32, i32), ArchitectureRelativePositionPlan> =
+            FxHashMap::default();
+        positions.reserve(inv.len().saturating_mul(2));
+        positions.insert(
+            (0, 0),
+            ArchitectureRelativePositionPlan {
+                distance: 0,
+                queue_multiplicity: 1,
+            },
+        );
+        let mut unique_queue = std::collections::VecDeque::new();
+        unique_queue.push_back((0, 0));
+        let mut constraint_count = 0usize;
 
-        // Preserve Mermaid's direction iteration order: L, R, T, B.
-        const DIRS: [(char, (i32, i32)); 4] =
-            [('L', (-1, 0)), ('R', (1, 0)), ('T', (0, 1)), ('B', (0, -1))];
-
-        while let Some(curr) = pos_queue.pop_front() {
-            // Mermaid marks the current grid position as visited but does not skip duplicate
-            // queued positions on pop. That preserves duplicate relative constraints when a
-            // node is reached through two paths before its neighbors are visited.
-            visited_pos.insert(curr);
+        while let Some(curr) = unique_queue.pop_front() {
+            let curr_plan = *positions.get(&curr)?;
             let Some(&curr_id) = inv.get(&curr) else {
                 continue;
             };
-            for (dir, (sx, sy)) in DIRS {
-                let new_pos = (curr.0 + sx, curr.1 + sy);
+            let next_distance = curr_plan.distance.checked_add(1)?;
+            for (_, (sx, sy)) in ARCHITECTURE_RELATIVE_DIRS {
+                let new_pos = (curr.0.checked_add(sx)?, curr.1.checked_add(sy)?);
                 let Some(&new_id) = inv.get(&new_pos) else {
+                    continue;
+                };
+                let is_forward = match positions.get_mut(&new_pos) {
+                    Some(existing) if existing.distance == next_distance => {
+                        existing.queue_multiplicity = existing
+                            .queue_multiplicity
+                            .checked_add(curr_plan.queue_multiplicity)?;
+                        true
+                    }
+                    Some(_) => false,
+                    None => {
+                        positions.insert(
+                            new_pos,
+                            ArchitectureRelativePositionPlan {
+                                distance: next_distance,
+                                queue_multiplicity: curr_plan.queue_multiplicity,
+                            },
+                        );
+                        unique_queue.push_back(new_pos);
+                        true
+                    }
+                };
+                if !is_forward {
+                    continue;
+                }
+                let Some(&curr_idx) = node_index_by_id.get(curr_id) else {
+                    continue;
+                };
+                let Some(&new_idx) = node_index_by_id.get(new_id) else {
+                    continue;
+                };
+                if declared_pairs.contains(&(curr_idx, new_idx))
+                    || declared_pairs.contains(&(new_idx, curr_idx))
+                {
+                    continue;
+                }
+                constraint_count = constraint_count.checked_add(curr_plan.queue_multiplicity)?;
+            }
+        }
+
+        let queue_entry_count = positions.values().try_fold(0usize, |total, position| {
+            total.checked_add(position.queue_multiplicity)
+        })?;
+        total_queue_entries = total_queue_entries.checked_add(queue_entry_count)?;
+        total_constraints = total_constraints.checked_add(constraint_count)?;
+        spatial.push(ArchitectureRelativeSpatialPlan {
+            inverse: inv,
+            queue_entry_count,
+            constraint_count,
+        });
+    }
+
+    Some(ArchitectureRelativeConstraintPlan {
+        spatial,
+        queue_entry_count: total_queue_entries,
+        constraint_count: total_constraints,
+    })
+}
+
+fn materialize_architecture_relative_placement_constraints(
+    plan: &ArchitectureRelativeConstraintPlan<'_>,
+    node_index_by_id: &FxHashMap<&str, usize>,
+    gap: f64,
+    declared_pairs: &FxHashSet<(usize, usize)>,
+) -> Option<Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint>> {
+    let mut relative = Vec::with_capacity(plan.constraint_count);
+
+    for spatial in &plan.spatial {
+        let output_start = relative.len();
+        let mut materialized_queue_entries = 0usize;
+        let mut pos_queue = std::collections::VecDeque::new();
+        let mut visited_pos: FxHashSet<(i32, i32)> = FxHashSet::default();
+        visited_pos.reserve(spatial.inverse.len().saturating_mul(2));
+        pos_queue.push_back((0, 0));
+
+        while let Some(curr) = pos_queue.pop_front() {
+            materialized_queue_entries = materialized_queue_entries.checked_add(1)?;
+            // Mermaid marks the current grid position as visited but does not skip duplicate
+            // queued positions on pop. Preserve both duplicate constraints and their L/R/T/B
+            // order after the linear admission planner has bounded the expansion.
+            visited_pos.insert(curr);
+            let Some(&curr_id) = spatial.inverse.get(&curr) else {
+                continue;
+            };
+            for (dir, (sx, sy)) in ARCHITECTURE_RELATIVE_DIRS {
+                let new_pos = (curr.0.checked_add(sx)?, curr.1.checked_add(sy)?);
+                let Some(&new_id) = spatial.inverse.get(&new_pos) else {
                     continue;
                 };
                 if visited_pos.contains(&new_pos) {
@@ -192,9 +336,7 @@ fn architecture_relative_placement_constraints<'a>(
                     continue;
                 }
 
-                // `ArchitectureDirectionName[dir] = newId`
-                // `ArchitectureDirectionName[getOppositeArchitectureDirection(dir)] = currId`
-                let c = match dir {
+                relative.push(match dir {
                     'L' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
                         left: Some(new_idx),
                         right: Some(curr_idx),
@@ -223,14 +365,17 @@ fn architecture_relative_placement_constraints<'a>(
                         bottom: Some(new_idx),
                         gap,
                     },
-                    _ => continue,
-                };
-                relative.push(c);
+                    _ => return None,
+                });
             }
         }
+
+        debug_assert_eq!(materialized_queue_entries, spatial.queue_entry_count);
+        debug_assert_eq!(relative.len() - output_start, spatial.constraint_count);
     }
 
-    relative
+    debug_assert_eq!(relative.len(), plan.constraint_count);
+    Some(relative)
 }
 
 fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
@@ -1193,16 +1338,70 @@ fn build_architecture_fcose_input_plan<'a>(
 
     // RelativePlacementConstraint (gap between borders).
     //
-    // Upstream Mermaid derives these by BFS over immediate grid neighbors, starting from the
-    // spatial origin `(0, 0)`. We mirror that behavior so constraints match Cytoscape's FCoSE
-    // input even when the underlying spatial map discovery is approximate.
-    let mut relative = declared_relative;
-    relative.extend(architecture_relative_placement_constraints(
+    // Mermaid's visited-on-pop BFS intentionally emits duplicate constraints. Count that
+    // expansion on the unique coordinate graph before allocating the duplicate queue or output
+    // vector, then admit the complete FCoSE constraint schedule while it is still cheap to reject.
+    let relative_planning_work = checked_architecture_relative_planning_work_units(&spatial_maps)
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    work_meter.charge(relative_planning_work)?;
+    let relative_plan = checked_architecture_relative_constraint_plan(
         &spatial_maps,
+        &node_index_by_id,
+        &declared_pairs,
+    )
+    .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let alignment_group_count = horizontal_all
+        .len()
+        .checked_add(vertical_all.len())
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let alignment_member_count = horizontal_all
+        .iter()
+        .chain(&vertical_all)
+        .try_fold(0usize, |total, group| total.checked_add(group.len()))
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let relative_constraint_count = declared_relative
+        .len()
+        .checked_add(relative_plan.constraint_count)
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let actual_constraints = ArchitectureConstraintWork {
+        alignment_group_count,
+        alignment_member_count,
+        relative_constraint_count,
+    };
+    let indexed_node_upper_bound = model
+        .nodes
+        .len()
+        .checked_add(model.groups.len())
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let schedule = manatee::algo::fcose::FcoseIterationSchedule::from_normalized_counts(
+        fcose_num_iter,
+        indexed_node_upper_bound,
+        model.edges.len(),
+        true,
+    )
+    .map_err(|_| work_meter.arithmetic_overflow())?;
+    let kernel_admission =
+        checked_architecture_fcose_work_upper_bound(schedule, actual_constraints)
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let relative_materialization_work = relative_plan
+        .checked_materialization_work_units()
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    work_meter.preflight(
+        relative_materialization_work
+            .checked_add(kernel_admission)
+            .ok_or_else(|| work_meter.arithmetic_overflow())?,
+    )?;
+    work_meter.charge(relative_materialization_work)?;
+
+    let automatic_relative = materialize_architecture_relative_placement_constraints(
+        &relative_plan,
         &node_index_by_id,
         gap,
         &declared_pairs,
-    ));
+    )
+    .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let mut relative = declared_relative;
+    relative.extend(automatic_relative);
 
     let mut edges: Vec<manatee::algo::fcose::IndexedEdge> = Vec::new();
     let mut default_edge_length_sum = 0.0f64;
@@ -2089,7 +2288,7 @@ mod tests {
         let schedule =
             manatee::algo::fcose::FcoseIterationSchedule::from_normalized_counts(5, 1, 0, true)
                 .unwrap();
-        let declared_constraints = super::ArchitectureDeclaredConstraintWork {
+        let declared_constraints = super::ArchitectureConstraintWork {
             alignment_group_count: usize::MAX,
             alignment_member_count: 1,
             relative_constraint_count: 0,
@@ -2161,12 +2360,12 @@ mod tests {
         let measurer = crate::text::DeterministicTextMeasurer::default();
 
         let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 18)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 33)
             .unwrap();
         let exact_meter = OperationWorkMeter::new(exact_policy);
         super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &exact_meter)
             .unwrap();
-        assert_eq!(exact_meter.used(), 18);
+        assert_eq!(exact_meter.used(), 33);
 
         let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 9)
@@ -2225,6 +2424,74 @@ mod tests {
 
         assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
         assert_eq!(meter.used(), 0);
+    }
+
+    #[test]
+    fn architecture_rejects_grid_constraint_expansion_before_duplicate_materialization() {
+        use crate::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitPhase,
+        };
+
+        let ids = (0..12 * 12)
+            .map(|index| format!("node-{index}"))
+            .collect::<Vec<_>>();
+        let nodes = ids
+            .iter()
+            .map(|id| super::ArchitectureNodeView {
+                id,
+                node_type: super::ArchitectureNodeType::Service,
+                title: None,
+                in_group: None,
+            })
+            .collect::<Vec<_>>();
+        let mut edges = Vec::new();
+        for y in 0..12 {
+            for x in 0..12 {
+                let source = y * 12 + x;
+                if x + 1 < 12 {
+                    edges.push(super::ArchitectureEdgeView {
+                        lhs_id: ids[source].as_str(),
+                        rhs_id: ids[source + 1].as_str(),
+                        lhs_dir: Some('R'),
+                        rhs_dir: Some('L'),
+                        title: None,
+                    });
+                }
+                if y + 1 < 12 {
+                    edges.push(super::ArchitectureEdgeView {
+                        lhs_id: ids[source].as_str(),
+                        rhs_id: ids[source + 12].as_str(),
+                        lhs_dir: Some('T'),
+                        rhs_dir: Some('B'),
+                        title: None,
+                    });
+                }
+            }
+        }
+        let model = super::ArchitectureModelView {
+            nodes,
+            groups: Vec::new(),
+            edges,
+            layout_hints: Vec::new(),
+        };
+        let config = serde_json::json!({"architecture": {"numIter": 1, "randomize": false}});
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+
+        let error = super::layout_architecture_diagram_model(&model, &config, &measurer, 1, &meter)
+            .unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected layout work resource error");
+        };
+
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(error.max, 800_000);
+        assert!(error.actual > 1_000_000);
+        assert!(
+            meter.used() < 100_000,
+            "duplicate BFS/materialization work must not be consumed after rejection"
+        );
     }
 
     #[test]
@@ -2723,14 +2990,25 @@ mod tests {
             node_index_by_id.insert(id, idx);
         }
 
-        let constraints = super::architecture_relative_placement_constraints(
-            &[spatial_map],
+        let spatial_maps = [spatial_map];
+        let declared_pairs = rustc_hash::FxHashSet::default();
+        let plan = super::checked_architecture_relative_constraint_plan(
+            &spatial_maps,
+            &node_index_by_id,
+            &declared_pairs,
+        )
+        .expect("relative constraint plan");
+        let constraints = super::materialize_architecture_relative_placement_constraints(
+            &plan,
             &node_index_by_id,
             120.0,
-            &rustc_hash::FxHashSet::default(),
-        );
+            &declared_pairs,
+        )
+        .expect("relative constraints materialize");
 
-        assert_eq!(constraints.len(), 9);
+        assert_eq!(plan.constraint_count, 9);
+        assert_eq!(constraints.len(), plan.constraint_count);
+
         assert_eq!(
             constraints
                 .iter()
@@ -2747,5 +3025,157 @@ mod tests {
             2,
             "Mermaid processes the duplicate queued join position before cache is visited",
         );
+    }
+
+    #[test]
+    fn architecture_relative_plan_counts_grid_path_multiplicity_without_expansion() {
+        let ids = (0..12 * 12)
+            .map(|index| format!("node-{index}"))
+            .collect::<Vec<_>>();
+        let mut spatial_map = indexmap::IndexMap::new();
+        let mut node_index_by_id = rustc_hash::FxHashMap::default();
+        for y in 0..12 {
+            for x in 0..12 {
+                let index = y * 12 + x;
+                let id = ids[index].as_str();
+                spatial_map.insert(id, (x as i32, y as i32));
+                node_index_by_id.insert(id, index);
+            }
+        }
+
+        let plan = super::checked_architecture_relative_constraint_plan(
+            &[spatial_map],
+            &node_index_by_id,
+            &rustc_hash::FxHashSet::default(),
+        )
+        .expect("12x12 grid count should fit usize");
+
+        assert_eq!(plan.queue_entry_count, 2_704_155);
+        assert_eq!(plan.constraint_count, 2_704_154);
+        assert_eq!(plan.spatial.len(), 1);
+        assert_eq!(plan.spatial[0].queue_entry_count, 2_704_155);
+        assert_eq!(plan.spatial[0].constraint_count, 2_704_154);
+    }
+
+    #[test]
+    fn architecture_relative_plan_fails_closed_on_path_multiplicity_overflow() {
+        let ids = (0..35 * 35)
+            .map(|index| format!("node-{index}"))
+            .collect::<Vec<_>>();
+        let mut spatial_map = indexmap::IndexMap::new();
+        let mut node_index_by_id = rustc_hash::FxHashMap::default();
+        for y in 0..35 {
+            for x in 0..35 {
+                let index = y * 35 + x;
+                let id = ids[index].as_str();
+                spatial_map.insert(id, (x as i32, y as i32));
+                node_index_by_id.insert(id, index);
+            }
+        }
+
+        assert!(
+            super::checked_architecture_relative_constraint_plan(
+                &[spatial_map],
+                &node_index_by_id,
+                &rustc_hash::FxHashSet::default(),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn architecture_relative_plan_rejects_unrepresentable_materialization_capacity() {
+        let width = 34usize;
+        let height = 33usize;
+        let ids = (0..width * height)
+            .map(|index| format!("node-{index}"))
+            .collect::<Vec<_>>();
+        let mut spatial_map = indexmap::IndexMap::new();
+        let mut node_index_by_id = rustc_hash::FxHashMap::default();
+        for y in 0..height {
+            for x in 0..width {
+                let index = y * width + x;
+                let id = ids[index].as_str();
+                spatial_map.insert(id, (x as i32, y as i32));
+                node_index_by_id.insert(id, index);
+            }
+        }
+
+        let plan = super::checked_architecture_relative_constraint_plan(
+            &[spatial_map],
+            &node_index_by_id,
+            &rustc_hash::FxHashSet::default(),
+        )
+        .expect("path multiplicity should still fit usize");
+
+        assert!(plan.checked_materialization_work_units().is_none());
+    }
+
+    #[test]
+    fn architecture_relative_plan_matches_materialization_for_all_small_grid_shapes() {
+        let positions: [(&str, (i32, i32)); 9] = [
+            ("p0", (0, 0)),
+            ("p1", (-1, 0)),
+            ("p2", (1, 0)),
+            ("p3", (0, 1)),
+            ("p4", (0, -1)),
+            ("p5", (-1, 1)),
+            ("p6", (1, 1)),
+            ("p7", (-1, -1)),
+            ("p8", (1, -1)),
+        ];
+
+        for mask in 0usize..(1usize << (positions.len() - 1)) {
+            let mut spatial_map = indexmap::IndexMap::new();
+            spatial_map.insert(positions[0].0, positions[0].1);
+            for (bit, &(id, position)) in positions[1..].iter().enumerate() {
+                if mask & (1usize << bit) != 0 {
+                    spatial_map.insert(id, position);
+                }
+            }
+            let node_index_by_id = spatial_map
+                .keys()
+                .enumerate()
+                .map(|(index, &id)| (id, index))
+                .collect::<rustc_hash::FxHashMap<_, _>>();
+
+            let mut declared_variants = vec![rustc_hash::FxHashSet::default()];
+            if let Some(&right) = node_index_by_id.get("p1") {
+                declared_variants.push(rustc_hash::FxHashSet::from_iter([(0, right)]));
+            }
+            let mut all_adjacent = rustc_hash::FxHashSet::default();
+            for (&lhs_id, &(lhs_x, lhs_y)) in &spatial_map {
+                let lhs = node_index_by_id[lhs_id];
+                for (&rhs_id, &(rhs_x, rhs_y)) in &spatial_map {
+                    if (lhs_x - rhs_x).abs() + (lhs_y - rhs_y).abs() == 1 {
+                        all_adjacent.insert((lhs, node_index_by_id[rhs_id]));
+                    }
+                }
+            }
+            declared_variants.push(all_adjacent);
+
+            for declared_pairs in declared_variants {
+                let spatial_maps = [spatial_map.clone()];
+                let plan = super::checked_architecture_relative_constraint_plan(
+                    &spatial_maps,
+                    &node_index_by_id,
+                    &declared_pairs,
+                )
+                .expect("3x3 relative plan should fit");
+                let materialized = super::materialize_architecture_relative_placement_constraints(
+                    &plan,
+                    &node_index_by_id,
+                    120.0,
+                    &declared_pairs,
+                )
+                .expect("3x3 relative constraints materialize");
+                assert_eq!(
+                    plan.constraint_count,
+                    materialized.len(),
+                    "constraint count mismatch for mask {mask:#011b}",
+                );
+            }
+        }
     }
 }
