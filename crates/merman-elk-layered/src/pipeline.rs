@@ -228,98 +228,61 @@ struct GraphArenaParent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct GraphArenaChild {
-    graph: usize,
-    node: usize,
-}
-
-#[derive(Debug, PartialEq, Eq)]
 struct GraphArenaEntry {
     parent: Option<GraphArenaParent>,
-    children: Vec<GraphArenaChild>,
 }
 
 #[derive(Debug)]
 struct CompoundGraphArena {
     entries: Vec<GraphArenaEntry>,
-    postorder: Vec<usize>,
     algorithms: Vec<GraphAlgorithm>,
+    graph_slots: Vec<Option<Box<LGraph>>>,
 }
 
 impl CompoundGraphArena {
     fn new(root: &LGraph) -> Self {
-        let mut entries = vec![GraphArenaEntry {
-            parent: None,
-            children: Vec::new(),
-        }];
+        let mut entries = vec![GraphArenaEntry { parent: None }];
         let mut algorithms = vec![graph_algorithm(root)];
         let mut search = vec![(0usize, root)];
 
         while let Some((graph_index, graph)) = search.pop() {
-            let mut children = Vec::new();
             for (node_index, node) in graph.layerless_nodes.iter().enumerate() {
                 let Some(nested) = node.nested_graph.as_deref() else {
                     continue;
                 };
                 let child_index = entries.len();
-                let parent = GraphArenaParent {
-                    graph: graph_index,
-                    node: node_index,
-                };
-                let child = GraphArenaChild {
-                    graph: child_index,
-                    node: node_index,
-                };
                 entries.push(GraphArenaEntry {
-                    parent: Some(parent),
-                    children: Vec::new(),
+                    parent: Some(GraphArenaParent {
+                        graph: graph_index,
+                        node: node_index,
+                    }),
                 });
                 algorithms.push(graph_algorithm(nested));
-                entries[graph_index].children.push(child);
-                children.push((child_index, nested));
+                // Match ELK's `ArrayDeque.push` discovery order. The last sibling is searched
+                // first, while the collected graph list is later executed in reverse discovery
+                // order.
+                search.push((child_index, nested));
             }
-            search.extend(children.into_iter().rev());
         }
 
-        // ELK advances every nested algorithm before its parent. The explicit postorder keeps that
-        // source order without retaining or rebuilding complete root-to-graph paths.
-        let mut postorder = Vec::with_capacity(entries.len());
-        let mut stack = vec![(0usize, false)];
-        while let Some((graph_index, expanded)) = stack.pop() {
-            if expanded {
-                postorder.push(graph_index);
-                continue;
-            }
-            stack.push((graph_index, true));
-            stack.extend(
-                entries[graph_index]
-                    .children
-                    .iter()
-                    .rev()
-                    .map(|child| (child.graph, false)),
-            );
-        }
+        let mut graph_slots = Vec::with_capacity(entries.len());
+        graph_slots.resize_with(entries.len(), || None);
 
         Self {
             entries,
-            postorder,
             algorithms,
+            graph_slots,
         }
     }
 
     fn into_executions(self) -> Vec<GraphExecution> {
-        let mut executions = self
-            .algorithms
+        // ELK's `collectAllGraphsBottomUp` returns the reverse of discovery order. This is not
+        // interchangeable with ordinary DFS postorder: sibling subtrees are interleaved in a
+        // public, error-observable order.
+        self.algorithms
             .into_iter()
-            .map(|algorithm| Some(algorithm.execution))
-            .collect::<Vec<_>>();
-        self.postorder
-            .into_iter()
-            .map(|graph_index| {
-                executions[graph_index]
-                    .take()
-                    .expect("each graph execution should be emitted exactly once")
-            })
+            .rev()
+            .map(|algorithm| algorithm.execution)
             .collect()
     }
 }
@@ -583,16 +546,20 @@ fn validate_ported_processors(processors: &[ProcessorSlot]) -> PipelineResult<()
 }
 
 fn validate_ported_graph_processors(graph: &LGraph) -> PipelineResult<()> {
-    let mut stack = vec![graph];
-    while let Some(current) = stack.pop() {
+    let mut collected = vec![graph];
+    let mut search = vec![graph];
+    while let Some(current) = search.pop() {
+        for nested in current
+            .layerless_nodes
+            .iter()
+            .filter_map(|node| node.nested_graph.as_deref())
+        {
+            collected.push(nested);
+            search.push(nested);
+        }
+    }
+    for current in collected.into_iter().rev() {
         validate_ported_processors(&assemble_processors_for_graph(current))?;
-        stack.extend(
-            current
-                .layerless_nodes
-                .iter()
-                .rev()
-                .filter_map(|node| node.nested_graph.as_deref()),
-        );
     }
     Ok(())
 }
@@ -834,10 +801,10 @@ fn execute_ported_compound_processors_to(
     let mut arena = build_compound_graph_arena_with_work_control(graph, work_control)?;
     const ROOT_GRAPH: usize = 0;
     if stop.is_none() {
-        // Configuration can change the assembled processor list. Preserve the previous bottom-up
-        // validation order while using the linear arena instead of rebuilding root-to-graph paths.
-        for &graph_index in &arena.postorder {
-            validate_ported_processors(&arena.algorithms[graph_index].processors)?;
+        // Configuration can change the assembled processor list. Validate in the same official
+        // bottom-up order used for execution and public result emission.
+        for algorithm in arena.algorithms.iter().rev() {
+            validate_ported_processors(&algorithm.processors)?;
         }
     }
 
@@ -851,6 +818,7 @@ fn execute_ported_compound_processors_to(
         execute_compound_graph_round(
             graph,
             &arena.entries,
+            &mut arena.graph_slots,
             &mut arena.algorithms,
             stop,
             work_control,
@@ -945,54 +913,154 @@ struct ParentGraph<'a> {
     node: usize,
 }
 
-struct CompoundTraversalFrame {
-    graph_index: usize,
-    parent_node: usize,
-    graph: Box<LGraph>,
-    next_child: usize,
-}
-
-/// Owns the Rust-only detachment used while one compound subtree is processed.
+/// Owns one round's Rust-only detachment of the compound hierarchy.
 ///
-/// Eclipse ELK keeps every nested graph attached to its parent object throughout execution. The
-/// source port detaches graphs only to obtain disjoint mutable Rust owners, so an error or unwind
-/// must not make that implementation detail observable to the caller. Dropping this guard restores
-/// the complete child-to-parent chain in bottom-up order.
-struct DetachedCompoundSubtree<'a> {
-    root_parent: &'a mut LGraph,
-    stack: Vec<CompoundTraversalFrame>,
+/// Eclipse ELK keeps nested graph objects attached throughout execution. Rust needs disjoint
+/// mutable owners to execute a child and update its parent at the same time, so the round stores
+/// every nested graph in an arena slot. Completed children are immediately reattached before their
+/// parent executes. Dropping the guard restores every still-detached graph in child-before-parent
+/// order after an error or unwind.
+struct DetachedCompoundGraphs<'a> {
+    root: &'a mut LGraph,
+    entries: &'a [GraphArenaEntry],
+    slots: &'a mut [Option<Box<LGraph>>],
 }
 
-impl<'a> DetachedCompoundSubtree<'a> {
-    fn new(root_parent: &'a mut LGraph, root_child: GraphArenaChild) -> Self {
-        let graph = root_parent.layerless_nodes[root_child.node]
-            .nested_graph
-            .take()
-            .expect("the compound graph topology must remain stable during layered execution");
+impl<'a> DetachedCompoundGraphs<'a> {
+    fn new(
+        root: &'a mut LGraph,
+        entries: &'a [GraphArenaEntry],
+        slots: &'a mut [Option<Box<LGraph>>],
+    ) -> Self {
+        assert_eq!(
+            slots.len(),
+            entries.len(),
+            "the reusable graph slots must match the arena topology"
+        );
+        assert!(
+            slots.iter().all(Option::is_none),
+            "all compound graph slots must be empty between rounds"
+        );
+
         Self {
-            root_parent,
-            stack: vec![CompoundTraversalFrame {
-                graph_index: root_child.graph,
-                parent_node: root_child.node,
-                graph,
-                next_child: 0,
-            }],
+            root,
+            entries,
+            slots,
         }
     }
 
-    fn reattach_completed_frame(&mut self) {
-        let frame = self
-            .stack
-            .pop()
-            .expect("a completed compound graph should have an active frame");
-        reattach_compound_frame(frame, &mut self.stack, self.root_parent);
+    fn detach_all(&mut self) {
+        // Arena discovery always assigns a parent before its children. Detach in that order so a
+        // nested graph is still reachable from either the root or its parent's occupied slot.
+        for graph_index in 1..self.entries.len() {
+            let parent = self.entries[graph_index]
+                .parent
+                .expect("every non-root graph must have an arena parent");
+            let graph = if parent.graph == 0 {
+                self.root.layerless_nodes[parent.node].nested_graph.take()
+            } else {
+                self.slots[parent.graph]
+                    .as_deref_mut()
+                    .expect("a parent graph must remain detached until its children complete")
+                    .layerless_nodes[parent.node]
+                    .nested_graph
+                    .take()
+            }
+            .expect("the compound graph topology must remain stable during layered execution");
+            self.slots[graph_index] = Some(graph);
+        }
+    }
+
+    fn execute_and_reattach(
+        &mut self,
+        graph_index: usize,
+        algorithm: &mut GraphAlgorithm,
+        stop: Option<PipelineStop>,
+        work_control: &mut dyn WorkControl,
+    ) -> PipelineResult<()> {
+        let parent = self.entries[graph_index]
+            .parent
+            .expect("only nested graphs use detached execution");
+        if parent.graph == 0 {
+            let result = {
+                let graph = self.slots[graph_index]
+                    .as_deref_mut()
+                    .expect("the nested graph must occupy its arena slot");
+                execute_compound_algorithm_until_pause(
+                    graph,
+                    algorithm,
+                    false,
+                    Some(ParentGraph {
+                        graph: self.root,
+                        node: parent.node,
+                    }),
+                    stop,
+                    work_control,
+                )
+            };
+            let graph = self.slots[graph_index]
+                .take()
+                .expect("the completed graph must still occupy its arena slot");
+            self.root.layerless_nodes[parent.node].nested_graph = Some(graph);
+            return result;
+        }
+
+        debug_assert!(parent.graph < graph_index);
+        let result = {
+            let (parents, current_and_later) = self.slots.split_at_mut(graph_index);
+            let parent_graph = parents[parent.graph]
+                .as_deref_mut()
+                .expect("the parent graph must remain detached until its turn");
+            let graph = current_and_later[0]
+                .as_deref_mut()
+                .expect("the nested graph must occupy its arena slot");
+            execute_compound_algorithm_until_pause(
+                graph,
+                algorithm,
+                false,
+                Some(ParentGraph {
+                    graph: parent_graph,
+                    node: parent.node,
+                }),
+                stop,
+                work_control,
+            )
+        };
+
+        let graph = self.slots[graph_index]
+            .take()
+            .expect("the completed graph must still occupy its arena slot");
+        self.slots[parent.graph]
+            .as_deref_mut()
+            .expect("the parent graph must remain detached until its turn")
+            .layerless_nodes[parent.node]
+            .nested_graph = Some(graph);
+        result
+    }
+
+    fn restore_slot(&mut self, graph_index: usize) {
+        let Some(graph) = self.slots[graph_index].take() else {
+            return;
+        };
+        let parent = self.entries[graph_index]
+            .parent
+            .expect("every non-root graph must have an arena parent");
+        if parent.graph == 0 {
+            self.root.layerless_nodes[parent.node].nested_graph = Some(graph);
+        } else {
+            self.slots[parent.graph]
+                .as_deref_mut()
+                .expect("a detached child must still have a detached parent during restoration")
+                .layerless_nodes[parent.node]
+                .nested_graph = Some(graph);
+        }
     }
 }
 
-impl Drop for DetachedCompoundSubtree<'_> {
+impl Drop for DetachedCompoundGraphs<'_> {
     fn drop(&mut self) {
-        while let Some(frame) = self.stack.pop() {
-            reattach_compound_frame(frame, &mut self.stack, self.root_parent);
+        for graph_index in (1..self.entries.len()).rev() {
+            self.restore_slot(graph_index);
         }
     }
 }
@@ -1000,132 +1068,29 @@ impl Drop for DetachedCompoundSubtree<'_> {
 fn execute_compound_graph_round(
     root: &mut LGraph,
     entries: &[GraphArenaEntry],
+    graph_slots: &mut [Option<Box<LGraph>>],
     algorithms: &mut [GraphAlgorithm],
     stop: Option<PipelineStop>,
     work_control: &mut dyn WorkControl,
 ) -> PipelineResult<()> {
-    for child in entries[0].children.iter().copied() {
-        debug_assert_eq!(
-            entries[child.graph].parent,
-            Some(GraphArenaParent {
-                graph: 0,
-                node: child.node,
-            })
-        );
-        execute_compound_subtree_round(root, child, entries, algorithms, stop, work_control)?;
+    let mut detached = DetachedCompoundGraphs::new(root, entries, graph_slots);
+    detached.detach_all();
+    for graph_index in (1..algorithms.len()).rev() {
+        detached.execute_and_reattach(
+            graph_index,
+            &mut algorithms[graph_index],
+            stop,
+            work_control,
+        )?;
     }
-    execute_compound_algorithm_until_pause(root, &mut algorithms[0], true, None, stop, work_control)
-}
-
-fn execute_compound_subtree_round(
-    root_parent: &mut LGraph,
-    root_child: GraphArenaChild,
-    entries: &[GraphArenaEntry],
-    algorithms: &mut [GraphAlgorithm],
-    stop: Option<PipelineStop>,
-    work_control: &mut dyn WorkControl,
-) -> PipelineResult<()> {
-    let mut traversal = DetachedCompoundSubtree::new(root_parent, root_child);
-
-    loop {
-        let child = {
-            let frame = traversal
-                .stack
-                .last_mut()
-                .expect("a detached compound subtree always has an active frame");
-            let child = entries[frame.graph_index]
-                .children
-                .get(frame.next_child)
-                .copied();
-            frame.next_child += usize::from(child.is_some());
-            child
-        };
-        if let Some(child) = child {
-            debug_assert_eq!(
-                entries[child.graph].parent,
-                Some(GraphArenaParent {
-                    graph: traversal
-                        .stack
-                        .last()
-                        .expect("the parent frame should still be active")
-                        .graph_index,
-                    node: child.node,
-                })
-            );
-            let graph = traversal
-                .stack
-                .last_mut()
-                .expect("the parent frame should still be active")
-                .graph
-                .layerless_nodes[child.node]
-                .nested_graph
-                .take()
-                .expect("the compound graph topology must remain stable during layered execution");
-            traversal.stack.push(CompoundTraversalFrame {
-                graph_index: child.graph,
-                parent_node: child.node,
-                graph,
-                next_child: 0,
-            });
-            continue;
-        }
-
-        let frame_count = traversal.stack.len();
-        let result = {
-            let (root_parent, stack) = (&mut *traversal.root_parent, &mut traversal.stack);
-            if frame_count > 1 {
-                let (parents, current) = stack.split_at_mut(frame_count - 1);
-                let parent = parents
-                    .last_mut()
-                    .expect("a nested compound frame should have a parent frame");
-                let frame = &mut current[0];
-                execute_compound_algorithm_until_pause(
-                    &mut frame.graph,
-                    &mut algorithms[frame.graph_index],
-                    false,
-                    Some(ParentGraph {
-                        graph: &mut parent.graph,
-                        node: frame.parent_node,
-                    }),
-                    stop,
-                    work_control,
-                )
-            } else {
-                let frame = stack
-                    .last_mut()
-                    .expect("a detached compound subtree always has an active frame");
-                execute_compound_algorithm_until_pause(
-                    &mut frame.graph,
-                    &mut algorithms[frame.graph_index],
-                    false,
-                    Some(ParentGraph {
-                        graph: root_parent,
-                        node: frame.parent_node,
-                    }),
-                    stop,
-                    work_control,
-                )
-            }
-        };
-
-        traversal.reattach_completed_frame();
-        result?;
-        if traversal.stack.is_empty() {
-            return Ok(());
-        }
-    }
-}
-
-fn reattach_compound_frame(
-    frame: CompoundTraversalFrame,
-    stack: &mut [CompoundTraversalFrame],
-    root_parent: &mut LGraph,
-) {
-    if let Some(parent) = stack.last_mut() {
-        parent.graph.layerless_nodes[frame.parent_node].nested_graph = Some(frame.graph);
-    } else {
-        root_parent.layerless_nodes[frame.parent_node].nested_graph = Some(frame.graph);
-    }
+    execute_compound_algorithm_until_pause(
+        detached.root,
+        &mut algorithms[0],
+        true,
+        None,
+        stop,
+        work_control,
+    )
 }
 
 fn execute_hierarchy_aware_processor(
@@ -2119,21 +2084,21 @@ fn hierarchy_arena_plan_work_units(graph: &LGraph) -> Result<usize, WorkError> {
         }
     }
 
-    // Charge discovery, the full node scan, both stored ends of every parent/child link, both
-    // postorder frames, and one algorithm binding per graph. None of these terms depends on depth.
+    // Charge discovery, the full node scan, one parent link, one arena entry, one algorithm
+    // binding, and one reusable graph slot per graph. None of these terms depends on depth.
     checked_sum([
         graph_count,
         node_count,
-        checked_mul(nested_graph_count, 2)?,
-        checked_mul(graph_count, 2)?,
-        graph_count,
+        nested_graph_count,
+        checked_mul(graph_count, 3)?,
     ])
 }
 
 fn compound_graph_round_work_units(graph_count: usize) -> Result<usize, WorkError> {
     let nested_graph_count = graph_count.saturating_sub(1);
     // Every round dispatches each graph once and moves every nested graph out of and back into its
-    // parent exactly once. The iterative frames keep the live storage linear in hierarchy depth.
+    // parent exactly once. Reusable arena slots are allocated by the one-time plan tranche, so no
+    // per-round slot initialization is charged here.
     checked_sum([graph_count, checked_mul(nested_graph_count, 2)?])
 }
 
@@ -2959,6 +2924,43 @@ mod tests {
         *nested.expect("a positive graph count creates the root graph")
     }
 
+    fn branched_compound_graph() -> LGraph {
+        let options = LayeredOptions {
+            hierarchy_handling: crate::options::HierarchyHandling::IncludeChildren,
+            greedy_switch_type: GreedySwitchType::Off,
+            greedy_switch_hierarchical_type: GreedySwitchType::Off,
+            ..LayeredOptions::default()
+        };
+
+        let mut first_grandchild = LGraph::new("first-grandchild", options.clone());
+        first_grandchild.parent_node_id = Some("first-grandchild-holder".to_string());
+        let mut first_child = LGraph::new("first-child", options.clone());
+        first_child.parent_node_id = Some("first-holder".to_string());
+        let mut first_grandchild_holder = LNode::new("first-grandchild-holder", 1.0, 1.0, None);
+        first_grandchild_holder.compound = true;
+        first_grandchild_holder.nested_graph = Some(Box::new(first_grandchild));
+        first_child.layerless_nodes.push(first_grandchild_holder);
+
+        let mut second_grandchild = LGraph::new("second-grandchild", options.clone());
+        second_grandchild.parent_node_id = Some("second-grandchild-holder".to_string());
+        let mut second_child = LGraph::new("second-child", options.clone());
+        second_child.parent_node_id = Some("second-holder".to_string());
+        let mut second_grandchild_holder = LNode::new("second-grandchild-holder", 1.0, 1.0, None);
+        second_grandchild_holder.compound = true;
+        second_grandchild_holder.nested_graph = Some(Box::new(second_grandchild));
+        second_child.layerless_nodes.push(second_grandchild_holder);
+
+        let mut root = LGraph::new("root", options);
+        let mut first_holder = LNode::new("first-holder", 1.0, 1.0, None);
+        first_holder.compound = true;
+        first_holder.nested_graph = Some(Box::new(first_child));
+        let mut second_holder = LNode::new("second-holder", 1.0, 1.0, None);
+        second_holder.compound = true;
+        second_holder.nested_graph = Some(Box::new(second_child));
+        root.layerless_nodes.extend([first_holder, second_holder]);
+        root
+    }
+
     fn high_thoroughness_diagnostic_graph() -> LGraph {
         let mut options = LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down);
         options.thoroughness = 64;
@@ -3466,13 +3468,13 @@ mod tests {
             let nested_graph_count = graph_count - 1;
             assert_eq!(
                 hierarchy_arena_plan_work_units(&graph).unwrap(),
-                graph_count * 4 + node_count + nested_graph_count * 2
+                graph_count * 4 + node_count + nested_graph_count
             );
         }
     }
 
     #[test]
-    fn compound_arena_stores_one_parent_and_child_link_per_nested_graph() {
+    fn compound_arena_stores_one_parent_and_reusable_slot_per_graph() {
         for graph_count in [8usize, 16, 32, 64, 128] {
             let graph = deep_compound_chain(graph_count);
             let arena = CompoundGraphArena::new(&graph);
@@ -3481,47 +3483,60 @@ mod tests {
                 .iter()
                 .filter(|entry| entry.parent.is_some())
                 .count();
-            let child_links = arena
-                .entries
-                .iter()
-                .map(|entry| entry.children.len())
-                .sum::<usize>();
 
             assert_eq!(arena.entries.len(), graph_count);
             assert_eq!(arena.algorithms.len(), graph_count);
-            assert_eq!(arena.postorder.len(), graph_count);
+            assert_eq!(arena.graph_slots.len(), graph_count);
+            assert!(arena.graph_slots.iter().all(Option::is_none));
             assert_eq!(parent_links, graph_count - 1);
-            assert_eq!(child_links, graph_count - 1);
-            assert_eq!(arena.postorder, (0..graph_count).rev().collect::<Vec<_>>());
         }
     }
 
     #[test]
-    fn compound_arena_preserves_node_ordered_depth_first_postorder() {
-        let options = LayeredOptions::default();
-        let grandchild = LGraph::new("grandchild", options.clone());
-        let mut first_child = LGraph::new("first-child", options.clone());
-        let mut grandchild_holder = LNode::new("grandchild-holder", 1.0, 1.0, None);
-        grandchild_holder.nested_graph = Some(Box::new(grandchild));
-        first_child.layerless_nodes.push(grandchild_holder);
-        let second_child = LGraph::new("second-child", options.clone());
-        let mut root = LGraph::new("root", options);
-        let mut first_holder = LNode::new("first-holder", 1.0, 1.0, None);
-        first_holder.nested_graph = Some(Box::new(first_child));
-        let mut second_holder = LNode::new("second-holder", 1.0, 1.0, None);
-        second_holder.nested_graph = Some(Box::new(second_child));
-        root.layerless_nodes.extend([first_holder, second_holder]);
-
+    fn compound_arena_preserves_official_reverse_discovery_order() {
+        let root = branched_compound_graph();
         let arena = CompoundGraphArena::new(&root);
         let graph_ids = arena
-            .postorder
+            .algorithms
             .iter()
-            .map(|graph_index| arena.algorithms[*graph_index].execution.graph_id.as_str())
+            .rev()
+            .map(|algorithm| algorithm.execution.graph_id.as_str())
             .collect::<Vec<_>>();
 
         assert_eq!(
             graph_ids,
-            ["grandchild", "first-child", "second-child", "root"]
+            [
+                "first-grandchild",
+                "second-grandchild",
+                "second-child",
+                "first-child",
+                "root",
+            ]
+        );
+    }
+
+    #[test]
+    fn public_compound_execution_reports_official_reverse_discovery_order() {
+        let mut root = branched_compound_graph();
+        let executions = execute_ported_compound_processors_until_processor(
+            &mut root,
+            ProcessorKind::GreedyCycleBreaker,
+        )
+        .unwrap();
+        let graph_ids = executions
+            .iter()
+            .map(|execution| execution.graph_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            graph_ids,
+            [
+                "first-grandchild",
+                "second-grandchild",
+                "second-child",
+                "first-child",
+                "root",
+            ]
         );
     }
 
@@ -3534,7 +3549,11 @@ mod tests {
         let mut root = LGraph::new("root", options);
         root.layerless_nodes.push(holder);
         let mut arena = CompoundGraphArena::new(&root);
-        let child_index = arena.entries[0].children[0].graph;
+        let child_index = arena
+            .algorithms
+            .iter()
+            .position(|algorithm| algorithm.execution.graph_id == "child")
+            .unwrap();
         arena.algorithms[child_index].processors = vec![ProcessorSlot {
             phase: None,
             kind: ProcessorKind::CommentPreprocessor,
@@ -3545,6 +3564,7 @@ mod tests {
             execute_compound_graph_round(
                 &mut root,
                 &arena.entries,
+                &mut arena.graph_slots,
                 &mut arena.algorithms,
                 None,
                 &mut work_control,
@@ -3560,6 +3580,7 @@ mod tests {
                 .map(|graph| graph.id.as_str()),
             Some("child")
         );
+        assert!(arena.graph_slots.iter().all(Option::is_none));
     }
 
     #[test]
@@ -3581,8 +3602,11 @@ mod tests {
         for algorithm in &mut arena.algorithms {
             algorithm.processors.clear();
         }
-        let child_index = arena.entries[0].children[0].graph;
-        let grandchild_index = arena.entries[child_index].children[0].graph;
+        let grandchild_index = arena
+            .algorithms
+            .iter()
+            .position(|algorithm| algorithm.execution.graph_id == "graph-2")
+            .unwrap();
         arena.algorithms[grandchild_index].processors = vec![ProcessorSlot {
             phase: None,
             kind: ProcessorKind::DirectionPreprocessor,
@@ -3593,6 +3617,7 @@ mod tests {
             let _ = execute_compound_graph_round(
                 &mut root,
                 &arena.entries,
+                &mut arena.graph_slots,
                 &mut arena.algorithms,
                 None,
                 &mut work_control,
@@ -3610,6 +3635,77 @@ mod tests {
             .as_deref()
             .expect("the deepest detached graph must be restored during unwind");
         assert_eq!(grandchild.id, "graph-2");
+        assert!(arena.graph_slots.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn compound_round_restores_already_detached_graphs_when_detachment_panics() {
+        let mut root = deep_compound_chain(3);
+        let mut arena = CompoundGraphArena::new(&root);
+        let grandchild_index = arena
+            .algorithms
+            .iter()
+            .position(|algorithm| algorithm.execution.graph_id == "graph-2")
+            .unwrap();
+        arena.entries[grandchild_index]
+            .parent
+            .as_mut()
+            .expect("the grandchild must have an arena parent")
+            .node = usize::MAX;
+        let mut work_control = NoopWorkControl;
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = execute_compound_graph_round(
+                &mut root,
+                &arena.entries,
+                &mut arena.graph_slots,
+                &mut arena.algorithms,
+                None,
+                &mut work_control,
+            );
+        }));
+
+        assert!(result.is_err());
+        let child = root.layerless_nodes[0]
+            .nested_graph
+            .as_deref()
+            .expect("the graph detached before the panic must be restored");
+        assert_eq!(child.id, "graph-1");
+        assert_eq!(
+            child.layerless_nodes[0]
+                .nested_graph
+                .as_deref()
+                .map(|graph| graph.id.as_str()),
+            Some("graph-2")
+        );
+        assert!(arena.graph_slots.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn compound_round_reuses_the_arena_graph_slots() {
+        let mut root = deep_compound_chain(8);
+        let mut arena = CompoundGraphArena::new(&root);
+        for algorithm in &mut arena.algorithms {
+            algorithm.processors.clear();
+        }
+        let slots_ptr = arena.graph_slots.as_ptr();
+        let slots_capacity = arena.graph_slots.capacity();
+        let mut work_control = NoopWorkControl;
+
+        for _ in 0..2 {
+            execute_compound_graph_round(
+                &mut root,
+                &arena.entries,
+                &mut arena.graph_slots,
+                &mut arena.algorithms,
+                None,
+                &mut work_control,
+            )
+            .unwrap();
+            assert!(arena.graph_slots.iter().all(Option::is_none));
+            assert_eq!(arena.graph_slots.as_ptr(), slots_ptr);
+            assert_eq!(arena.graph_slots.capacity(), slots_capacity);
+        }
     }
 
     #[test]
@@ -3646,7 +3742,8 @@ mod tests {
         let exact_arena =
             build_compound_graph_arena_with_work_control(&mut graph, &mut exact).unwrap();
         assert_eq!(exact_arena.entries.len(), 32);
-        assert_eq!(exact_arena.postorder, (0..32).rev().collect::<Vec<_>>());
+        assert_eq!(exact_arena.graph_slots.len(), 32);
+        assert!(exact_arena.graph_slots.iter().all(Option::is_none));
         assert_eq!(exact.charged, required);
         assert_eq!(exact.remaining, 0);
 
@@ -3654,7 +3751,8 @@ mod tests {
         let above_arena =
             build_compound_graph_arena_with_work_control(&mut graph, &mut above).unwrap();
         assert_eq!(above_arena.entries, exact_arena.entries);
-        assert_eq!(above_arena.postorder, exact_arena.postorder);
+        assert_eq!(above_arena.algorithms, exact_arena.algorithms);
+        assert_eq!(above_arena.graph_slots.len(), exact_arena.graph_slots.len());
         assert_eq!(above.charged, required);
         assert_eq!(above.remaining, 1);
     }
