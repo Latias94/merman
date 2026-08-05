@@ -226,6 +226,71 @@ class CargoArtifactSelectionTests(unittest.TestCase):
                 (("cdylib", dylib), ("staticlib", staticlib)),
             )
 
+    def test_package_id_accepts_only_the_cargo_lexical_symlink_path(self) -> None:
+        profile = load_native_artifact_profiles()[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            real_root = root / "real-root"
+            alias_root = root / "alias-root"
+            other_alias_root = root / "other-alias-root"
+            real_repo = real_root / "repo"
+            alias_repo = alias_root / "repo"
+            other_alias_repo = other_alias_root / "repo"
+            manifest = real_repo / profile.recipe.manifest
+            manifest.parent.mkdir(parents=True)
+            (real_repo / "Cargo.toml").write_bytes(
+                (SCRIPT_DIR.parent / "Cargo.toml").read_bytes()
+            )
+            manifest.write_bytes(
+                (SCRIPT_DIR.parent / profile.recipe.manifest).read_bytes()
+            )
+            source = manifest.parent / "src" / "lib.rs"
+            source.parent.mkdir()
+            source.write_text("", encoding="utf-8")
+            alias_root.symlink_to(real_root, target_is_directory=True)
+            other_alias_root.symlink_to(real_root, target_is_directory=True)
+
+            target = root / "target"
+            artifact_dir = target / "native-sdk"
+            artifact_dir.mkdir(parents=True)
+            dylib = artifact_dir / "libmerman_ffi.dylib"
+            staticlib = artifact_dir / "libmerman_ffi.a"
+            dylib.write_bytes(b"dylib")
+            staticlib.write_bytes(b"archive")
+
+            event = self._compiler_event(profile, alias_repo, dylib, staticlib)
+            version = artifact_verifier._workspace_package_version(
+                alias_repo / profile.recipe.manifest,
+                alias_repo / "Cargo.toml",
+            )
+            event["package_id"] = (
+                f"path+{(alias_repo / profile.recipe.manifest).parent.absolute().as_uri()}#"
+                f"{profile.recipe.package}@{version}"
+            )
+
+            self.assertEqual(
+                select_compiler_artifacts(
+                    json.dumps(event),
+                    profile=profile,
+                    repo_root=alias_repo,
+                    target_dir=target,
+                    host_target="aarch64-apple-darwin",
+                ),
+                (("cdylib", dylib), ("staticlib", staticlib)),
+            )
+
+            other_alias_package_id = (
+                f"path+{(other_alias_repo / profile.recipe.manifest).parent.absolute().as_uri()}#"
+                f"{profile.recipe.package}@{version}"
+            )
+            self.assertFalse(
+                artifact_verifier._matches_workspace_package_id(
+                    other_alias_package_id,
+                    profile.recipe,
+                    alias_repo,
+                )
+            )
+
     def test_artifact_outside_exact_target_directory_is_rejected(self) -> None:
         profile = load_native_artifact_profiles()[1]
         with tempfile.TemporaryDirectory() as temporary_directory:

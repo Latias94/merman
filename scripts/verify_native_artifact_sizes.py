@@ -911,12 +911,15 @@ def _matches_workspace_package_id(
     repo_root: Path,
 ) -> bool:
     manifest = repo_root / recipe.manifest
-    expected_prefix = f"path+{manifest.parent.resolve().as_uri()}#"
-    if not package_id.startswith(expected_prefix):
-        return False
-    version = _workspace_package_version(manifest, repo_root / "Cargo.toml")
-    fragment = package_id.removeprefix(expected_prefix)
-    return fragment in {version, f"{recipe.package}@{version}"}
+    for expected_prefix in (
+        f"path+{manifest.parent.absolute().as_uri()}#",
+        f"path+{manifest.parent.resolve().as_uri()}#",
+    ):
+        if package_id.startswith(expected_prefix):
+            version = _workspace_package_version(manifest, repo_root / "Cargo.toml")
+            fragment = package_id.removeprefix(expected_prefix)
+            return fragment in {version, f"{recipe.package}@{version}"}
+    return False
 
 
 def _workspace_package_version(manifest: Path, workspace_manifest: Path) -> str:
