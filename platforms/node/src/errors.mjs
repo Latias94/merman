@@ -1,7 +1,14 @@
 import {
+  BINDING_OPERATION_METADATA_CONTRACT,
   BINDING_PAYLOAD_SCHEMAS,
   RUNTIME_CATALOG_MAX_SAFE_INTEGER,
 } from "./generated/binding-contract.mjs";
+import { CAPABILITY_DESCRIPTOR_DIGEST } from "./generated/capability-surface.mjs";
+import {
+  NODE_TRANSPORT_FIELD_LIMITS,
+  NODE_TRANSPORT_LIMITS,
+  NODE_WIRE_CONTRACT,
+} from "./transport-contract.mjs";
 
 const BINDING_RESULT_SCHEMA = BINDING_PAYLOAD_SCHEMAS.find(
   (schema) => schema.id === "binding-result",
@@ -10,6 +17,19 @@ if (BINDING_RESULT_SCHEMA === undefined) {
   throw new Error("Generated binding contract is missing the binding-result schema.");
 }
 const BINDING_RESULT_PAYLOAD_VERSION = BINDING_RESULT_SCHEMA.version;
+const BINDING_STATUS_NAME_BY_CODE = new Map([
+  [1, "MERMAN_INVALID_ARGUMENT"],
+  [2, "MERMAN_UTF8_ERROR"],
+  [3, "MERMAN_OPTIONS_JSON_ERROR"],
+  [4, "MERMAN_NO_DIAGRAM"],
+  [5, "MERMAN_PARSE_ERROR"],
+  [6, "MERMAN_RENDER_ERROR"],
+  [7, "MERMAN_UNSUPPORTED_OPERATION"],
+  [8, "MERMAN_PANIC"],
+  [9, "MERMAN_INTERNAL_ERROR"],
+  [10, "MERMAN_RESOURCE_LIMIT_EXCEEDED"],
+  [11, "MERMAN_BUSY"],
+]);
 const JSON_NUMBER_TOKEN = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
 const JSON_NUMBER_PARTS = /^-?(0|[1-9]\d*)(?:\.(\d+))?(?:[eE]([+-]?)(\d+))?$/;
 const MAX_SAFE_INTEGER_DECIMAL = String(RUNTIME_CATALOG_MAX_SAFE_INTEGER);
@@ -39,6 +59,23 @@ const RUNTIME_CATALOG_EXACT_SAFE_INTEGER_PATHS = Object.freeze([
   ["registry", "diagram_family_count"],
   ["resources", "limits", "*", "minimum_value"],
   ["resources", "profiles", "*", "limits", "*"],
+]);
+const RESPONSE_EXACT_SAFE_INTEGER_PATHS = Object.freeze([
+  ["version"],
+  ["error", "code"],
+  ["error", "details", "resource", "actual"],
+  ["error", "details", "resource", "max"],
+  ["error", "details", "icon_registry", "pack_index"],
+]);
+const OPERATION_METADATA_EXACT_SAFE_INTEGER_PATHS = Object.freeze([
+  ...BINDING_OPERATION_METADATA_CONTRACT.fields
+    .filter((field) => field.json_type === "unsigned-integer")
+    .map((field) => [field.name]),
+  ...BINDING_OPERATION_METADATA_CONTRACT.output_plans.flatMap((plan) =>
+    plan.fields
+      .filter((field) => field.json_type === "unsigned-integer")
+      .map((field) => ["output_plan", field.name])
+  ),
 ]);
 
 export class MermanError extends Error {
@@ -110,21 +147,22 @@ export class MermanInvalidTransportError extends MermanError {
   }
 }
 
-export const NODE_TRANSPORT_LIMITS = Object.freeze({
-  metadataBytes: 8 * 1024 * 1024,
-  runtimeCatalogBytes: 1024 * 1024,
-});
+export { NODE_TRANSPORT_FIELD_LIMITS, NODE_TRANSPORT_LIMITS, NODE_WIRE_CONTRACT };
 
-export function parseTransportJsonText(value, label, maxUtf8Bytes) {
+export function parseTransportJsonText(value, label, limits) {
   if (typeof value !== "string") {
     throw new MermanInvalidTransportError(`Merman transport ${label} must be JSON text.`);
   }
-  const byteLength = Buffer.byteLength(value, "utf8");
-  if (byteLength > maxUtf8Bytes) {
+  if (!limits || typeof limits !== "object") {
+    throw new TypeError(`Missing Node wire limits for ${label}.`);
+  }
+  const byteLength = strictUtf8ByteLength(value, label);
+  if (byteLength > limits.max_utf8_bytes) {
     throw new MermanInvalidTransportError(
-      `Merman transport ${label} exceeds the ${maxUtf8Bytes}-byte wire limit.`,
+      `Merman transport ${label} exceeds the ${limits.max_utf8_bytes}-byte wire limit.`,
     );
   }
+  scanBoundedJsonText(value, label, limits);
   try {
     return JSON.parse(value);
   } catch (cause) {
@@ -135,11 +173,35 @@ export function parseTransportJsonText(value, label, maxUtf8Bytes) {
   }
 }
 
+export function encodeTransportJson(value, label, limits) {
+  let text;
+  try {
+    text = JSON.stringify(value);
+  } catch (cause) {
+    throw new MermanInvalidTransportError(
+      `Merman could not encode ${label} as JSON text.`,
+      cause,
+    );
+  }
+  parseTransportJsonText(text, label, limits);
+  return text;
+}
+
+export function assertUtf8Field(value, label, maxUtf8Bytes) {
+  const bytes = strictUtf8ByteLength(value, label);
+  if (bytes > maxUtf8Bytes) {
+    throw new MermanInvalidTransportError(
+      `Merman transport ${label} exceeds the ${maxUtf8Bytes}-byte field limit.`,
+    );
+  }
+  return bytes;
+}
+
 export function parseRuntimeCatalogJsonText(value, label = "runtime catalog") {
   const parsed = parseTransportJsonText(
     value,
     label,
-    NODE_TRANSPORT_LIMITS.runtimeCatalogBytes,
+    NODE_TRANSPORT_LIMITS.runtime_catalog,
   );
   assertExactSafeIntegerJsonTokens(
     value,
@@ -147,6 +209,255 @@ export function parseRuntimeCatalogJsonText(value, label = "runtime catalog") {
     RUNTIME_CATALOG_EXACT_SAFE_INTEGER_PATHS,
   );
   return parsed;
+}
+
+export function validateTransportIdentityJson(
+  value,
+  { expectedTransport, expectedPackageVersion },
+) {
+  const identity = parseTransportJsonText(
+    value,
+    "identity",
+    NODE_TRANSPORT_LIMITS.identity,
+  );
+  if (
+    !isPlainJsonObject(identity) ||
+    identity.schema_version !== 1 ||
+    identity.package_id !== NODE_WIRE_CONTRACT.package_id ||
+    identity.artifact_id !== NODE_WIRE_CONTRACT.artifact_id ||
+    identity.package_version !== expectedPackageVersion ||
+    identity.transport_kind !== expectedTransport ||
+    identity.transport_api_version !== NODE_WIRE_CONTRACT.transport_api_version ||
+    identity.binding_result_payload_version !==
+      NODE_WIRE_CONTRACT.binding_result_payload_version ||
+    identity.capability_descriptor_digest !== CAPABILITY_DESCRIPTOR_DIGEST ||
+    !sameJsonValue(identity.wire_contract, NODE_WIRE_CONTRACT)
+  ) {
+    throw new MermanInvalidTransportError(
+      "The Merman candidate module identity is incompatible with this loader package.",
+    );
+  }
+  assertUtf8Field(
+    identity.package_version,
+    "identity package_version",
+    NODE_TRANSPORT_FIELD_LIMITS.package_version_utf8_bytes,
+  );
+  assertUtf8Field(
+    identity.capability_descriptor_digest,
+    "identity capability_descriptor_digest",
+    NODE_TRANSPORT_FIELD_LIMITS.contract_digest_utf8_bytes,
+  );
+  return identity;
+}
+
+export function validateTransportIdentityExport(
+  readIdentity,
+  { expectedTransport, expectedPackageVersion, label },
+) {
+  if (typeof readIdentity !== "function") {
+    throw new MermanInvalidTransportError(
+      `${label} does not export transportIdentityJson().`,
+    );
+  }
+  let value;
+  try {
+    value = readIdentity();
+  } catch (cause) {
+    throw new MermanInvalidTransportError(
+      `${label} transport identity preflight failed.`,
+      cause,
+    );
+  }
+  return validateTransportIdentityJson(value, {
+    expectedPackageVersion,
+    expectedTransport,
+  });
+}
+
+export function strictUtf8ByteLength(value, label = "text") {
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit <= 0x7f) {
+      bytes += 1;
+    } else if (codeUnit <= 0x7ff) {
+      bytes += 2;
+    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const low = value.charCodeAt(index + 1);
+      if (!(low >= 0xdc00 && low <= 0xdfff)) {
+        throw new MermanInvalidTransportError(
+          `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
+        );
+      }
+      bytes += 4;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      throw new MermanInvalidTransportError(
+        `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
+      );
+    } else {
+      bytes += 3;
+    }
+  }
+  return bytes;
+}
+
+function scanBoundedJsonText(source, label, limits) {
+  let depth = 0;
+  let members = 0;
+  let tokens = 0;
+  const stack = [];
+  for (let index = 0; index < source.length;) {
+    const codeUnit = source.charCodeAt(index);
+    if (isJsonWhitespaceCodeUnit(codeUnit)) {
+      index += 1;
+      continue;
+    }
+    const character = source[index];
+    if (character === '"') {
+      const scanned = scanJsonStringToken(source, index, label);
+      if (scanned.utf8Bytes > limits.max_string_utf8_bytes) {
+        throw new MermanInvalidTransportError(
+          `Merman transport ${label} contains a string exceeding the ${limits.max_string_utf8_bytes}-byte field limit.`,
+        );
+      }
+      tokens += 1;
+      index = scanned.end;
+    } else if (character === "{" || character === "[") {
+      stack.push(character);
+      depth += 1;
+      tokens += 1;
+      if (depth > limits.max_depth) {
+        throw new MermanInvalidTransportError(
+          `Merman transport ${label} exceeds the structural depth limit ${limits.max_depth}.`,
+        );
+      }
+      index += 1;
+    } else if (character === "}" || character === "]") {
+      const expected = character === "}" ? "{" : "[";
+      if (stack.at(-1) !== expected) break;
+      stack.pop();
+      depth -= 1;
+      index += 1;
+    } else if (character === ":") {
+      members += 1;
+      index += 1;
+    } else if (character === "-" || (character >= "0" && character <= "9")) {
+      JSON_NUMBER_TOKEN.lastIndex = index;
+      const match = JSON_NUMBER_TOKEN.exec(source);
+      if (match === null) break;
+      if (!Number.isFinite(Number(match[0]))) {
+        throw new MermanInvalidTransportError(
+          `Merman transport ${label} contains a number outside the finite JSON range.`,
+        );
+      }
+      tokens += 1;
+      index = JSON_NUMBER_TOKEN.lastIndex;
+    } else if (source.startsWith("true", index)) {
+      tokens += 1;
+      index += 4;
+    } else if (source.startsWith("false", index)) {
+      tokens += 1;
+      index += 5;
+    } else if (source.startsWith("null", index)) {
+      tokens += 1;
+      index += 4;
+    } else {
+      index += 1;
+    }
+    if (members > limits.max_members) {
+      throw new MermanInvalidTransportError(
+        `Merman transport ${label} exceeds the member-work limit ${limits.max_members}.`,
+      );
+    }
+    if (tokens > limits.max_tokens) {
+      throw new MermanInvalidTransportError(
+        `Merman transport ${label} exceeds the token-work limit ${limits.max_tokens}.`,
+      );
+    }
+  }
+}
+
+function scanJsonStringToken(source, start, label) {
+  let utf8Bytes = 0;
+  for (let index = start + 1; index < source.length; index += 1) {
+    const codeUnit = source.charCodeAt(index);
+    if (codeUnit === 0x22) return { end: index + 1, utf8Bytes };
+    if (codeUnit === 0x5c) {
+      const escaped = source[index + 1];
+      if (escaped === "u") {
+        const first = parseJsonUnicodeEscape(source, index, label);
+        if (first >= 0xd800 && first <= 0xdbff) {
+          if (source[index + 6] !== "\\" || source[index + 7] !== "u") {
+            throw new MermanInvalidTransportError(
+              `Merman transport ${label} contains an isolated JSON surrogate escape.`,
+            );
+          }
+          const second = parseJsonUnicodeEscape(source, index + 6, label);
+          if (!(second >= 0xdc00 && second <= 0xdfff)) {
+            throw new MermanInvalidTransportError(
+              `Merman transport ${label} contains an isolated JSON surrogate escape.`,
+            );
+          }
+          utf8Bytes += 4;
+          index += 11;
+          continue;
+        }
+        if (first >= 0xdc00 && first <= 0xdfff) {
+          throw new MermanInvalidTransportError(
+            `Merman transport ${label} contains an isolated JSON surrogate escape.`,
+          );
+        }
+        utf8Bytes += utf8LengthOfCodeUnit(first);
+        index += 5;
+        continue;
+      }
+      utf8Bytes += 1;
+      index += 1;
+      continue;
+    }
+    if (codeUnit <= 0x7f) {
+      utf8Bytes += 1;
+    } else if (codeUnit <= 0x7ff) {
+      utf8Bytes += 2;
+    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const low = source.charCodeAt(index + 1);
+      if (!(low >= 0xdc00 && low <= 0xdfff)) {
+        throw new MermanInvalidTransportError(
+          `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
+        );
+      }
+      utf8Bytes += 4;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      throw new MermanInvalidTransportError(
+        `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
+      );
+    } else {
+      utf8Bytes += 3;
+    }
+  }
+  return { end: source.length, utf8Bytes };
+}
+
+function parseJsonUnicodeEscape(source, slashIndex, label) {
+  const digits = source.slice(slashIndex + 2, slashIndex + 6);
+  if (!/^[0-9a-fA-F]{4}$/.test(digits)) {
+    throw new MermanInvalidTransportError(
+      `Merman transport ${label} contains an invalid JSON Unicode escape.`,
+    );
+  }
+  return Number.parseInt(digits, 16);
+}
+
+function utf8LengthOfCodeUnit(codeUnit) {
+  if (codeUnit <= 0x7f) return 1;
+  if (codeUnit <= 0x7ff) return 2;
+  return 3;
+}
+
+function isJsonWhitespaceCodeUnit(codeUnit) {
+  return codeUnit === 0x20 || codeUnit === 0x09 || codeUnit === 0x0a || codeUnit === 0x0d;
 }
 
 function assertExactSafeIntegerJsonTokens(value, label, paths) {
@@ -343,41 +654,43 @@ export function abortError() {
   return error;
 }
 
-export function decodeWireResponse(value) {
-  if (typeof value !== "string") {
-    throw new MermanInvalidTransportError("Merman transport response must be JSON text.");
+export function decodeWireResponse(
+  value,
+  expectation,
+  { requireUnavailable = false } = {},
+) {
+  const envelope = parseTransportJsonText(
+    value,
+    "response",
+    NODE_TRANSPORT_LIMITS.response,
+  );
+  assertExactSafeIntegerJsonTokens(
+    value,
+    "response",
+    RESPONSE_EXACT_SAFE_INTEGER_PATHS,
+  );
+  validateEnvelopeHeader(envelope, "response");
+  if (envelope.ok === false) {
+    parseTransportJsonText(value, "error response", NODE_TRANSPORT_LIMITS.error);
+    if (Object.hasOwn(envelope, "result") || !Object.hasOwn(envelope, "error")) {
+      throw new MermanInvalidTransportError(
+        "Merman transport error envelopes must contain error only.",
+      );
+    }
+    const error = validateErrorPayload(envelope.error, expectation, requireUnavailable);
+    throw new MermanOperationError(error);
   }
-  let envelope;
-  try {
-    envelope = JSON.parse(value);
-  } catch (cause) {
-    throw new MermanInvalidTransportError("Merman transport returned invalid JSON.", cause);
-  }
-  if (
-    !envelope ||
-    typeof envelope !== "object" ||
-    envelope.version !== BINDING_RESULT_PAYLOAD_VERSION
-  ) {
+  if (envelope.ok !== true || Object.hasOwn(envelope, "error")) {
     throw new MermanInvalidTransportError(
-      "Merman transport returned an unsupported response envelope.",
+      "Merman transport success envelopes must contain result only.",
     );
   }
-  if (envelope.ok === false && envelope.error && typeof envelope.error === "object") {
-    throw new MermanOperationError(envelope.error);
+  if (requireUnavailable) {
+    throw new MermanInvalidTransportError(
+      "Merman transport executed an operation that its runtime catalog does not advertise.",
+    );
   }
-  if (
-    envelope.ok !== true ||
-    !envelope.result ||
-    typeof envelope.result.operation_id !== "string" ||
-    envelope.result.operation_id.length === 0 ||
-    typeof envelope.result.media_type !== "string" ||
-    envelope.result.media_type.length === 0 ||
-    typeof envelope.result.data !== "string" ||
-    typeof envelope.result.metadata_json !== "string"
-  ) {
-    throw new MermanInvalidTransportError("Merman transport returned an invalid result envelope.");
-  }
-  return envelope.result;
+  return validateSuccessResult(envelope.result, expectation);
 }
 
 export function decodeWireCreationError(cause, label) {
@@ -392,19 +705,292 @@ function decodeWireFailure(cause, fallbackMessage) {
   if (cause instanceof MermanError) return cause;
   const value = cause instanceof Error ? cause.message : cause;
   try {
-    const envelope = typeof value === "string" ? JSON.parse(value) : value;
+    const envelope = parseTransportJsonText(
+      value,
+      "thrown error",
+      NODE_TRANSPORT_LIMITS.error,
+    );
+    validateEnvelopeHeader(envelope, "thrown error");
     if (
-      envelope &&
-      typeof envelope === "object" &&
-      envelope.version === BINDING_RESULT_PAYLOAD_VERSION &&
       envelope.ok === false &&
-      envelope.error &&
-      typeof envelope.error === "object"
+      !Object.hasOwn(envelope, "result") &&
+      Object.hasOwn(envelope, "error")
     ) {
-      return new MermanOperationError(envelope.error);
+      return new MermanOperationError(validateErrorPayload(envelope.error));
     }
-  } catch {
+  } catch (causeError) {
+    if (causeError instanceof MermanOperationError) return causeError;
     // Fall through to the transport-level error below.
   }
   return new MermanInvalidTransportError(fallbackMessage, cause);
+}
+
+function validateEnvelopeHeader(envelope, label) {
+  if (!isPlainJsonObject(envelope) || envelope.version !== BINDING_RESULT_PAYLOAD_VERSION) {
+    throw new MermanInvalidTransportError(
+      `Merman transport returned an unsupported ${label} envelope.`,
+    );
+  }
+  if (typeof envelope.ok !== "boolean") {
+    throw new MermanInvalidTransportError(`Merman transport ${label} envelope has invalid ok.`);
+  }
+}
+
+function validateSuccessResult(result, expectation) {
+  if (
+    !isPlainJsonObject(result) ||
+    typeof result.operation_id !== "string" ||
+    result.operation_id.length === 0 ||
+    typeof result.media_type !== "string" ||
+    result.media_type.length === 0 ||
+    typeof result.data !== "string" ||
+    typeof result.metadata_json !== "string"
+  ) {
+    throw new MermanInvalidTransportError("Merman transport returned an invalid result envelope.");
+  }
+  assertUtf8Field(
+    result.operation_id,
+    "response operation_id",
+    NODE_TRANSPORT_FIELD_LIMITS.operation_id_utf8_bytes,
+  );
+  assertUtf8Field(
+    result.media_type,
+    "response media_type",
+    NODE_TRANSPORT_FIELD_LIMITS.media_type_utf8_bytes,
+  );
+  const dataBytes = assertUtf8Field(
+    result.data,
+    "response data",
+    NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes,
+  );
+  assertUtf8Field(
+    result.metadata_json,
+    "response metadata_json",
+    NODE_TRANSPORT_FIELD_LIMITS.metadata_json_utf8_bytes,
+  );
+  if (
+    !expectation ||
+    result.operation_id !== expectation.operation_id ||
+    result.media_type !== expectation.media_type
+  ) {
+    throw new MermanInvalidTransportError(
+      "Merman transport result identity does not match the requested operation contract.",
+    );
+  }
+  const metadata = parseTransportJsonText(
+    result.metadata_json,
+    "nested operation metadata",
+    NODE_TRANSPORT_LIMITS.metadata,
+  );
+  assertExactSafeIntegerJsonTokens(
+    result.metadata_json,
+    "nested operation metadata",
+    OPERATION_METADATA_EXACT_SAFE_INTEGER_PATHS,
+  );
+  if (
+    !isPlainJsonObject(metadata) ||
+    metadata.version !== expectation.metadata_schema_version ||
+    metadata.operation_id !== expectation.operation_id ||
+    metadata.media_type !== expectation.media_type ||
+    metadata.runtime_policy !== "deterministic" ||
+    !Number.isSafeInteger(metadata.byte_length) ||
+    metadata.byte_length < 0 ||
+    metadata.byte_length !== dataBytes
+  ) {
+    throw new MermanInvalidTransportError(
+      "Merman transport operation metadata does not match the result envelope.",
+    );
+  }
+  return result;
+}
+
+function validateErrorPayload(error, expectation = null, requireUnavailable = false) {
+  if (
+    !isPlainJsonObject(error) ||
+    !Number.isSafeInteger(error.code) ||
+    error.code <= 0 ||
+    typeof error.code_name !== "string" ||
+    !/^MERMAN_[A-Z0-9_]+$/.test(error.code_name) ||
+    typeof error.kind !== "string" ||
+    error.kind.length === 0 ||
+    !Object.hasOwn(error, "capability_id") ||
+    (error.capability_id !== null &&
+      (typeof error.capability_id !== "string" || error.capability_id.length === 0)) ||
+    typeof error.message !== "string"
+  ) {
+    throw new MermanInvalidTransportError("Merman transport returned an invalid error payload.");
+  }
+  assertUtf8Field(
+    error.code_name,
+    "error code_name",
+    NODE_TRANSPORT_FIELD_LIMITS.error_code_name_utf8_bytes,
+  );
+  assertUtf8Field(
+    error.kind,
+    "error kind",
+    NODE_TRANSPORT_FIELD_LIMITS.error_kind_utf8_bytes,
+  );
+  assertUtf8Field(
+    error.message,
+    "error message",
+    NODE_TRANSPORT_FIELD_LIMITS.error_message_utf8_bytes,
+  );
+  if (error.capability_id !== null) {
+    assertUtf8Field(
+      error.capability_id,
+      "error capability_id",
+      NODE_TRANSPORT_FIELD_LIMITS.capability_id_utf8_bytes,
+    );
+  }
+  validateKnownErrorRelations(error);
+  validateResourceDetails(error.details);
+
+  if (requireUnavailable && expectation?.unavailable) {
+    const unavailable = expectation.unavailable;
+    if (
+      error.code !== unavailable.status_code ||
+      error.code_name !== unavailable.status_name ||
+      error.kind !== unavailable.error_kind ||
+      error.capability_id !== unavailable.capability_id
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned the wrong capability-gated operation error.",
+      );
+    }
+  } else if (
+    expectation &&
+    (error.kind === "missing-capability" || error.kind === "unknown-operation")
+  ) {
+    throw new MermanInvalidTransportError(
+      "Merman transport contradicted its advertised operation catalog.",
+    );
+  }
+  return error;
+}
+
+function validateKnownErrorRelations(error) {
+  if (BINDING_STATUS_NAME_BY_CODE.get(error.code) !== error.code_name) {
+    throw new MermanInvalidTransportError(
+      "Merman transport returned an inconsistent error status name.",
+    );
+  }
+  if (error.kind === "unknown-operation") {
+    if (
+      error.code !== 7 ||
+      error.code_name !== "MERMAN_UNSUPPORTED_OPERATION" ||
+      error.capability_id !== null
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned an inconsistent unknown-operation error.",
+      );
+    }
+  } else if (error.kind === "missing-capability") {
+    if (
+      error.code !== 7 ||
+      error.code_name !== "MERMAN_UNSUPPORTED_OPERATION" ||
+      error.capability_id === null
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned an inconsistent missing-capability error.",
+      );
+    }
+  } else if (error.kind === "busy") {
+    if (error.code !== 11 || error.code_name !== "MERMAN_BUSY") {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned an inconsistent busy error.",
+      );
+    }
+  } else if (error.kind === "reentrant-call") {
+    if (
+      error.code !== 1 ||
+      error.code_name !== "MERMAN_INVALID_ARGUMENT" ||
+      error.capability_id !== null
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned an inconsistent reentrant-call error.",
+      );
+    }
+  } else if (error.kind === "generic") {
+    if (error.capability_id !== null) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned an inconsistent generic error.",
+      );
+    }
+  } else {
+    throw new MermanInvalidTransportError("Merman transport returned an unknown error kind.");
+  }
+}
+
+function validateResourceDetails(details) {
+  if (details === undefined) return;
+  if (!isPlainJsonObject(details)) {
+    throw new MermanInvalidTransportError("Merman transport error details must be an object.");
+  }
+  if (details.resource !== undefined) {
+    const resource = details.resource;
+    if (
+      !isPlainJsonObject(resource) ||
+      typeof resource.limit_id !== "string" ||
+      resource.limit_id.length === 0 ||
+      typeof resource.phase !== "string" ||
+      resource.phase.length === 0 ||
+      typeof resource.profile !== "string" ||
+      resource.profile.length === 0 ||
+      !Number.isSafeInteger(resource.actual) ||
+      resource.actual < 0 ||
+      !Number.isSafeInteger(resource.max) ||
+      resource.max < 0
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned invalid resource error details.",
+      );
+    }
+  }
+  if (details.icon_registry !== undefined) {
+    const iconRegistry = details.icon_registry;
+    if (
+      !isPlainJsonObject(iconRegistry) ||
+      typeof iconRegistry.kind_id !== "string" ||
+      iconRegistry.kind_id.length === 0 ||
+      (iconRegistry.pack_index !== null &&
+        (!Number.isSafeInteger(iconRegistry.pack_index) || iconRegistry.pack_index < 0)) ||
+      (iconRegistry.registration_name !== null &&
+        typeof iconRegistry.registration_name !== "string")
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned invalid icon-registry error details.",
+      );
+    }
+  }
+}
+
+function isPlainJsonObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+export function sameJsonValue(left, right) {
+  const stack = [[left, right]];
+  while (stack.length > 0) {
+    const [leftValue, rightValue] = stack.pop();
+    if (Object.is(leftValue, rightValue)) continue;
+    if (
+      !leftValue ||
+      !rightValue ||
+      typeof leftValue !== "object" ||
+      typeof rightValue !== "object" ||
+      Array.isArray(leftValue) !== Array.isArray(rightValue)
+    ) {
+      return false;
+    }
+    const leftKeys = Object.keys(leftValue);
+    const rightKeys = Object.keys(rightValue);
+    if (
+      leftKeys.length !== rightKeys.length ||
+      leftKeys.some((key) => !Object.hasOwn(rightValue, key))
+    ) {
+      return false;
+    }
+    for (const key of leftKeys) stack.push([leftValue[key], rightValue[key]]);
+  }
+  return true;
 }

@@ -27,6 +27,7 @@ test("private candidate manifests preserve the intended napi package shape", asy
   assert.deepEqual(inspected.root.wasmFiles, []);
   assert.equal(inspected.root.hasLifecycleDownload, false);
   assert.equal(inspected.root.hasBrowserFallback, false);
+  assert.equal(inspected.root.manifest.engines.node, descriptor.node_engine);
 
   const expectedTargets = [
     "darwin-arm64",
@@ -41,6 +42,7 @@ test("private candidate manifests preserve the intended napi package shape", asy
   );
   for (const item of inspected.targets) {
     assert.equal(item.manifest.private, true);
+    assert.equal(item.manifest.engines.node, descriptor.node_engine);
     assert.equal(item.nodeArtifact, "merman.node");
     assert.equal(item.manifest.version, descriptor.version);
     assert.equal(item.manifest.files.includes("build-receipt.json"), false);
@@ -179,12 +181,20 @@ test("assembled native packages pass real npm pack ownership inspection", async 
       rootPack.files.some((item) => item.path === "dist/generated/binding-contract.mjs"),
       true,
     );
+    assert.equal(
+      rootPack.files.some((item) => item.path === "dist/generated/node-wire-contract.json"),
+      true,
+    );
+    assert.equal(
+      rootPack.files.some((item) => item.path === "dist/transport-contract.mjs"),
+      true,
+    );
     assert.equal(targetPack.files.some((item) => item.path === "build-receipt.json"), false);
 
     const assembledLoader = await import(
       `${pathToFileURL(path.join(output, "node", "dist", "native-loader.mjs")).href}?assembled`
     );
-    assert.equal(assembledLoader.nativeLoaderPackageVersion(), descriptor.version);
+    assert.equal(assembledLoader.nodeLoaderPackageVersion(), descriptor.version);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }

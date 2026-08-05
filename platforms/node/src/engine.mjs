@@ -1,11 +1,16 @@
 import { BoundedExecutor } from "./bounded-executor.mjs";
 import {
   MermanInvalidTransportError,
+  NODE_TRANSPORT_FIELD_LIMITS,
   NODE_TRANSPORT_LIMITS,
+  NODE_WIRE_CONTRACT,
+  assertUtf8Field,
   decodeWireInvocationError,
   decodeWireResponse,
+  encodeTransportJson,
   parseRuntimeCatalogJsonText,
   parseTransportJsonText,
+  sameJsonValue,
 } from "./errors.mjs";
 import {
   BINDING_OPTION_GROUP_SPECS,
@@ -78,6 +83,10 @@ const COMPILED_PREREQUISITES_BY_OPERATION_ID = new Map(
     compiled_prerequisite_ids,
   ]),
 );
+const KNOWN_OUTPUT_CONTRACT_BY_ID = new Map(
+  NODE_WIRE_CONTRACT.artifact.output_contracts.map((contract) => [contract.id, contract]),
+);
+const MERMAN_ENGINE_CONSTRUCTION_TOKEN = Symbol("MermanEngine construction");
 
 export async function createNodeEngine(
   {
@@ -91,13 +100,21 @@ export async function createNodeEngine(
     throw new MermanInvalidTransportError("A concrete Node candidate transport loader is required.");
   }
   const normalizedOptions = normalizeBindingOptions(bindingOptions);
-  const transport = await loadTransport(JSON.stringify(normalizedOptions));
+  const optionsJson = encodeTransportJson(
+    normalizedOptions,
+    "binding options",
+    NODE_TRANSPORT_LIMITS.binding_options,
+  );
+  const transport = await loadTransport(optionsJson);
   try {
     assertTransport(transport);
-    const runtimeCatalog = validateTransportRuntimeCatalog(
-      await transport.runtimeCatalogJson(),
+    const runtimeCatalog = validateRuntimeCatalog(await transport.runtimeCatalogJson());
+    return new MermanEngine(
+      MERMAN_ENGINE_CONSTRUCTION_TOKEN,
+      transport,
+      runtimeCatalog,
+      { concurrency, maxQueue },
     );
-    return new MermanEngine(transport, runtimeCatalog, { concurrency, maxQueue });
   } catch (error) {
     await disposeUnusableTransport(transport);
     throw error;
@@ -106,8 +123,7 @@ export async function createNodeEngine(
 
 export function normalizeBindingOptions(value = {}) {
   if (!isPlainObject(value)) throw new TypeError("bindingOptions must be a plain object.");
-  rejectNonWireValues(value);
-  const normalized = structuredClone(value);
+  const normalized = cloneBoundedJsonValue(value, "bindingOptions");
   normalized.version ??= BINDING_OPTIONS_SCHEMA_VERSION;
   if (normalized.version !== BINDING_OPTIONS_SCHEMA_VERSION) {
     throw new RangeError(
@@ -139,17 +155,18 @@ export class MermanEngine {
   #runtimeCatalog;
   #transport;
 
-  constructor(transport, runtimeCatalog, queueOptions) {
+  constructor(constructionToken, transport, runtimeCatalog, queueOptions) {
+    if (constructionToken !== MERMAN_ENGINE_CONSTRUCTION_TOKEN) {
+      throw new MermanInvalidTransportError(
+        "MermanEngine instances must be created with createNodeEngine().",
+      );
+    }
     this.#transport = transport;
     this.#runtimeCatalog = runtimeCatalog;
     this.#metadataIds = new Set(
       runtimeCatalog.metadata_ids.filter((id) => METADATA_SPEC_BY_ID.has(id)),
     );
-    this.#operationIds = new Set(
-      runtimeCatalog.capabilities.operation_ids.filter((id) =>
-        OPERATION_EXPECTATION_BY_ID.has(id)
-      ),
-    );
+    this.#operationIds = new Set(runtimeCatalog.capabilities.operation_ids);
     this.#executor = new BoundedExecutor(queueOptions);
   }
 
@@ -210,22 +227,24 @@ export class MermanEngine {
     parseTransportJsonText(
       value,
       `metadata \`${id}\``,
-      NODE_TRANSPORT_LIMITS.metadataBytes,
+      NODE_TRANSPORT_LIMITS.metadata,
     );
     return value;
   }
 
   executeOperation(request, { signal } = {}) {
-    const requestJson = operationRequestJson(request, this.#operationIds);
+    const encoded = operationRequestJson(request);
     return this.#executor.submit(
       async () => {
         let responseJson;
         try {
-          responseJson = await this.#transport.execute(requestJson);
+          responseJson = await this.#transport.execute(encoded.json);
         } catch (cause) {
           throw decodeWireInvocationError(cause, "Merman operation");
         }
-        return decodeWireResponse(responseJson);
+        return decodeWireResponse(responseJson, encoded.expectation, {
+          requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
+        });
       },
       { signal },
     );
@@ -233,14 +252,16 @@ export class MermanEngine {
 
   executeOperationSync(request) {
     this.#executor.assertSyncAvailable();
-    const requestJson = operationRequestJson(request, this.#operationIds);
+    const encoded = operationRequestJson(request);
     let responseJson;
     try {
-      responseJson = this.#transport.executeSync(requestJson);
+      responseJson = this.#transport.executeSync(encoded.json);
     } catch (cause) {
       throw decodeWireInvocationError(cause, "Merman operation");
     }
-    return decodeWireResponse(responseJson);
+    return decodeWireResponse(responseJson, encoded.expectation, {
+      requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
+    });
   }
 
   dispose() {
@@ -252,7 +273,7 @@ export class MermanEngine {
   }
 }
 
-function operationRequestJson(value, callableOperationIds) {
+function operationRequestJson(value) {
   if (!isPlainObject(value)) throw new TypeError("operation request must be a plain object.");
   const knownFields = new Set(["operationId", "source", "uri", "optionsJson"]);
   for (const field of Object.keys(value)) {
@@ -274,13 +295,25 @@ function operationRequestJson(value, callableOperationIds) {
       `operation id \`${operationId}\` is not callable through this SDK version.`,
     );
   }
-  if (!callableOperationIds.has(operationId)) {
-    throw new RangeError(
-      `operation id \`${operationId}\` is not advertised by this artifact.`,
-    );
-  }
+  const expectation = OPERATION_EXPECTATION_BY_ID.get(operationId);
   if (typeof source !== "string") throw new TypeError("source must be a string.");
   if (uri !== null && typeof uri !== "string") throw new TypeError("uri must be a string or null.");
+  if (expectation.requires_uri && (uri === null || uri.length === 0)) {
+    throw new TypeError(`operation \`${operationId}\` requires a non-empty uri.`);
+  }
+  assertUtf8Field(
+    operationId,
+    "operation request operationId",
+    NODE_TRANSPORT_FIELD_LIMITS.operation_id_utf8_bytes,
+  );
+  assertUtf8Field(
+    source,
+    "operation request source",
+    NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes,
+  );
+  if (uri !== null) {
+    assertUtf8Field(uri, "operation request uri", NODE_TRANSPORT_FIELD_LIMITS.uri_utf8_bytes);
+  }
   const request = {
     operation_id: operationId,
     source,
@@ -290,9 +323,22 @@ function operationRequestJson(value, callableOperationIds) {
     if (typeof optionsJson !== "string") {
       throw new TypeError("optionsJson must be a JSON string when provided.");
     }
+    assertUtf8Field(
+      optionsJson,
+      "operation request optionsJson",
+      NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes,
+    );
+    parseTransportJsonText(
+      optionsJson,
+      "operation request optionsJson",
+      NODE_TRANSPORT_LIMITS.binding_options,
+    );
     request.options_json = optionsJson;
   }
-  return JSON.stringify(request);
+  return {
+    expectation,
+    json: encodeTransportJson(request, "operation request", NODE_TRANSPORT_LIMITS.request),
+  };
 }
 
 function assertTransport(transport) {
@@ -318,9 +364,12 @@ async function disposeUnusableTransport(transport) {
 }
 
 export function validateRuntimeCatalog(value) {
-  const catalog = typeof value === "string"
-    ? parseRuntimeCatalogJsonText(value)
-    : value;
+  if (typeof value !== "string") {
+    throw new MermanInvalidTransportError(
+      "Merman transport runtime catalog must be JSON text.",
+    );
+  }
+  const catalog = parseRuntimeCatalogJsonText(value);
   if (!isPlainObject(catalog)) {
     throw new MermanInvalidTransportError("Merman transport returned an invalid runtime catalog.");
   }
@@ -333,6 +382,11 @@ export function validateRuntimeCatalog(value) {
   if (typeof catalog.package_version !== "string" || catalog.package_version.length === 0) {
     throw new MermanInvalidTransportError("Merman runtime catalog has an invalid package version.");
   }
+  assertUtf8Field(
+    catalog.package_version,
+    "runtime catalog package_version",
+    NODE_TRANSPORT_FIELD_LIMITS.package_version_utf8_bytes,
+  );
   const optionsSchemaVersions = sortedUniquePositiveIntegers(
     catalog.options_schema_versions,
     "options_schema_versions",
@@ -364,13 +418,26 @@ export function validateRuntimeCatalog(value) {
   }
   validateCapabilityImplications(capabilityIds);
   validateOperationRelations({ capabilityIds, operationIds, outputIds });
-  validateMetadataIds(catalog.metadata_ids, new Set(capabilityIds));
+  const metadataIds = validateMetadataIds(catalog.metadata_ids, new Set(capabilityIds));
+  validateKnownArtifactIdentity({
+    capabilityIds,
+    metadataIds,
+    operationIds,
+    outputIds,
+    systemAdapterIds,
+  });
   const requiresSvgPipeline = capabilityIds.includes("svg") || operationIds.some((id) =>
     COMPILED_PREREQUISITES_BY_OPERATION_ID.get(id)?.includes("svg")
   );
   const textMeasurementProviderIds = validateTextMeasurement(capabilities.text_measurement, {
     requiresSvgPipeline,
   });
+  validateKnownIds(
+    textMeasurementProviderIds,
+    NODE_WIRE_CONTRACT.artifact.text_measurement_provider_ids,
+    (id) => TEXT_MEASUREMENT_PROVIDER_SPEC_BY_ID.has(id),
+    "text measurement providers",
+  );
   // A valid provider record may describe a future operation whose prerequisite is unknown to this
   // SDK. Preserve that additive discovery while requiring the known SVG closure when recognized.
   const usesSvgPipeline = requiresSvgPipeline || capabilities.text_measurement !== null;
@@ -392,13 +459,58 @@ export function validateRuntimeCatalog(value) {
   return normalized;
 }
 
-function validateTransportRuntimeCatalog(value) {
-  if (typeof value !== "string") {
+function validateKnownArtifactIdentity({
+  capabilityIds,
+  metadataIds,
+  operationIds,
+  outputIds,
+  systemAdapterIds,
+}) {
+  const expected = NODE_WIRE_CONTRACT.artifact;
+  validateKnownIds(
+    capabilityIds,
+    expected.capability_ids,
+    (id) => CAPABILITY_SPEC_BY_ID.has(id),
+    "capabilities",
+  );
+  validateKnownIds(
+    operationIds,
+    expected.operation_ids,
+    (id) => OPERATION_EXPECTATION_BY_ID.has(id),
+    "operations",
+  );
+  validateKnownIds(
+    metadataIds,
+    expected.metadata_ids,
+    (id) => METADATA_SPEC_BY_ID.has(id),
+    "metadata IDs",
+  );
+  const knownOutputIds = new Set(
+    BINDING_OPERATION_EXPECTATIONS
+      .map((expectation) => expectation.output_id)
+      .filter((id) => id !== null),
+  );
+  validateKnownIds(
+    outputIds,
+    expected.output_ids,
+    (id) => knownOutputIds.has(id),
+    "outputs",
+  );
+  validateKnownIds(
+    systemAdapterIds,
+    expected.system_adapter_ids,
+    (id) => CAPABILITY_SPEC_BY_ID.has(id),
+    "system adapters",
+  );
+}
+
+function validateKnownIds(actual, expected, isKnown, label) {
+  const actualKnown = actual.filter(isKnown);
+  if (!sameOrderedStrings(actualKnown, expected)) {
     throw new MermanInvalidTransportError(
-      "Merman transport runtime catalog must be JSON text.",
+      `Merman runtime catalog known ${label} do not match the Node artifact contract.`,
     );
   }
-  return validateRuntimeCatalog(value);
 }
 
 function validatePayloadSchemas(value) {
@@ -493,19 +605,22 @@ function validateMetadataIds(value, capabilityIds) {
 function validateOptionGroupIds(catalog, { capabilityIds, usesSvgPipeline }) {
   if (!Object.hasOwn(catalog, "option_group_ids")) return [];
   const ids = sortedUniqueFieldIdentifiers(catalog.option_group_ids, "option_group_ids");
-  const expected = new Set();
+  const applicable = new Set();
   for (const spec of BINDING_OPTION_GROUP_SPECS) {
     if (
       spec.always_available ||
       (spec.requires_svg_pipeline && usesSvgPipeline) ||
       spec.any_capability_ids.some((id) => capabilityIds.has(id))
     ) {
-      expected.add(spec.id);
+      applicable.add(spec.id);
     }
   }
 
   const knownIds = ids.filter((id) => OPTION_GROUP_SPEC_BY_ID.has(id));
-  if (!sameStringSet(knownIds, expected)) {
+  if (
+    !knownIds.every((id) => applicable.has(id)) ||
+    !sameOrderedStrings(knownIds, NODE_WIRE_CONTRACT.artifact.option_group_ids)
+  ) {
     throw new MermanInvalidTransportError(
       "Merman runtime catalog option groups do not match the artifact capability closure.",
     );
@@ -528,6 +643,12 @@ function validateConstructorServices(catalog, {
   const ids = sortedUniqueStrings(
     catalog.constructor_service_ids,
     "constructor_service_ids",
+  );
+  validateKnownIds(
+    ids,
+    NODE_WIRE_CONTRACT.artifact.constructor_service_ids,
+    (id) => CONSTRUCTOR_SERVICE_SPEC_BY_ID.has(id),
+    "constructor services",
   );
   const contracts = catalog.constructor_service_contracts;
   if (!Array.isArray(contracts)) {
@@ -662,8 +783,24 @@ function validateOutputContracts(value, outputIds) {
       );
     }
     contractIds.push(contract.id);
+    assertUtf8Field(
+      contract.media_type,
+      `runtime catalog output_contracts.${contract.id}.media_type`,
+      NODE_TRANSPORT_FIELD_LIMITS.media_type_utf8_bytes,
+    );
     validateSystemFonts(contract.system_fonts);
     validateEmbeddedImages(contract.embedded_images);
+    const known = KNOWN_OUTPUT_CONTRACT_BY_ID.get(contract.id);
+    if (
+      known !== undefined &&
+      (contract.media_type !== known.media_type ||
+        !sameJsonValue(contract.system_fonts, known.system_fonts) ||
+        !sameJsonValue(contract.embedded_images, known.embedded_images))
+    ) {
+      throw new MermanInvalidTransportError(
+        `Merman runtime catalog output contract ${contract.id} disagrees with the generated artifact profile.`,
+      );
+    }
   }
   if (
     contractIds.some((id, index) => index > 0 && contractIds[index - 1] >= id) ||
@@ -930,6 +1067,13 @@ function sortedUniqueStrings(value, field) {
       `Merman runtime catalog ${field} must contain valid identifiers.`,
     );
   }
+  for (const item of value) {
+    assertUtf8Field(
+      item,
+      `runtime catalog ${field}`,
+      NODE_TRANSPORT_FIELD_LIMITS.capability_id_utf8_bytes,
+    );
+  }
   return value;
 }
 
@@ -953,20 +1097,142 @@ function sortedUniqueFieldIdentifiers(value, field) {
       `Merman runtime catalog ${field} must contain valid field identifiers.`,
     );
   }
+  for (const item of value) {
+    assertUtf8Field(
+      item,
+      `runtime catalog ${field}`,
+      NODE_TRANSPORT_FIELD_LIMITS.capability_id_utf8_bytes,
+    );
+  }
   return value;
 }
 
-function rejectNonWireValues(value) {
-  if (typeof value === "function") {
-    throw new TypeError("JavaScript text measurement callbacks are not supported by @mermanjs/node.");
-  }
-  if (!value || typeof value !== "object") return;
-  for (const [key, child] of Object.entries(value)) {
-    if (/text.*measur|measur.*text|font.*callback/i.test(key)) {
-      throw new TypeError("JavaScript text measurement callbacks are not supported by @mermanjs/node.");
+function cloneBoundedJsonValue(root, label) {
+  const limits = NODE_TRANSPORT_LIMITS.binding_options;
+  const active = new WeakSet();
+  const clone = jsonContainerClone(root, label);
+  const stack = [{ depth: 1, source: root, target: clone, exiting: false }];
+  let members = 0;
+  let tokens = 1;
+
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (frame.exiting) {
+      active.delete(frame.source);
+      continue;
     }
-    rejectNonWireValues(child);
+    if (active.has(frame.source)) {
+      throw new TypeError(`${label} must not contain cyclic references.`);
+    }
+    if (frame.depth > limits.max_depth) {
+      throw new RangeError(`${label} exceeds the structural depth limit ${limits.max_depth}.`);
+    }
+    active.add(frame.source);
+    stack.push({ ...frame, exiting: true });
+
+    const entries = jsonContainerEntries(
+      frame.source,
+      label,
+      limits.max_members - members,
+      limits.max_members,
+    );
+    members += entries.length;
+    if (members > limits.max_members) {
+      throw new RangeError(`${label} exceeds the member-work limit ${limits.max_members}.`);
+    }
+
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const [key, child] = entries[index];
+      assertUtf8Field(key, `${label} object key`, limits.max_string_utf8_bytes);
+      tokens += 1;
+      if (tokens > limits.max_tokens) {
+        throw new RangeError(`${label} exceeds the token-work limit ${limits.max_tokens}.`);
+      }
+
+      if (child === null || typeof child === "boolean") {
+        defineJsonValue(frame.target, key, child);
+      } else if (typeof child === "string") {
+        assertUtf8Field(child, `${label}.${key}`, limits.max_string_utf8_bytes);
+        defineJsonValue(frame.target, key, child);
+      } else if (typeof child === "number") {
+        if (!Number.isFinite(child)) {
+          throw new TypeError(`${label}.${key} must be a finite JSON number.`);
+        }
+        defineJsonValue(frame.target, key, child);
+      } else if (typeof child === "object") {
+        const childClone = jsonContainerClone(child, `${label}.${key}`);
+        defineJsonValue(frame.target, key, childClone);
+        stack.push({
+          depth: frame.depth + 1,
+          source: child,
+          target: childClone,
+          exiting: false,
+        });
+      } else {
+        throw new TypeError(`${label}.${key} is not a JSON wire value.`);
+      }
+    }
   }
+  return clone;
+}
+
+function jsonContainerClone(value, label) {
+  if (Array.isArray(value)) return [];
+  if (!isPlainObject(value)) {
+    throw new TypeError(`${label} must contain only arrays and plain objects.`);
+  }
+  return Object.getPrototypeOf(value) === null ? Object.create(null) : {};
+}
+
+function jsonContainerEntries(value, label, remainingMembers, maxMembers) {
+  if (Array.isArray(value)) {
+    if (value.length > remainingMembers) {
+      throw new RangeError(`${label} exceeds the member-work limit ${maxMembers}.`);
+    }
+    const keys = Reflect.ownKeys(value);
+    if (keys.some((key) => typeof key === "symbol")) {
+      throw new TypeError(`${label} must not contain symbol keys.`);
+    }
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.hasOwn(value, index)) {
+        throw new TypeError(`${label} arrays must not contain holes.`);
+      }
+    }
+    if (keys.length !== value.length + 1) {
+      throw new TypeError(`${label} arrays must not contain custom properties.`);
+    }
+    const entries = new Array(value.length);
+    for (let index = 0; index < value.length; index += 1) {
+      entries[index] = [String(index), value[index]];
+    }
+    return entries;
+  }
+
+  const entries = [];
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === "symbol") {
+      throw new TypeError(`${label} must not contain symbol keys.`);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new TypeError(`${label}.${key} must be an enumerable data property.`);
+    }
+    entries.push([key, descriptor.value]);
+  }
+  return entries;
+}
+
+function defineJsonValue(target, key, value) {
+  if (Array.isArray(target)) {
+    target[Number(key)] = value;
+    return;
+  }
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
 }
 
 function isPlainObject(value) {

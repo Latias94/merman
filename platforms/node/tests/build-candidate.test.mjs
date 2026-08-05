@@ -119,7 +119,6 @@ test("candidate dependency closures isolate transport-only packages", () => {
   ]);
   const wasmMetadata = metadataWithPackages([
     ...basePackages,
-    ["serde-wasm-bindgen", "serde-wasm-bindgen"],
     ["wasm-bindgen", "wasm-bindgen"],
   ]);
 
@@ -165,6 +164,7 @@ test("candidate source receipt covers generated package contracts", async () => 
   for (const relativePath of [
     "platforms/node/src/generated/binding-contract.mjs",
     "platforms/node/src/generated/capability-surface.mjs",
+    "platforms/node/src/generated/node-wire-contract.json",
   ]) {
     const entry = entries.find((item) => item.path === relativePath);
     const contents = await readFile(path.join(repositoryRoot, relativePath));

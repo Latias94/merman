@@ -170,6 +170,7 @@ export interface MermanQueueState {
 }
 
 export declare class MermanEngine {
+  private constructor();
   readonly queueState: MermanQueueState;
   readonly runtimeCatalog: MermanRuntimeCatalog;
   renderSvg(source: string, options?: RenderSvgOptions): Promise<string>;

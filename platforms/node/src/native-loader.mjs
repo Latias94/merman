@@ -23,15 +23,15 @@ if (typeof loaderPackageVersion !== "string" || loaderPackageVersion.length === 
   throw new Error("The Merman Node package manifest must declare a non-empty version.");
 }
 
-export function nativeLoaderPackageVersion() {
+export function nodeLoaderPackageVersion() {
   return loaderPackageVersion;
 }
 
-export function assertNativeRuntimePackageVersion(value) {
+export function assertRuntimePackageVersion(value) {
   const catalog = parseRuntimeCatalogJsonText(value);
   if (catalog?.package_version !== loaderPackageVersion) {
     throw new MermanInvalidTransportError(
-      `The native runtime package version ${JSON.stringify(catalog?.package_version)} does not match the loader package version ${JSON.stringify(loaderPackageVersion)}.`,
+      `The Merman runtime package version ${JSON.stringify(catalog?.package_version)} does not match the loader package version ${JSON.stringify(loaderPackageVersion)}.`,
     );
   }
   return value;

@@ -15,11 +15,15 @@ import {
   MermanInvalidTransportError,
   MermanOperationError,
   MermanQueueSaturatedError,
+  NODE_TRANSPORT_FIELD_LIMITS,
   NODE_TRANSPORT_LIMITS,
+  NODE_WIRE_CONTRACT,
+  parseTransportJsonText,
   parseRuntimeCatalogJsonText,
 } from "../src/errors.mjs";
 import {
   BINDING_OPTION_GROUP_SPECS,
+  BINDING_OPERATION_EXPECTATIONS,
   METADATA_SPECS,
   TEXT_MEASUREMENT_PROTOCOL_VERSION,
 } from "../src/generated/binding-contract.mjs";
@@ -100,6 +104,29 @@ function jsonSuccess(operationId, value) {
         byte_length: Buffer.byteLength(data),
       }),
     },
+  });
+}
+
+function operationSuccess(expectation, data = "payload", additions = {}) {
+  const metadata = {
+    version: expectation.metadata_schema_version,
+    operation_id: expectation.operation_id,
+    media_type: expectation.media_type,
+    runtime_policy: "deterministic",
+    byte_length: Buffer.byteLength(data),
+    ...additions.metadata,
+  };
+  return JSON.stringify({
+    version: 1,
+    ok: true,
+    result: {
+      operation_id: expectation.operation_id,
+      media_type: expectation.media_type,
+      data,
+      metadata_json: JSON.stringify(metadata),
+      ...additions.result,
+    },
+    ...additions.envelope,
   });
 }
 
@@ -264,27 +291,51 @@ test("runtime catalog accepts additive fields within schema 1", async () => {
   await engine.dispose();
 });
 
-test("runtime catalog validates output contracts and preserves additive nested fields", async () => {
+test("runtime catalog identifiers enforce the shared exact UTF-8 field ceiling", async () => {
+  const exactCatalog = runtimeCatalog();
+  exactCatalog.capabilities.capability_ids.push(
+    "z".repeat(NODE_TRANSPORT_FIELD_LIMITS.capability_id_utf8_bytes),
+  );
+  exactCatalog.capabilities.capability_ids.sort();
+  const exactFactory = transportFactory({
+    runtimeCatalogJson: () => JSON.stringify(exactCatalog),
+  });
+  const engine = await createNodeEngine({}, { loadTransport: exactFactory.loadTransport });
+  await engine.dispose();
+
+  const oversizedCatalog = structuredClone(exactCatalog);
+  oversizedCatalog.capabilities.capability_ids[oversizedCatalog.capabilities.capability_ids.length - 1] +=
+    "z";
+  const oversizedFactory = transportFactory({
+    runtimeCatalogJson: () => JSON.stringify(oversizedCatalog),
+  });
+  await assert.rejects(
+    createNodeEngine({}, { loadTransport: oversizedFactory.loadTransport }),
+    /field limit/i,
+  );
+});
+
+test("runtime catalog preserves unknown future output contracts without weakening the known profile", async () => {
   const catalog = runtimeCatalog();
   catalog.capabilities.capability_ids = [
     ...catalog.capabilities.capability_ids,
-    "png",
+    "future-image",
   ].sort();
-  catalog.capabilities.output_ids = ["png", "svg"];
+  catalog.capabilities.output_ids = ["future-image", "svg"];
   catalog.capabilities.operation_ids = [
     ...catalog.capabilities.operation_ids,
-    "png",
+    "future-render",
   ].sort();
   catalog.option_group_ids = [
     ...catalog.option_group_ids,
-    "raster",
+    "future-raster",
   ].sort();
   catalog.output_contracts = [
     {
-      id: "png",
-      media_type: "image/png",
+      id: "future-image",
+      media_type: "image/future",
       system_fonts: {
-        source_id: "host-system",
+        source_id: "future-font-source",
         discovery: "first-use",
         cache_scope: "process-global",
         host_dependent: true,
@@ -293,7 +344,7 @@ test("runtime catalog validates output contracts and preserves additive nested f
         future_font_metadata: true,
       },
       embedded_images: {
-        source_ids: ["data-url"],
+        source_ids: ["future-data-url"],
         filesystem_access: false,
         network_access: false,
         caller_configurable: false,
@@ -309,6 +360,10 @@ test("runtime catalog validates output contracts and preserves additive nested f
     },
     catalog.output_contracts[0],
   ];
+  catalog.resources.limits[0].operation_ids = [
+    ...catalog.resources.limits[0].operation_ids,
+    "future-render",
+  ].sort();
   const factory = transportFactory({
     runtimeCatalogJson() {
       return JSON.stringify(catalog);
@@ -332,11 +387,11 @@ test("runtime catalog validates output contracts and preserves additive nested f
 });
 
 test("runtime catalog output contracts fail closed on ID and nested-shape drift", async () => {
-  const nativeContract = {
-    id: "png",
-    media_type: "image/png",
+  const futureContract = {
+    id: "future-image",
+    media_type: "image/future",
     system_fonts: {
-      source_id: "host-system",
+      source_id: "future-font-source",
       discovery: "first-use",
       cache_scope: "process-global",
       host_dependent: true,
@@ -356,6 +411,17 @@ test("runtime catalog output contracts fail closed on ID and nested-shape drift"
       },
     },
   };
+  const addFutureOutput = (catalog, contract = futureContract) => {
+    catalog.capabilities.capability_ids.push("future-image");
+    catalog.capabilities.capability_ids.sort();
+    catalog.capabilities.output_ids.unshift("future-image");
+    catalog.capabilities.operation_ids.push("future-render");
+    catalog.capabilities.operation_ids.sort();
+    catalog.output_contracts.unshift(contract);
+    catalog.resources.limits[0].operation_ids.push("future-render");
+    catalog.resources.limits[0].operation_ids.sort();
+    return catalog;
+  };
   const invalidCatalogs = [];
 
   const missingContracts = runtimeCatalog();
@@ -367,35 +433,40 @@ test("runtime catalog output contracts fail closed on ID and nested-shape drift"
   invalidCatalogs.push(missingOutputId);
 
   const extraOutputContract = runtimeCatalog();
-  extraOutputContract.output_contracts.push(nativeContract);
+  extraOutputContract.output_contracts.unshift(futureContract);
   invalidCatalogs.push(extraOutputContract);
 
-  const malformedFonts = runtimeCatalog();
-  malformedFonts.output_contracts[0] = structuredClone(nativeContract);
-  malformedFonts.capabilities.capability_ids = [
-    ...malformedFonts.capabilities.capability_ids,
-    "png",
-  ].sort();
-  malformedFonts.capabilities.output_ids = ["png"];
-  malformedFonts.capabilities.operation_ids = [
-    ...malformedFonts.capabilities.operation_ids.filter((id) => id !== "svg"),
-    "png",
-  ].sort();
+  const knownMediaDrift = runtimeCatalog();
+  knownMediaDrift.output_contracts[0].media_type = "image/png";
+  invalidCatalogs.push(knownMediaDrift);
+
+  const knownEnvironmentDrift = runtimeCatalog();
+  knownEnvironmentDrift.output_contracts[0].system_fonts = {
+    source_id: "future-font-source",
+    discovery: "first-use",
+    cache_scope: "process-global",
+    host_dependent: true,
+    caller_configurable: false,
+    resource_bounded: false,
+  };
+  invalidCatalogs.push(knownEnvironmentDrift);
+
+  const malformedFonts = addFutureOutput(runtimeCatalog(), structuredClone(futureContract));
   delete malformedFonts.output_contracts[0].system_fonts.discovery;
   invalidCatalogs.push(malformedFonts);
 
   const malformedImages = structuredClone(malformedFonts);
-  malformedImages.output_contracts[0] = structuredClone(nativeContract);
+  malformedImages.output_contracts[0] = structuredClone(futureContract);
   malformedImages.output_contracts[0].embedded_images.filesystem_access = "false";
   invalidCatalogs.push(malformedImages);
 
   const malformedImageLimits = structuredClone(malformedFonts);
-  malformedImageLimits.output_contracts[0] = structuredClone(nativeContract);
+  malformedImageLimits.output_contracts[0] = structuredClone(futureContract);
   delete malformedImageLimits.output_contracts[0].embedded_images.limits.max_total_pixels;
   invalidCatalogs.push(malformedImageLimits);
 
   const malformedSourceIds = structuredClone(malformedFonts);
-  malformedSourceIds.output_contracts[0] = structuredClone(nativeContract);
+  malformedSourceIds.output_contracts[0] = structuredClone(futureContract);
   malformedSourceIds.output_contracts[0].embedded_images.source_ids = [
     "future-source",
     "data-url",
@@ -493,6 +564,70 @@ test("generic operations preserve request-local options JSON", async () => {
       options_json: optionsJson,
     },
   ]);
+  await engine.dispose();
+});
+
+test("operation request fields accept exact UTF-8 ceilings and reject plus one", async () => {
+  const factory = transportFactory({
+    async execute(requestJson) {
+      const request = JSON.parse(requestJson);
+      factory.calls.push(request);
+      if (request.operation_id === "document-analysis-json") {
+        return failure({ kind: "missing-capability", capabilityId: "analysis" });
+      }
+      return success();
+    },
+  });
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+
+  const exactSource = "x".repeat(NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes);
+  assert.equal(await engine.renderSvg(exactSource), "<svg />");
+  assert.throws(
+    () => engine.renderSvg(`${exactSource}x`),
+    /field limit/i,
+  );
+
+  const exactOptionsJson = "{}" + " ".repeat(
+    NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes - 2,
+  );
+  assert.equal(
+    await engine.renderSvg("flowchart TD\nA", { optionsJson: exactOptionsJson }),
+    "<svg />",
+  );
+  assert.throws(
+    () => engine.renderSvg("flowchart TD\nA", { optionsJson: `${exactOptionsJson} ` }),
+    /field limit|wire limit/i,
+  );
+
+  const exactUri = `file:///${"x".repeat(
+    NODE_TRANSPORT_FIELD_LIMITS.uri_utf8_bytes - Buffer.byteLength("file:///"),
+  )}`;
+  await assert.rejects(
+    engine.executeOperation({
+      operationId: "document-analysis-json",
+      source: "flowchart TD\nA",
+      uri: exactUri,
+    }),
+    MermanOperationError,
+  );
+  assert.throws(
+    () => engine.executeOperation({
+      operationId: "document-analysis-json",
+      source: "flowchart TD\nA",
+      uri: "",
+    }),
+    /requires a non-empty uri/i,
+  );
+  assert.throws(
+    () => engine.executeOperation({
+      operationId: "document-analysis-json",
+      source: "flowchart TD\nA",
+      uri: `${exactUri}x`,
+    }),
+    /field limit/i,
+  );
+
+  assert.equal(factory.calls.length, 3);
   await engine.dispose();
 });
 
@@ -598,7 +733,9 @@ test("metadata helper rejects non-text, oversized, unadvertised, and typed-error
   );
   await directObjectEngine.dispose();
 
-  const exactMetadata = "{}" + " ".repeat(NODE_TRANSPORT_LIMITS.metadataBytes - 2);
+  const exactMetadata = "{}" + " ".repeat(
+    NODE_TRANSPORT_LIMITS.metadata.max_utf8_bytes - 2,
+  );
   const boundaryFactory = transportFactory({
     metadataJson() {
       return exactMetadata;
@@ -864,66 +1001,46 @@ test("runtime catalog follows descriptor-owned SVG compiled prerequisites", asyn
       .sort((left, right) => left.id.localeCompare(right.id)),
   );
   assert.notEqual(pipelineOperations.length, 0);
-
-  for (const operation of pipelineOperations) {
-    const catalog = runtimeCatalog();
-    catalog.capabilities.capability_ids = [operation.capability];
-    catalog.capabilities.output_ids = [operation.output];
-    catalog.capabilities.operation_ids = [operation.id, "semantic-json"].sort();
-    catalog.option_group_ids = optionGroupIds([operation.capability], {
-      usesSvgPipeline: true,
-    });
-    catalog.output_contracts = [{
-      id: operation.output,
-      media_type: operation.media_type,
-      system_fonts: {
-        source_id: "host-system",
-        discovery: "first-use",
-        cache_scope: "process-global",
-        host_dependent: true,
-        caller_configurable: false,
-        resource_bounded: false,
-      },
-      embedded_images: {
-        source_ids: ["data-url"],
-        filesystem_access: false,
-        network_access: false,
-        caller_configurable: true,
-        limits: {
-          max_bytes_per_image: 16 * 1024 * 1024,
-          max_total_bytes: 32 * 1024 * 1024,
-          max_pixels_per_image: 16 * 1024 * 1024,
-          max_total_pixels: 32 * 1024 * 1024,
-        },
-      },
-    }];
-    catalog.resources.limits[0].operation_ids = [operation.id, "semantic-json"].sort();
-
-    const factory = transportFactory({
-      runtimeCatalogJson() {
-        return JSON.stringify(catalog);
-      },
-    });
-    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
-    assert.deepEqual(engine.runtimeCatalog.capabilities.capability_ids, [
-      operation.capability,
-    ]);
-    assert.deepEqual(engine.runtimeCatalog.capabilities.text_measurement.provider_ids, [
-      "vendored",
-    ]);
-    await engine.dispose();
-
-    catalog.capabilities.text_measurement = null;
-    const missingProviderFactory = transportFactory({
-      runtimeCatalogJson() {
-        return JSON.stringify(catalog);
-      },
-    });
-    await assert.rejects(
-      createNodeEngine({}, { loadTransport: missingProviderFactory.loadTransport }),
-      MermanInvalidTransportError,
+  const catalog = runtimeCatalog();
+  const capabilityIds = new Set(catalog.capabilities.capability_ids);
+  const outputIds = new Set(catalog.capabilities.output_ids);
+  for (const operationId of catalog.capabilities.operation_ids) {
+    const operation = descriptor.binding_operations.find(({ id }) => id === operationId);
+    assert.ok(operation, operationId);
+    assert.equal(
+      operation.compiled_prerequisites.every((id) => capabilityIds.has(id)),
+      true,
+      operationId,
     );
+    if (operation.output !== null) {
+      assert.equal(outputIds.has(operation.output), true, operationId);
+    }
   }
+
+  const factory = transportFactory({
+    runtimeCatalogJson() {
+      return JSON.stringify(catalog);
+    },
+  });
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  assert.deepEqual(
+    engine.runtimeCatalog.capabilities.capability_ids,
+    NODE_WIRE_CONTRACT.artifact.capability_ids,
+  );
+  await engine.dispose();
+
+  const missingCompiledPrerequisite = runtimeCatalog();
+  missingCompiledPrerequisite.capabilities.capability_ids =
+    missingCompiledPrerequisite.capabilities.capability_ids.filter((id) => id !== "svg");
+  const missingProviderFactory = transportFactory({
+    runtimeCatalogJson() {
+      return JSON.stringify(missingCompiledPrerequisite);
+    },
+  });
+  await assert.rejects(
+    createNodeEngine({}, { loadTransport: missingProviderFactory.loadTransport }),
+    /missing implied capability|known capabilities do not match the Node artifact contract/i,
+  );
 });
 
 test("schema-1 catalog extensions validate strictly and preserve open discovery", async () => {
@@ -979,20 +1096,22 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
   await additiveEngine.dispose();
 
   const futureOutput = runtimeCatalog();
-  futureOutput.capabilities.capability_ids = ["future-image"];
-  futureOutput.capabilities.output_ids = ["future-image"];
-  futureOutput.capabilities.operation_ids = ["future-render", "semantic-json"];
-  futureOutput.option_group_ids = optionGroupIds(["future-image"], {
-    usesSvgPipeline: true,
-  });
-  futureOutput.output_contracts = [{
+  futureOutput.capabilities.capability_ids.push("future-image");
+  futureOutput.capabilities.capability_ids.sort();
+  futureOutput.capabilities.output_ids.unshift("future-image");
+  futureOutput.capabilities.operation_ids.push("future-render");
+  futureOutput.capabilities.operation_ids.sort();
+  futureOutput.option_group_ids.push("future-image-options");
+  futureOutput.option_group_ids.sort();
+  futureOutput.output_contracts.unshift({
     id: "future-image",
     media_type: "image/future",
     system_fonts: null,
     embedded_images: null,
     future_output_contract: true,
-  }];
-  futureOutput.resources.limits[0].operation_ids = ["future-render", "semantic-json"];
+  });
+  futureOutput.resources.limits[0].operation_ids.push("future-render");
+  futureOutput.resources.limits[0].operation_ids.sort();
   const futureOutputFactory = transportFactory({
     runtimeCatalogJson() {
       return JSON.stringify(futureOutput);
@@ -1004,6 +1123,7 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
   );
   assert.deepEqual(futureOutputEngine.runtimeCatalog.capabilities.output_ids, [
     "future-image",
+    "svg",
   ]);
   assert.equal(
     futureOutputEngine.runtimeCatalog.output_contracts[0].future_output_contract,
@@ -1044,15 +1164,10 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
       return JSON.stringify(hiddenKnownOperation);
     },
   });
-  const hiddenOperationEngine = await createNodeEngine(
-    {},
-    { loadTransport: hiddenOperationFactory.loadTransport },
+  await assert.rejects(
+    createNodeEngine({}, { loadTransport: hiddenOperationFactory.loadTransport }),
+    /known operations do not match the Node artifact contract/i,
   );
-  assert.throws(
-    () => hiddenOperationEngine.svgPlanJsonSync("flowchart TD\nA --> B"),
-    /not advertised by this artifact/i,
-  );
-  await hiddenOperationEngine.dispose();
 
   const metadataSubset = runtimeCatalog();
   metadataSubset.metadata_ids = ["supported-diagrams"];
@@ -1061,16 +1176,10 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
       return JSON.stringify(metadataSubset);
     },
   });
-  const metadataSubsetEngine = await createNodeEngine(
-    {},
-    { loadTransport: metadataSubsetFactory.loadTransport },
+  await assert.rejects(
+    createNodeEngine({}, { loadTransport: metadataSubsetFactory.loadTransport }),
+    /known metadata ids do not match the Node artifact contract/i,
   );
-  assert.deepEqual(metadataSubsetEngine.runtimeCatalog.metadata_ids, ["supported-diagrams"]);
-  assert.throws(
-    () => metadataSubsetEngine.metadataJson("supported-themes"),
-    /not callable through this SDK and artifact contract/i,
-  );
-  await metadataSubsetEngine.dispose();
 
   const invalidCatalogs = [];
   const missingRequiredPayload = runtimeCatalog();
@@ -1241,7 +1350,7 @@ test("runtime catalog transport boundary accepts JSON text only", async () => {
 
   const catalogJson = JSON.stringify(runtimeCatalog());
   const exactCatalog = catalogJson + " ".repeat(
-    NODE_TRANSPORT_LIMITS.runtimeCatalogBytes - Buffer.byteLength(catalogJson),
+    NODE_TRANSPORT_LIMITS.runtime_catalog.max_utf8_bytes - Buffer.byteLength(catalogJson),
   );
   const boundaryFactory = transportFactory({
     runtimeCatalogJson() {
@@ -1262,19 +1371,18 @@ test("runtime catalog transport boundary accepts JSON text only", async () => {
     denseUnknownValueCount - 1,
   )}0]}`;
   assert.ok(
-    Buffer.byteLength(denseUnknownCatalog) < NODE_TRANSPORT_LIMITS.runtimeCatalogBytes,
+    Buffer.byteLength(denseUnknownCatalog) <
+      NODE_TRANSPORT_LIMITS.runtime_catalog.max_utf8_bytes,
   );
   const denseUnknownFactory = transportFactory({
     runtimeCatalogJson() {
       return denseUnknownCatalog;
     },
   });
-  const denseUnknownEngine = await createNodeEngine(
-    {},
-    { loadTransport: denseUnknownFactory.loadTransport },
+  await assert.rejects(
+    createNodeEngine({}, { loadTransport: denseUnknownFactory.loadTransport }),
+    /member-work|token-work/i,
   );
-  assert.equal(denseUnknownEngine.runtimeCatalog.future_values.length, denseUnknownValueCount);
-  await denseUnknownEngine.dispose();
 
   const roundedUnsafeInteger = JSON.stringify(runtimeCatalog()).replace(
     '"diagram_family_count":35',
@@ -1310,6 +1418,10 @@ test("public TypeScript declarations cover the generic operation API", () => {
   assert.equal(publicApi.MermanInvalidTransportError, MermanInvalidTransportError);
   assert.equal("MermanNodeEngine" in publicApi, false);
   assert.doesNotMatch(declarations, /\bMermanNodeEngine\b/);
+  assert.match(
+    declarations,
+    /export declare class MermanEngine\s*{[^}]*private constructor\(\);/s,
+  );
   assert.doesNotMatch(declarations, /"deterministic"\s*\|\s*"native"/);
   assert.match(declarations, /class MermanInvalidTransportError extends MermanError/);
   assert.match(declarations, /\breadonly runtimeCatalog:/);
@@ -1335,6 +1447,31 @@ test("public TypeScript declarations cover the generic operation API", () => {
   assert.doesNotMatch(declarations, /\bformatOptions\??:/);
 });
 
+test("MermanEngine construction is factory-only", async () => {
+  const factoryOnly = (construct) => {
+    assert.throws(construct, (error) => {
+      assert.ok(error instanceof MermanInvalidTransportError);
+      assert.match(error.message, /createNodeEngine/);
+      return true;
+    });
+  };
+
+  factoryOnly(() => new publicApi.MermanEngine());
+  factoryOnly(
+    () => new publicApi.MermanEngine(
+      transportFactory().transport,
+      runtimeCatalog(),
+      { concurrency: 1, maxQueue: 1 },
+    ),
+  );
+
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  assert.ok(engine instanceof MermanEngine);
+  assert.ok(engine instanceof publicApi.MermanEngine);
+  await engine.dispose();
+});
+
 test("binding options preserve the shared profile vocabulary and reject host measurement", () => {
   assert.deepEqual(
     normalizeBindingOptions({
@@ -1357,9 +1494,17 @@ test("binding options preserve the shared profile vocabulary and reject host mea
     () => normalizeBindingOptions({ runtime_policy: "native" }),
     /runtime_policy.*deterministic/i,
   );
+  for (const textMeasurement of ["vendored", "parity", "deterministic"]) {
+    assert.equal(
+      normalizeBindingOptions({
+        environment: { text_measurement: textMeasurement },
+      }).environment.text_measurement,
+      textMeasurement,
+    );
+  }
   assert.throws(
     () => normalizeBindingOptions({ textMeasurer: () => ({ width: 1 }) }),
-    /text measurement callbacks are not supported/i,
+    /not a JSON wire value/i,
   );
   assert.throws(
     () => normalizeBindingOptions({ resources: { profile: "default" } }),
@@ -1367,10 +1512,9 @@ test("binding options preserve the shared profile vocabulary and reject host mea
   );
 });
 
-test("typed unknown-operation and missing-capability errors survive the JS boundary", async () => {
+test("capability-gated errors survive while advertised-operation contradictions fail closed", async () => {
   for (const expected of [
-    { kind: "unknown-operation", capabilityId: null },
-    { kind: "missing-capability", capabilityId: "png" },
+    { kind: "missing-capability", capabilityId: "png", operationId: "png" },
   ]) {
     const factory = transportFactory({
       async execute() {
@@ -1380,7 +1524,7 @@ test("typed unknown-operation and missing-capability errors survive the JS bound
     const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
     await assert.rejects(
       engine.executeOperation({
-        operationId: "svg",
+        operationId: expected.operationId,
         source: "flowchart TD\nA",
       }),
       (error) => {
@@ -1393,6 +1537,82 @@ test("typed unknown-operation and missing-capability errors survive the JS bound
     );
     await engine.dispose();
   }
+
+  const contradictory = transportFactory({
+    async execute() {
+      return failure({ kind: "unknown-operation", capabilityId: null });
+    },
+  });
+  const engine = await createNodeEngine({}, { loadTransport: contradictory.loadTransport });
+  await assert.rejects(
+    engine.executeOperation({ operationId: "svg", source: "flowchart TD\nA" }),
+    MermanInvalidTransportError,
+  );
+  await engine.dispose();
+});
+
+test("generic execution covers the complete 13-operation matrix", async () => {
+  const expectations = new Map(
+    BINDING_OPERATION_EXPECTATIONS.map((expectation) => [
+      expectation.operation_id,
+      expectation,
+    ]),
+  );
+  const advertised = new Set(NODE_WIRE_CONTRACT.artifact.operation_ids);
+  const factory = transportFactory({
+    async execute(requestJson) {
+      const request = JSON.parse(requestJson);
+      factory.calls.push(request);
+      const expectation = expectations.get(request.operation_id);
+      assert.ok(expectation, request.operation_id);
+      if (!advertised.has(request.operation_id)) {
+        assert.ok(expectation.unavailable);
+        return failure({
+          kind: expectation.unavailable.error_kind,
+          capabilityId: expectation.unavailable.capability_id,
+        });
+      }
+      const data =
+        expectation.media_type === "image/svg+xml"
+          ? "<svg />"
+          : JSON.stringify({ operation_id: request.operation_id });
+      return operationSuccess(expectation, data);
+    },
+  });
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+
+  for (const expectation of BINDING_OPERATION_EXPECTATIONS) {
+    const request = {
+      operationId: expectation.operation_id,
+      source: "flowchart TD\nA --> B",
+    };
+    if (expectation.requires_uri) request.uri = "file:///fixture.mmd";
+    if (advertised.has(expectation.operation_id)) {
+      const result = await engine.executeOperation(request);
+      assert.equal(result.operation_id, expectation.operation_id);
+      assert.equal(result.media_type, expectation.media_type);
+    } else {
+      await assert.rejects(
+        engine.executeOperation(request),
+        (error) => {
+          assert.ok(error instanceof MermanOperationError);
+          assert.equal(error.kind, expectation.unavailable.error_kind);
+          assert.equal(error.capabilityId, expectation.unavailable.capability_id);
+          return true;
+        },
+      );
+    }
+  }
+
+  assert.deepEqual(
+    factory.calls.map(({ operation_id }) => operation_id).sort(),
+    BINDING_OPERATION_EXPECTATIONS.map(({ operation_id }) => operation_id).sort(),
+  );
+  assert.equal(
+    factory.calls.filter(({ uri }) => uri !== null).length,
+    BINDING_OPERATION_EXPECTATIONS.filter(({ requires_uri }) => requires_uri).length,
+  );
+  await engine.dispose();
 });
 
 test("direct transport execution failures normalize across async and sync calls", async () => {
@@ -1476,6 +1696,7 @@ test("queue admission is bounded and dispose drains only executing work", async 
   );
 
   const disposing = engine.dispose();
+  assert.equal(engine.dispose(), disposing);
   await assert.rejects(queued, MermanDisposedError);
   assert.equal(transportDisposed, false);
   release.resolve();
@@ -1484,6 +1705,11 @@ test("queue admission is bounded and dispose drains only executing work", async 
   assert.equal(transportDisposed, true);
   assert.equal(executions, 1);
   await assert.rejects(engine.renderSvg("flowchart TD\nD"), MermanDisposedError);
+  assert.throws(
+    () => engine.executeOperationSync({ operationId: "svg", source: "flowchart TD\nD" }),
+    MermanDisposedError,
+  );
+  assert.equal(engine.dispose(), disposing);
 });
 
 test("AbortSignal cancels queued work but never claims to preempt executing work", async () => {
