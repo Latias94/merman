@@ -562,11 +562,19 @@ async function createSession(
         window as unknown as {
           __benchmarkSession?: {
             abort: AbortController;
+            inputId: string;
+            runId: string;
             session: BrowserBenchmarkParentSession;
             sequence: number;
           };
         }
-      ).__benchmarkSession = { abort, session, sequence: 0 };
+      ).__benchmarkSession = {
+        abort,
+        inputId: `browser-input-${engine}`,
+        runId: `browser-${engine}`,
+        session,
+        sequence: 0,
+      };
     },
     {
       engine,
@@ -594,28 +602,45 @@ async function sampleSession(
       const harness = (
         window as unknown as {
           __benchmarkSession: {
+            inputId: string;
+            runId: string;
             session: BrowserBenchmarkParentSession;
             sequence: number;
           };
         }
       ).__benchmarkSession;
       harness.sequence += 1;
-      return harness.session.sample({
-        runId: `browser-${input.id}`,
+      const intentKind =
+        input.mode === "realm-cold"
+          ? input.role === "measured"
+            ? "cold-measured"
+            : "warm-setup"
+          : input.role === "measured"
+            ? "warm-measured"
+            : "warmup";
+      const identity = {
+        runId: harness.runId,
         runToken,
-        requestId: `${input.id}-${harness.sequence}`,
+        inputId: harness.inputId,
+        sampleId: `${input.id}-${harness.sequence}`,
         engine: input.engine,
-        mode: input.mode,
-        role: input.role,
-        payload: {
-          source: input.source,
-          configJson: "{}",
-          theme: "default",
-          diagramFont: "trebuchet",
-          externalRequirements: input.externalRequirements,
-          viewport: { width: 800, height: 600 },
-        },
-      });
+        intentKind,
+      } as const;
+      return harness.session.sample(
+        input.mode === "realm-cold"
+          ? {
+              ...identity,
+              payload: {
+                source: input.source,
+                configJson: "{}",
+                theme: "default",
+                diagramFont: "trebuchet",
+                externalRequirements: input.externalRequirements,
+                viewport: { width: 800, height: 600 },
+              },
+            }
+          : identity
+      );
     },
     { input, runToken: RUN_TOKEN }
   );

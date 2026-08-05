@@ -1,10 +1,12 @@
 import {
   BENCHMARK_PROTOCOL_VERSION,
   validateBenchmarkSampleProgress,
-  validateBenchmarkSampleRequest,
   validateBenchmarkSampleResponse,
+  type BenchmarkInputSampleRequest,
   type BenchmarkSampleRequest,
   type BenchmarkSampleFailure,
+  type BenchmarkExpectedSample,
+  type BenchmarkReuseSampleRequest,
   type BenchmarkSampleResponse,
   type BenchmarkSampleSuccess,
 } from "../protocol.ts";
@@ -13,7 +15,6 @@ import {
   type AuthenticatedBrowserRealmChannel,
   type BrowserRealmChannelOptions,
 } from "../../runtime/realm/browser-realm-channel.ts";
-import { createBenchmarkSampleBudget } from "../sample-budget.ts";
 import {
   REALM_BUDGETS,
   REALM_PROTOCOL_VERSION,
@@ -36,21 +37,23 @@ import {
 } from "./stage-watchdog.ts";
 import { projectSafeInlineSvg } from "../../runtime/render-artifact.ts";
 import type { BenchmarkEngine } from "../trace.ts";
+import { benchmarkPhasePath } from "../phase-contract.ts";
+import { benchmarkIntentModeFromKind } from "../sample-plan.ts";
 import {
   deriveBenchmarkParentPublicationEvidence,
   type BenchmarkParentPublicationEvidence,
 } from "../publication.ts";
 
-export type BenchmarkSampleInput = Pick<
+type BenchmarkSampleIdentityInput = Pick<
   BenchmarkSampleRequest,
-  | "engine"
-  | "mode"
-  | "payload"
-  | "requestId"
-  | "role"
-  | "runId"
-  | "runToken"
+  "engine" | "inputId" | "runId" | "runToken" | "sampleId"
 >;
+
+export type BenchmarkSampleInput =
+  | (BenchmarkSampleIdentityInput &
+      Pick<BenchmarkInputSampleRequest, "intentKind" | "payload">)
+  | (BenchmarkSampleIdentityInput &
+      Pick<BenchmarkReuseSampleRequest, "intentKind">);
 
 export interface BrowserBenchmarkRealmSession {
   readonly creationEvidence: BenchmarkRealmCreationEvidence;
@@ -94,14 +97,15 @@ export interface BenchmarkRealmSessionDependencies {
 }
 
 interface PendingSample {
-  readonly expected: BenchmarkSampleInput;
+  dispatchTimer: unknown | null;
+  readonly expected: BenchmarkExpectedSample;
   readonly progressGate: BenchmarkProgressGate;
   readonly reject: (error: unknown) => void;
   readonly resolve: (response: BenchmarkRealmSampleResult) => void;
   readonly stageWatchdog: BenchmarkStageWatchdog;
   readonly dispatchedAt: number;
   isolatedPresentationReceivedAt: number | null;
-  progressTimer: unknown | null;
+  responseTimer: unknown | null;
 }
 
 export async function createBrowserBenchmarkRealmSession(
@@ -174,7 +178,6 @@ export async function createBenchmarkRealmSession(
   let pending: PendingSample | null = null;
   let runTimer: unknown | null = null;
   let channelRef: AuthenticatedBrowserRealmChannel | null = null;
-  const sampleBudget = createBenchmarkSampleBudget();
   const stageTimer: BenchmarkStageTimer = {
     clear: dependencies.clearTimer,
     now: dependencies.now,
@@ -182,9 +185,13 @@ export async function createBenchmarkRealmSession(
   };
 
   const cleanupPending = (current: PendingSample) => {
-    if (current.progressTimer !== null) {
-      dependencies.clearTimer(current.progressTimer);
-      current.progressTimer = null;
+    if (current.dispatchTimer !== null) {
+      dependencies.clearTimer(current.dispatchTimer);
+      current.dispatchTimer = null;
+    }
+    if (current.responseTimer !== null) {
+      dependencies.clearTimer(current.responseTimer);
+      current.responseTimer = null;
     }
     current.stageWatchdog.dispose();
   };
@@ -240,17 +247,15 @@ export async function createBenchmarkRealmSession(
     channel.dispose();
   };
   const poison = (error: unknown) => channel.poison(error);
-  const armProgressTimer = (current: PendingSample) => {
-    if (current.progressTimer !== null) {
-      dependencies.clearTimer(current.progressTimer);
-    }
+  const armResponseTimer = (current: PendingSample) => {
+    if (current.responseTimer !== null) return;
     let handle: unknown;
     handle = dependencies.setTimer(() => {
-      if (pending !== current || current.progressTimer !== handle) return;
-      current.progressTimer = null;
-      poison(new RealmTimeoutError("Benchmark progress timed out."));
+      if (pending !== current || current.responseTimer !== handle) return;
+      current.responseTimer = null;
+      poison(new RealmTimeoutError("Benchmark response timed out."));
     }, REALM_BUDGETS.stageTimeoutMs);
-    current.progressTimer = handle;
+    current.responseTimer = handle;
   };
 
   port.onmessage = (event) => {
@@ -281,11 +286,20 @@ export async function createBenchmarkRealmSession(
         );
         current.progressGate.observe(progress.event);
         current.stageWatchdog.observe(progress.event);
-        if (progress.event === "isolated_presentation_ready") {
+        if (current.dispatchTimer !== null) {
+          dependencies.clearTimer(current.dispatchTimer);
+          current.dispatchTimer = null;
+        }
+        if (
+          benchmarkPhasePath(
+            progress.engine,
+            benchmarkIntentModeFromKind(progress.intentKind)
+          ).rule(progress.event)?.publicationBoundary
+        ) {
           current.isolatedPresentationReceivedAt = progressReceivedAt;
+          armResponseTimer(current);
         }
         incomingSequence = expectedSequence;
-        armProgressTimer(current);
         return;
       }
       const responseReceivedAt = dependencies.now();
@@ -364,24 +378,15 @@ export async function createBenchmarkRealmSession(
         );
       }
       const nextSequence = outgoingSequence + 1;
-      let request: BenchmarkSampleRequest;
-      try {
-        request = validateBenchmarkSampleRequest(
-          {
-            type: "benchmark-sample",
-            protocol: REALM_PROTOCOL_VERSION,
-            benchmarkProtocol: BENCHMARK_PROTOCOL_VERSION,
-            ...identity,
-            sequence: nextSequence,
-            ...input,
-          },
-          identity,
-          nextSequence
-        );
-        sampleBudget.accept(request.role);
-      } catch (error) {
-        return Promise.reject(error);
-      }
+      const request: BenchmarkSampleRequest = Object.freeze({
+        type: "benchmark-sample",
+        protocol: REALM_PROTOCOL_VERSION,
+        benchmarkProtocol: BENCHMARK_PROTOCOL_VERSION,
+        ...identity,
+        sequence: nextSequence,
+        requestId: input.sampleId,
+        ...input,
+      });
       outgoingSequence = nextSequence;
       runTimer ??= dependencies.setTimer(() => {
         poison(new RealmTimeoutError("Benchmark realm run timed out."));
@@ -389,27 +394,47 @@ export async function createBenchmarkRealmSession(
       return new Promise<BenchmarkRealmSampleResult>((resolve, reject) => {
         let current: PendingSample;
         const progressGate = createBenchmarkProgressGate(request);
-        const stageWatchdog = createBenchmarkStageWatchdog((stage) => {
-          if (pending !== current) return;
-          poison(
-            new RealmTimeoutError(
-              `Benchmark parent watchdog timed out during ${stage}.`
-            )
-          );
-        }, stageTimer);
+        const stageWatchdog = createBenchmarkStageWatchdog(
+          request,
+          (stage) => {
+            if (pending !== current) return;
+            poison(
+              new RealmTimeoutError(
+                `Benchmark parent watchdog timed out during ${stage}.`
+              )
+            );
+          },
+          stageTimer
+        );
         const dispatchedAt = dependencies.now();
         current = {
-          expected: request,
+          expected: {
+            engine: request.engine,
+            intentKind: request.intentKind,
+            requestId: request.requestId,
+            runId: request.runId,
+            runToken: request.runToken,
+            sampleId: request.sampleId,
+          },
+          dispatchTimer: null,
           dispatchedAt,
           isolatedPresentationReceivedAt: null,
           progressGate,
           resolve,
           reject,
           stageWatchdog,
-          progressTimer: null,
+          responseTimer: null,
         };
         pending = current;
-        armProgressTimer(current);
+        let dispatchHandle: unknown;
+        dispatchHandle = dependencies.setTimer(() => {
+          if (pending !== current || current.dispatchTimer !== dispatchHandle) {
+            return;
+          }
+          current.dispatchTimer = null;
+          poison(new RealmTimeoutError("Benchmark dispatch timed out."));
+        }, REALM_BUDGETS.stageTimeoutMs);
+        current.dispatchTimer = dispatchHandle;
         try {
           port.postMessage(request);
         } catch (error) {

@@ -1,10 +1,9 @@
 import {
   BENCHMARK_PROTOCOL_VERSION,
-  validateBenchmarkSampleProgress,
   validateBenchmarkSampleRequest,
-  validateBenchmarkSampleResponse,
   type BenchmarkFailureStage,
   type BenchmarkResourceObservation,
+  type BenchmarkSampleProgress,
   type BenchmarkSampleRequest,
   type BenchmarkSampleResponse,
 } from "../protocol.ts";
@@ -15,7 +14,8 @@ import {
   type BenchmarkTraceMark,
   type BenchmarkTraceRecorder,
 } from "../trace.ts";
-import { createBenchmarkSampleBudget } from "../sample-budget.ts";
+import { benchmarkIntentModeFromKind } from "../sample-plan.ts";
+import { createBrowserBenchmarkDocumentLifecycle } from "../document-lifecycle.ts";
 import {
   BENCHMARK_BUDGETS,
   REALM_BUDGETS,
@@ -56,10 +56,14 @@ export type BenchmarkAdapterLoader = (
 
 interface FrozenRealmInput {
   readonly engine: BenchmarkEngine;
-  readonly payloadJson: string;
+  readonly inputId: string;
+  readonly payload: CompareRenderPayload;
   readonly runId: string;
   readonly runToken: string;
 }
+
+type ExecutableBenchmarkSampleRequest = BenchmarkSampleRequest &
+  Readonly<{ payload: CompareRenderPayload }>;
 
 interface SampleEvidence {
   readonly resourceError: string | null;
@@ -199,7 +203,7 @@ function servePort(
   let runTimer: ReturnType<typeof setTimeout> | null = null;
   let stageWatchdog: BenchmarkStageWatchdog | null = null;
   let activeTimeout: ((error: SampleTimeoutError) => void) | null = null;
-  const sampleBudget = createBenchmarkSampleBudget();
+  let lifecycleCleanup: (() => void) | null = null;
 
   const disposeEngine = () => {
     engineSession?.dispose();
@@ -215,6 +219,8 @@ function servePort(
     stageWatchdog?.dispose();
     stageWatchdog = null;
     activeTimeout = null;
+    lifecycleCleanup?.();
+    lifecycleCleanup = null;
     disposeEngine();
     port.onmessage = null;
     port.onmessageerror = null;
@@ -230,28 +236,23 @@ function servePort(
     event: BenchmarkTraceMark
   ) => {
     const nextSequence = outgoingSequence + 1;
-    const progress = validateBenchmarkSampleProgress(
-      {
-        type: "benchmark-progress",
-        protocol: REALM_PROTOCOL_VERSION,
-        benchmarkProtocol: BENCHMARK_PROTOCOL_VERSION,
-        ...identity,
-        sequence: nextSequence,
-        runId: request.runId,
-        runToken: request.runToken,
-        requestId: request.requestId,
-        engine: request.engine,
-        mode: request.mode,
-        role: request.role,
-        traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
-        event,
-      },
-      identity,
-      nextSequence,
-      request
-    );
+    const progress: BenchmarkSampleProgress = Object.freeze({
+      type: "benchmark-progress",
+      protocol: REALM_PROTOCOL_VERSION,
+      benchmarkProtocol: BENCHMARK_PROTOCOL_VERSION,
+      ...identity,
+      sequence: nextSequence,
+      runId: request.runId,
+      runToken: request.runToken,
+      requestId: request.requestId,
+      sampleId: request.sampleId,
+      engine: request.engine,
+      intentKind: request.intentKind,
+      traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
+      event,
+    });
     outgoingSequence = nextSequence;
-    post(progress);
+    port.postMessage(progress);
   };
   const fatal = (error: unknown) => {
     if (closed) return;
@@ -267,8 +268,12 @@ function servePort(
     queueMicrotask(close);
   };
 
-  const onDocumentExit = () => close();
-  window.addEventListener("pagehide", onDocumentExit, { once: true });
+  lifecycleCleanup = createBrowserBenchmarkDocumentLifecycle().subscribe(
+    (signal) => {
+      if (signal.kind === "resume" || signal.kind === "pageshow") return;
+      close();
+    }
+  );
   port.onmessageerror = () => fatal("Benchmark realm could not clone a message.");
   port.onmessage = (event) => {
     if (closed) return;
@@ -278,15 +283,14 @@ function servePort(
     }
 
     const expectedSequence = incomingSequence + 1;
-    let request: BenchmarkSampleRequest;
+    let request: ExecutableBenchmarkSampleRequest;
     try {
-      request = validateBenchmarkSampleRequest(
-        event.data,
-        identity,
-        expectedSequence
+      request = resolveRequestState(
+        validateBenchmarkSampleRequest(event.data, identity, expectedSequence),
+        frozen,
+        engineSession,
+        host
       );
-      assertRequestState(request, frozen, engineSession, host);
-      sampleBudget.accept(request.role);
     } catch (error) {
       fatal(error);
       return;
@@ -301,7 +305,7 @@ function servePort(
     const rejectTimeout = (error: SampleTimeoutError) => timeout.reject(error);
     activeTimeout = rejectTimeout;
     const progressGate = createBenchmarkProgressGate(request);
-    stageWatchdog = createBenchmarkStageWatchdog((stage) => {
+    stageWatchdog = createBenchmarkStageWatchdog(request, (stage) => {
       activeTimeout?.(new SampleTimeoutError(stage));
     });
     runTimer ??= setTimeout(() => {
@@ -343,15 +347,14 @@ function servePort(
           );
         }
         outgoingSequence += 1;
-        const validated = validateBenchmarkSampleResponse(
-          { ...response, sequence: outgoingSequence, ...identity },
-          identity,
-          outgoingSequence,
-          request
-        );
-        post(validated);
+        const message: BenchmarkSampleResponse = Object.freeze({
+          ...response,
+          sequence: outgoingSequence,
+          ...identity,
+        });
+        post(message);
         active = false;
-        if (validated.type === "benchmark-sample-failure") {
+        if (message.type === "benchmark-sample-failure") {
           poisoned = true;
           if (runTimer !== null) clearTimeout(runTimer);
           runTimer = null;
@@ -371,7 +374,7 @@ function servePort(
 }
 
 async function executeSample(
-  request: BenchmarkSampleRequest,
+  request: ExecutableBenchmarkSampleRequest,
   host: HTMLElement,
   existingSession: BenchmarkEngineSession | null,
   onTraceEvent: (event: BenchmarkTraceMark) => void,
@@ -382,6 +385,7 @@ async function executeSample(
   response: BenchmarkRealmResponse;
   session: BenchmarkEngineSession | null;
 }> {
+  const mode = benchmarkIntentModeFromKind(request.intentKind);
   if (document.visibilityState !== "visible") {
     return {
       response: failureResponse(
@@ -398,6 +402,7 @@ async function executeSample(
     };
   }
 
+  performance.clearResourceTimings();
   assertPresentationHost(host, request.payload);
   let clockOrigin: number | null = null;
   const now = () => {
@@ -427,7 +432,7 @@ async function executeSample(
     );
 
     let adapterReady: Promise<BenchmarkEngineAdapter | null>;
-    if (request.mode === "realm-cold") {
+    if (mode === "realm-cold") {
       stage = "adapter-import";
       mark("adapter_import_start");
       adapterReady = loadAdapter(request.engine).then(
@@ -500,9 +505,9 @@ async function executeSample(
         runId: request.runId,
         runToken: request.runToken,
         requestId: request.requestId,
+        sampleId: request.sampleId,
         engine: request.engine,
-        mode: request.mode,
-        role: request.role,
+        intentKind: request.intentKind,
         traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
         trace: evidence.trace,
         resources: evidence.resources,
@@ -560,9 +565,9 @@ function failureResponse(
     runId: request.runId,
     runToken: request.runToken,
     requestId: request.requestId,
+    sampleId: request.sampleId,
     engine: request.engine,
-    mode: request.mode,
-    role: request.role,
+    intentKind: request.intentKind,
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
     trace,
     resources,
@@ -574,40 +579,49 @@ function failureResponse(
   };
 }
 
-function assertRequestState(
+function resolveRequestState(
   request: BenchmarkSampleRequest,
   frozen: FrozenRealmInput | null,
   session: BenchmarkEngineSession | null,
   host: HTMLElement
-): void {
-  if (document.visibilityState !== "visible") {
-    return;
-  }
-  assertPresentationHost(host, request.payload);
+): ExecutableBenchmarkSampleRequest {
+  const mode = benchmarkIntentModeFromKind(request.intentKind);
   if (frozen === null) {
-    if (request.mode !== "realm-cold" || session !== null) {
+    if (mode !== "realm-cold" || session !== null || !("payload" in request)) {
       throw new RealmProtocolError(
-        "Benchmark realm must begin with one realm-cold sample."
+        "Benchmark realm must begin with one input-bearing realm-cold sample."
       );
     }
-    return;
+    if (document.visibilityState === "visible") {
+      assertPresentationHost(host, request.payload);
+    }
+    return request;
   }
+
   if (
-    request.mode !== "warm" ||
+    mode !== "warm" ||
     session === null ||
+    "payload" in request ||
     request.engine !== frozen.engine ||
+    request.inputId !== frozen.inputId ||
     request.runId !== frozen.runId ||
-    request.runToken !== frozen.runToken ||
-    JSON.stringify(request.payload) !== frozen.payloadJson
+    request.runToken !== frozen.runToken
   ) {
     throw new RealmProtocolError("Benchmark warm sample changed frozen realm input.");
   }
+  if (document.visibilityState === "visible") {
+    assertPresentationHost(host, frozen.payload);
+  }
+  return Object.freeze({ ...request, payload: frozen.payload });
 }
 
-function freezeInput(request: BenchmarkSampleRequest): FrozenRealmInput {
+function freezeInput(
+  request: ExecutableBenchmarkSampleRequest
+): FrozenRealmInput {
   return Object.freeze({
     engine: request.engine,
-    payloadJson: JSON.stringify(request.payload),
+    inputId: request.inputId,
+    payload: request.payload,
     runId: request.runId,
     runToken: request.runToken,
   });

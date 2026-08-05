@@ -138,8 +138,7 @@
     "stages": {
       "pausing": "Pausing live rendering",
       "creating-realm": "Creating isolated runtime",
-      "sampling": "Measuring presentation",
-      "cleanup": "Releasing benchmark resources"
+      "sampling": "Measuring presentation"
     },
     "purposes": {
       "setup": "Engine setup",

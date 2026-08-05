@@ -2,7 +2,8 @@
 
 - Status: accepted
 - Date: 2026-07-18
-- Amended: 2026-07-23 (package-surface projection delegated to ADR-0076)
+- Amended: 2026-07-23 (package-surface projection delegated to ADR-0076); 2026-08-05
+  (benchmark phase, plan, lifecycle, and corpus evidence contracts unified)
 - Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `3`, editor-token, diagnostics, and facts schema `1`
 
 These version fields describe the first public contract shapes after the 0.8 refactor. Their
@@ -110,8 +111,13 @@ new engine iframe; this means a new Window/module realm, not a proven network-co
 but they are diagnostics and do not prove HTTP cache provenance when the browser omits transfer
 details.
 
-Benchmark protocol `1` carries trace schema `1`. Each sample records one realm-local monotonic
-event vector:
+Benchmark protocol `3` carries trace schema `1`. Request identity binds the protocol version, realm
+version, run id and capability, request id, sample id, discriminated sample intent, and engine. One
+closed phase contract owns applicability, event order, predecessor and failure-prefix rules,
+publication boundary, progress applicability, and watchdog transitions for all cold/warm and
+Merman/Mermaid paths. Cold samples and the first warm setup bind the complete frozen payload to an
+`inputId`; later warm samples carry only that identity and reuse the realm-owned payload. Each sample
+records one realm-local monotonic event vector:
 
 ```text
 sample_start
@@ -130,7 +136,8 @@ sample_end
 ```
 
 Inapplicable or unobserved events are `null`, not zero. The controller validates ordering and
-derives non-overlapping observations instead of summing spans. Realm-local `budgeted_svg_ready`
+derives non-overlapping observations instead of summing spans. Failure traces retain their real
+completed or half-open prefix instead of fabricating missing phase ends. Realm-local `budgeted_svg_ready`
 means only that the engine produced a response within its output budget;
 `isolated_presentation_ready` means the isolated document completed DOM insertion, layout, and a
 real animation frame. Neither event claims that the parent may publish the markup.
@@ -139,18 +146,32 @@ Every measured sample also records one parent-clock publication vector from samp
 through isolated-presentation progress receipt, response receipt, response-envelope validation,
 and the shared strict SVG projector. `firstPublishableSvgMs` and `warmPublishableSvgMs` are the
 primary comparable totals because both engines cross exactly that parent-side boundary. Response
-delivery, envelope-validation, and strict-validation spans remain separate evidence. The UI may
-summarize median, p95, min, max, mean, and coefficient of variation; report schema `4` retains both raw
-realm-local events and parent publication evidence.
+delivery, envelope-validation, and strict-validation spans remain separate evidence. A dispatch
+deadline owns the interval before the first progress event, the phase watchdog owns only the active
+contract phases, and a final-response deadline begins after isolated presentation. Progress cannot
+extend an unrelated or already-completed deadline. The UI may summarize median, p95, min, max,
+mean, and coefficient of variation; report schema `6` retains both raw realm-local events and parent
+publication evidence.
 
-Runs use the same frozen source/options, `document.fonts.ready`, equal real-source warmups, a
-recorded deterministic seed, and balanced interleaved AB/BA blocks. Failed samples never enter
-aggregates. Corresponding ratios are absent when either engine has an invalid or failed sample.
-Cancellation, timeout, iframe failure, protocol failure, hidden visibility, navigation, or freeze
-produces an explicit terminal state. Visibility/lifecycle invalidation suppresses all aggregates so
-no result spans an invalid environment boundary.
+One complete immutable sample plan is the authority for setup, warmup rounds, measured cold/warm
+blocks, balanced interleaved AB/BA order, realm creation and reuse, aggregation eligibility, exact
+budgets, and report metadata. Runs use the same frozen source/options, `document.fonts.ready`, equal
+real-source warmups, and a recorded deterministic seed. Failed samples never enter aggregates.
+Corresponding ratios are absent when either engine has an invalid or failed sample. A typed browser
+lifecycle adapter projects hidden, freeze/resume, and pagehide/pageshow transitions; Compare and
+Benchmark still own separate realms, queues, clocks, and failure domains. Cancellation, timeout,
+iframe failure, protocol failure, hidden visibility, navigation, or freeze produces an explicit
+terminal state. Visibility/lifecycle invalidation suppresses all aggregates so no result spans an
+invalid environment boundary.
 
 No report is uploaded or persisted remotely. Download is an explicit local action.
+
+Corpus schema `2` makes one page execute exactly one requested fixture and return exactly one
+success or structured failure envelope. The CLI retains a fresh browser process per fixture and
+projects crash, early close, disconnect, timeout, cancellation, and invalidation through that same
+shape. One linear assembler validates fixture order, seeds, options, catalog identity, versions,
+and report schema before deriving coverage and terminal status; it never creates placeholder rows
+for fixtures a page did not execute.
 
 The execution iframe retains the requested client viewport but is transformed to a stable
 one-CSS-pixel presentation footprint. This keeps real animation-frame evidence observable in

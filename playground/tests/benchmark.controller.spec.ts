@@ -89,15 +89,15 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   expect(path).not.toBeNull();
   const report = JSON.parse(await readFile(path!, "utf8")) as {
     input: { source: string };
+    plan: { mode: string; iterations: number; seed: number; warmups: number };
     schemaVersion: number;
     terminalStatus: string;
-    run: { mode: string; iterations: number; seed: number; warmups: number };
     samples: unknown[];
   };
   expect(report).toMatchObject({
     schemaVersion: BENCHMARK_REPORT_SCHEMA_VERSION,
     terminalStatus: "success",
-    run: { mode: "warm", iterations: 2, warmups: 0 },
+    plan: { mode: "warm", iterations: 2, warmups: 0 },
   });
   expect(report.samples).toHaveLength(6);
   expect(requests).toHaveLength(requestCount);
@@ -123,10 +123,10 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   expect(rerunPath).not.toBeNull();
   const rerunReport = JSON.parse(await readFile(rerunPath!, "utf8")) as {
     input: { source: string };
-    run: { seed: number };
+    plan: { seed: number };
   };
   expect(rerunReport.input.source).toBe(rerunSource);
-  expect(rerunReport.run.seed).not.toBe(report.run.seed);
+  expect(rerunReport.plan.seed).not.toBe(report.plan.seed);
   errors.assertNone();
 });
 
@@ -175,12 +175,12 @@ test("closing an active rerun preserves the last completed report and removes ev
   const path = await download.path();
   expect(path).not.toBeNull();
   const retained = JSON.parse(await readFile(path!, "utf8")) as {
+    plan: { iterations: number };
     terminalStatus: string;
-    run: { iterations: number };
   };
   expect(retained).toMatchObject({
     terminalStatus: "success",
-    run: { iterations: 2 },
+    plan: { iterations: 2 },
   });
   errors.assertNone();
 });

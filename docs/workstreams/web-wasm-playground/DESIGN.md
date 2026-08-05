@@ -90,15 +90,23 @@ iframe/module realm; `warm` reuses it. It does not claim that realm-cold means n
 Resource Timing entries are retained as observations without inferring unavailable HTTP-cache
 provenance.
 
-Protocol `1` and trace schema `1` record realm-local events for font readiness, adapter/engine
+Protocol `3` and trace schema `1` record realm-local events for font readiness, adapter/engine
 imports, resource acquisition, registration, initialization, budgeted output, isolated DOM
-insertion, layout, and presentation. Those events do not claim parent publication safety. Report
-schema `4` adds one parent-clock vector from sample dispatch through response delivery, envelope
-validation, and strict SVG projection. Parent-side first/warm publishable-SVG totals are the primary
-cross-engine metrics. The controller alone derives intervals and aggregate statistics. Equal
-real-source warmups, a recorded seed, and balanced AB/BA blocks reduce order bias. Failed samples
-are excluded, ratios fail closed, and hidden/frozen/navigation boundaries invalidate the run and
-suppress aggregates. Evidence can be downloaded locally as versioned JSON; it is not uploaded.
+insertion, layout, and presentation. One closed phase contract owns applicability, event order,
+failure prefixes, progress, publication boundary, and watchdog transitions. Those events do not
+claim parent publication safety. Report schema `6` adds one parent-clock vector from sample dispatch
+through response delivery, envelope validation, and strict SVG projection. Parent-side first/warm
+publishable-SVG totals are the primary cross-engine metrics.
+
+One immutable sample plan owns setup, warmups, measured cold/warm blocks, balanced AB/BA order,
+realm reuse, exact work budgets, and aggregation eligibility; the controller interprets that plan
+instead of reconstructing counters or schedules. The first request in a reused realm binds the full
+payload to an `inputId`; later warm requests transmit only that identity. A typed lifecycle adapter projects
+hidden/frozen/resumed/page navigation events without sharing Compare and Benchmark clocks or
+realms. Failed samples are excluded, ratios fail closed, and invalid lifecycle boundaries suppress
+aggregates. Corpus schema `2` runs one requested fixture per page, keeps a fresh browser process per
+fixture, and linearly aggregates one success or structured failure row for every selected fixture.
+Evidence can be downloaded locally as versioned JSON; it is not uploaded.
 
 ## Editor
 

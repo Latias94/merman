@@ -63,7 +63,7 @@ test("static graph rejects retired Web runtime subpaths", async (t) => {
   }
 });
 
-test("adapter graph rejects main, Compare, scheduler, and statistics ownership", async (t) => {
+test("adapter graph rejects main, Compare, sample-plan, and statistics ownership", async (t) => {
   const cases = [
     ["main app", "../../../main.tsx", "src/main.tsx"],
     [
@@ -71,7 +71,7 @@ test("adapter graph rejects main, Compare, scheduler, and statistics ownership",
       "../../../runtime/mermaid-realm-controller.ts",
       "src/runtime/mermaid-realm-controller.ts",
     ],
-    ["scheduler", "../../schedule.ts", "src/benchmark/schedule.ts"],
+    ["sample plan", "../../sample-plan.ts", "src/benchmark/sample-plan.ts"],
     ["statistics", "../../statistics.ts", "src/benchmark/statistics.ts"],
   ];
 
@@ -90,9 +90,9 @@ test("adapter graph rejects main, Compare, scheduler, and statistics ownership",
   }
 });
 
-test("adapter ownership rejects type-only scheduler, statistics, and report edges", async (t) => {
+test("adapter ownership rejects type-only sample-plan, statistics, and report edges", async (t) => {
   const cases = [
-    ["../../schedule.ts", "src/benchmark/schedule.ts"],
+    ["../../sample-plan.ts", "src/benchmark/sample-plan.ts"],
     ["../../statistics.ts", "src/benchmark/statistics.ts"],
     ["../../report.ts", "src/benchmark/report.ts"],
   ];

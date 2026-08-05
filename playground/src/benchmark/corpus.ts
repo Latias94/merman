@@ -9,17 +9,52 @@ import { BENCHMARK_BUDGETS } from "../runtime/realm/channel-protocol.ts";
 import { projectError } from "../runtime/error-projection.ts";
 import type { BenchmarkController, BenchmarkRunRequest } from "./controller.ts";
 import {
-  BENCHMARK_REPORT_SCHEMA_VERSION,
-  type BenchmarkReport,
-} from "./report.ts";
-import { createUint32Random, shuffleInPlace } from "./schedule.ts";
-import type { BenchmarkEngine, BenchmarkSampleMode } from "./trace.ts";
+  createBenchmarkCorpusCatalogIdentity,
+  createBenchmarkCorpusFailureEnvelope,
+  createBenchmarkCorpusFixtureEnvelope,
+  type BenchmarkCorpusCatalog,
+  type BenchmarkCorpusFailure,
+  type BenchmarkCorpusFixtureDescriptor,
+  type BenchmarkCorpusFixtureEnvelope,
+  type BenchmarkCorpusModeEvidence,
+  type BenchmarkCorpusSourceIdentity,
+  type BenchmarkCorpusTerminalStatus,
+} from "./corpus-evidence.ts";
 import {
+  BENCHMARK_CORPUS_CATALOG_ID,
+  BENCHMARK_CORPUS_FIXTURE_KIND,
   BENCHMARK_CORPUS_KIND,
   BENCHMARK_CORPUS_SCHEMA_VERSION,
 } from "./corpus-schema.ts";
+import { BENCHMARK_REPORT_SCHEMA_VERSION } from "./report-schema.ts";
+import type { BenchmarkReport } from "./report.ts";
+import {
+  calculateBenchmarkSamplePlanBudget,
+  createUint32Random,
+  shuffleInPlace,
+} from "./sample-plan.ts";
+import type { BenchmarkEngine, BenchmarkSampleMode } from "./trace.ts";
 
-export { BENCHMARK_CORPUS_KIND, BENCHMARK_CORPUS_SCHEMA_VERSION };
+export {
+  BENCHMARK_CORPUS_CATALOG_ID,
+  BENCHMARK_CORPUS_FIXTURE_KIND,
+  BENCHMARK_CORPUS_KIND,
+  BENCHMARK_CORPUS_SCHEMA_VERSION,
+};
+export type {
+  BenchmarkCorpusAggregateEnvelope,
+  BenchmarkCorpusCatalog,
+  BenchmarkCorpusCatalogIdentity,
+  BenchmarkCorpusCoverage,
+  BenchmarkCorpusFailure,
+  BenchmarkCorpusFixtureDescriptor,
+  BenchmarkCorpusFixtureEnvelope,
+  BenchmarkCorpusFixtureEvidence,
+  BenchmarkCorpusModeEvidence,
+  BenchmarkCorpusPlanEvidenceEntry,
+  BenchmarkCorpusSourceIdentity,
+  BenchmarkCorpusTerminalStatus,
+} from "./corpus-evidence.ts";
 
 export const BENCHMARK_CORPUS_BUDGETS = Object.freeze({
   maxRetainedSamples: 4_096,
@@ -40,125 +75,17 @@ export interface BenchmarkCorpusPlanEntry {
   readonly warmSeed: number;
 }
 
-export interface BenchmarkCorpusSourceIdentity {
-  readonly bytes: number;
-  readonly sha256: string;
-}
-
-export interface BenchmarkCorpusFailure {
-  readonly detail: string | null;
-  readonly fixtureId: string;
-  readonly family: string;
-  readonly message: string;
-  readonly mode: BenchmarkSampleMode;
-  readonly stage: string;
-}
-
-interface BenchmarkCorpusModeEvidenceBase {
-  readonly mode: BenchmarkSampleMode;
-}
-
-interface BenchmarkCorpusModeSuccess extends BenchmarkCorpusModeEvidenceBase {
-  readonly failure: null;
-  readonly report: BenchmarkReport;
-  readonly seed: number;
-  readonly skipReason: null;
-  readonly status: "success";
-}
-
-interface BenchmarkCorpusModeFailure extends BenchmarkCorpusModeEvidenceBase {
-  readonly failure: BenchmarkCorpusFailure;
-  readonly report: BenchmarkReport | null;
-  readonly seed: number;
-  readonly skipReason: null;
-  readonly status: "failure";
-}
-
-interface BenchmarkCorpusModeSkipped extends BenchmarkCorpusModeEvidenceBase {
-  readonly failure: null;
-  readonly report: BenchmarkReport | null;
-  readonly seed: number | null;
-  readonly skipReason: string;
-  readonly status: "skipped";
-}
-
-export type BenchmarkCorpusModeEvidence =
-  | BenchmarkCorpusModeSuccess
-  | BenchmarkCorpusModeFailure
-  | BenchmarkCorpusModeSkipped;
-
 export interface BenchmarkCorpusPreparedFixture {
   readonly detection: BenchmarkRunRequest["detection"];
   readonly payload: BenchmarkRunRequest["payload"];
 }
 
-export interface BenchmarkCorpusFixtureEvidence {
-  readonly cold: BenchmarkCorpusModeEvidence;
-  readonly family: string;
-  readonly fixture: string;
-  readonly id: string;
-  readonly order: number;
-  readonly source: BenchmarkCorpusSourceIdentity;
-  readonly status: "success" | "failure" | "skipped";
-  readonly warm: BenchmarkCorpusModeEvidence;
-}
-
-export interface BenchmarkCorpusCoverage {
-  readonly attemptedFamilies: number;
-  readonly availableFamilies: number;
-  readonly failedFamilies: number;
-  readonly selectedFamilies: number;
-  readonly skippedFamilies: number;
-  readonly succeededFamilies: number;
-}
-
-export interface BenchmarkCorpusSkip {
-  readonly family: string;
+export interface BenchmarkCorpusFixtureRunRequest {
+  readonly coldSeed: number;
   readonly fixtureId: string;
-  readonly reason: string;
-}
-
-export interface BenchmarkCorpusEnvelope {
-  readonly benchmarkReportSchemaVersion: typeof BENCHMARK_REPORT_SCHEMA_VERSION;
-  readonly catalog: {
-    readonly mermaidBaseline: string;
-    readonly role: "family-baseline";
-    readonly source: "playground/src/generated/examples.ts";
-  };
-  readonly coverage: BenchmarkCorpusCoverage;
-  readonly execution: {
-    readonly fixtureIsolation:
-      | "single-page"
-      | "fresh-browser-process-per-fixture";
-  };
-  readonly failures: readonly BenchmarkCorpusFailure[];
-  readonly fixtures: readonly BenchmarkCorpusFixtureEvidence[];
-  readonly kind: typeof BENCHMARK_CORPUS_KIND;
-  readonly run: {
-    readonly durationMs: number;
-    readonly endedAt: string;
-    readonly id: string;
-    readonly iterations: number;
-    readonly masterSeed: number;
-    readonly order: readonly string[];
-    readonly startedAt: string;
-    readonly warmups: number;
-  };
-  readonly schemaVersion: typeof BENCHMARK_CORPUS_SCHEMA_VERSION;
-  readonly skips: readonly BenchmarkCorpusSkip[];
-  readonly terminalStatus:
-    | "success"
-    | "complete-with-errors"
-    | "cancelled"
-    | "invalidated";
-  readonly versions: Readonly<Record<BenchmarkEngine, string>>;
-}
-
-export interface BenchmarkCorpusRunRequest {
-  readonly fixtureIds?: readonly string[];
   readonly iterations: number;
-  readonly masterSeed: number;
   readonly signal?: AbortSignal;
+  readonly warmSeed: number;
   readonly warmups: number;
 }
 
@@ -175,7 +102,9 @@ export interface BenchmarkCorpusDependencies {
 
 export interface BenchmarkCorpusOrchestrator {
   cancel(reason?: string): void;
-  run(request: BenchmarkCorpusRunRequest): Promise<BenchmarkCorpusEnvelope>;
+  run(
+    request: BenchmarkCorpusFixtureRunRequest
+  ): Promise<BenchmarkCorpusFixtureEnvelope>;
 }
 
 export const FAMILY_BASELINE_CORPUS: readonly BenchmarkCorpusFixture[] =
@@ -199,10 +128,17 @@ export const FAMILY_BASELINE_CORPUS: readonly BenchmarkCorpusFixture[] =
           source: example.source,
         })
       )
-      .sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
+      .sort(
+        (left, right) =>
+          left.order - right.order || left.id.localeCompare(right.id)
+      )
   );
 
 export const BENCHMARK_CORPUS_MERMAN_VERSION = PLAYGROUND_MERMAN_VERSION;
+export const BENCHMARK_CORPUS_CATALOG = createBenchmarkCorpusCatalogIdentity(
+  PLAYGROUND_EXAMPLE_BASELINE,
+  FAMILY_BASELINE_CORPUS.length
+);
 
 validateFamilyCorpus(FAMILY_BASELINE_CORPUS);
 
@@ -229,6 +165,35 @@ export function createBenchmarkCorpusPlan(
   );
 }
 
+export async function createBenchmarkCorpusCatalog(
+  digest: BenchmarkCorpusDependencies["digest"],
+  fixtures: readonly BenchmarkCorpusFixture[] = FAMILY_BASELINE_CORPUS
+): Promise<BenchmarkCorpusCatalog> {
+  const descriptors = await Promise.all(
+    fixtures.map((fixture) => describeBenchmarkCorpusFixture(fixture, digest))
+  );
+  return Object.freeze({
+    identity: createBenchmarkCorpusCatalogIdentity(
+      PLAYGROUND_EXAMPLE_BASELINE,
+      fixtures.length
+    ),
+    fixtures: Object.freeze(descriptors),
+  });
+}
+
+export async function describeBenchmarkCorpusFixture(
+  fixture: BenchmarkCorpusFixture,
+  digest: BenchmarkCorpusDependencies["digest"]
+): Promise<BenchmarkCorpusFixtureDescriptor> {
+  return Object.freeze({
+    id: fixture.id,
+    family: fixture.family,
+    fixture: fixture.fixture,
+    order: fixture.order,
+    source: await identifyBenchmarkCorpusSource(fixture.source, digest),
+  });
+}
+
 export async function identifyBenchmarkCorpusSource(
   source: string,
   digest: BenchmarkCorpusDependencies["digest"]
@@ -236,7 +201,9 @@ export async function identifyBenchmarkCorpusSource(
   const bytes = new TextEncoder().encode(source);
   const sha256 = await digest(bytes);
   if (!/^[0-9a-f]{64}$/u.test(sha256)) {
-    throw new Error("Benchmark corpus digest must be a lowercase SHA-256 hex string.");
+    throw new Error(
+      "Benchmark corpus digest must be a lowercase SHA-256 hex string."
+    );
   }
   return Object.freeze({ bytes: bytes.byteLength, sha256 });
 }
@@ -263,9 +230,7 @@ export function createBenchmarkCorpusOrchestrator(
     cancel,
     async run(request) {
       if (active) throw new Error("A benchmark corpus run is already active.");
-      validateRunRequest(request);
-      const plan = createBenchmarkCorpusPlan(request);
-      validateBenchmarkCorpusRunBudget(request, plan.length);
+      const fixture = resolveFixtureRunRequest(request);
       const current: ActiveCorpusRun = {
         abort: new AbortController(),
         stopStatus: null,
@@ -275,7 +240,7 @@ export function createBenchmarkCorpusOrchestrator(
       try {
         request.signal?.addEventListener("abort", onAbort, { once: true });
         if (request.signal?.aborted) onAbort();
-        return await executeCorpus(dependencies, request, plan, current);
+        return await executeFixture(dependencies, request, fixture, current);
       } finally {
         request.signal?.removeEventListener("abort", onAbort);
         if (active === current) active = null;
@@ -289,164 +254,100 @@ interface ActiveCorpusRun {
   stopStatus: "cancelled" | "invalidated" | null;
 }
 
-interface MutableFixtureEvidence {
-  cold: BenchmarkCorpusModeEvidence;
-  readonly fixture: BenchmarkCorpusFixture;
-  readonly source: BenchmarkCorpusSourceIdentity;
-  warm: BenchmarkCorpusModeEvidence;
-}
-
-async function executeCorpus(
+async function executeFixture(
   dependencies: BenchmarkCorpusDependencies,
-  request: BenchmarkCorpusRunRequest,
-  plan: readonly BenchmarkCorpusPlanEntry[],
+  request: BenchmarkCorpusFixtureRunRequest,
+  fixture: BenchmarkCorpusFixture,
   active: ActiveCorpusRun
-): Promise<BenchmarkCorpusEnvelope> {
+): Promise<BenchmarkCorpusFixtureEnvelope> {
   const startedAtMs = dependencies.now();
   const startedAtWallMs = dependencies.dateNow();
-  const planById = new Map(plan.map((entry) => [entry.fixture.id, entry]));
-  const evidence: MutableFixtureEvidence[] = [];
-  for (const fixture of FAMILY_BASELINE_CORPUS) {
-    const source = await identifyBenchmarkCorpusSource(
-      fixture.source,
-      dependencies.digest
-    );
-    const planned = planById.get(fixture.id);
-    evidence.push({
-      fixture,
-      source,
-      cold: planned
-        ? skippedMode("realm-cold", planned.coldSeed, "pending")
-        : skippedMode("realm-cold", null, "not-selected"),
-      warm: planned
-        ? skippedMode("warm", planned.warmSeed, "pending")
-        : skippedMode("warm", null, "not-selected"),
-    });
-  }
-  const evidenceById = new Map(
-    evidence.map((candidate) => [candidate.fixture.id, candidate])
+  const descriptor = await describeBenchmarkCorpusFixture(
+    fixture,
+    dependencies.digest
   );
-
-  for (const planned of plan) {
-    const current = evidenceById.get(planned.fixture.id)!;
-    if (active.abort.signal.aborted) break;
-    let prepared: BenchmarkCorpusPreparedFixture;
-    try {
-      prepared = dependencies.prepareFixture(planned.fixture);
-    } catch (error) {
-      current.cold = failedMode(
-        planned.fixture,
-        "realm-cold",
-        planned.coldSeed,
-        "request",
-        error,
-        null
-      );
-      current.warm = failedMode(
-        planned.fixture,
-        "warm",
-        planned.warmSeed,
-        "request",
-        error,
-        null
-      );
-      continue;
-    }
-    current.cold = await executeMode(
+  let attempted = false;
+  let prepared: BenchmarkCorpusPreparedFixture;
+  try {
+    attempted = true;
+    prepared = dependencies.prepareFixture(fixture);
+  } catch (error) {
+    return createFailureEnvelope(
       dependencies,
-      planned.fixture,
-      prepared,
-      "realm-cold",
-      planned.coldSeed,
       request,
-      active
+      descriptor,
+      startedAtMs,
+      startedAtWallMs,
+      attempted,
+      "request",
+      error,
+      "complete-with-errors"
     );
-    if (active.stopStatus || active.abort.signal.aborted) break;
-    current.warm = await executeMode(
-      dependencies,
-      planned.fixture,
-      prepared,
-      "warm",
-      planned.warmSeed,
-      request,
-      active
-    );
-    if (active.stopStatus || active.abort.signal.aborted) break;
   }
 
-  const unfinishedReason = active.abort.signal.aborted
-    ? abortReason(active.abort.signal)
-    : active.stopStatus ?? "not-run";
-  for (const candidate of evidence) {
-    if (candidate.cold.skipReason === "pending") {
-      candidate.cold = skippedMode(
-        "realm-cold",
-        candidate.cold.seed,
-        unfinishedReason
-      );
-    }
-    if (candidate.warm.skipReason === "pending") {
-      candidate.warm = skippedMode("warm", candidate.warm.seed, unfinishedReason);
-    }
-  }
+  const cold = await executeMode(
+    dependencies,
+    fixture,
+    prepared,
+    "realm-cold",
+    request.coldSeed,
+    request,
+    active
+  );
+  const warm =
+    active.stopStatus || active.abort.signal.aborted
+      ? skippedMode(
+          "warm",
+          request.warmSeed,
+          active.stopStatus ?? abortReason(active.abort.signal)
+        )
+      : await executeMode(
+          dependencies,
+          fixture,
+          prepared,
+          "warm",
+          request.warmSeed,
+          request,
+          active
+        );
 
-  const fixtures = Object.freeze(evidence.map(freezeFixtureEvidence));
-  const failures = Object.freeze(
-    fixtures.flatMap((fixture) =>
-      [fixture.cold.failure, fixture.warm.failure].filter(
-        (failure): failure is BenchmarkCorpusFailure => failure !== null
+  const stopStatus = active.stopStatus ??
+    (active.abort.signal.aborted ? "cancelled" : null);
+  const fixtureFailure = stopStatus
+    ? corpusFailure(
+        descriptor,
+        null,
+        stopStatus === "invalidated" ? "document-invalidated" : "cancelled",
+        stopStatus === "invalidated"
+          ? "Benchmark fixture document was invalidated."
+          : `Benchmark fixture was cancelled: ${abortReason(active.abort.signal)}.`,
+        null
       )
-    )
-  );
-  const skips = Object.freeze(
-    fixtures
-      .filter((fixture) => fixture.status === "skipped")
-      .map((fixture) =>
-        Object.freeze({
-          family: fixture.family,
-          fixtureId: fixture.id,
-          reason:
-            fixture.cold.skipReason ?? fixture.warm.skipReason ?? "not-run",
-        })
-      )
-  );
-  const coverage = buildCoverage(fixtures, plan.length);
+    : null;
+  const terminalStatus: BenchmarkCorpusTerminalStatus = stopStatus ??
+    (cold.status === "success" && warm.status === "success"
+      ? "success"
+      : "complete-with-errors");
   const endedAtMs = dependencies.now();
   const endedAtWallMs = dependencies.dateNow();
-  const terminalStatus =
-    active.stopStatus ??
-    (active.abort.signal.aborted
-      ? "cancelled"
-      : failures.length > 0
-        ? "complete-with-errors"
-        : "success");
 
-  return Object.freeze({
-    schemaVersion: BENCHMARK_CORPUS_SCHEMA_VERSION,
+  return createBenchmarkCorpusFixtureEnvelope({
+    attempted,
     benchmarkReportSchemaVersion: BENCHMARK_REPORT_SCHEMA_VERSION,
-    kind: BENCHMARK_CORPUS_KIND,
-    execution: Object.freeze({ fixtureIsolation: "single-page" }),
-    catalog: Object.freeze({
-      mermaidBaseline: PLAYGROUND_EXAMPLE_BASELINE,
-      role: "family-baseline",
-      source: "playground/src/generated/examples.ts",
-    }),
-    run: Object.freeze({
-      id: `corpus-${startedAtWallMs}-${request.masterSeed.toString(16)}`,
-      masterSeed: request.masterSeed,
-      order: Object.freeze(plan.map((entry) => entry.fixture.id)),
-      iterations: request.iterations,
-      warmups: request.warmups,
-      startedAt: new Date(startedAtWallMs).toISOString(),
-      endedAt: new Date(endedAtWallMs).toISOString(),
-      durationMs: Math.max(0, endedAtMs - startedAtMs),
-    }),
-    versions: Object.freeze({ ...dependencies.versions }),
+    catalog: BENCHMARK_CORPUS_CATALOG,
+    fixture: descriptor,
+    run: fixtureRun(
+      request,
+      startedAtMs,
+      startedAtWallMs,
+      endedAtMs,
+      endedAtWallMs
+    ),
+    versions: dependencies.versions,
     terminalStatus,
-    coverage,
-    failures,
-    skips,
-    fixtures,
+    failure: fixtureFailure,
+    cold,
+    warm,
   });
 }
 
@@ -456,20 +357,30 @@ async function executeMode(
   prepared: BenchmarkCorpusPreparedFixture,
   mode: BenchmarkSampleMode,
   seed: number,
-  options: Pick<BenchmarkCorpusRunRequest, "iterations" | "warmups">,
+  options: Pick<BenchmarkCorpusFixtureRunRequest, "iterations" | "warmups">,
   active: ActiveCorpusRun
 ): Promise<BenchmarkCorpusModeEvidence> {
   if (active.abort.signal.aborted) {
     return skippedMode(mode, seed, abortReason(active.abort.signal));
   }
-  const request: BenchmarkRunRequest = {
-    ...prepared,
-    mode,
-    iterations: options.iterations,
-    warmups: mode === "warm" ? options.warmups : 0,
-    seed,
-    versions: dependencies.versions,
-  };
+  const request: BenchmarkRunRequest =
+    mode === "warm"
+      ? {
+          ...prepared,
+          mode,
+          iterations: options.iterations,
+          warmups: options.warmups,
+          seed,
+          versions: dependencies.versions,
+        }
+      : {
+          ...prepared,
+          mode,
+          iterations: options.iterations,
+          warmups: 0,
+          seed,
+          versions: dependencies.versions,
+        };
 
   let report: BenchmarkReport;
   try {
@@ -508,12 +419,50 @@ async function executeMode(
     fixture,
     mode,
     seed,
-    report.terminalError?.stage ?? "schema-5-report",
+    report.terminalError?.stage ??
+      `schema-${BENCHMARK_REPORT_SCHEMA_VERSION}-report`,
     report.terminalError?.message ??
       `Benchmark report ended with ${report.terminalStatus}.`,
     report,
     report.terminalError?.detail ?? null
   );
+}
+
+function createFailureEnvelope(
+  dependencies: BenchmarkCorpusDependencies,
+  request: BenchmarkCorpusFixtureRunRequest,
+  fixture: BenchmarkCorpusFixtureDescriptor,
+  startedAtMs: number,
+  startedAtWallMs: number,
+  attempted: boolean,
+  stage: string,
+  error: unknown,
+  terminalStatus: Exclude<BenchmarkCorpusTerminalStatus, "success">
+): BenchmarkCorpusFixtureEnvelope {
+  const endedAtMs = dependencies.now();
+  const endedAtWallMs = dependencies.dateNow();
+  const projection = projectError(error);
+  return createBenchmarkCorpusFailureEnvelope({
+    attempted,
+    benchmarkReportSchemaVersion: BENCHMARK_REPORT_SCHEMA_VERSION,
+    catalog: BENCHMARK_CORPUS_CATALOG,
+    fixture,
+    run: fixtureRun(
+      request,
+      startedAtMs,
+      startedAtWallMs,
+      endedAtMs,
+      endedAtWallMs
+    ),
+    versions: dependencies.versions,
+    terminalStatus,
+    skipReason: stage,
+    failure: {
+      stage,
+      message: projection.summary,
+      detail: projection.detail,
+    },
+  });
 }
 
 function failedMode(
@@ -526,14 +475,13 @@ function failedMode(
   explicitDetail?: string | null
 ): BenchmarkCorpusModeEvidence {
   const projection = projectError(error);
-  const failure = Object.freeze({
-    fixtureId: fixture.id,
-    family: fixture.family,
+  const failure = corpusFailure(
+    fixture,
     mode,
     stage,
-    message: projection.summary,
-    detail: explicitDetail ?? projection.detail,
-  });
+    projection.summary,
+    explicitDetail ?? projection.detail
+  );
   return Object.freeze({
     mode,
     seed,
@@ -546,7 +494,7 @@ function failedMode(
 
 function skippedMode(
   mode: BenchmarkSampleMode,
-  seed: number | null,
+  seed: number,
   reason: string,
   report: BenchmarkReport | null = null
 ): BenchmarkCorpusModeEvidence {
@@ -560,47 +508,39 @@ function skippedMode(
   });
 }
 
-function freezeFixtureEvidence(
-  candidate: MutableFixtureEvidence
-): BenchmarkCorpusFixtureEvidence {
-  const status =
-    candidate.cold.status === "success" && candidate.warm.status === "success"
-      ? "success"
-      : candidate.cold.status === "failure" || candidate.warm.status === "failure"
-        ? "failure"
-        : "skipped";
+function corpusFailure(
+  fixture: Readonly<Pick<BenchmarkCorpusFixture, "family" | "id">>,
+  mode: BenchmarkSampleMode | null,
+  stage: string,
+  message: string,
+  detail: string | null
+): BenchmarkCorpusFailure {
   return Object.freeze({
-    id: candidate.fixture.id,
-    family: candidate.fixture.family,
-    fixture: candidate.fixture.fixture,
-    order: candidate.fixture.order,
-    source: candidate.source,
-    status,
-    cold: candidate.cold,
-    warm: candidate.warm,
+    fixtureId: fixture.id,
+    family: fixture.family,
+    mode,
+    stage,
+    message,
+    detail,
   });
 }
 
-function buildCoverage(
-  fixtures: readonly BenchmarkCorpusFixtureEvidence[],
-  selectedFamilies: number
-): BenchmarkCorpusCoverage {
+function fixtureRun(
+  request: BenchmarkCorpusFixtureRunRequest,
+  startedAtMs: number,
+  startedAtWallMs: number,
+  endedAtMs: number,
+  endedAtWallMs: number
+) {
   return Object.freeze({
-    availableFamilies: fixtures.length,
-    selectedFamilies,
-    attemptedFamilies: fixtures.filter(
-      (fixture) =>
-        fixture.cold.report !== null ||
-        fixture.warm.report !== null ||
-        fixture.cold.failure !== null ||
-        fixture.warm.failure !== null
-    ).length,
-    succeededFamilies: fixtures.filter((fixture) => fixture.status === "success")
-      .length,
-    failedFamilies: fixtures.filter((fixture) => fixture.status === "failure")
-      .length,
-    skippedFamilies: fixtures.filter((fixture) => fixture.status === "skipped")
-      .length,
+    id: `corpus-fixture-${request.fixtureId}-${startedAtWallMs}-${request.coldSeed.toString(16)}`,
+    coldSeed: request.coldSeed,
+    warmSeed: request.warmSeed,
+    iterations: request.iterations,
+    warmups: request.warmups,
+    startedAt: new Date(startedAtWallMs).toISOString(),
+    endedAt: new Date(endedAtWallMs).toISOString(),
+    durationMs: Math.max(0, endedAtMs - startedAtMs),
   });
 }
 
@@ -615,15 +555,32 @@ function selectFixtures(
   const requested = new Set<string>();
   for (const id of fixtureIds) {
     if (typeof id !== "string" || id.length === 0 || requested.has(id)) {
-      throw new Error(`Benchmark corpus fixture selection is invalid: ${String(id)}.`);
+      throw new Error(
+        `Benchmark corpus fixture selection is invalid: ${String(id)}.`
+      );
     }
     requested.add(id);
   }
   const known = new Set(catalog.map((fixture) => fixture.id));
   for (const id of requested) {
-    if (!known.has(id)) throw new Error(`Benchmark corpus has unknown fixture: ${id}.`);
+    if (!known.has(id)) {
+      throw new Error(`Benchmark corpus has unknown fixture: ${id}.`);
+    }
   }
   return catalog.filter((fixture) => requested.has(fixture.id));
+}
+
+function selectFixture(fixtureId: string): BenchmarkCorpusFixture {
+  if (typeof fixtureId !== "string" || fixtureId.length === 0) {
+    throw new Error("Benchmark corpus fixture id is required.");
+  }
+  const fixture = FAMILY_BASELINE_CORPUS.find(
+    (candidate) => candidate.id === fixtureId
+  );
+  if (!fixture) {
+    throw new Error(`Benchmark corpus has unknown fixture: ${fixtureId}.`);
+  }
+  return fixture;
 }
 
 function validateFamilyCorpus(catalog: readonly BenchmarkCorpusFixture[]): void {
@@ -646,41 +603,53 @@ function validateFamilyCorpus(catalog: readonly BenchmarkCorpusFixture[]): void 
   }
 }
 
-function validateRunRequest(request: BenchmarkCorpusRunRequest): void {
-  validateSeed(request.masterSeed);
-  if (
-    !Number.isSafeInteger(request.iterations) ||
-    request.iterations < 2 ||
-    request.iterations > BENCHMARK_BUDGETS.maxIterations ||
-    request.iterations % 2 !== 0
-  ) {
+function resolveFixtureRunRequest(
+  request: BenchmarkCorpusFixtureRunRequest
+): BenchmarkCorpusFixture {
+  const fixture = selectFixture(request.fixtureId);
+  validateSeed(request.coldSeed);
+  validateSeed(request.warmSeed);
+  validateBenchmarkCorpusRunBudget(request, 1);
+  return fixture;
+}
+
+function validateBenchmarkCorpusOptions(
+  request: Readonly<{ iterations: number; warmups: number }>
+): Readonly<{ coldSamples: number; warmSamples: number }> {
+  let coldSamples: number;
+  try {
+    coldSamples = calculateBenchmarkSamplePlanBudget({
+      iterations: request.iterations,
+      mode: "realm-cold",
+    }).totalSamples;
+  } catch {
     throw new Error(
       `Benchmark corpus iterations must be an even integer from 2 to ${BENCHMARK_BUDGETS.maxIterations}.`
     );
   }
-  if (
-    !Number.isSafeInteger(request.warmups) ||
-    request.warmups < 0 ||
-    request.warmups + 1 > BENCHMARK_BUDGETS.maxWarmups ||
-    (request.iterations + request.warmups + 1) * 2 >
-      BENCHMARK_BUDGETS.maxRetainedSamples
-  ) {
+  let warmSamples: number;
+  try {
+    warmSamples = calculateBenchmarkSamplePlanBudget({
+      iterations: request.iterations,
+      mode: "warm",
+      warmups: request.warmups,
+    }).totalSamples;
+  } catch {
     throw new Error("Benchmark corpus warmup budget is invalid.");
   }
+  return Object.freeze({ coldSamples, warmSamples });
 }
 
 export function validateBenchmarkCorpusRunBudget(
-  request: Pick<BenchmarkCorpusRunRequest, "iterations" | "warmups">,
+  request: Readonly<{ iterations: number; warmups: number }>,
   selectedFamilies: number
 ): void {
+  const { coldSamples, warmSamples } = validateBenchmarkCorpusOptions(request);
   if (!Number.isSafeInteger(selectedFamilies) || selectedFamilies < 1) {
     throw new Error("Benchmark corpus selected-family count is invalid.");
   }
-  const coldSamplesPerFixture = request.iterations * 2;
-  const warmSamplesPerFixture =
-    (request.iterations + request.warmups + 1) * 2;
   const retainedSamples =
-    selectedFamilies * (coldSamplesPerFixture + warmSamplesPerFixture);
+    selectedFamilies * (coldSamples + warmSamples);
   if (retainedSamples > BENCHMARK_CORPUS_BUDGETS.maxRetainedSamples) {
     throw new Error(
       `Benchmark corpus would retain ${retainedSamples} samples; the whole-corpus budget is ${BENCHMARK_CORPUS_BUDGETS.maxRetainedSamples}.`

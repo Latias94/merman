@@ -28,7 +28,7 @@ export const BENCHMARK_ADAPTER_FORBIDDEN_SOURCES = new Set([
   "src/runtime/use-render-coordinator.ts",
   "src/benchmark/realm/controller.ts",
   "src/benchmark/controller.ts",
-  "src/benchmark/schedule.ts",
+  "src/benchmark/sample-plan.ts",
   "src/benchmark/statistics.ts",
   "src/benchmark/report.ts",
   BENCHMARK_SOURCES.mermanArtifact,

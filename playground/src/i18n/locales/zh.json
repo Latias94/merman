@@ -138,8 +138,7 @@
     "stages": {
       "pausing": "正在暂停实时渲染",
       "creating-realm": "正在创建独立运行环境",
-      "sampling": "正在测量可呈现结果",
-      "cleanup": "正在释放基准测试资源"
+      "sampling": "正在测量可呈现结果"
     },
     "purposes": {
       "setup": "引擎初始化",

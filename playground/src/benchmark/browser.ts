@@ -1,10 +1,10 @@
-import { createBenchmarkController, type BenchmarkLifecycleTarget } from "./controller.ts";
+import { createBenchmarkController } from "./controller.ts";
 import { createBrowserBenchmarkRealmSession } from "./realm/controller.ts";
+import { createBrowserBenchmarkDocumentLifecycle } from "./document-lifecycle.ts";
 import { createRealmToken } from "../runtime/realm/channel-protocol.ts";
 import { pauseRenderCoordinator } from "../runtime/render-coordinator-browser.ts";
 
-const documentTarget = lifecycleTarget(document);
-const windowTarget = lifecycleTarget(window);
+export const benchmarkDocumentLifecycle = createBrowserBenchmarkDocumentLifecycle();
 
 export const benchmarkController = createBenchmarkController({
   clearTimer: (handle) =>
@@ -17,7 +17,6 @@ export const benchmarkController = createBenchmarkController({
   },
   createToken: createRealmToken,
   dateNow: Date.now,
-  documentTarget,
   getEnvironment() {
     return {
       userAgent: navigator.userAgent,
@@ -32,24 +31,12 @@ export const benchmarkController = createBenchmarkController({
       crossOriginIsolated: globalThis.crossOriginIsolated === true,
     };
   },
-  getVisibilityState: () => document.visibilityState,
+  lifecycle: benchmarkDocumentLifecycle,
   now: () => performance.now(),
   pauseCoordinator: pauseRenderCoordinator,
   setTimer: (callback, timeoutMs) => setTimeout(callback, timeoutMs),
-  windowTarget,
 });
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => benchmarkController.dispose());
-}
-
-function lifecycleTarget(target: EventTarget): BenchmarkLifecycleTarget {
-  return {
-    addEventListener(type, listener) {
-      target.addEventListener(type, listener as never);
-    },
-    removeEventListener(type, listener) {
-      target.removeEventListener(type, listener as never);
-    },
-  };
 }

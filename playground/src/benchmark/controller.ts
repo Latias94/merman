@@ -2,17 +2,21 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 
 import {
   BENCHMARK_PROTOCOL_VERSION,
-  type BenchmarkSampleRole,
 } from "./protocol.ts";
 import {
   BENCHMARK_TRACE_SCHEMA_VERSION,
   type BenchmarkEngine,
-  type BenchmarkSampleMode,
 } from "./trace.ts";
 import {
-  createBalancedBenchmarkSchedule,
-  type BalancedBenchmarkSchedule,
-} from "./schedule.ts";
+  benchmarkIntentMode,
+  benchmarkIntentPurpose,
+  createBenchmarkSamplePlan,
+  isBenchmarkAggregationIntent,
+  isBenchmarkInputBindingIntent,
+  type BenchmarkSampleIntent,
+  type BenchmarkSamplePlan,
+  type BenchmarkSamplePurpose,
+} from "./sample-plan.ts";
 import {
   BENCHMARK_REPORT_SCHEMA_VERSION,
   buildBenchmarkReport,
@@ -26,16 +30,14 @@ import {
   type BenchmarkRecordedFailureDetail,
   type BenchmarkRecordedSample,
   type BenchmarkReport,
-  type BenchmarkSampleMetadata,
-  type BenchmarkSamplePurpose,
   type BenchmarkTerminalStatus,
 } from "./report.ts";
+import type { BenchmarkDocumentLifecycle } from "./document-lifecycle.ts";
 import type {
   BenchmarkSampleInput,
   BrowserBenchmarkRealmSession,
 } from "./realm/controller.ts";
 import {
-  BENCHMARK_BUDGETS,
   REALM_BUDGETS,
   REALM_PROTOCOL_VERSION,
   RealmProtocolError,
@@ -45,29 +47,25 @@ import {
 } from "../runtime/realm/channel-protocol.ts";
 import { projectError } from "../runtime/error-projection.ts";
 
-export interface BenchmarkRunRequest {
+interface BenchmarkRunRequestBase {
   readonly detection: BenchmarkDetectionSnapshot;
   readonly iterations: number;
-  readonly mode: BenchmarkSampleMode;
   readonly payload: CompareRenderPayload;
   readonly seed?: number;
   readonly versions: Readonly<Record<BenchmarkEngine, string>>;
-  readonly warmups: number;
 }
+
+export type BenchmarkRunRequest = BenchmarkRunRequestBase &
+  (
+    | Readonly<{ mode: "realm-cold"; warmups?: 0 }>
+    | Readonly<{ mode: "warm"; warmups: number }>
+  );
 
 export interface ValidatedBenchmarkRunRequest {
   readonly input: BenchmarkFrozenInput;
-  readonly iterations: number;
-  readonly mode: BenchmarkSampleMode;
-  readonly schedule: BalancedBenchmarkSchedule;
-  readonly seed: number;
+  readonly payload: CompareRenderPayload;
+  readonly plan: BenchmarkSamplePlan;
   readonly versions: Readonly<Record<BenchmarkEngine, string>>;
-  readonly warmups: number;
-}
-
-export interface BenchmarkLifecycleTarget {
-  addEventListener(type: string, listener: (event: unknown) => void): void;
-  removeEventListener(type: string, listener: (event: unknown) => void): void;
 }
 
 export interface BenchmarkControllerDependencies {
@@ -80,13 +78,11 @@ export interface BenchmarkControllerDependencies {
   createSeed(): number;
   createToken(): string;
   dateNow(): number;
-  readonly documentTarget: BenchmarkLifecycleTarget;
   getEnvironment(): BenchmarkEnvironment;
-  getVisibilityState(): string;
+  readonly lifecycle: BenchmarkDocumentLifecycle;
   now(): number;
   pauseCoordinator(): Promise<() => void>;
   setTimer(callback: () => void, timeoutMs: number): unknown;
-  readonly windowTarget: BenchmarkLifecycleTarget;
 }
 
 export interface BenchmarkProgress {
@@ -94,7 +90,7 @@ export interface BenchmarkProgress {
   readonly completed: number;
   readonly engine: BenchmarkEngine | null;
   readonly purpose: BenchmarkSamplePurpose | null;
-  readonly stage: "pausing" | "creating-realm" | "sampling" | "cleanup";
+  readonly stage: "pausing" | "creating-realm" | "sampling";
   readonly total: number;
 }
 
@@ -152,6 +148,7 @@ interface ActiveBenchmarkRun {
   readonly abort: AbortController;
   readonly completion: PromiseWithResolvers<BenchmarkReport>;
   readonly environment: BenchmarkEnvironment;
+  readonly inputId: string;
   readonly request: ValidatedBenchmarkRunRequest;
   readonly runId: string;
   readonly runToken: string;
@@ -160,12 +157,9 @@ interface ActiveBenchmarkRun {
   readonly startedAt: string;
   readonly startedAtMs: number;
   readonly transitions: BenchmarkEnvironmentTransition[];
-  readonly total: number;
-  completed: number;
   listenerCleanup: (() => void) | null;
   releaseCoordinator: (() => void) | null;
   runTimer: unknown | null;
-  requestSequence: number;
   settled: boolean;
 }
 
@@ -181,56 +175,52 @@ export function validateBenchmarkRunRequest(
   request: BenchmarkRunRequest,
   generatedSeed: number
 ): ValidatedBenchmarkRunRequest {
-  const seed = request.seed ?? generatedSeed;
-  const schedule = createBalancedBenchmarkSchedule(request.iterations, seed);
-  if (!Number.isSafeInteger(request.warmups) || request.warmups < 0) {
-    throw new RealmProtocolError(
-      "Benchmark warmups must be a nonnegative integer."
-    );
-  }
   if (request.mode !== "realm-cold" && request.mode !== "warm") {
     throw new RealmProtocolError("Benchmark mode is invalid.");
   }
-  if (request.mode === "realm-cold" && request.warmups !== 0) {
-    throw new RealmProtocolError(
-      "Realm-cold benchmark runs cannot contain warm samples."
-    );
-  }
   if (
-    request.mode === "warm" &&
-    request.warmups + 1 > BENCHMARK_BUDGETS.maxWarmups
+    request.mode === "realm-cold" &&
+    request.warmups !== undefined &&
+    request.warmups !== 0
   ) {
     throw new RealmProtocolError(
-      "Benchmark warmups exceed the per-realm protocol budget."
+      "Fresh-runtime benchmark requests cannot contain warmups."
     );
   }
-  const retainedSamples =
-    request.mode === "realm-cold"
-      ? request.iterations * 2
-      : (request.iterations + request.warmups + 1) * 2;
-  if (retainedSamples > BENCHMARK_BUDGETS.maxRetainedSamples) {
-    throw new RealmProtocolError(
-      "Benchmark run exceeds the retained sample budget."
-    );
-  }
-
-  const payload = validateCompareRenderPayload(request.payload);
+  const seed = request.seed ?? generatedSeed;
+  const validatedPayload = validateCompareRenderPayload(request.payload);
+  const payload = Object.freeze({
+    ...validatedPayload,
+    externalRequirements: Object.freeze(
+      validatedPayload.externalRequirements
+    ),
+    viewport: Object.freeze(validatedPayload.viewport),
+  });
   const detection = validateDetection(request.detection);
   const versions = Object.freeze({
     merman: validateVersion(request.versions.merman, "Merman"),
     mermaid: validateVersion(request.versions.mermaid, "Mermaid"),
   });
+  const plan = createBenchmarkSamplePlan(
+    request.mode === "warm"
+      ? {
+          iterations: request.iterations,
+          mode: "warm",
+          seed,
+          warmups: request.warmups,
+        }
+      : {
+          iterations: request.iterations,
+          mode: "realm-cold",
+          seed,
+        }
+  );
   return Object.freeze({
-    mode: request.mode,
-    iterations: request.iterations,
-    warmups: request.warmups,
-    seed,
-    schedule,
+    payload,
+    plan,
     versions,
     input: Object.freeze({
       ...payload,
-      externalRequirements: Object.freeze(payload.externalRequirements),
-      viewport: Object.freeze(payload.viewport),
       detection,
     }),
   });
@@ -255,7 +245,6 @@ export function createBenchmarkController(
   ): BenchmarkReport | null => {
     if (run.settled) return null;
     run.settled = true;
-    updateProgress(run, "cleanup", null, null, null);
     run.abort.abort();
     if (run.runTimer !== null) {
       dependencies.clearTimer(run.runTimer);
@@ -280,16 +269,12 @@ export function createBenchmarkController(
         },
         run: {
           id: run.runId,
-          seed: run.request.seed,
-          mode: run.request.mode,
-          iterations: run.request.iterations,
-          warmups: run.request.warmups,
           startedAt: run.startedAt,
           endedAt: new Date(endedAtWallMs).toISOString(),
           durationMs: Math.max(0, endedAtMs - run.startedAtMs),
         },
         input: run.request.input,
-        schedule: run.request.schedule,
+        plan: run.request.plan,
         versions: {
           expected: run.request.versions,
           observed: observedVersions(run.samples),
@@ -342,52 +327,20 @@ export function createBenchmarkController(
     );
   };
 
-  const installLifecycleListeners = (run: ActiveBenchmarkRun): (() => void) => {
-    const onVisibilityChange = () => {
-      const visibilityState = dependencies.getVisibilityState();
-      if (visibilityState === "visible") return;
+  const installLifecycleListeners = (run: ActiveBenchmarkRun): (() => void) =>
+    dependencies.lifecycle.subscribe((signal) => {
+      if (signal.kind === "resume" || signal.kind === "pageshow") return;
       invalidate(run, {
+        ...signal,
         atMs: elapsed(run, dependencies.now()),
-        kind: "visibility-hidden",
-        visibilityState,
       });
-    };
-    const onPageHide = (event: unknown) => {
-      invalidate(run, {
-        atMs: elapsed(run, dependencies.now()),
-        kind: "pagehide",
-        persisted: readPersisted(event),
-        visibilityState: dependencies.getVisibilityState(),
-      });
-    };
-    const onFreeze = () => {
-      invalidate(run, {
-        atMs: elapsed(run, dependencies.now()),
-        kind: "freeze",
-        visibilityState: dependencies.getVisibilityState(),
-      });
-    };
-    dependencies.documentTarget.addEventListener(
-      "visibilitychange",
-      onVisibilityChange
-    );
-    dependencies.documentTarget.addEventListener("freeze", onFreeze);
-    dependencies.windowTarget.addEventListener("pagehide", onPageHide);
-    return () => {
-      dependencies.documentTarget.removeEventListener(
-        "visibilitychange",
-        onVisibilityChange
-      );
-      dependencies.documentTarget.removeEventListener("freeze", onFreeze);
-      dependencies.windowTarget.removeEventListener("pagehide", onPageHide);
-    };
-  };
+    });
 
   const createSession = async (
     run: ActiveBenchmarkRun,
     engine: BenchmarkEngine
   ): Promise<BrowserBenchmarkRealmSession> => {
-    if (run.sessions.size >= BENCHMARK_BUDGETS.maxLiveRealms) {
+    if (run.sessions.size >= run.request.plan.budget.maxLiveRealms) {
       throw new RealmProtocolError(
         "Benchmark controller exceeded its live realm budget."
       );
@@ -413,215 +366,160 @@ export function createBenchmarkController(
     run.sessions.delete(session);
   };
 
-  const nextSample = (
+  const sampleInput = (
     run: ActiveBenchmarkRun,
-    engine: BenchmarkEngine,
-    mode: BenchmarkSampleMode,
-    role: BenchmarkSampleRole
+    intent: BenchmarkSampleIntent
   ): BenchmarkSampleInput => {
-    run.requestSequence += 1;
-    const payload: CompareRenderPayload = {
-      source: run.request.input.source,
-      configJson: run.request.input.configJson,
-      theme: run.request.input.theme,
-      diagramFont: run.request.input.diagramFont,
-      externalRequirements: run.request.input.externalRequirements,
-      viewport: run.request.input.viewport,
-    };
-    return Object.freeze({
+    const identity = {
       runId: run.runId,
       runToken: run.runToken,
-      requestId: `${run.runId}-sample-${run.requestSequence}`,
-      engine,
-      mode,
-      role,
-      payload,
-    });
+      inputId: run.inputId,
+      engine: intent.engine,
+      sampleId: intent.sampleId,
+    } as const;
+    return isBenchmarkInputBindingIntent(intent)
+      ? Object.freeze({
+          ...identity,
+          intentKind: intent.kind,
+          payload: run.request.payload,
+        })
+      : Object.freeze({ ...identity, intentKind: intent.kind });
   };
+
+  const transportIdentity = (
+    run: ActiveBenchmarkRun,
+    intent: BenchmarkSampleIntent
+  ) =>
+    Object.freeze({
+      requestId: intent.sampleId,
+      runId: run.runId,
+    });
 
   const recordTransportFailure = (
     run: ActiveBenchmarkRun,
-    metadata: BenchmarkSampleMetadata,
-    input: BenchmarkSampleInput,
+    intent: BenchmarkSampleIntent,
     error: unknown,
     stage: string,
     realmCreation = null as BrowserBenchmarkRealmSession["creationEvidence"] | null
   ) => {
     run.samples.push(
       projectBenchmarkTransportFailure(
-        metadata,
-        input,
+        intent,
+        transportIdentity(run, intent),
         error,
         stage,
         realmCreation
       )
     );
-    run.completed += 1;
   };
 
   const sample = async (
     run: ActiveBenchmarkRun,
     session: BrowserBenchmarkRealmSession,
     input: BenchmarkSampleInput,
-    metadata: BenchmarkSampleMetadata
+    intent: BenchmarkSampleIntent
   ): Promise<boolean> => {
-    if (dependencies.getVisibilityState() !== "visible") {
+    if (dependencies.lifecycle.getVisibilityState() !== "visible") {
       invalidate(run, {
         atMs: elapsed(run, dependencies.now()),
         kind: "visibility-hidden",
-        visibilityState: dependencies.getVisibilityState(),
+        visibilityState: dependencies.lifecycle.getVisibilityState(),
       });
       return false;
     }
     updateProgress(
       run,
       "sampling",
-      input.engine,
-      metadata.purpose,
-      metadata.blockIndex
+      intent.engine,
+      benchmarkIntentPurpose(intent),
+      isBenchmarkAggregationIntent(intent) ? intent.blockIndex : null
     );
     try {
       const result = await session.sample(input);
       if (run.settled) return false;
       const realmCreation =
-        input.mode === "realm-cold" ? session.creationEvidence : null;
+        benchmarkIntentMode(intent) === "realm-cold"
+          ? session.creationEvidence
+          : null;
       let projected = projectBenchmarkRealmSample(
-        metadata,
+        intent,
         result,
         realmCreation
       );
       if (
         projected.outcome === "success" &&
-        projected.version !== run.request.versions[input.engine]
+        projected.version !== run.request.versions[intent.engine]
       ) {
         projected = rejectBenchmarkRecordedSample(
           projected,
           transportFailure(
             "version",
-            `${engineLabel(input.engine)} returned ${projected.version}; expected ${run.request.versions[input.engine]}.`
+            `${engineLabel(intent.engine)} returned ${projected.version}; expected ${run.request.versions[intent.engine]}.`
           )
         );
       }
       run.samples.push(projected);
-      run.completed += 1;
       updateProgress(
         run,
         "sampling",
-        input.engine,
-        metadata.purpose,
-        metadata.blockIndex
+        intent.engine,
+        benchmarkIntentPurpose(intent),
+        isBenchmarkAggregationIntent(intent) ? intent.blockIndex : null
       );
       return projected.outcome === "success";
     } catch (error) {
       if (run.settled || error instanceof RunAlreadySettledError) return false;
       recordTransportFailure(
         run,
-        metadata,
-        input,
+        intent,
         error,
         "transport",
-        input.mode === "realm-cold" ? session.creationEvidence : null
+        benchmarkIntentMode(intent) === "realm-cold"
+          ? session.creationEvidence
+          : null
       );
       return false;
     }
   };
 
-  const coldAttempt = async (
-    run: ActiveBenchmarkRun,
-    engine: BenchmarkEngine,
-    metadata: BenchmarkSampleMetadata
-  ) => {
-    const input = nextSample(run, engine, "realm-cold", "measured");
-    updateProgress(
-      run,
-      "creating-realm",
-      engine,
-      metadata.purpose,
-      metadata.blockIndex
-    );
-    let session: BrowserBenchmarkRealmSession | null = null;
-    try {
-      session = await createSession(run, engine);
-      await sample(run, session, input, metadata);
-    } catch (error) {
-      if (!run.settled && !(error instanceof RunAlreadySettledError)) {
-        recordTransportFailure(run, metadata, input, error, "realm-create");
-      }
-    } finally {
-      if (session) disposeSession(run, session);
-    }
-  };
-
-  const executeCold = async (run: ActiveBenchmarkRun) => {
-    for (const block of run.request.schedule.blocks) {
-      for (let orderIndex = 0; orderIndex < block.order.length; orderIndex += 1) {
-        if (run.settled) return;
-        await coldAttempt(run, block.order[orderIndex], {
-          blockIndex: block.index,
-          orderIndex,
-          purpose: "measured",
-        });
-      }
-    }
-  };
-
-  const executeWarm = async (run: ActiveBenchmarkRun) => {
-    const sessions = new Map<BenchmarkEngine, BrowserBenchmarkRealmSession>();
-    const initializationOrder = run.request.schedule.blocks[0].order;
-    for (let orderIndex = 0; orderIndex < initializationOrder.length; orderIndex += 1) {
+  const executePlan = async (run: ActiveBenchmarkRun) => {
+    const sessions = new Map<string, BrowserBenchmarkRealmSession>();
+    for (const intent of run.request.plan.samples) {
       if (run.settled) return;
-      const engine = initializationOrder[orderIndex];
-      const metadata: BenchmarkSampleMetadata = {
-        blockIndex: null,
-        orderIndex,
-        purpose: "setup",
-      };
-      const input = nextSample(run, engine, "realm-cold", "warmup");
-      updateProgress(run, "creating-realm", engine, "setup", null);
-      let session: BrowserBenchmarkRealmSession;
-      try {
-        session = await createSession(run, engine);
-      } catch (error) {
-        if (!run.settled && !(error instanceof RunAlreadySettledError)) {
-          recordTransportFailure(run, metadata, input, error, "realm-create");
+      const input = sampleInput(run, intent);
+      let session = sessions.get(intent.sessionId) ?? null;
+      if (intent.session !== "reuse") {
+        updateProgress(
+          run,
+          "creating-realm",
+          intent.engine,
+          benchmarkIntentPurpose(intent),
+          isBenchmarkAggregationIntent(intent) ? intent.blockIndex : null
+        );
+        try {
+          session = await createSession(run, intent.engine);
+        } catch (error) {
+          if (!run.settled && !(error instanceof RunAlreadySettledError)) {
+            recordTransportFailure(run, intent, error, "realm-create");
+          }
+          if (intent.session !== "single-use") return;
+          continue;
         }
+        if (intent.session === "open-reused") {
+          sessions.set(intent.sessionId, session);
+        }
+      }
+      if (!session) {
+        throw new RealmProtocolError(
+          `Benchmark session ${intent.sessionId} is missing.`
+        );
+      }
+
+      const succeeded = await sample(run, session, input, intent);
+      if (intent.session === "single-use") {
+        disposeSession(run, session);
+      } else if (!succeeded) {
         return;
-      }
-      sessions.set(engine, session);
-      if (!(await sample(run, session, input, metadata))) return;
-    }
-
-    for (let round = 0; round < run.request.warmups; round += 1) {
-      const order = run.request.schedule.blocks[round % run.request.schedule.blocks.length]
-        .order;
-      for (let orderIndex = 0; orderIndex < order.length; orderIndex += 1) {
-        if (run.settled) return;
-        const engine = order[orderIndex];
-        const session = sessions.get(engine);
-        if (!session) throw new RealmProtocolError("Warm benchmark realm is missing.");
-        const metadata: BenchmarkSampleMetadata = {
-          blockIndex: null,
-          orderIndex,
-          purpose: "warmup",
-        };
-        const input = nextSample(run, engine, "warm", "warmup");
-        if (!(await sample(run, session, input, metadata))) return;
-      }
-    }
-
-    for (const block of run.request.schedule.blocks) {
-      for (let orderIndex = 0; orderIndex < block.order.length; orderIndex += 1) {
-        if (run.settled) return;
-        const engine = block.order[orderIndex];
-        const session = sessions.get(engine);
-        if (!session) throw new RealmProtocolError("Warm benchmark realm is missing.");
-        const metadata: BenchmarkSampleMetadata = {
-          blockIndex: block.index,
-          orderIndex,
-          purpose: "measured",
-        };
-        const input = nextSample(run, engine, "warm", "measured");
-        if (!(await sample(run, session, input, metadata))) return;
       }
     }
   };
@@ -634,28 +532,20 @@ export function createBenchmarkController(
         return;
       }
       run.releaseCoordinator = release;
-      if (dependencies.getVisibilityState() !== "visible") {
+      if (dependencies.lifecycle.getVisibilityState() !== "visible") {
         invalidate(run, {
           atMs: elapsed(run, dependencies.now()),
           kind: "visibility-hidden",
-          visibilityState: dependencies.getVisibilityState(),
+          visibilityState: dependencies.lifecycle.getVisibilityState(),
         });
         return;
       }
-      if (run.request.mode === "realm-cold") {
-        await executeCold(run);
-      } else {
-        await executeWarm(run);
-      }
+      await executePlan(run);
       if (run.settled) return;
 
-      const measuredSuccesses = run.samples.filter(
-        (candidate) =>
-          candidate.purpose === "measured" && candidate.outcome === "success"
-      ).length;
       const hasErrors =
         run.samples.some((candidate) => candidate.outcome === "failure") ||
-        measuredSuccesses !== run.request.iterations * 2;
+        run.samples.length !== run.request.plan.samples.length;
       settle(
         run,
         hasErrors ? "complete-with-errors" : "success",
@@ -681,7 +571,7 @@ export function createBenchmarkController(
     if (active) {
       throw new RealmProtocolError("A benchmark run is already active.");
     }
-    if (dependencies.getVisibilityState() !== "visible") {
+    if (dependencies.lifecycle.getVisibilityState() !== "visible") {
       throw new RealmProtocolError(
         "Benchmark cannot start while the document is hidden."
       );
@@ -695,16 +585,14 @@ export function createBenchmarkController(
     runSequence += 1;
     const startedAtMs = dependencies.now();
     const startedAtWallMs = dependencies.dateNow();
-    const total =
-      validated.mode === "realm-cold"
-        ? validated.iterations * 2
-        : (validated.iterations + validated.warmups + 1) * 2;
+    const total = validated.plan.budget.totalSamples;
     const current: ActiveBenchmarkRun = {
       abort: new AbortController(),
       completion: Promise.withResolvers<BenchmarkReport>(),
       environment: Object.freeze({ ...dependencies.getEnvironment() }),
+      inputId: `input-${runSequence}-${validated.plan.seed.toString(16)}`,
       request: validated,
-      runId: `run-${runSequence}-${validated.seed.toString(16)}`,
+      runId: `run-${runSequence}-${validated.plan.seed.toString(16)}`,
       runToken: dependencies.createToken(),
       samples: [],
       sessions: new Set(),
@@ -717,12 +605,9 @@ export function createBenchmarkController(
           visibilityState: "visible",
         }),
       ],
-      total,
-      completed: 0,
       listenerCleanup: null,
       releaseCoordinator: null,
       runTimer: null,
-      requestSequence: 0,
       settled: false,
     };
     active = current;
@@ -819,8 +704,8 @@ export function createBenchmarkController(
       stale: state.stale,
       progress: {
         stage,
-        completed: run.completed,
-        total: run.total,
+        completed: run.samples.length,
+        total: run.request.plan.budget.totalSamples,
         engine,
         purpose,
         blockIndex,
@@ -903,15 +788,6 @@ function observedVersions(
     merman: Object.freeze([...observed.merman].sort()),
     mermaid: Object.freeze([...observed.mermaid].sort()),
   });
-}
-
-function readPersisted(event: unknown): boolean {
-  return Boolean(
-    event &&
-      typeof event === "object" &&
-      "persisted" in event &&
-      (event as { persisted?: unknown }).persisted === true
-  );
 }
 
 function elapsed(run: ActiveBenchmarkRun, now: number): number {

@@ -52,7 +52,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppStore } from "@/src/store";
-import { benchmarkController } from "@/src/benchmark/browser";
+import {
+  benchmarkController,
+  benchmarkDocumentLifecycle,
+} from "@/src/benchmark/browser";
 import type {
   BenchmarkDialogAction,
   BenchmarkDialogState,
@@ -159,7 +162,7 @@ export function BenchDialog({
   );
   const facade = useMermanRuntime(selectMermanFacade);
   const [visible, setVisible] = useState(
-    () => document.visibilityState === "visible"
+    () => benchmarkDocumentLifecycle.getVisibilityState() === "visible"
   );
   const [runError, setRunError] = useState<ErrorProjection | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -198,11 +201,9 @@ export function BenchDialog({
   const canRun = Boolean(facade && code.trim() && visible && !running);
 
   useEffect(() => {
-    const updateVisibility = () =>
-      setVisible(document.visibilityState === "visible");
-    document.addEventListener("visibilitychange", updateVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", updateVisibility);
+    return benchmarkDocumentLifecycle.subscribe((signal) => {
+      setVisible(signal.visibilityState === "visible");
+    });
   }, []);
 
   useEffect(() => {
@@ -271,10 +272,8 @@ export function BenchDialog({
           options,
         ),
       );
-      const request: BenchmarkRunRequest = {
-        mode,
+      const commonRequest = {
         iterations,
-        warmups: mode === "warm" ? warmups : 0,
         payload: {
           source: code,
           configJson: mermaidConfig,
@@ -288,7 +287,11 @@ export function BenchDialog({
           merman: facade.packageVersion,
           mermaid: MERMAID_JS_VERSION,
         },
-      };
+      } satisfies Omit<BenchmarkRunRequest, "mode" | "warmups">;
+      const request: BenchmarkRunRequest =
+        mode === "warm"
+          ? { ...commonRequest, mode: "warm", warmups }
+          : { ...commonRequest, mode: "realm-cold", warmups: 0 };
       const run = benchmarkController.start(request);
       const startedState = benchmarkController.store.getState();
       setRunFingerprint(fingerprint);
@@ -730,11 +733,11 @@ function ReportView({
 }) {
   const { t } = useTranslation();
   const metric: BenchmarkIntervalName =
-    report.run.mode === "realm-cold"
+    report.plan.mode === "realm-cold"
       ? "firstPublishableSvgMs"
       : "warmPublishableSvgMs";
   const metrics =
-    report.run.mode === "realm-cold" ? COLD_METRICS : WARM_METRICS;
+    report.plan.mode === "realm-cold" ? COLD_METRICS : WARM_METRICS;
   const merman = report.aggregates?.engines.merman[metric] ?? null;
   const mermaid = report.aggregates?.engines.mermaid[metric] ?? null;
   const ratio = report.aggregates?.ratios[metric] ?? null;
@@ -853,10 +856,10 @@ function ReportView({
 
       <section className="grid gap-3 text-xs sm:grid-cols-4">
         <EvidenceFact label={t("bench.runId")} value={report.run.id} />
-        <EvidenceFact label={t("bench.seed")} value={String(report.run.seed)} />
+        <EvidenceFact label={t("bench.seed")} value={String(report.plan.seed)} />
         <EvidenceFact
           label={t("bench.order")}
-          value={report.schedule.blocks
+          value={report.plan.blocks
             .map((block) =>
               block.order[0] === "merman" ? "AB" : "BA"
             )
