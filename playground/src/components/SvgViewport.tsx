@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useSyncExternalStore,
@@ -132,6 +133,19 @@ interface AppliedTransform {
   readonly zoom: number;
 }
 
+interface MountedPresentation {
+  readonly key: number | null;
+  onReady?: (at: number) => void;
+  readonly preview: PreparedSvgPreview;
+  readonly root: ShadowRoot;
+}
+
+interface RequestedPresentation {
+  readonly key: number | null;
+  readonly onReady?: (at: number) => void;
+  readonly preview: PreparedSvgPreview | null;
+}
+
 interface SvgViewportProps {
   artifact: SafeInlineSvg | null;
   presentationKey: number | null;
@@ -165,8 +179,12 @@ export function SvgViewport({
   const readyFrameRef = useRef(0);
   const previewRef = useRef(preview);
   const lastAppliedRef = useRef<AppliedTransform | null>(null);
-  const presentationKeyRef = useRef(presentationKey);
-  const onPresentationReadyRef = useRef(onPresentationReady);
+  const mountedPresentationRef = useRef<MountedPresentation | null>(null);
+  const requestedPresentationRef = useRef<RequestedPresentation>({
+    key: presentationKey,
+    onReady: onPresentationReady,
+    preview,
+  });
   const presentedRef = useRef<{
     readonly key: number | null;
     readonly preview: PreparedSvgPreview;
@@ -182,8 +200,6 @@ export function SvgViewport({
     zoom: 1,
   });
   previewRef.current = preview;
-  presentationKeyRef.current = presentationKey;
-  onPresentationReadyRef.current = onPresentationReady;
 
   const applyTransform = useCallback(() => {
     transformFrameRef.current = 0;
@@ -241,20 +257,25 @@ export function SvgViewport({
 
   const schedulePresentationReady = useCallback(() => {
     cancelScheduledFrame(readyFrameRef);
+    const scheduled = mountedPresentationRef.current;
+    if (!scheduled) return;
     readyFrameRef.current = requestAnimationFrame(() => {
       readyFrameRef.current = 0;
-      const currentPreview = previewRef.current;
-      const root = shadowHostRef.current?.shadowRoot;
-      if (!currentPreview || !root) return;
+      if (
+        mountedPresentationRef.current !== scheduled ||
+        shadowHostRef.current?.shadowRoot !== scheduled.root
+      ) {
+        return;
+      }
       const identity = presentedRef.current;
       if (
-        identity?.preview === currentPreview &&
-        identity.key === presentationKeyRef.current
+        identity?.preview === scheduled.preview &&
+        identity.key === scheduled.key
       ) {
         return;
       }
 
-      const renderedSvg = root.querySelector("svg");
+      const renderedSvg = scheduled.root.querySelector("svg");
       if (!renderedSvg) return;
       const bounds = renderedSvg.getBoundingClientRect();
       if (
@@ -267,10 +288,10 @@ export function SvgViewport({
       }
 
       presentedRef.current = {
-        key: presentationKeyRef.current,
-        preview: currentPreview,
+        key: scheduled.key,
+        preview: scheduled.preview,
       };
-      onPresentationReadyRef.current?.(performance.now());
+      scheduled.onReady?.(performance.now());
     });
   }, []);
 
@@ -428,15 +449,45 @@ export function SvgViewport({
     if (!host || !preview) return;
     const root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
     root.replaceChildren(preview.takeNode());
+    const requested = requestedPresentationRef.current;
+    if (requested.preview !== preview) return;
+    mountedPresentationRef.current = {
+      key: requested.key,
+      onReady: requested.onReady,
+      preview,
+      root,
+    };
     scheduleFit();
 
-    return () => root.replaceChildren();
+    return () => {
+      const mounted = mountedPresentationRef.current;
+      if (mounted?.preview === preview && mounted.root === root) {
+        mountedPresentationRef.current = null;
+      }
+      root.replaceChildren();
+    };
   }, [cancelGesture, preview, scheduleFit, scheduleTransform]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    requestedPresentationRef.current = {
+      key: presentationKey,
+      onReady: onPresentationReady,
+      preview,
+    };
+    const mounted = mountedPresentationRef.current;
+    if (!mounted || mounted.preview !== preview) return;
+    if (mounted.key === presentationKey) {
+      mounted.onReady = onPresentationReady;
+      return;
+    }
+    mountedPresentationRef.current = {
+      ...mounted,
+      key: presentationKey,
+      onReady: onPresentationReady,
+    };
     presentedRef.current = null;
     schedulePresentationReady();
-  }, [presentationKey, preview, schedulePresentationReady]);
+  }, [onPresentationReady, presentationKey, preview, schedulePresentationReady]);
 
   useEffect(() => {
     if (!preview) return;

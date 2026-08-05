@@ -1,5 +1,9 @@
 export type BenchmarkDocumentLifecycleSignal =
   | Readonly<{
+      kind: "visibility-visible";
+      visibilityState: "visible";
+    }>
+  | Readonly<{
       kind: "visibility-hidden";
       visibilityState: string;
     }>
@@ -77,8 +81,14 @@ export function createBenchmarkDocumentLifecycle({
       };
       const onVisibilityChange = () => {
         const visibilityState = getVisibilityState();
-        if (visibilityState === "visible") return;
-        listener(Object.freeze({ kind: "visibility-hidden", visibilityState }));
+        listener(
+          visibilityState === "visible"
+            ? Object.freeze({
+                kind: "visibility-visible",
+                visibilityState,
+              })
+            : Object.freeze({ kind: "visibility-hidden", visibilityState })
+        );
       };
       const onFreeze = () => emit({ kind: "freeze" });
       const onResume = () => emit({ kind: "resume" });

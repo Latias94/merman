@@ -22,13 +22,18 @@ test("projects browser lifecycle events into closed immutable signals", () => {
   documentTarget.dispatch("visibilitychange", {});
   visibilityState = "hidden";
   documentTarget.dispatch("visibilitychange", {});
+  visibilityState = "visible";
+  documentTarget.dispatch("visibilitychange", {});
+  visibilityState = "hidden";
   documentTarget.dispatch("freeze", {});
   documentTarget.dispatch("resume", {});
   windowTarget.dispatch("pagehide", { persisted: true });
   windowTarget.dispatch("pageshow", { persisted: false });
 
   assert.deepEqual(signals, [
+    { kind: "visibility-visible", visibilityState: "visible" },
     { kind: "visibility-hidden", visibilityState: "hidden" },
+    { kind: "visibility-visible", visibilityState: "visible" },
     { kind: "freeze", visibilityState: "hidden" },
     { kind: "resume", visibilityState: "hidden" },
     { kind: "pagehide", persisted: true, visibilityState: "hidden" },

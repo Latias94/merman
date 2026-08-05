@@ -264,7 +264,13 @@ function servePort(
 
   lifecycleCleanup = createBrowserBenchmarkDocumentLifecycle().subscribe(
     (signal) => {
-      if (signal.kind === "resume" || signal.kind === "pageshow") return;
+      if (
+        signal.kind === "visibility-visible" ||
+        signal.kind === "resume" ||
+        signal.kind === "pageshow"
+      ) {
+        return;
+      }
       close();
     }
   );

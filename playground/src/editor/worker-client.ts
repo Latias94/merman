@@ -1,4 +1,3 @@
-import type { EditorSemanticTokenLegend } from "@mermanjs/web";
 import {
   EDITOR_WORKER_PROTOCOL,
   EditorWorkerProtocolProjectionError,
@@ -60,9 +59,14 @@ const DEFAULT_EDITOR_WORKER_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_EDITOR_WORKER_TOMBSTONE_LIMIT = 256;
 
 export interface EditorLanguageIdentity {
-  readonly legend: EditorSemanticTokenLegend;
+  readonly legend: ReadonlyEditorSemanticTokenLegend;
   readonly legendDigest: string;
   readonly transportApiVersion: number;
+}
+
+export interface ReadonlyEditorSemanticTokenLegend {
+  readonly tokenTypes: readonly string[];
+  readonly tokenModifiers: readonly string[];
 }
 
 interface EditorSnapshotIdentity extends EditorDocumentIdentity {
@@ -254,7 +258,7 @@ class WorkerClient implements MermanLanguageWorkerClient {
                 tokenModifiers: Object.freeze([
                   ...response.legend.tokenModifiers,
                 ]),
-              }) as unknown as EditorSemanticTokenLegend,
+              }),
               legendDigest: response.legendDigest,
               transportApiVersion: response.transportApiVersion,
             }) satisfies EditorLanguageIdentity,

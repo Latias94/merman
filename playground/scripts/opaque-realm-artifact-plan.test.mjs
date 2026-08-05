@@ -53,6 +53,31 @@ test("plan validation rejects duplicate outputs and broken references", () => {
   );
 });
 
+test("plan projection owns known fields without traversing unknown cycles", () => {
+  const input = structuredClone(OPAQUE_REALM_ARTIFACT_PLAN);
+  const unknownCycle = {};
+  unknownCycle.self = unknownCycle;
+  input.unknown = unknownCycle;
+  input.engines[0].unknown = unknownCycle;
+  input.realms[0].bootstrap.unknown = unknownCycle;
+
+  const plan = defineOpaqueRealmArtifactPlan(input);
+  assert.equal(Object.hasOwn(plan, "unknown"), false);
+  assert.equal(Object.hasOwn(plan.engines[0], "unknown"), false);
+  assert.equal(Object.hasOwn(plan.realms[0].bootstrap, "unknown"), false);
+  assert.notEqual(plan.engines, input.engines);
+  assert.notEqual(plan.engines[0].exports, input.engines[0].exports);
+
+  input.engines[0].id = "mutated-engine";
+  input.engines[0].exports.push("mutatedExport");
+  assert.equal(plan.engines[0].id, "mermaid");
+  assert.deepEqual(plan.engines[0].exports, [
+    "benchmarkEngineAdapter",
+    "renderWithMermaid",
+  ]);
+  assert.throws(() => plan.engines[0].exports.push("forbidden"), TypeError);
+});
+
 test("artifact additions and renames flow through derived output ownership", () => {
   const expanded = structuredClone(OPAQUE_REALM_ARTIFACT_PLAN);
   expanded.engines.push({

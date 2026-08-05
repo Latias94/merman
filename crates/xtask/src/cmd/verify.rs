@@ -3,6 +3,16 @@ use crate::cmd;
 use std::process::Command;
 
 const STRICT_WEB_SCRIPTS: [&str; 3] = ["build", "test", "smoke"];
+const STRICT_PLAYGROUND_SCRIPTS: [&str; 8] = [
+    "verify:dependencies",
+    "verify:security",
+    "prepare:browser-runtime",
+    "test:prepared",
+    "lint",
+    "build:prepared",
+    "test:browser:smoke:non-chromium:built",
+    "test:browser:chromium:desktop:built",
+];
 
 #[derive(Debug, Default)]
 struct VerifyOptions {
@@ -293,14 +303,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         }
 
         println!("\n== Playground package and browsers ==");
-        for script in [
-            "prepare:browser-runtime",
-            "test:prepared",
-            "lint",
-            "build:prepared",
-            "test:browser:smoke:non-chromium:built",
-            "test:browser:chromium:desktop:built",
-        ] {
+        for script in STRICT_PLAYGROUND_SCRIPTS {
             run_npm_script(&workspace_root, "playground", script, &mut run_checked)?;
         }
 
@@ -337,22 +340,31 @@ mod tests {
 
     #[test]
     fn strict_web_scripts_exist_in_workspace_manifest() {
-        let manifest_path = crate::cmd::workspace_root().join("platforms/web/package.json");
-        let manifest: serde_json::Value = serde_json::from_str(
+        assert_manifest_scripts("platforms/web/package.json", &STRICT_WEB_SCRIPTS);
+    }
+
+    #[test]
+    fn strict_playground_scripts_exist_in_workspace_manifest() {
+        assert_manifest_scripts("playground/package.json", &STRICT_PLAYGROUND_SCRIPTS);
+    }
+
+    fn assert_manifest_scripts(manifest: &str, expected: &[&str]) {
+        let manifest_path = crate::cmd::workspace_root().join(manifest);
+        let manifest_json: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(&manifest_path)
                 .unwrap_or_else(|error| panic!("read {}: {error}", manifest_path.display())),
         )
         .unwrap_or_else(|error| panic!("parse {}: {error}", manifest_path.display()));
-        let scripts = manifest["scripts"]
+        let scripts = manifest_json["scripts"]
             .as_object()
-            .expect("platforms/web/package.json must define scripts");
+            .unwrap_or_else(|| panic!("{manifest} must define scripts"));
 
-        for script in STRICT_WEB_SCRIPTS {
+        for script in expected {
             assert!(
                 scripts
-                    .get(script)
+                    .get(*script)
                     .is_some_and(serde_json::Value::is_string),
-                "strict Web verification script `{script}` is missing"
+                "strict verification script `{script}` is missing from {manifest}"
             );
         }
     }

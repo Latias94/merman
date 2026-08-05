@@ -108,114 +108,174 @@ export function defineOpaqueRealmArtifactPlan(input) {
   if (!isRecord(input) || input.schemaVersion !== 1 || !isRecord(input.roots)) {
     throw new Error("Opaque realm artifact plan must use schema version 1.");
   }
-  const plan = structuredClone(input);
-  relativePath(plan.roots.generated, "generated root");
-  const publicRoot = relativePath(
-    plan.roots.publicEngines,
-    "public engine root",
-  );
+  const roots = Object.freeze({
+    generated: relativePath(input.roots.generated, "generated root"),
+    publicEngines: relativePath(
+      input.roots.publicEngines,
+      "public engine root",
+    ),
+  });
+  const publicRoot = roots.publicEngines;
   if (!publicRoot.startsWith("public/") || publicRoot === "public/") {
     throw new Error("Public engine root must be inside public/.");
   }
-  typescriptModule(plan.browserMetadataModule, "browser metadata module");
-  requiredArray(plan.engines, "engines");
-  requiredArray(plan.realms, "realms");
-  requiredArray(plan.pages, "pages");
-
-  for (const [index, engine] of plan.engines.entries()) {
-    if (!isRecord(engine)) throw new Error(`Engine ${index} must be an object.`);
-    name(engine.id, `engine ${index} id`);
-    typescriptModule(engine.entry, `engine ${engine.id} entry`);
-    outputBase(engine.outputBase, `engine ${engine.id} output`);
-    if (typeof engine.publish !== "boolean") {
-      throw new Error(`Engine ${engine.id} publish policy must be boolean.`);
-    }
-    positiveInteger(engine.maxBytes, `engine ${engine.id} byte budget`);
-    enumValue(
-      engine.resourcePolicy,
-      RESOURCE_POLICIES,
-      `engine ${engine.id} resource policy`,
-    );
-    const exports = stringArray(engine.exports, `engine ${engine.id} exports`);
-    if (exports.length === 0 || exports.some((item) => !EXPORT_NAME.test(item))) {
-      throw new Error(`Engine ${engine.id} exports are invalid.`);
-    }
-    assertUnique(exports, `engine ${engine.id} export`);
-    if (engine.browserProjection !== undefined) {
-      browserProjection(engine.browserProjection, `engine ${engine.id}`);
-    }
-  }
-
-  const engineIds = new Set(plan.engines.map((engine) => engine.id));
-  for (const realm of plan.realms) {
-    if (!isRecord(realm)) throw new Error("Realm must be an object.");
-    name(realm.key, "realm key");
-    enumValue(
-      realm.kind,
-      new Set(["compare", "benchmark"]),
-      `realm ${realm.key} kind`,
-    );
-    name(realm.engine, `realm ${realm.key} engine`);
-    if (!engineIds.has(realm.engine)) {
-      throw new Error(
-        `Realm ${realm.key} references unknown engine ${realm.engine}.`,
-      );
-    }
-    if (isRecord(realm.bootstrap)) {
-      if (realm.page !== undefined) {
-        throw new Error(`Opaque realm ${realm.key} cannot declare a page.`);
-      }
-      typescriptModule(
-        realm.bootstrap.entry,
-        `realm ${realm.key} bootstrap entry`,
-      );
-      outputBase(
-        realm.bootstrap.outputBase,
-        `realm ${realm.key} bootstrap output`,
-      );
-      if (!CSP_PLACEHOLDER.test(String(realm.bootstrap.cspPlaceholder))) {
-        throw new Error(`Realm ${realm.key} CSP placeholder is invalid.`);
-      }
-      positiveInteger(
-        realm.bootstrap.maxBytes,
-        `realm ${realm.key} bootstrap byte budget`,
-      );
-      browserProjection(realm.bootstrap.browserProjection, `realm ${realm.key}`);
-    } else {
-      if (realm.bootstrap !== undefined) {
-        throw new Error(`Realm ${realm.key} bootstrap must be an object.`);
-      }
-      name(realm.page, `realm ${realm.key} page`);
-    }
-  }
-
-  const realmKeys = new Set(plan.realms.map((realm) => realm.key));
-  for (const page of plan.pages) {
-    if (!isRecord(page)) throw new Error("Page must be an object.");
-    name(page.key, "page key");
-    const source = relativePath(page.source, `page ${page.key} source`);
-    if (!source.endsWith(".html")) {
-      throw new Error(`Page ${page.key} source must be HTML.`);
-    }
-    enumValue(page.cspProfile, CSP_PROFILES, `page ${page.key} CSP profile`);
-    const inlineRealms = stringArray(
-      page.inlineRealms,
-      `page ${page.key} inline realms`,
-    );
-    assertUnique(inlineRealms, `page ${page.key} inline realm`);
-    for (const key of inlineRealms) {
-      const realm = plan.realms.find((candidate) => candidate.key === key);
-      if (!realmKeys.has(key)) {
-        throw new Error(`Page ${page.key} references unknown realm ${key}.`);
-      }
-      if (!isRecord(realm.bootstrap)) {
-        throw new Error(`Page ${page.key} cannot inline same-origin realm ${key}.`);
-      }
-    }
-  }
-
+  const browserMetadataModule = typescriptModule(
+    input.browserMetadataModule,
+    "browser metadata module",
+  );
+  const engines = Object.freeze(
+    requiredArray(input.engines, "engines").map(projectEngine),
+  );
+  const engineIds = new Set(engines.map((engine) => engine.id));
+  const realms = Object.freeze(
+    requiredArray(input.realms, "realms").map((realm) =>
+      projectRealm(realm, engineIds),
+    ),
+  );
+  const realmKeys = new Set(realms.map((realm) => realm.key));
+  const pages = Object.freeze(
+    requiredArray(input.pages, "pages").map((page) =>
+      projectPage(page, realms, realmKeys),
+    ),
+  );
+  const plan = Object.freeze({
+    schemaVersion: 1,
+    roots,
+    browserMetadataModule,
+    engines,
+    realms,
+    pages,
+  });
   assertPlanOwnership(plan);
-  return deepFreeze(plan);
+  return plan;
+}
+
+function projectEngine(value, index) {
+  if (!isRecord(value)) throw new Error(`Engine ${index} must be an object.`);
+  const id = name(value.id, `engine ${index} id`);
+  const exports = Object.freeze([
+    ...stringArray(value.exports, `engine ${id} exports`),
+  ]);
+  if (exports.length === 0 || exports.some((item) => !EXPORT_NAME.test(item))) {
+    throw new Error(`Engine ${id} exports are invalid.`);
+  }
+  assertUnique(exports, `engine ${id} export`);
+  if (typeof value.publish !== "boolean") {
+    throw new Error(`Engine ${id} publish policy must be boolean.`);
+  }
+  positiveInteger(value.maxBytes, `engine ${id} byte budget`);
+  const projection =
+    value.browserProjection === undefined
+      ? undefined
+      : projectBrowserProjection(value.browserProjection, `engine ${id}`);
+  return Object.freeze({
+    id,
+    entry: typescriptModule(value.entry, `engine ${id} entry`),
+    outputBase: outputBase(value.outputBase, `engine ${id} output`),
+    publish: value.publish,
+    maxBytes: value.maxBytes,
+    resourcePolicy: enumValue(
+      value.resourcePolicy,
+      RESOURCE_POLICIES,
+      `engine ${id} resource policy`,
+    ),
+    exports,
+    ...(projection === undefined ? {} : { browserProjection: projection }),
+  });
+}
+
+function projectRealm(value, engineIds) {
+  if (!isRecord(value)) throw new Error("Realm must be an object.");
+  const key = name(value.key, "realm key");
+  const engine = name(value.engine, `realm ${key} engine`);
+  if (!engineIds.has(engine)) {
+    throw new Error(`Realm ${key} references unknown engine ${engine}.`);
+  }
+  const common = {
+    key,
+    kind: enumValue(
+      value.kind,
+      new Set(["compare", "benchmark"]),
+      `realm ${key} kind`,
+    ),
+    engine,
+  };
+  if (isRecord(value.bootstrap)) {
+    if (value.page !== undefined) {
+      throw new Error(`Opaque realm ${key} cannot declare a page.`);
+    }
+    return Object.freeze({
+      ...common,
+      bootstrap: projectRealmBootstrap(value.bootstrap, key),
+    });
+  }
+  if (value.bootstrap !== undefined) {
+    throw new Error(`Realm ${key} bootstrap must be an object.`);
+  }
+  return Object.freeze({
+    ...common,
+    page: name(value.page, `realm ${key} page`),
+  });
+}
+
+function projectRealmBootstrap(value, realmKey) {
+  if (!CSP_PLACEHOLDER.test(String(value.cspPlaceholder))) {
+    throw new Error(`Realm ${realmKey} CSP placeholder is invalid.`);
+  }
+  positiveInteger(
+    value.maxBytes,
+    `realm ${realmKey} bootstrap byte budget`,
+  );
+  return Object.freeze({
+    entry: typescriptModule(
+      value.entry,
+      `realm ${realmKey} bootstrap entry`,
+    ),
+    outputBase: outputBase(
+      value.outputBase,
+      `realm ${realmKey} bootstrap output`,
+    ),
+    cspPlaceholder: value.cspPlaceholder,
+    maxBytes: value.maxBytes,
+    browserProjection: projectBrowserProjection(
+      value.browserProjection,
+      `realm ${realmKey}`,
+    ),
+  });
+}
+
+function projectPage(value, realms, realmKeys) {
+  if (!isRecord(value)) throw new Error("Page must be an object.");
+  const key = name(value.key, "page key");
+  const source = relativePath(value.source, `page ${key} source`);
+  if (!source.endsWith(".html")) {
+    throw new Error(`Page ${key} source must be HTML.`);
+  }
+  const inlineRealms = Object.freeze([
+    ...stringArray(value.inlineRealms, `page ${key} inline realms`),
+  ]);
+  assertUnique(inlineRealms, `page ${key} inline realm`);
+  for (const realmKey of inlineRealms) {
+    const realm = realms.find((candidate) => candidate.key === realmKey);
+    if (!realmKeys.has(realmKey)) {
+      throw new Error(`Page ${key} references unknown realm ${realmKey}.`);
+    }
+    if (!realm?.bootstrap) {
+      throw new Error(
+        `Page ${key} cannot inline same-origin realm ${realmKey}.`,
+      );
+    }
+  }
+  return Object.freeze({
+    key,
+    source,
+    cspProfile: enumValue(
+      value.cspProfile,
+      CSP_PROFILES,
+      `page ${key} CSP profile`,
+    ),
+    inlineRealms,
+  });
 }
 
 export function engineForId(plan, id) {
@@ -317,7 +377,7 @@ function assertPlanOwnership(plan) {
   }
 }
 
-function browserProjection(value, owner) {
+function projectBrowserProjection(value, owner) {
   if (
     !isRecord(value) ||
     typeof value.exportName !== "string" ||
@@ -325,7 +385,13 @@ function browserProjection(value, owner) {
   ) {
     throw new Error(`${owner} browser projection is invalid.`);
   }
-  typescriptModule(value.module, `${owner} browser projection module`);
+  return Object.freeze({
+    module: typescriptModule(
+      value.module,
+      `${owner} browser projection module`,
+    ),
+    exportName: value.exportName,
+  });
 }
 
 function requiredArray(value, label) {
@@ -397,12 +463,6 @@ function stringArray(value, label) {
     throw new Error(`${label} must be a string array.`);
   }
   return value;
-}
-
-function deepFreeze(value) {
-  if (!isRecord(value) && !Array.isArray(value)) return value;
-  for (const nested of Object.values(value)) deepFreeze(nested);
-  return Object.freeze(value);
 }
 
 function isRecord(value) {

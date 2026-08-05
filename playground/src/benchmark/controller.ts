@@ -329,7 +329,13 @@ export function createBenchmarkController(
 
   const installLifecycleListeners = (run: ActiveBenchmarkRun): (() => void) =>
     dependencies.lifecycle.subscribe((signal) => {
-      if (signal.kind === "resume" || signal.kind === "pageshow") return;
+      if (
+        signal.kind === "visibility-visible" ||
+        signal.kind === "resume" ||
+        signal.kind === "pageshow"
+      ) {
+        return;
+      }
       invalidate(run, {
         ...signal,
         atMs: elapsed(run, dependencies.now()),

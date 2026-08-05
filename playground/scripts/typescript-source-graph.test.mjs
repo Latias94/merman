@@ -92,6 +92,54 @@ test("runtime and ownership closures differ only on explicit dynamic/type edges"
   );
 });
 
+test("Vite resource queries and relative assets stay in the compiler-owned graph", async (t) => {
+  const root = await createProject(t, {
+    "src/main.ts": [
+      'import rawSource from "./generated.js?raw";',
+      'import "./theme.css";',
+      "export const value = rawSource;",
+    ].join("\n"),
+    "src/generated.js": "export default 'generated';\n",
+    "src/theme.css": "body { color: black; }\n",
+  });
+  const graph = createTypeScriptSourceGraph({
+    rootDir: root,
+    entries: ["src/main.ts"],
+  });
+
+  assert.deepEqual(
+    [...collectSourceClosure(graph, ["src/main.ts"])].sort(),
+    ["src/generated.js", "src/main.ts", "src/theme.css"],
+  );
+});
+
+test("Playground startup closure includes toolbar ownership but excludes lazy workbenches", () => {
+  const root = path.resolve(import.meta.dirname, "..");
+  const graph = createTypeScriptSourceGraph({
+    rootDir: root,
+    entries: ["src/main.tsx"],
+  });
+  const startup = collectSourceClosure(graph, ["src/main.tsx"], {
+    includeTypeOnly: true,
+  });
+
+  assert.equal(startup.has("src/components/ToolbarControls.tsx"), true);
+  assert.equal(startup.has("src/components/ToolbarFeatureLaunchers.tsx"), true);
+  assert.deepEqual(
+    [...startup]
+      .filter(
+        (source) =>
+          source.startsWith("src/benchmark/") ||
+          /^src\/components\/(?:Bench|ConfigEditor|ExampleGallery)/u.test(
+            source,
+          ) ||
+          source === "src/lib/examples.ts",
+      )
+      .sort(),
+    [],
+  );
+});
+
 test("unexported package subpaths fail closed through the compiler resolver", async (t) => {
   const root = await createProject(t, {
     "src/main.ts": 'import "fixture/private";\n',

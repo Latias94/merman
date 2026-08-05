@@ -54,8 +54,9 @@ export function createTypeScriptSourceGraph({
         request.literal,
         parsed.options,
       );
+      const specifier = request.literal.text;
       const resolution = ts.resolveModuleName(
-        request.literal.text,
+        stripViteResourceQuery(specifier),
         sourceFile.fileName,
         parsed.options,
         ts.sys,
@@ -63,20 +64,28 @@ export function createTypeScriptSourceGraph({
         undefined,
         mode,
       ).resolvedModule;
-      if (!resolution) {
+      const resolvedFileName =
+        resolution?.resolvedFileName ??
+        resolveRelativeAsset(sourceFile.fileName, specifier);
+      const unresolvedExternalResource =
+        !resolvedFileName && isExternalViteResource(specifier);
+      if (!resolvedFileName && !unresolvedExternalResource) {
         const position = sourceFile.getLineAndCharacterOfPosition(
           request.literal.getStart(sourceFile),
         );
         throw new Error(
-          `${from}:${position.line + 1}:${position.character + 1} cannot resolve ${JSON.stringify(request.literal.text)} with ${path.basename(configPath)}.`,
+          `${from}:${position.line + 1}:${position.character + 1} cannot resolve ${JSON.stringify(specifier)} with ${path.basename(configPath)}.`,
         );
       }
-      const external = !isOwnedFile(root, resolution.resolvedFileName);
+      const external =
+        unresolvedExternalResource || !isOwnedFile(root, resolvedFileName);
+      const target = external ? null : ownedSource(root, resolvedFileName);
+      if (target !== null) files.add(target);
       edges.push(
         Object.freeze({
           from,
-          to: external ? null : ownedSource(root, resolution.resolvedFileName),
-          specifier: request.literal.text,
+          to: target,
+          specifier,
           kind: request.kind,
           external,
         }),
@@ -96,6 +105,25 @@ export function createTypeScriptSourceGraph({
     files,
     rootDir: root,
   });
+}
+
+function stripViteResourceQuery(specifier) {
+  return specifier.split(/[?#]/u, 1)[0];
+}
+
+function resolveRelativeAsset(importer, specifier) {
+  const request = stripViteResourceQuery(specifier);
+  if (!request.startsWith(".")) return null;
+  const candidate = path.resolve(path.dirname(importer), request);
+  return ts.sys.fileExists(candidate) ? candidate : null;
+}
+
+function isExternalViteResource(specifier) {
+  return (
+    !specifier.startsWith(".") &&
+    !specifier.startsWith("/") &&
+    /[?#]/u.test(specifier)
+  );
 }
 
 export function collectSourceClosure(

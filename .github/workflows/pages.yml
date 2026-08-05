@@ -123,6 +123,9 @@ jobs:
       - name: Verify playground dependency boundaries
         run: npm run verify:dependencies --prefix playground
 
+      - name: Audit playground dependency trees
+        run: npm run verify:security --prefix playground
+
       - name: Install playground browsers
         run: npm run install:browsers --prefix playground/tests
 

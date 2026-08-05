@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { BENCHMARK_REPORT_SCHEMA_VERSION } from "../src/benchmark/report-schema";
 import {
@@ -204,3 +204,42 @@ test("page lifecycle invalidation suppresses aggregates and allows a clean rerun
   await expect(dialog.getByRole("button", { name: "Run again" })).toBeEnabled();
   errors.assertNone();
 });
+
+test("Bench controls recover when the document returns to the foreground", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  await page.getByRole("button", { name: "Bench", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Browser Benchmark" });
+  const run = dialog.getByRole("button", { name: "Run", exact: true });
+  await expect(run).toBeEnabled();
+
+  await setDocumentVisibility(page, "hidden");
+  await expect(run).toBeDisabled();
+
+  await setDocumentVisibility(page, "visible");
+  await expect(run).toBeEnabled();
+  errors.assertNone();
+});
+
+async function setDocumentVisibility(
+  page: Page,
+  visibilityState: "hidden" | "visible",
+): Promise<void> {
+  await page.evaluate((nextVisibilityState) => {
+    const owner = window as typeof window & {
+      __MERMAN_TEST_VISIBILITY_STATE__?: "hidden" | "visible";
+    };
+    owner.__MERMAN_TEST_VISIBILITY_STATE__ = nextVisibilityState;
+    if (!Object.hasOwn(document, "visibilityState")) {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => owner.__MERMAN_TEST_VISIBILITY_STATE__ ?? "visible",
+      });
+    }
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, visibilityState);
+}

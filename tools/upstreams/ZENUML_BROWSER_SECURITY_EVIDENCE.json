@@ -17,11 +17,11 @@
     },
     {
       "path": "playground/scripts/build-opaque-realm.mjs",
-      "sha256": "75471175cd02d74df150d90a0b577cd71b1fc5a48664cf86a1e00b3a4d16833b"
+      "sha256": "0f1a83c5e9a510a3554b1f3d5ba1e74c57cdfecdd1e9b3098cde15b0d000ce60"
     },
     {
       "path": "playground/scripts/opaque-realm-artifact-plan.mjs",
-      "sha256": "21c83840d57df9ea2c1b6858cf7882b801d32fbf51044133f9abdb305a67764a"
+      "sha256": "f56da073bd8c9891248e8ef9bb9cacc1ff032402e0ea0398608a566f6533e40d"
     },
     {
       "path": "playground/scripts/opaque-realm-browser-projection.mjs",
@@ -37,7 +37,7 @@
     },
     {
       "path": "playground/src/benchmark/realm/bootstrap.ts",
-      "sha256": "54557e4d02ec075b2e4eb7263269d9e391a5474c308599ae02f9f3fc5e76bc71"
+      "sha256": "5e3e56227bb98af8200b32505b6f7086476a149bce76e89a2fd3c6a949c95027"
     },
     {
       "path": "playground/src/benchmark/realm/controller.ts",

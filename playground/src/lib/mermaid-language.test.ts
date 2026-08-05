@@ -25,8 +25,8 @@ import {
 
 const IDENTITY: EditorLanguageIdentity = Object.freeze({
   legend: Object.freeze({
-    tokenTypes: Object.freeze(["string", "namespace"]) as unknown as string[],
-    tokenModifiers: Object.freeze(["payload", "entity"]) as unknown as string[],
+    tokenTypes: Object.freeze(["string", "namespace"]),
+    tokenModifiers: Object.freeze(["payload", "entity"]),
   }),
   legendDigest: "sha256:test-generated-token-descriptor",
   transportApiVersion: 3,

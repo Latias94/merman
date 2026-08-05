@@ -6,7 +6,6 @@ import type {
   EditorDocumentSymbol,
   EditorLocation,
   EditorRange,
-  EditorSemanticTokenLegend,
   EditorSymbolKind,
   EditorWorkspaceEdit,
 } from "@mermanjs/web";
@@ -28,7 +27,7 @@ export const MERMAID_DOCUMENT_URI = "file:///merman/playground.mmd";
 const MARKER_OWNER = "merman";
 const DIAGNOSTIC_DELAY_MS = 180;
 
-export type MermaidSemanticTokenLegend = EditorSemanticTokenLegend;
+export type MermaidSemanticTokenLegend = EditorLanguageIdentity["legend"];
 
 export interface MermaidLanguageRegistration extends IDisposable {
   bindModel(model: editor.ITextModel): Promise<IDisposable>;
@@ -109,7 +108,10 @@ export function registerMermaidLanguage(
     token: EditorCancellationToken | undefined,
     fallback: Fallback,
   ) => queryOr(client, model, request, token, fallback, notifyUnavailable);
-  const legend = identity.legend;
+  const legend: languages.SemanticTokensLegend = {
+    tokenTypes: [...identity.legend.tokenTypes],
+    tokenModifiers: [...identity.legend.tokenModifiers],
+  };
 
   disposables.push(
     monaco.languages.registerCompletionItemProvider(MERMAID_LANGUAGE_ID, {

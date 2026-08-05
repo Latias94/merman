@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
+  CHECKED_EDITOR_ARTIFACT_RECEIPT_PATH,
   DEFAULT_EDITOR_ARTIFACT_RECEIPT_PATH,
   EDITOR_ARTIFACT_EQUIVALENCE_SCHEMA_VERSION,
   EDITOR_ARTIFACT_FAMILY_COUNT,
@@ -13,12 +14,15 @@ import {
   decideEditorArtifact,
   summarizeEditorArtifactRuns,
   validateAbBaRuns,
+  validateEditorArtifactReceipt,
 } from "./contract.mjs";
 import {
   canonicalStringify,
   canonicalize,
   compareCanonicalStrings,
 } from "./equivalence-shared.mjs";
+import { digestEntries } from "./selection-inputs.mjs";
+import { verifyEditorArtifactAuthority } from "./verify-editor-artifact-receipt.mjs";
 
 test("selects editor only when semantics and every R16 metric pass", () => {
   const decision = decideEditorArtifact(
@@ -62,6 +66,28 @@ test("makes editor ineligible when any family query digest differs", () => {
   assert.ok(equivalence.mismatches.includes("aggregateSha256"));
   assert.equal(decision.selected, "full");
   assert.equal(decision.criteria.semanticEquivalence.passes, false);
+});
+
+test("owns and deeply freezes semantic-equivalence comparisons", () => {
+  const variants = equivalenceVariants();
+  const originalDigest = variants.full.families[0].queries[0].sha256;
+  const comparison = compareEditorArtifactEquivalence(variants);
+
+  variants.full.families[0].queries[0].sha256 = digest("caller-mutation");
+
+  assert.equal(
+    comparison.variants.full.families[0].queries[0].sha256,
+    originalDigest,
+  );
+  assert.equal(Object.isFrozen(variants), false);
+  assert.equal(Object.isFrozen(comparison), true);
+  assert.equal(
+    Object.isFrozen(comparison.variants.full.families[0].queries[0]),
+    true,
+  );
+  assert.throws(() => {
+    comparison.variants.full.families[0].queries[0].sha256 = digest("frozen");
+  }, TypeError);
 });
 
 test("derives semantic eligibility from matrices instead of trusting a forged comparison flag", () => {
@@ -255,8 +281,94 @@ test("creates an owned authoritative receipt", () => {
   }, TypeError);
   assert.equal(
     DEFAULT_EDITOR_ARTIFACT_RECEIPT_PATH,
-    "target/playground/editor-artifact-measurement/receipt-v1.json",
+    "target/playground/editor-artifact-measurement/receipt-v2.json",
   );
+  assert.equal(
+    CHECKED_EDITOR_ARTIFACT_RECEIPT_PATH,
+    "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v2.json",
+  );
+});
+
+test("validates stored derived receipt evidence", () => {
+  const receipt = createEditorArtifactReceipt(validReceiptInput());
+  assert.deepEqual(validateEditorArtifactReceipt(receipt), receipt);
+
+  const tampered = structuredClone(receipt);
+  tampered.decision.selected = "full";
+  assert.throws(
+    () => validateEditorArtifactReceipt(tampered),
+    /derived evidence does not match/u,
+  );
+});
+
+test("binds artifact authority to deterministic selection inputs and package choice", () => {
+  const receipt = createEditorArtifactReceipt(validReceiptInput());
+  const verified = verifyEditorArtifactAuthority({
+    packageDependencies: {
+      "@mermanjs/web": "file:../platforms/web/packages/full",
+      "@mermanjs/web-editor": "file:../platforms/web/packages/editor",
+      react: "19.2.8",
+    },
+    packageLock: editorPackageLock(),
+    receipt,
+    selectionInputs: receipt.selectionInputs,
+    workerSource: 'import { initMerman } from "@mermanjs/web-editor";\n',
+  });
+  assert.equal(verified.selected, "editor");
+
+  assert.throws(
+    () =>
+      verifyEditorArtifactAuthority({
+        packageDependencies: {
+          "@mermanjs/web": "file:../platforms/web/packages/full",
+          "@mermanjs/web-editor": "file:../platforms/web/packages/editor",
+        },
+        packageLock: editorPackageLock(),
+        receipt,
+        selectionInputs: {
+          ...receipt.selectionInputs,
+          startupClosureSha256: digest("stale"),
+        },
+        workerSource: 'import "@mermanjs/web-editor";\n',
+      }),
+    /startupClosureSha256 changed/u,
+  );
+  assert.throws(
+    () =>
+      verifyEditorArtifactAuthority({
+        packageDependencies: {
+          "@mermanjs/web": "file:../platforms/web/packages/full",
+        },
+        packageLock: editorPackageLock(),
+        receipt,
+        selectionInputs: receipt.selectionInputs,
+        workerSource: 'import "@mermanjs/web-editor";\n',
+      }),
+    /dependencies do not match/u,
+  );
+});
+
+test("selection input hashing is order-independent and path-bound", () => {
+  const first = { path: "b/input.js", bytes: Buffer.from("same") };
+  const second = { path: "a/input.js", bytes: Buffer.from("same") };
+  const digestValue = digestEntries([first, second]);
+
+  assert.equal(digestEntries([second, first]), digestValue);
+  assert.notEqual(
+    digestEntries([
+      second,
+      { path: first.path, bytes: Buffer.from("changed") },
+    ]),
+    digestValue,
+  );
+  assert.notEqual(
+    digestEntries([
+      second,
+      { path: "c/input.js", bytes: first.bytes },
+    ]),
+    digestValue,
+  );
+  assert.throws(() => digestEntries([first, first]), /duplicated/u);
 });
 
 test("marks dirty or reused-build receipts as provisional", () => {
@@ -506,6 +618,35 @@ function validReceiptInput() {
       statusSha256: digest(""),
     },
     runs: validRuns(),
+    selectionInputs: validSelectionInputs(),
+  };
+}
+
+function validSelectionInputs() {
+  return {
+    schemaVersion: 1,
+    measurementContractSha256: digest("measurement-contract"),
+    startupClosureSha256: digest("startup-closure"),
+    workerClosureSha256: digest("worker-closure"),
+    webSurfaceSha256: digest("web-surface"),
+    fullPackageProvenanceSha256: digest("full-package"),
+    editorPackageProvenanceSha256: digest("editor-package"),
+    equivalenceEvidenceSha256: digest("evidence"),
+  };
+}
+
+function editorPackageLock() {
+  return {
+    packages: {
+      "": {
+        dependencies: {
+          "@mermanjs/web": "file:../platforms/web/packages/full",
+          "@mermanjs/web-editor": "file:../platforms/web/packages/editor",
+        },
+      },
+      "node_modules/@mermanjs/web": { link: true },
+      "node_modules/@mermanjs/web-editor": { link: true },
+    },
   };
 }
 
