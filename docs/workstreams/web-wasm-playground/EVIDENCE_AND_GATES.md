@@ -607,7 +607,7 @@ Results:
 - The trusted Merman engine artifact is 45,341 bytes with no embedded WASM data URL, down 99.86%
   from the measured 33,565,060-byte duplicated form. The Mermaid engine artifact is 10,179,147
   bytes with no embedded Merman WASM, down 76.72% from 43,717,823 bytes.
-- Chromium desktop passed 46/46 in 1.6 minutes. Firefox/WebKit smoke passed 2/2 in 8.9 seconds.
-  The on-demand mobile interaction lane passed 4/4 in 7.9 seconds.
+- Chromium desktop passed 46/46 in 1.7 minutes. Firefox/WebKit smoke passed 2/2 in 9.0 seconds.
+  The on-demand mobile interaction lane passed 4/4 in 8.0 seconds.
 - The focused 100-event viewport hot-path scenario passed 10/10 repeated executions after the
   commit probe was scoped to pointer frequency rather than unrelated document-level UI work.
