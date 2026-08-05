@@ -425,11 +425,11 @@ npm run measure:editor-artifacts --prefix playground
 
 Results:
 
-- Native TypeScript Worker tests passed: 53 tests.
-- Pure artifact-decision and authority tests passed: 19 tests.
-- Focused build-graph tests passed: 41 tests.
+- Native TypeScript Worker tests passed: 56 tests.
+- Pure artifact-decision and authority tests passed: 22 tests.
+- Focused build-graph tests passed: 43 tests.
 - Production Playground build and dist verification passed with Vite 8.2.0.
-- Real Chromium Monaco Worker smoke passed: 5 tests, including all 35 semantic-token family
+- Real Chromium Monaco Worker smoke passed: 6 tests, including all 35 semantic-token family
   baselines, request-local rename failure, Retry recovery, and Benchmark isolation.
 - The fresh same-commit measurement ran against the clean revision recorded in the receipt with
   four balanced AB/BA blocks. Its receipt is authoritative.
@@ -437,8 +437,8 @@ Results:
   per variant, zero mismatches, and aggregate SHA-256
   `e52016004129f4a12c0b316be1890f614898003afc1318fd543c4f07b674596c` for both.
 - All six cold/warm primary latency comparisons passed the joint 5% and 20 ms limit.
-- The editor split failed the selection rule because cold transfer was 7,504,435 bytes versus
-  6,141,465 bytes for full, and peak memory was 30,961,757 bytes versus 30,751,189 bytes for full.
+- The editor split failed the selection rule because cold transfer was 7,504,884 bytes versus
+  6,141,915 bytes for full, and peak memory was 31,009,516 bytes versus 30,807,321 bytes for full.
 - The authoritative result therefore retains `@mermanjs/web` for both the main renderer and the
   language Worker. Receipt schema 2 binds the measurement contract, startup and Worker closures,
   exact runtime package provenance and semantic evidence to deterministic content digests. The
