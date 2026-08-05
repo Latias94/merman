@@ -6,19 +6,22 @@ Status: **accepted-structural**.
 
 The ELK layered pipeline now accounts non-greedy edge-reversal work by the processor that owns
 it. Model-order processing charges the exact feedback-edge stream produced by the pinned runtime
-order, constraint processing charges only edges attached to possible reversal owners, and the
-restorer charges only marked edges against their actual incoming and outgoing lists. This receipt
-makes no wall-clock or memory-percentage claim.
+order, constraint processing uses an ordered shadow of the pinned two-pass mutation semantics, and
+the restorer charges only marked edges against their actual incoming and outgoing lists. This
+receipt makes no wall-clock or memory-percentage claim.
 
 ## Revision boundary
 
 | Role | Commit | Tree | Meaning |
 |---|---|---|---|
 | `H` | `6464f595b5db0a54dff600f7bce41e2fffdae91f` | `040da5d8b31d1895c43ba037ff774e58b87c6cc0` | Direct production parent with one whole-graph mutation bound for every non-greedy reversal processor. |
-| `C` | `e47625f4de52be4d0953cd009eb6027b0ebdf12b` | `5407b40ac335cc5466dc79fb8878706452dc595f` | Owner-scoped accounting, official-order probes, and structural controls. |
+| `C1` | `e47625f4de52be4d0953cd009eb6027b0ebdf12b` | `5407b40ac335cc5466dc79fb8878706452dc595f` | Owner-scoped accounting, official-order probes, and initial structural controls. |
+| `C2` | `ec999da2a0787893bc90df2a0fb66da3790cb810` | `bb6733d49197f9ac26b64717636a417ce7659cb8` | Final ordered constraint shadow, allocation-floor admission, collector-summary reuse, and regression controls. |
 
-`C` is the direct child of `H`. Production code and its owner-local proof tests are intentionally
-kept in one commit because the public budget result changes with the estimator.
+`C1` is the direct child of `H`. `C2` is the final production candidate; the intervening commit is
+the first version of this receipt and contains no production changes. Each production change keeps
+its owner-local proof tests in the same commit because the public budget result changes with the
+estimator.
 
 ## Semantic authority
 
@@ -39,6 +42,7 @@ Let:
 
 - `V` be the number of layerless nodes;
 - `P` be the number of ports;
+- `P_max` be the largest port count on one node;
 - `A_i` and `A_o` be incoming and outgoing adjacency entries;
 - `d_p` be the total incidence of one dedicated port;
 - `C_n` be the combined incidence of a node's collector ports;
@@ -54,22 +58,31 @@ reversed flag are charged per selected edge.
 The processor-specific boundaries are:
 
 - ModelOrder: exact feedback edges from the same stateful visitor used by production.
-- Edge/layer constraints: edges whose source or target can own a direct layer-constraint reversal
-  or the official fixed-side `remainingNodes` pass. Unrelated collector regions are excluded.
+- Edge/layer constraints: exact direct candidates followed by an ordered shadow of the official
+  mutable fixed-side `remainingNodes` pass. The shadow records only processor-local reversed bits
+  and current per-port flow, so earlier fixed-side reversals can admit later nodes without cloning
+  the full graph.
 - ReversedEdgeRestorer: only `reversed = true` edges, with incoming and outgoing list widths
   accounted independently.
 - DepthFirst and Interactive: exact no-mutation elision for monotonic-index DAGs; otherwise the
   existing conservative whole-graph mutation bound remains.
 
 Every estimate uses checked arithmetic and depends on logical lengths, never `Vec::capacity()`.
-No input-sized cache is allocated before the processor budget check.
+Collector incidence and materialization facts are summarized once per node, removing the former
+per-candidate port rescan. ModelOrder and constraint execution first perform a non-consuming linear
+floor check, then allocate their bounded `O(V + E + P_max)` planning state, and finally check and
+charge the complete tranche once. A floor rejection reports the known lower bound rather than an
+uncomputed complete estimate. The public `WorkControl` contract explicitly permits these monotonic
+prefix checks, and no input-sized cache is allocated before the first admission check.
 
 ## Unrelated-collector control
 
 The mixed fixture contains `n` merged parallel `A -> B` edges that never reverse and one
-independent `C -> D` edge that does reverse. The old whole-graph mutation formula for this exact
-fixture is `4n² + 9n + 95`; both the ModelOrder candidate stream and the constraint owner scope now
-charge `97` mutation units at every tested scale.
+independent `C -> D` edge that does reverse. For the constraint lane, `A = First` and `B = Last`
+exercise directionally irrelevant constraints while `C = Last` owns the real reversal. The old
+whole-graph mutation formula for this exact fixture is `4n² + 9n + 95`; both the ModelOrder
+candidate stream and the ordered constraint shadow now charge `97` mutation units at every tested
+scale.
 
 | Parallel `A -> B` edges | Whole-graph mutation bound | Candidate/owner-scoped bound |
 |---:|---:|---:|
@@ -98,6 +111,12 @@ false rejection without weakening the reachable shared-collector quadratic bound
   and two parallel `LAST_SEPARATE` edges: only the first edge in each ordered pair reverses.
 - Direct `First`/`Last` nodes are excluded from the fixed-side second pass, matching the pinned
   runtime's `remainingNodes` boundary.
+- A three-node fixed-side cascade proves that reversing `B -> A` can make a later `B` eligible and
+  must include the subsequent `C -> B` reversal in the candidate set.
+- A direct `First` reversal adjacent to a fixed-side merged collector proves that the fixed node is
+  still ineligible and does not pull its 128 unrelated parallel edges into mutation accounting.
+- Budgets below the linear planning floor observe one non-consuming check, no charge, and no graph
+  mutation for both ModelOrder and constraint planning.
 - One unit below the computed budget rejects before mutation and without charging; the exact
   budget succeeds; one unit above produces the same graph with one unit left.
 
@@ -106,15 +125,18 @@ false rejection without weakening the reachable shared-collector quadratic bound
 Executed serially in the repository's normal `target/` directory:
 
 - `CARGO_BUILD_JOBS=1 cargo nextest run -p merman-elk-layered --all-features --no-fail-fast` —
-  312 passed.
+  315 passed.
 - `CARGO_BUILD_JOBS=1 cargo clippy -p merman-elk-layered --all-targets --all-features -- -D warnings`
   — passed.
-- Focused red/green controls covered irrelevant direct constraints, monotonic collector DAGs,
-  direction-specific sparse restoration, stateful ModelOrder traversal, and unrelated collector
-  regions beside one real reversal owner.
-- Focused `rustfmt --edition 2024` and `git diff --check` — passed.
+- Focused red/green controls covered irrelevant direct constraints, fixed-side cascades,
+  direct-adjacent ineligible collectors, linear allocation-floor admission, monotonic collector
+  DAGs, direction-specific sparse restoration, stateful ModelOrder traversal, and unrelated
+  collector regions beside one real reversal owner.
+- `CARGO_BUILD_JOBS=1 cargo fmt -p merman-elk-layered -- --check` and focused
+  `git diff --check` — passed.
 - Independent correctness, performance, testing, and simplification reviews were run against the
-  four-file candidate scope. Their blocking findings were resolved before `C`.
+  candidate scope. Follow-up adversarial reviews found and verified the fixed-side cascade before
+  `C2`; no blocking finding remained at the final tree.
 
 ## Reproducibility record
 
@@ -127,9 +149,10 @@ Executed serially in the repository's normal `target/` directory:
 | profile | test/dev; serial Cargo with `CARGO_BUILD_JOBS=1` |
 | `Cargo.lock` SHA-256 | `4b5dc24ee4037349abe9995997a85ef9ca7ab59164611452526cb7013a8ade6f` |
 | `graph.rs` blob | `4e86fc2804f6160dd8c7f613e4cfb1f3795a9806` |
-| `intermediate.rs` blob | `b72e6f089be63a16830fe9ad9bb8e8d0af5eb0a4` |
+| `intermediate.rs` blob | `252028ac3d4460f37983d80f75d097b41b8f393b` |
 | `p1cycles.rs` blob | `a88b22fa5e7acf178779068365f3c80a4752ae20` |
-| `pipeline.rs` blob | `1f42ef6d2416c0a8bd38d36e0c2fbf97f0523a42` |
+| `pipeline.rs` blob | `c175b9573945cd1b36b256180384b44194d23aa6` |
+| `work.rs` blob | `b27a12a879ab96414a26b1d2b8f7987197405fad` |
 
 ## Residual risk and claim boundary
 
@@ -142,6 +165,7 @@ Executed serially in the repository's normal `target/` directory:
   candidate is found. It cannot reintroduce the removed unrelated quadratic amplification.
 - Hand-constructed public `LGraph` values with invalid adjacency indices remain outside the normal
   importer invariant and may fail before meaningful layout work begins.
-- Concurrent Flowchart and text changes were excluded from `C` and were not used as evidence.
+- Concurrent Flowchart and text changes were excluded from `C1` and `C2` and were not used as
+  evidence.
   Pre-existing `rust_out` and `test-results/` paths were not modified, removed, or used as
   evidence.
