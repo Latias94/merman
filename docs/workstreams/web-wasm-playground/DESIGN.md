@@ -121,10 +121,12 @@ aggregates. Corpus schema `2` runs one requested fixture per page, keeps a fresh
 fixture, and linearly aggregates one success or structured failure row for every selected fixture.
 Evidence can be downloaded locally as versioned JSON; it is not uploaded.
 
-The trusted Merman engine receives the parent-acquired WASM as an explicit in-memory `Response`.
-Its private bundle imports the package-owned compiled shim and measurement implementation without
-executing the public package entry, so it contains neither a second WASM binary nor a fallback
-asset request. The artifact plan enforces this emitted contract and an engine-local byte budget.
+The parent gives the trusted Merman realm only the plan-authorized same-origin WASM URL. That realm
+owns the measured fetch, validates the response, copies it into memory, and initializes the compiled
+shim with a fresh `Response`. Its private bundle imports the package-owned shim and measurement
+implementation without executing the public package entry, so it contains neither a second WASM
+binary nor a fallback asset request. The artifact plan enforces this emitted contract and an
+engine-local byte budget.
 
 ## Editor
 
@@ -137,7 +139,7 @@ surface, but the Playground does not load it in addition to the full renderer: s
 whole-site evidence showed that the split did not lower cold transfer or preserve peak memory under
 the R16 rule. The full/editor comparison and its exact 35-family/11-query semantic matrix are
 on-demand architecture evidence, not a normal browser gate. Receipt schema 2 content-binds the
-selection-sensitive startup/Worker closures, Web surface, package provenance, measurement
+selection-sensitive startup/Worker closures, exact runtime package provenance, measurement
 contract, and equivalence evidence. Normal prepared tests recompute those digests and the derived
 decision hermetically; only stale decision inputs require another browser measurement.
 `didOpen` constructs its analyzed document, `didChange` atomically replaces the snapshot with a

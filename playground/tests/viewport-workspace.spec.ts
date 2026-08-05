@@ -172,6 +172,40 @@ test("Compare panes retain independent viewport transforms", async ({ page }) =>
   errors.assertNone();
 });
 
+test("narrowing preserves the last focused workspace pane in both directions", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });
+  await zoomIn.focus();
+  await expect(zoomIn).toBeFocused();
+  await page.setViewportSize({ width: 700, height: 720 });
+  const previewWorkspaceTab = page.getByRole("tab", {
+    name: "Preview",
+    exact: true,
+  });
+  await expect(previewWorkspaceTab).toHaveAttribute("aria-selected", "true");
+  await expect(zoomIn).toBeVisible();
+  await expect(zoomIn).toBeFocused();
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const editor = page.getByRole("textbox", { name: "Mermaid source" });
+  await editor.focus();
+  await expect(editor).toBeFocused();
+  await page.setViewportSize({ width: 700, height: 720 });
+  const editorWorkspaceTab = page.getByRole("tab", {
+    name: "Editor",
+    exact: true,
+  });
+  await expect(editorWorkspaceTab).toHaveAttribute("aria-selected", "true");
+  await expect(editor).toBeVisible();
+  await expect(editor).toBeFocused();
+  errors.assertNone();
+});
+
 test("a current share hash is restored before the first visible publication", async ({
   page,
 }) => {

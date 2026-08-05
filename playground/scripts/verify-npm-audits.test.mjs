@@ -16,6 +16,14 @@ const production = NPM_AUDIT_POLICIES.find(
 assert(complete && production);
 
 test("audit policy commands are explicit about production mode", () => {
+  assert.deepEqual(
+    NPM_AUDIT_POLICIES.map(({ id }) => id),
+    [
+      "playground-complete",
+      "playground-production",
+      "playground-tests-complete",
+    ],
+  );
   assert.deepEqual(npmAuditArguments(complete), [
     "audit",
     "--json",

@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import { packageRuntimeDistClosure } from "../../../platforms/web/scripts/package-dist-closure.mjs";
+import { EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION } from "./contract-shared.mjs";
 import {
   collectSourceClosure,
   createTypeScriptSourceGraph,
 } from "../typescript-source-graph.mjs";
 
-export const EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION = 1;
+export { EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION };
 
 const MEASUREMENT_INPUTS = Object.freeze([
   "playground/scripts/typescript-source-graph.mjs",
@@ -24,21 +26,10 @@ const STARTUP_BUILD_INPUTS = Object.freeze([
   "playground/index.html",
   "playground/package-lock.json",
   "playground/package.json",
+  "playground/postcss.config.mjs",
   "playground/tsconfig.json",
   "playground/vite.config.ts",
 ]);
-const WEB_SURFACE_INPUTS = Object.freeze([
-  "platforms/web/package-lock.json",
-  "platforms/web/package.json",
-  "platforms/web/scripts/build-surface-packages.mjs",
-  "platforms/web/scripts/package-dist-closure.mjs",
-  "platforms/web/scripts/surface-manifest.mjs",
-  "platforms/web/scripts/verify-wasm-inputs.mjs",
-  "platforms/web/scripts/wasm-runtime-files.mjs",
-  "platforms/web/web-surface-descriptor.json",
-  "platforms/web/web-surface-descriptor.schema.json",
-]);
-
 export function editorArtifactSelectionInputs(repositoryRoot) {
   const playgroundRoot = path.join(repositoryRoot, "playground");
   const graph = createTypeScriptSourceGraph({
@@ -49,19 +40,17 @@ export function editorArtifactSelectionInputs(repositoryRoot) {
       "scripts/editor-artifact-measurement/semantic-equivalence.ts",
     ],
   });
-  const startupClosure = collectSourceClosure(graph, ["src/main.tsx"], {
-    includeTypeOnly: true,
-  });
+  const startupClosure = editorArtifactStartupClosure(graph);
   const workerClosure = new Set([
     ...collectSourceClosure(
       graph,
       ["src/editor/merman-language.worker.ts"],
-      { includeTypeOnly: true },
+      { includeDynamic: true },
     ),
     ...collectSourceClosure(
       graph,
       ["scripts/editor-artifact-measurement/semantic-equivalence.ts"],
-      { includeTypeOnly: true },
+      { includeDynamic: true },
     ),
   ]);
   const equivalenceEvidence = readFileSync(
@@ -88,20 +77,6 @@ export function editorArtifactSelectionInputs(repositoryRoot) {
       ),
       "worker-closure",
     ),
-    webSurfaceSha256: digestEntries(
-      [
-        ...entriesForFiles(repositoryRoot, WEB_SURFACE_INPUTS),
-        ...collectDirectoryEntries(repositoryRoot, "platforms/web/src", {
-          excludeTests: true,
-        }),
-        ...collectDirectoryEntries(
-          repositoryRoot,
-          "platforms/web/scripts/wasm-build",
-          { excludeTests: true },
-        ),
-      ],
-      "web-surface",
-    ),
     fullPackageProvenanceSha256: packageProvenanceDigest(
       repositoryRoot,
       "full",
@@ -111,6 +86,12 @@ export function editorArtifactSelectionInputs(repositoryRoot) {
       "editor",
     ),
     equivalenceEvidenceSha256: sha256(equivalenceEvidence),
+  });
+}
+
+export function editorArtifactStartupClosure(graph) {
+  return collectSourceClosure(graph, ["src/main.tsx"], {
+    includeDynamic: true,
   });
 }
 
@@ -149,7 +130,7 @@ export function digestEntries(entries, namespace = "fixture") {
     .sort((left, right) => left.path.localeCompare(right.path, "en"));
   const seen = new Set();
   const hash = createHash("sha256").update(
-    `merman-editor-artifact-selection-inputs/v1/${namespace}\0`,
+    `merman-editor-artifact-selection-inputs/v2/${namespace}\0`,
   );
   for (const entry of normalized) {
     if (seen.has(entry.path)) {
@@ -180,8 +161,28 @@ function packageProvenanceDigest(repositoryRoot, packageId) {
   ) {
     throw new Error(`Web package ${packageId} provenance is invalid.`);
   }
-  const artifactFiles = provenance.artifact_files.map((artifact) => {
-    const relativePath = requiredPackageArtifactPath(artifact?.path, packageId);
+  const provenanceArtifacts = new Map(
+    provenance.artifact_files.map((artifact) => {
+      const relativePath = requiredPackageArtifactPath(artifact?.path, packageId);
+      return [relativePath, artifact];
+    }),
+  );
+  const runtimeArtifactPaths = runtimePackageArtifactPaths({
+    javascriptModules: packageRuntimeDistClosure(
+      path.join(packageRoot, "dist"),
+      packageId,
+    ).javascriptModules,
+    wasmArtifactPaths: [...provenanceArtifacts.keys()].filter((relativePath) =>
+      relativePath.startsWith("artifacts/wasm/"),
+    ),
+  });
+  const artifactFiles = runtimeArtifactPaths.map((relativePath) => {
+    const artifact = provenanceArtifacts.get(relativePath);
+    if (!artifact) {
+      throw new Error(
+        `Web package ${packageId} provenance is missing runtime artifact ${relativePath}.`,
+      );
+    }
     const bytes = readFileSync(path.join(packageRoot, relativePath));
     if (
       artifact.bytes !== bytes.byteLength ||
@@ -203,7 +204,9 @@ function packageProvenanceDigest(repositoryRoot, packageId) {
       artifactProfile: provenance.artifact_profile,
       runtimeCapabilityIds: provenance.runtime_capability_ids,
       outputs: provenance.outputs,
-      artifactFiles: provenance.artifact_files,
+      artifactFiles: runtimeArtifactPaths.map((relativePath) =>
+        provenanceArtifacts.get(relativePath),
+      ),
       wasm: {
         path: provenance.wasm?.path,
         inputDigest: provenance.wasm?.input_digest,
@@ -214,7 +217,7 @@ function packageProvenanceDigest(repositoryRoot, packageId) {
   return digestEntries(
     [
       {
-        bytes: Buffer.from(JSON.stringify(packageJson)),
+        bytes: Buffer.from(JSON.stringify(runtimePackageManifest(packageJson))),
         path: `platforms/web/packages/${packageId}/package.json`,
       },
       {
@@ -225,6 +228,37 @@ function packageProvenanceDigest(repositoryRoot, packageId) {
     ],
     `${packageId}-package-provenance`,
   );
+}
+
+export function runtimePackageArtifactPaths({
+  javascriptModules,
+  wasmArtifactPaths,
+}) {
+  return [
+    ...new Set([
+      ...javascriptModules.map((relativePath) => `dist/${relativePath}`),
+      ...wasmArtifactPaths.filter((relativePath) =>
+        /\.(?:js|wasm)$/u.test(relativePath),
+      ),
+    ]),
+  ].sort((left, right) => left.localeCompare(right, "en"));
+}
+
+function runtimePackageManifest(packageJson) {
+  return {
+    name: packageJson.name,
+    version: packageJson.version,
+    type: packageJson.type,
+    main: packageJson.main,
+    exports: {
+      ".": {
+        import: packageJson.exports?.["."]?.import,
+      },
+    },
+    merman: {
+      artifact_profile: packageJson.merman?.artifact_profile,
+    },
+  };
 }
 
 function collectDirectoryEntries(

@@ -178,10 +178,12 @@ terminal state. Visibility/lifecycle invalidation suppresses all aggregates so n
 invalid environment boundary.
 
 The trusted Merman benchmark engine imports package-owned compiled runtime modules without loading
-the public package entry that owns the application WASM URL. Its parent fully acquires and validates
-the one hashed WASM response, then supplies an explicit in-memory response to initialization. The
-opaque artifact plan rejects an embedded WASM data URL and applies an engine-local transfer budget;
-the generic channel budget remains broad enough for the independently bundled Mermaid engine.
+the public package entry that owns the application WASM URL. The parent resolves and validates the
+plan-authorized same-origin WASM URL before handing that bounded resource identity to the trusted
+Merman realm. The realm owns the measured fetch, validates the response, copies it into memory, and
+supplies a fresh `Response` to initialization. The opaque artifact plan rejects an embedded WASM
+data URL and applies an engine-local transfer budget; the generic channel budget remains broad
+enough for the independently bundled Mermaid engine.
 
 No report is uploaded or persisted remotely. Download is an explicit local action.
 

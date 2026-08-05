@@ -695,13 +695,22 @@ function TabBar({
   t,
   rightContent,
 }: TabBarProps) {
+  const tabListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    tabListRef.current
+      ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [mode]);
+
   return (
-    <div className="flex h-10 shrink-0 items-center justify-between gap-2 overflow-hidden border-b bg-muted/30 px-2">
+    <div className="flex shrink-0 flex-col overflow-hidden border-b bg-muted/30 xl:h-10 xl:flex-row xl:items-center xl:justify-between xl:gap-2 xl:px-2">
       <div
+        ref={tabListRef}
         role="tablist"
         aria-label={t("preview.title")}
         aria-orientation="horizontal"
-        className="scrollbar-thin flex min-w-0 items-center gap-1 overflow-x-auto"
+        className="scrollbar-thin flex min-h-10 w-full min-w-0 items-center gap-1 overflow-x-auto px-2 xl:min-h-0 xl:flex-1 xl:px-0"
         onKeyDown={handleTabListKeyDown}
       >
         <TabButton
@@ -765,9 +774,11 @@ function TabBar({
         </TabButton>
       </div>
 
-      <div className="scrollbar-thin flex shrink-0 items-center gap-1 overflow-x-auto">
-        {rightContent}
-      </div>
+      {rightContent && (
+        <div className="scrollbar-thin flex min-h-10 w-full shrink-0 items-center justify-end gap-1 overflow-x-auto border-t px-2 xl:min-h-0 xl:w-auto xl:border-t-0 xl:px-0">
+          {rightContent}
+        </div>
+      )}
     </div>
   );
 }

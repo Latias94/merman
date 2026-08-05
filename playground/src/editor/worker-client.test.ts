@@ -327,11 +327,29 @@ test("query failure remains request-local", async () => {
 });
 
 test("message decode failure and unknown IDs poison the transport", async (t) => {
+  await t.test("worker error", async () => {
+    const worker = new PendingWorkerPort();
+    const client = await openedClient(worker);
+    const failures: Error[] = [];
+    client.onDidFail((error) => failures.push(error));
+
+    worker.emit("error", { message: "runtime crashed" });
+
+    assert.equal(failures.length, 1);
+    assert.match(failures[0]?.message ?? "", /failed: runtime crashed/);
+    assert.equal(worker.terminateCalls, 1);
+    assert.equal(worker.listenerCount(), 0);
+  });
+
   await t.test("messageerror", async () => {
     const worker = new PendingWorkerPort();
     const client = await openedClient(worker);
+    const failures: Error[] = [];
+    client.onDidFail((error) => failures.push(error));
     worker.emit("messageerror", {});
 
+    assert.equal(failures.length, 1);
+    assert.match(failures[0]?.message ?? "", /could not decode/);
     await assert.rejects(
       client.query(identity(1), { kind: "diagnostics" }),
       (error: unknown) => {
@@ -348,6 +366,8 @@ test("message decode failure and unknown IDs poison the transport", async (t) =>
   await t.test("unknown request id", async () => {
     const worker = new PendingWorkerPort();
     const client = await openedClient(worker);
+    const failures: Error[] = [];
+    client.onDidFail((error) => failures.push(error));
     worker.emitMessage({
       protocol: EDITOR_WORKER_PROTOCOL,
       requestId: 999,
@@ -355,6 +375,8 @@ test("message decode failure and unknown IDs poison the transport", async (t) =>
       result: null,
     });
 
+    assert.equal(failures.length, 1);
+    assert.match(failures[0]?.message ?? "", /unknown request ID 999/);
     await assert.rejects(
       client.query(identity(1), { kind: "diagnostics" }),
       (error: unknown) => {
@@ -394,6 +416,8 @@ test("stale query identities reject locally without poisoning the transport", as
 test("a duplicate response is a protocol failure", async () => {
   const worker = new PendingWorkerPort();
   const client = await openedClient(worker);
+  const failures: Error[] = [];
+  client.onDidFail((error) => failures.push(error));
   const query = client.query(identity(1), { kind: "diagnostics" });
   const request = await worker.takeEventually("query");
   const response = queryResponse(request, diagnosticsResult());
@@ -402,11 +426,44 @@ test("a duplicate response is a protocol failure", async () => {
 
   worker.emitMessage(response);
 
+  assert.equal(failures.length, 1);
+  assert.match(failures[0]?.message ?? "", /duplicate response/);
   await assert.rejects(
     client.query(identity(1), { kind: "diagnostics" }),
     /duplicate response/,
   );
   assert.equal(worker.terminateCalls, 1);
+});
+
+test("terminal failure subscriptions replay once and respect disposal", async () => {
+  const worker = new PendingWorkerPort();
+  const client = await initializedClient(worker);
+  const activeFailures: Error[] = [];
+  const removedFailures: Error[] = [];
+  const active = client.onDidFail((error) => activeFailures.push(error));
+  const removed = client.onDidFail((error) => removedFailures.push(error));
+  removed.dispose();
+
+  worker.emit("error", { message: "idle crash" });
+
+  assert.equal(activeFailures.length, 1);
+  assert.equal(removedFailures.length, 0);
+  const replayedFailures: Error[] = [];
+  const replayed = client.onDidFail((error) => replayedFailures.push(error));
+  assert.deepEqual(replayedFailures, activeFailures);
+
+  active.dispose();
+  replayed.dispose();
+  client.dispose();
+  assert.equal(activeFailures.length, 1);
+  assert.equal(replayedFailures.length, 1);
+
+  const healthyWorker = new PendingWorkerPort();
+  const healthyClient = await initializedClient(healthyWorker);
+  const disposalFailures: Error[] = [];
+  healthyClient.onDidFail((error) => disposalFailures.push(error));
+  healthyClient.dispose();
+  assert.deepEqual(disposalFailures, []);
 });
 
 test("cancelled requests allow one valid late response and reject a duplicate", async () => {

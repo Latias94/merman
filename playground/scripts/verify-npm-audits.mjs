@@ -23,12 +23,6 @@ export const NPM_AUDIT_POLICIES = Object.freeze([
     cwd: path.join(playgroundRoot, "tests"),
     omitDev: false,
   }),
-  Object.freeze({
-    id: "playground-tests-production",
-    auditLevel: "low",
-    cwd: path.join(playgroundRoot, "tests"),
-    omitDev: true,
-  }),
 ]);
 
 const SEVERITIES = Object.freeze([

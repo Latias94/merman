@@ -35,6 +35,7 @@ export interface EditorWorkerPort {
 
 export interface MermanLanguageWorkerClient {
   initialize(): Promise<EditorLanguageIdentity>;
+  onDidFail(listener: (error: Error) => void): { dispose(): void };
   openDocument(document: EditorDocumentSnapshot): Promise<void>;
   changeDocument(document: EditorDocumentSnapshot): Promise<void>;
   query<Query extends EditorWorkerQuery>(
@@ -169,6 +170,7 @@ export function startMermanLanguageWorkerClient(
 }
 
 class WorkerClient implements MermanLanguageWorkerClient {
+  private readonly failureListeners = new Set<(error: Error) => void>();
   private readonly pending = new Map<number, PendingRequest>();
   private readonly tombstones: RequestTombstoneLedger;
   private currentDocument: EditorDocumentIdentity | null = null;
@@ -350,6 +352,24 @@ class WorkerClient implements MermanLanguageWorkerClient {
     return this.initializePromise;
   }
 
+  onDidFail(listener: (error: Error) => void): { dispose(): void } {
+    if (this.disposed) return { dispose() {} };
+    if (this.failure) {
+      listener(this.failure);
+      return { dispose() {} };
+    }
+
+    this.failureListeners.add(listener);
+    let subscribed = true;
+    return {
+      dispose: () => {
+        if (!subscribed) return;
+        subscribed = false;
+        this.failureListeners.delete(listener);
+      },
+    };
+  }
+
   openDocument(document: EditorDocumentSnapshot): Promise<void> {
     this.assertReady();
     const snapshot = projectSnapshotForClient(document);
@@ -460,6 +480,7 @@ class WorkerClient implements MermanLanguageWorkerClient {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.failureListeners.clear();
     const failure = new Error("Merman editor worker was disposed.");
     this.failAll(failure);
     if (this.queuedSynchronization) {
@@ -725,12 +746,15 @@ class WorkerClient implements MermanLanguageWorkerClient {
   private poison(error: Error): void {
     if (this.failure || this.disposed) return;
     this.failure = error;
+    const listeners = [...this.failureListeners];
+    this.failureListeners.clear();
     this.failAll(error);
     if (this.queuedSynchronization) {
       rejectSynchronization(this.queuedSynchronization, error);
       this.queuedSynchronization = null;
     }
     this.closeTransport();
+    for (const listener of listeners) listener(error);
   }
 
   private closeTransport(): void {

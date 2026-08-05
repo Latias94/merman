@@ -75,6 +75,8 @@ export default function App() {
                 role={isNarrowLayout ? "tabpanel" : undefined}
                 aria-labelledby={isNarrowLayout ? "workspace-editor-tab" : undefined}
                 hidden={isNarrowLayout && workspacePane !== "editor"}
+                onFocusCapture={() => setWorkspacePane("editor")}
+                onPointerDownCapture={() => setWorkspacePane("editor")}
               >
                 <EditorPanel
                   editorMode={editorMode}
@@ -95,6 +97,8 @@ export default function App() {
                 role={isNarrowLayout ? "tabpanel" : undefined}
                 aria-labelledby={isNarrowLayout ? "workspace-preview-tab" : undefined}
                 hidden={isNarrowLayout && workspacePane !== "preview"}
+                onFocusCapture={() => setWorkspacePane("preview")}
+                onPointerDownCapture={() => setWorkspacePane("preview")}
               >
                 <PreviewPanel t={t} />
               </ResizablePanel>

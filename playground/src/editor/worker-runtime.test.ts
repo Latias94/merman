@@ -156,6 +156,26 @@ test("initialization rejects semantic descriptor drift before ready", async () =
   assert.match(response.message, /does not match/);
 });
 
+test("initialization rejects an unsupported Web transport API", async () => {
+  const port = new RuntimePort();
+  const runtimeBindings = bindings(createSession([]), []);
+  const runtime = createEditorWorkerRuntime(port, {
+    ...runtimeBindings,
+    runtimeCatalog: () =>
+      ({
+        transport_api_version: 4,
+        capabilities: { capability_ids: ["editor"] },
+      }) as RuntimeCatalog,
+    transportApiVersion: () => 4,
+  });
+
+  await runtime.receive(request(1, "initialize"));
+  const response = port.take(1);
+  assert.equal(response.type, "error");
+  assert.equal(response.code, "PROTOCOL_MISMATCH");
+  assert.match(response.message, /incompatible with 3/u);
+});
+
 test("invalid rename remains request-local and later diagnostics still work", async () => {
   const port = new RuntimePort();
   const session = createSession([]);

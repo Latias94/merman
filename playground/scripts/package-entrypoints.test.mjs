@@ -10,10 +10,6 @@ const npmrc = await readFile(
   path.resolve(import.meta.dirname, "..", ".npmrc"),
   "utf8"
 );
-const viteConfig = await readFile(
-  path.resolve(import.meta.dirname, "..", "vite.config.ts"),
-  "utf8",
-);
 const webPackageJson = JSON.parse(
   await readFile(
     path.resolve(
@@ -63,15 +59,6 @@ test("dev, build, and test fail closed on the selected full browser artifact", (
   ]);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /build:opaque-realm/);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /verify:opaque-realm/);
-  for (const packageName of Object.keys(packageJson.dependencies).filter((name) =>
-    name.startsWith("@mermanjs/web"),
-  )) {
-    assert.match(
-      viteConfig,
-      new RegExp(`exclude:[\\s\\S]*["']${packageName}["']`, "u"),
-      `${packageName} must retain its package-relative WASM URL`,
-    );
-  }
 });
 
 test("browser test tooling is isolated from the companion runtime tree", async () => {

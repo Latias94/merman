@@ -35,6 +35,18 @@ test("320px portrait keeps toolbar, workspace tabs, and preview controls reachab
   await page.keyboard.press("Enter");
   await expect(previewTab).toHaveAttribute("aria-selected", "true");
   await waitForPreviewSvg(page);
+  const previewModes = page.getByRole("tablist", {
+    name: "Preview",
+    exact: true,
+  });
+  expect(
+    await previewModes.evaluate((element) => element.clientWidth),
+  ).toBeGreaterThan(240);
+  for (const name of ["SVG", "Compare", "Diagnostics"]) {
+    const tab = previewModes.getByRole("tab", { name, exact: true });
+    await tab.scrollIntoViewIfNeeded();
+    await expectInsideViewport(page, tab);
+  }
   await expect
     .poll(() =>
       host.evaluate(
@@ -59,6 +71,22 @@ test("320px portrait keeps toolbar, workspace tabs, and preview controls reachab
     page.getByRole("textbox", { name: "Mermaid source" }),
   ).toBeVisible();
   await expectNoDocumentOverflow(page);
+  errors.assertNone();
+});
+
+test("mid-width layouts retain every toolbar action through compact controls", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 640, height: 720 });
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+
+  for (const width of [640, 768, 900, 1024]) {
+    await page.setViewportSize({ width, height: 720 });
+    await expectHeaderControlsInsideViewport(page);
+    await expectNoDocumentOverflow(page);
+  }
+
   errors.assertNone();
 });
 
@@ -97,6 +125,11 @@ test("Pixel portrait and a shortened viewport keep dialogs scrollable and dismis
   await benchTrigger.tap();
   const benchDialog = page.getByRole("dialog", { name: "Browser Benchmark" });
   await expect(benchDialog).toBeVisible();
+  await page.locator("html").evaluate((element) => {
+    element.style.setProperty("--merman-safe-area-inset-left", "44px");
+    element.style.setProperty("--merman-safe-area-inset-right", "12px");
+  });
+  await expect.poll(async () => (await benchDialog.boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(44);
   const run = benchDialog.getByRole("button", { name: "Run", exact: true });
   await expectInsideViewport(page, run);
   const scrollOwner = benchDialog.locator('[data-slot="scroll-area-viewport"]');
@@ -191,6 +224,12 @@ async function expectHeaderControlsInsideViewport(page: Page): Promise<void> {
     await expectInsideViewport(
       page,
       page.getByRole("button", { name, exact: true }),
+    );
+  }
+  if ((page.viewportSize()?.width ?? 0) >= 640) {
+    await expectInsideViewport(
+      page,
+      page.getByRole("link", { name: "View source on GitHub", exact: true }),
     );
   }
 }

@@ -28,6 +28,7 @@ import {
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
+  MERMAN_WEB_TRANSPORT_API_VERSION,
 } from "./protocol-version.ts";
 
 export { projectEditorSemanticTokenLegend, projectEditorWorkerQueryResult };
@@ -39,6 +40,7 @@ export type {
 export {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
+  MERMAN_WEB_TRANSPORT_API_VERSION,
   EditorWorkerProtocolProjectionError,
 };
 
@@ -329,14 +331,16 @@ export function projectEditorWorkerResponse(
       if (response.editorSchema !== EDITOR_SCHEMA_VERSION) {
         fail("Editor worker schema version is invalid.");
       }
+      if (
+        response.transportApiVersion !== MERMAN_WEB_TRANSPORT_API_VERSION
+      ) {
+        fail("Merman Web transport API version is incompatible.");
+      }
       return {
         protocol: EDITOR_WORKER_PROTOCOL,
         requestId,
         type: "ready",
-        transportApiVersion: expectPositiveSafeInteger(
-          response.transportApiVersion,
-          "transport API version",
-        ),
+        transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
         editorSchema: EDITOR_SCHEMA_VERSION,
         legendDigest: expectNonEmptyString(
           response.legendDigest,

@@ -545,6 +545,64 @@ test("language worker failure keeps the Monaco model editable and Retry reconnec
     .toBeGreaterThan(0);
 });
 
+test("an idle language worker failure exposes Retry without another request", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    class ObservableWorker extends NativeWorker {
+      constructor(
+        scriptURL: string | URL,
+        options?: { readonly name?: string },
+      ) {
+        super(scriptURL, options);
+        if (options?.name === "merman-editor-language") {
+          Object.defineProperty(window, "__mermanLanguageWorker", {
+            configurable: true,
+            value: this,
+          });
+        }
+      }
+    }
+    Object.defineProperty(window, "Worker", {
+      configurable: true,
+      value: ObservableWorker,
+      writable: true,
+    });
+  });
+
+  await openPlayground(page);
+  await expect(
+    page.getByText("Language tools initializing", { exact: true }),
+  ).toBeHidden();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          "__mermanLanguageWorker" in window &&
+          Boolean(
+            (window as Window & { __mermanLanguageWorker?: Worker })
+              .__mermanLanguageWorker,
+          ),
+      ),
+    )
+    .toBe(true);
+
+  await page.evaluate(() => {
+    const worker = (window as Window & { __mermanLanguageWorker?: Worker })
+      .__mermanLanguageWorker;
+    if (!worker) throw new Error("The Merman language worker was not captured.");
+    worker.dispatchEvent(
+      new ErrorEvent("error", { message: "injected idle failure" }),
+    );
+  });
+
+  await expect(
+    page.getByRole("button", { name: "Retry", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/injected idle failure/i)).toBeVisible();
+});
+
 test("an invalid F2 rename is request-local and diagnostics continue", async ({
   page,
 }) => {

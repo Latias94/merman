@@ -310,10 +310,8 @@ export function BenchDialog({
           restoreFocus();
         }}
         style={{
-          maxHeight:
-            "min(56rem, calc(100dvh - max(0.5rem, env(safe-area-inset-top)) - max(0.5rem, env(safe-area-inset-bottom))))",
-          width:
-            "min(56rem, calc(100vw - max(0.75rem, env(safe-area-inset-left)) - max(0.75rem, env(safe-area-inset-right))))",
+          maxHeight: "min(56rem, 100%)",
+          width: "min(56rem, 100%)",
           maxWidth: "none",
         }}
       >

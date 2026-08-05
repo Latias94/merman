@@ -6,6 +6,7 @@ import type {
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
+  MERMAN_WEB_TRANSPORT_API_VERSION,
   EditorWorkerProtocolProjectionError,
   projectEditorWorkerQueryResult,
   projectEditorWorkerRequest,
@@ -120,10 +121,10 @@ export function createEditorWorkerRuntime(
     if (!initializedContract) {
       await bindings.initMerman();
       const transportVersion = bindings.transportApiVersion();
-      if (!Number.isSafeInteger(transportVersion) || transportVersion < 1) {
+      if (transportVersion !== MERMAN_WEB_TRANSPORT_API_VERSION) {
         throw new WorkerStateError(
           "PROTOCOL_MISMATCH",
-          "Merman returned an invalid Web transport API version.",
+          `Merman Web transport API ${transportVersion} is incompatible with ${MERMAN_WEB_TRANSPORT_API_VERSION}.`,
         );
       }
       const catalog = bindings.runtimeCatalog();

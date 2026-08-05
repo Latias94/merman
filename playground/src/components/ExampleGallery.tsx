@@ -115,6 +115,7 @@ export function ExampleGallery({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        safeArea={false}
         showCloseButton={false}
         className="grid h-[100dvh] w-screen max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[min(90dvh,54rem)] sm:w-[calc(100vw-2rem)] sm:max-w-[76rem] sm:rounded-md sm:border"
         style={{

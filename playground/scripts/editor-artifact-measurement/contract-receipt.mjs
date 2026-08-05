@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 
 import {
   EDITOR_ARTIFACT_RECEIPT_SCHEMA_VERSION,
+  EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION,
   EDITOR_ARTIFACT_VARIANTS,
   PRIMARY_LATENCY_METRICS,
   assertExactRecord,
@@ -210,13 +211,17 @@ function validateSelectionInputs(value) {
       "measurementContractSha256",
       "schemaVersion",
       "startupClosureSha256",
-      "webSurfaceSha256",
       "workerClosureSha256",
     ],
     "selectionInputs",
   );
-  if (selectionInputs.schemaVersion !== 1) {
-    throw new TypeError("selectionInputs schemaVersion must be 1.");
+  if (
+    selectionInputs.schemaVersion !==
+    EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION
+  ) {
+    throw new TypeError(
+      `selectionInputs schemaVersion must be ${EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION}.`,
+    );
   }
   for (const field of [
     "editorPackageProvenanceSha256",
@@ -224,7 +229,6 @@ function validateSelectionInputs(value) {
     "fullPackageProvenanceSha256",
     "measurementContractSha256",
     "startupClosureSha256",
-    "webSurfaceSha256",
     "workerClosureSha256",
   ]) {
     expectSha256(selectionInputs[field], `selectionInputs ${field}`);

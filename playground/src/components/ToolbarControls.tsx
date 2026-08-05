@@ -330,7 +330,7 @@ export function ToolbarControls() {
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
-      <div className="sm:hidden">
+      <div className="xl:hidden">
         <DropdownMenuSeparator />
         <DropdownMenuLabel>{t("toolbar.toggleTheme")}</DropdownMenuLabel>
         <DropdownMenuRadioGroup
@@ -361,6 +361,29 @@ export function ToolbarControls() {
     </DropdownMenuContent>
   );
 
+  const renderRepositoryLink = () => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="hidden sm:inline-flex"
+          asChild
+        >
+          <a
+            href="https://github.com/Latias94/merman"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={t("toolbar.viewSource")}
+          >
+            <GitFork className="size-4" />
+          </a>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t("toolbar.viewSource")}</TooltipContent>
+    </Tooltip>
+  );
+
   return (
     <>
       <span
@@ -371,7 +394,7 @@ export function ToolbarControls() {
         {presentationStatusText}
       </span>
 
-        <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 sm:hidden">
+        <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 xl:hidden">
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -410,10 +433,11 @@ export function ToolbarControls() {
           </DropdownMenu>
 
           <ToolbarArtifactActions compact owner={artifactActions} />
+          {renderRepositoryLink()}
         </div>
 
         {/* Desktop presentation and artifact controls. */}
-        <div className="hidden min-w-0 items-center gap-2 sm:ml-auto sm:flex">
+        <div className="ml-auto hidden min-w-0 items-center gap-2 xl:flex">
           {/* Latest completed Merman render duration. */}
           {lastRenderTime > 0 && (
             <span className="text-xs text-muted-foreground hidden md:inline">
@@ -541,26 +565,7 @@ export function ToolbarControls() {
           </div>
 
           {/* Repository link. */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="hidden sm:inline-flex"
-                asChild
-              >
-                <a
-                  href="https://github.com/Latias94/merman"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={t("toolbar.viewSource")}
-                >
-                  <GitFork className="size-4" />
-                </a>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("toolbar.viewSource")}</TooltipContent>
-          </Tooltip>
+          {renderRepositoryLink()}
         </div>
     </>
   );

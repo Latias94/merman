@@ -13,6 +13,7 @@ export {
 };
 
 export const EDITOR_ARTIFACT_RECEIPT_SCHEMA_VERSION = 2;
+export const EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION = 2;
 export const DEFAULT_EDITOR_ARTIFACT_RECEIPT_PATH =
   "target/playground/editor-artifact-measurement/receipt-v2.json";
 export const CHECKED_EDITOR_ARTIFACT_RECEIPT_PATH =

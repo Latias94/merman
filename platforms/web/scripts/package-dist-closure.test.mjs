@@ -11,6 +11,7 @@ import test from "node:test";
 
 import {
   packageDistClosure,
+  packageRuntimeDistClosure,
 } from "./package-dist-closure.mjs";
 
 test("package dist closure follows JavaScript and declaration graphs exactly", () => {
@@ -48,6 +49,22 @@ test("package dist closure follows JavaScript and declaration graphs exactly", (
       "token-only.d.ts",
       "token-only.d.ts.map",
     ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime package closure is independent from declaration artifacts", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-runtime-closure-"));
+  try {
+    writeClosureFixture(root);
+    rmSync(path.join(root, "package-entries", "analysis.d.ts"));
+    assert.deepEqual(packageRuntimeDistClosure(root, "analysis").javascriptModules, [
+      "package-entries/analysis.js",
+      "public-catalog.js",
+      "runtime-core.js",
+    ]);
+    assert.throws(() => packageDistClosure(root, "analysis"), /Cannot resolve/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

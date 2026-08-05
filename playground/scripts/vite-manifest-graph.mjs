@@ -95,6 +95,71 @@ export function emittedFiles(graph, keys) {
   return new Set([...keys].map((key) => manifestChunk(graph, key).file));
 }
 
+export function emittedResources(graph, keys) {
+  const resources = new Set();
+  for (const key of keys) {
+    const chunk = manifestChunk(graph, key);
+    resources.add(chunk.file);
+    for (const file of [...chunk.css, ...chunk.assets]) resources.add(file);
+  }
+  return resources;
+}
+
+export function missingStaticStylesheets(graph, keys, linkedStylesheets) {
+  const linked = new Set(
+    [...linkedStylesheets].map((file) =>
+      emittedPath(file, "linked stylesheet"),
+    ),
+  );
+  const missing = new Set();
+  for (const key of keys) {
+    for (const file of manifestChunk(graph, key).css) {
+      if (!linked.has(file)) missing.add(file);
+    }
+  }
+  return Object.freeze(
+    [...missing].sort((left, right) => left.localeCompare(right, "en")),
+  );
+}
+
+export function manifestOutputs(graph) {
+  return Object.freeze(
+    Object.entries(graph.chunks).flatMap(([key, chunk]) => [
+      Object.freeze({ key, kind: "file", file: chunk.file }),
+      ...chunk.css.map((file) => Object.freeze({ key, kind: "css", file })),
+      ...chunk.assets.map((file) =>
+        Object.freeze({ key, kind: "asset", file }),
+      ),
+    ]),
+  );
+}
+
+export function missingManifestOutputs(graph, isAvailable) {
+  return Object.freeze(
+    manifestOutputs(graph).filter((output) => !isAvailable(output.file)),
+  );
+}
+
+export function htmlStaticAssets(html) {
+  const scripts = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/giu)].map(
+    (match) => Object.freeze({ kind: "script", url: match[1] }),
+  );
+  const links = [...html.matchAll(/<link\b[^>]*>/giu)].flatMap((match) => {
+    const href = attributeValue(match[0], "href");
+    const rel = attributeValue(match[0], "rel");
+    if (!href || !rel) return [];
+    const relations = new Set(rel.toLowerCase().split(/\s+/u));
+    if (relations.has("modulepreload")) {
+      return [Object.freeze({ kind: "modulepreload", url: href })];
+    }
+    if (relations.has("stylesheet")) {
+      return [Object.freeze({ kind: "stylesheet", url: href })];
+    }
+    return [];
+  });
+  return Object.freeze([...scripts, ...links]);
+}
+
 export function ownersOfAsset(graph, assetFile) {
   const asset = emittedPath(assetFile, "asset file");
   return Object.entries(graph.chunks)
@@ -123,6 +188,17 @@ function stringList(value, label) {
 
 function pathList(value, label) {
   return Object.freeze(stringList(value, label).map((item) => emittedPath(item, label)));
+}
+
+function attributeValue(tag, name) {
+  for (const match of tag.matchAll(
+    /([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gu,
+  )) {
+    if (match[1].toLowerCase() === name) {
+      return match[2] ?? match[3] ?? match[4];
+    }
+  }
+  return undefined;
 }
 
 function logicalId(value, label) {

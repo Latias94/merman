@@ -422,6 +422,19 @@ test("response projection binds positive request IDs and null synchronization ac
     legend: { tokenTypes: ["keyword"], tokenModifiers: [] },
   });
   assert.equal(ready.type, "ready");
+  assert.throws(
+    () =>
+      projectEditorWorkerResponse({
+        protocol: EDITOR_WORKER_PROTOCOL,
+        requestId: 1,
+        type: "ready",
+        transportApiVersion: 4,
+        editorSchema: EDITOR_SCHEMA_VERSION,
+        legendDigest: "legend-digest",
+        legend: { tokenTypes: ["keyword"], tokenModifiers: [] },
+      }),
+    /transport API version is incompatible/u,
+  );
 
   assert.deepEqual(
     projectEditorWorkerResponse({

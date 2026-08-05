@@ -441,7 +441,7 @@ Results:
   6,141,465 bytes for full, and peak memory was 30,961,757 bytes versus 30,751,189 bytes for full.
 - The authoritative result therefore retains `@mermanjs/web` for both the main renderer and the
   language Worker. Receipt schema 2 binds the measurement contract, startup and Worker closures,
-  Web surface, package provenance, and semantic evidence to deterministic content digests. The
+  exact runtime package provenance and semantic evidence to deterministic content digests. The
   hermetic authority verifier recomputes those inputs and the derived decision without a browser.
   The complete receipt is checked in at
   [`editor-artifact-receipt-v2.json`](./editor-artifact-receipt-v2.json).
@@ -578,7 +578,6 @@ npm run verify:dependencies --prefix playground
 npm audit --prefix playground
 npm audit --omit=dev --prefix playground
 npm audit --prefix playground/tests
-npm audit --omit=dev --prefix playground/tests
 npm run test:prepared --prefix playground
 npm run build --prefix playground
 npm run test:browser:chromium:desktop:built --prefix playground
@@ -590,8 +589,9 @@ npm --prefix playground/tests run test:desktop -- viewport-workspace.spec.ts \
 
 Results:
 
-- Dependency trees and the generated 250,560-byte production license report passed. Full and
-  production npm audits for both package roots reported zero vulnerabilities.
+- Dependency trees and the generated 250,560-byte production license report passed. The Playground
+  complete and production audits plus the browser-test tooling complete audit reported zero
+  vulnerabilities; the browser-test package has no production dependency graph to audit.
 - `npm outdated` reports only the intentional lines above: Node types 22.20.1, Mermaid 11.16.0,
   Monaco 0.55.1, and TypeScript 5.7.3. The Playwright runtime and test package are exactly 1.62.1.
 - Complete prepared tests passed: 38 build-graph, 53 editor Worker, 69 runtime/store/share,

@@ -20,10 +20,10 @@
     {
       "id": "VG-03",
       "disposition": "removed",
-      "legacyGate": "Exact private package import and retired-subpath source strings",
+      "legacyGate": "Exact private package imports, optimizeDeps entries, and retired-subpath source strings",
       "stableInvariant": "The selected Web package exposes the admitted capability surface and resolves through package exports.",
-      "replacementEvidence": "TypeScript package-export resolution fixture and structured package capability/entrypoint gates.",
-      "provingTests": ["scripts/typescript-source-graph.test.mjs", "scripts/package-entrypoints.test.mjs"]
+      "replacementEvidence": "TypeScript package-export and runtime-closure resolution, structured package/lock evidence, Vite emitted ownership, and the selected Worker closure package set.",
+      "provingTests": ["scripts/typescript-source-graph.test.mjs", "scripts/playground-build-policy.test.mjs", "scripts/package-entrypoints.test.mjs", "scripts/editor-artifact-measurement/contract.test.mjs"]
     },
     {
       "id": "VG-04",

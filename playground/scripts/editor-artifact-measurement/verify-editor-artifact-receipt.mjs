@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import ts from "typescript";
 
 import {
   CHECKED_EDITOR_ARTIFACT_RECEIPT_PATH,
   validateEditorArtifactReceipt,
 } from "./contract.mjs";
 import { editorArtifactSelectionInputs } from "./selection-inputs.mjs";
+import {
+  collectSourceClosure,
+  createTypeScriptSourceGraph,
+} from "../typescript-source-graph.mjs";
 
 const PACKAGE_SELECTIONS = Object.freeze({
   editor: Object.freeze({
@@ -29,7 +32,7 @@ export function verifyEditorArtifactAuthority({
   packageLock,
   receipt,
   selectionInputs,
-  workerSource,
+  workerGraph,
 }) {
   const validated = validateEditorArtifactReceipt(receipt);
   assert.equal(
@@ -46,7 +49,6 @@ export function verifyEditorArtifactAuthority({
     "measurementContractSha256",
     "startupClosureSha256",
     "workerClosureSha256",
-    "webSurfaceSha256",
     "fullPackageProvenanceSha256",
     "editorPackageProvenanceSha256",
     "equivalenceEvidenceSha256",
@@ -84,7 +86,7 @@ export function verifyEditorArtifactAuthority({
     );
   }
   assert.deepEqual(
-    workerWebPackageImports(workerSource),
+    workerWebPackageImports(workerGraph),
     WORKER_PACKAGE_SELECTIONS[validated.decision.selected],
     `Language Worker imports do not match the measured ${validated.decision.selected} artifact selection.`,
   );
@@ -95,25 +97,26 @@ export function verifyEditorArtifactAuthority({
   });
 }
 
-export function workerWebPackageImports(source) {
-  const sourceFile = ts.createSourceFile(
-    "merman-language.worker.ts",
-    source,
-    ts.ScriptTarget.Latest,
-    false,
-    ts.ScriptKind.TS,
-  );
-  const packages = new Set();
-  for (const statement of sourceFile.statements) {
-    if (
-      ts.isImportDeclaration(statement) &&
-      ts.isStringLiteralLike(statement.moduleSpecifier) &&
-      statement.moduleSpecifier.text.startsWith("@mermanjs/web")
-    ) {
-      packages.add(statement.moduleSpecifier.text);
-    }
-  }
-  return [...packages].sort((left, right) => left.localeCompare(right, "en"));
+export function workerWebPackageImports(
+  graph,
+  root = "src/editor/merman-language.worker.ts",
+) {
+  const runtimeClosure = collectSourceClosure(graph, [root], {
+    includeDynamic: true,
+  });
+  return [
+    ...new Set(
+      graph.edges
+        .filter(
+          (edge) =>
+            runtimeClosure.has(edge.from) &&
+            edge.external &&
+            edge.kind !== "type" &&
+            edge.specifier.startsWith("@mermanjs/web"),
+        )
+        .map((edge) => edge.specifier),
+    ),
+  ].sort((left, right) => left.localeCompare(right, "en"));
 }
 
 async function main() {
@@ -127,22 +130,20 @@ async function main() {
     repositoryRoot,
     "playground/package-lock.json",
   );
-  const workerPath = path.join(
-    repositoryRoot,
-    "playground/src/editor/merman-language.worker.ts",
-  );
-  const [receipt, packageJson, packageLock, workerSource] = await Promise.all([
-    ...[receiptPath, packagePath, packageLockPath].map(async (file) =>
+  const [receipt, packageJson, packageLock] = await Promise.all(
+    [receiptPath, packagePath, packageLockPath].map(async (file) =>
       JSON.parse(await readFile(file, "utf8")),
     ),
-    readFile(workerPath, "utf8"),
-  ]);
+  );
   const verified = verifyEditorArtifactAuthority({
     packageDependencies: packageJson.dependencies ?? {},
     packageLock,
     receipt,
     selectionInputs: editorArtifactSelectionInputs(repositoryRoot),
-    workerSource,
+    workerGraph: createTypeScriptSourceGraph({
+      rootDir: path.join(repositoryRoot, "playground"),
+      entries: ["src/editor/merman-language.worker.ts"],
+    }),
   });
   console.log(
     `[merman-playground] Editor Worker artifact: ${verified.selected}; selection-input schema ${verified.selectionInputs.schemaVersion}.`,

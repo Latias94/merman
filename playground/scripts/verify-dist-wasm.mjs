@@ -25,7 +25,11 @@ import {
 import {
   collectManifestClosure,
   emittedFiles,
+  emittedResources,
+  htmlStaticAssets,
   manifestChunk,
+  missingManifestOutputs,
+  missingStaticStylesheets,
   parseViteManifest,
   ownersOfAsset,
 } from "./vite-manifest-graph.mjs";
@@ -95,10 +99,17 @@ function loadBuildManifest() {
     fail([`  Invalid Vite build manifest: ${errorMessage(error)}`]);
   }
   const graph = parseViteManifest(value);
-  for (const [key, chunk] of Object.entries(graph.chunks)) {
-    if (!isNonEmptyFile(path.join(distRoot, chunk.file))) {
-      fail([`  Vite manifest node ${key} references missing output ${chunk.file}.`]);
-    }
+  const missing = missingManifestOutputs(graph, (file) =>
+    isNonEmptyFile(path.join(distRoot, file)),
+  );
+  if (missing.length > 0) {
+    fail([
+      "  Vite manifest references missing or empty outputs:",
+      ...missing.map(
+        (output) =>
+          `    - ${output.key} ${output.kind}: ${output.file}`,
+      ),
+    ]);
   }
   return graph;
 }
@@ -195,7 +206,7 @@ function verifyHtmlEntries(graph, pageEntries) {
         ...cspViolations.map((violation) => `    - ${violation}`),
       ]);
     }
-    const assets = htmlExecutableAssets(html);
+    const assets = htmlStaticAssets(html);
     for (const asset of assets) {
       if (/^https?:\/\//iu.test(asset.url)) {
         fail([`  ${page.source} references external ${asset.kind}: ${asset.url}`]);
@@ -222,13 +233,29 @@ function verifyHtmlEntries(graph, pageEntries) {
 }
 
 function verifyHtmlStaticClosure(label, assets, closure, graph) {
-  const files = emittedFiles(graph, closure);
-  const unexpected = assets
-    .map((asset) => relativeToDist(resolveDistPath(asset.url)))
+  const files = emittedResources(graph, closure);
+  const normalizedAssets = assets.map((asset) => ({
+    file: relativeToDist(resolveDistPath(asset.url)),
+    kind: asset.kind,
+  }));
+  const unexpected = normalizedAssets
+    .map((asset) => asset.file)
     .filter((file) => !files.has(file));
   if (unexpected.length > 0) {
     fail([
-      `  ${label} loads executable assets outside its static manifest closure: ${unexpected.join(", ")}`,
+      `  ${label} loads assets outside its static manifest closure: ${unexpected.join(", ")}`,
+    ]);
+  }
+  const missingStylesheets = missingStaticStylesheets(
+    graph,
+    closure,
+    normalizedAssets
+      .filter((asset) => asset.kind === "stylesheet")
+      .map((asset) => asset.file),
+  );
+  if (missingStylesheets.length > 0) {
+    fail([
+      `  ${label} omits stylesheets from its static manifest closure: ${missingStylesheets.join(", ")}`,
     ]);
   }
 }
@@ -289,18 +316,6 @@ function observeManifestClosure(keys, graph) {
     gzipBytes += gzipSync(source).byteLength;
   }
   return { files: files.size, rawBytes, gzipBytes };
-}
-
-function htmlExecutableAssets(html) {
-  const scripts = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/giu)].map(
-    (match) => ({ kind: "script", url: match[1] }),
-  );
-  const preloads = [
-    ...html.matchAll(
-      /<link\b(?=[^>]*\brel="modulepreload")(?=[^>]*\bhref="([^"]+)")[^>]*>/giu,
-    ),
-  ].map((match) => ({ kind: "modulepreload", url: match[1] }));
-  return [...scripts, ...preloads];
 }
 
 function resolveDistPath(assetPath) {

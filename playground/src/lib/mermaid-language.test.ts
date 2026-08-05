@@ -302,6 +302,9 @@ function fakeLanguageClient(
     async initialize() {
       return IDENTITY;
     },
+    onDidFail() {
+      return { dispose() {} };
+    },
     async openDocument() {},
     async changeDocument(document) {
       this.changedSnapshots.push({
