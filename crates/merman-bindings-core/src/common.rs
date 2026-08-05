@@ -94,16 +94,6 @@ impl BindingResourceLimitCause {
     }
 }
 
-impl From<merman::resources::ResourceLimitCause> for BindingResourceLimitCause {
-    fn from(value: merman::resources::ResourceLimitCause) -> Self {
-        match value {
-            merman::resources::ResourceLimitCause::Ceiling => Self::Ceiling,
-            merman::resources::ResourceLimitCause::ArithmeticOverflow => Self::ArithmeticOverflow,
-            _ => Self::Unknown,
-        }
-    }
-}
-
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingStatus {
