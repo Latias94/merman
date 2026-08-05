@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "VG-01",
+      "disposition": "removed",
+      "legacyGate": "Handwritten extension and alias resolver in benchmark-build-graph.mjs",
+      "stableInvariant": "Benchmark source ownership follows the same module resolution as the TypeScript compiler, including type-only edges.",
+      "replacementEvidence": "TypeScript Program and module resolver source graph plus benchmark ownership policy.",
+      "provingTests": ["scripts/typescript-source-graph.test.mjs", "scripts/playground-build-policy.test.mjs"]
+    },
+    {
+      "id": "VG-02",
+      "disposition": "removed",
+      "legacyGate": "Parser variants and exact non-literal import counts",
+      "stableInvariant": "Shipped realm and engine relationships remain isolated without depending on private loader spelling.",
+      "replacementEvidence": "TypeScript ownership closure, Vite emitted closure, single-chunk build metadata, and real realm smoke.",
+      "provingTests": ["scripts/playground-build-policy.test.mjs", "tests/benchmark.realm.spec.ts"]
+    },
+    {
+      "id": "VG-03",
+      "disposition": "removed",
+      "legacyGate": "Exact private package import and retired-subpath source strings",
+      "stableInvariant": "The selected Web package exposes the admitted capability surface and resolves through package exports.",
+      "replacementEvidence": "TypeScript package-export resolution fixture and structured package capability/entrypoint gates.",
+      "provingTests": ["scripts/typescript-source-graph.test.mjs", "scripts/package-entrypoints.test.mjs"]
+    },
+    {
+      "id": "VG-04",
+      "disposition": "removed",
+      "legacyGate": "Repeated engine, bootstrap, page, output, CSP, and public-asset tables",
+      "stableInvariant": "Every generated artifact and owning page has exactly one declarative owner.",
+      "replacementEvidence": "Validated canonical opaque-realm artifact plan and generated static browser projections.",
+      "provingTests": ["scripts/opaque-realm-artifact-plan.test.mjs", "scripts/opaque-realm-artifact-verifier.test.mjs"]
+    },
+    {
+      "id": "VG-05",
+      "disposition": "removed",
+      "legacyGate": "Legacy generated-name cleanup constants",
+      "stableInvariant": "Generated and public directories contain exactly the current plan-owned files.",
+      "replacementEvidence": "Fail-closed exact directory ownership before and after generation.",
+      "provingTests": ["scripts/opaque-realm-artifact-verifier.test.mjs"]
+    },
+    {
+      "id": "VG-06",
+      "disposition": "removed",
+      "legacyGate": "__mermanEngineArtifact sentinel and source-marker assertions",
+      "stableInvariant": "Each engine module has the exact admitted exports and is evaluated only by the verified realm loader.",
+      "replacementEvidence": "Rolldown chunk export metadata, realm exact-export validators, digest-before-import tests, and cold/warm realm traces.",
+      "provingTests": ["src/runtime/realm/engine-artifact-loader.test.ts", "tests/benchmark.realm.spec.ts"]
+    },
+    {
+      "id": "VG-07",
+      "disposition": "removed",
+      "legacyGate": "Bootstrap source searches for Mermaid version and ZenUML package spellings",
+      "stableInvariant": "Inline bootstraps contain no engine implementation and receive only a bound engine identity.",
+      "replacementEvidence": "Single-chunk bootstrap build with injected engine identity, generated plan projection, and authenticated realm-init validation.",
+      "provingTests": ["scripts/opaque-realm-artifact-verifier.test.mjs", "src/runtime/realm/channel-protocol.test.ts"]
+    },
+    {
+      "id": "VG-08",
+      "disposition": "removed",
+      "legacyGate": "Compiled chunk searches for an artifact URL and SHA literal",
+      "stableInvariant": "The browser fetches the plan-owned same-origin artifact and verifies its generated digest before import.",
+      "replacementEvidence": "Generated literal browser projection, public-byte identity verification, bounded fetch tests, and digest-before-import tests.",
+      "provingTests": ["scripts/opaque-realm-artifact-verifier.test.mjs", "src/runtime/realm/static-engine-artifact.test.ts", "src/runtime/realm/engine-artifact-loader.test.ts"]
+    },
+    {
+      "id": "VG-09",
+      "disposition": "removed",
+      "legacyGate": "Regular-expression checks for static and dynamic import syntax in built source",
+      "stableInvariant": "Engine artifacts contain no runtime module request; inline bootstraps emit one chunk with no external asset and import only digest-verified source.",
+      "replacementEvidence": "Rolldown output metadata, a TypeScript AST check of emitted engine code, and digest-before-blob-import behavior tests.",
+      "provingTests": ["scripts/runtime-module-request-policy.test.mjs", "src/runtime/realm/engine-artifact-loader.test.ts", "scripts/opaque-realm-artifact-verifier.test.mjs"]
+    },
+    {
+      "id": "VG-10",
+      "disposition": "removed",
+      "legacyGate": "Duplicate optional-feature and dist manifest traversal",
+      "stableInvariant": "Initial, dynamic, realm, and WASM output ownership are derived from one validated Vite manifest graph.",
+      "replacementEvidence": "Vite manifest adapter and emitted-graph policy.",
+      "provingTests": ["scripts/vite-manifest-graph.test.mjs", "scripts/playground-build-policy.test.mjs"]
+    },
+    {
+      "id": "VG-11",
+      "disposition": "removed",
+      "legacyGate": "VM/transpile semantic Worker harness",
+      "stableInvariant": "The production Worker runtime and all query contracts remain directly testable and work in a real module Worker.",
+      "replacementEvidence": "Importable Worker core tests and Monaco Worker browser smoke.",
+      "provingTests": ["src/editor/worker-runtime.test.ts", "tests/monaco.worker.spec.ts"]
+    },
+    {
+      "id": "VG-12",
+      "disposition": "retained",
+      "legacyGate": "Inline </script> defense and CSP hash binding",
+      "stableInvariant": "Generated inline bootstrap bytes cannot terminate their script element and are admitted by exactly their SHA-256 CSP hash.",
+      "replacementEvidence": "Plan-driven builder, prepared verifier, document validator, and CSP policy.",
+      "provingTests": ["scripts/opaque-realm-artifact-verifier.test.mjs", "scripts/csp-policy.test.mjs"]
+    },
+    {
+      "id": "VG-13",
+      "disposition": "retained",
+      "legacyGate": "Opaque origin, authenticated bounded channel, strict SVG, and digest-before-import boundaries",
+      "stableInvariant": "Untrusted Mermaid executes in an opaque realm with bounded authenticated messages and only strictly projected SVG crosses the boundary.",
+      "replacementEvidence": "Realm protocol/runtime unit tests and browser isolation flows.",
+      "provingTests": ["src/runtime/realm/channel-protocol.test.ts", "src/runtime/realm/engine-artifact-loader.test.ts", "tests/benchmark.realm.spec.ts"]
+    },
+    {
+      "id": "VG-14",
+      "disposition": "retained",
+      "legacyGate": "Merman same-origin WASM resource exception",
+      "stableInvariant": "Only benchmark-merman may receive one same-origin validated WASM resource URL.",
+      "replacementEvidence": "Generated resource policy, realm-init validation, engine URL/MIME checks, and Vite asset ownership.",
+      "provingTests": ["src/runtime/realm/channel-protocol.test.ts", "tests/benchmark.realm.spec.ts", "scripts/playground-build-policy.test.mjs"]
+    },
+    {
+      "id": "VG-15",
+      "disposition": "retained",
+      "legacyGate": "Package capability, dependency audit, and license gates",
+      "stableInvariant": "Published dependencies and Web capability surface are explicit, audited, and licensed.",
+      "replacementEvidence": "Structured package manifests/locks, Web capability verifier, npm audit, and license digest.",
+      "provingTests": ["scripts/package-entrypoints.test.mjs"]
+    }
+  ]
+}

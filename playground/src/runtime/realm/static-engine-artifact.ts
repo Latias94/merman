@@ -6,6 +6,7 @@ import {
   type RealmEngineArtifact,
   type RealmEngineArtifactId,
 } from "./channel-protocol.ts";
+import { isRealmEngineArtifactId } from "./generated/opaque-realm-plan.generated.ts";
 
 interface GeneratedEngineManifest {
   readonly bytes: unknown;
@@ -69,7 +70,7 @@ function validateGeneratedEngineManifest(
     keys.length !== ENGINE_MANIFEST_KEYS.length ||
     !ENGINE_MANIFEST_KEYS.every((name, index) => keys[index] === name) ||
     manifest.schemaVersion !== 1 ||
-    (manifest.id !== "mermaid" && manifest.id !== "benchmark-merman") ||
+    !isRealmEngineArtifactId(manifest.id) ||
     typeof manifest.bytes !== "number" ||
     !Number.isSafeInteger(manifest.bytes) ||
     manifest.bytes <= 0 ||

@@ -17,7 +17,15 @@
     },
     {
       "path": "playground/scripts/build-opaque-realm.mjs",
-      "sha256": "8e30d43e3d2f360a3510ebcd2693ee34fb0130b05034176d4656e858099d2abf"
+      "sha256": "75471175cd02d74df150d90a0b577cd71b1fc5a48664cf86a1e00b3a4d16833b"
+    },
+    {
+      "path": "playground/scripts/opaque-realm-artifact-plan.mjs",
+      "sha256": "21c83840d57df9ea2c1b6858cf7882b801d32fbf51044133f9abdb305a67764a"
+    },
+    {
+      "path": "playground/scripts/opaque-realm-browser-projection.mjs",
+      "sha256": "131bc598d8d1e023a04c7322edef2246331dfa4f1c2a6c4c6792d26382eda557"
     },
     {
       "path": "playground/scripts/zenuml-admission-reporter.mjs",
@@ -25,19 +33,23 @@
     },
     {
       "path": "playground/scripts/zenuml-browser-admission.mjs",
-      "sha256": "1273733130a8c059466c13c971f84222e98e6185030d2cac1117fe2af7a87288"
+      "sha256": "7f62f111dd2f0e44ae7db3d0cc0fa55086b20eb9d9dc39096981509d9af246b1"
     },
     {
       "path": "playground/src/benchmark/realm/bootstrap.ts",
-      "sha256": "f1720bc29d44b74cad9dbeb032d7af1e0071ba575b3dcb094346398b3bbdcba1"
+      "sha256": "54557e4d02ec075b2e4eb7263269d9e391a5474c308599ae02f9f3fc5e76bc71"
     },
     {
       "path": "playground/src/benchmark/realm/controller.ts",
-      "sha256": "54c22665ad0b0f38d79238e672fc678a72dee7376e8fba36457d933060d1c821"
+      "sha256": "6ae22f005aaf118cb983dd7c32f22f684d6581623efc7201a4ca7132acc777c2"
     },
     {
       "path": "playground/src/benchmark/realm/engines/mermaid.ts",
       "sha256": "c32e2041dc9b10200329cd3904a2c91c994cf85031adead40988fd8aa377c1fc"
+    },
+    {
+      "path": "playground/src/benchmark/realm/opaque-mermaid-artifact.ts",
+      "sha256": "1443069d0d5b62935bd439c0c79d9434b4547d38e3dbd75830a479f482acf516"
     },
     {
       "path": "playground/src/benchmark/realm/opaque-mermaid-entry.ts",
@@ -49,15 +61,19 @@
     },
     {
       "path": "playground/src/runtime/realm/channel-protocol.ts",
-      "sha256": "4d946ef2686efddc0d6c33e454855ee12aded129bc4fb63fe80aea8bf979bbf7"
+      "sha256": "2d98f8e6d4a9415cc28be16a10896586448e045315f0157e22753d1b81da5fbc"
     },
     {
-      "path": "playground/src/runtime/realm/opaque-realm-artifacts.ts",
-      "sha256": "5746b70db13fa81778f7ae818850e1883d999b22e1df9b204b327cbcd4ed58e9"
+      "path": "playground/src/runtime/realm/opaque-compare-artifact.ts",
+      "sha256": "7dd48db50ef2b8eb5fe3739c2902a184738e40f1b8894badaafdb7ade3325cc2"
     },
     {
       "path": "playground/src/runtime/realm/opaque-realm-document.ts",
       "sha256": "17c485c8bd0892be64e354b43eb554fd1d522b9ddf758a6fcdb8fb53d71bbeea"
+    },
+    {
+      "path": "playground/src/runtime/realm/opaque-realm-projection.ts",
+      "sha256": "cb2f1ce814f8dca3ac0eb0389cfd9c0ed9574a321d1c111406756f9d480874dc"
     },
     {
       "path": "playground/src/runtime/render-artifact.ts",
@@ -65,7 +81,7 @@
     },
     {
       "path": "playground/tests/benchmark.realm.spec.ts",
-      "sha256": "a5e87c8f93e0143f1f8bc7c9a152b82cc5c16ee07a6f0b1a4796c7b79f4ee958"
+      "sha256": "53f75bed056c0358ebc4f2482e36db0b21c114aec13ad847874af04492b69033"
     }
   ],
   "projects": [

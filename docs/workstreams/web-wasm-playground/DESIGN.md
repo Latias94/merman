@@ -78,6 +78,13 @@ registration, initialization, render, and ZenUML recovery. The parent alone conv
 markup into `SafeInlineSvg` through the shared strict validator immediately before publication.
 Timeout, protocol corruption, invalid SVG, or navigation poisons and destroys the realm.
 
+One declarative artifact plan owns engine identities, source entries, generated/public outputs,
+realm shape, resource policies, page inputs, and CSP placeholders. Bootstrap versus page ownership
+derives the document and manifest shape instead of storing redundant profile labels. Node builders
+and verifiers consume that plan directly. Checked-in generated TypeScript leaves retain literal
+Vite imports and keep Compare, opaque Benchmark Mermaid, and trusted Benchmark Merman activation
+payloads separate.
+
 The visible interactive render timer measures the actual source. There is no hidden synthetic
 render. The preview separately records when a validated artifact reaches its presentation
 boundary; this feedback is not represented as a formal cross-engine benchmark.
@@ -169,7 +176,8 @@ The closed lane is protected by:
 - Web package type/export/preset/smoke/ABI and size-budget gates;
 - exact generated diagram and example catalog checks;
 - runtime, render coordinator, realm protocol, queue, benchmark, and Worker unit tests;
-- production build graph and artifact checks;
+- TypeScript-resolved source/type ownership and Vite-manifest emitted ownership as separate graphs;
+- plan-driven prepared artifact, CSP, public-byte, and production dist checks;
 - real-browser startup, render, Compare, Monaco Worker, BFCache/teardown, accessibility, responsive,
   CSP, and benchmark tests.
 

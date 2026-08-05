@@ -119,7 +119,7 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   const opaqueArtifactRequests: string[] = [];
   page.on("request", (request) => {
     const pathname = new URL(request.url()).pathname;
-    if (/\/assets\/opaque-realm-artifacts-[\w-]+\.js$/.test(pathname)) {
+    if (/\/assets\/opaque-compare-artifact-[\w-]+\.js$/u.test(pathname)) {
       opaqueArtifactRequests.push(request.url());
     }
   });

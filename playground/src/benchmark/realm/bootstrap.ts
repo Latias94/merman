@@ -32,6 +32,7 @@ import {
   type RealmEngineArtifactId,
   type RealmIdentity,
 } from "../../runtime/realm/channel-protocol.ts";
+import { REALM_ENGINE_MODULE_EXPORTS } from "../../runtime/realm/generated/opaque-realm-plan.generated.ts";
 import {
   verifyAndCreateRealmEngineModuleLoader,
 } from "../../runtime/realm/engine-artifact-loader.ts";
@@ -81,20 +82,13 @@ interface BenchmarkEngineModule {
   readonly benchmarkEngineAdapter: BenchmarkEngineAdapter;
 }
 
-const ENGINE_MODULE_EXPORTS: Readonly<
-  Record<RealmEngineArtifactId, readonly string[]>
-> = Object.freeze({
-  mermaid: Object.freeze(["benchmarkEngineAdapter", "renderWithMermaid"]),
-  "benchmark-merman": Object.freeze(["benchmarkEngineAdapter"]),
-});
-
 export function validateBenchmarkEngineModule(
   module: Record<string, unknown>,
   artifactId: RealmEngineArtifactId
 ): BenchmarkEngineModule {
   const adapter = module.benchmarkEngineAdapter;
   if (
-    !hasExactExports(module, ENGINE_MODULE_EXPORTS[artifactId]) ||
+    !hasExactExports(module, REALM_ENGINE_MODULE_EXPORTS[artifactId]) ||
     typeof adapter !== "object" ||
     adapter === null ||
     typeof (adapter as { initialize?: unknown }).initialize !== "function"

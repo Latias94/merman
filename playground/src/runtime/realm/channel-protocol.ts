@@ -10,8 +10,14 @@ import {
   exceedsUtf8ByteBudget,
   utf8ByteLength,
 } from "../../lib/utf8.ts";
+import {
+  isRealmEngineArtifactId,
+  REALM_ENGINE_RESOURCE_POLICIES,
+  type RealmEngineArtifactId,
+} from "./generated/opaque-realm-plan.generated.ts";
 
 export { utf8ByteLength } from "../../lib/utf8.ts";
+export type { RealmEngineArtifactId } from "./generated/opaque-realm-plan.generated.ts";
 
 export const REALM_PROTOCOL_VERSION = 2 as const;
 
@@ -44,9 +50,6 @@ export const BENCHMARK_BUDGETS = Object.freeze({
 });
 
 export type RealmKind = "compare" | "benchmark";
-export type RealmEngineArtifactId =
-  | "mermaid"
-  | "benchmark-merman";
 
 export interface RealmEngineArtifactIdentity {
   readonly bytes: number;
@@ -347,6 +350,7 @@ export function validateRealmEngineArtifact(
   if (
     expected.schemaVersion !== 1 ||
     artifact.schemaVersion !== 1 ||
+    !isRealmEngineArtifactId(artifact.id) ||
     artifact.id !== expected.id ||
     artifact.bytes !== expected.bytes ||
     artifact.sha256 !== expected.sha256 ||
@@ -372,9 +376,13 @@ export function validateRealmEngineArtifact(
   ) {
     throw new RealmProtocolError("Realm engine resource URL is invalid.");
   }
-  if (artifact.id !== "benchmark-merman" && resourceUrl !== null) {
+  const resourcePolicy = REALM_ENGINE_RESOURCE_POLICIES[artifact.id];
+  if (
+    (resourcePolicy === "none-v1" && resourceUrl !== null) ||
+    (resourcePolicy === "same-origin-wasm-v1" && resourceUrl === null)
+  ) {
     throw new RealmProtocolError(
-      "Only the Merman benchmark may receive an engine resource URL."
+      "Realm engine resource URL does not match its generated policy."
     );
   }
   return Object.freeze({

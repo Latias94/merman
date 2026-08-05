@@ -33,6 +33,7 @@ import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
 import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
 import { LazyFeatureBoundary } from "@/src/components/LazyFeatureBoundary";
+import { pauseRenderCoordinator } from "@/src/runtime/render-coordinator-browser";
 import {
   asciiSupportDescription,
   asciiSupportLabelKey,
@@ -171,6 +172,7 @@ function BenchLauncher() {
           <BenchWorkbench
             open={open}
             onOpenChange={setOpen}
+            pauseCoordinator={pauseRenderCoordinator}
             restoreFocus={restoreFocus}
           />
         </LazyFeatureBoundary>

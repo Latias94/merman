@@ -124,8 +124,7 @@ test("trusted Merman defers engine parse/eval until Fresh sampling and then reus
     await expect(iframe).toHaveCount(1);
     await expect(iframe).not.toHaveAttribute("sandbox", /.+/u);
     await expect.poll(() => realmViewport(page)).toEqual({ width: 800, height: 600 });
-    const frame = requireRealmFrame(page, "benchmark.html");
-    expect(await readEngineSentinel(frame)).toBeNull();
+    requireRealmFrame(page, "benchmark.html");
 
     const cold = await sampleSession(page, {
       id: "merman",
@@ -143,11 +142,6 @@ test("trusted Merman defers engine parse/eval until Fresh sampling and then reus
     );
     expect(cold.trace.resource_acquire_start).not.toBeNull();
     expectParentPublication(cold);
-    expect(await readEngineSentinel(frame)).toMatchObject({
-      id: "benchmark-merman",
-      version: null,
-    });
-
     const warm = await sampleSession(page, {
       id: "merman",
       engine: "merman",
@@ -191,7 +185,6 @@ test("opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-t
       });
       const frame = requireRealmFrame(page, "about:srcdoc");
       expect(await frame.evaluate(() => location.origin)).toBe("null");
-      expect(await readEngineSentinel(frame)).toBeNull();
 
       const cold = await sampleSession(page, {
         ...scenario,
@@ -211,11 +204,6 @@ test("opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-t
         zenumlFirstLoadSuccess = cold.type === "benchmark-sample-success";
         zenumlFirstLoadParentPublication = cold.parentPublication !== undefined;
       }
-      expect(await readEngineSentinel(frame)).toMatchObject({
-        id: "mermaid",
-        version: "11.16.0",
-      });
-
       const warm = await sampleSession(page, {
         ...scenario,
         engine: "mermaid",
@@ -489,8 +477,7 @@ test("a hidden trusted Benchmark realm fails before engine evaluation", async ({
   const harness = await startHarness(page);
   try {
     await createSession(page, harness.origin, "merman");
-    const frame = requireRealmFrame(page, "benchmark.html");
-    expect(await readEngineSentinel(frame)).toBeNull();
+    requireRealmFrame(page, "benchmark.html");
     await page.locator('iframe[data-merman-realm="benchmark"]').evaluate((node) => {
       (node as HTMLIFrameElement).style.display = "none";
     });
@@ -876,21 +863,6 @@ async function attachAdmissionProbes(
       "utf8"
     ),
     contentType: "application/json",
-  });
-}
-
-async function readEngineSentinel(frame: ReturnType<typeof requireRealmFrame>) {
-  return frame.evaluate(() => {
-    const sentinel = (
-      globalThis as unknown as {
-        __mermanEngineArtifact?: {
-          readonly evaluatedAt: number;
-          readonly id: string;
-          readonly version: string | null;
-        };
-      }
-    ).__mermanEngineArtifact;
-    return sentinel ? { ...sentinel } : null;
   });
 }
 

@@ -116,7 +116,7 @@ export async function createBrowserBenchmarkRealmSession(
   const setupStartedAt = performance.now();
   const opaqueRealm =
     engine === "mermaid"
-      ? await import("../../runtime/realm/opaque-realm-artifacts.ts")
+      ? await import("./opaque-mermaid-artifact.ts")
       : null;
   const mermanRealm =
     engine === "merman" ? await import("./merman-engine-artifact.ts") : null;

@@ -2,26 +2,27 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { isCspHash } from "./csp-policy.mjs";
+import {
+  OPAQUE_REALM_ARTIFACT_PLAN,
+  realmForKey,
+} from "./opaque-realm-artifact-plan.mjs";
 
-const PAGE_CONTRACTS = Object.freeze({
-  "index.html": Object.freeze([
-    Object.freeze({
-      manifest: "opaque-compare-bootstrap.json",
-      placeholder: "__MERMAN_COMPARE_BOOTSTRAP_CSP_HASH__",
-    }),
-    Object.freeze({
-      manifest: "opaque-benchmark-mermaid-bootstrap.json",
-      placeholder: "__MERMAN_BENCHMARK_BOOTSTRAP_CSP_HASH__",
-    }),
-  ]),
-  "benchmark-corpus.html": Object.freeze([
-    Object.freeze({
-      manifest: "opaque-benchmark-mermaid-bootstrap.json",
-      placeholder: "__MERMAN_BENCHMARK_BOOTSTRAP_CSP_HASH__",
-    }),
-  ]),
-  "benchmark.html": Object.freeze([]),
-});
+const PAGE_CONTRACTS = Object.freeze(
+  Object.fromEntries(
+    OPAQUE_REALM_ARTIFACT_PLAN.pages.map((page) => [
+      page.source,
+      Object.freeze(
+        page.inlineRealms.map((realmKey) => {
+          const realm = realmForKey(OPAQUE_REALM_ARTIFACT_PLAN, realmKey);
+          return Object.freeze({
+            manifest: `${realm.bootstrap.outputBase}.json`,
+            placeholder: realm.bootstrap.cspPlaceholder,
+          });
+        }),
+      ),
+    ]),
+  ),
+);
 
 export function loadOpaqueRealmCspHashes(playgroundRoot) {
   const manifestHashes = new Map();
@@ -89,7 +90,11 @@ export function createOpaqueRealmCspPlugin(hashes) {
 }
 
 function loadManifestHash(playgroundRoot, fileName, manifestFile, cache) {
-  const manifestPath = path.join(playgroundRoot, ".runtime", manifestFile);
+  const manifestPath = path.join(
+    playgroundRoot,
+    OPAQUE_REALM_ARTIFACT_PLAN.roots.generated,
+    manifestFile,
+  );
   const cached = cache.get(manifestPath);
   if (cached) return cached;
   let manifest;
@@ -98,6 +103,7 @@ function loadManifestHash(playgroundRoot, fileName, manifestFile, cache) {
   } catch (error) {
     throw new Error(
       `Cannot read the ${fileName} opaque-realm CSP manifest at ${manifestPath}: ${errorMessage(error)}`,
+      { cause: error },
     );
   }
   if (

@@ -52,19 +52,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppStore } from "@/src/store";
-import {
-  benchmarkController,
-  benchmarkDocumentLifecycle,
-} from "@/src/benchmark/browser";
 import type {
   BenchmarkDialogAction,
   BenchmarkDialogState,
 } from "@/src/benchmark/dialog-state";
 import { downloadBenchmarkReport } from "@/src/benchmark/report";
 import type {
+  BenchmarkController,
   BenchmarkControllerState,
   BenchmarkRunRequest,
 } from "@/src/benchmark/controller";
+import type { BenchmarkDocumentLifecycle } from "@/src/benchmark/document-lifecycle";
 import type {
   BenchmarkIntervalName,
   BenchmarkRecordedFailure,
@@ -124,6 +122,8 @@ type SetupMetric = (typeof SETUP_METRICS)[number];
 const WARMUP_OPTIONS = [0, 1, 2, 3, 5] as const;
 
 export function BenchDialog({
+  benchmarkController,
+  benchmarkDocumentLifecycle,
   dialogState,
   dispatchDialog,
   open,
@@ -132,6 +132,8 @@ export function BenchDialog({
   runFingerprint,
   setRunFingerprint,
 }: {
+  readonly benchmarkController: BenchmarkController;
+  readonly benchmarkDocumentLifecycle: BenchmarkDocumentLifecycle;
   readonly dialogState: BenchmarkDialogState;
   readonly dispatchDialog: Dispatch<BenchmarkDialogAction>;
   readonly open: boolean;
@@ -204,12 +206,12 @@ export function BenchDialog({
     return benchmarkDocumentLifecycle.subscribe((signal) => {
       setVisible(signal.visibilityState === "visible");
     });
-  }, []);
+  }, [benchmarkDocumentLifecycle]);
 
   useEffect(() => {
     if (!runFingerprint || fingerprint === runFingerprint) return;
     if (state.status !== "idle") benchmarkController.markStale();
-  }, [fingerprint, runFingerprint, state.status]);
+  }, [benchmarkController, fingerprint, runFingerprint, state.status]);
 
   useEffect(() => {
     if (!running) return;
@@ -236,7 +238,7 @@ export function BenchDialog({
         benchmarkController.cancel("dialog-unmounted");
       }
     },
-    [],
+    [benchmarkController],
   );
 
   const handleOpenChange = useCallback(
@@ -249,7 +251,7 @@ export function BenchDialog({
       }
       onOpenChange(nextOpen);
     },
-    [onOpenChange],
+    [benchmarkController, onOpenChange],
   );
 
   const handleRun = useCallback(() => {
@@ -327,6 +329,7 @@ export function BenchDialog({
     }
   }, [
     code,
+    benchmarkController,
     diagramFont,
     diagramTheme,
     dispatchDialog,

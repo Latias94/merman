@@ -14,6 +14,17 @@ const viteConfig = await readFile(
   path.resolve(import.meta.dirname, "..", "vite.config.ts"),
   "utf8",
 );
+const webPackageJson = JSON.parse(
+  await readFile(
+    path.resolve(
+      import.meta.dirname,
+      "..",
+      "..",
+      "platforms/web/packages/full/package.json",
+    ),
+    "utf8",
+  ),
+);
 
 test("dev, build, and test fail closed on the selected full browser artifact", () => {
   assert.match(npmrc, /^ignore-scripts=true$/mu);
@@ -44,6 +55,11 @@ test("dev, build, and test fail closed on the selected full browser artifact", (
       "@mermanjs/web": "file:../platforms/web/packages/full",
     },
   );
+  assert.deepEqual(Object.keys(webPackageJson.exports ?? {}), ["."]);
+  assert.deepEqual(Object.keys(webPackageJson.exports["."]).sort(), [
+    "import",
+    "types",
+  ]);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /build:opaque-realm/);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /verify:opaque-realm/);
   for (const packageName of Object.keys(packageJson.dependencies).filter((name) =>

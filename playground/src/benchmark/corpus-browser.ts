@@ -3,14 +3,8 @@ import {
   MERMAID_JS_VERSION,
   mermaidExternalRequirementsFor,
 } from "../runtime/mermaid-requirements.ts";
-import {
-  disposeRenderCoordinator,
-} from "../runtime/render-coordinator-browser.ts";
 import { PLAYGROUND_RENDER_VIEWPORT } from "../runtime/render-viewport.ts";
-import {
-  benchmarkController,
-  benchmarkDocumentLifecycle,
-} from "./browser.ts";
+import { createBrowserBenchmarkRuntime } from "./browser.ts";
 import {
   BENCHMARK_CORPUS_MERMAN_VERSION,
   createBenchmarkCorpusCatalog,
@@ -55,6 +49,10 @@ export interface BrowserBenchmarkCorpusApi {
 }
 
 let browserRunAbort: AbortController | null = null;
+const {
+  controller: benchmarkController,
+  lifecycle: benchmarkDocumentLifecycle,
+} = createBrowserBenchmarkRuntime();
 
 const versions = Object.freeze({
   merman: BENCHMARK_CORPUS_MERMAN_VERSION,
@@ -128,12 +126,14 @@ const cleanupLifecycle = benchmarkDocumentLifecycle.subscribe((signal) => {
   if (signal.kind !== "pagehide" || signal.persisted) return;
   queueMicrotask(() => {
     benchmarkController.dispose();
-    disposeRenderCoordinator();
   });
 });
 
 if (import.meta.hot) {
-  import.meta.hot.dispose(cleanupLifecycle);
+  import.meta.hot.dispose(() => {
+    cleanupLifecycle();
+    benchmarkController.dispose();
+  });
 }
 
 function loadCatalog(): Promise<BenchmarkCorpusCatalog> {

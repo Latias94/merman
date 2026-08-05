@@ -6,6 +6,7 @@ import {
   createOpaqueRealmCspPlugin,
   loadOpaqueRealmCspHashes,
 } from "./scripts/opaque-realm-csp.mjs";
+import { OPAQUE_REALM_ARTIFACT_PLAN } from "./scripts/opaque-realm-artifact-plan.mjs";
 
 const playgroundRoot = __dirname;
 const opaqueRealmCspHashes = loadOpaqueRealmCspHashes(playgroundRoot);
@@ -25,11 +26,14 @@ export default defineConfig({
     outDir: "dist",
     target: "esnext",
     rolldownOptions: {
-      input: {
-        playground: path.resolve(playgroundRoot, "index.html"),
-        benchmarkCorpus: path.resolve(playgroundRoot, "benchmark-corpus.html"),
-        benchmarkRealm: path.resolve(playgroundRoot, "benchmark.html"),
-      },
+      input: Object.fromEntries(
+        OPAQUE_REALM_ARTIFACT_PLAN.pages.map(
+          (page: Readonly<{ key: string; source: string }>) => [
+            page.key,
+            path.resolve(playgroundRoot, page.source),
+          ],
+        ),
+      ),
       output: {
         codeSplitting: true,
       },

@@ -443,3 +443,54 @@ Results:
 - The authoritative result therefore retains `@mermanjs/web` for both the main renderer and the
   language Worker. The complete receipt is checked in at
   [`editor-artifact-receipt-v1.json`](./editor-artifact-receipt-v1.json).
+
+### 2026-08-05 - Canonical Opaque Artifacts And Authoritative Build Graphs
+
+Changes:
+
+- Replaced six repeated engine/bootstrap/page/output inventories with one validated opaque-realm
+  artifact plan consumed by the builder, verifier, CSP injector, Vite inputs, dist verifier, and
+  generated browser projections.
+- Split Compare, opaque Benchmark Mermaid, and trusted Benchmark Merman into separate static
+  projection leaves. Opening Compare no longer transfers the Benchmark bootstrap.
+- Replaced the handwritten extension/alias resolver with TypeScript configuration and module
+  resolution. Source ownership includes type-only edges without reimplementing package exports,
+  paths, or extension rules.
+- Added one Vite manifest adapter for entries, static/reachable closure, emitted files, and asset
+  ownership. Optional-feature, realm-isolation, dist, and Playwright helpers consume that adapter.
+- Removed engine sentinels, source-marker/version/package searches, legacy output lists, duplicated
+  manifest traversal, and parser-oriented resolver tests after their structural/behavioral evidence
+  passed.
+- Added an emitted-JavaScript AST gate for engine module requests because Rolldown metadata alone
+  does not report computed `import(url)` calls. Bootstrap blob imports remain separately digest-bound.
+- Injected the Playground pause-coordinator capability into the browser Benchmark factory. Benchmark
+  feature and corpus closures now fail if either can reach the Compare artifact root.
+- Added the checked [validation migration ledger](../../../playground/scripts/validation-migration-ledger.json),
+  mapping each removed or retained gate to its stable invariant and proving tests.
+- Added explicit ESLint and Node TypeScript project coverage for `scripts/**/*.mjs`.
+
+Commands:
+
+```bash
+npm run test:build-graph --prefix playground
+npm test --prefix playground
+npm run build:prepared --prefix playground
+npm --prefix playground/tests test -- benchmark.controller.spec.ts benchmark.realm.spec.ts --project=chromium-desktop
+npm --prefix playground/tests test -- playground.smoke.spec.ts --project=chromium-desktop --grep "Compare owns one local Mermaid realm"
+npm run record:zenuml-browser-admission --prefix playground
+npm run verify:zenuml-browser-admission --prefix playground
+```
+
+Results:
+
+- Hermetic artifact/source/Vite/CSP/package policy suite passed: 35 tests.
+- Complete prepared unit suite passed, including 53 Worker, 54 realm, and 98 benchmark tests.
+- Vite 8.1.5 production build and plan-driven dist verification passed. The manifest contains
+  distinct `opaque-compare-artifact` and `opaque-mermaid-artifact` activation roots; all optional
+  workbenches remain outside the initial static closure.
+- Chromium Benchmark controller and realm flows passed: 9 tests, including reversible settings,
+  retained-result reruns, lifecycle invalidation, denied authority, cold/warm reuse,
+  poisoning/replacement, and hidden-realm behavior.
+- Chromium Compare activation and coherent publication passed without fetching its artifact before
+  user activation: 1 test.
+- ZenUML browser admission evidence was regenerated from the final source list and verified.

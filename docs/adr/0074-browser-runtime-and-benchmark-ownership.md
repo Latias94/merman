@@ -100,6 +100,12 @@ and SVG validation. A rejection advances the queue. A timeout or protocol failur
 destroys the realm before another operation can start.
 
 Compare and benchmark never share a Mermaid object, operation queue, or iframe.
+Their generated browser artifact projections are also separate activation leaves: opening Compare
+does not fetch the opaque Benchmark bootstrap. A single declarative artifact plan owns both leaves,
+their engine identities, derived output/manifest names, CSP placeholders, realm shape, and resource
+policies; builders and verifiers do not maintain parallel inventories. The Playground injects its
+pause-coordinator capability into the lazily created Benchmark runtime; the standalone corpus uses
+no coordinator. Benchmark chunks therefore do not gain a reverse dependency on Compare ownership.
 
 ### 5. Benchmark Evidence Has Explicit Clock And Publication Boundaries
 
@@ -240,7 +246,8 @@ is already deployed.
 
 Durable guards operate on contracts rather than private spelling:
 
-- TypeScript/package import graphs and public export manifests enforce package ownership.
+- TypeScript's configured module resolver enforces source and type-only ownership; Vite's production
+  manifest separately enforces emitted static/dynamic reachability and asset ownership.
 - WASM profile manifests, smoke tests, ABI checks, and size budgets enforce capability surfaces.
 - Closed channel validators and browser tests enforce realm capability and lifecycle behavior.
 - Generated example checks enforce exact 35-family set coverage, per-example provenance, and

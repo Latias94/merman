@@ -923,6 +923,7 @@ function cloneOwnedValue(value, label) {
   } catch (error) {
     throw new TypeError(
       `${label} must contain structured-cloneable evidence: ${String(error)}.`,
+      { cause: error },
     );
   }
 }
