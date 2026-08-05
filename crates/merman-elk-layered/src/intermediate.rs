@@ -274,36 +274,295 @@ pub fn reverse_edges_for_edge_and_layer_constraints(graph: &mut LGraph) {
     }
 }
 
+pub(crate) fn visit_edge_and_layer_constraint_reversal_candidates(
+    graph: &LGraph,
+    mut visit: impl FnMut(usize) -> bool,
+) -> bool {
+    ConstraintReversalShadow::new(graph).visit_candidates(&mut visit)
+}
+
+#[cfg(test)]
 pub(crate) fn edge_and_layer_constraint_reversal_may_mutate(graph: &LGraph) -> bool {
-    for node in &graph.layerless_nodes {
-        let Some(target_port_type) = target_port_type_for_layer_constraint(node.layer_constraint)
-        else {
-            continue;
-        };
-        let reverses_direct_edge = node.ports.iter().any(|port| match target_port_type {
-            EdgeReversalPortType::Input => port
-                .outgoing_edges
-                .iter()
-                .copied()
-                .any(|edge| can_reverse_outgoing_edge(graph, node.layer_constraint, edge)),
-            EdgeReversalPortType::Output => port
-                .incoming_edges
-                .iter()
-                .copied()
-                .any(|edge| can_reverse_incoming_edge(graph, node.layer_constraint, edge)),
-            EdgeReversalPortType::All => unreachable!("direct constraints select one edge side"),
-        });
-        if reverses_direct_edge {
-            return true;
+    visit_edge_and_layer_constraint_reversal_candidates(graph, |_| true)
+}
+
+struct ConstraintReversalShadow<'a> {
+    graph: &'a LGraph,
+    reversed_by_processor: Vec<bool>,
+    port_flows: Vec<i128>,
+}
+
+struct ShadowCollectorSlots {
+    input: usize,
+    output: usize,
+    input_is_virtual: bool,
+    output_is_virtual: bool,
+    virtual_input_used: bool,
+    virtual_output_used: bool,
+}
+
+impl<'a> ConstraintReversalShadow<'a> {
+    fn new(graph: &'a LGraph) -> Self {
+        Self {
+            graph,
+            reversed_by_processor: vec![false; graph.edges.len()],
+            port_flows: Vec::new(),
         }
     }
 
-    graph
-        .layerless_nodes
-        .iter()
-        .enumerate()
-        .filter(|(_, node)| target_port_type_for_layer_constraint(node.layer_constraint).is_none())
-        .any(|(node, _)| should_reverse_all_fixed_side_edges(graph, node))
+    fn visit_candidates(&mut self, visit: &mut impl FnMut(usize) -> bool) -> bool {
+        // The pinned processor completes every direct layer-constraint reversal before it walks
+        // `remainingNodes` in model order. A fixed-side decision therefore observes all direct
+        // mutations plus earlier fixed-side mutations; the shadow bitset preserves that order
+        // without cloning labels, geometry, nested graphs, or adjacency vectors.
+        for node in &self.graph.layerless_nodes {
+            let Some(target_port_type) =
+                target_port_type_for_layer_constraint(node.layer_constraint)
+            else {
+                continue;
+            };
+            for port in &node.ports {
+                let edges = match target_port_type {
+                    EdgeReversalPortType::Input => &port.outgoing_edges,
+                    EdgeReversalPortType::Output => &port.incoming_edges,
+                    EdgeReversalPortType::All => {
+                        unreachable!("direct constraints select one edge side")
+                    }
+                };
+                for &edge in edges {
+                    let may_reverse = match target_port_type {
+                        EdgeReversalPortType::Input => {
+                            can_reverse_outgoing_edge(self.graph, node.layer_constraint, edge)
+                        }
+                        EdgeReversalPortType::Output => {
+                            can_reverse_incoming_edge(self.graph, node.layer_constraint, edge)
+                        }
+                        EdgeReversalPortType::All => unreachable!(),
+                    };
+                    if may_reverse && self.mark_reversed(edge, visit) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        for node_index in 0..self.graph.layerless_nodes.len() {
+            let node = &self.graph.layerless_nodes[node_index];
+            if node.layer_constraint != LayerConstraint::None
+                || !self.fixed_side_node_should_reverse(node_index)
+            {
+                continue;
+            }
+
+            for port in &node.ports {
+                for &edge in &port.outgoing_edges {
+                    if self.mark_reversed(edge, visit) {
+                        return true;
+                    }
+                }
+                for &edge in &port.incoming_edges {
+                    if self.mark_reversed(edge, visit) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    fn mark_reversed(&mut self, edge_index: usize, visit: &mut impl FnMut(usize) -> bool) -> bool {
+        let Some(edge) = self.graph.edges.get(edge_index) else {
+            return false;
+        };
+        let Some(reversed_by_processor) = self.reversed_by_processor.get_mut(edge_index) else {
+            return false;
+        };
+        if edge.reversed || *reversed_by_processor {
+            return false;
+        }
+
+        *reversed_by_processor = true;
+        visit(edge_index)
+    }
+
+    fn fixed_side_node_should_reverse(&mut self, node_index: usize) -> bool {
+        let node = &self.graph.layerless_nodes[node_index];
+        if !node.port_constraints.is_side_fixed() || node.ports.is_empty() {
+            return false;
+        }
+
+        let original_port_count = node.ports.len();
+        self.port_flows.clear();
+        self.port_flows.extend(
+            node.ports
+                .iter()
+                .map(|port| port.incoming_edges.len() as i128 - port.outgoing_edges.len() as i128),
+        );
+        self.port_flows.resize(original_port_count + 2, 0);
+
+        let input_collector = node
+            .ports
+            .iter()
+            .position(|port| port.collector_type == Some(PortType::Input));
+        let output_collector = node
+            .ports
+            .iter()
+            .position(|port| port.collector_type == Some(PortType::Output));
+        let mut collectors = ShadowCollectorSlots {
+            input: input_collector.unwrap_or(original_port_count),
+            output: output_collector.unwrap_or(original_port_count + 1),
+            input_is_virtual: input_collector.is_none(),
+            output_is_virtual: output_collector.is_none(),
+            virtual_input_used: false,
+            virtual_output_used: false,
+        };
+
+        for port in &node.ports {
+            for &edge in &port.outgoing_edges {
+                self.apply_reversed_edge_flow(node_index, edge, &mut collectors);
+            }
+            for &edge in &port.incoming_edges {
+                if self
+                    .graph
+                    .edges
+                    .get(edge)
+                    .is_some_and(|edge| edge.source.node == node_index)
+                {
+                    continue;
+                }
+                self.apply_reversed_edge_flow(node_index, edge, &mut collectors);
+            }
+        }
+
+        if node
+            .ports
+            .iter()
+            .enumerate()
+            .any(|(port, data)| !port_flow_matches_side(data.side, self.port_flows[port]))
+        {
+            return false;
+        }
+        if collectors.virtual_input_used
+            && !port_flow_matches_side(PortSide::West, self.port_flows[collectors.input])
+        {
+            return false;
+        }
+        if collectors.virtual_output_used
+            && !port_flow_matches_side(PortSide::East, self.port_flows[collectors.output])
+        {
+            return false;
+        }
+
+        for port in &node.ports {
+            for &edge in &port.outgoing_edges {
+                if self.current_edge_violates_fixed_side_constraint(node_index, edge) {
+                    return false;
+                }
+            }
+            for &edge in &port.incoming_edges {
+                if self
+                    .graph
+                    .edges
+                    .get(edge)
+                    .is_some_and(|edge| edge.source.node == node_index)
+                {
+                    continue;
+                }
+                if self.current_edge_violates_fixed_side_constraint(node_index, edge) {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    fn apply_reversed_edge_flow(
+        &mut self,
+        node_index: usize,
+        edge_index: usize,
+        collectors: &mut ShadowCollectorSlots,
+    ) {
+        if !self
+            .reversed_by_processor
+            .get(edge_index)
+            .copied()
+            .unwrap_or(false)
+        {
+            return;
+        }
+        let Some(edge) = self.graph.edges.get(edge_index) else {
+            return;
+        };
+
+        if edge.source.node == node_index {
+            self.port_flows[edge.source.port] += 1;
+            let source_port = &self.graph.layerless_nodes[node_index].ports[edge.source.port];
+            let new_target = if source_port.collector_type == Some(PortType::Output) {
+                if collectors.input_is_virtual {
+                    collectors.virtual_input_used = true;
+                }
+                collectors.input
+            } else {
+                edge.source.port
+            };
+            self.port_flows[new_target] += 1;
+        }
+
+        if edge.target.node == node_index {
+            self.port_flows[edge.target.port] -= 1;
+            let target_port = &self.graph.layerless_nodes[node_index].ports[edge.target.port];
+            let new_source = if target_port.collector_type == Some(PortType::Input) {
+                if collectors.output_is_virtual {
+                    collectors.virtual_output_used = true;
+                }
+                collectors.output
+            } else {
+                edge.target.port
+            };
+            self.port_flows[new_source] -= 1;
+        }
+    }
+
+    fn current_edge_violates_fixed_side_constraint(
+        &self,
+        node_index: usize,
+        edge_index: usize,
+    ) -> bool {
+        let Some(edge) = self.graph.edges.get(edge_index) else {
+            return false;
+        };
+        let reversed = self
+            .reversed_by_processor
+            .get(edge_index)
+            .copied()
+            .unwrap_or(false);
+        let (source, target) = if reversed {
+            (edge.target.node, edge.source.node)
+        } else {
+            (edge.source.node, edge.target.node)
+        };
+
+        (source == node_index
+            && matches!(
+                self.graph.layerless_nodes[target].layer_constraint,
+                LayerConstraint::Last | LayerConstraint::LastSeparate
+            ))
+            || (target == node_index
+                && matches!(
+                    self.graph.layerless_nodes[source].layer_constraint,
+                    LayerConstraint::First | LayerConstraint::FirstSeparate
+                ))
+    }
+}
+
+fn port_flow_matches_side(side: PortSide, net_flow: i128) -> bool {
+    match side {
+        PortSide::East => net_flow > 0,
+        PortSide::West => net_flow < 0,
+        PortSide::North | PortSide::South | PortSide::Undefined => false,
+    }
 }
 
 fn target_port_type_for_layer_constraint(
@@ -4012,7 +4271,7 @@ mod tests {
     use super::*;
     use crate::graph::{InLayerConstraint, LLabel, LSize, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
-    use crate::options::{ElkDirection, LayerConstraint, LayeredOptions};
+    use crate::options::{ElkDirection, LayerConstraint, LayeredOptions, PortConstraints};
     use crate::p2layers::layer_network_simplex;
 
     fn node(id: &str) -> ElkInputNode {
@@ -4092,6 +4351,105 @@ mod tests {
         assert_eq!(graph.edges[0].target.node, end);
         assert_eq!(graph.node_incoming_edges(end), vec![0]);
         assert!(graph.node_outgoing_edges(end).is_empty());
+    }
+
+    #[test]
+    fn constraint_reversal_candidates_follow_fixed_side_cascades() {
+        let mut graph = graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![edge("B-A", "B", "A"), edge("C-B", "C", "B")],
+        );
+        for node_id in ["A", "B"] {
+            let node_index = graph
+                .layerless_nodes
+                .iter()
+                .position(|node| node.id == node_id)
+                .unwrap();
+            graph.layerless_nodes[node_index].port_constraints = PortConstraints::FixedSide;
+            for port in &mut graph.layerless_nodes[node_index].ports {
+                port.set_side(PortSide::East);
+            }
+        }
+
+        let mut candidates = Vec::new();
+        assert!(!visit_edge_and_layer_constraint_reversal_candidates(
+            &graph,
+            |edge| {
+                candidates.push(edge);
+                false
+            }
+        ));
+
+        let mut executed = graph.clone();
+        reverse_edges_for_edge_and_layer_constraints(&mut executed);
+        let reversed = executed
+            .edges
+            .iter()
+            .enumerate()
+            .filter_map(|(edge, data)| data.reversed.then_some(edge))
+            .collect::<Vec<_>>();
+
+        assert_eq!(candidates, reversed);
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|&edge| graph.edges[edge].id.as_str())
+                .collect::<Vec<_>>(),
+            ["B-A", "C-B"]
+        );
+    }
+
+    #[test]
+    fn direct_reversal_does_not_admit_ineligible_fixed_collector_edges() {
+        let parallel_edge_count = 128usize;
+        let mut edges = (0..parallel_edge_count)
+            .map(|index| edge(&format!("F-U-{index}"), "F", "U"))
+            .collect::<Vec<_>>();
+        edges.push(edge("F-D", "F", "D"));
+        let mut first = node("D");
+        first.layer_constraint = Some(LayerConstraint::First);
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                merge_edges: true,
+                ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+            },
+            nodes: vec![node("F"), node("U"), first],
+            edges,
+        })
+        .unwrap();
+        let fixed = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "F")
+            .unwrap();
+        graph.layerless_nodes[fixed].port_constraints = PortConstraints::FixedSide;
+        for port in &mut graph.layerless_nodes[fixed].ports {
+            port.set_side(PortSide::East);
+        }
+
+        let mut candidates = Vec::new();
+        assert!(!visit_edge_and_layer_constraint_reversal_candidates(
+            &graph,
+            |edge| {
+                candidates.push(edge);
+                false
+            }
+        ));
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(graph.edges[candidates[0]].id, "F-D");
+
+        reverse_edges_for_edge_and_layer_constraints(&mut graph);
+        assert_eq!(graph.edges.iter().filter(|edge| edge.reversed).count(), 1);
+        assert!(
+            graph
+                .edges
+                .iter()
+                .find(|edge| edge.id == "F-D")
+                .unwrap()
+                .reversed
+        );
     }
 
     #[test]

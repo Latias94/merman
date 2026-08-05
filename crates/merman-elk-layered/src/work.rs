@@ -24,9 +24,13 @@ impl std::error::Error for WorkError {}
 
 /// Caller-owned work control for one ELK import/layout invocation.
 ///
-/// Implementations must accept a complete tranche or reject it without advancing their budget.
+/// `check` is a non-consuming admission probe. Importers and processors may check one or more
+/// monotonic prefixes before allocating input-sized planning state, then check and charge the
+/// complete tranche immediately before mutation. Implementations must not assume that every
+/// checked amount is later charged or that a processor calls `check` exactly once.
 pub trait WorkControl {
-    /// Checks whether a complete tranche would be accepted without consuming it.
+    /// Checks whether an admitted prefix or complete tranche would be accepted without consuming
+    /// it.
     fn check(&mut self, units: usize) -> Result<(), WorkError>;
 
     /// Consumes a complete tranche immediately before its owned work executes.

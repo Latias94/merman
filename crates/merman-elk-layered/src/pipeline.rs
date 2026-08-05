@@ -12,8 +12,8 @@
 
 use super::options::{
     CrossingMinimizationStrategy, CycleBreakingStrategy, EdgeRouting, ElkDirection,
-    GreedySwitchType, LayerConstraint, LayeredOptions, LayeringStrategy, NodePlacementStrategy,
-    OrderingStrategy, PortConstraints, WrappingStrategy,
+    GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy, OrderingStrategy,
+    PortConstraints, WrappingStrategy,
 };
 use crate::RandomSeedError;
 use crate::compound::{
@@ -24,16 +24,18 @@ use crate::graph::{
     LGraph, LNode, LNodeKind, LPoint, LSize, LayeredEdge, PortRef, PortSide, PortType,
     collector_port_id_suffix,
 };
+#[cfg(test)]
+use crate::intermediate::edge_and_layer_constraint_reversal_may_mutate;
 use crate::intermediate::{
-    IntermediateError, calculate_layer_sizes_and_graph_height,
-    edge_and_layer_constraint_reversal_may_mutate, insert_label_dummies, join_long_edges,
-    merge_hyperedge_dummies, position_interactive_external_ports, postprocess_end_labels,
-    postprocess_layer_constraints, preprocess_end_labels, preprocess_layer_constraints,
-    process_hierarchical_port_constraints, process_hierarchical_port_dummy_sizes,
-    process_hierarchical_port_orthogonal_edges, process_hierarchical_port_positions,
-    process_inverted_ports, remove_label_dummies, restore_reversed_edges,
-    reverse_edges_for_edge_and_layer_constraints, select_label_sides, sort_end_labels,
-    split_long_edges, switch_label_dummies,
+    IntermediateError, calculate_layer_sizes_and_graph_height, insert_label_dummies,
+    join_long_edges, merge_hyperedge_dummies, position_interactive_external_ports,
+    postprocess_end_labels, postprocess_layer_constraints, preprocess_end_labels,
+    preprocess_layer_constraints, process_hierarchical_port_constraints,
+    process_hierarchical_port_dummy_sizes, process_hierarchical_port_orthogonal_edges,
+    process_hierarchical_port_positions, process_inverted_ports, remove_label_dummies,
+    restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints, select_label_sides,
+    sort_end_labels, split_long_edges, switch_label_dummies,
+    visit_edge_and_layer_constraint_reversal_candidates,
 };
 use crate::p1cycles::{
     break_cycles_depth_first, break_cycles_greedy, break_cycles_greedy_model_order,
@@ -1274,7 +1276,19 @@ fn execute_processor_with_work_control(
     kind: ProcessorKind,
     work_control: &mut dyn WorkControl,
 ) -> PipelineResult<()> {
-    let work_units = processor_work_units(graph, kind)?;
+    let work_units = if matches!(
+        kind,
+        ProcessorKind::ModelOrderCycleBreaker | ProcessorKind::EdgeAndLayerConstraintEdgeReverser
+    ) {
+        // Exact candidate accounting uses bounded O(V + E + P) shadow state. Reject budgets
+        // smaller than the graph scan before reserving that state, then reuse the accepted floor
+        // as the processor base. The final complete tranche remains transactional below.
+        let base = local_graph_work_units(graph)?;
+        work_control.check(base)?;
+        edge_reversal_processor_work_units_with_base(graph, kind, base)?
+    } else {
+        processor_work_units(graph, kind)?
+    };
     work_control.check(work_units)?;
     work_control.charge(work_units)?;
     match kind {
@@ -1427,6 +1441,14 @@ fn edge_reversal_processor_work_units(
     kind: ProcessorKind,
 ) -> Result<usize, WorkError> {
     let base = local_graph_work_units(graph)?;
+    edge_reversal_processor_work_units_with_base(graph, kind, base)
+}
+
+fn edge_reversal_processor_work_units_with_base(
+    graph: &LGraph,
+    kind: ProcessorKind,
+    base: usize,
+) -> Result<usize, WorkError> {
     let nodes = graph.layerless_nodes.len();
 
     let (preparation, mutation) = match kind {
@@ -1481,11 +1503,7 @@ fn edge_reversal_processor_work_units(
                 checked_mul(ports, 2)?,
                 checked_mul(checked_add(incoming, outgoing)?, 4)?,
             ])?;
-            let mutation = if edge_and_layer_constraint_reversal_may_mutate(graph) {
-                edge_and_layer_constraint_reversal_work_units(graph)?
-            } else {
-                0
-            };
+            let mutation = edge_and_layer_constraint_reversal_work_units(graph)?;
             (preparation, mutation)
         }
         ProcessorKind::ReversedEdgeRestorer => (
@@ -2029,6 +2047,7 @@ fn adapted_edge_reversal_work_units(
 }
 
 fn model_order_edge_reversal_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let context = EdgeReversalCandidateWorkContext::new(graph)?;
     let mut work = Ok(0usize);
     let mut has_candidate = false;
     visit_model_order_feedback_edges(graph, |edge| {
@@ -2036,7 +2055,7 @@ fn model_order_edge_reversal_work_units(graph: &LGraph) -> Result<usize, WorkErr
         work = work.and_then(|current| {
             checked_add(
                 current,
-                adapted_edge_reversal_candidate_work_units(graph, edge)?,
+                adapted_edge_reversal_candidate_work_units(graph, &context, edge)?,
             )
         });
         work.is_err()
@@ -2044,49 +2063,97 @@ fn model_order_edge_reversal_work_units(graph: &LGraph) -> Result<usize, WorkErr
 
     let work = work?;
     if has_candidate {
-        checked_add(work, possible_collector_materialization_work_units(graph)?)
+        checked_add(work, context.possible_collector_materialization)
     } else {
         Ok(0)
     }
 }
 
 fn edge_and_layer_constraint_reversal_work_units(graph: &LGraph) -> Result<usize, WorkError> {
-    let mut work = 0usize;
+    let context = EdgeReversalCandidateWorkContext::new(graph)?;
+    let mut work = Ok(0usize);
     let mut has_candidate = false;
-    for (edge_index, edge) in graph.edges.iter().enumerate() {
-        let Some(source) = graph.layerless_nodes.get(edge.source.node) else {
-            continue;
-        };
-        let Some(target) = graph.layerless_nodes.get(edge.target.node) else {
-            continue;
-        };
-        // The pinned processor can only reverse an edge through a directly constrained endpoint
-        // or through an unconstrained endpoint admitted to the fixed-side `remainingNodes` pass.
-        // Keep unrelated collector regions outside the quadratic stable-removal bound.
-        let source_can_own_reversal = source.layer_constraint != LayerConstraint::None
-            || source.port_constraints.is_side_fixed();
-        let target_can_own_reversal = target.layer_constraint != LayerConstraint::None
-            || target.port_constraints.is_side_fixed();
-        if !source_can_own_reversal && !target_can_own_reversal {
-            continue;
-        }
-
+    visit_edge_and_layer_constraint_reversal_candidates(graph, |edge| {
         has_candidate = true;
-        work = checked_add(
-            work,
-            adapted_edge_reversal_candidate_work_units(graph, edge_index)?,
-        )?;
-    }
+        work = work.and_then(|current| {
+            checked_add(
+                current,
+                adapted_edge_reversal_candidate_work_units(graph, &context, edge)?,
+            )
+        });
+        work.is_err()
+    });
 
+    let work = work?;
     if has_candidate {
-        checked_add(work, possible_collector_materialization_work_units(graph)?)
+        checked_add(work, context.possible_collector_materialization)
     } else {
         Ok(0)
     }
 }
 
+struct EdgeReversalCandidateWorkContext {
+    collector_adjacency_by_node: Vec<usize>,
+    possible_collector_materialization: usize,
+}
+
+impl EdgeReversalCandidateWorkContext {
+    fn new(graph: &LGraph) -> Result<Self, WorkError> {
+        let mut collector_adjacency_by_node = Vec::with_capacity(graph.layerless_nodes.len());
+        let mut possible_collector_materialization = 0usize;
+
+        for node in &graph.layerless_nodes {
+            let mut collector_adjacency = 0usize;
+            let mut has_input_collector = false;
+            let mut has_output_collector = false;
+            let mut has_input_target = false;
+            let mut has_output_source = false;
+            for port in &node.ports {
+                if port.collector_type.is_some() {
+                    collector_adjacency = checked_sum([
+                        collector_adjacency,
+                        port.incoming_edges.len(),
+                        port.outgoing_edges.len(),
+                    ])?;
+                }
+                match port.collector_type {
+                    Some(PortType::Input) => {
+                        has_input_collector = true;
+                        has_input_target |= !port.incoming_edges.is_empty();
+                    }
+                    Some(PortType::Output) => {
+                        has_output_collector = true;
+                        has_output_source |= !port.outgoing_edges.is_empty();
+                    }
+                    None => {}
+                }
+            }
+            collector_adjacency_by_node.push(collector_adjacency);
+
+            if has_output_source && !has_input_collector {
+                possible_collector_materialization = checked_add(
+                    possible_collector_materialization,
+                    collector_materialization_work_units(node, PortType::Input)?,
+                )?;
+            }
+            if has_input_target && !has_output_collector {
+                possible_collector_materialization = checked_add(
+                    possible_collector_materialization,
+                    collector_materialization_work_units(node, PortType::Output)?,
+                )?;
+            }
+        }
+
+        Ok(Self {
+            collector_adjacency_by_node,
+            possible_collector_materialization,
+        })
+    }
+}
+
 fn adapted_edge_reversal_candidate_work_units(
     graph: &LGraph,
+    context: &EdgeReversalCandidateWorkContext,
     edge_index: usize,
 ) -> Result<usize, WorkError> {
     let Some(edge) = graph.edges.get(edge_index) else {
@@ -2107,9 +2174,9 @@ fn adapted_edge_reversal_candidate_work_units(
     }
 
     let (source_adjacency, source_lookup) =
-        edge_reversal_endpoint_work_units(graph, edge.source, PortType::Output)?;
+        edge_reversal_endpoint_work_units(graph, context, edge.source, PortType::Output)?;
     let (target_adjacency, target_lookup) =
-        edge_reversal_endpoint_work_units(graph, edge.target, PortType::Input)?;
+        edge_reversal_endpoint_work_units(graph, context, edge.target, PortType::Input)?;
     checked_sum([
         checked_mul(checked_add(source_adjacency, target_adjacency)?, 2)?,
         source_lookup,
@@ -2120,18 +2187,14 @@ fn adapted_edge_reversal_candidate_work_units(
 
 fn edge_reversal_endpoint_work_units(
     graph: &LGraph,
+    context: &EdgeReversalCandidateWorkContext,
     endpoint: PortRef,
     lookup_collector_type: PortType,
 ) -> Result<(usize, usize), WorkError> {
     let node = &graph.layerless_nodes[endpoint.node];
     let port = &node.ports[endpoint.port];
     let adjacency = if port.collector_type.is_some() {
-        node.ports
-            .iter()
-            .filter(|port| port.collector_type.is_some())
-            .try_fold(0usize, |total, port| {
-                checked_sum([total, port.incoming_edges.len(), port.outgoing_edges.len()])
-            })?
+        context.collector_adjacency_by_node[endpoint.node]
     } else {
         checked_add(port.incoming_edges.len(), port.outgoing_edges.len())?
     };
@@ -2142,42 +2205,6 @@ fn edge_reversal_endpoint_work_units(
         0
     };
     Ok((adjacency, lookup))
-}
-
-fn possible_collector_materialization_work_units(graph: &LGraph) -> Result<usize, WorkError> {
-    let mut materialization = 0usize;
-    for node in &graph.layerless_nodes {
-        let mut has_input_collector = false;
-        let mut has_output_collector = false;
-        let mut has_input_target = false;
-        let mut has_output_source = false;
-        for port in &node.ports {
-            match port.collector_type {
-                Some(PortType::Input) => {
-                    has_input_collector = true;
-                    has_input_target |= !port.incoming_edges.is_empty();
-                }
-                Some(PortType::Output) => {
-                    has_output_collector = true;
-                    has_output_source |= !port.outgoing_edges.is_empty();
-                }
-                None => {}
-            }
-        }
-        if has_output_source && !has_input_collector {
-            materialization = checked_add(
-                materialization,
-                collector_materialization_work_units(node, PortType::Input)?,
-            )?;
-        }
-        if has_input_target && !has_output_collector {
-            materialization = checked_add(
-                materialization,
-                collector_materialization_work_units(node, PortType::Output)?,
-            )?;
-        }
-    }
-    Ok(materialization)
 }
 
 fn collector_materialization_work_units(
@@ -3155,8 +3182,8 @@ mod tests {
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
     use crate::options::{
         CrossingMinimizationStrategy, CycleBreakingStrategy, EdgeRouting, ElkDirection,
-        FixedAlignment, GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy,
-        OrderingStrategy, PortConstraints, WrappingStrategy,
+        FixedAlignment, GreedySwitchType, LayerConstraint, LayeredOptions, LayeringStrategy,
+        NodePlacementStrategy, OrderingStrategy, PortConstraints, WrappingStrategy,
     };
     use crate::p3order::{counting::CrossingsCounter, process_port_sides, sort_port_lists};
 
@@ -4176,6 +4203,8 @@ mod tests {
             );
 
             let mut constraint_graph = graph.clone();
+            constraint_graph.layerless_nodes[0].layer_constraint = LayerConstraint::First;
+            constraint_graph.layerless_nodes[1].layer_constraint = LayerConstraint::Last;
             constraint_graph.layerless_nodes[2].layer_constraint = LayerConstraint::Last;
             let constraint_mutation =
                 edge_and_layer_constraint_reversal_work_units(&constraint_graph).unwrap();
@@ -4218,6 +4247,46 @@ mod tests {
             );
             assert!(ordered.edges[parallel_edge_count].reversed);
         }
+    }
+
+    #[test]
+    fn exact_reversal_plans_precheck_the_linear_graph_floor() {
+        let graph = shared_port_dag_with_independent_edge(512);
+        let floor = local_graph_work_units(&graph).unwrap();
+        assert!(floor > 0);
+
+        let mut constraint_graph = graph.clone();
+        constraint_graph.layerless_nodes[2].layer_constraint = LayerConstraint::Last;
+        let original_constraint_graph = constraint_graph.clone();
+        let mut constraint_budget = BudgetWorkControl::new(floor - 1);
+        assert_eq!(
+            execute_processor_with_work_control(
+                &mut constraint_graph,
+                ProcessorKind::EdgeAndLayerConstraintEdgeReverser,
+                &mut constraint_budget,
+            ),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(constraint_graph, original_constraint_graph);
+        assert_eq!(constraint_budget.checks, [floor]);
+        assert_eq!(constraint_budget.charged, 0);
+
+        let mut model_order_graph = graph;
+        model_order_graph.layerless_nodes[2].model_order = Some(3);
+        model_order_graph.layerless_nodes[3].model_order = Some(2);
+        let original_model_order_graph = model_order_graph.clone();
+        let mut model_order_budget = BudgetWorkControl::new(floor - 1);
+        assert_eq!(
+            execute_processor_with_work_control(
+                &mut model_order_graph,
+                ProcessorKind::ModelOrderCycleBreaker,
+                &mut model_order_budget,
+            ),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(model_order_graph, original_model_order_graph);
+        assert_eq!(model_order_budget.checks, [floor]);
+        assert_eq!(model_order_budget.charged, 0);
     }
 
     #[test]
