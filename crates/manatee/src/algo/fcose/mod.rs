@@ -2648,7 +2648,12 @@ impl SimGraph {
                 continue;
             };
 
-            let inherited = if node.is_compound {
+            let is_non_empty_compound = node.is_compound
+                && self
+                    .children_by_owner
+                    .get(idx)
+                    .is_some_and(|children| !children.is_empty());
+            let inherited = if is_non_empty_compound {
                 (0.0, 0.0)
             } else {
                 propagated_by_owner
@@ -2674,11 +2679,6 @@ impl SimGraph {
                 *slot = (dx, dy);
             }
 
-            let is_non_empty_compound = node.is_compound
-                && self
-                    .children_by_owner
-                    .get(idx)
-                    .is_some_and(|children| !children.is_empty());
             if !is_non_empty_compound {
                 continue;
             }
@@ -5610,7 +5610,12 @@ mod tests {
                 let Some(node) = sim.nodes.get(child) else {
                     continue;
                 };
-                if node.is_compound {
+                let is_non_empty_compound = node.is_compound
+                    && sim
+                        .children_by_owner
+                        .get(child)
+                        .is_some_and(|children| !children.is_empty());
+                if is_non_empty_compound {
                     propagate_to_leaf_descendants(sim, child, dx, dy, displacements);
                 } else if let Some(slot) = displacements.get_mut(child) {
                     slot.0 += dx;
@@ -5738,6 +5743,14 @@ mod tests {
         assert_ne!(wide_actual[nested_compound], (0.0, 0.0));
         assert_ne!(wide_actual[empty_compound], (0.0, 0.0));
         assert_ne!(wide_actual[0], wide_actual[nested_compound]);
+
+        let empty = &sim.nodes[empty_compound];
+        let empty_own_dx = 0.5 * (empty.spring_fx + empty.repulsion_fx + empty.gravitation_fx)
+            / empty.no_of_children;
+        assert_eq!(
+            wide_actual[empty_compound].0.to_bits(),
+            (wide_actual[root_compound].0 + empty_own_dx).to_bits()
+        );
     }
 
     #[test]
