@@ -768,15 +768,15 @@ pub fn inspect_compound_crossings_after_processor_with_work_control(
         target,
         work_control,
     )?;
-    let sweep_work = hierarchy_processor_work_units(
+    let diagnostic_work = hierarchy_processor_work_units_with_preflight(
         graph,
         ProcessorKind::LayerSweepCrossingMinimizerBarycenter,
+        1,
+        work_control,
     )?;
     // The diagnostic path additionally snapshots graph/run/layer state while executing the same
-    // barycenter sweep. They are one indivisible call, so reject the combined tranche before
-    // either the sweep or its trace materialization begins.
-    let diagnostic_work = checked_add(sweep_work, hierarchy_work_units(graph)?)?;
-    work_control.check(diagnostic_work)?;
+    // barycenter sweep. Fold that extra base copy into every preflight prefix so the sweep cannot
+    // be admitted on its own; the complete diagnostic still consumes one indivisible charge.
     work_control.charge(diagnostic_work)?;
     let trace = debug_crossings_layer_sweep_hierarchical_with_type(graph, CrossMinType::Barycenter);
     Ok((executions, trace))
@@ -2052,46 +2052,150 @@ fn long_edge_splitter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
     ])
 }
 
-fn hierarchy_work_units(graph: &LGraph) -> Result<usize, WorkError> {
-    let mut total = 0usize;
-    let mut stack = vec![graph];
-    while let Some(current) = stack.pop() {
-        total = checked_add(total, local_graph_work_units(current)?)?;
-        total = checked_add(total, current.hierarchy_edges.len())?;
-        total = checked_add(total, current.cross_hierarchy_edges.len())?;
-        for node in &current.layerless_nodes {
-            if let Some(nested) = node.nested_graph.as_deref() {
-                stack.push(nested);
-            }
-        }
-    }
-    Ok(total.max(1))
+fn local_hierarchy_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    Ok(checked_sum([
+        local_graph_work_units(graph)?,
+        graph.hierarchy_edges.len(),
+        graph.cross_hierarchy_edges.len(),
+    ])?
+    .max(1))
 }
 
-fn hierarchy_arena_plan_work_units(graph: &LGraph) -> Result<usize, WorkError> {
-    let mut graph_count = 0usize;
-    let mut node_count = 0usize;
-    let mut nested_graph_count = 0usize;
-    let mut stack = vec![graph];
+/// Fold a hierarchy estimate while checking every admitted traversal-stack prefix.
+///
+/// Root-local work is computed without allocation so arithmetic overflow keeps its former
+/// priority over a caller interruption. Child references are reserved as one unit each, checked
+/// as a batch, and only then appended to the traversal stack. The final caller still charges one
+/// complete tranche, so a failed preflight never advances the public budget.
+fn preflight_hierarchy_fold_work_units<State>(
+    graph: &LGraph,
+    work_control: &mut dyn WorkControl,
+    state: &mut State,
+    mut discover_graph: impl FnMut(&LGraph, &mut State) -> Result<(), WorkError>,
+    mut local_work_units: impl FnMut(&LGraph) -> Result<usize, WorkError>,
+    mut admitted_work_units: impl FnMut(usize, &State) -> Result<usize, WorkError>,
+) -> Result<usize, WorkError> {
+    discover_graph(graph, state)?;
+    let mut total = local_work_units(graph)?;
+    work_control.check(admitted_work_units(total, state)?)?;
+
+    let mut stack = Vec::new();
+    reserve_hierarchy_children(
+        graph,
+        &mut stack,
+        &mut total,
+        work_control,
+        state,
+        &mut discover_graph,
+        &mut admitted_work_units,
+    )?;
     while let Some(current) = stack.pop() {
-        graph_count = checked_add(graph_count, 1)?;
-        node_count = checked_add(node_count, current.layerless_nodes.len())?;
-        for node in &current.layerless_nodes {
-            if let Some(nested) = node.nested_graph.as_deref() {
-                nested_graph_count = checked_add(nested_graph_count, 1)?;
-                stack.push(nested);
-            }
-        }
+        let current_work = local_work_units(current)?;
+        let remaining_work = current_work
+            .checked_sub(1)
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        total = checked_add(total, remaining_work)?;
+        work_control.check(admitted_work_units(total, state)?)?;
+        reserve_hierarchy_children(
+            current,
+            &mut stack,
+            &mut total,
+            work_control,
+            state,
+            &mut discover_graph,
+            &mut admitted_work_units,
+        )?;
+    }
+    admitted_work_units(total, state)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reserve_hierarchy_children<'a, State>(
+    graph: &'a LGraph,
+    stack: &mut Vec<&'a LGraph>,
+    total: &mut usize,
+    work_control: &mut dyn WorkControl,
+    state: &mut State,
+    discover_graph: &mut impl FnMut(&LGraph, &mut State) -> Result<(), WorkError>,
+    admitted_work_units: &mut impl FnMut(usize, &State) -> Result<usize, WorkError>,
+) -> Result<(), WorkError> {
+    let mut child_count = 0usize;
+    for nested in graph
+        .layerless_nodes
+        .iter()
+        .filter_map(|node| node.nested_graph.as_deref())
+    {
+        discover_graph(nested, state)?;
+        child_count = checked_add(child_count, 1)?;
+    }
+    if child_count == 0 {
+        return Ok(());
     }
 
-    // Charge discovery, the full node scan, one parent link, one arena entry, one algorithm
-    // binding, and one reusable graph slot per graph. None of these terms depends on depth.
-    checked_sum([
-        graph_count,
-        node_count,
-        nested_graph_count,
-        checked_mul(graph_count, 3)?,
-    ])
+    *total = checked_add(*total, child_count)?;
+    work_control.check(admitted_work_units(*total, state)?)?;
+    stack.reserve(child_count);
+    stack.extend(
+        graph
+            .layerless_nodes
+            .iter()
+            .filter_map(|node| node.nested_graph.as_deref()),
+    );
+    Ok(())
+}
+
+fn preflight_hierarchy_work_units(
+    graph: &LGraph,
+    work_control: &mut dyn WorkControl,
+    local_work_units: impl FnMut(&LGraph) -> Result<usize, WorkError>,
+) -> Result<usize, WorkError> {
+    preflight_hierarchy_fold_work_units(
+        graph,
+        work_control,
+        &mut (),
+        |_, ()| Ok(()),
+        local_work_units,
+        |total, ()| Ok(total),
+    )
+}
+
+fn hierarchy_work_units_with_preflight(
+    graph: &LGraph,
+    work_control: &mut dyn WorkControl,
+) -> Result<usize, WorkError> {
+    preflight_hierarchy_work_units(graph, work_control, local_hierarchy_work_units)
+}
+
+#[cfg(test)]
+fn hierarchy_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut work_control = NoopWorkControl;
+    hierarchy_work_units_with_preflight(graph, &mut work_control)
+}
+
+fn local_hierarchy_arena_plan_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let nested_graph_count = graph
+        .layerless_nodes
+        .iter()
+        .filter(|node| node.nested_graph.is_some())
+        .count();
+
+    // One discovery unit is reserved by `preflight_hierarchy_work_units`. The complete local
+    // contribution covers the node scan, parent links, arena entry, algorithm binding, and
+    // reusable graph slot without depending on hierarchy depth.
+    checked_sum([4, graph.layerless_nodes.len(), nested_graph_count])
+}
+
+fn hierarchy_arena_plan_work_units_with_preflight(
+    graph: &LGraph,
+    work_control: &mut dyn WorkControl,
+) -> Result<usize, WorkError> {
+    preflight_hierarchy_work_units(graph, work_control, local_hierarchy_arena_plan_work_units)
+}
+
+#[cfg(test)]
+fn hierarchy_arena_plan_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut work_control = NoopWorkControl;
+    hierarchy_arena_plan_work_units_with_preflight(graph, &mut work_control)
 }
 
 fn compound_graph_round_work_units(graph_count: usize) -> Result<usize, WorkError> {
@@ -2102,33 +2206,35 @@ fn compound_graph_round_work_units(graph_count: usize) -> Result<usize, WorkErro
     checked_sum([graph_count, checked_mul(nested_graph_count, 2)?])
 }
 
-fn compound_preprocess_work_units(graph: &LGraph) -> Result<usize, WorkError> {
-    let mut total = checked_mul(hierarchy_work_units(graph)?, 4)?;
-    let mut stack = vec![graph];
-    while let Some(current) = stack.pop() {
-        for edge in &current.hierarchy_edges {
-            total = checked_add(
-                total,
-                source_ported_cross_hierarchy_segment_count(
-                    edge.source_node_id.as_str(),
-                    edge.target_node_id.as_str(),
-                    &edge.source_path,
-                    &edge.target_path,
-                )?,
-            )?;
-        }
-        for node in &current.layerless_nodes {
-            if let Some(nested) = node.nested_graph.as_deref() {
-                stack.push(nested);
-            }
-        }
+fn local_compound_preprocess_work_units(graph: &LGraph) -> Result<usize, WorkError> {
+    let mut segment_count = 0usize;
+    for edge in &graph.hierarchy_edges {
+        segment_count = checked_add(
+            segment_count,
+            source_ported_cross_hierarchy_segment_count(
+                edge.source_node_id.as_str(),
+                edge.target_node_id.as_str(),
+                &edge.source_path,
+                &edge.target_path,
+            )?,
+        )?;
     }
-    Ok(total)
+
+    checked_add(
+        checked_mul(local_hierarchy_work_units(graph)?, 4)?,
+        segment_count,
+    )
+}
+
+fn compound_preprocess_work_units_with_preflight(
+    graph: &LGraph,
+    work_control: &mut dyn WorkControl,
+) -> Result<usize, WorkError> {
+    preflight_hierarchy_work_units(graph, work_control, local_compound_preprocess_work_units)
 }
 
 fn charge_hierarchy_work(graph: &LGraph, work_control: &mut dyn WorkControl) -> PipelineResult<()> {
-    let work_units = hierarchy_work_units(graph)?;
-    work_control.check(work_units)?;
+    let work_units = hierarchy_work_units_with_preflight(graph, work_control)?;
     work_control.charge(work_units)?;
     Ok(())
 }
@@ -2137,8 +2243,7 @@ fn charge_hierarchy_arena_plan_work(
     graph: &LGraph,
     work_control: &mut dyn WorkControl,
 ) -> PipelineResult<()> {
-    let work_units = hierarchy_arena_plan_work_units(graph)?;
-    work_control.check(work_units)?;
+    let work_units = hierarchy_arena_plan_work_units_with_preflight(graph, work_control)?;
     work_control.charge(work_units)?;
     Ok(())
 }
@@ -2158,44 +2263,58 @@ fn charge_hierarchy_processor_work(
     kind: ProcessorKind,
     work_control: &mut dyn WorkControl,
 ) -> PipelineResult<()> {
-    let work_units = hierarchy_processor_work_units(graph, kind)?;
-    work_control.check(work_units)?;
+    let work_units = hierarchy_processor_work_units_with_preflight(graph, kind, 0, work_control)?;
     work_control.charge(work_units)?;
     Ok(())
 }
 
-fn hierarchy_processor_work_units(graph: &LGraph, kind: ProcessorKind) -> Result<usize, WorkError> {
-    let base = hierarchy_work_units(graph)?;
-    let mut multiplier = 1usize;
-    if matches!(
+fn hierarchy_processor_work_units_with_preflight(
+    graph: &LGraph,
+    kind: ProcessorKind,
+    extra_base_copies: usize,
+    work_control: &mut dyn WorkControl,
+) -> Result<usize, WorkError> {
+    let hierarchical_sweep = matches!(
         kind,
         ProcessorKind::LayerSweepCrossingMinimizerBarycenter
             | ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch
             | ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch
-    ) {
-        let mut stack = vec![graph];
-        let mut edge_count = 0usize;
-        while let Some(current) = stack.pop() {
-            multiplier = multiplier.max(current.options.thoroughness.max(1));
-            edge_count = checked_add(edge_count, current.edges.len())?;
-            stack.extend(
-                current
-                    .layerless_nodes
-                    .iter()
-                    .filter_map(|node| node.nested_graph.as_deref()),
-            );
-        }
-        multiplier = checked_mul(multiplier, edge_count.max(1))?;
-    }
-    checked_mul(base, multiplier)
+    );
+    let mut prefix = (1usize, 0usize);
+    preflight_hierarchy_fold_work_units(
+        graph,
+        work_control,
+        &mut prefix,
+        |current, (max_thoroughness, edge_count)| {
+            if hierarchical_sweep {
+                *max_thoroughness = (*max_thoroughness).max(current.options.thoroughness.max(1));
+                *edge_count = checked_add(*edge_count, current.edges.len())?;
+            }
+            Ok(())
+        },
+        local_hierarchy_work_units,
+        |base, (max_thoroughness, edge_count)| {
+            let processor_multiplier = if hierarchical_sweep {
+                checked_mul(*max_thoroughness, (*edge_count).max(1))?
+            } else {
+                1
+            };
+            checked_mul(base, checked_add(processor_multiplier, extra_base_copies)?)
+        },
+    )
+}
+
+#[cfg(test)]
+fn hierarchy_processor_work_units(graph: &LGraph, kind: ProcessorKind) -> Result<usize, WorkError> {
+    let mut work_control = NoopWorkControl;
+    hierarchy_processor_work_units_with_preflight(graph, kind, 0, &mut work_control)
 }
 
 fn charge_compound_preprocess_work(
     graph: &LGraph,
     work_control: &mut dyn WorkControl,
 ) -> PipelineResult<()> {
-    let work_units = compound_preprocess_work_units(graph)?;
-    work_control.check(work_units)?;
+    let work_units = compound_preprocess_work_units_with_preflight(graph, work_control)?;
     work_control.charge(work_units)?;
     Ok(())
 }
@@ -2750,10 +2869,11 @@ mod tests {
         }
     }
 
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone)]
     struct BudgetWorkControl {
         remaining: usize,
         charged: usize,
+        checks: Vec<usize>,
     }
 
     impl BudgetWorkControl {
@@ -2761,12 +2881,14 @@ mod tests {
             Self {
                 remaining,
                 charged: 0,
+                checks: Vec::new(),
             }
         }
     }
 
     impl WorkControl for BudgetWorkControl {
         fn check(&mut self, units: usize) -> Result<(), WorkError> {
+            self.checks.push(units);
             if units <= self.remaining {
                 Ok(())
             } else {
@@ -3758,6 +3880,93 @@ mod tests {
     }
 
     #[test]
+    fn hierarchy_preflight_checks_each_admitted_stack_prefix_before_allocation() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        for index in 0..128 {
+            let mut holder = LNode::new(format!("holder-{index}"), 1.0, 1.0, None);
+            holder.compound = true;
+            holder.nested_graph = Some(Box::new(LGraph::new(
+                format!("child-{index}"),
+                LayeredOptions::default(),
+            )));
+            graph.layerless_nodes.push(holder);
+        }
+        let root_work = local_hierarchy_arena_plan_work_units(&graph).unwrap();
+        let reserved_prefix = root_work + 128;
+
+        let mut rejected = BudgetWorkControl::new(reserved_prefix - 1);
+        assert_eq!(
+            charge_hierarchy_arena_plan_work(&graph, &mut rejected),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(rejected.checks, vec![root_work, reserved_prefix]);
+        assert_eq!(rejected.charged, 0);
+
+        let required = hierarchy_arena_plan_work_units(&graph).unwrap();
+        let mut exact = BudgetWorkControl::new(required);
+        charge_hierarchy_arena_plan_work(&graph, &mut exact).unwrap();
+
+        assert_eq!(exact.checks.first(), Some(&root_work));
+        assert_eq!(exact.checks.last(), Some(&required));
+        assert!(exact.checks.windows(2).all(|window| window[0] <= window[1]));
+        assert_eq!(exact.charged, required);
+        assert_eq!(exact.remaining, 0);
+    }
+
+    #[test]
+    fn hierarchy_processor_preflight_preserves_reachable_overflow_priority() {
+        let mut root_overflow = bidirected_cycle_graph(2);
+        root_overflow.options.thoroughness = usize::MAX;
+
+        let mut limited = BudgetWorkControl::new(0);
+        assert_eq!(
+            hierarchy_processor_work_units_with_preflight(
+                &root_overflow,
+                ProcessorKind::LayerSweepCrossingMinimizerBarycenter,
+                0,
+                &mut limited,
+            ),
+            Err(WorkError::ArithmeticOverflow)
+        );
+        assert!(limited.checks.is_empty());
+        assert_eq!(limited.charged, 0);
+
+        let mut unlimited = NoopWorkControl;
+        assert_eq!(
+            hierarchy_processor_work_units_with_preflight(
+                &root_overflow,
+                ProcessorKind::LayerSweepCrossingMinimizerBarycenter,
+                0,
+                &mut unlimited,
+            ),
+            Err(WorkError::ArithmeticOverflow)
+        );
+
+        let mut root = LGraph::new("root", LayeredOptions::default());
+        let mut child = bidirected_cycle_graph(2);
+        child.options.thoroughness = usize::MAX;
+        let mut holder = LNode::new("holder", 1.0, 1.0, None);
+        holder.compound = true;
+        holder.nested_graph = Some(Box::new(child));
+        root.layerless_nodes.push(holder);
+
+        let root_work = local_hierarchy_work_units(&root).unwrap();
+        let root_prefix = root_work * root.options.thoroughness.max(1);
+        let mut child_limited = BudgetWorkControl::new(root_prefix);
+        assert_eq!(
+            hierarchy_processor_work_units_with_preflight(
+                &root,
+                ProcessorKind::LayerSweepCrossingMinimizerBarycenter,
+                0,
+                &mut child_limited,
+            ),
+            Err(WorkError::ArithmeticOverflow)
+        );
+        assert_eq!(child_limited.checks, vec![root_prefix]);
+        assert_eq!(child_limited.charged, 0);
+    }
+
+    #[test]
     fn diagnostic_crossing_sweep_and_trace_share_one_budget_tranche() {
         const HIERARCHY_WORK: usize = 18;
         const EDGE_COUNT: usize = 4;
@@ -3784,6 +3993,25 @@ mod tests {
             Ok(HIERARCHY_WORK * THOROUGHNESS * EDGE_COUNT)
         );
         let required = checked_add(prefix.charged, DIAGNOSTIC_WORK).unwrap();
+
+        let mut early_graph = graph.clone();
+        let mut early = BudgetWorkControl::new(
+            checked_add(
+                prefix.charged,
+                HIERARCHY_WORK * THOROUGHNESS * EDGE_COUNT - 1,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            inspect_compound_crossings_after_processor_with_work_control(
+                &mut early_graph,
+                target,
+                &mut early,
+            ),
+            Err(PipelineError::Work(WorkError::Interrupted))
+        );
+        assert_eq!(early_graph, prepared);
+        assert_eq!(early.charged, prefix.charged);
 
         let mut below_graph = graph.clone();
         let mut below = BudgetWorkControl::new(required - 1);
