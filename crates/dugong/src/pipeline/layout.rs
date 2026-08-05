@@ -315,8 +315,8 @@ fn run_layout(
     // Dagre removes self-loops before ranking/normalization and re-inserts them during positioning
     // via dummy "selfedge" nodes. This avoids invalid rank constraints and gives self-loops a
     // deterministic, spacing-aware offset in BK positioning.
-    work_control.charge(g.edge_count())?;
-    self_edges::remove_self_edges(g);
+    work_control.charge(edge_snapshot_work_units(g)?)?;
+    let self_edge_count = self_edges::remove_self_edges_with_count(g);
 
     work_control.charge(g.node_order_slot_count())?;
     let mut has_compound_structure = false;
@@ -483,7 +483,7 @@ fn run_layout(
         parent_dummy_chains::parent_dummy_chains_controlled(g, work_control)?;
         add_border_segments::add_border_segments_controlled(g, work_control)?;
     }
-    if tiny_simple_chain {
+    let mut layering = if tiny_simple_chain {
         work_control.charge(node_snapshot_work_units(g)?)?;
         let mut nodes: Vec<(i32, String)> = Vec::with_capacity(g.node_count());
         g.for_each_node(|id, n| nodes.push((n.rank.unwrap_or(0), id.to_string())));
@@ -501,50 +501,55 @@ fn run_layout(
             }
             next_order += 1;
         }
+        order::build_current_layer_matrix_ix_controlled(g, work_control)?
     } else {
-        order::order_controlled(
+        order::order_with_layering_controlled(
             g,
             order::OrderOptions {
                 disable_optimal_order_heuristic: false,
             },
             work_control,
-        )?;
+        )?
+    };
+
+    // Match Mermaid's Dagre companion exactly: self-edge dummies join the accepted order before
+    // the LR/RL width-height transform, so coordinate adjustment treats them like every other
+    // positioned node. The common no-self-edge path skips the matrix scan and its planning Vec.
+    if self_edge_count != 0 {
+        self_edges::insert_self_edges_with_layering_controlled(g, &mut layering, work_control)?;
     }
+    debug_assert!(layering.has_dense_unique_orders());
+
     // Positioning runs in TB coordinates; `coordinate_system::adjust` maps LR/RL/BT into TB.
     charge_graph_scan(g, work_control)?;
     coordinate_system::adjust(g);
 
-    // Insert dummy self-edge nodes after ordering and rankdir transforms, so their sizes match the
-    // active coordinate system (TB) and they can influence BK x-positioning.
-    charge_graph_scan(g, work_control)?;
-    self_edges::insert_self_edges(g);
-
     let rank_sep = g.graph().ranksep;
-    work_control.charge(node_snapshot_work_units(g)?)?;
-    let layering = util::build_layer_matrix(g);
-
-    let layering_nodes = layering
-        .iter()
-        .try_fold(0usize, |total, layer| checked_add(total, layer.len()))?;
-    work_control.charge(layering_nodes)?;
+    // Position Y scans every layer slot once for maximum height and once for assignment. Charge
+    // the complete indexed artifact before the first coordinate mutation.
+    work_control.charge(checked_add(
+        layering.rank_count(),
+        checked_mul(layering.slot_count(), 2)?,
+    )?)?;
     let mut prev_y: f64 = 0.0;
-    for (idx, layer) in layering.iter().enumerate() {
+    for (idx, layer) in layering.layers().iter().enumerate() {
         let max_h = layer
             .iter()
-            .filter_map(|id| g.node(id).map(|n| n.height))
+            .filter_map(|&graph_ix| g.node_label_by_ix(graph_ix).map(|node| node.height))
             .fold(0.0_f64, f64::max);
         let y = prev_y + max_h / 2.0;
-        for id in layer {
-            if let Some(n) = g.node_mut(id) {
-                n.y = Some(y);
+        for &graph_ix in layer {
+            if let Some(node) = g.node_label_mut_by_ix(graph_ix) {
+                node.y = Some(y);
             }
         }
         prev_y += max_h;
-        if idx + 1 < layering.len() {
+        if idx + 1 < layering.rank_count() {
             prev_y += rank_sep;
         }
     }
-    let xs = position::bk::position_x_with_layering_controlled(g, &layering, work_control)?;
+    let layering_ids = layering.to_node_ids_controlled(g, work_control)?;
+    let xs = position::bk::position_x_with_layering_controlled(g, &layering_ids, work_control)?;
     work_control.charge(g.node_order_slot_count())?;
     g.for_each_node_mut(|id, n| {
         n.x = Some(xs.get(id).copied().unwrap_or(0.0));

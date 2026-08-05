@@ -36,14 +36,6 @@ fn swap_width_height(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     g.for_each_edge_mut(|_ek, e| {
         (e.width, e.height) = (e.height, e.width);
     });
-
-    // Self-loop edges can be temporarily removed and stored on nodes (see `self_edges`).
-    // Keep their label box dimensions consistent with the coordinate system transforms.
-    g.for_each_node_mut(|_id, n| {
-        for se in &mut n.self_edges {
-            (se.label.width, se.label.height) = (se.label.height, se.label.width);
-        }
-    });
 }
 
 fn reverse_y(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {

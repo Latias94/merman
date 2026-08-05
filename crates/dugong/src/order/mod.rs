@@ -31,7 +31,9 @@ mod cross_count;
 pub use cross_count::cross_count;
 
 mod ordering;
-pub(crate) use ordering::order_controlled;
+pub(crate) use ordering::{
+    IndexedLayerMatrix, build_current_layer_matrix_ix_controlled, order_with_layering_controlled,
+};
 pub use ordering::{OrderOptions, order};
 
 mod workspace;

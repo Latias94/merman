@@ -31,6 +31,36 @@ where
     E: Default + OrderEdgeWeight + 'static,
     G: Default,
 {
+    let _ = order_impl(g, opts, work_control, false)?;
+    Ok(())
+}
+
+pub(crate) fn order_with_layering_controlled<N, E, G>(
+    g: &mut Graph<N, E, G>,
+    opts: OrderOptions,
+    work_control: &mut dyn WorkControl,
+) -> Result<IndexedLayerMatrix, WorkError>
+where
+    N: Default + OrderNodeLabel + 'static,
+    E: Default + OrderEdgeWeight + 'static,
+    G: Default,
+{
+    order_impl(g, opts, work_control, true).map(|layering| {
+        layering.expect("captured ordering always returns its accepted layer matrix")
+    })
+}
+
+fn order_impl<N, E, G>(
+    g: &mut Graph<N, E, G>,
+    opts: OrderOptions,
+    work_control: &mut dyn WorkControl,
+    capture_layering: bool,
+) -> Result<Option<IndexedLayerMatrix>, WorkError>
+where
+    N: Default + OrderNodeLabel + 'static,
+    E: Default + OrderEdgeWeight + 'static,
+    G: Default,
+{
     // The setup plan inspects node slots, rank spans, and leaf status before any of the matching
     // vectors or sort inputs are materialized. Admit that bounded planning scan first.
     work_control.charge(checked_mul(g.node_order_slot_count(), 2)?)?;
@@ -77,7 +107,7 @@ where
         }
     });
     if max_rank == i32::MIN {
-        return Ok(());
+        return Ok(capture_layering.then(IndexedLayerMatrix::default));
     }
     let layering = init_order(g);
     assign_order(g, &layering);
@@ -96,15 +126,23 @@ where
     // crossing-minimization decision to make. Preserve the stable initial order and skip the five
     // sweep/cross-count rounds entirely.
     if opts.disable_optimal_order_heuristic {
-        return Ok(());
+        return if capture_layering {
+            build_current_layer_matrix_ix_controlled(g, work_control).map(Some)
+        } else {
+            Ok(None)
+        };
     }
     if initial_layering_covers_sweep_nodes && layering.iter().all(|layer| layer.len() <= 1) {
-        return Ok(());
+        return if capture_layering {
+            build_current_layer_matrix_ix_controlled(g, work_control).map(Some)
+        } else {
+            Ok(None)
+        };
     }
 
     let mut workspace = OrderWorkspace::new(g, &nodes_by_rank, max_rank)?;
     let mut best_cc: f64 = f64::INFINITY;
-    let mut best_layering: Option<Vec<Vec<usize>>> = None;
+    let mut best_layering: Option<IndexedLayerMatrix> = None;
 
     let ranks_down: Vec<i32> = (1..=max_rank).collect();
     let ranks_up: Vec<i32> = if max_rank >= 1 {
@@ -134,23 +172,32 @@ where
 
         let layering_now = build_layer_matrix_ix_controlled(g, max_rank, work_control)?;
         have_scored_layering = true;
-        let cross_count = cross_count_ix_controlled(g, &layering_now.layers, work_control)?;
+        let cross_count = cross_count_ix_controlled(g, layering_now.layers(), work_control)?;
         if cross_count.value < best_cc {
             last_best = 0;
             best_cc = cross_count.value;
             best_is_proven_minimum =
                 layering_now.has_unique_rank_orders && cross_count.is_proven_minimum;
-            best_layering = Some(layering_now.layers);
+            best_layering = Some(layering_now);
         }
 
         i += 1;
         last_best += 1;
     }
 
-    if let Some(best) = best_layering {
-        assign_order_ix(g, &best);
+    if let Some(mut best) = best_layering {
+        assign_order_ix(g, best.layers());
+        // `max_rank` also includes compound range-only participation. Mermaid's
+        // `buildLayerMatrix` ends at the maximum actual node rank, so do not leak trailing empty
+        // sweep layers into positioning.
+        best.trim_trailing_empty_layers();
+        return Ok(capture_layering.then_some(best));
     }
-    Ok(())
+    if capture_layering {
+        build_current_layer_matrix_ix_controlled(g, work_control).map(Some)
+    } else {
+        Ok(None)
+    }
 }
 
 fn run_sweep_round<N, E, G>(
@@ -328,17 +375,118 @@ where
     Ok(primary_order_changed)
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct BuiltLayerMatrix {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct IndexedLayerMatrix {
     layers: Vec<Vec<usize>>,
+    slot_count: usize,
+    occupied_entries: usize,
     has_unique_rank_orders: bool,
 }
 
-fn build_layer_matrix_ix_controlled<N, E, G>(
+impl Default for IndexedLayerMatrix {
+    fn default() -> Self {
+        Self {
+            layers: Vec::new(),
+            slot_count: 0,
+            occupied_entries: 0,
+            // An empty matrix has no duplicate or missing occupied order and is therefore
+            // vacuously dense and unique, matching Mermaid's empty `buildLayerMatrix` result.
+            has_unique_rank_orders: true,
+        }
+    }
+}
+
+impl IndexedLayerMatrix {
+    pub(crate) fn layers(&self) -> &[Vec<usize>] {
+        &self.layers
+    }
+
+    pub(crate) fn layers_mut(&mut self) -> &mut [Vec<usize>] {
+        &mut self.layers
+    }
+
+    pub(crate) fn rank_count(&self) -> usize {
+        self.layers.len()
+    }
+
+    pub(crate) fn slot_count(&self) -> usize {
+        self.slot_count
+    }
+
+    pub(crate) fn occupied_entries(&self) -> usize {
+        self.occupied_entries
+    }
+
+    pub(crate) fn has_dense_unique_orders(&self) -> bool {
+        self.has_unique_rank_orders && self.slot_count == self.occupied_entries
+    }
+
+    pub(crate) fn to_node_ids_controlled<N, E, G>(
+        &self,
+        g: &Graph<N, E, G>,
+        work_control: &mut dyn WorkControl,
+    ) -> Result<Vec<Vec<String>>, WorkError>
+    where
+        N: Default + 'static,
+        E: Default + 'static,
+        G: Default,
+    {
+        work_control.charge(checked_add(
+            checked_add(self.rank_count(), self.slot_count())?,
+            self.occupied_entries,
+        )?)?;
+        Ok(self
+            .layers
+            .iter()
+            .map(|layer| {
+                layer
+                    .iter()
+                    .filter_map(|&graph_ix| g.node_id_by_ix(graph_ix).map(str::to_owned))
+                    .collect()
+            })
+            .collect())
+    }
+
+    pub(crate) fn record_entry_counts(&mut self, slot_count: usize, occupied_entries: usize) {
+        self.slot_count = slot_count;
+        self.occupied_entries = occupied_entries;
+    }
+
+    fn trim_trailing_empty_layers(&mut self) {
+        while self.layers.last().is_some_and(Vec::is_empty) {
+            self.layers.pop();
+        }
+    }
+}
+
+pub(crate) fn build_current_layer_matrix_ix_controlled<N, E, G>(
+    g: &Graph<N, E, G>,
+    work_control: &mut dyn WorkControl,
+) -> Result<IndexedLayerMatrix, WorkError>
+where
+    N: Default + OrderNodeLabel + 'static,
+    E: Default + 'static,
+    G: Default,
+{
+    // Admit the object-key scan before deriving an allocation-sized rank span. Canonical layout
+    // normalizes ranks before ordering, but retain the source behavior of ignoring negative ranks.
+    work_control.charge(g.node_order_slot_count())?;
+    let mut max_rank = i32::MIN;
+    g.for_each_node(|_id, node| {
+        if let Some(rank) = node.rank()
+            && rank >= 0
+        {
+            max_rank = max_rank.max(rank);
+        }
+    });
+    build_layer_matrix_ix_controlled(g, max_rank, work_control)
+}
+
+pub(crate) fn build_layer_matrix_ix_controlled<N, E, G>(
     g: &Graph<N, E, G>,
     max_rank: i32,
     work_control: &mut dyn WorkControl,
-) -> Result<BuiltLayerMatrix, WorkError>
+) -> Result<IndexedLayerMatrix, WorkError>
 where
     N: Default + OrderNodeLabel + 'static,
     E: Default + 'static,
@@ -400,16 +548,23 @@ where
     for slots in layer_slots {
         layers.push(vec![EMPTY_LAYER_SLOT; slots]);
     }
+    let mut occupied_entries = 0usize;
     for (rank, order, v_ix) in entries {
         if let Some(slot) = layers.get_mut(rank).and_then(|layer| layer.get_mut(order)) {
             // Dagre assigns `layering[rank][order] = node`, so a later graph node replaces an
             // earlier duplicate order instead of introducing a second compacted entry.
-            has_unique_rank_orders &= *slot == EMPTY_LAYER_SLOT;
+            if *slot == EMPTY_LAYER_SLOT {
+                occupied_entries = checked_add(occupied_entries, 1)?;
+            } else {
+                has_unique_rank_orders = false;
+            }
             *slot = v_ix;
         }
     }
-    Ok(BuiltLayerMatrix {
+    Ok(IndexedLayerMatrix {
         layers,
+        slot_count: total_slots,
+        occupied_entries,
         has_unique_rank_orders,
     })
 }
@@ -489,6 +644,48 @@ mod tests {
 
         assert!(work_control.used > graph.node_count() + graph.edge_count());
         assert!(work_control.used < 125_000);
+    }
+
+    #[test]
+    fn semantic_fast_path_does_not_materialize_a_discarded_layer_matrix() {
+        let mut semantic = sparse_ranked_chain(16);
+        let mut semantic_work = RecordingWorkControl {
+            max: usize::MAX,
+            ..Default::default()
+        };
+        order_controlled(
+            &mut semantic,
+            OrderOptions {
+                disable_optimal_order_heuristic: true,
+            },
+            &mut semantic_work,
+        )
+        .unwrap();
+
+        let mut captured = sparse_ranked_chain(16);
+        let mut captured_work = RecordingWorkControl {
+            max: usize::MAX,
+            ..Default::default()
+        };
+        let layering = order_with_layering_controlled(
+            &mut captured,
+            OrderOptions {
+                disable_optimal_order_heuristic: true,
+            },
+            &mut captured_work,
+        )
+        .unwrap();
+
+        assert!(layering.has_dense_unique_orders());
+        assert_eq!(layering.rank_count(), 16);
+        assert!(captured_work.used > semantic_work.used);
+        for index in 0..16 {
+            let id = format!("n{index}");
+            assert_eq!(
+                semantic.node(&id).unwrap().order,
+                captured.node(&id).unwrap().order
+            );
+        }
     }
 
     #[test]
@@ -719,9 +916,13 @@ mod tests {
             ..Default::default()
         };
 
-        order_controlled(&mut graph, OrderOptions::default(), &mut work_control).unwrap();
+        let layering =
+            order_with_layering_controlled(&mut graph, OrderOptions::default(), &mut work_control)
+                .unwrap();
 
         assert_eq!(graph.node("x").and_then(|node| node.order), Some(0));
+        assert_eq!(layering.rank_count(), 2);
+        assert!(layering.has_dense_unique_orders());
     }
 
     #[test]

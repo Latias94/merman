@@ -84,6 +84,40 @@ fn controlled_budget_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
     graph
 }
 
+fn controlled_self_loop_graph(rankdir: RankDir) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+    let mut graph = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    graph.set_graph(GraphLabel {
+        rankdir,
+        nodesep: 50.0,
+        ranksep: 50.0,
+        edgesep: 75.0,
+        ..Default::default()
+    });
+    graph.set_default_edge_label(EdgeLabel::default);
+    graph.set_node(
+        "a",
+        NodeLabel {
+            width: 100.0,
+            height: 80.0,
+            ..Default::default()
+        },
+    );
+    graph.set_edge_with_label(
+        "a",
+        "a",
+        EdgeLabel {
+            width: 50.0,
+            height: 30.0,
+            ..Default::default()
+        },
+    );
+    graph
+}
+
 fn assert_budget_graph_layout_eq(
     left: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     right: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -159,6 +193,32 @@ fn controlled_layout_honors_below_equal_and_above_work_boundaries() {
         let mut control = RecordingWorkControl::with_limit(limit);
         layout_controlled(&mut graph, &mut control).unwrap();
         assert_budget_graph_layout_eq(&measured, &graph);
+    }
+}
+
+#[test]
+fn controlled_self_loop_layout_is_transactional_at_the_exact_boundary() {
+    for rankdir in [RankDir::TB, RankDir::BT, RankDir::LR, RankDir::RL] {
+        let mut measured = controlled_self_loop_graph(rankdir);
+        let mut recorder = RecordingWorkControl::default();
+        layout_controlled(&mut measured, &mut recorder).unwrap();
+        let exact = recorder.total();
+        assert!(exact > 0);
+
+        let initial = controlled_self_loop_graph(rankdir);
+        let mut rejected = controlled_self_loop_graph(rankdir);
+        let mut below = RecordingWorkControl::with_limit(exact - 1);
+        assert_eq!(
+            layout_controlled(&mut rejected, &mut below),
+            Err(LayoutError::Work(WorkError::Interrupted))
+        );
+        assert_budget_graph_layout_eq(&rejected, &initial);
+
+        let mut admitted = controlled_self_loop_graph(rankdir);
+        let mut exact_control = RecordingWorkControl::with_limit(exact);
+        layout_controlled(&mut admitted, &mut exact_control).unwrap();
+        assert_eq!(exact_control.remaining, Some(0));
+        assert_budget_graph_layout_eq(&admitted, &measured);
     }
 }
 
@@ -489,6 +549,24 @@ fn coords(
         out.insert(id.to_string(), (n.x.unwrap(), n.y.unwrap()));
     }
     out
+}
+
+#[test]
+fn layout_can_layout_an_empty_graph() {
+    let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    graph.set_graph(GraphLabel::default());
+    graph.set_default_edge_label(EdgeLabel::default);
+
+    layout(&mut graph).unwrap();
+
+    assert!(graph.node_ids().is_empty());
+    assert!(graph.edge_keys().is_empty());
+    assert_eq!(graph.graph().width, 0.0);
+    assert_eq!(graph.graph().height, 0.0);
 }
 
 #[test]

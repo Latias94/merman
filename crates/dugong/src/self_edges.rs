@@ -7,10 +7,21 @@
 use rustc_hash::FxHashSet;
 
 use crate::graphlib::Graph;
-use crate::{EdgeLabel, GraphLabel, NodeLabel, Point, SelfEdge};
+use crate::order::IndexedLayerMatrix;
+use crate::work::{checked_add, checked_mul};
+use crate::{
+    EdgeLabel, GraphLabel, NodeLabel, NoopWorkControl, Point, SelfEdge, WorkControl, WorkError,
+};
 
 pub fn remove_self_edges(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    let _ = remove_self_edges_with_count(g);
+}
+
+pub(crate) fn remove_self_edges_with_count(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> usize {
     let self_loop_keys: Vec<_> = g.edges().filter(|ek| ek.v == ek.w).cloned().collect();
+    let mut removed = 0usize;
     for ek in self_loop_keys {
         if ek.v != ek.w {
             continue;
@@ -25,50 +36,127 @@ pub fn remove_self_edges(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             });
         }
         let _ = g.remove_edge_key(&ek);
+        removed += 1;
     }
+    removed
 }
 
 pub fn insert_self_edges(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    let layering = crate::util::build_layer_matrix(g);
-    for layer in layering {
-        let mut extra: usize = 0;
-        for (idx, node_id) in layer.iter().enumerate() {
-            let Some(rank) = g.node(node_id).and_then(|n| n.rank) else {
+    let mut work_control = NoopWorkControl;
+    let mut layering = crate::order::build_current_layer_matrix_ix_controlled(g, &mut work_control)
+        .expect("the checked no-op Dugong work control cannot reject self-edge layering");
+    insert_self_edges_with_layering_controlled(g, &mut layering, &mut work_control)
+        .expect("the checked no-op Dugong work control cannot reject self-edge insertion");
+}
+
+pub(crate) fn insert_self_edges_with_layering_controlled(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    layering: &mut IndexedLayerMatrix,
+    work_control: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
+    // The indexed matrix is the exact artifact accepted by ordering. Scan it once to plan every
+    // derived dummy before changing either graph labels or layer storage.
+    work_control.charge(checked_add(layering.rank_count(), layering.slot_count())?)?;
+    let mut layer_capacities = Vec::with_capacity(layering.rank_count());
+    let mut source_nodes = 0usize;
+    let mut dummy_count = 0usize;
+    for layer in layering.layers() {
+        let mut layer_dummies = 0usize;
+        for &graph_ix in layer {
+            let Some(node) = g.node_label_by_ix(graph_ix) else {
                 continue;
             };
+            source_nodes = checked_add(source_nodes, 1)?;
+            layer_dummies = checked_add(layer_dummies, node.self_edges.len())?;
+        }
+        dummy_count = checked_add(dummy_count, layer_dummies)?;
+        layer_capacities.push(checked_add(layer.len(), layer_dummies)?);
+    }
+    if dummy_count == 0 {
+        return Ok(());
+    }
 
-            if let Some(n) = g.node_mut(node_id) {
-                n.order = Some(idx + extra);
-            }
+    let final_slots = checked_add(layering.slot_count(), dummy_count)?;
+    let final_occupied_entries = checked_add(layering.occupied_entries(), dummy_count)?;
+    // Global `_seN` candidates never repeat. Across the complete batch, every failed probe can
+    // therefore collide with at most one pre-existing live node, followed by one success per
+    // dummy. Charge that conservative bound before generating IDs or mutating the graph.
+    let id_probe_bound = checked_add(g.node_count(), dummy_count)?;
+    let execution_work = checked_add(
+        checked_add(layering.rank_count(), final_slots)?,
+        checked_add(
+            source_nodes,
+            checked_add(checked_mul(dummy_count, 2)?, id_probe_bound)?,
+        )?,
+    )?;
+    work_control.charge(execution_work)?;
 
-            let self_edges = g
-                .node(node_id)
-                .map(|n| n.self_edges.clone())
-                .unwrap_or_default();
-            if self_edges.is_empty() {
+    let mut dummy_ids = Vec::with_capacity(dummy_count);
+    let mut next_candidate = || crate::util::unique_id("_se");
+    while dummy_ids.len() < dummy_count {
+        dummy_ids.push(next_available_selfedge_id(g, &mut next_candidate));
+    }
+    let mut dummy_ids = dummy_ids.into_iter();
+
+    for (layer, final_capacity) in layering.layers_mut().iter_mut().zip(layer_capacities) {
+        let source_layer = std::mem::take(layer);
+        let mut expanded = Vec::with_capacity(final_capacity);
+        for graph_ix in source_layer {
+            let Some((rank, self_edges)) = g.node_label_mut_by_ix(graph_ix).and_then(|node| {
+                let rank = node.rank?;
+                // The expanded layer itself is the authoritative Dagre order artifact. Reading
+                // its admitted length avoids a second order accumulator and any unchecked sum.
+                node.order = Some(expanded.len());
+                Some((rank, std::mem::take(&mut node.self_edges)))
+            }) else {
+                // Canonical layout produces dense, unique layers. Preserve any defensive sparse
+                // slot here so an internal invariant failure is not silently re-ordered.
+                expanded.push(graph_ix);
                 continue;
-            }
-            if let Some(n) = g.node_mut(node_id) {
-                n.self_edges.clear();
-            }
+            };
+            expanded.push(graph_ix);
 
-            for se in self_edges {
-                extra += 1;
-                let selfedge_id = crate::util::unique_id("_se");
+            for self_edge in self_edges {
+                let selfedge_id = dummy_ids
+                    .next()
+                    .expect("the admitted dummy ID batch matches the self-edge count");
+                let width = self_edge.label.width;
+                let height = self_edge.label.height;
                 g.set_node(
                     selfedge_id.clone(),
                     NodeLabel {
-                        width: se.label.width,
-                        height: se.label.height,
+                        width,
+                        height,
                         rank: Some(rank),
-                        order: Some(idx + extra),
+                        order: Some(expanded.len()),
                         dummy: Some("selfedge".to_string()),
-                        edge_label: Some(se.label.clone()),
-                        edge_obj: Some(se.edge_obj.clone()),
+                        edge_label: Some(self_edge.label),
+                        edge_obj: Some(self_edge.edge_obj),
                         ..Default::default()
                     },
                 );
+                let dummy_ix = g
+                    .node_ix(&selfedge_id)
+                    .expect("a newly inserted self-edge dummy has a graph index");
+                expanded.push(dummy_ix);
             }
+        }
+        debug_assert_eq!(expanded.len(), final_capacity);
+        *layer = expanded;
+    }
+    debug_assert!(dummy_ids.next().is_none());
+    layering.record_entry_counts(final_slots, final_occupied_entries);
+    Ok(())
+}
+
+fn next_available_selfedge_id(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    next_candidate: &mut impl FnMut() -> String,
+) -> String {
+    loop {
+        let candidate = next_candidate();
+        if !g.has_node(&candidate) {
+            return candidate;
         }
     }
 }
@@ -195,6 +283,35 @@ mod tests {
     use super::*;
     use crate::graphlib::{EdgeKey, GraphOptions};
 
+    #[derive(Debug, Default)]
+    struct RecordingWorkControl {
+        charges: Vec<usize>,
+        remaining: Option<usize>,
+    }
+
+    impl RecordingWorkControl {
+        fn with_limit(limit: usize) -> Self {
+            Self {
+                remaining: Some(limit),
+                ..Self::default()
+            }
+        }
+    }
+
+    impl WorkControl for RecordingWorkControl {
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.charges.push(units);
+            let Some(remaining) = self.remaining else {
+                return Ok(());
+            };
+            let Some(next) = remaining.checked_sub(units) else {
+                return Err(WorkError::Interrupted);
+            };
+            self.remaining = Some(next);
+            Ok(())
+        }
+    }
+
     fn test_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
         Graph::new(GraphOptions {
             multigraph: true,
@@ -223,6 +340,228 @@ mod tests {
             edge_obj: Some(EdgeKey::new("a", "a", Some(name))),
             ..Default::default()
         }
+    }
+
+    fn ranked_self_edge_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = test_graph();
+        graph.set_graph(GraphLabel::default());
+        for (id, rank, order) in [("a", 0, 0), ("b", 0, 1), ("c", 1, 0)] {
+            graph.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(rank),
+                    order: Some(order),
+                    ..Default::default()
+                },
+            );
+        }
+        for (node, name, width) in [
+            ("a", "a-first", 11.0),
+            ("a", "a-second", 12.0),
+            ("b", "b-only", 13.0),
+        ] {
+            graph.set_edge_named(
+                node,
+                node,
+                Some(name),
+                Some(EdgeLabel {
+                    width,
+                    height: 7.0,
+                    ..Default::default()
+                }),
+            );
+        }
+        remove_self_edges(&mut graph);
+        graph
+    }
+
+    fn build_indexed_layering(
+        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ) -> IndexedLayerMatrix {
+        let mut work_control = crate::NoopWorkControl;
+        crate::order::build_current_layer_matrix_ix_controlled(graph, &mut work_control)
+            .expect("the compact ranked fixture has a valid indexed layering")
+    }
+
+    #[test]
+    fn controlled_insertion_expands_the_accepted_layering_in_source_order() {
+        let mut graph = ranked_self_edge_graph();
+        let mut layering = build_indexed_layering(&graph);
+        assert!(layering.has_dense_unique_orders());
+
+        let mut work_control = RecordingWorkControl::default();
+        insert_self_edges_with_layering_controlled(&mut graph, &mut layering, &mut work_control)
+            .expect("the admitted self-edge insertion succeeds");
+        assert_eq!(work_control.charges.len(), 2);
+        assert_eq!(layering.slot_count(), 6);
+        assert!(layering.has_dense_unique_orders());
+
+        let mut noop = crate::NoopWorkControl;
+        let ids = layering
+            .to_node_ids_controlled(&graph, &mut noop)
+            .expect("indexed IDs materialize");
+        let first_layer = ids[0]
+            .iter()
+            .map(|id| {
+                graph
+                    .node(id)
+                    .and_then(|node| node.edge_obj.as_ref())
+                    .and_then(|edge| edge.name.as_deref())
+                    .unwrap_or(id)
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(first_layer, ["a", "a-first", "a-second", "b", "b-only"]);
+        assert_eq!(ids[1], ["c"]);
+        assert_eq!(graph.node("a").and_then(|node| node.order), Some(0));
+        assert_eq!(graph.node("b").and_then(|node| node.order), Some(3));
+        assert!(
+            graph
+                .node("a")
+                .is_some_and(|node| node.self_edges.is_empty())
+        );
+        assert!(
+            graph
+                .node("b")
+                .is_some_and(|node| node.self_edges.is_empty())
+        );
+
+        let rebuilt = build_indexed_layering(&graph);
+        assert_eq!(layering, rebuilt);
+    }
+
+    #[test]
+    fn public_insertion_reuses_the_controlled_source_order() {
+        let mut graph = ranked_self_edge_graph();
+
+        insert_self_edges(&mut graph);
+
+        let layering = crate::util::build_layer_matrix(&graph);
+        let first_layer = layering[0]
+            .iter()
+            .map(|id| {
+                graph
+                    .node(id)
+                    .and_then(|node| node.edge_obj.as_ref())
+                    .and_then(|edge| edge.name.as_deref())
+                    .unwrap_or(id)
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(first_layer, ["a", "a-first", "a-second", "b", "b-only"]);
+        assert_eq!(layering[1], ["c"]);
+        assert_eq!(graph.node("a").and_then(|node| node.order), Some(0));
+        assert_eq!(graph.node("b").and_then(|node| node.order), Some(3));
+    }
+
+    #[test]
+    fn controlled_insertion_rejects_before_graph_or_layering_mutation() {
+        let mut measured_graph = ranked_self_edge_graph();
+        let mut measured_layering = build_indexed_layering(&measured_graph);
+        let mut measured = RecordingWorkControl::default();
+        insert_self_edges_with_layering_controlled(
+            &mut measured_graph,
+            &mut measured_layering,
+            &mut measured,
+        )
+        .expect("the unbounded fixture succeeds");
+        assert_eq!(measured.charges.len(), 2);
+        let exact = measured.charges.iter().sum::<usize>();
+
+        let mut rejected_graph = ranked_self_edge_graph();
+        let mut rejected_layering = build_indexed_layering(&rejected_graph);
+        let source_layering = rejected_layering.clone();
+        let source_nodes = rejected_graph.node_ids();
+        let source_orders = [
+            rejected_graph.node("a").and_then(|node| node.order),
+            rejected_graph.node("b").and_then(|node| node.order),
+        ];
+        let mut rejected = RecordingWorkControl::with_limit(exact - 1);
+        assert_eq!(
+            insert_self_edges_with_layering_controlled(
+                &mut rejected_graph,
+                &mut rejected_layering,
+                &mut rejected,
+            ),
+            Err(WorkError::Interrupted)
+        );
+        assert_eq!(rejected_layering, source_layering);
+        assert_eq!(rejected_graph.node_ids(), source_nodes);
+        assert_eq!(
+            [
+                rejected_graph.node("a").and_then(|node| node.order),
+                rejected_graph.node("b").and_then(|node| node.order),
+            ],
+            source_orders
+        );
+        assert_eq!(
+            rejected_graph
+                .node("a")
+                .map_or(0, |node| node.self_edges.len()),
+            2
+        );
+        assert_eq!(
+            rejected_graph
+                .node("b")
+                .map_or(0, |node| node.self_edges.len()),
+            1
+        );
+
+        let mut admitted_graph = ranked_self_edge_graph();
+        let mut admitted_layering = build_indexed_layering(&admitted_graph);
+        let mut admitted = RecordingWorkControl::with_limit(exact);
+        insert_self_edges_with_layering_controlled(
+            &mut admitted_graph,
+            &mut admitted_layering,
+            &mut admitted,
+        )
+        .expect("the exact self-edge budget succeeds");
+        assert_eq!(admitted.remaining, Some(0));
+    }
+
+    #[test]
+    fn controlled_insertion_without_self_edges_keeps_layer_storage() {
+        let mut graph = ranked_self_edge_graph();
+        for id in ["a", "b"] {
+            graph
+                .node_mut(id)
+                .expect("fixture node exists")
+                .self_edges
+                .clear();
+        }
+        let mut layering = build_indexed_layering(&graph);
+        let source = layering.clone();
+        let first_layer_ptr = layering.layers()[0].as_ptr();
+        let mut work_control = RecordingWorkControl::default();
+
+        insert_self_edges_with_layering_controlled(&mut graph, &mut layering, &mut work_control)
+            .expect("a no-self-edge matrix is a no-op");
+
+        assert_eq!(work_control.charges.len(), 1);
+        assert_eq!(layering, source);
+        assert_eq!(layering.layers()[0].as_ptr(), first_layer_ptr);
+    }
+
+    #[test]
+    fn selfedge_id_selection_skips_existing_user_nodes() {
+        let mut graph = test_graph();
+        graph.set_node(
+            "_se-collision",
+            NodeLabel {
+                width: 99.0,
+                ..Default::default()
+            },
+        );
+        let mut candidates = ["_se-collision", "_se-free"].into_iter().map(str::to_owned);
+        let selected = next_available_selfedge_id(&graph, &mut || {
+            candidates.next().expect("the fixture provides a free ID")
+        });
+
+        assert_eq!(selected, "_se-free");
+        assert_eq!(
+            graph.node("_se-collision").map(|node| node.width),
+            Some(99.0)
+        );
     }
 
     fn position_self_edges_counted(graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) -> usize {
