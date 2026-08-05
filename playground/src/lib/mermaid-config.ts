@@ -1,4 +1,4 @@
-import { normalizeThemeName } from "@mermanjs/web";
+import { normalizeThemeName } from "../../../platforms/web/packages/full/dist/public-catalog.js";
 import { diagramFontStack, type DiagramFont } from "./diagram-font.ts";
 
 export type MermaidConfigObject = Record<string, unknown>;

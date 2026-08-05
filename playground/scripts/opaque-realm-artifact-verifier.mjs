@@ -28,6 +28,17 @@ export async function verifyPreparedOpaqueRealmArtifacts(playgroundRoot, plan) {
       "sha256",
     ]);
     verifyIdentity(artifact.manifest, artifact.source, engine.id);
+    assert.ok(
+      artifact.manifest.bytes <= engine.maxBytes,
+      `${engine.id} engine exceeds its byte budget`,
+    );
+    if (engine.resourcePolicy === "same-origin-wasm-v1") {
+      assert.doesNotMatch(
+        artifact.source,
+        /data:application\/wasm/iu,
+        `${engine.id} engine embeds its parent-owned WASM resource`,
+      );
+    }
     engineArtifacts.set(engine.id, artifact);
   }
 

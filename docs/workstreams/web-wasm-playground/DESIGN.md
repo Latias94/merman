@@ -59,6 +59,12 @@ use `application/wasm`. Browser HTTP cache is the sole persistent byte cache. A 
 compile/initialization failure may refetch once with `cache: reload`; there is no application Cache
 Storage, service worker, or product warmup.
 
+wasm-pack generates the raw shim without a default module path. The public package loader restores
+the supported no-argument initialization contract by supplying its package-relative
+`MERMAN_WASM_URL`; explicit callers retain control of the actual response or bytes. In production,
+the package entry is the unique Vite-manifest owner of the hashed WASM while the raw shim owns no
+asset URL.
+
 BFCache entry suspends publication and disposes replaceable realms while retaining a valid main
 session. BFCache restoration resumes or reacquires it and schedules the latest request once.
 Non-persisted exit and HMR dispose explicitly release owned resources. Window-realm destruction
@@ -115,6 +121,11 @@ aggregates. Corpus schema `2` runs one requested fixture per page, keeps a fresh
 fixture, and linearly aggregates one success or structured failure row for every selected fixture.
 Evidence can be downloaded locally as versioned JSON; it is not uploaded.
 
+The trusted Merman engine receives the parent-acquired WASM as an explicit in-memory `Response`.
+Its private bundle imports the package-owned compiled shim and measurement implementation without
+executing the public package entry, so it contains neither a second WASM binary nor a fallback
+asset request. The artifact plan enforces this emitted contract and an engine-local byte budget.
+
 ## Editor
 
 The Playground configures a local Monaco instance before mounting the editor. Monaco's editor
@@ -170,6 +181,19 @@ immutable caching for hashed assets and HTML revalidation remain the desired hos
 the app does not simulate that policy with Cache Storage.
 
 ## Verification
+
+The maintained frontend baseline is Vite 8.2, React/ReactDOM 19.2.8, ESLint 10, Tailwind 4,
+Playwright/Test 1.62.1, and the grouped current Radix, Lucide, Sonner, i18n, and resizable-panel
+releases recorded in the lock. Vite uses native static `new URL(..., import.meta.url)` handling;
+`vite-plugin-wasm` is absent. The resizable wrapper maps the application's direction vocabulary to
+v4 orientation and percentage sizes. Monaco 0.55.1 and TypeScript 5.7.3 remain deliberate holds:
+Monaco 0.56 removes the contribution-only entry required by the current lazy language graph, and
+TypeScript 7 is outside the admitted tooling line.
+
+Validation is layered: hermetic TypeScript/Vite/policy tests first, prepared unit and production
+artifact verification second, then mandatory Chromium desktop plus focused Firefox/WebKit smoke.
+The compact Chromium mobile suite is on demand and the remaining real-device checks live in
+[MOBILE_QA.md](./MOBILE_QA.md).
 
 The closed lane is protected by:
 

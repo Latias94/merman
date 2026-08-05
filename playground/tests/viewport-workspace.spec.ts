@@ -26,17 +26,20 @@ test("viewport keeps a 100-event pan outside React and terminates cancelled gest
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await waitForTwoFrames(page);
   await waitForCommitIdle(page);
-  const commitsBefore = await reactCommitCount(page);
-
   await page.mouse.down();
+  await waitForCommitIdle(page);
+  const commitsBeforeMoves = await reactCommitCount(page);
   await page.mouse.move(box!.x + box!.width - 20, box!.y + box!.height - 20, {
     steps: 100,
   });
+  await waitForTwoFrames(page);
+  expect(await reactCommitCount(page)).toBe(commitsBeforeMoves);
+  await expect(viewport).toHaveAttribute("data-dragging", "true");
+
   await page.mouse.up();
   await waitForTwoFrames(page);
-
   await expect(positionLayer).not.toHaveCSS("transform", "none");
-  expect(await reactCommitCount(page)).toBe(commitsBefore);
+  await expect(viewport).toHaveAttribute("data-dragging", "false");
 
   for (const termination of ["pointercancel", "lostpointercapture"] as const) {
     await dispatchPointer(viewport, "pointerdown", 17, 80, 80);

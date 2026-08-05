@@ -23,6 +23,8 @@ Primary capability areas:
 - `merman`: public Rust facade for parse/layout/render/raster operations.
 - `merman-cli`, FFI, UniFFI, WASM, and platform wrappers: adapters over the
   canonical headless operations.
+- `@mermanjs/web` and `playground`: browser-only WASM packages plus the local-first authoring,
+  Compare, benchmark, and parser-backed editor experience.
 - `xtask`: fixture import, upstream parity comparison, generated data, audit
   reports, and release gates.
 
@@ -85,6 +87,11 @@ Current contract:
   must not select root, geometry, or measurement answers. Mermaid config, theme variables, diagram
   directives, and host-owned CSS/output overrides remain supported user inputs; they are general
   configuration and presentation contracts, not fixture answers.
+- The **Browser Playground** has one document-owned Merman runtime and one render coordinator.
+  Compare and Benchmark own separate realms, the language service owns a bounded Worker mailbox,
+  and optional Config, Examples, and Benchmark code is acquired only after user activation. The
+  package entry uniquely owns the production WASM URL; realm engines receive explicit resources
+  and do not embed another WASM binary.
 
 Current non-goal:
 
@@ -114,6 +121,9 @@ Current non-goal:
 - ASCII boundary:
   `docs/adr/0065-ascii-output-boundary.md`,
   `docs/adr/0067-ascii-color-role-api.md`
+- Browser runtime, Playground, benchmark, and editor ownership:
+  `docs/adr/0074-browser-runtime-and-benchmark-ownership.md` and
+  `docs/workstreams/web-wasm-playground/DESIGN.md`
 
 ## Validation Defaults
 
@@ -123,6 +133,9 @@ Prefer focused gates first, then widen only when the touched surface needs it.
 - Prefer `cargo nextest` for Rust tests.
 - For renderer changes, start with the touched crate/test target and add parity
   compare commands when DOM/root behavior is involved.
+- For Playground changes, run hermetic source/manifest tests first, then prepared unit/build gates.
+  Chromium desktop and Firefox/WebKit smoke are mandatory browser lanes; focused Chromium mobile
+  interactions are an explicit on-demand lane with a separate real-device residual checklist.
 - For release-level confidence, use the documented strict gate in
   `docs/workstreams/fearless-refactor/GATES.md` or the current `xtask verify`
   command set.

@@ -35,6 +35,7 @@ test("dev, build, and test fail closed on the selected full browser artifact", (
   assert.equal(packageJson.scripts.prebuild, undefined);
   assert.equal(packageJson.scripts.pretest, undefined);
   assert.equal(packageJson.scripts.postbuild, undefined);
+  assert.equal(packageJson.devDependencies["vite-plugin-wasm"], undefined);
   for (const script of ["dev", "build", "test"]) {
     assert.match(
       packageJson.scripts[script],
@@ -111,9 +112,9 @@ test("browser test tooling is isolated from the companion runtime tree", async (
   );
   assert.equal(
     browserTestsPackageJson.devDependencies["@playwright/test"],
-    "1.61.1"
+    "1.62.1"
   );
-  assert.equal(browserTestsPackageJson.devDependencies.playwright, "1.61.1");
+  assert.equal(browserTestsPackageJson.devDependencies.playwright, "1.62.1");
   assert.equal(browserTestsPackageJson.dependencies?.["@zenuml/core"], undefined);
   assert.equal(
     browserTestsPackageJson.dependencies?.["@mermaid-js/mermaid-zenuml"],
@@ -143,15 +144,15 @@ test("browser test tooling is isolated from the companion runtime tree", async (
   }
   assert.equal(
     browserTestsLock.packages["node_modules/@playwright/test"].version,
-    "1.61.1"
+    "1.62.1"
   );
   assert.equal(
     browserTestsLock.packages["node_modules/playwright"].version,
-    "1.61.1"
+    "1.62.1"
   );
   assert.equal(
     browserTestsLock.packages["node_modules/playwright-core"].version,
-    "1.61.1"
+    "1.62.1"
   );
   for (const packagePath of [
     "node_modules/@mermaid-js/mermaid-zenuml",

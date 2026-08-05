@@ -3,7 +3,8 @@
 - Status: accepted
 - Date: 2026-07-18
 - Amended: 2026-07-23 (package-surface projection delegated to ADR-0076); 2026-08-05
-  (benchmark phase, plan, lifecycle, and corpus evidence contracts unified)
+  (benchmark phase, plan, lifecycle, corpus evidence, explicit WASM ownership, and browser
+  validation contracts unified)
 - Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `3`, editor-token, diagnostics, and facts schema `1`
 
 These version fields describe the first public contract shapes after the 0.8 refactor. Their
@@ -50,6 +51,12 @@ byte-cache authority; the Playground does not use Cache Storage or a service wor
 compile/initialization failure may perform exactly one `fetch(..., { cache: "reload" })` recovery.
 An ESM import failure requires page reload because the browser module map cannot be evicted by the
 application.
+
+The generated wasm-bindgen shim has no implicit module-path fallback. A browser package wrapper
+supplies its package-relative `MERMAN_WASM_URL` only for the public no-argument initialization
+contract; explicit callers pass a response, bytes, URL, request, or module. The production Vite
+manifest must therefore show one URL-owning chunk for the hashed WASM and a shim with no asset
+ownership.
 
 An initialized wasm-bindgen module is Window-realm state and cannot be unloaded. Disposing a
 session releases explicitly owned measurement resources and request state; it does not claim to
@@ -170,6 +177,12 @@ iframe failure, protocol failure, hidden visibility, navigation, or freeze produ
 terminal state. Visibility/lifecycle invalidation suppresses all aggregates so no result spans an
 invalid environment boundary.
 
+The trusted Merman benchmark engine imports package-owned compiled runtime modules without loading
+the public package entry that owns the application WASM URL. Its parent fully acquires and validates
+the one hashed WASM response, then supplies an explicit in-memory response to initialization. The
+opaque artifact plan rejects an embedded WASM data URL and applies an engine-local transfer budget;
+the generic channel budget remains broad enough for the independently bundled Mermaid engine.
+
 No report is uploaded or persisted remotely. Download is an explicit local action.
 
 Corpus schema `2` makes one page execute exactly one requested fixture and return exactly one
@@ -233,7 +246,21 @@ language query. A reusable render engine or general runtime factory remains defe
 benchmark evidence shows that its construction cost and consumer ownership justify a new stable
 API.
 
-### 9. Deployment Cache Headers Remain A Hosting Concern
+### 9. Toolchain And Browser Verification Stay Proportional
+
+The current Playground baseline uses Vite 8.2 with its React plugin and native static-asset URL
+handling; `vite-plugin-wasm` is not part of production or tooling. React/ReactDOM and
+Playwright/Test are exact lockstep pairs. TypeScript remains on the admitted 5.x line. Monaco
+remains on 0.55.1 because 0.56 removes the contribution-only editor entry used to keep JSON and
+other language support activation-owned; adopting that release requires a replacement graph with
+equivalent lazy ownership rather than loading every language and LSP client at startup.
+
+Chromium desktop owns the complete mandatory browser contract. Firefox and WebKit each own one
+focused startup/render/Compare/theme/BFCache smoke flow. Chromium mobile owns a small on-demand
+interaction suite, while software-keyboard, browser-chrome, and safe-area behavior remains an
+explicit real-device residual. Mobile emulation is not a Pages dependency.
+
+### 10. Deployment Cache Headers Remain A Hosting Concern
 
 The production build guarantees content-hashed assets and validates the emitted WASM reference and
 MIME in browser tests. The observed deployment currently serves hashed assets with
@@ -248,6 +275,8 @@ Durable guards operate on contracts rather than private spelling:
 
 - TypeScript's configured module resolver enforces source and type-only ownership; Vite's production
   manifest separately enforces emitted static/dynamic reachability and asset ownership.
+- The Vite manifest proves exactly one hashed-WASM asset owner; emitted realm verification rejects
+  embedded WASM data URLs and runtime module requests.
 - WASM profile manifests, smoke tests, ABI checks, and size budgets enforce capability surfaces.
 - Closed channel validators and browser tests enforce realm capability and lifecycle behavior.
 - Generated example checks enforce exact 35-family set coverage, per-example provenance, and

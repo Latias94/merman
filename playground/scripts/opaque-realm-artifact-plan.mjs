@@ -22,6 +22,7 @@ export const OPAQUE_REALM_ARTIFACT_PLAN = defineOpaqueRealmArtifactPlan({
       entry: "src/runtime/realm/engines/mermaid-engine-artifact-entry.ts",
       outputBase: "mermaid-engine",
       publish: true,
+      maxBytes: 12 * 1024 * 1024,
       resourcePolicy: "none-v1",
       exports: ["benchmarkEngineAdapter", "renderWithMermaid"],
     },
@@ -31,6 +32,7 @@ export const OPAQUE_REALM_ARTIFACT_PLAN = defineOpaqueRealmArtifactPlan({
         "src/benchmark/realm/engines/benchmark-merman-artifact-entry.ts",
       outputBase: "benchmark-merman-engine",
       publish: true,
+      maxBytes: 256 * 1024,
       resourcePolicy: "same-origin-wasm-v1",
       exports: ["benchmarkEngineAdapter"],
       browserProjection: {
@@ -128,6 +130,7 @@ export function defineOpaqueRealmArtifactPlan(input) {
     if (typeof engine.publish !== "boolean") {
       throw new Error(`Engine ${engine.id} publish policy must be boolean.`);
     }
+    positiveInteger(engine.maxBytes, `engine ${engine.id} byte budget`);
     enumValue(
       engine.resourcePolicy,
       RESOURCE_POLICIES,

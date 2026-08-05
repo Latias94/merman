@@ -1,6 +1,5 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import wasm from "vite-plugin-wasm";
 import path from "path";
 import {
   createOpaqueRealmCspPlugin,
@@ -8,18 +7,18 @@ import {
 } from "./scripts/opaque-realm-csp.mjs";
 import { OPAQUE_REALM_ARTIFACT_PLAN } from "./scripts/opaque-realm-artifact-plan.mjs";
 
-const playgroundRoot = __dirname;
+const playgroundRoot = import.meta.dirname;
 const opaqueRealmCspHashes = loadOpaqueRealmCspHashes(playgroundRoot);
 
 export default defineConfig({
-  plugins: [createOpaqueRealmCspPlugin(opaqueRealmCspHashes), react(), wasm()],
+  plugins: [createOpaqueRealmCspPlugin(opaqueRealmCspHashes), react()],
   resolve: {
     alias: {
       "@": path.resolve(playgroundRoot, "./"),
     },
   },
-  // GitHub Pages 部署时使用仓库名作为 base
-  // 本地开发时使用 /
+  // GitHub Pages uses the repository name as its production base.
+  // Local development remains rooted at `/`.
   base: process.env.NODE_ENV === "production" ? "/merman/" : "/",
   build: {
     manifest: true,
@@ -44,7 +43,7 @@ export default defineConfig({
   },
   server: {
     fs: {
-      // 允许访问 WASM 文件
+      // Keep package-relative WASM artifacts reachable during development.
       allow: [".."],
     },
   },

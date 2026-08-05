@@ -67,9 +67,9 @@ export default function App() {
             )}
             <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
               <ResizablePanel
-                defaultSize={45}
-                minSize={25}
-                maxSize={75}
+                defaultSize="45%"
+                minSize="25%"
+                maxSize="75%"
                 className="bg-card"
                 id={isNarrowLayout ? "workspace-editor-panel" : undefined}
                 role={isNarrowLayout ? "tabpanel" : undefined}
@@ -89,8 +89,8 @@ export default function App() {
               />
 
               <ResizablePanel
-                defaultSize={55}
-                minSize={25}
+                defaultSize="55%"
+                minSize="25%"
                 id={isNarrowLayout ? "workspace-preview-panel" : undefined}
                 role={isNarrowLayout ? "tabpanel" : undefined}
                 aria-labelledby={isNarrowLayout ? "workspace-preview-tab" : undefined}

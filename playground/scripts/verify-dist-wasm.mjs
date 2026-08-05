@@ -27,6 +27,7 @@ import {
   emittedFiles,
   manifestChunk,
   parseViteManifest,
+  ownersOfAsset,
 } from "./vite-manifest-graph.mjs";
 import {
   createExpectedCspPolicies,
@@ -238,11 +239,17 @@ function verifyWasmOutput(graph, wasmKey, shimKey) {
   if (!isNonEmptyFile(wasm) || !isNonEmptyFile(shim)) {
     fail(["  Production WASM module or wasm-bindgen shim is missing."]);
   }
-  const wasmName = path.basename(wasm);
-  if (!readFileSync(shim, "utf8").includes(wasmName)) {
-    fail([`  The wasm-bindgen shim does not reference the WASM binary: ${wasmName}`]);
+  const owners = ownersOfAsset(graph, relativeToDist(wasm));
+  if (owners.length !== 1) {
+    fail([
+      `  Production WASM must have one manifest owner; found ${owners.length}.`,
+    ]);
   }
-  return { shim, wasm };
+  return {
+    owner: path.join(distRoot, manifestChunk(graph, owners[0]).file),
+    shim,
+    wasm,
+  };
 }
 
 function reportBuild(graph, emitted, wasm) {
@@ -261,6 +268,7 @@ function reportBuild(graph, emitted, wasm) {
       "[merman-playground] production artifact graph verified.",
       `  WASM: ${relativeToDist(wasm.wasm)}`,
       `  JS shim: ${relativeToDist(wasm.shim)}`,
+      `  WASM URL owner: ${relativeToDist(wasm.owner)}`,
       `  Initial JS closure: ${initialJavaScript.files} files, ${formatBytes(initialJavaScript.rawBytes)} raw, ${formatBytes(initialJavaScript.gzipBytes)} gzip`,
       `  Activation-owned roots: ${optionalRoots}`,
       "  Compare execution: opaque verified static realm artifact",

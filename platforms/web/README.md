@@ -50,6 +50,11 @@ const wasm = await fetch(MERMAN_WASM_URL, { cache: "reload" });
 await initMerman({ loader: loadMermanWasmModule, wasm });
 ```
 
+The generated raw wasm-bindgen shim intentionally has no implicit module-path fallback. The public
+package loader supplies `MERMAN_WASM_URL` when its returned module is initialized without an input,
+and forwards an explicit input unchanged. This keeps URL and cache policy at the package/host
+boundary and prevents internal bundles from acquiring a hidden second WASM asset.
+
 ## Runtime Lifecycle
 
 Initialize Merman once per browser realm and reuse it; repeated `initMerman()` calls share the cached initialization and module. There is no separate WASM unload API, so a main-thread runtime lives for the page realm. The package does not create or own a Worker: a host that loads Merman in a dedicated Worker must terminate that Worker after initialization failure, replacement, or application teardown. Synchronous WASM calls cannot be interrupted from the same realm, so Worker termination is the hard cancellation boundary. Dispose every `BrowserTextMeasurementSession` created by `createBrowserTextMeasurementSession()` as soon as it is no longer needed.

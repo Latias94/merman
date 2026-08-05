@@ -39,6 +39,17 @@ for (const engine of plan.engines) {
     format: "es",
     expectedExports: engine.exports,
   });
+  if (built.manifest.bytes > engine.maxBytes) {
+    throw new Error(
+      `${engine.id} engine exceeds its byte budget (${built.manifest.bytes} > ${engine.maxBytes}).`,
+    );
+  }
+  if (
+    engine.resourcePolicy === "same-origin-wasm-v1" &&
+    /data:application\/wasm/iu.test(built.source)
+  ) {
+    throw new Error(`${engine.id} engine embeds its parent-owned WASM resource.`);
+  }
   generated.push(...built.outputs);
   engineManifests.set(engine.id, built.manifest);
 }
@@ -163,6 +174,7 @@ async function buildArtifact(artifact, engineManifest = null) {
   };
   return {
     manifest,
+    source,
     outputs: [
       { file: `${artifact.outputBase}.js`, value: source },
       {

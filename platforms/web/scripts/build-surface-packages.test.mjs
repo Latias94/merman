@@ -55,6 +55,11 @@ describe("browser package assembly", () => {
     const source = packageEntrySource(descriptor);
     assert.match(source, /artifacts\/wasm\/merman_wasm\.js/);
     assert.match(source, /MERMAN_WASM_URL/);
+    assert.match(source, /wasmModulePromise \?\?= loadPackageWasmModule\(\)/);
+    assert.match(
+      source,
+      /input \?\? \{ module_or_path: MERMAN_WASM_URL \}/,
+    );
     assert.match(source, /assertBrowserRuntime, bindSurfaceRuntime/);
     assert.match(source, /from "\.\.\/runtime-core\.js"/);
     assert.match(source, /from "\.\.\/runtime-analysis\.js"/);

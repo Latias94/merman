@@ -85,7 +85,7 @@ import {
   ImageIcon,
   FileCode,
   ChevronDown,
-  Github,
+  GitFork,
   Languages,
   FileText,
   Code,
@@ -1025,7 +1025,7 @@ export function Toolbar() {
                   rel="noopener noreferrer"
                   aria-label={t("toolbar.viewSource")}
                 >
-                  <Github className="size-4" />
+                  <GitFork className="size-4" />
                 </a>
               </Button>
             </TooltipTrigger>

@@ -544,3 +544,63 @@ Results:
   generated browser artifact would have required a second ad hoc validation/build path, so the
   comparison intentionally uses reproducible Playwright discovery counts plus current measured
   lane times.
+
+### 2026-08-05 - Vite 8, Explicit WASM Ownership, And Dependency Integration
+
+Changes:
+
+- Upgraded the Playground to Vite 8.2.0 and `@vitejs/plugin-react` 6.0.5, removed
+  `vite-plugin-wasm`, migrated the local resizable-panel boundary to v4, and aligned the approved
+  React, Radix, Lucide, Sonner, Tailwind, i18n, ESLint, and Playwright peer groups.
+- Kept Mermaid 11.16.0, Monaco 0.55.1, TypeScript 5.7.3, and the Node 22 type line intentionally.
+  Monaco 0.56 removes the contribution-only entry used by the current editor closure; Mermaid and
+  TypeScript changes remain owned by their dedicated alignment/support decisions.
+- Configured wasm-bindgen to omit its implicit default module path. Public Web package wrappers
+  preserve no-argument initialization by supplying the generated WASM URL, while the trusted
+  Benchmark engine supplies a verified in-memory `Response` explicitly.
+- Removed public package-entry imports from opaque engine library builds. The Benchmark Merman
+  artifact now uses the private compiled runtime boundary, and shared Mermaid configuration uses
+  the private compiled catalog projection.
+- Added per-engine artifact budgets, an embedded-WASM data-URL rejection, and a global Vite
+  manifest invariant requiring one WASM URL owner inside the Merman package closure.
+- Right-sized the viewport commit-count assertion around the 100-event pointer-move hot path.
+  A one-time Radix tooltip close on `pointerdown` is unrelated low-frequency work and is no longer
+  misclassified as a viewport-frequency regression.
+- Updated the architecture context, ADR, workstream design, package documentation, release
+  playbook, validation tiers, and mobile/browser posture to match the emitted system.
+
+Commands:
+
+```bash
+npm run verify:dependencies --prefix playground
+npm audit --prefix playground
+npm audit --omit=dev --prefix playground
+npm audit --prefix playground/tests
+npm audit --omit=dev --prefix playground/tests
+npm run test:prepared --prefix playground
+npm run build --prefix playground
+npm run test:browser:chromium:desktop:built --prefix playground
+npm run test:browser:smoke:non-chromium:built --prefix playground
+npm run test:browser:mobile:built --prefix playground
+npm --prefix playground/tests run test:desktop -- viewport-workspace.spec.ts \
+  --grep "100-event pan" --repeat-each=10
+```
+
+Results:
+
+- Dependency trees and the generated 250,560-byte production license report passed. Full and
+  production npm audits for both package roots reported zero vulnerabilities.
+- `npm outdated` reports only the intentional lines above: Node types 22.20.1, Mermaid 11.16.0,
+  Monaco 0.55.1, and TypeScript 5.7.3. The Playwright runtime and test package are exactly 1.62.1.
+- Complete prepared tests passed: 38 build-graph, 53 editor Worker, 69 runtime/store/share,
+  54 realm, and 98 Benchmark tests, plus all focused config, requirement, example, and export tests.
+- Vite 8.2.0 transformed 3,075 modules. Dist verification found exactly one
+  `merman_wasm_bg-Dpd0uUA1.wasm`, one JavaScript shim, and one WASM URL owner in the full Web
+  package closure. The initial JavaScript closure is 4,215.92 KiB raw and 1,106.27 KiB gzip.
+- The trusted Merman engine artifact is 45,341 bytes with no embedded WASM data URL, down 99.86%
+  from the measured 33,565,060-byte duplicated form. The Mermaid engine artifact is 10,179,147
+  bytes with no embedded Merman WASM, down 76.72% from 43,717,823 bytes.
+- Chromium desktop passed 43/43 in 1.6 minutes. Firefox/WebKit smoke passed 2/2 in 9.9 seconds.
+  The on-demand mobile interaction lane passed 3/3 in 6.3 seconds.
+- The focused 100-event viewport hot-path scenario passed 10/10 repeated executions after the
+  commit probe was scoped to pointer frequency rather than unrelated document-level UI work.

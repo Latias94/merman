@@ -2,6 +2,7 @@ import type {
   MermanWasmModule,
   SvgBindingOptions,
 } from "@mermanjs/web";
+import { createBrowserTextMeasurementSession } from "../../../../../platforms/web/packages/full/dist/runtime-render.js";
 
 import {
   diagramFontStack,
@@ -23,13 +24,14 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
   async initialize({ mark, payload, resourceUrl }) {
     const wasmUrl = validateMermanWasmUrl(resourceUrl);
     mark("engine_import_start");
-    const webPromise = import("@mermanjs/web");
+    const modulePromise = import(
+      "../../../../../platforms/web/packages/full/artifacts/wasm/merman_wasm.js"
+    );
     const enginePromise = runObservedBenchmarkEngineStage(
       "engine-import",
       async () => {
-        const web = await webPromise;
-        const module = await web.loadMermanWasmModule();
-        return { web, module: module as MermanWasmModule };
+        const module = await modulePromise;
+        return module as unknown as MermanWasmModule;
       },
       () => mark("engine_import_end")
     );
@@ -38,10 +40,7 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
     const resourcePromise = runObservedBenchmarkEngineStage(
       "resource-acquire",
       async () => {
-        const response = await fetch(
-          wasmUrl,
-          { cache: "default" }
-        );
+        const response = await fetch(wasmUrl, { cache: "default" });
         validateWasmResponse(response);
         return response.arrayBuffer();
       },
@@ -54,21 +53,23 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
     ]);
     if (engineResult.status === "rejected") throw engineResult.reason;
     if (resourceResult.status === "rejected") throw resourceResult.reason;
-    const { web, module } = engineResult.value;
-    const wasm = resourceResult.value;
+    const module = engineResult.value;
+    const wasmResponse = new Response(resourceResult.value, {
+      headers: { "content-type": "application/wasm" },
+    });
     mark("initialize_start");
     let measurement: ReturnType<
-      typeof web.createBrowserTextMeasurementSession
+      typeof createBrowserTextMeasurementSession
     > | null = null;
     let configuredSource: string;
     let options: string;
     let version: string;
     try {
       await runBenchmarkEngineStage("initialize", () =>
-        module.default({ module_or_path: wasm })
+        module.default({ module_or_path: wasmResponse })
       );
       measurement = await runBenchmarkEngineStage("initialize", () =>
-        web.createBrowserTextMeasurementSession()
+        createBrowserTextMeasurementSession()
       );
       configuredSource = sourceWithConfig(
         payload.source,

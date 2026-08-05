@@ -174,7 +174,6 @@ function validManifest() {
       file: "assets/wasm.js",
       src: PLAYGROUND_BUILD_SOURCES.wasmShim,
       isDynamicEntry: true,
-      assets: ["assets/engine.wasm"],
     },
     "wasm-binary": {
       file: "assets/engine.wasm",

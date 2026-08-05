@@ -19,6 +19,9 @@ crate-type = ["cdylib", "rlib"]
 [package.metadata.merman]
 artifact-profile-required = true
 
+[package.metadata.wasm-pack.profile.custom.wasm-bindgen]
+omit-default-module-path = true
+
 [features]
 default = []
 analysis = ["merman-bindings-core/analysis"]

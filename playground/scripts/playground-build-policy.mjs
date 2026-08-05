@@ -319,12 +319,13 @@ export function inspectPlaygroundEmittedGraph(manifest) {
   );
   const wasmFile = manifestChunk(graph, wasmBinary).file;
   const wasmOwners = ownersOfAsset(graph, wasmFile);
-  const ownedInsideMerman = wasmOwners.filter((key) =>
-    benchmarkMermanStatic.has(key),
-  );
-  if (ownedInsideMerman.length !== 1) {
+  if (wasmOwners.length !== 1) {
     violations.push(
-      `Merman artifact closure must have exactly one owner for ${wasmFile}; found ${ownedInsideMerman.length}.`,
+      `Production WASM must have exactly one manifest owner for ${wasmFile}; found ${wasmOwners.length}.`,
+    );
+  } else if (!benchmarkMermanStatic.has(wasmOwners[0])) {
+    violations.push(
+      `Production WASM owner ${wasmOwners[0]} is outside the Merman artifact closure.`,
     );
   }
 

@@ -62,7 +62,34 @@ test("prepared verifier rejects stale generated browser projection", async (t) =
   );
 });
 
-async function createPreparedFixture(t, bootstrapSources = {}) {
+test("prepared verifier rejects an oversized engine artifact", async (t) => {
+  const root = await createPreparedFixture(
+    t,
+    {},
+    { "benchmark-merman": "x".repeat(256 * 1024 + 1) },
+  );
+  await assert.rejects(
+    verifyPreparedOpaqueRealmArtifacts(root, OPAQUE_REALM_ARTIFACT_PLAN),
+    /benchmark-merman engine exceeds its byte budget/u,
+  );
+});
+
+test("prepared verifier rejects parent-owned WASM embedded in an engine", async (t) => {
+  const root = await createPreparedFixture(t, {}, {
+    "benchmark-merman":
+      'export const benchmarkEngineAdapter = "data:application/wasm;base64,AA==";\n',
+  });
+  await assert.rejects(
+    verifyPreparedOpaqueRealmArtifacts(root, OPAQUE_REALM_ARTIFACT_PLAN),
+    /embeds its parent-owned WASM resource/u,
+  );
+});
+
+async function createPreparedFixture(
+  t,
+  bootstrapSources = {},
+  engineSources = {},
+) {
   const root = await mkdtemp(path.join(os.tmpdir(), "merman-opaque-artifacts-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const plan = OPAQUE_REALM_ARTIFACT_PLAN;
@@ -73,7 +100,8 @@ async function createPreparedFixture(t, bootstrapSources = {}) {
 
   const identities = new Map();
   for (const engine of plan.engines) {
-    const source = `export const ${engine.exports[0]} = {};\n`;
+    const source =
+      engineSources[engine.id] ?? `export const ${engine.exports[0]} = {};\n`;
     const manifest = identity(engine.id, source);
     identities.set(engine.id, manifest);
     await writeArtifact(outputRoot, engine.outputBase, source, manifest);
