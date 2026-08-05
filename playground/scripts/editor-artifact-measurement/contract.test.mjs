@@ -31,7 +31,7 @@ import {
 } from "./equivalence-shared.mjs";
 import {
   digestEntries,
-  editorArtifactStartupClosure,
+  editorArtifactBuildRuntimeClosure,
   measurementContractDigest,
   runtimePackageArtifactPaths,
   runtimePackageProvenanceContract,
@@ -341,11 +341,11 @@ test("binds artifact authority to deterministic selection inputs and package cho
         receipt,
         selectionInputs: {
           ...receipt.selectionInputs,
-          startupClosureSha256: digest("stale"),
+          buildRuntimeClosureSha256: digest("stale"),
         },
         workerGraph: workerGraph("@mermanjs/web-editor"),
       }),
-    /startupClosureSha256 changed/u,
+    /buildRuntimeClosureSha256 changed/u,
   );
   assert.throws(
     () =>
@@ -430,21 +430,46 @@ test("measurement freshness ignores documentation but binds executable inputs", 
   assert.notEqual(measurementContractDigest(repositoryRoot), initial);
 });
 
-test("startup freshness includes dynamic runtime sources but excludes type-only inputs", () => {
+test("build freshness covers every planned production runtime entry", () => {
   const graph = {
     files: new Set([
       "src/main.tsx",
-      "src/eager.ts",
-      "src/lazy.ts",
-      "src/lazy-types.ts",
+      "src/benchmark/corpus-browser.ts",
+      "src/benchmark/realm/trusted-merman-entry.ts",
+      "src/shared.ts",
     ]),
     edges: [
       {
         external: false,
-        from: "src/main.tsx",
+        from: "src/benchmark/corpus-browser.ts",
         kind: "static",
-        to: "src/eager.ts",
+        to: "src/shared.ts",
       },
+      {
+        external: false,
+        from: "src/benchmark/realm/trusted-merman-entry.ts",
+        kind: "static",
+        to: "src/shared.ts",
+      },
+    ],
+  };
+
+  assert.deepEqual([...editorArtifactBuildRuntimeClosure(graph)].sort(), [
+    "src/benchmark/corpus-browser.ts",
+    "src/benchmark/realm/trusted-merman-entry.ts",
+    "src/main.tsx",
+    "src/shared.ts",
+  ]);
+});
+
+test("build freshness includes dynamic sources but excludes type-only inputs", () => {
+  const graph = {
+    files: new Set([
+      "src/main.tsx",
+      "src/lazy.ts",
+      "src/lazy-types.ts",
+    ]),
+    edges: [
       {
         external: false,
         from: "src/main.tsx",
@@ -460,11 +485,12 @@ test("startup freshness includes dynamic runtime sources but excludes type-only 
     ],
   };
 
-  assert.deepEqual([...editorArtifactStartupClosure(graph)].sort(), [
-    "src/eager.ts",
-    "src/lazy.ts",
-    "src/main.tsx",
-  ]);
+  assert.deepEqual(
+    [
+      ...editorArtifactBuildRuntimeClosure(graph, ["src/main.tsx"]),
+    ].sort(),
+    ["src/lazy.ts", "src/main.tsx"],
+  );
 });
 
 test("package provenance freshness binds runtime modules without declarations or maps", () => {
@@ -788,9 +814,9 @@ function validReceiptInput() {
 
 function validSelectionInputs() {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    buildRuntimeClosureSha256: digest("build-runtime-closure"),
     measurementContractSha256: digest("measurement-contract"),
-    startupClosureSha256: digest("startup-closure"),
     workerClosureSha256: digest("worker-closure"),
     fullPackageProvenanceSha256: digest("full-package"),
     editorPackageProvenanceSha256: digest("editor-package"),

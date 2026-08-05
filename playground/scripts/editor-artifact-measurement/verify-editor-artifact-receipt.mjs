@@ -46,8 +46,8 @@ export function verifyEditorArtifactAuthority({
     "Editor artifact selection-input contract changed. Advance the receipt schema and rerun R16 measurement.",
   );
   for (const field of [
+    "buildRuntimeClosureSha256",
     "measurementContractSha256",
-    "startupClosureSha256",
     "workerClosureSha256",
     "fullPackageProvenanceSha256",
     "editorPackageProvenanceSha256",

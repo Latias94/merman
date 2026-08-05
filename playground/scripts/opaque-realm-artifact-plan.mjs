@@ -9,7 +9,7 @@ const CSP_PROFILES = new Set([
 ]);
 
 export const OPAQUE_REALM_ARTIFACT_PLAN = defineOpaqueRealmArtifactPlan({
-  schemaVersion: 1,
+  schemaVersion: 2,
   roots: {
     generated: ".runtime",
     publicEngines: "public/opaque-realm",
@@ -86,18 +86,21 @@ export const OPAQUE_REALM_ARTIFACT_PLAN = defineOpaqueRealmArtifactPlan({
     {
       key: "playground",
       source: "index.html",
+      entry: "src/main.tsx",
       cspProfile: "playground-v1",
       inlineRealms: ["compare-mermaid", "benchmark-mermaid"],
     },
     {
       key: "benchmarkCorpus",
       source: "benchmark-corpus.html",
+      entry: "src/benchmark/corpus-browser.ts",
       cspProfile: "benchmark-corpus-v1",
       inlineRealms: ["benchmark-mermaid"],
     },
     {
       key: "benchmarkRealm",
       source: "benchmark.html",
+      entry: "src/benchmark/realm/trusted-merman-entry.ts",
       cspProfile: "trusted-benchmark-v1",
       inlineRealms: [],
     },
@@ -105,8 +108,8 @@ export const OPAQUE_REALM_ARTIFACT_PLAN = defineOpaqueRealmArtifactPlan({
 });
 
 export function defineOpaqueRealmArtifactPlan(input) {
-  if (!isRecord(input) || input.schemaVersion !== 1 || !isRecord(input.roots)) {
-    throw new Error("Opaque realm artifact plan must use schema version 1.");
+  if (!isRecord(input) || input.schemaVersion !== 2 || !isRecord(input.roots)) {
+    throw new Error("Opaque realm artifact plan must use schema version 2.");
   }
   const roots = Object.freeze({
     generated: relativePath(input.roots.generated, "generated root"),
@@ -139,7 +142,7 @@ export function defineOpaqueRealmArtifactPlan(input) {
     ),
   );
   const plan = Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     roots,
     browserMetadataModule,
     engines,
@@ -248,6 +251,7 @@ function projectPage(value, realms, realmKeys) {
   if (!isRecord(value)) throw new Error("Page must be an object.");
   const key = name(value.key, "page key");
   const source = relativePath(value.source, `page ${key} source`);
+  const entry = typescriptModule(value.entry, `page ${key} entry`);
   if (!source.endsWith(".html")) {
     throw new Error(`Page ${key} source must be HTML.`);
   }
@@ -269,6 +273,7 @@ function projectPage(value, realms, realmKeys) {
   return Object.freeze({
     key,
     source,
+    entry,
     cspProfile: enumValue(
       value.cspProfile,
       CSP_PROFILES,
@@ -359,6 +364,7 @@ function assertPlanOwnership(plan) {
     "CSP placeholder",
   );
   assertUnique(plan.pages.map((page) => page.source), "page source");
+  assertUnique(plan.pages.map((page) => page.entry), "page entry");
 
   const pageKeys = new Set(plan.pages.map((page) => page.key));
   for (const realm of plan.realms) {

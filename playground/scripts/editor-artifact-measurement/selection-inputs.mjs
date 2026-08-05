@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { packageRuntimeDistClosure } from "../../../platforms/web/scripts/package-dist-closure.mjs";
+import { OPAQUE_REALM_ARTIFACT_PLAN } from "../opaque-realm-artifact-plan.mjs";
 import { EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION } from "./contract-shared.mjs";
 import {
   collectSourceClosure,
@@ -22,25 +23,33 @@ const MEASUREMENT_CONTRACT_EXTENSIONS = new Set([
   ".ts",
   ".tsx",
 ]);
-const STARTUP_BUILD_INPUTS = Object.freeze([
-  "playground/index.html",
+const BUILD_INPUTS = Object.freeze([
+  ...OPAQUE_REALM_ARTIFACT_PLAN.pages.map(
+    (page) => `playground/${page.source}`,
+  ),
   "playground/package-lock.json",
   "playground/package.json",
   "playground/postcss.config.mjs",
+  "playground/scripts/csp-policy.mjs",
+  "playground/scripts/opaque-realm-artifact-plan.mjs",
+  "playground/scripts/opaque-realm-csp.mjs",
   "playground/tsconfig.json",
   "playground/vite.config.ts",
 ]);
+const BUILD_RUNTIME_ENTRIES = Object.freeze(
+  OPAQUE_REALM_ARTIFACT_PLAN.pages.map((page) => page.entry),
+);
 export function editorArtifactSelectionInputs(repositoryRoot) {
   const playgroundRoot = path.join(repositoryRoot, "playground");
   const graph = createTypeScriptSourceGraph({
     rootDir: playgroundRoot,
     entries: [
-      "src/main.tsx",
+      ...BUILD_RUNTIME_ENTRIES,
       "src/editor/merman-language.worker.ts",
       "scripts/editor-artifact-measurement/semantic-equivalence.ts",
     ],
   });
-  const startupClosure = editorArtifactStartupClosure(graph);
+  const buildRuntimeClosure = editorArtifactBuildRuntimeClosure(graph);
   const workerClosure = new Set([
     ...collectSourceClosure(
       graph,
@@ -60,15 +69,15 @@ export function editorArtifactSelectionInputs(repositoryRoot) {
   return Object.freeze({
     schemaVersion: EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION,
     measurementContractSha256: measurementContractDigest(repositoryRoot),
-    startupClosureSha256: digestEntries(
+    buildRuntimeClosureSha256: digestEntries(
       [
-        ...entriesForFiles(repositoryRoot, STARTUP_BUILD_INPUTS),
+        ...entriesForFiles(repositoryRoot, BUILD_INPUTS),
         ...entriesForFiles(
           repositoryRoot,
-          [...startupClosure].map((file) => `playground/${file}`),
+          [...buildRuntimeClosure].map((file) => `playground/${file}`),
         ),
       ],
-      "startup-closure",
+      "build-runtime-closure",
     ),
     workerClosureSha256: digestEntries(
       entriesForFiles(
@@ -89,8 +98,11 @@ export function editorArtifactSelectionInputs(repositoryRoot) {
   });
 }
 
-export function editorArtifactStartupClosure(graph) {
-  return collectSourceClosure(graph, ["src/main.tsx"], {
+export function editorArtifactBuildRuntimeClosure(
+  graph,
+  roots = BUILD_RUNTIME_ENTRIES,
+) {
+  return collectSourceClosure(graph, roots, {
     includeDynamic: true,
   });
 }

@@ -206,11 +206,11 @@ function validateSelectionInputs(value) {
     value,
     [
       "editorPackageProvenanceSha256",
+      "buildRuntimeClosureSha256",
       "equivalenceEvidenceSha256",
       "fullPackageProvenanceSha256",
       "measurementContractSha256",
       "schemaVersion",
-      "startupClosureSha256",
       "workerClosureSha256",
     ],
     "selectionInputs",
@@ -225,10 +225,10 @@ function validateSelectionInputs(value) {
   }
   for (const field of [
     "editorPackageProvenanceSha256",
+    "buildRuntimeClosureSha256",
     "equivalenceEvidenceSha256",
     "fullPackageProvenanceSha256",
     "measurementContractSha256",
-    "startupClosureSha256",
     "workerClosureSha256",
   ]) {
     expectSha256(selectionInputs[field], `selectionInputs ${field}`);

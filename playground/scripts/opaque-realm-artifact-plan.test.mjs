@@ -10,10 +10,31 @@ import {
   publicEngineFiles,
 } from "./opaque-realm-artifact-plan.mjs";
 import { renderOpaqueRealmBrowserProjections } from "./opaque-realm-browser-projection.mjs";
+import { htmlStaticAssets } from "./vite-manifest-graph.mjs";
 
 const playgroundRoot = path.resolve(import.meta.dirname, "..");
 
 test("canonical plan owns every generated and public opaque artifact", () => {
+  assert.deepEqual(
+    OPAQUE_REALM_ARTIFACT_PLAN.pages.map(({ key, source, entry }) => ({
+      key,
+      source,
+      entry,
+    })),
+    [
+      { key: "playground", source: "index.html", entry: "src/main.tsx" },
+      {
+        key: "benchmarkCorpus",
+        source: "benchmark-corpus.html",
+        entry: "src/benchmark/corpus-browser.ts",
+      },
+      {
+        key: "benchmarkRealm",
+        source: "benchmark.html",
+        entry: "src/benchmark/realm/trusted-merman-entry.ts",
+      },
+    ],
+  );
   assert.deepEqual(artifactOutputFiles(OPAQUE_REALM_ARTIFACT_PLAN), [
     "benchmark-merman-engine.js",
     "benchmark-merman-engine.json",
@@ -28,6 +49,17 @@ test("canonical plan owns every generated and public opaque artifact", () => {
     "benchmark-merman-engine.js",
     "mermaid-engine.js",
   ]);
+});
+
+test("production HTML pages load exactly their planned runtime entry", async () => {
+  for (const page of OPAQUE_REALM_ARTIFACT_PLAN.pages) {
+    const html = await readFile(path.join(playgroundRoot, page.source), "utf8");
+    assert.deepEqual(
+      htmlStaticAssets(html).filter((asset) => asset.kind === "script"),
+      [{ kind: "script", url: `/${page.entry}` }],
+      page.source,
+    );
+  }
 });
 
 test("plan validation rejects duplicate outputs and broken references", () => {
