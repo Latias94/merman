@@ -1179,6 +1179,94 @@ fn layout_can_layout_a_self_loop() {
 }
 
 #[test]
+fn layout_non_square_self_loop_matches_pinned_dagre_phase_order() {
+    // Generated from repo-ref/dagre-d3-es-7.0.14 at
+    // 4b95ad0a0bca6ce4cfa4cb83dfa9be19ca740e8f. The non-square label makes an
+    // insertSelfEdges/coordinateSystem phase inversion observable for LR/RL.
+    let cases = [
+        (
+            RankDir::TB,
+            (212.5, 80.0),
+            (187.5, 40.0),
+            [
+                (100.0, 21.538_461_538_461_54),
+                (158.333_333_333_333_34, 0.0),
+                (172.916_666_666_666_69, 0.0),
+                (187.5, 40.0),
+                (172.916_666_666_666_69, 80.0),
+                (158.333_333_333_333_34, 80.0),
+                (100.0, 58.461_538_461_538_46),
+            ],
+        ),
+        (
+            RankDir::BT,
+            (212.5, 80.0),
+            (187.5, 40.0),
+            [
+                (100.0, 58.461_538_461_538_46),
+                (158.333_333_333_333_34, 80.0),
+                (172.916_666_666_666_69, 80.0),
+                (187.5, 40.0),
+                (172.916_666_666_666_69, 0.0),
+                (158.333_333_333_333_34, 0.0),
+                (100.0, 21.538_461_538_461_54),
+            ],
+        ),
+        (
+            RankDir::LR,
+            (100.0, 182.5),
+            (50.0, 157.5),
+            [
+                (28.181_818_181_818_18, 80.0),
+                (0.0, 131.666_666_666_666_66),
+                (0.0, 144.583_333_333_333_31),
+                (50.0, 157.5),
+                (100.0, 144.583_333_333_333_31),
+                (100.0, 131.666_666_666_666_66),
+                (71.818_181_818_181_81, 80.0),
+            ],
+        ),
+        (
+            RankDir::RL,
+            (100.0, 182.5),
+            (50.0, 157.5),
+            [
+                (71.818_181_818_181_81, 80.0),
+                (100.0, 131.666_666_666_666_66),
+                (100.0, 144.583_333_333_333_31),
+                (50.0, 157.5),
+                (0.0, 144.583_333_333_333_31),
+                (0.0, 131.666_666_666_666_66),
+                (28.181_818_181_818_18, 80.0),
+            ],
+        ),
+    ];
+
+    for (rankdir, graph_size, edge_center, expected_points) in cases {
+        let mut graph = controlled_self_loop_graph(rankdir);
+        layout(&mut graph).unwrap();
+
+        assert_eq!((graph.graph().width, graph.graph().height), graph_size);
+        let node = graph.node("a").unwrap();
+        assert_eq!((node.x, node.y), (Some(50.0), Some(40.0)));
+        assert_eq!((node.width, node.height), (100.0, 80.0));
+        let edge = graph.edge("a", "a", None).unwrap();
+        assert_eq!((edge.x, edge.y), (Some(edge_center.0), Some(edge_center.1)));
+        assert_eq!((edge.width, edge.height), (50.0, 30.0));
+        assert_eq!(edge.points.len(), expected_points.len());
+        for (actual, expected) in edge.points.iter().zip(expected_points) {
+            assert!(
+                (actual.x - expected.0).abs() <= f64::EPSILON
+                    && (actual.y - expected.1).abs() <= f64::EPSILON,
+                "{rankdir:?}: expected {expected:?}, got ({}, {})",
+                actual.x,
+                actual.y
+            );
+        }
+    }
+}
+
+#[test]
 fn layout_can_layout_a_graph_with_subgraphs() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,

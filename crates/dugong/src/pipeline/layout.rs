@@ -521,8 +521,7 @@ fn run_layout(
     debug_assert!(layering.has_dense_unique_orders());
 
     // Positioning runs in TB coordinates; `coordinate_system::adjust` maps LR/RL/BT into TB.
-    charge_graph_scan(g, work_control)?;
-    coordinate_system::adjust(g);
+    coordinate_system::adjust_controlled(g, work_control)?;
 
     let rank_sep = g.graph().ranksep;
     // Position Y scans every layer slot once for maximum height and once for assignment. Charge
@@ -570,8 +569,7 @@ fn run_layout(
     normalize::undo(g);
     work_control.charge(g.edge_slot_count())?;
     fixup_edge_label_coords(g);
-    charge_graph_scan(g, work_control)?;
-    coordinate_system::undo(g);
+    coordinate_system::undo_controlled(g, work_control)?;
 
     // Translate so the minimum top-left is at (marginx, marginy), matching Dagre's
     // `translateGraph(...)` behavior.
