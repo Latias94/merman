@@ -9,6 +9,7 @@ import {
   NODE_TRANSPORT_LIMITS,
   assertUtf8Field,
   decodeWireResponse,
+  encodeTransportJson,
   parseTransportJsonText,
 } from "../src/errors.mjs";
 import { BINDING_OPERATION_EXPECTATIONS } from "../src/generated/binding-contract.mjs";
@@ -160,6 +161,55 @@ test("bounded JSON preparse enforces exact and plus-one document limits", () => 
         requestLimits,
       ),
     /string exceeding.*field limit/i,
+  );
+});
+
+test("bounded JSON encoding rejects shared-value amplification before stringify", () => {
+  const limits = NODE_TRANSPORT_LIMITS.binding_options;
+  const shared = "x".repeat(Math.floor(limits.max_utf8_bytes * 0.6));
+  let stringifyReached = false;
+
+  assert.throws(
+    () =>
+      encodeTransportJson(
+        {
+          first: shared,
+          second: shared,
+          probe: {
+            toJSON() {
+              stringifyReached = true;
+              return null;
+            },
+          },
+        },
+        "binding options",
+        limits,
+      ),
+    /wire limit/i,
+  );
+  assert.equal(stringifyReached, false);
+});
+
+test("bounded JSON encoding counts escaped and Unicode output bytes exactly", () => {
+  const value = {
+    escaped: '"\\\u0000\n',
+    unicode: "é😀",
+  };
+  const expected = JSON.stringify(value);
+  const exactBytes = Buffer.byteLength(expected);
+  const limits = {
+    ...NODE_TRANSPORT_LIMITS.binding_options,
+    max_utf8_bytes: exactBytes,
+  };
+
+  assert.equal(encodeTransportJson(value, "boundary", limits), expected);
+  assert.throws(
+    () =>
+      encodeTransportJson(value, "boundary", {
+        ...limits,
+        max_utf8_bytes: exactBytes - 1,
+      }),
+    /wire limit/i,
   );
 });
 
