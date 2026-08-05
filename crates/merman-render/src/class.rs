@@ -377,6 +377,21 @@ fn class_cluster_candidates(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> 
         .collect()
 }
 
+fn class_nodes_in_hierarchy_order<'a>(
+    graph: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> Vec<&'a str> {
+    // Mermaid's Dagre renderer inserts cluster elements using a hierarchy preorder. Parent
+    // clusters must therefore precede their descendants so an opaque parent fill cannot cover
+    // the child cluster's frame and label.
+    let mut ordered = Vec::with_capacity(graph.node_count());
+    let mut stack = graph.children_root().into_iter().rev().collect::<Vec<_>>();
+    while let Some(id) = stack.pop() {
+        ordered.push(id);
+        stack.extend(graph.children(id).into_iter().rev());
+    }
+    ordered
+}
+
 fn prepare_graph(
     graph: Box<Graph<NodeLabel, EdgeLabel, GraphLabel>>,
 ) -> Result<PreparedGraphArena> {
@@ -1064,14 +1079,14 @@ fn layout_prepared_node(
         .iter()
         .map(|(edge, _)| edge.id.clone())
         .collect();
-    let cluster_ids = current_node_ids
-        .iter()
+    let cluster_ids = class_nodes_in_hierarchy_order(&prepared.graph)
+        .into_iter()
         .filter(|id| {
-            !dummy_nodes.contains(id.as_str())
-                && !prepared.graph.children(id).is_empty()
-                && !prepared.extracted.contains_key(id.as_str())
+            !dummy_nodes.contains(*id)
+                && prepared.graph.child_count(id) > 0
+                && !prepared.extracted.contains_key(*id)
         })
-        .cloned()
+        .map(str::to_owned)
         .collect();
     let mut items = Vec::new();
     for id in current_node_ids {
