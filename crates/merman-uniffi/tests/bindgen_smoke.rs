@@ -166,6 +166,7 @@ fn generates_python_binding_from_cdylib_metadata() {
             && generated.contains("UNKNOWN_OPERATION")
             && !generated.contains("UNKNOWN_OUTPUT")
             && generated.contains("capability_id")
+            && generated.contains("self.cause = cause")
             && generated.contains("self.resource")
             && generated.contains("self.kind"),
         "generated binding should expose machine-readable binding error fields"

@@ -257,6 +257,7 @@ def main() -> None:
         if (
             error.code_name != "MERMAN_RESOURCE_LIMIT_EXCEEDED"
             or error.resource is None
+            or error.resource.cause != "ceiling"
             or error.resource.limit_id != "max_source_bytes"
             or error.resource.phase != "source"
             or error.resource.actual <= error.resource.max

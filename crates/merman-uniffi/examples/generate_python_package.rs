@@ -126,6 +126,7 @@ fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
         "class MermanTextMeasurer(",
         "class MermanOperationRequest:",
         "class MermanResourceErrorDetails:",
+        "self.cause = cause",
         "class MermanResourceOverrideId(",
         "id:MermanResourceOverrideId",
         "self.operation_id = operation_id",
@@ -473,6 +474,7 @@ mod tests {
         let stable_surface = "class MermanTextMeasurer(abc.ABC):\n\
              class MermanOperationRequest:\n    pass\n\
              class MermanResourceErrorDetails:\n    pass\n\
+             self.cause = cause\n\
              class MermanResourceOverrideId(enum.Enum):\n    pass\n\
              id:MermanResourceOverrideId\n\
              self.operation_id = operation_id\n\

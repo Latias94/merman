@@ -1515,6 +1515,23 @@ mod tests {
         assert_eq!(payload["details"]["resource"]["actual"], 5);
         assert_eq!(payload["details"]["resource"]["max"], 4);
         assert_eq!(payload["details"]["resource"]["profile"], "constrained");
+        assert_eq!(payload["details"]["resource"]["cause"], "ceiling");
+
+        let failure = native_failure_from_binding(BindingError::resource_limit_with_cause(
+            "arithmetic_overflow",
+            "layout_model",
+            "max_layout_work_units",
+            u64::MAX,
+            800_000,
+            "interactive",
+            "layout work accounting overflowed",
+        ));
+        let payload: serde_json::Value =
+            serde_json::from_slice(&native_error_json(&failure)).expect("native error JSON");
+        assert_eq!(
+            payload["details"]["resource"]["cause"],
+            "arithmetic_overflow"
+        );
     }
 
     fn native_config() -> MermanNativeEngineConfig {

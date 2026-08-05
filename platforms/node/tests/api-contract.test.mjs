@@ -89,6 +89,7 @@ function failure({ kind, capabilityId = null }) {
 
 test("operation errors preserve structured resource details", () => {
   const resource = {
+    cause: "arithmetic_overflow",
     limit_id: "max_embedded_image_bytes",
     phase: "embedded_image_decode",
     actual: 5,

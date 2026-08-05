@@ -194,6 +194,7 @@ fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::E
         "kind: MermanErrorKind",
         "capabilityId: String?",
         "struct MermanResourceErrorDetails",
+        "public var cause: String",
         "enum MermanResourceOverrideId",
         "public var id: MermanResourceOverrideId",
         "func resourceOptionsJson(profile: MermanResourceProfile?",

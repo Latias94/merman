@@ -836,6 +836,19 @@ mod tests {
             "max_embedded_image_bytes"
         );
         assert_eq!(json["details"]["resource"]["actual"], 5);
+        assert_eq!(json["details"]["resource"]["cause"], "ceiling");
+
+        let err = BindingError::resource_limit_with_cause(
+            "arithmetic_overflow",
+            "layout_model",
+            "max_layout_work_units",
+            u64::MAX,
+            800_000,
+            "interactive",
+            "layout work accounting overflowed",
+        );
+        let json = binding_error_payload_value(&err).unwrap();
+        assert_eq!(json["details"]["resource"]["cause"], "arithmetic_overflow");
     }
 
     #[test]

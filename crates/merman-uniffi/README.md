@@ -57,7 +57,7 @@ Call `MermanEngine.runtime_catalog_json()` to inspect the atomic runtime catalog
 
 Omitting `runtime_policy` from `options_json` always selects deterministic runtime state, regardless of which system adapters were compiled into the library. Set `{"runtime_policy":"native"}` to opt into the system clock, time-zone, and random adapters; a slim artifact that lacks one returns a typed unsupported-operation error. `MermanOperationResult.metadata_json` records the selected policy for each successful generic operation.
 
-Generated `MermanError.Binding` values expose `MermanErrorKind`, an optional `capability_id`, and optional `MermanResourceErrorDetails`. Unknown operations have no capability ID; known requests missing a backend preserve the exact descriptor capability ID. Resource failures preserve the stable limit ID, phase, actual value, effective maximum, and selected profile without requiring message parsing.
+Generated `MermanError.Binding` values expose `MermanErrorKind`, an optional `capability_id`, and optional `MermanResourceErrorDetails`. Unknown operations have no capability ID; known requests missing a backend preserve the exact descriptor capability ID. Resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile without requiring message parsing.
 
 ## Text Measurement Ownership
 

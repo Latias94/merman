@@ -39,6 +39,11 @@ the baseline value. The reusable engine's baseline remains unchanged, and reques
 change its constructor-owned runtime policy. Reusable named methods expose the same request-local
 `options_json` argument and follow the same merge rules.
 
+`MermanResourceErrorDetails.cause` is the stable resource failure discriminator: `ceiling` means
+the effective policy maximum was exceeded, while `arithmetic_overflow` means safe work accounting
+could not represent the required amount. Consumers should branch on this field rather than parse
+the display message.
+
 `MermanErrorKind::UnknownOperation` identifies an operation outside the descriptor vocabulary and has no
 capability ID. `MermanErrorKind::MissingCapability` identifies a valid request whose artifact lacks
 the named descriptor capability. Other failures use `Generic` and a null capability ID.

@@ -10,7 +10,7 @@ Corresponds to merman workspace release `0.8.0-alpha.4`.
 
 ### Breaking changes
 
-- Replaced the prerelease UniFFI ABI 2 surface with direct UniFFI binding API 3. It is independent from the native C ABI and text-measurement protocol; regenerate and deploy the generated Python package with its exact native library rather than mixing releases.
+- Replaced the prerelease UniFFI ABI 2 surface with direct UniFFI binding API 3. Structured resource failures include a stable `cause` field. The API remains independent from the native C ABI and text-measurement protocol; regenerate and deploy the generated Python package with its exact native library rather than mixing releases.
 - Introduced runtime-contract schema 1 with stable capability, operation, output, system-adapter, and optional text-measurement provider IDs. Python validates these against the engine-owned runtime catalog and rejects unknown, duplicate, unsorted, or incoherent IDs.
 - Replaced the prerelease text-measurement callback records in place: requests now carry both a routing phase and one of 19 exact operations, and handled callbacks must return that operation's tagged result kind instead of only `width`/`height`/`line_count`; upgrade the Python wheel and bundled native library together and update custom measurers for operations `0..18`.
 - Made `MermanTextMeasurer` immutable after reusable-engine construction and removed `set_text_measurer()` / `clear_text_measurer()`. Callback-free engines admit concurrent operations; callback engines raise typed `BUSY` or `REENTRANT_CALL` errors without waiting.

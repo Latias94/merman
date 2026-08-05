@@ -1166,6 +1166,44 @@ function assertEditorLanguageSurface(enabled) {
     assert.match(error.message, messagePattern);
   }
 
+  const resourceError = {
+    version: 1,
+    ok: false,
+    code: 10,
+    code_name: "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+    kind: "generic",
+    capability_id: null,
+    details: {
+      resource: {
+        cause: "arithmetic_overflow",
+        limit_id: "max_layout_work_units",
+        phase: "layout_model",
+        actual: Number.MAX_SAFE_INTEGER,
+        max: 800_000,
+        profile: "interactive",
+      },
+    },
+    message: "layout work accounting overflowed",
+  };
+  assert.ok(
+    api.isBindingErrorPayload(resourceError),
+    "expected structured resource cause to satisfy the binding error contract"
+  );
+  assert.equal(resourceError.details.resource.cause, "arithmetic_overflow");
+  assert.equal(
+    api.isBindingErrorPayload({
+      ...resourceError,
+      details: {
+        resource: {
+          ...resourceError.details.resource,
+          cause: undefined,
+        },
+      },
+    }),
+    false,
+    "resource details without a cause must not satisfy the binding error contract"
+  );
+
   assert.deepEqual(
     api.editorDiagramDetection(
       "flowchart TD\nA[unterminated\n",

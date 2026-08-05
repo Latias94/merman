@@ -87,8 +87,9 @@ the final authority and reports a typed `MermanException` instead of silently se
 format.
 
 `MermanException.kind` is `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, `REENTRANT_CALL`, or `GENERIC`.
-Resource failures populate `MermanException.resourceDetails` with the stable limit ID, phase, actual
-value, effective maximum, and selected profile; other failures leave it `null`.
+Resource failures populate `MermanException.resourceDetails` with the stable cause (`ceiling` or
+`arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile;
+other failures leave it `null`.
 `capabilityId` is non-null only for `MISSING_CAPABILITY` and preserves the descriptor ID emitted by
 bindings-core. Local wrapper and lifecycle failures remain `GENERIC`; consumers should branch on
 these fields rather than parse `message`.

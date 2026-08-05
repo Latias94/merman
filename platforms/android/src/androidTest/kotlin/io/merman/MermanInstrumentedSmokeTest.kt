@@ -17,10 +17,11 @@ class MermanInstrumentedSmokeTest {
     @Test
     fun parsesStructuredResourceFailureDetails() {
         val error = MermanException(
-            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"limit_id":"max_embedded_image_bytes","phase":"embedded_image_decode","actual":5,"max":4,"profile":"constrained"}},"message":"embedded image is too large"}""",
+            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"cause":"arithmetic_overflow","limit_id":"max_embedded_image_bytes","phase":"embedded_image_decode","actual":5,"max":4,"profile":"constrained"}},"message":"embedded image is too large"}""",
         )
 
         check(error.resourceDetails == MermanResourceErrorDetails(
+            cause = "arithmetic_overflow",
             limitId = "max_embedded_image_bytes",
             phase = "embedded_image_decode",
             actual = 5,

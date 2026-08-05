@@ -26,7 +26,7 @@ The practical upgrade rule is:
 | `merman-cli` root `-i/-o` flags | Existing scripts still route to the compatibility parser, but new scripts should choose `render`, `batch`, or `mmdc` explicitly. |
 | `@mermanjs/web/<subpath>` or `@mermanjs/web/pkg/**` | Replace the import with one standalone browser package. Subpaths and raw WASM files are no longer public API. |
 | Native C, Flutter, or Android bindings | Rebuild or upgrade the complete host package and migrate from ABI 2 to ABI 3. Reject an ABI mismatch during initialization. |
-| Python or Apple bindings | Upgrade the generated UniFFI wrapper and matching native artifact together; do not mix alpha.3 and alpha.4 components. |
+| Python or Apple bindings | Upgrade the generated UniFFI API 3 wrapper and matching native artifact together; resource errors now include a required `cause` field. Do not mix alpha.3 and alpha.4 components. |
 | Analysis, editor, or LSP APIs | Follow the [Rust and embedding API migration](#rust-and-embedding-api-migration) section for exact type, method, ownership, and capability replacements. |
 | Node.js or SSR | Continue to invoke `merman-cli` as a subprocess. No in-process Node package is admitted for alpha.4. |
 | Typst | Treat it as an independent release track. The published `@preview/merman:0.2.0` package is not an alpha.4 artifact. |
@@ -150,11 +150,12 @@ details.
 
 ## Native ABI migration
 
-Alpha.4 C, Flutter, and Android hosts use ABI 3. Python and Apple use generated UniFFI bindings
-from the matching native artifact. Upgrade each language package and native artifact together; do
-not mix an alpha.3 generated wrapper with an alpha.4 library. ABI 3 hosts must validate the ABI and
-generated runtime capability catalog before requesting optional outputs, resources, or host text
-measurement.
+Alpha.4 C, Flutter, and Android hosts use ABI 3. Python and Apple use generated UniFFI binding API
+3 from the matching native artifact. API 3 includes the required resource failure `cause`
+discriminator (`ceiling` or `arithmetic_overflow`). Upgrade each language package and native
+artifact together; do not mix an alpha.3 generated wrapper with an alpha.4 library. ABI 3 hosts
+must validate the ABI and generated runtime capability catalog before requesting optional outputs,
+resources, or host text measurement.
 
 Follow the [ABI 3 migration guide](../bindings/ABI3_MIGRATION.md) and the surface-specific Python,
 Flutter, Android, or Apple documentation. A channel listed in the repository is not proof that the

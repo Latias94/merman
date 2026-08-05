@@ -123,6 +123,8 @@ pub struct BindingError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct BindingResourceErrorDetails {
+    /// Stable reason for the failure: `ceiling` or `arithmetic_overflow`.
+    pub cause: &'static str,
     pub limit_id: &'static str,
     pub phase: &'static str,
     pub actual: u64,
@@ -189,11 +191,25 @@ impl BindingError {
         profile: &'static str,
         message: impl Into<String>,
     ) -> Self {
+        Self::resource_limit_with_cause("ceiling", phase, limit_id, actual, max, profile, message)
+    }
+
+    /// Constructs a resource-limit error with an explicit stable failure cause.
+    pub fn resource_limit_with_cause(
+        cause: &'static str,
+        phase: &'static str,
+        limit_id: &'static str,
+        actual: u64,
+        max: u64,
+        profile: &'static str,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             status: BindingStatus::ResourceLimitExceeded,
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource: Some(BindingResourceErrorDetails {
+                cause,
                 limit_id,
                 phase,
                 actual,
@@ -1915,6 +1931,20 @@ mod tests {
         assert_eq!(json["details"]["resource"]["actual"], 5);
         assert_eq!(json["details"]["resource"]["max"], 4);
         assert_eq!(json["details"]["resource"]["profile"], "constrained");
+        assert_eq!(json["details"]["resource"]["cause"], "ceiling");
+
+        let error = BindingError::resource_limit_with_cause(
+            "arithmetic_overflow",
+            "layout_model",
+            "max_layout_work_units",
+            u64::MAX,
+            800_000,
+            "interactive",
+            "layout work accounting overflowed",
+        );
+        let payload = binding_error_payload_json_bytes(&error);
+        let json: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(json["details"]["resource"]["cause"], "arithmetic_overflow");
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]

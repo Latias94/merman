@@ -80,6 +80,7 @@ struct MermanAppleSmoke {
             switch error {
             case let .Binding(_, codeName, _, _, resource, _):
                 guard codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+                      resource?.cause == "ceiling",
                       resource?.limitId == "max_source_bytes",
                       resource?.phase == "source",
                       (resource?.actual ?? 0) > (resource?.max ?? UInt64.max),

@@ -738,6 +738,7 @@ void decodesMachineReadableNativeErrors() {
           'capability_id': null,
           'details': {
             'resource': {
+              'cause': 'arithmetic_overflow',
               'limit_id': 'max_embedded_image_bytes',
               'phase': 'embedded_image_decode',
               'actual': 5,
@@ -751,7 +752,8 @@ void decodesMachineReadableNativeErrors() {
     ),
   );
   _expect(
-    resource.resourceDetails?.limitId == 'max_embedded_image_bytes' &&
+    resource.resourceDetails?.cause == 'arithmetic_overflow' &&
+        resource.resourceDetails?.limitId == 'max_embedded_image_bytes' &&
         resource.resourceDetails?.phase == 'embedded_image_decode' &&
         resource.resourceDetails?.actual == 5 &&
         resource.resourceDetails?.max == 4 &&
