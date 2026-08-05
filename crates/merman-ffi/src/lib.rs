@@ -937,9 +937,34 @@ fn validate_declared_record_array_disjoint<T>(
     Ok(())
 }
 
-fn defer_first_failure(slot: &mut Option<NativeFailure>, failure: NativeFailure) {
+struct DeferredNativeFailure {
+    failure: NativeFailure,
+    #[cfg(feature = "svg")]
+    result_write_is_safe: bool,
+}
+
+fn defer_first_failure(slot: &mut Option<DeferredNativeFailure>, failure: NativeFailure) {
     if slot.is_none() {
-        *slot = Some(failure);
+        *slot = Some(DeferredNativeFailure {
+            failure,
+            #[cfg(feature = "svg")]
+            result_write_is_safe: true,
+        });
+    }
+}
+
+#[cfg(feature = "svg")]
+fn defer_first_status_only_failure(
+    slot: &mut Option<DeferredNativeFailure>,
+    failure: NativeFailure,
+) {
+    if let Some(deferred) = slot {
+        deferred.result_write_is_safe = false;
+    } else {
+        *slot = Some(DeferredNativeFailure {
+            failure,
+            result_write_is_safe: false,
+        });
     }
 }
 
@@ -1470,18 +1495,22 @@ unsafe fn engine_new_impl(
     if let Err(failure) = unsafe { result_is_writable(out_result) } {
         return failure.status;
     }
-    if out_engine.is_null() {
-        let failure = NativeFailure::new(
+    let config_ptr = config;
+    let out_engine_storage_len = if out_engine.is_null() {
+        0
+    } else {
+        size_of::<MermanNativeEngineToken>()
+    };
+    let mut early_output_failure = out_engine.is_null().then(|| {
+        NativeFailure::new(
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
             "out_engine must not be null",
-        );
-        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
-    }
-    let config_ptr = config;
+        )
+    });
     let fixed_storage_validation = (|| {
         validate_disjoint_storage(
             out_engine.cast::<u8>(),
-            size_of::<MermanNativeEngineToken>(),
+            out_engine_storage_len,
             "out_engine",
             out_result.cast::<u8>(),
             size_of::<MermanNativeResult>(),
@@ -1492,7 +1521,7 @@ unsafe fn engine_new_impl(
             size_of::<MermanNativeEngineConfig>(),
             "config",
             out_engine.cast::<u8>(),
-            size_of::<MermanNativeEngineToken>(),
+            out_engine_storage_len,
             "out_engine",
         )?;
         validate_disjoint_storage(
@@ -1507,19 +1536,17 @@ unsafe fn engine_new_impl(
     if let Err(failure) = fixed_storage_validation {
         return failure.status;
     }
-    if let Err(failure) = validate_pointer_alignment(out_engine, "out_engine") {
-        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
-    }
-    if unsafe { ptr::read(out_engine) } != 0 {
-        let failure = NativeFailure::new(
-            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
-            "out_engine must be initialized to zero",
-        );
-        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    if early_output_failure.is_none()
+        && let Err(failure) = validate_pointer_alignment(out_engine, "out_engine")
+    {
+        early_output_failure = Some(failure);
     }
     let config = match unsafe { read_engine_config(config_ptr) } {
         Ok(config) => config,
         Err(failure) => {
+            if early_output_failure.is_some() {
+                return failure.status;
+            }
             return unsafe {
                 write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
             };
@@ -1539,7 +1566,7 @@ unsafe fn engine_new_impl(
             config.options_json.len,
             "config.options_json",
             out_engine.cast::<u8>(),
-            size_of::<MermanNativeEngineToken>(),
+            out_engine_storage_len,
             "out_engine",
         )?;
         validate_disjoint_storage(
@@ -1554,7 +1581,17 @@ unsafe fn engine_new_impl(
     if let Err(failure) = storage_validation {
         return failure.status;
     }
+    if let Some(failure) = early_output_failure.take() {
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    }
     if let Err(failure) = validate_native_slice_shape(config.options_json, "config.options_json") {
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    }
+    if unsafe { ptr::read(out_engine) } != 0 {
+        let failure = NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            "out_engine must be initialized to zero",
+        );
         return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
     }
     let outcome = (|| {
@@ -1593,29 +1630,22 @@ unsafe fn engine_new_with_services_impl(
     if let Err(failure) = unsafe { result_is_writable(out_result) } {
         return failure.status;
     }
-    if out_engine.is_null() {
-        // A null out_engine does not describe storage, so only preflight config/out_result here.
-        if let Err(failure) = validate_disjoint_storage(
-            config_ptr.cast::<u8>(),
-            size_of::<MermanNativeEngineServicesConfig>(),
-            "config",
-            out_result.cast::<u8>(),
-            size_of::<MermanNativeResult>(),
-            "out_result",
-        ) {
-            return failure.status;
-        }
-        let failure = NativeFailure::new(
+    let out_engine_storage_len = if out_engine.is_null() {
+        0
+    } else {
+        size_of::<MermanNativeEngineToken>()
+    };
+    let mut early_output_failure = out_engine.is_null().then(|| {
+        NativeFailure::new(
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
             "out_engine must not be null",
-        );
-        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
-    }
+        )
+    });
 
     let fixed_storage_validation = (|| {
         validate_disjoint_storage(
             out_engine.cast::<u8>(),
-            size_of::<MermanNativeEngineToken>(),
+            out_engine_storage_len,
             "out_engine",
             out_result.cast::<u8>(),
             size_of::<MermanNativeResult>(),
@@ -1626,7 +1656,7 @@ unsafe fn engine_new_with_services_impl(
             size_of::<MermanNativeEngineServicesConfig>(),
             "config",
             out_engine.cast::<u8>(),
-            size_of::<MermanNativeEngineToken>(),
+            out_engine_storage_len,
             "out_engine",
         )?;
         validate_disjoint_storage(
@@ -1641,8 +1671,10 @@ unsafe fn engine_new_with_services_impl(
     if let Err(failure) = fixed_storage_validation {
         return failure.status;
     }
-    if let Err(failure) = validate_pointer_alignment(out_engine, "out_engine") {
-        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    if early_output_failure.is_none()
+        && let Err(failure) = validate_pointer_alignment(out_engine, "out_engine")
+    {
+        early_output_failure = Some(failure);
     }
 
     let config = match unsafe { read_engine_services_config(config_ptr) } {
@@ -1665,7 +1697,7 @@ unsafe fn engine_new_with_services_impl(
             engine_config.options_json.len,
             "config.engine_config.options_json",
             out_engine.cast::<u8>(),
-            size_of::<MermanNativeEngineToken>(),
+            out_engine_storage_len,
             "out_engine",
         )?;
         validate_disjoint_storage(
@@ -1716,7 +1748,7 @@ unsafe fn engine_new_with_services_impl(
             config.icon_pack_count,
             "config.icon_packs",
             out_engine.cast::<u8>(),
-            size_of::<MermanNativeEngineToken>(),
+            out_engine_storage_len,
             "out_engine",
         )?;
         validate_declared_record_array_disjoint(
@@ -1734,9 +1766,14 @@ unsafe fn engine_new_with_services_impl(
 
     #[cfg(not(feature = "svg"))]
     {
-        if let Some(failure) = deferred_failure.take() {
+        if let Some(failure) = early_output_failure.take() {
             return unsafe {
                 write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+            };
+        }
+        if let Some(failure) = deferred_failure.take() {
+            return unsafe {
+                write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure.failure)
             };
         }
         if config.icon_pack_count != 0 {
@@ -1752,7 +1789,6 @@ unsafe fn engine_new_with_services_impl(
 
     #[cfg(feature = "svg")]
     let icon_packs = {
-        let mut deferred_failure_is_writable = true;
         if config.icon_pack_count > NATIVE_ICON_PACK_RECORD_LIMIT {
             defer_first_failure(
                 &mut deferred_failure,
@@ -1771,12 +1807,11 @@ unsafe fn engine_new_with_services_impl(
                 Err(failure) => return failure.status,
             };
             let icon_pack_array = config.icon_packs.cast::<u8>();
-            if config.icon_pack_count != 0 {
-                if let Err(failure) =
+            if config.icon_pack_count != 0
+                && let Err(failure) =
                     validate_pointer_alignment(config.icon_packs, "config.icon_packs")
-                {
-                    return failure.status;
-                }
+            {
+                return failure.status;
             }
 
             native_packs.reserve(config.icon_pack_count);
@@ -1788,8 +1823,7 @@ unsafe fn engine_new_with_services_impl(
                 ) {
                     Ok(()) => native_packs.push(Some(unsafe { ptr::read(pack_ptr) })),
                     Err(failure) => {
-                        defer_first_failure(&mut deferred_failure, failure);
-                        deferred_failure_is_writable = false;
+                        defer_first_status_only_failure(&mut deferred_failure, failure);
                         native_packs.push(None);
                     }
                 }
@@ -1828,7 +1862,7 @@ unsafe fn engine_new_with_services_impl(
                             slice.len,
                             &name,
                             out_engine.cast::<u8>(),
-                            size_of::<MermanNativeEngineToken>(),
+                            out_engine_storage_len,
                             "out_engine",
                         )?;
                         validate_disjoint_storage(
@@ -1850,12 +1884,19 @@ unsafe fn engine_new_with_services_impl(
             }
         }
 
-        if let Some(failure) = deferred_failure.take() {
-            if !deferred_failure_is_writable {
-                return failure.status;
-            }
+        if let Some(failure) = deferred_failure.as_ref()
+            && !failure.result_write_is_safe
+        {
+            return failure.failure.status;
+        }
+        if let Some(failure) = early_output_failure.take() {
             return unsafe {
                 write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+            };
+        }
+        if let Some(failure) = deferred_failure.take() {
+            return unsafe {
+                write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure.failure)
             };
         }
 
@@ -2399,6 +2440,38 @@ mod tests {
             }
         };
         serde_json::from_slice(bytes).expect("native result metadata must be valid JSON")
+    }
+
+    fn assert_constructor_failure_left_result_unwritten(
+        api: &MermanNativeApi,
+        result: &mut MermanNativeResult,
+    ) {
+        let result_was_writable = unsafe { result_is_writable(result) };
+
+        unsafe { api.result_free.unwrap()(result) };
+
+        assert!(
+            result_was_writable.is_ok(),
+            "constructor failure must leave out_result initialized and unwritten"
+        );
+    }
+
+    fn assert_structured_invalid_out_engine_failure(
+        api: &MermanNativeApi,
+        result: &mut MermanNativeResult,
+        expected_message: &str,
+    ) {
+        assert_eq!(result.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert_ne!(result.allocation_token, 0);
+        let failure = result_json(result);
+        assert_eq!(
+            failure["status"].as_i64(),
+            Some(i64::from(MERMAN_NATIVE_STATUS_INVALID_ARGUMENT))
+        );
+        assert_eq!(failure["message"], expected_message);
+
+        unsafe { api.result_free.unwrap()(result) };
+        assert_eq!(result.allocation_token, 0);
     }
 
     #[test]
@@ -3156,6 +3229,42 @@ mod tests {
     }
 
     #[test]
+    fn engine_new_writes_structured_failure_for_null_out_engine() {
+        let api = api_table();
+        let config = native_config();
+        let mut result = native_result();
+
+        let status = unsafe { api.engine_new.unwrap()(&config, ptr::null_mut(), &mut result) };
+
+        assert_eq!(status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert_structured_invalid_out_engine_failure(
+            &api,
+            &mut result,
+            "out_engine must not be null",
+        );
+    }
+
+    #[test]
+    fn engine_new_writes_structured_failure_for_misaligned_out_engine() {
+        let api = api_table();
+        let config = native_config();
+        let (_engine_storage, out_engine) = misaligned_record(0 as MermanNativeEngineToken);
+        let mut result = native_result();
+
+        let status = unsafe { api.engine_new.unwrap()(&config, out_engine, &mut result) };
+
+        assert_eq!(status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
+        assert_structured_invalid_out_engine_failure(
+            &api,
+            &mut result,
+            &format!(
+                "out_engine must be aligned to {} bytes for its native record type",
+                align_of::<MermanNativeEngineToken>()
+            ),
+        );
+    }
+
+    #[test]
     fn engine_new_with_services_writes_structured_failure_for_null_out_engine() {
         let api = api_table();
         let config = native_services_config(native_config(), &[]);
@@ -3165,17 +3274,11 @@ mod tests {
             unsafe { api.engine_new_with_services.unwrap()(&config, ptr::null_mut(), &mut result) };
 
         assert_eq!(status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
-        assert_eq!(result.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
-        assert_ne!(result.allocation_token, 0);
-        let failure = result_json(&result);
-        assert_eq!(
-            failure["status"].as_i64(),
-            Some(i64::from(MERMAN_NATIVE_STATUS_INVALID_ARGUMENT))
+        assert_structured_invalid_out_engine_failure(
+            &api,
+            &mut result,
+            "out_engine must not be null",
         );
-        assert_eq!(failure["message"], "out_engine must not be null");
-
-        unsafe { api.result_free.unwrap()(&mut result) };
-        assert_eq!(result.allocation_token, 0);
     }
 
     #[test]
@@ -3189,23 +3292,236 @@ mod tests {
             unsafe { api.engine_new_with_services.unwrap()(&config, out_engine, &mut result) };
 
         assert_eq!(status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
-        assert_eq!(result.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
-        assert_ne!(result.allocation_token, 0);
-        let failure = result_json(&result);
-        assert_eq!(
-            failure["status"].as_i64(),
-            Some(i64::from(MERMAN_NATIVE_STATUS_INVALID_ARGUMENT))
-        );
-        assert_eq!(
-            failure["message"],
-            format!(
+        assert_structured_invalid_out_engine_failure(
+            &api,
+            &mut result,
+            &format!(
                 "out_engine must be aligned to {} bytes for its native record type",
                 align_of::<MermanNativeEngineToken>()
-            )
+            ),
+        );
+    }
+
+    #[test]
+    fn engine_new_output_shape_failures_do_not_overwrite_aliased_options() {
+        let api = api_table();
+
+        let mut result = native_result();
+        let mut config = native_config();
+        config.options_json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(result).cast::<u8>(),
+            len: 1,
+        };
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, ptr::null_mut(), &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+
+        let mut result = native_result();
+        let mut config = native_config();
+        config.options_json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(result).cast::<u8>(),
+            len: 1,
+        };
+        let (_engine_storage, out_engine) = misaligned_record(0 as MermanNativeEngineToken);
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, out_engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+    }
+
+    #[test]
+    fn service_constructor_output_shape_failures_do_not_overwrite_aliased_storage() {
+        let api = api_table();
+
+        let mut result = native_result();
+        let mut config = native_services_config(native_config(), &[]);
+        config.engine_config.options_json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(result).cast::<u8>(),
+            len: 1,
+        };
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, ptr::null_mut(), &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+
+        let mut result = native_result();
+        let mut config = native_services_config(native_config(), &[]);
+        config.engine_config.options_json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(result).cast::<u8>(),
+            len: 1,
+        };
+        let (_engine_storage, out_engine) = misaligned_record(0 as MermanNativeEngineToken);
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, out_engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+
+        let mut result = native_result();
+        let mut config = native_services_config(native_config(), &[]);
+        config.icon_packs = ptr::addr_of!(result).cast::<MermanNativeIconPack>();
+        config.icon_pack_count = 1;
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, ptr::null_mut(), &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+
+        let mut result = native_result();
+        let mut config = native_services_config(native_config(), &[]);
+        config.icon_packs = ptr::addr_of!(result).cast::<MermanNativeIconPack>();
+        config.icon_pack_count = 1;
+        let (_engine_storage, out_engine) = misaligned_record(0 as MermanNativeEngineToken);
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, out_engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+    }
+
+    #[test]
+    fn constructor_output_shape_failures_leave_malformed_outer_records_unwritten() {
+        let api = api_table();
+
+        let mut config = native_config();
+        config.struct_size -= 1;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, ptr::null_mut(), &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+
+        let mut result = native_result();
+        let (_engine_storage, out_engine) = misaligned_record(0 as MermanNativeEngineToken);
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, out_engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+
+        let mut config = native_services_config(native_config(), &[]);
+        config.struct_size -= 1;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, ptr::null_mut(), &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+
+        let mut result = native_result();
+        let (_engine_storage, out_engine) = misaligned_record(0 as MermanNativeEngineToken);
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, out_engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+    }
+
+    #[test]
+    fn service_constructor_output_shape_failures_precede_oversized_pack_counts() {
+        let api = api_table();
+        let mut config = native_services_config(native_config(), &[]);
+        config.icon_pack_count = usize::MAX;
+
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, ptr::null_mut(), &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_structured_invalid_out_engine_failure(
+            &api,
+            &mut result,
+            "out_engine must not be null",
         );
 
-        unsafe { api.result_free.unwrap()(&mut result) };
-        assert_eq!(result.allocation_token, 0);
+        let mut result = native_result();
+        let (_engine_storage, out_engine) = misaligned_record(0 as MermanNativeEngineToken);
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, out_engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_structured_invalid_out_engine_failure(
+            &api,
+            &mut result,
+            &format!(
+                "out_engine must be aligned to {} bytes for its native record type",
+                align_of::<MermanNativeEngineToken>()
+            ),
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn service_constructor_output_shape_failures_do_not_overwrite_aliased_pack_slices() {
+        let api = api_table();
+
+        let mut result = native_result();
+        let pack = MermanNativeIconPack {
+            struct_size: native_struct_size::<MermanNativeIconPack>(),
+            json: MermanNativeSlice {
+                struct_size: native_struct_size::<MermanNativeSlice>(),
+                data: ptr::addr_of!(result).cast::<u8>(),
+                len: 1,
+            },
+            registration_name: borrowed_slice(&[]),
+        };
+        let config = native_services_config(native_config(), std::slice::from_ref(&pack));
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, ptr::null_mut(), &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+
+        let mut result = native_result();
+        let pack = MermanNativeIconPack {
+            struct_size: native_struct_size::<MermanNativeIconPack>(),
+            json: borrowed_slice(br#"{"prefix":"test","icons":{}}"#),
+            registration_name: MermanNativeSlice {
+                struct_size: native_struct_size::<MermanNativeSlice>(),
+                data: ptr::addr_of!(result).cast::<u8>(),
+                len: 1,
+            },
+        };
+        let config = native_services_config(native_config(), std::slice::from_ref(&pack));
+        let (_engine_storage, out_engine) = misaligned_record(0 as MermanNativeEngineToken);
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, out_engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn service_constructor_output_shape_failures_leave_malformed_pack_records_unwritten() {
+        let api = api_table();
+        let mut pack = native_icon_pack(br#"{"prefix":"test","icons":{}}"#, &[]);
+        pack.struct_size -= 1;
+        let config = native_services_config(native_config(), std::slice::from_ref(&pack));
+
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, ptr::null_mut(), &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
+
+        let mut result = native_result();
+        let (_engine_storage, out_engine) = misaligned_record(0 as MermanNativeEngineToken);
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, out_engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_constructor_failure_left_result_unwritten(&api, &mut result);
     }
 
     #[test]
