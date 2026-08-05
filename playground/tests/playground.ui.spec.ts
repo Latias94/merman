@@ -205,13 +205,14 @@ test("example dialog traps focus, closes with Escape, and restores its trigger",
 test("preview tabs use manual keyboard activation", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
-  const svgTab = page.getByRole("tab", { name: "SVG", exact: true });
-  await svgTab.focus();
-  await page.keyboard.press("End");
   const diagnosticsTab = page.getByRole("tab", {
     name: "Diagnostics",
     exact: true,
   });
+  await expect(diagnosticsTab).toBeEnabled();
+  const svgTab = page.getByRole("tab", { name: "SVG", exact: true });
+  await svgTab.focus();
+  await page.keyboard.press("End");
   await expect(diagnosticsTab).toBeFocused();
   await expect(svgTab).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Enter");
