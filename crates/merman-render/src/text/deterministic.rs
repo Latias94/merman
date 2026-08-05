@@ -108,7 +108,28 @@ impl DeterministicTextMeasurer {
         out
     }
 
-    fn wrap_line(line: &str, max_chars: usize, break_long_words: bool) -> Vec<String> {
+    fn trim_wrapped_line_end(text: &str, wrap_mode: WrapMode) -> &str {
+        match wrap_mode {
+            WrapMode::HtmlLike => text.trim_end_matches(Self::is_html_collapsible_ascii_whitespace),
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => text.trim_end(),
+        }
+    }
+
+    fn wrapped_line_has_visible_content(text: &str, wrap_mode: WrapMode) -> bool {
+        match wrap_mode {
+            WrapMode::HtmlLike => !text
+                .trim_matches(Self::is_html_collapsible_ascii_whitespace)
+                .is_empty(),
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => !text.trim().is_empty(),
+        }
+    }
+
+    fn wrap_line(
+        line: &str,
+        max_chars: usize,
+        break_long_words: bool,
+        wrap_mode: WrapMode,
+    ) -> Vec<String> {
         if max_chars == 0 {
             return vec![line.to_string()];
         }
@@ -128,8 +149,8 @@ impl DeterministicTextMeasurer {
                 continue;
             }
 
-            if !cur.trim().is_empty() {
-                out.push(cur.trim_end().to_string());
+            if Self::wrapped_line_has_visible_content(&cur, wrap_mode) {
+                out.push(Self::trim_wrapped_line_end(&cur, wrap_mode).to_string());
                 cur.clear();
                 tokens.push_front(tok);
                 continue;
@@ -153,8 +174,8 @@ impl DeterministicTextMeasurer {
             }
         }
 
-        if !cur.trim().is_empty() {
-            out.push(cur.trim_end().to_string());
+        if Self::wrapped_line_has_visible_content(&cur, wrap_mode) {
+            out.push(Self::trim_wrapped_line_end(&cur, wrap_mode).to_string());
         }
 
         if out.is_empty() {
@@ -258,7 +279,12 @@ impl DeterministicTextMeasurer {
             if let Some(w) = max_width {
                 let char_px = font_size * char_width_factor;
                 let max_chars = ((w / char_px).floor() as isize).max(1) as usize;
-                lines.extend(Self::wrap_line(&line, max_chars, break_long_words));
+                lines.extend(Self::wrap_line(
+                    &line,
+                    max_chars,
+                    break_long_words,
+                    wrap_mode,
+                ));
             } else {
                 lines.push(line);
             }

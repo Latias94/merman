@@ -102,6 +102,30 @@ fn flowchart_html_text_extraction_preserves_nbsp_and_collapses_ascii_space_runs(
 }
 
 #[test]
+fn deterministic_html_wrapping_preserves_nbsp_width() {
+    let measurer = DeterministicTextMeasurer::default();
+    let style = TextStyle {
+        font_family: None,
+        font_size: 16.0,
+        font_weight: None,
+        font_style: None,
+    };
+
+    let plain_a = measurer.measure_wrapped("A", &style, Some(200.0), WrapMode::HtmlLike);
+    let trailing_ascii_space =
+        measurer.measure_wrapped("A ", &style, Some(200.0), WrapMode::HtmlLike);
+    let trailing_nbsp =
+        measurer.measure_wrapped("A\u{00A0}", &style, Some(200.0), WrapMode::HtmlLike);
+    let pure_nbsp = measurer.measure_wrapped("\u{00A0}", &style, Some(200.0), WrapMode::HtmlLike);
+    let svg_nbsp = measurer.measure_wrapped("\u{00A0}", &style, Some(200.0), WrapMode::SvgLike);
+
+    assert_same_metrics(trailing_ascii_space, plain_a);
+    assert!(trailing_nbsp.width > plain_a.width, "{trailing_nbsp:?}");
+    assert_finite_positive_metrics(pure_nbsp);
+    assert_eq!(svg_nbsp.width, 0.0, "{svg_nbsp:?}");
+}
+
+#[test]
 fn flowchart_svg_text_extraction_keeps_its_existing_unicode_trim_semantics() {
     assert_eq!(
         crate::flowchart::flowchart_label_plain_text_for_layout("\u{00A0}A\u{00A0}", "text", false,),
