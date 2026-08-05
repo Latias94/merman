@@ -90,6 +90,18 @@ fn flowchart_html_text_extraction_preserves_nbsp_boundaries() {
 }
 
 #[test]
+fn flowchart_html_text_extraction_preserves_nbsp_and_collapses_ascii_space_runs() {
+    assert_eq!(
+        crate::flowchart::flowchart_label_plain_text_for_layout(
+            "A&nbsp;&nbsp;B  C   D",
+            "string",
+            true,
+        ),
+        "A\u{00A0}\u{00A0}B C D",
+    );
+}
+
+#[test]
 fn flowchart_svg_text_extraction_keeps_its_existing_unicode_trim_semantics() {
     assert_eq!(
         crate::flowchart::flowchart_label_plain_text_for_layout("\u{00A0}A\u{00A0}", "text", false,),

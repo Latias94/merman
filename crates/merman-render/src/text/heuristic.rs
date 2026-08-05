@@ -9,7 +9,7 @@ pub(crate) fn estimate_line_width_px(line: &str, font_size: f64) -> f64 {
 }
 
 fn estimate_char_width_em(ch: char) -> f64 {
-    if ch == ' ' {
+    if matches!(ch, ' ' | '\u{00A0}') {
         return 0.33;
     }
     if ch == '\t' {
@@ -47,4 +47,17 @@ fn estimate_char_width_em(ch: char) -> f64 {
     }
     // Punctuation/symbols/unicode: approximate.
     0.60
+}
+
+#[cfg(test)]
+mod tests {
+    use super::estimate_line_width_px;
+
+    #[test]
+    fn non_breaking_space_uses_the_regular_space_advance() {
+        assert_eq!(
+            estimate_line_width_px("A\u{00A0}B", 16.0),
+            estimate_line_width_px("A B", 16.0),
+        );
+    }
 }
