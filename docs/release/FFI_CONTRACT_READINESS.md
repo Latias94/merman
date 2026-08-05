@@ -49,9 +49,9 @@ candidate regression is above both 10% and the measured relative-MAD noise floor
 hide a timing regression behind an unchanged dependency closure.
 
 The current matched capture compares baseline `5117c0ae12da2c0346b47061642286174cea3f5f`
-against candidate `5b43028b5bdaa452811ec8860f01507a71d5d5d3`: the medians are 99.712 seconds
-and 100.544 seconds respectively, a 0.83% increase against a 3.75% noise floor. The configured
-10% review threshold is not crossed, so no timing review exception is required.
+against candidate `b9e16e8d32d4186ff80e5e1ab5f89cdf6c4c3a74`: the medians are 115.012 seconds
+and 103.086 seconds respectively, a 10.37% decrease against a 2.28% noise floor. The configured
+10% regression review threshold is not crossed, so no timing review exception is required.
 
 Timing is measured on the recorded local Apple host and is not a cross-machine, universal, or
 runtime-rendering performance claim. `measure_ffi_contract_native_build_timing.py verify` is part

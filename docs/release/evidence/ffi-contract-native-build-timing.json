@@ -1,5 +1,5 @@
 {
-  "captured_at_utc": "2026-08-05T14:54:37.902546+00:00",
+  "captured_at_utc": "2026-08-05T16:55:39.737447+00:00",
   "machine": {
     "logical_cpu_count": 14,
     "machine": "arm64",
@@ -115,12 +115,12 @@
     "timing_is_gating": true
   },
   "report_id": "merman-ffi-contract-native-build-timing",
-  "report_sha256": "sha256:d5753cfeead7f58ff14eb3e709ea078552d408af753d060f73d30934aa6a0a41",
+  "report_sha256": "sha256:07d4b5968b30ac0b5962344c3bbafcb7ecbef907c5cea8eb285944ec2f0c5469",
   "review": null,
   "samples": [
     {
-      "baseline_duration_ns": 107229094917,
-      "candidate_duration_ns": 100543852416,
+      "baseline_duration_ns": 98238355333,
+      "candidate_duration_ns": 102956779250,
       "order": [
         "baseline",
         "candidate"
@@ -128,8 +128,8 @@
       "pair_index": 1
     },
     {
-      "baseline_duration_ns": 95972102750,
-      "candidate_duration_ns": 101067685042,
+      "baseline_duration_ns": 117628644333,
+      "candidate_duration_ns": 103085691709,
       "order": [
         "candidate",
         "baseline"
@@ -137,8 +137,8 @@
       "pair_index": 2
     },
     {
-      "baseline_duration_ns": 99711856625,
-      "candidate_duration_ns": 98348255917,
+      "baseline_duration_ns": 115011960208,
+      "candidate_duration_ns": 116526753459,
       "order": [
         "baseline",
         "candidate"
@@ -153,17 +153,17 @@
       "tree": "4ebfe46d8f48508ac6489d0bfea09ed469d97746"
     },
     "candidate": {
-      "commit": "5b43028b5bdaa452811ec8860f01507a71d5d5d3",
-      "tree": "da1f6e2edf5d6e7b09bc212a53d5ff238c6066d7"
+      "commit": "b9e16e8d32d4186ff80e5e1ab5f89cdf6c4c3a74",
+      "tree": "67da72c1d0da0bd350677fc2a86e21c1aea0327e"
     }
   },
   "statistics": {
-    "baseline_median_ns": 99711856625,
-    "baseline_relative_mad": 0.03750560867665521,
-    "candidate_median_ns": 100543852416,
-    "candidate_relative_mad": 0.005209991594838076,
-    "median_regression_ratio": 0.008344000594924239,
-    "noise_floor_ratio": 0.03750560867665521,
+    "baseline_median_ns": 115011960208,
+    "baseline_relative_mad": 0.022751408812333142,
+    "candidate_median_ns": 103085691709,
+    "candidate_relative_mad": 0.0012505368772603887,
+    "median_regression_ratio": -0.10369589803904966,
+    "noise_floor_ratio": 0.022751408812333142,
     "review_required": false
   },
   "toolchain": {
