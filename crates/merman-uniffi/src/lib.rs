@@ -64,7 +64,7 @@ pub enum MermanError {
         code_name: String,
         kind: MermanErrorKind,
         capability_id: Option<String>,
-        resource: Option<MermanResourceErrorDetails>,
+        resource: Option<Box<MermanResourceErrorDetails>>,
         message: String,
     },
 }
@@ -72,16 +72,16 @@ pub enum MermanError {
 impl MermanError {
     pub fn from_binding(error: BindingError) -> Self {
         let status = error.status();
-        let resource = error
-            .resource_details()
-            .map(|details| MermanResourceErrorDetails {
+        let resource = error.resource_details().map(|details| {
+            Box::new(MermanResourceErrorDetails {
                 cause: details.cause.as_str().to_string(),
                 limit_id: details.limit_id.to_string(),
                 phase: details.phase.to_string(),
                 actual: details.actual,
                 max: details.max,
                 profile: details.profile.to_string(),
-            });
+            })
+        });
         Self::Binding {
             code: status.code(),
             code_name: status.code_name().to_string(),
@@ -2502,14 +2502,14 @@ mod tests {
         let MermanError::Binding { resource, .. } = error;
         assert_eq!(
             resource,
-            Some(MermanResourceErrorDetails {
+            Some(Box::new(MermanResourceErrorDetails {
                 cause: "ceiling".to_string(),
                 limit_id: "max_embedded_image_bytes".to_string(),
                 phase: "embedded_image_decode".to_string(),
                 actual: 5,
                 max: 4,
                 profile: "constrained".to_string(),
-            })
+            }))
         );
 
         let error = MermanError::from_binding(BindingError::resource_limit_with_cause(
@@ -2526,6 +2526,7 @@ mod tests {
             resource.expect("resource details").cause,
             "arithmetic_overflow"
         );
+        assert!(std::mem::size_of::<MermanError>() < 128);
     }
 
     #[cfg(feature = "svg")]
