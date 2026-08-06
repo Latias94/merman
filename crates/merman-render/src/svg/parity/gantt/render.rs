@@ -185,6 +185,12 @@ pub(crate) fn render_gantt_diagram_svg_model(
     };
     let range = (w - layout.left_padding - layout.right_padding).max(1.0);
     let gap = layout.bar_height + layout.bar_gap;
+    // Mermaid's Gantt renderer assigns this custom attribute before the final SVG cleanup.
+    // Loose security skips DOMPurify, while every sanitized mode removes the attribute.
+    let preserve_task_text_height = effective_config
+        .get("securityLevel")
+        .and_then(serde_json::Value::as_str)
+        == Some("loose");
     let local_time_zone = options.local_time_zone();
     let min_day_start_ms = crate::gantt::start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
     let min_in_day_offset_ms = (min_ms - min_day_start_ms).max(0);
@@ -362,11 +368,18 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let class = gantt_insert_before_width(base_class, &task_type_class);
             let _ = write!(
                 &mut out,
-                r#"<text id="{id}" font-size="{fs}" x="{x}" y="{y}" class="{cls}">{txt}</text>"#,
+                r#"<text id="{id}" font-size="{fs}" x="{x}" y="{y}""#,
                 id = escape_attr(&gantt_dom_id(diagram_id, &t.label.id)),
                 fs = fmt(t.label.font_size),
                 x = fmt(t.label.x),
                 y = fmt(t.label.y),
+            );
+            if preserve_task_text_height {
+                let _ = write!(&mut out, r#" text-height="{}""#, fmt(layout.bar_height));
+            }
+            let _ = write!(
+                &mut out,
+                r#" class="{cls}">{txt}</text>"#,
                 cls = escape_attr(&class),
                 txt = escape_xml(&t.label.text),
             );

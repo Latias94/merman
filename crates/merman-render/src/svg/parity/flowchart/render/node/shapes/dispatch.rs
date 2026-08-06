@@ -122,7 +122,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_lean_right(out, common, details);
         }
         FlowchartShape::LinedCylinder => {
-            super::render_lined_cylinder(out, common, label);
+            super::render_lined_cylinder(out, ctx, common, label);
         }
         FlowchartShape::LinedDocument => {
             super::render_lined_wave_document(out, ctx, common, label, details);
