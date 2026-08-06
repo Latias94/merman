@@ -8,10 +8,7 @@ const CLI_CONTRACT_VERSION: u32 = 3;
 
 #[allow(dead_code)]
 mod descriptor {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../capabilities/generated/capability_surface.rs"
-    ));
+    include!("generated/capability_surface.rs");
 }
 
 #[derive(Serialize)]

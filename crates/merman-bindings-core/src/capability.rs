@@ -7,10 +7,7 @@
 
 use crate::key_set::KeySet;
 
-include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../capabilities/generated/capability_surface.rs"
-));
+include!("generated/capability_surface.rs");
 
 #[cfg(feature = "svg")]
 const COMPILED_SVG_CAPABILITY_BITS: u64 = CapabilityKey::Svg.compact_bit()

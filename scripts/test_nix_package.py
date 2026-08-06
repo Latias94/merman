@@ -112,7 +112,7 @@ class NixPackageContractTests(unittest.TestCase):
             "Cargo.lock",
             "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
             "capabilities/artifact-profiles-v1.json",
-            "capabilities/generated/capability_surface.rs",
+            "crates/merman-bindings-core/src/generated/capability_surface.rs",
             "crates/merman-cli/Cargo.toml",
             "crates/merman-cli/assets/completions/merman-cli.bash",
             "crates/merman-cli/assets/man/merman-cli.1",

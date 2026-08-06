@@ -10,7 +10,7 @@ use std::process::Command;
 mod capability_contract {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../capabilities/generated/capability_surface.rs"
+        "/../merman-bindings-core/src/generated/capability_surface.rs"
     ));
 }
 

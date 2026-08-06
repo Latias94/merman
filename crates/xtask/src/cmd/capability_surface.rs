@@ -11,7 +11,11 @@ const DESCRIPTOR_PATH: &str = "capabilities/feature-surface-v1.json";
 const DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (
-        "capabilities/generated/capability_surface.rs",
+        "crates/merman-bindings-core/src/generated/capability_surface.rs",
+        ArtifactKind::Rust,
+    ),
+    (
+        "crates/merman-cli/src/generated/capability_surface.rs",
         ArtifactKind::Rust,
     ),
     (
