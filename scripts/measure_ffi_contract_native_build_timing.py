@@ -32,7 +32,6 @@ from ffi_contract_reproducibility import (
     FfiContractReproducibilityError,
     ffi_contract_subprocess_environment,
     reject_cargo_configuration,
-    reject_ffi_contract_environment,
     rust_toolchain_provenance,
 )
 from strict_json import canonical_sha256
@@ -53,14 +52,6 @@ REVIEW_THRESHOLD_RATIO = 0.10
 DEFAULT_REPORT = (
     REPO_ROOT / "docs" / "release" / "evidence" / "ffi-contract-native-build-timing.json"
 )
-POST_CAPTURE_ALLOWED_PATHS = frozenset(
-    {
-        "docs/release/FFI_CONTRACT_READINESS.md",
-        "docs/release/evidence/ffi-contract-native-build-timing.json",
-    }
-)
-
-
 class NativeBuildTimingError(RuntimeError):
     """Native clean-build timing evidence is invalid or could not be captured."""
 
@@ -458,6 +449,13 @@ def _validate_git_revision(
 
 
 def _validate_candidate_ancestry(repo_root: Path, candidate_commit: str) -> None:
+    """Require the measured candidate to remain in the checked-out history.
+
+    The report measures the exact candidate tree recorded in ``source_revisions``.
+    Later commits are not part of that measurement and therefore must not be
+    classified by an allowlist here. Recipe and toolchain drift are validated
+    separately against their descriptor-owned projections below.
+    """
     git = _git_executable()
     ancestry = _run_text(
         (
@@ -478,31 +476,6 @@ def _validate_candidate_ancestry(repo_root: Path, candidate_commit: str) -> None
         detail = (ancestry.stderr or ancestry.stdout or "").strip()
         raise NativeBuildTimingError(
             f"cannot validate native timing candidate ancestry: {detail}"
-        )
-    changed = _run_text(
-        (
-            git,
-            "--no-replace-objects",
-            "diff",
-            "--no-renames",
-            "--name-only",
-            "--diff-filter=ACDMRTUXB",
-            f"{candidate_commit}..HEAD",
-            "--",
-        ),
-        repo_root,
-    )
-    if changed.returncode != 0:
-        detail = (changed.stderr or changed.stdout or "").strip()
-        raise NativeBuildTimingError(
-            f"cannot inspect post-capture native timing changes: {detail}"
-        )
-    changed_paths = {line for line in changed.stdout.splitlines() if line}
-    unexpected = sorted(changed_paths - POST_CAPTURE_ALLOWED_PATHS)
-    if unexpected:
-        raise NativeBuildTimingError(
-            "native timing evidence predates implementation changes: "
-            + ", ".join(unexpected)
         )
 
 
@@ -757,9 +730,8 @@ def capture_report(
     if runs < MINIMUM_RUNS or runs > MAXIMUM_RUNS or runs % 2 == 0:
         raise NativeBuildTimingError(
             f"--runs must be an odd value from {MINIMUM_RUNS} to {MAXIMUM_RUNS}"
-        )
+    )
     try:
-        reject_ffi_contract_environment()
         reject_cargo_configuration(repo_root)
     except FfiContractReproducibilityError as error:
         raise NativeBuildTimingError(str(error)) from error

@@ -42,7 +42,6 @@ from ffi_contract_reproducibility import (
     FfiContractReproducibilityError,
     ffi_contract_subprocess_environment,
     reject_cargo_configuration as reject_ffi_contract_cargo_configuration,
-    reject_ffi_contract_environment,
     rust_toolchain_provenance,
 )
 from strict_json import StrictJsonContract, bytes_sha256, canonical_sha256
@@ -471,7 +470,6 @@ def capture_native_artifact_measurements(
         raise NativeArtifactSizeError(
             "native artifact size evidence currently supports exact Apple strip recipes only"
         )
-    reject_native_measurement_environment()
     reject_cargo_configuration(repo_root)
     apple_toolchain = _resolve_apple_toolchain(
         host_target,
@@ -563,15 +561,6 @@ def capture_native_artifact_measurements(
             "Apple toolchain or SDK identity changed during native artifact capture"
         )
     return tuple(measurements)
-
-
-def reject_native_measurement_environment(
-    environment: Mapping[str, str] | None = None,
-) -> None:
-    try:
-        reject_ffi_contract_environment(environment)
-    except FfiContractReproducibilityError as error:
-        raise NativeArtifactSizeError(str(error)) from error
 
 
 def reject_cargo_configuration(

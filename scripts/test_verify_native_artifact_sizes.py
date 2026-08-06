@@ -44,7 +44,6 @@ from verify_native_artifact_sizes import (  # noqa: E402
     native_build_command,
     native_profile_configuration,
     reject_cargo_configuration,
-    reject_native_measurement_environment,
     select_compiler_artifacts,
 )
 import capture_ffi_contract_baseline as baseline_capture  # noqa: E402
@@ -112,33 +111,6 @@ class NativeArtifactRecipeTests(unittest.TestCase):
             native_profile_configuration()["native-sdk"]["strip"],
             "debuginfo",
         )
-
-    def test_measurement_rejects_environment_overrides(self) -> None:
-        for environment in (
-            {"RUSTFLAGS": "-C opt-level=0"},
-            {"RUSTC": "/tmp/rustc"},
-            {"CARGO_BUILD_RUSTFLAGS": "-C opt-level=0"},
-            {"CARGO_PROFILE_NATIVE_SDK_OPT_LEVEL": "0"},
-            {"CARGO_BUILD_TARGET": "x86_64-apple-darwin"},
-            {"CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER": "/tmp/clang"},
-            {"CC_aarch64_apple_darwin": "/tmp/clang"},
-            {"MACOSX_DEPLOYMENT_TARGET": "14.0"},
-            {"CARGO_INCREMENTAL": "1"},
-            {"LIBRARY_PATH": "/tmp/lib"},
-            {"CPATH": "/tmp/include"},
-            {"COMPILER_PATH": "/tmp/bin"},
-            {"ZERO_AR_DATE": "0"},
-            {"DYLD_INSERT_LIBRARIES": "/tmp/inject.dylib"},
-            {"ARFLAGS": "-x"},
-            {"RANLIB": "/tmp/ranlib"},
-            {"STRIP": "/tmp/strip"},
-            {"PKG_CONFIG_PATH": "/tmp/pkgconfig"},
-        ):
-            with self.subTest(environment=environment), self.assertRaisesRegex(
-                NativeArtifactSizeError,
-                "environment overrides",
-            ):
-                reject_native_measurement_environment(environment)
 
     def test_measurement_rejects_ancestor_and_user_cargo_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

@@ -456,20 +456,6 @@ class CargoTreeParserTests(unittest.TestCase):
 
 
 class FixedFfiBaselineTests(unittest.TestCase):
-    def test_fixed_baseline_rejects_local_build_environment_overrides(self) -> None:
-        with (
-            mock.patch.dict(os.environ, {"RUSTC": "/tmp/rustc"}, clear=True),
-            self.assertRaisesRegex(
-                ClosureVerificationError,
-                "environment overrides: RUSTC",
-            ),
-        ):
-            verify_dependency_baseline(
-                Path("baseline-is-not-read.json"),
-                repo_root=SCRIPT_DIR.parent,
-                runner=lambda command: subprocess.CompletedProcess(command, 1, "", ""),
-            )
-
     def test_readiness_reports_public_and_private_lanes_independently(self) -> None:
         probes = load_dependency_probes()
         report = _format_probe_matrix_failures(

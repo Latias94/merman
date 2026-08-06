@@ -23,24 +23,43 @@ from ffi_contract_baseline_contract import (  # noqa: E402
 from ffi_contract_reproducibility import (  # noqa: E402
     CANONICAL_REPRODUCIBILITY_ENVIRONMENT,
     FfiContractReproducibilityError,
-    reject_ffi_contract_environment,
+    ffi_contract_subprocess_environment,
     resolve_rust_toolchain,
 )
 
 
 class ReproducibilityEnvironmentTests(unittest.TestCase):
-    def test_canonical_values_are_valid_parent_environment(self) -> None:
-        reject_ffi_contract_environment(CANONICAL_REPRODUCIBILITY_ENVIRONMENT)
+    def test_child_environment_replaces_parent_build_overrides(self) -> None:
+        environment = ffi_contract_subprocess_environment(
+            {
+                "CARGO_BUILD_JOBS": "1",
+                "CARGO_INCREMENTAL": "1",
+                "RUSTFLAGS": "-C target-cpu=native",
+                "SOURCE_DATE_EPOCH": "custom",
+            }
+        )
 
-    def test_noncanonical_and_unrelated_overrides_are_rejected(self) -> None:
-        for environment in (
-            {"CARGO_INCREMENTAL": "1"},
-            {"SOURCE_DATE_EPOCH": ""},
-            {"RUSTFLAGS": "-C target-cpu=native"},
-        ):
-            with self.subTest(environment=environment):
-                with self.assertRaises(FfiContractReproducibilityError):
-                    reject_ffi_contract_environment(environment)
+        self.assertEqual(
+            {key: environment[key] for key in CANONICAL_REPRODUCIBILITY_ENVIRONMENT},
+            CANONICAL_REPRODUCIBILITY_ENVIRONMENT,
+        )
+        self.assertNotIn("CARGO_BUILD_JOBS", environment)
+        self.assertNotIn("RUSTFLAGS", environment)
+
+    def test_child_environment_does_not_make_registry_cache_a_correctness_requirement(
+        self,
+    ) -> None:
+        environment = ffi_contract_subprocess_environment(
+            {
+                "CARGO_HOME": "/cargo-home",
+                "CARGO_NET_OFFLINE": "true",
+                "PATH": "/untrusted/bin",
+            }
+        )
+
+        self.assertEqual(environment["CARGO_HOME"], "/cargo-home")
+        self.assertNotIn("CARGO_NET_OFFLINE", environment)
+        self.assertEqual(environment["PATH"], "/usr/bin:/bin:/usr/sbin:/sbin")
 
 
 class RustupResolutionTests(unittest.TestCase):

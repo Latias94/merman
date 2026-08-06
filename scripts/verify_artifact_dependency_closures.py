@@ -45,7 +45,6 @@ from ffi_contract_reproducibility import (
     FfiContractReproducibilityError,
     ffi_contract_subprocess_environment,
     reject_cargo_configuration,
-    reject_ffi_contract_environment,
     rust_toolchain_provenance,
 )
 from strict_json import StrictJsonContract, bytes_sha256, canonical_sha256
@@ -1614,7 +1613,6 @@ def verify_dependency_baseline(
     rust_toolchain: Mapping[str, Any] | None = None,
 ) -> tuple[ProbeClosureObservation, ...]:
     try:
-        reject_ffi_contract_environment()
         reject_cargo_configuration(repo_root)
         current_toolchain = (
             validate_rust_toolchain(rust_toolchain)

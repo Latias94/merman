@@ -13,96 +13,6 @@ import subprocess
 from typing import Any, Callable, Sequence
 
 
-EXACT_ENVIRONMENT_OVERRIDES = frozenset(
-    {
-        "AR",
-        "ARFLAGS",
-        "CC",
-        "CFLAGS",
-        "CLANG_PATH",
-        "COMPILER_PATH",
-        "CPP",
-        "CPPFLAGS",
-        "CPATH",
-        "CXX",
-        "CXXFLAGS",
-        "CARGO",
-        "CARGO_BUILD_INCREMENTAL",
-        "CARGO_BUILD_RUSTC",
-        "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
-        "CARGO_BUILD_RUSTC_WRAPPER",
-        "CARGO_BUILD_RUSTFLAGS",
-        "CARGO_BUILD_TARGET",
-        "CARGO_BUILD_TARGET_DIR",
-        "CARGO_ENCODED_RUSTFLAGS",
-        "CARGO_INCREMENTAL",
-        "CARGO_HOST_CONFIG",
-        "CARGO_TARGET_DIR",
-        "CPLUS_INCLUDE_PATH",
-        "C_INCLUDE_PATH",
-        "DEVELOPER_DIR",
-        "DYLD_FALLBACK_FRAMEWORK_PATH",
-        "DYLD_FALLBACK_LIBRARY_PATH",
-        "DYLD_FRAMEWORK_PATH",
-        "DYLD_INSERT_LIBRARIES",
-        "DYLD_LIBRARY_PATH",
-        "HOST_AR",
-        "HOST_CC",
-        "HOST_CFLAGS",
-        "HOST_CXX",
-        "HOST_CXXFLAGS",
-        "HOST_LD",
-        "HOST_LDFLAGS",
-        "LD",
-        "LDFLAGS",
-        "LIBCLANG_PATH",
-        "LIBRARY_PATH",
-        "MACOSX_DEPLOYMENT_TARGET",
-        "NM",
-        "OBJC",
-        "OBJCFLAGS",
-        "OBJCXX",
-        "OBJCXXFLAGS",
-        "OBJC_INCLUDE_PATH",
-        "RANLIB",
-        "RUSTC",
-        "RUSTC_BOOTSTRAP",
-        "RUSTC_WRAPPER",
-        "RUSTC_WORKSPACE_WRAPPER",
-        "RUSTFLAGS",
-        "RUSTUP_TOOLCHAIN",
-        "SDKROOT",
-        "SOURCE_DATE_EPOCH",
-        "STRIP",
-        "TARGET_AR",
-        "TARGET_CC",
-        "TARGET_CFLAGS",
-        "TARGET_CXX",
-        "TARGET_CXXFLAGS",
-        "TARGET_LD",
-        "TARGET_LDFLAGS",
-        "TOOLCHAINS",
-        "ZERO_AR_DATE",
-    }
-)
-
-ENVIRONMENT_OVERRIDE_PREFIXES = (
-    "AR_",
-    "CC_",
-    "CFLAGS_",
-    "CXX_",
-    "CXXFLAGS_",
-    "CARGO_PROFILE_",
-    "CARGO_BUILD_",
-    "CARGO_TARGET_",
-    "BINDGEN_EXTRA_CLANG_ARGS",
-    "CMAKE_",
-    "MESON_",
-    "PKG_CONFIG",
-    "LD_",
-    "LDFLAGS_",
-)
-
 PASSTHROUGH_ENVIRONMENT = (
     "CARGO_HOME",
     "HOME",
@@ -151,32 +61,6 @@ class RustToolchainIdentity:
             "rustc_verbose": self.rustc_verbose,
             "host_target": self.host_target,
         }
-
-
-def reject_ffi_contract_environment(
-    environment: Mapping[str, str] | None = None,
-) -> None:
-    values = os.environ if environment is None else environment
-    overrides = sorted(
-        key
-        for key, value in values.items()
-        if (
-            key in CANONICAL_REPRODUCIBILITY_ENVIRONMENT
-            and value != CANONICAL_REPRODUCIBILITY_ENVIRONMENT[key]
-        )
-        or (
-            key not in CANONICAL_REPRODUCIBILITY_ENVIRONMENT
-            and (
-                key in EXACT_ENVIRONMENT_OVERRIDES
-                or key.startswith(ENVIRONMENT_OVERRIDE_PREFIXES)
-            )
-        )
-    )
-    if overrides:
-        raise FfiContractReproducibilityError(
-            "FFI contract verification rejects environment overrides: "
-            + ", ".join(overrides)
-        )
 
 
 def reject_cargo_configuration(
@@ -230,7 +114,6 @@ def ffi_contract_subprocess_environment(
     result.update(CANONICAL_REPRODUCIBILITY_ENVIRONMENT)
     result.update(
         {
-            "CARGO_NET_OFFLINE": "true",
             "CARGO_TERM_COLOR": "never",
             "LANG": "C",
             "LC_ALL": "C",

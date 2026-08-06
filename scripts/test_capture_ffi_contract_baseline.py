@@ -173,9 +173,6 @@ class AtomicCaptureTests(unittest.TestCase):
 
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(capture, "validate_source_repository"))
-            stack.enter_context(
-                mock.patch.object(capture, "reject_ffi_contract_environment")
-            )
             stack.enter_context(mock.patch.object(capture, "reject_cargo_configuration"))
             stack.enter_context(
                 mock.patch.object(

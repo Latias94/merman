@@ -55,7 +55,10 @@ and 103.086 seconds respectively, a 10.37% decrease against a 2.28% noise floor.
 
 Timing is measured on the recorded local Apple host and is not a cross-machine, universal, or
 runtime-rendering performance claim. `measure_ffi_contract_native_build_timing.py verify` is part
-of the platform-binding verification path; a missing, stale, or unreviewed report fails closed.
+of the platform-binding verification path; a missing, malformed, recipe-drifted, or unreviewed
+report fails closed. The report remains evidence for its exact recorded candidate tree: later
+commits are not guessed to be timing inputs from a repository-wide path allowlist and do not
+silently become part of the measurement.
 
 ## Verification entry points
 

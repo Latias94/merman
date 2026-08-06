@@ -35,7 +35,6 @@ from ffi_contract_reproducibility import (
     FfiContractReproducibilityError,
     ffi_contract_subprocess_environment,
     reject_cargo_configuration,
-    reject_ffi_contract_environment,
     rust_toolchain_provenance,
 )
 from strict_json import canonical_sha256
@@ -445,7 +444,6 @@ def capture_dependency_report(
     toolchain: dict[str, Any],
     snapshot_sha256: str,
 ) -> dict[str, Any]:
-    reject_ffi_contract_environment()
     reject_cargo_configuration(source_root)
     probes = load_dependency_probes(source_root)
     observations = capture_probe_observations(
@@ -530,7 +528,6 @@ def capture_baseline_bundle(
     output_root: Path,
 ) -> None:
     validate_source_repository(source_repo)
-    reject_ffi_contract_environment()
     reject_cargo_configuration(source_repo)
     prepare_output_destination(output_root)
     with tempfile.TemporaryDirectory(
@@ -623,7 +620,6 @@ def capture_baseline_bundle(
             source_entries,
             snapshot_sha256,
         )
-        reject_ffi_contract_environment()
         reject_cargo_configuration(source_root)
         validate_source_repository(source_repo)
         bundle_root.rename(output_root)

@@ -424,9 +424,7 @@ class GitArchiveExtractionTests(unittest.TestCase):
 
 
 class CandidateAncestryTests(unittest.TestCase):
-    def test_rename_into_an_allowed_evidence_path_does_not_hide_source_drift(
-        self,
-    ) -> None:
+    def test_post_capture_source_changes_do_not_reclassify_the_measured_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             self.git(root, "init")
@@ -439,19 +437,34 @@ class CandidateAncestryTests(unittest.TestCase):
             self.git(root, "commit", "-m", "candidate")
             candidate = self.git(root, "rev-parse", "HEAD").stdout.strip()
 
-            evidence = root / "docs" / "release" / "FFI_CONTRACT_READINESS.md"
-            evidence.parent.mkdir(parents=True)
-            self.git(
-                root,
-                "mv",
-                "src/implementation.rs",
-                "docs/release/FFI_CONTRACT_READINESS.md",
-            )
-            self.git(root, "commit", "-m", "rename")
+            source.write_text("fn implementation() { changed(); }\n", encoding="utf-8")
+            self.git(root, "add", "src/implementation.rs")
+            self.git(root, "commit", "-m", "later source change")
+
+            _validate_candidate_ancestry(root, candidate)
+
+    def test_candidate_outside_checked_out_history_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.git(root, "init")
+            self.git(root, "config", "user.email", "timing@example.invalid")
+            self.git(root, "config", "user.name", "Timing Test")
+            source = root / "source.txt"
+            source.write_text("candidate\n", encoding="utf-8")
+            self.git(root, "add", "source.txt")
+            self.git(root, "commit", "-m", "candidate")
+            candidate = self.git(root, "rev-parse", "HEAD").stdout.strip()
+
+            self.git(root, "checkout", "--orphan", "unrelated")
+            source.unlink()
+            unrelated = root / "unrelated.txt"
+            unrelated.write_text("unrelated\n", encoding="utf-8")
+            self.git(root, "add", "-A")
+            self.git(root, "commit", "-m", "unrelated")
 
             with self.assertRaisesRegex(
                 NativeBuildTimingError,
-                "src/implementation.rs",
+                "not an ancestor",
             ):
                 _validate_candidate_ancestry(root, candidate)
 

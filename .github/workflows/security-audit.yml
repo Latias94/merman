@@ -8,6 +8,7 @@ on:
     paths:
       - Cargo.lock
       - Cargo.toml
+      - rust-toolchain.toml
       - about.toml
       - capabilities/artifact-profiles-v1.json
       - deny.toml
@@ -18,10 +19,15 @@ on:
       - "crates/**/Cargo.toml"
       - fuzz/Cargo.lock
       - fuzz/Cargo.toml
+      - crates/merman-node/Cargo.lock
+      - platforms/node/candidate-builds.json
       - "platforms/**/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
       - "platforms/python/legal/rust-cargo-dependencies/*.json"
       - scripts/generate-rust-license-report.py
       - scripts/python_wheel_licenses.py
+      - scripts/artifact_profile_recipe.py
+      - "scripts/ffi_contract_*.py"
+      - scripts/strict_json.py
       - scripts/verify_artifact_dependency_closures.py
       - "abi/ffi-contract-baseline/**"
       - scripts/verify_rustsec_exceptions.py
@@ -30,6 +36,7 @@ on:
     paths:
       - Cargo.lock
       - Cargo.toml
+      - rust-toolchain.toml
       - about.toml
       - capabilities/artifact-profiles-v1.json
       - deny.toml
@@ -40,10 +47,15 @@ on:
       - "crates/**/Cargo.toml"
       - fuzz/Cargo.lock
       - fuzz/Cargo.toml
+      - crates/merman-node/Cargo.lock
+      - platforms/node/candidate-builds.json
       - "platforms/**/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
       - "platforms/python/legal/rust-cargo-dependencies/*.json"
       - scripts/generate-rust-license-report.py
       - scripts/python_wheel_licenses.py
+      - scripts/artifact_profile_recipe.py
+      - "scripts/ffi_contract_*.py"
+      - scripts/strict_json.py
       - scripts/verify_artifact_dependency_closures.py
       - "abi/ffi-contract-baseline/**"
       - scripts/verify_rustsec_exceptions.py
