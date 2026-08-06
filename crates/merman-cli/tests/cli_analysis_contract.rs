@@ -428,8 +428,10 @@ fn cli_lint_reports_markdown_fence_path_from_stdin_file_name() {
         "lint should fail on invalid markdown"
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    // Mermaid reports the incomplete edge at EOF. In a fenced document that insertion point is
+    // the start of the closing-fence line, after the diagram body's trailing newline.
     assert!(
-        stdout.contains("notes.md:4:6"),
+        stdout.contains("notes.md:5:1"),
         "unexpected lint output:\n{stdout}"
     );
     assert!(
@@ -468,8 +470,8 @@ fn cli_lint_reports_markdown_fence_failure_as_json_from_stdin_file_name() {
     assert_eq!(payload["summary"]["errors"], 1);
     let diagnostic = &payload["diagnostics"][0];
     assert_eq!(diagnostic["id"], "merman.parse.diagram_parse");
-    assert_eq!(diagnostic["span"]["line"], 4);
-    assert_eq!(diagnostic["span"]["column"], 6);
+    assert_eq!(diagnostic["span"]["line"], 5);
+    assert_eq!(diagnostic["span"]["column"], 1);
 }
 
 #[test]
