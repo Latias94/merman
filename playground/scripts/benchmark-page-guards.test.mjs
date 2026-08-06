@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import {
+  BenchmarkPageOperationError,
   cancelBenchmarkPage,
   runBenchmarkPageOperation,
   runBenchmarkStartupOperation,
@@ -37,7 +38,9 @@ test("whole-corpus deadline cancels discovery and closes its browser", async () 
       operation: () => new Promise(() => {}),
       page,
     }),
-    /whole-corpus CLI timeout/u
+    (error) =>
+      error instanceof BenchmarkPageOperationError &&
+      error.code === "cli-timeout"
   );
   assert.equal(page.cancelReason, "cli-timeout");
   assert.equal(browser.closed, true);
@@ -54,7 +57,35 @@ test("page crashes reject a pending discovery operation", async () => {
   });
 
   page.emit("crash");
-  await assert.rejects(pending, /Benchmark page crashed/u);
+  await assert.rejects(
+    pending,
+    (error) =>
+      error instanceof BenchmarkPageOperationError &&
+      error.code === "browser-crash"
+  );
+});
+
+test("page close and browser disconnect keep distinct failure codes", async () => {
+  for (const [event, code] of [
+    ["close", "browser-page-close"],
+    ["disconnected", "browser-disconnected"],
+  ]) {
+    const page = new FakePage();
+    const browser = new FakeBrowser();
+    const pending = runBenchmarkPageOperation({
+      browser,
+      deadlineMs: Date.now() + 1_000,
+      operation: () => new Promise(() => {}),
+      page,
+    });
+
+    (event === "close" ? page : browser).emit(event);
+    await assert.rejects(
+      pending,
+      (error) =>
+        error instanceof BenchmarkPageOperationError && error.code === code
+    );
+  }
 });
 
 test("explicit cancellation reaches the page and closes the browser", async () => {
@@ -78,7 +109,9 @@ test("startup deadline rejects and runs its cleanup", async () => {
       },
       operation: () => new Promise(() => {}),
     }),
-    /whole-corpus CLI timeout/u
+    (error) =>
+      error instanceof BenchmarkPageOperationError &&
+      error.code === "cli-timeout"
   );
   assert.equal(cleanedUp, true);
 });

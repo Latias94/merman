@@ -53,18 +53,6 @@ export async function copySVGToClipboard(artifact: SafeInlineSvg): Promise<void>
   await navigator.clipboard.writeText(artifact.svg);
 }
 
-/** Copy a PNG artifact to the clipboard and report its raster dimensions. */
-export async function copyPNGToClipboard(
-  artifact: SafeInlineSvg,
-  scale: number = 2
-): Promise<PngRasterPlan> {
-  const { blob, plan } = await rasterizeSvgToPngBlob(artifact, scale);
-  await navigator.clipboard.write([
-    new ClipboardItem({ 'image/png': blob }),
-  ]);
-  return plan;
-}
-
 /** Copy Mermaid source to the clipboard. */
 export async function copyCodeToClipboard(code: string): Promise<void> {
   await navigator.clipboard.writeText(code);

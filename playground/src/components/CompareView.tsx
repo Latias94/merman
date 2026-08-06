@@ -20,10 +20,11 @@ import {
 import { ViewportControls } from "@/src/components/PreviewArtifactViews";
 import {
   SvgViewport,
-  useSvgViewport,
+  useSvgViewportController,
   type SvgViewportController,
 } from "@/src/components/SvgViewport";
 import type { SafeInlineSvg } from "@/src/runtime/render-artifact";
+import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
 import { cn } from "@/lib/utils";
 
 export type CompareEngineKey = "merman" | "mermaid";
@@ -31,9 +32,7 @@ type SvgDisplayMode = "visual" | "source";
 
 export interface CompareArtifact {
   key: CompareEngineKey;
-  artifactKey: string;
-  presentationKey: number | null;
-  actionsEnabled: boolean;
+  publicationId: RenderPublicationId | null;
   title: string;
   version: string;
   svgArtifact: SafeInlineSvg | null;
@@ -52,11 +51,14 @@ export interface ComparePaneModel {
 }
 
 export interface ComparePaneActions {
-  copiedSvgKey: string | null;
+  copiedSvgTarget: {
+    readonly engine: CompareEngineKey;
+    readonly publicationId: RenderPublicationId;
+  } | null;
   exportingPngEngines: ReadonlySet<CompareEngineKey>;
-  onCopySvg(artifact: SafeInlineSvg | null, actionKey: string): void;
-  onExportPng(engine: CompareEngineKey, artifact: SafeInlineSvg | null): void;
-  onExportSvg(engine: CompareEngineKey, artifact: SafeInlineSvg | null): void;
+  onCopySvg(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
+  onExportPng(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
+  onExportSvg(engine: CompareEngineKey, publicationId: RenderPublicationId): void;
   onPresentationReady(engine: CompareEngineKey, at: number): void;
   onRetry(): void;
 }
@@ -106,24 +108,24 @@ function ComparePane({
   t: (key: string) => string;
 }) {
   const { artifact } = model;
-  const copied = actions.copiedSvgKey === artifact.artifactKey;
+  const copied =
+    actions.copiedSvgTarget?.engine === artifact.key &&
+    actions.copiedSvgTarget.publicationId === artifact.publicationId;
   const exporting = actions.exportingPngEngines.has(artifact.key);
   const hasSvg = Boolean(artifact.svgArtifact);
   const actionsDisabled =
-    !artifact.actionsEnabled ||
+    artifact.publicationId === null ||
+    artifact.stale ||
     Boolean(artifact.unavailableLabel);
   const [svgDisplayMode, setSvgDisplayMode] =
     useState<SvgDisplayMode>("visual");
-  const controller = useSvgViewport({
-    artifact: artifact.svgArtifact,
-    enabled: svgDisplayMode === "visual",
-  });
+  const controller = useSvgViewportController();
   const statusId = useId();
   const paneRef = useRef<HTMLElement>(null);
   const ownedFocus = useRef(false);
   const status = compareArtifactStatus(artifact, t);
   const replacementKey = [
-    artifact.artifactKey,
+    artifact.publicationId,
     status.state,
     hasSvg ? "svg" : "empty",
   ].join(":");
@@ -181,7 +183,11 @@ function ComparePane({
           </p>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          {hasSvg ? <ViewportControls controller={controller} t={t} /> : <div />}
+          {hasSvg && svgDisplayMode === "visual" ? (
+            <ViewportControls controller={controller} t={t} />
+          ) : (
+            <div />
+          )}
           <div className="flex items-center gap-1">
             <CompareIconButton
               label={
@@ -190,7 +196,8 @@ function ComparePane({
                   : (artifact.unavailableLabel ?? t("preview.copySvg"))
               }
               onClick={() =>
-                actions.onCopySvg(artifact.svgArtifact, artifact.artifactKey)
+                artifact.publicationId &&
+                actions.onCopySvg(artifact.key, artifact.publicationId)
               }
               disabled={actionsDisabled}
             >
@@ -206,7 +213,8 @@ function ComparePane({
                 t("preview.exportSvg")
               }
               onClick={() =>
-                actions.onExportSvg(artifact.key, artifact.svgArtifact)
+                artifact.publicationId &&
+                actions.onExportSvg(artifact.key, artifact.publicationId)
               }
               disabled={actionsDisabled}
             >
@@ -238,7 +246,8 @@ function ComparePane({
                   : (artifact.unavailableLabel ?? t("preview.exportPng"))
               }
               onClick={() =>
-                actions.onExportPng(artifact.key, artifact.svgArtifact)
+                artifact.publicationId &&
+                actions.onExportPng(artifact.key, artifact.publicationId)
               }
               disabled={actionsDisabled || exporting}
             >
@@ -343,7 +352,8 @@ function ComparePaneBody({
   }
   return (
     <SvgViewport
-      presentationKey={artifact.presentationKey}
+      artifact={artifact.svgArtifact}
+      presentationKey={artifact.publicationId}
       controller={controller}
       onPresentationReady={onPresentationReady}
       empty={

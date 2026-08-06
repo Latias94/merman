@@ -69,11 +69,11 @@
       "evidence": {
         "kind": "artifact",
         "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#executionIsolation",
-        "summary": "Desktop and mobile Chromium prove opaque execution, authenticated containment, navigation poisoning, failure replacement, and strict ZenUML parent publication.",
-        "projectCount": 2,
+        "summary": "Desktop Chromium proves opaque execution, authenticated containment, navigation poisoning, failure replacement, and strict ZenUML parent publication.",
+        "projectCount": 1,
         "probeCount": 13,
-        "observationCount": 26,
-        "passedObservationCount": 26
+        "observationCount": 13,
+        "passedObservationCount": 13
       }
     },
     {
@@ -82,11 +82,11 @@
       "evidence": {
         "kind": "artifact",
         "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#security",
-        "summary": "Desktop and mobile Chromium prove ambient authority denial, zero server egress, and bounded ephemeral storage with machine-recorded probe observations.",
-        "projectCount": 2,
+        "summary": "Desktop Chromium proves ambient authority denial, zero server egress, and bounded ephemeral storage with machine-recorded probe observations.",
+        "projectCount": 1,
         "probeCount": 18,
-        "observationCount": 36,
-        "passedObservationCount": 36
+        "observationCount": 18,
+        "passedObservationCount": 18
       }
     },
     {

@@ -15,6 +15,7 @@ on:
       - "THIRD_PARTY_LICENSES/**"
       - "crates/**"
       - "docs/release/WASM_SIZE_BUDGETS.json"
+      - "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v*.json"
       - "platforms/web/**"
       - "playground/**"
       - "scripts/check-svg-safety-policy.mjs"
@@ -33,6 +34,7 @@ on:
       - "THIRD_PARTY_LICENSES/**"
       - "crates/**"
       - "docs/release/WASM_SIZE_BUDGETS.json"
+      - "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v*.json"
       - "platforms/web/**"
       - "playground/**"
       - "scripts/check-svg-safety-policy.mjs"
@@ -123,6 +125,9 @@ jobs:
       - name: Verify playground dependency boundaries
         run: npm run verify:dependencies --prefix playground
 
+      - name: Audit playground dependency trees
+        run: npm run verify:security --prefix playground
+
       - name: Install playground browsers
         run: npm run install:browsers --prefix playground/tests
 
@@ -141,8 +146,8 @@ jobs:
       - name: Smoke playground in Firefox and WebKit
         run: npm run test:browser:smoke:non-chromium:built --prefix playground
 
-      - name: Test playground in Chromium
-        run: npm run test:browser:chromium --prefix playground
+      - name: Test playground in desktop Chromium
+        run: npm run test:browser:chromium:desktop:built --prefix playground
 
       - name: Upload browser failure evidence
         if: failure()

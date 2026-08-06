@@ -26,6 +26,12 @@
     "editor": "编辑",
     "preview": "预览"
   },
+  "features": {
+    "loading": "正在加载{{feature}}...",
+    "loadFailed": "无法加载{{feature}}",
+    "reloadDescription": "请重新加载页面后再次请求此功能。",
+    "reload": "重新加载页面"
+  },
   "textMeasurement": {
     "browser": "浏览器",
     "headless": "Headless"
@@ -83,8 +89,11 @@
     "warmups": "每个引擎的预热次数",
     "run": "运行",
     "runAgain": "重新运行",
+    "changeSettings": "修改参数",
+    "backToResult": "返回结果",
     "running": "运行中",
     "cancel": "取消",
+    "cancelledShowingPrevious": "最近一次运行已取消，当前显示上一次结果。",
     "download": "下载 JSON",
     "notReady": "渲染引擎加载中",
     "empty": "请先输入 Mermaid 代码",
@@ -94,7 +103,7 @@
     "progress": "基准测试进度",
     "sampleProgress": "已完成 {{completed}} / {{total}} 个操作",
     "block": "区块 {{block}}",
-    "frozenSource": "冻结源码",
+    "currentSource": "当前源码",
     "versions": "包版本",
     "resourceBounds": "源码 / SVG 限制",
     "presentationReady": "严格验证的可发布 SVG",
@@ -129,8 +138,7 @@
     "stages": {
       "pausing": "正在暂停实时渲染",
       "creating-realm": "正在创建独立运行环境",
-      "sampling": "正在测量可呈现结果",
-      "cleanup": "正在释放基准测试资源"
+      "sampling": "正在测量可呈现结果"
     },
     "purposes": {
       "setup": "引擎初始化",

@@ -37,7 +37,7 @@ export async function createBrowserCompareRealmSession(
     createCompareMermaidEngineArtifact,
     createOpaqueCompareRealmDocument,
   } = await import(
-    "./opaque-realm-artifacts.ts"
+    "./opaque-compare-artifact.ts"
   );
   const engineArtifact = await createCompareMermaidEngineArtifact(signal);
   let disposed = false;

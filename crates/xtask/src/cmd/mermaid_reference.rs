@@ -3850,7 +3850,7 @@ registerDefaultLayoutLoaders();
 
     #[test]
     fn browser_admission_rejects_failed_or_missing_probe_observations() {
-        let projects = serde_json::json!(["chromium-desktop", "chromium-mobile"]);
+        let projects = serde_json::json!(["chromium-desktop", "webkit-smoke"]);
         let required = serde_json::json!([
             {
                 "id": "opaque-origin",
@@ -3875,7 +3875,7 @@ registerDefaultLayoutLoaders();
                             "passed": false
                         },
                         {
-                            "project": "chromium-mobile",
+                            "project": "webkit-smoke",
                             "testTitle": "opaque realm",
                             "expected": true,
                             "observed": true,

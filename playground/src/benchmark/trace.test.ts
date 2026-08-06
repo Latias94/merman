@@ -135,7 +135,7 @@ test("rejects unpaired spans", () => {
         coldMermanTrace({ engine_import_end: null }),
         COLD_MERMAN
       ),
-    /both endpoints/
+    /complete phase path|engine_import_end/
   );
 });
 
@@ -145,7 +145,7 @@ test("rejects illegal pair, dependency, overlap, and render-tail order", () => {
     coldMermanTrace({ engine_import_start: 1.5 }),
     coldMermanTrace({ resource_acquire_start: 5.5 }),
     coldMermanTrace({ initialize_start: 5.5 }),
-    coldMermanTrace({ render_start: 7.5 }),
+    coldMermanTrace({ render_start: 6.5 }),
     coldMermanTrace({ isolated_dom_inserted: 9.5 }),
     coldMermanTrace({ isolated_presentation_ready: 13 }),
   ]) {
@@ -177,7 +177,7 @@ test("rejects fields forbidden by engine and sample mode", () => {
         }),
         COLD_MERMAID
       ),
-    /resource_acquire is forbidden/
+    /resource_acquire_start is forbidden/
   );
   assert.throws(
     () =>
@@ -185,7 +185,7 @@ test("rejects fields forbidden by engine and sample mode", () => {
         coldMermanTrace({ register_start: 5, register_end: 6 }),
         COLD_MERMAN
       ),
-    /register is forbidden/
+    /register_start is forbidden/
   );
   assert.throws(
     () =>
@@ -193,7 +193,7 @@ test("rejects fields forbidden by engine and sample mode", () => {
         warmTrace({ adapter_import_start: 0, adapter_import_end: 1 }),
         WARM_MERMAN
       ),
-    /adapter_import is forbidden/
+    /adapter_import_start is forbidden/
   );
 });
 
@@ -239,13 +239,13 @@ test("recorder freezes a realm-local failure prefix and finishes once", () => {
   recorder.mark("fonts_wait_start");
   recorder.mark("adapter_import_start");
   recorder.mark("adapter_import_end");
+  recorder.mark("fonts_wait_end");
   recorder.mark("engine_import_start");
   recorder.mark("resource_acquire_start");
   recorder.mark("engine_import_end");
   recorder.mark("resource_acquire_end");
   recorder.mark("initialize_start");
   recorder.mark("initialize_end");
-  recorder.mark("fonts_wait_end");
   recorder.mark("render_start");
   const first = recorder.finish();
 
@@ -281,19 +281,19 @@ test("recorder rejects duplicate events and a regressing clock", () => {
   );
 });
 
-test("failure finish clears only incomplete pairs without fabricating endpoints", () => {
+test("failure finish preserves a half-open phase without fabricating its end", () => {
   const times = [100, 100, 101, 102, 103];
   let index = 0;
   const recorder = createBenchmarkTraceRecorder(() => times[index++] ?? 103);
 
   recorder.mark("fonts_wait_start");
-  recorder.mark("fonts_wait_end");
   recorder.mark("adapter_import_start");
+  recorder.mark("fonts_wait_end");
   const trace = recorder.finishFailure();
 
   assert.equal(trace.fonts_wait_start, 0);
-  assert.equal(trace.fonts_wait_end, 1);
-  assert.equal(trace.adapter_import_start, null);
+  assert.equal(trace.fonts_wait_end, 2);
+  assert.equal(trace.adapter_import_start, 1);
   assert.equal(trace.adapter_import_end, null);
   assert.equal(trace.sample_end, 3);
   assert.doesNotThrow(() =>
@@ -307,7 +307,7 @@ test("failure finish clears only incomplete pairs without fabricating endpoints"
 
 test("failure trace permits one completed concurrent Merman acquisition", () => {
   const trace = coldMermanTrace({
-    engine_import_start: null,
+    engine_import_start: 2,
     engine_import_end: null,
     initialize_start: null,
     initialize_end: null,
@@ -333,7 +333,7 @@ function coldMermanTrace(
   return {
     sample_start: 0,
     fonts_wait_start: 0,
-    fonts_wait_end: 8,
+    fonts_wait_end: 2,
     adapter_import_start: 0,
     adapter_import_end: 2,
     engine_import_start: 2,
@@ -360,7 +360,7 @@ function coldMermaidTrace(
   return {
     sample_start: 0,
     fonts_wait_start: 0,
-    fonts_wait_end: 6,
+    fonts_wait_end: 1.5,
     adapter_import_start: 0,
     adapter_import_end: 1.5,
     engine_import_start: 1.5,

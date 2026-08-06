@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -10,7 +9,6 @@ import {
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
-  selectMermanFacade,
   selectMermanFailure,
   selectMermanLoadStage,
   selectMermanStatus,
@@ -29,8 +27,7 @@ import { MERMAID_JS_VERSION } from "@/src/runtime/mermaid-requirements";
 import {
   markRenderCoordinatorPresented,
   refreshRenderCoordinator,
-  setCompareEnabled,
-  setDiagnosticsEnabled,
+  setRenderFeatures,
 } from "@/src/runtime/render-coordinator-browser";
 import {
   selectCompletedRenderBatch,
@@ -44,17 +41,13 @@ import type {
   EngineRenderFailure,
   MermanRenderSuccess,
   MermaidRenderSuccess,
+  RenderPublicationId,
 } from "@/src/runtime/render-coordinator";
-import {
-  copySVGToClipboard,
-  exportPNG,
-  exportSVG,
-} from "@/src/lib/export";
-import type { SafeInlineSvg } from "@/src/runtime/render-artifact";
+import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
 import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
 import {
   SvgViewport,
-  useSvgViewport,
+  useSvgViewportController,
 } from "@/src/components/SvgViewport";
 import {
   CompareView,
@@ -93,6 +86,10 @@ type PreviewMode = "svg" | "ascii" | "compare" | "diagnostics";
 type SvgDisplayMode = "visual" | "source";
 type EngineKey = CompareEngineKey;
 type DiagnosticKey = "parse" | "layout";
+type CopiedSvgTarget = {
+  readonly engine: EngineKey;
+  readonly publicationId: RenderPublicationId;
+};
 
 const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
   parse: { json: null, error: null, errorDetail: null, elapsedMs: null },
@@ -108,18 +105,19 @@ export function Preview({ className }: PreviewProps) {
   const renderState = useRenderCoordinator((state) => state);
   const currentBatch = selectCompletedRenderBatch(renderState);
   const visibleBatch = selectVisibleRenderBatch(renderState);
-  const facade = useMermanRuntime(selectMermanFacade);
   const runtimeStatus = useMermanRuntime(selectMermanStatus);
   const runtimeFailure = useMermanRuntime(selectMermanFailure);
   const runtimeLoadStage = useMermanRuntime(selectMermanLoadStage);
-  const ready = facade !== null;
+  const ready = runtimeStatus === "ready";
   const loading = runtimeStatus === "idle" || runtimeStatus === "loading";
   const asciiSupport = useAsciiSupport();
   const [svgDisplayMode, setSvgDisplayMode] =
     useState<SvgDisplayMode>("visual");
-  const [copiedAsciiKey, setCopiedAsciiKey] = useState<string | null>(null);
+  const [copiedAsciiPublicationId, setCopiedAsciiPublicationId] =
+    useState<RenderPublicationId | null>(null);
   const [copiedDiagnostic, setCopiedDiagnostic] = useState<DiagnosticKey | null>(null);
-  const [copiedSvgKey, setCopiedSvgKey] = useState<string | null>(null);
+  const [copiedSvgTarget, setCopiedSvgTarget] =
+    useState<CopiedSvgTarget | null>(null);
   const [exportingPngEngines, setExportingPngEngines] = useState<Set<EngineKey>>(
     () => new Set()
   );
@@ -129,19 +127,7 @@ export function Preview({ className }: PreviewProps) {
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diagnosticCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const previewRenderKey = currentBatch?.snapshot.key ?? "render-unavailable";
-  const mermanSvgActionKey = useMemo(
-    () => artifactActionKey("merman-svg", previewRenderKey),
-    [previewRenderKey]
-  );
-  const mermaidSvgActionKey = useMemo(
-    () => artifactActionKey("mermaid-svg", previewRenderKey),
-    [previewRenderKey]
-  );
-  const asciiActionKey = useMemo(
-    () => artifactActionKey("merman-ascii", previewRenderKey),
-    [previewRenderKey]
-  );
+  const currentPublicationId = currentBatch?.snapshot.publicationId ?? null;
   const detectedDiagramType = selectCurrentDiagramType(renderState);
   const currentMerman = successfulMerman(currentBatch?.merman ?? null);
   const svgArtifact = currentMerman?.artifact ?? null;
@@ -159,7 +145,7 @@ export function Preview({ className }: PreviewProps) {
   const mermaidRenderTime = visibleMermaid?.renderTimeMs ?? null;
   const renderPending = selectRenderPending(renderState);
   const mermanRendering = Boolean(code.trim() && ready && renderPending);
-  const actionsEnabled = currentBatch?.actionsEnabled ?? false;
+  const actionsEnabled = currentBatch !== null;
   const compareStale = renderState.status === "updating";
   const diagnostics = currentBatch?.diagnostics ?? EMPTY_DIAGNOSTICS;
   const diagnosticsLoading = previewMode === "diagnostics" && renderPending;
@@ -167,10 +153,7 @@ export function Preview({ className }: PreviewProps) {
   const asciiCapability = asciiSupport.capabilityFor(detectedDiagramType);
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
-  const svgViewport = useSvgViewport({
-    artifact: svgArtifact,
-    enabled: previewMode === "svg" && svgDisplayMode === "visual",
-  });
+  const svgViewport = useSvgViewportController();
   useEffect(() => {
     if (previewMode === "ascii" && !isAsciiSupported) {
       setPreviewMode("svg");
@@ -178,14 +161,15 @@ export function Preview({ className }: PreviewProps) {
   }, [isAsciiSupported, previewMode, setPreviewMode]);
 
   useEffect(() => {
-    setDiagnosticsEnabled(previewMode === "diagnostics");
-    return () => setDiagnosticsEnabled(false);
-  }, [previewMode]);
-
-  useEffect(() => {
-    const enabled = previewMode === "compare";
-    setCompareEnabled(enabled);
-    return () => setCompareEnabled(false);
+    setRenderFeatures({
+      compareEnabled: previewMode === "compare",
+      diagnosticsEnabled: previewMode === "diagnostics",
+    });
+    return () =>
+      setRenderFeatures({
+        compareEnabled: false,
+        diagnosticsEnabled: false,
+      });
   }, [previewMode]);
 
   useEffect(() => {
@@ -204,42 +188,43 @@ export function Preview({ className }: PreviewProps) {
 
   const handleCopyAscii = useCallback(async () => {
     try {
-      if (!actionsEnabled || !ascii) {
-        throw new Error("Current ASCII artifact is unavailable.");
-      }
-      await navigator.clipboard.writeText(ascii);
-      setCopiedAsciiKey(asciiActionKey);
+      await executeArtifactAction({
+        action: "copy-ascii",
+        publicationId: requirePublicationId(currentPublicationId),
+      });
+      setCopiedAsciiPublicationId(currentPublicationId);
       if (asciiCopyTimeoutRef.current) {
         clearTimeout(asciiCopyTimeoutRef.current);
       }
       asciiCopyTimeoutRef.current = setTimeout(
-        () => setCopiedAsciiKey(null),
+        () => setCopiedAsciiPublicationId(null),
         2000
       );
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [actionsEnabled, ascii, asciiActionKey, t]);
+  }, [currentPublicationId, t]);
 
   const handleCopySvg = useCallback(
-    async (artifact: SafeInlineSvg | null, actionKey: string) => {
+    async (engine: EngineKey, publicationId: RenderPublicationId) => {
       try {
-        if (!actionsEnabled || !artifact) {
-          throw new Error("Current SVG artifact is unavailable.");
-        }
-        await copySVGToClipboard(artifact);
-        setCopiedSvgKey(actionKey);
+        await executeArtifactAction({
+          action: "copy-svg",
+          engine,
+          publicationId,
+        });
+        setCopiedSvgTarget({ engine, publicationId });
         if (copyTimeoutRef.current) {
           clearTimeout(copyTimeoutRef.current);
         }
-        copyTimeoutRef.current = setTimeout(() => setCopiedSvgKey(null), 2000);
+        copyTimeoutRef.current = setTimeout(() => setCopiedSvgTarget(null), 2000);
         toast.success(t("share.copied"));
       } catch {
         toast.error(t("share.copyFailed"));
       }
     },
-    [actionsEnabled, t]
+    [t]
   );
 
   const handleCopyDiagnosticJson = useCallback(async () => {
@@ -262,86 +247,58 @@ export function Preview({ className }: PreviewProps) {
   }, [diagnosticTab, diagnostics]);
 
   const handleExportSvg = useCallback(
-    (engine: EngineKey, artifact: SafeInlineSvg | null) => {
+    async (engine: EngineKey, publicationId: RenderPublicationId) => {
       try {
-        if (!actionsEnabled || !artifact) {
-          throw new Error("Current SVG artifact is unavailable.");
-        }
-        exportSVG(artifact, `merman-compare-${engine}`);
+        await executeArtifactAction({
+          action: "download-svg",
+          engine,
+          publicationId,
+        });
         toast.success(t("export.svgSuccess"));
       } catch {
         toast.error(t("export.failed"));
       }
     },
-    [actionsEnabled, t]
+    [t]
   );
 
   const handleExportPng = useCallback(async (
     engine: EngineKey,
-    artifact: SafeInlineSvg | null
+    publicationId: RenderPublicationId
   ) => {
     if (exportingPngEnginesRef.current.has(engine)) {
       return;
     }
     exportingPngEnginesRef.current.add(engine);
     setExportingPngEngines(new Set(exportingPngEnginesRef.current));
-    let notificationId: string | number | undefined;
     try {
-      if (!actionsEnabled || !artifact || !currentBatch) {
-        throw new Error("Current SVG artifact is unavailable.");
-      }
-      let exportArtifact = artifact;
-      if (engine === "merman") {
-        const snapshot = currentBatch.snapshot;
-        const pngResult = facade?.render(
-          snapshot.source,
-          snapshot.theme,
-          snapshot.configJson,
-          { ...snapshot.options, svgPipeline: "resvg-safe" }
-        );
-        if (!pngResult || pngResult.status === "failure") {
-          throw new Error(
-            pngResult?.error.summary ?? "Failed to render PNG SVG"
-          );
-        }
-        exportArtifact = pngResult.artifact;
-      }
-
-      const plan = await exportPNG(
-        exportArtifact,
-        `merman-compare-${engine}`,
-        2,
-        {
-          onPlan: ({ outputWidth, outputHeight }) => {
-            notificationId = toast.loading(
-              t("export.pngPreparing", {
-                width: outputWidth,
-                height: outputHeight,
-              })
-            );
-          },
-        }
-      );
+      const plan = await executeArtifactAction({
+        action: "download-png",
+        engine,
+        publicationId,
+        scale: 2,
+      });
       toast.success(
         t("export.pngSuccess", {
           width: plan.outputWidth,
           height: plan.outputHeight,
-        }),
-        { id: notificationId }
+        })
       );
     } catch (error) {
-      toast.error(pngExportErrorMessage(error, t), { id: notificationId });
+      toast.error(pngExportErrorMessage(error, t));
     } finally {
       exportingPngEnginesRef.current.delete(engine);
       setExportingPngEngines(new Set(exportingPngEnginesRef.current));
     }
-  }, [actionsEnabled, currentBatch, facade, t]);
+  }, [t]);
 
   const handleRefreshCompare = useCallback(() => {
     refreshRenderCoordinator();
   }, []);
 
-  const copiedAscii = copiedAsciiKey === asciiActionKey;
+  const copiedAscii =
+    copiedAsciiPublicationId !== null &&
+    copiedAsciiPublicationId === currentPublicationId;
   const mermanSvgUnavailableLabel = artifactUnavailableLabel({
     available: Boolean(svg),
     error,
@@ -455,11 +412,9 @@ export function Preview({ className }: PreviewProps) {
 
   const mermanArtifact: CompareArtifact = {
     key: "merman",
-    artifactKey: mermanSvgActionKey,
-    presentationKey: visibleBatch?.snapshot.requestId ?? null,
-    actionsEnabled,
+    publicationId: visibleBatch?.snapshot.publicationId ?? null,
     title: t("preview.mermanEngine"),
-    version: visibleBatch?.snapshot.mermanVersion ?? facade?.packageVersion ?? "-",
+    version: visibleBatch?.snapshot.operation.versions.merman ?? "-",
     svgArtifact: visibleMerman?.artifact ?? null,
     error: failedMessage(visibleBatch?.merman ?? null),
     errorDetail: failedDetail(visibleBatch?.merman ?? null),
@@ -472,9 +427,7 @@ export function Preview({ className }: PreviewProps) {
   };
   const mermaidArtifact: CompareArtifact = {
     key: "mermaid",
-    artifactKey: mermaidSvgActionKey,
-    presentationKey: visibleBatch?.snapshot.requestId ?? null,
-    actionsEnabled,
+    publicationId: visibleBatch?.snapshot.publicationId ?? null,
     title: t("preview.mermaidEngine"),
     version: visibleMermaid?.version ?? MERMAID_JS_VERSION,
     svgArtifact: mermaidSvgArtifact,
@@ -499,16 +452,19 @@ export function Preview({ className }: PreviewProps) {
               )}
               <IconButton
                 label={
-                  copiedSvgKey === mermanSvgActionKey
+                  copiedSvgTarget?.engine === "merman" &&
+                  copiedSvgTarget.publicationId === currentPublicationId
                     ? t("preview.copied")
                     : (mermanSvgUnavailableLabel ?? t("preview.copySvg"))
                 }
                 onClick={() =>
-                  handleCopySvg(svgArtifact, mermanSvgActionKey)
+                  currentPublicationId &&
+                  handleCopySvg("merman", currentPublicationId)
                 }
                 disabled={!actionsEnabled || Boolean(mermanSvgUnavailableLabel)}
               >
-                {copiedSvgKey === mermanSvgActionKey ? (
+                {copiedSvgTarget?.engine === "merman" &&
+                copiedSvgTarget.publicationId === currentPublicationId ? (
                   <Check className="size-4 text-green-500" />
                 ) : (
                   <Copy className="size-4" />
@@ -599,12 +555,13 @@ export function Preview({ className }: PreviewProps) {
             <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
           ) : (
             <SvgViewport
-              presentationKey={currentBatch?.snapshot.requestId ?? null}
+              artifact={svgArtifact}
+              presentationKey={currentPublicationId}
               controller={svgViewport}
               onPresentationReady={(at) => {
                 if (currentBatch) {
                   markRenderCoordinatorPresented(
-                    currentBatch.snapshot.requestId,
+                    currentBatch.snapshot.publicationId,
                     "merman",
                     at
                   );
@@ -623,7 +580,7 @@ export function Preview({ className }: PreviewProps) {
               artifact: mermaidArtifact,
             }}
             actions={{
-              copiedSvgKey,
+              copiedSvgTarget,
               exportingPngEngines,
               onCopySvg: handleCopySvg,
               onExportPng: handleExportPng,
@@ -632,7 +589,7 @@ export function Preview({ className }: PreviewProps) {
               onPresentationReady: (engine, at) => {
                 if (visibleBatch) {
                   markRenderCoordinatorPresented(
-                    visibleBatch.snapshot.requestId,
+                    visibleBatch.snapshot.publicationId,
                     engine,
                     at
                   );
@@ -738,13 +695,22 @@ function TabBar({
   t,
   rightContent,
 }: TabBarProps) {
+  const tabListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    tabListRef.current
+      ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [mode]);
+
   return (
-    <div className="flex h-10 shrink-0 items-center justify-between gap-2 overflow-hidden border-b bg-muted/30 px-2">
+    <div className="flex shrink-0 flex-col overflow-hidden border-b bg-muted/30 xl:h-10 xl:flex-row xl:items-center xl:justify-between xl:gap-2 xl:px-2">
       <div
+        ref={tabListRef}
         role="tablist"
         aria-label={t("preview.title")}
         aria-orientation="horizontal"
-        className="scrollbar-thin flex min-w-0 items-center gap-1 overflow-x-auto"
+        className="scrollbar-thin flex min-h-10 w-full min-w-0 items-center gap-1 overflow-x-auto px-2 xl:min-h-0 xl:flex-1 xl:px-0"
         onKeyDown={handleTabListKeyDown}
       >
         <TabButton
@@ -808,9 +774,11 @@ function TabBar({
         </TabButton>
       </div>
 
-      <div className="scrollbar-thin flex shrink-0 items-center gap-1 overflow-x-auto">
-        {rightContent}
-      </div>
+      {rightContent && (
+        <div className="scrollbar-thin flex min-h-10 w-full shrink-0 items-center justify-end gap-1 overflow-x-auto border-t px-2 xl:min-h-0 xl:w-auto xl:border-t-0 xl:px-0">
+          {rightContent}
+        </div>
+      )}
     </div>
   );
 }
@@ -1044,10 +1012,6 @@ function DiagnosticArtifactView({
   );
 }
 
-function artifactActionKey(kind: string, renderKey: string): string {
-  return JSON.stringify([kind, renderKey]);
-}
-
 function artifactUnavailableLabel({
   available,
   error,
@@ -1069,6 +1033,15 @@ function artifactUnavailableLabel({
     return t("preview.currentRenderFailed");
   }
   return t("preview.noCurrentArtifact");
+}
+
+function requirePublicationId(
+  publicationId: RenderPublicationId | null
+): RenderPublicationId {
+  if (publicationId === null) {
+    throw new Error("Current render publication is unavailable.");
+  }
+  return publicationId;
 }
 
 function IconButton({

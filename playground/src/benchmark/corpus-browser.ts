@@ -3,55 +3,62 @@ import {
   MERMAID_JS_VERSION,
   mermaidExternalRequirementsFor,
 } from "../runtime/mermaid-requirements.ts";
-import {
-  disposeRenderCoordinator,
-} from "../runtime/render-coordinator-browser.ts";
 import { PLAYGROUND_RENDER_VIEWPORT } from "../runtime/render-viewport.ts";
-import { benchmarkController } from "./browser.ts";
+import { createBrowserBenchmarkRuntime } from "./browser.ts";
 import {
-  FAMILY_BASELINE_CORPUS,
   BENCHMARK_CORPUS_MERMAN_VERSION,
+  createBenchmarkCorpusCatalog,
   createBenchmarkCorpusPlan,
   createBenchmarkCorpusOrchestrator,
   sha256Hex,
   validateBenchmarkCorpusRunBudget,
-  type BenchmarkCorpusEnvelope,
-  type BenchmarkCorpusFixture,
-  type BenchmarkCorpusRunRequest,
+  type BenchmarkCorpusCatalog,
+  type BenchmarkCorpusFixtureEnvelope,
+  type BenchmarkCorpusFixtureRunRequest,
 } from "./corpus.ts";
 
 export interface BrowserBenchmarkCorpusReady {
-  readonly availableFamilies: number;
-  readonly fixtures: readonly Readonly<
-    Pick<BenchmarkCorpusFixture, "family" | "id" | "order">
-  >[];
-  readonly versions: BenchmarkCorpusEnvelope["versions"];
+  readonly catalog: BenchmarkCorpusCatalog;
+  readonly versions: BenchmarkCorpusFixtureEnvelope["versions"];
 }
 
 export interface BrowserBenchmarkCorpusPlanEntry {
+  readonly coldSeed: number;
   readonly family: string;
   readonly fixtureId: string;
   readonly order: number;
-  readonly runSeed: number;
+  readonly warmSeed: number;
+}
+
+export interface BrowserBenchmarkCorpusPlanRequest {
+  readonly fixtureIds?: readonly string[];
+  readonly iterations: number;
+  readonly masterSeed: number;
+  readonly warmups: number;
 }
 
 export interface BrowserBenchmarkCorpusApi {
   cancel(reason?: string): void;
   plan(
-    request: Omit<BenchmarkCorpusRunRequest, "signal">
+    request: BrowserBenchmarkCorpusPlanRequest
   ): readonly BrowserBenchmarkCorpusPlanEntry[];
   ready(): Promise<BrowserBenchmarkCorpusReady>;
   run(
-    request: Omit<BenchmarkCorpusRunRequest, "signal">
-  ): Promise<BenchmarkCorpusEnvelope>;
+    request: Omit<BenchmarkCorpusFixtureRunRequest, "signal">
+  ): Promise<BenchmarkCorpusFixtureEnvelope>;
 }
 
 let browserRunAbort: AbortController | null = null;
+const {
+  controller: benchmarkController,
+  lifecycle: benchmarkDocumentLifecycle,
+} = createBrowserBenchmarkRuntime();
 
 const versions = Object.freeze({
   merman: BENCHMARK_CORPUS_MERMAN_VERSION,
   mermaid: MERMAID_JS_VERSION,
 });
+let catalog: Promise<BenchmarkCorpusCatalog> | null = null;
 const orchestrator = createBenchmarkCorpusOrchestrator({
   controller: benchmarkController,
   prepareFixture(fixture) {
@@ -78,9 +85,7 @@ export const browserBenchmarkCorpusApi: BrowserBenchmarkCorpusApi =
     cancel(reason = "user") {
       browserRunAbort?.abort(reason);
     },
-    plan(
-      request: Omit<BenchmarkCorpusRunRequest, "signal">
-    ) {
+    plan(request: BrowserBenchmarkCorpusPlanRequest) {
       const plan = createBenchmarkCorpusPlan(request);
       validateBenchmarkCorpusRunBudget(request, plan.length);
       return Object.freeze(
@@ -89,21 +94,19 @@ export const browserBenchmarkCorpusApi: BrowserBenchmarkCorpusApi =
             family: entry.fixture.family,
             fixtureId: entry.fixture.id,
             order: entry.fixture.order,
-            runSeed: entry.coldSeed,
+            coldSeed: entry.coldSeed,
+            warmSeed: entry.warmSeed,
           })
         )
       );
     },
     async ready() {
       return Object.freeze({
-        availableFamilies: FAMILY_BASELINE_CORPUS.length,
-        fixtures: Object.freeze(
-          FAMILY_BASELINE_CORPUS.map(projectFixtureIdentity)
-        ),
+        catalog: await loadCatalog(),
         versions,
       });
     },
-    async run(request: Omit<BenchmarkCorpusRunRequest, "signal">) {
+    async run(request: Omit<BenchmarkCorpusFixtureRunRequest, "signal">) {
       if (browserRunAbort) {
         throw new Error("A browser benchmark corpus run is already active.");
       }
@@ -119,22 +122,23 @@ export const browserBenchmarkCorpusApi: BrowserBenchmarkCorpusApi =
 
 window.__MERMAN_BENCHMARK_CORPUS__ = browserBenchmarkCorpusApi;
 
-window.addEventListener(
-  "pagehide",
-  () => {
-    browserBenchmarkCorpusApi.cancel("pagehide");
+const cleanupLifecycle = benchmarkDocumentLifecycle.subscribe((signal) => {
+  if (signal.kind !== "pagehide" || signal.persisted) return;
+  queueMicrotask(() => {
     benchmarkController.dispose();
-    disposeRenderCoordinator();
-  },
-  { once: true }
-);
-
-function projectFixtureIdentity(fixture: BenchmarkCorpusFixture) {
-  return Object.freeze({
-    family: fixture.family,
-    id: fixture.id,
-    order: fixture.order,
   });
+});
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    cleanupLifecycle();
+    benchmarkController.dispose();
+  });
+}
+
+function loadCatalog(): Promise<BenchmarkCorpusCatalog> {
+  catalog ??= createBenchmarkCorpusCatalog(sha256Hex);
+  return catalog;
 }
 
 declare global {

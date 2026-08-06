@@ -7,61 +7,68 @@ import {
   utf8ByteLength,
   validateCompareRenderPayload,
   type CompareRenderPayload,
-  type RealmIdentity,
+  type RealmIdentity
 } from "../runtime/realm/channel-protocol.ts";
 import {
-  BENCHMARK_TRACE_EVENT_NAMES,
   BENCHMARK_TRACE_SCHEMA_VERSION,
   validateBenchmarkRawTrace,
   type BenchmarkEngine,
   type BenchmarkRawTrace,
-  type BenchmarkSampleMode,
-  type BenchmarkTraceMark,
+  type BenchmarkTraceMark
 } from "./trace.ts";
+import {
+  benchmarkPhasePath,
+  isBenchmarkFailureStage,
+  type BenchmarkFailureStage,
+  type FrozenBenchmarkPhasePath
+} from "./phase-contract.ts";
+import {
+  benchmarkIntentModeFromKind,
+  type BenchmarkSampleIntentKind
+} from "./sample-plan.ts";
 
-export const BENCHMARK_PROTOCOL_VERSION = 2 as const;
+export const BENCHMARK_PROTOCOL_VERSION = 3 as const;
 
-export type BenchmarkSampleRole = "measured" | "warmup";
+export type { BenchmarkFailureStage } from "./phase-contract.ts";
 
-export type BenchmarkFailureStage =
-  | "environment"
-  | "fonts"
-  | "adapter-import"
-  | "engine-import"
-  | "resource-acquire"
-  | "register"
-  | "initialize"
-  | "render"
-  | "svg-budget"
-  | "presentation"
-  | "protocol"
-  | "timeout"
-  | "disposed";
-
-export interface BenchmarkSampleRequest extends RealmIdentity {
+interface BenchmarkSampleRequestBase extends RealmIdentity {
   readonly benchmarkProtocol: typeof BENCHMARK_PROTOCOL_VERSION;
   readonly engine: BenchmarkEngine;
-  readonly mode: BenchmarkSampleMode;
-  readonly payload: CompareRenderPayload;
+  readonly inputId: string;
   readonly protocol: typeof REALM_PROTOCOL_VERSION;
   readonly requestId: string;
-  readonly role: BenchmarkSampleRole;
   readonly runId: string;
   readonly runToken: string;
+  readonly sampleId: string;
   readonly sequence: number;
   readonly type: "benchmark-sample";
 }
+
+export interface BenchmarkInputSampleRequest
+  extends BenchmarkSampleRequestBase {
+  readonly intentKind: "cold-measured" | "warm-setup";
+  readonly payload: CompareRenderPayload;
+}
+
+export interface BenchmarkReuseSampleRequest
+  extends BenchmarkSampleRequestBase {
+  readonly intentKind: "warm-measured" | "warmup";
+}
+
+export type BenchmarkSampleRequest =
+  | BenchmarkInputSampleRequest
+  | BenchmarkReuseSampleRequest;
 
 export interface BenchmarkSampleProgress extends RealmIdentity {
   readonly benchmarkProtocol: typeof BENCHMARK_PROTOCOL_VERSION;
   readonly engine: BenchmarkEngine;
   readonly event: BenchmarkTraceMark;
-  readonly mode: BenchmarkSampleMode;
+  readonly intentKind: BenchmarkSampleIntentKind;
   readonly protocol: typeof REALM_PROTOCOL_VERSION;
   readonly requestId: string;
-  readonly role: BenchmarkSampleRole;
   readonly runId: string;
   readonly runToken: string;
+  readonly sampleId: string;
   readonly sequence: number;
   readonly traceSchema: typeof BENCHMARK_TRACE_SCHEMA_VERSION;
   readonly type: "benchmark-progress";
@@ -82,14 +89,14 @@ export interface BenchmarkResourceObservation {
 interface BenchmarkSampleResponseBase extends RealmIdentity {
   readonly benchmarkProtocol: typeof BENCHMARK_PROTOCOL_VERSION;
   readonly engine: BenchmarkEngine;
-  readonly mode: BenchmarkSampleMode;
+  readonly intentKind: BenchmarkSampleIntentKind;
   readonly protocol: typeof REALM_PROTOCOL_VERSION;
   readonly requestId: string;
   readonly resourceError: string | null;
   readonly resources: readonly BenchmarkResourceObservation[];
-  readonly role: BenchmarkSampleRole;
   readonly runId: string;
   readonly runToken: string;
+  readonly sampleId: string;
   readonly sequence: number;
   readonly traceSchema: typeof BENCHMARK_TRACE_SCHEMA_VERSION;
   readonly version: string | null;
@@ -111,40 +118,103 @@ export interface BenchmarkSampleFailure extends BenchmarkSampleResponseBase {
 }
 
 export type BenchmarkSampleResponse =
-  | BenchmarkSampleFailure
-  | BenchmarkSampleSuccess;
+  BenchmarkSampleFailure | BenchmarkSampleSuccess;
 
 export type BenchmarkExpectedSample = Pick<
   BenchmarkSampleRequest,
-  "engine" | "mode" | "requestId" | "role" | "runId" | "runToken"
+  "engine" | "intentKind" | "requestId" | "runId" | "runToken" | "sampleId"
 >;
 
 const ENGINES = new Set<BenchmarkEngine>(["merman", "mermaid"]);
-const MODES = new Set<BenchmarkSampleMode>(["realm-cold", "warm"]);
-const ROLES = new Set<BenchmarkSampleRole>(["measured", "warmup"]);
-const TRACE_MARKS = new Set<BenchmarkTraceMark>(
-  BENCHMARK_TRACE_EVENT_NAMES.filter(
-    (event): event is BenchmarkTraceMark =>
-      event !== "sample_start" && event !== "sample_end"
-  )
-);
-const FAILURE_STAGES = new Set<BenchmarkFailureStage>([
-  "environment",
-  "fonts",
-  "adapter-import",
-  "engine-import",
-  "resource-acquire",
-  "register",
-  "initialize",
-  "render",
-  "svg-budget",
-  "presentation",
-  "protocol",
-  "timeout",
-  "disposed",
+const INTENT_KINDS = new Set<BenchmarkSampleIntentKind>([
+  "cold-measured",
+  "warm-setup",
+  "warmup",
+  "warm-measured"
 ]);
-const PRE_CLOCK_FAILURE_STAGES = new Set<BenchmarkFailureStage>([
-  "environment",
+const INPUT_INTENT_KINDS = new Set<BenchmarkSampleIntentKind>([
+  "cold-measured",
+  "warm-setup"
+]);
+
+const REQUEST_COMMON_KEYS = [
+  "type",
+  "protocol",
+  "benchmarkProtocol",
+  "kind",
+  "realmId",
+  "realmToken",
+  "sequence",
+  "runId",
+  "runToken",
+  "requestId",
+  "sampleId",
+  "engine",
+  "intentKind",
+  "inputId"
+] as const;
+const REQUEST_INPUT_SCHEMA = exactKeySchema([
+  ...REQUEST_COMMON_KEYS,
+  "payload"
+]);
+const REQUEST_REUSE_SCHEMA = exactKeySchema(REQUEST_COMMON_KEYS);
+const PROGRESS_SCHEMA = exactKeySchema([
+  "type",
+  "protocol",
+  "benchmarkProtocol",
+  "kind",
+  "realmId",
+  "realmToken",
+  "sequence",
+  "runId",
+  "runToken",
+  "requestId",
+  "sampleId",
+  "engine",
+  "intentKind",
+  "traceSchema",
+  "event"
+]);
+const RESPONSE_COMMON_KEYS = [
+  "type",
+  "protocol",
+  "benchmarkProtocol",
+  "kind",
+  "realmId",
+  "realmToken",
+  "sequence",
+  "runId",
+  "runToken",
+  "requestId",
+  "sampleId",
+  "engine",
+  "intentKind",
+  "traceSchema",
+  "trace",
+  "resources",
+  "resourceError",
+  "version"
+] as const;
+const SUCCESS_RESPONSE_SCHEMA = exactKeySchema([
+  ...RESPONSE_COMMON_KEYS,
+  "svg"
+]);
+const FAILURE_RESPONSE_SCHEMA = exactKeySchema([
+  ...RESPONSE_COMMON_KEYS,
+  "stage",
+  "message",
+  "detail"
+]);
+const RESOURCE_OBSERVATION_SCHEMA = exactKeySchema([
+  "name",
+  "initiatorType",
+  "startOffset",
+  "duration",
+  "transferSize",
+  "encodedBodySize",
+  "decodedBodySize",
+  "responseStatus",
+  "deliveryType"
 ]);
 
 export function validateBenchmarkSampleRequest(
@@ -154,26 +224,20 @@ export function validateBenchmarkSampleRequest(
 ): BenchmarkSampleRequest {
   assertEncodedMessageBudget(value);
   const message = expectRecord(value, "benchmark sample request");
-  assertExactKeys(message, [
-    "type",
-    "protocol",
-    "benchmarkProtocol",
-    "kind",
-    "realmId",
-    "realmToken",
-    "sequence",
-    "runId",
-    "runToken",
-    "requestId",
-    "engine",
-    "mode",
-    "role",
-    "payload",
-  ]);
+  const intentKind = expectSetValue(
+    message.intentKind,
+    INTENT_KINDS,
+    "intentKind"
+  );
+  const carriesInput = INPUT_INTENT_KINDS.has(intentKind);
+  assertExactKeys(
+    message,
+    carriesInput ? REQUEST_INPUT_SCHEMA : REQUEST_REUSE_SCHEMA
+  );
   assertEnvelope(message, identity, expectedSequence, "benchmark-sample");
   assertBenchmarkProtocol(message.benchmarkProtocol);
 
-  return {
+  const request = {
     type: "benchmark-sample",
     protocol: REALM_PROTOCOL_VERSION,
     benchmarkProtocol: BENCHMARK_PROTOCOL_VERSION,
@@ -182,11 +246,21 @@ export function validateBenchmarkSampleRequest(
     runId: expectBoundedString(message.runId, "runId", 128),
     runToken: expectSecureToken(message.runToken, "runToken"),
     requestId: expectBoundedString(message.requestId, "requestId", 128),
+    sampleId: expectBoundedString(message.sampleId, "sampleId", 128),
     engine: expectSetValue(message.engine, ENGINES, "engine"),
-    mode: expectSetValue(message.mode, MODES, "mode"),
-    role: expectSetValue(message.role, ROLES, "role"),
-    payload: validateCompareRenderPayload(message.payload),
-  };
+    intentKind,
+    inputId: expectBoundedString(message.inputId, "inputId", 128)
+  } as const;
+  return carriesInput
+    ? Object.freeze({
+        ...request,
+        intentKind: intentKind as BenchmarkInputSampleRequest["intentKind"],
+        payload: validateCompareRenderPayload(message.payload)
+      })
+    : Object.freeze({
+        ...request,
+        intentKind: intentKind as BenchmarkReuseSampleRequest["intentKind"]
+      });
 }
 
 export function validateBenchmarkSampleProgress(
@@ -197,23 +271,7 @@ export function validateBenchmarkSampleProgress(
 ): BenchmarkSampleProgress {
   assertEncodedMessageBudget(value);
   const message = expectRecord(value, "benchmark sample progress");
-  assertExactKeys(message, [
-    "type",
-    "protocol",
-    "benchmarkProtocol",
-    "kind",
-    "realmId",
-    "realmToken",
-    "sequence",
-    "runId",
-    "runToken",
-    "requestId",
-    "engine",
-    "mode",
-    "role",
-    "traceSchema",
-    "event",
-  ]);
+  assertExactKeys(message, PROGRESS_SCHEMA);
   assertEnvelope(message, identity, expectedSequence, "benchmark-progress");
   assertBenchmarkProtocol(message.benchmarkProtocol);
   assertExpectedSample(message, expected);
@@ -229,7 +287,7 @@ export function validateBenchmarkSampleProgress(
     sequence: expectedSequence,
     ...sampleIdentity(expected),
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
-    event: expectSetValue(message.event, TRACE_MARKS, "progress event"),
+    event: expectProgressEvent(message.event, expected)
   });
 }
 
@@ -242,31 +300,10 @@ export function validateBenchmarkSampleResponse(
   assertEncodedMessageBudget(value);
   const message = expectRecord(value, "benchmark sample response");
   const type = message.type;
-  const commonKeys = [
-    "type",
-    "protocol",
-    "benchmarkProtocol",
-    "kind",
-    "realmId",
-    "realmToken",
-    "sequence",
-    "runId",
-    "runToken",
-    "requestId",
-    "engine",
-    "mode",
-    "role",
-    "traceSchema",
-    "trace",
-    "resources",
-    "resourceError",
-    "version",
-  ];
-
   if (type === "benchmark-sample-success") {
-    assertExactKeys(message, [...commonKeys, "svg"]);
+    assertExactKeys(message, SUCCESS_RESPONSE_SCHEMA);
   } else if (type === "benchmark-sample-failure") {
-    assertExactKeys(message, [...commonKeys, "stage", "message", "detail"]);
+    assertExactKeys(message, FAILURE_RESPONSE_SCHEMA);
   } else {
     throw new RealmProtocolError("Benchmark response type is invalid.");
   }
@@ -277,6 +314,8 @@ export function validateBenchmarkSampleResponse(
   if (message.traceSchema !== BENCHMARK_TRACE_SCHEMA_VERSION) {
     throw new RealmProtocolError("Benchmark trace schema version is invalid.");
   }
+  const mode = benchmarkIntentModeFromKind(expected.intentKind);
+  const phasePath = benchmarkPhasePath(expected.engine, mode);
   const resourceValue = message.resources;
   const resourceError = expectNullableBoundedString(
     message.resourceError,
@@ -290,16 +329,18 @@ export function validateBenchmarkSampleResponse(
     assertByteBudget(svg, REALM_BUDGETS.svgBytes, "svg");
     const trace = validateBenchmarkRawTrace(message.trace, {
       engine: expected.engine,
-      mode: expected.mode,
-      outcome: "success",
+      mode,
+      outcome: "success"
     });
-    assertTraceTimeBudget(trace, false);
+    assertTraceTimeBudget(trace, phasePath, false);
     const resources = validateResourceObservations(
       resourceValue,
       trace.sample_end
     );
     if (version === null) {
-      throw new RealmProtocolError("Successful benchmark response has no version.");
+      throw new RealmProtocolError(
+        "Successful benchmark response has no version."
+      );
     }
     if (resourceError !== null && resources.length > 0) {
       throw new RealmProtocolError(
@@ -318,14 +359,11 @@ export function validateBenchmarkSampleResponse(
       resources,
       resourceError,
       svg,
-      version,
+      version
     });
   }
 
-  if (
-    typeof message.stage !== "string" ||
-    !FAILURE_STAGES.has(message.stage as BenchmarkFailureStage)
-  ) {
+  if (!isBenchmarkFailureStage(message.stage)) {
     throw new RealmProtocolError("Benchmark failure stage is invalid.");
   }
   const failureMessage = expectString(message.message, "message");
@@ -335,23 +373,23 @@ export function validateBenchmarkSampleResponse(
     "detail",
     REALM_BUDGETS.errorBytes
   );
-  const failureStage = message.stage as BenchmarkFailureStage;
+  const failureStage = message.stage;
   const trace =
     message.trace === null
       ? null
       : validateBenchmarkRawTrace(message.trace, {
           engine: expected.engine,
-          mode: expected.mode,
-          outcome: "failure",
+          mode,
+          outcome: "failure"
         });
-  if (trace === null && !PRE_CLOCK_FAILURE_STAGES.has(failureStage)) {
+  if (trace === null && failureStage !== "environment") {
     throw new RealmProtocolError(
       "Benchmark post-clock failure must retain its raw trace."
     );
   }
   if (trace !== null) {
-    assertFailureStageMatchesTrace(failureStage, trace, expected);
-    assertTraceTimeBudget(trace, failureStage === "timeout");
+    assertFailureStageMatchesTrace(failureStage, trace, phasePath);
+    assertTraceTimeBudget(trace, phasePath, failureStage === "timeout");
   }
   const resources = validateResourceObservations(
     resourceValue,
@@ -379,7 +417,7 @@ export function validateBenchmarkSampleResponse(
     stage: failureStage,
     message: failureMessage,
     detail: failureDetail,
-    version,
+    version
   });
 }
 
@@ -388,163 +426,86 @@ function sampleIdentity(
 ): BenchmarkExpectedSample {
   return {
     engine: expected.engine,
-    mode: expected.mode,
+    intentKind: expected.intentKind,
     requestId: expected.requestId,
-    role: expected.role,
     runId: expected.runId,
     runToken: expected.runToken,
+    sampleId: expected.sampleId
   };
 }
 
 function assertFailureStageMatchesTrace(
   stage: BenchmarkFailureStage,
   trace: BenchmarkRawTrace,
-  expected: BenchmarkExpectedSample
+  path: FrozenBenchmarkPhasePath
 ): void {
-  const coldOnlyStages = new Set<BenchmarkFailureStage>([
-    "adapter-import",
-    "engine-import",
-    "resource-acquire",
-    "register",
-    "initialize",
-  ]);
-  if (expected.mode === "warm" && coldOnlyStages.has(stage)) {
+  if (stage === "environment") {
     throw new RealmProtocolError(
-      "Warm benchmark failure declared a cold-only stage."
+      "Post-clock environment failure must not use a sample response."
+    );
+  }
+  if (stage === "timeout" || stage === "protocol" || stage === "disposed") {
+    return;
+  }
+
+  const phase = stage === "svg-budget" ? "render" : stage;
+  const boundary = path.boundary(phase);
+  if (boundary === null) {
+    throw new RealmProtocolError(
+      "Benchmark failure stage does not apply to its phase path."
+    );
+  }
+  if (trace[boundary.start] === null) {
+    throw new RealmProtocolError(
+      `Benchmark ${stage} failure has no ${phase} evidence.`
     );
   }
   if (
-    (expected.engine === "merman" && stage === "register") ||
-    (expected.engine === "mermaid" && stage === "resource-acquire")
+    (stage === "render" ||
+      stage === "svg-budget" ||
+      stage === "presentation") &&
+    trace[boundary.end] !== null
   ) {
     throw new RealmProtocolError(
-      "Benchmark failure stage does not apply to its engine."
+      `Benchmark ${stage} failure has an invalid ${phase} prefix.`
     );
   }
-
-  const requirePair = (start: keyof BenchmarkRawTrace, label: string) => {
-    if (trace[start] === null) {
-      throw new RealmProtocolError(
-        `Benchmark ${stage} failure has no ${label} evidence.`
-      );
-    }
-  };
-  const forbidAfter = (...events: (keyof BenchmarkRawTrace)[]) => {
-    if (events.some((event) => trace[event] !== null)) {
-      throw new RealmProtocolError(
-        `Benchmark ${stage} failure contains later phase evidence.`
-      );
-    }
-  };
-
-  switch (stage) {
-    case "environment":
-      throw new RealmProtocolError(
-        "Post-clock environment failure must not use a sample response."
-      );
-    case "fonts":
-      requirePair("fonts_wait_start", "font wait");
-      forbidAfter(
-        "engine_import_start",
-        "resource_acquire_start",
-        "register_start",
-        "initialize_start",
-        "render_start"
-      );
-      return;
-    case "adapter-import":
-      requirePair("adapter_import_start", "adapter import");
-      forbidAfter(
-        "engine_import_start",
-        "resource_acquire_start",
-        "register_start",
-        "initialize_start",
-        "render_start"
-      );
-      return;
-    case "engine-import":
-      requirePair("engine_import_start", "engine import");
-      forbidAfter("register_start", "initialize_start", "render_start");
-      return;
-    case "resource-acquire":
-      requirePair("resource_acquire_start", "resource acquisition");
-      forbidAfter("initialize_start", "render_start");
-      return;
-    case "register":
-      requirePair("register_start", "registration");
-      forbidAfter("initialize_start", "render_start");
-      return;
-    case "initialize":
-      requirePair("initialize_start", "initialization");
-      forbidAfter("render_start");
-      return;
-    case "render":
-    case "svg-budget":
-      if (trace.render_start === null || trace.budgeted_svg_ready !== null) {
-        throw new RealmProtocolError(
-          `Benchmark ${stage} failure has an invalid render prefix.`
-        );
-      }
-      return;
-    case "presentation":
-      if (
-        trace.budgeted_svg_ready === null ||
-        trace.isolated_presentation_ready !== null
-      ) {
-        throw new RealmProtocolError(
-          "Benchmark presentation failure has an invalid presentation prefix."
-        );
-      }
-      return;
-    case "timeout":
-    case "protocol":
-    case "disposed":
-      return;
+  if (
+    path.applicableEvents.some(
+      (event) =>
+        trace[event] !== null &&
+        event !== boundary.end &&
+        path.dependsOn(event, boundary.end)
+    )
+  ) {
+    throw new RealmProtocolError(
+      `Benchmark ${stage} failure contains later phase evidence.`
+    );
   }
 }
 
 function assertTraceTimeBudget(
   trace: BenchmarkRawTrace,
+  path: FrozenBenchmarkPhasePath,
   allowStageTimeout: boolean
 ): void {
   if (trace.sample_end > REALM_BUDGETS.runTimeoutMs) {
-    throw new RealmProtocolError("Benchmark trace exceeds the run time budget.");
+    throw new RealmProtocolError(
+      "Benchmark trace exceeds the run time budget."
+    );
   }
   if (allowStageTimeout) return;
-  const spans: readonly (readonly [number | null, number | null])[] = [
-    [trace.fonts_wait_start, trace.fonts_wait_end],
-    [trace.adapter_import_start, trace.adapter_import_end],
-    [trace.engine_import_start, trace.engine_import_end],
-    [trace.resource_acquire_start, trace.resource_acquire_end],
-    [trace.register_start, trace.register_end],
-    [trace.initialize_start, trace.initialize_end],
-    [trace.render_start, trace.budgeted_svg_ready],
-    [trace.budgeted_svg_ready, trace.isolated_presentation_ready],
-  ];
-  if (
-    spans.some(
-      ([start, end]) =>
-        start !== null &&
-        end !== null &&
-        end - start > REALM_BUDGETS.stageTimeoutMs
-    )
-  ) {
-    throw new RealmProtocolError("Benchmark trace exceeds a stage time budget.");
-  }
-
-  const activeSpans: readonly (readonly [number | null, number | null])[] = [
-    [trace.render_start, trace.budgeted_svg_ready],
-    [trace.budgeted_svg_ready, trace.isolated_presentation_ready],
-  ];
-  if (
-    activeSpans.some(
-      ([start, end]) =>
-        start !== null &&
-        end === null &&
-        trace.sample_end - start > REALM_BUDGETS.stageTimeoutMs
-    )
-  ) {
-    throw new RealmProtocolError("Benchmark trace exceeds a stage time budget.");
+  for (const phase of path.timedPhases) {
+    const boundary = path.boundary(phase);
+    if (boundary === null) continue;
+    const start = trace[boundary.start];
+    const end = trace[boundary.end];
+    const elapsed = start === null ? null : (end ?? trace.sample_end) - start;
+    if (elapsed !== null && elapsed > REALM_BUDGETS.stageTimeoutMs) {
+      throw new RealmProtocolError(
+        "Benchmark trace exceeds a stage time budget."
+      );
+    }
   }
 }
 
@@ -563,22 +524,14 @@ function validateResourceObservations(
     value.length > BENCHMARK_BUDGETS.maxResourceObservations ||
     (sampleEnd === null && value.length > 0)
   ) {
-    throw new RealmProtocolError("Benchmark resource observations are invalid.");
+    throw new RealmProtocolError(
+      "Benchmark resource observations are invalid."
+    );
   }
   return Object.freeze(
     value.map((candidate) => {
       const observation = expectRecord(candidate, "resource observation");
-      assertExactKeys(observation, [
-        "name",
-        "initiatorType",
-        "startOffset",
-        "duration",
-        "transferSize",
-        "encodedBodySize",
-        "decodedBodySize",
-        "responseStatus",
-        "deliveryType",
-      ]);
+      assertExactKeys(observation, RESOURCE_OBSERVATION_SCHEMA);
       const startOffset = expectDuration(
         observation.startOffset,
         "resource startOffset"
@@ -624,7 +577,7 @@ function validateResourceObservations(
           observation.deliveryType,
           "resource deliveryType",
           128
-        ),
+        )
       });
     })
   );
@@ -638,14 +591,29 @@ function assertExpectedSample(
     "runId",
     "runToken",
     "requestId",
+    "sampleId",
     "engine",
-    "mode",
-    "role",
+    "intentKind"
   ] as const) {
     if (message[key] !== expected[key]) {
       throw new RealmProtocolError(`Benchmark ${key} is invalid.`);
     }
   }
+}
+
+function expectProgressEvent(
+  value: unknown,
+  expected: BenchmarkExpectedSample
+): BenchmarkTraceMark {
+  if (typeof value !== "string") {
+    throw new RealmProtocolError("Benchmark progress event is invalid.");
+  }
+  const mode = benchmarkIntentModeFromKind(expected.intentKind);
+  const path = benchmarkPhasePath(expected.engine, mode);
+  if (!path.rule(value as BenchmarkTraceMark)) {
+    throw new RealmProtocolError("Benchmark progress event is invalid.");
+  }
+  return value as BenchmarkTraceMark;
 }
 
 function assertBenchmarkProtocol(value: unknown): void {
@@ -679,17 +647,27 @@ function expectRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+interface ExactKeySchema {
+  readonly keys: ReadonlySet<string>;
+  readonly size: number;
+}
+
+function exactKeySchema(keys: readonly string[]): ExactKeySchema {
+  return Object.freeze({ keys: new Set(keys), size: keys.length });
+}
+
 function assertExactKeys(
   value: Record<string, unknown>,
-  expectedKeys: readonly string[]
+  schema: ExactKeySchema
 ): void {
-  const actual = Object.keys(value).sort();
-  const expected = [...expectedKeys].sort();
+  const actual = Object.keys(value);
   if (
-    actual.length !== expected.length ||
-    actual.some((key, index) => key !== expected[index])
+    actual.length !== schema.size ||
+    actual.some((key) => !schema.keys.has(key))
   ) {
-    throw new RealmProtocolError("Benchmark message contains unexpected fields.");
+    throw new RealmProtocolError(
+      "Benchmark message contains unexpected fields."
+    );
   }
 }
 
@@ -742,7 +720,9 @@ function expectSetValue<T extends string>(
 
 function expectDuration(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new RealmProtocolError(`Benchmark ${label} must be finite and non-negative.`);
+    throw new RealmProtocolError(
+      `Benchmark ${label} must be finite and non-negative.`
+    );
   }
   return value;
 }

@@ -57,16 +57,10 @@ if (!C4_DYNAMIC_EXAMPLE) {
   throw new Error("Missing the C4 dynamic Playground example.");
 }
 
-test("Compare keeps Mermaid JS failures owned by the Mermaid pane", async ({
-  page,
-  isMobile,
-}) => {
+test("Compare keeps Mermaid JS failures owned by the Mermaid pane", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await replaceEditorSource(page, "flowchart TD\n  Alpha --> Beta");
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await waitForPreviewSvg(page);
   await page.getByRole("tab", { name: "Compare", exact: true }).click();
   const mermaidPane = page.locator('[data-merman-compare-engine="mermaid"]');
@@ -79,13 +73,7 @@ test("Compare keeps Mermaid JS failures owned by the Mermaid pane", async ({
     )
     .toBe(true);
 
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Editor", exact: true }).click();
-  }
   await replaceEditorSource(page, "flowchart TD\n  Alpha -->");
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
 
   const mermaidError = mermaidPane.locator('[data-merman-render-error="true"]');
   await expect(mermaidError).toBeVisible();
@@ -106,10 +94,7 @@ test("Compare keeps Mermaid JS failures owned by the Mermaid pane", async ({
   errors.assertNone();
 });
 
-test("font-only theme config preserves the computed shared palette", async ({
-  page,
-  isMobile,
-}) => {
+test("font-only theme config preserves the computed shared palette", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
 
@@ -150,7 +135,7 @@ test("font-only theme config preserves the computed shared palette", async ({
   for (const theme of Object.keys(UPSTREAM_C_SCALE_0) as ThemeName[]) {
     for (const [family, source, palette, selector] of cases) {
       const expected = await browserComputedFill(page, palette[theme]);
-      await renderSource(page, isMobile, `${fontOnlyConfig(theme)}\n${source}`);
+      await renderSource(page, `${fontOnlyConfig(theme)}\n${source}`);
       await expect
         .poll(() => computedFill(page, selector), {
           message: `${family} ${theme} computed palette`,
@@ -162,15 +147,11 @@ test("font-only theme config preserves the computed shared palette", async ({
   errors.assertNone();
 });
 
-test("Quadrant keeps raw parity color while inheriting Mermaid's root fill", async ({
-  page,
-  isMobile,
-}) => {
+test("Quadrant keeps raw parity color while inheriting Mermaid's root fill", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await renderSource(
     page,
-    isMobile,
     [
       "quadrantChart",
       "  title Reach and engagement of campaigns",
@@ -188,15 +169,11 @@ test("Quadrant keeps raw parity color while inheriting Mermaid's root fill", asy
   errors.assertNone();
 });
 
-test("Block circle edges contact the browser-visible shape boundary", async ({
-  page,
-  isMobile,
-}) => {
+test("Block circle edges contact the browser-visible shape boundary", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await renderSource(
     page,
-    isMobile,
     [
       "block-beta",
       "  columns 3",
@@ -214,13 +191,10 @@ test("Block circle edges contact the browser-visible shape boundary", async ({
   errors.assertNone();
 });
 
-test("Block class definitions match Mermaid computed fills", async ({
-  page,
-  isMobile,
-}) => {
+test("Block class definitions match Mermaid computed fills", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
-  await renderSource(page, isMobile, BLOCK_SYSTEM_ARCHITECTURE_EXAMPLE.source);
+  await renderSource(page, BLOCK_SYSTEM_ARCHITECTURE_EXAMPLE.source);
 
   await page.getByRole("tab", { name: "Compare", exact: true }).click();
   const expected = {
@@ -244,13 +218,10 @@ test("Block class definitions match Mermaid computed fills", async ({
   errors.assertNone();
 });
 
-test("C4 uses the same browser layout environment in both compare panes", async ({
-  page,
-  isMobile,
-}) => {
+test("C4 uses the same browser layout environment in both compare panes", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
-  await renderSource(page, isMobile, C4_CONTAINER_EXAMPLE.source);
+  await renderSource(page, C4_CONTAINER_EXAMPLE.source);
   await page.getByRole("tab", { name: "Compare", exact: true }).click();
 
   await expect
@@ -261,10 +232,7 @@ test("C4 uses the same browser layout environment in both compare panes", async 
   errors.assertNone();
 });
 
-test("C4 relation labels and lines match Mermaid computed presentation", async ({
-  page,
-  isMobile,
-}) => {
+test("C4 relation labels and lines match Mermaid computed presentation", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
 
@@ -272,7 +240,7 @@ test("C4 relation labels and lines match Mermaid computed presentation", async (
     C4_DYNAMIC_EXAMPLE.source,
     `${fontOnlyConfig("forest")}\n${C4_DYNAMIC_EXAMPLE.source}`,
   ]) {
-    await renderSource(page, isMobile, source);
+    await renderSource(page, source);
     await page.getByRole("tab", { name: "Compare", exact: true }).click();
 
     await expect
@@ -293,12 +261,11 @@ test("C4 relation labels and lines match Mermaid computed presentation", async (
   errors.assertNone();
 });
 
-test("Merman Gantt presents non-overlapping date ticks", async ({ page, isMobile }) => {
+test("Merman Gantt presents non-overlapping date ticks", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await renderSource(
     page,
-    isMobile,
     [
       "gantt",
       "  title A Gantt Diagram",
@@ -314,13 +281,11 @@ test("Merman Gantt presents non-overlapping date ticks", async ({ page, isMobile
 
 test("a 100-million-unit SVG stays bounded in preview and exports a planned PNG", async ({
   page,
-  isMobile,
 }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await renderSource(
     page,
-    isMobile,
     [
       "---",
       "config:",
@@ -393,14 +358,8 @@ function fontOnlyConfig(theme: string): string {
   ].join("\n");
 }
 
-async function renderSource(page: Page, isMobile: boolean, source: string): Promise<void> {
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Editor", exact: true }).click();
-  }
+async function renderSource(page: Page, source: string): Promise<void> {
   await replaceEditorSource(page, source);
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await waitForPreviewSvg(page);
 }
 

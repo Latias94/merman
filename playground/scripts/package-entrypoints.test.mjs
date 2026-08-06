@@ -10,20 +10,28 @@ const npmrc = await readFile(
   path.resolve(import.meta.dirname, "..", ".npmrc"),
   "utf8"
 );
-const viteConfig = await readFile(
-  path.resolve(import.meta.dirname, "..", "vite.config.ts"),
-  "utf8",
+const webPackageJson = JSON.parse(
+  await readFile(
+    path.resolve(
+      import.meta.dirname,
+      "..",
+      "..",
+      "platforms/web/packages/full/package.json",
+    ),
+    "utf8",
+  ),
 );
 
-test("dev, build, and test fail closed on the complete browser package", () => {
+test("dev, build, and test fail closed on the selected full browser artifact", () => {
   assert.match(npmrc, /^ignore-scripts=true$/mu);
   assert.equal(packageJson.packageManager, "npm@11.17.0");
-  assert.equal(packageJson.engines.node, ">=22.12.0");
+  assert.equal(packageJson.engines.node, "^22.13.0 || >=24.0.0");
   assert.equal(packageJson.engines.npm, ">=11.17.0");
   assert.equal(packageJson.scripts.predev, undefined);
   assert.equal(packageJson.scripts.prebuild, undefined);
   assert.equal(packageJson.scripts.pretest, undefined);
   assert.equal(packageJson.scripts.postbuild, undefined);
+  assert.equal(packageJson.devDependencies["vite-plugin-wasm"], undefined);
   for (const script of ["dev", "build", "test"]) {
     assert.match(
       packageJson.scripts[script],
@@ -44,41 +52,13 @@ test("dev, build, and test fail closed on the complete browser package", () => {
       "@mermanjs/web": "file:../platforms/web/packages/full",
     },
   );
+  assert.deepEqual(Object.keys(webPackageJson.exports ?? {}), ["."]);
+  assert.deepEqual(Object.keys(webPackageJson.exports["."]).sort(), [
+    "import",
+    "types",
+  ]);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /build:opaque-realm/);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /verify:opaque-realm/);
-  for (const packageName of Object.keys(packageJson.dependencies).filter((name) =>
-    name.startsWith("@mermanjs/web"),
-  )) {
-    assert.match(
-      viteConfig,
-      new RegExp(`exclude:[\\s\\S]*["']${packageName}["']`, "u"),
-      `${packageName} must retain its package-relative WASM URL`,
-    );
-  }
-});
-
-test("Playground consumes every admitted Web capability from one complete SDK", async () => {
-  const [browserRuntime, editorWorker, workerBrowser] = await Promise.all([
-    readFile(
-      path.resolve(import.meta.dirname, "..", "src/runtime/merman-browser.ts"),
-      "utf8",
-    ),
-    readFile(
-      path.resolve(import.meta.dirname, "..", "src/editor/merman-language.worker.ts"),
-      "utf8",
-    ),
-    readFile(
-      path.resolve(import.meta.dirname, "..", "src/editor/worker-browser.ts"),
-      "utf8",
-    ),
-  ]);
-
-  for (const source of [browserRuntime, editorWorker, workerBrowser]) {
-    assert.doesNotMatch(source, /from "@mermanjs\/web-/u);
-  }
-  assert.match(browserRuntime, /from "@mermanjs\/web"/u);
-  assert.match(editorWorker, /from "@mermanjs\/web"/u);
-  assert.match(workerBrowser, /from "@mermanjs\/web"/u);
 });
 
 test("browser test tooling is isolated from the companion runtime tree", async () => {
@@ -119,9 +99,9 @@ test("browser test tooling is isolated from the companion runtime tree", async (
   );
   assert.equal(
     browserTestsPackageJson.devDependencies["@playwright/test"],
-    "1.61.1"
+    "1.62.1"
   );
-  assert.equal(browserTestsPackageJson.devDependencies.playwright, "1.61.1");
+  assert.equal(browserTestsPackageJson.devDependencies.playwright, "1.62.1");
   assert.equal(browserTestsPackageJson.dependencies?.["@zenuml/core"], undefined);
   assert.equal(
     browserTestsPackageJson.dependencies?.["@mermaid-js/mermaid-zenuml"],
@@ -129,8 +109,18 @@ test("browser test tooling is isolated from the companion runtime tree", async (
   );
   assert.match(browserTestsNpmrc, /^ignore-scripts=true$/mu);
   assert.match(packageJson.scripts["test:browser:typecheck"], /--prefix tests/u);
-  assert.match(packageJson.scripts["test:browser:chromium"], /--prefix tests/u);
-  assert.match(packageJson.scripts["test:browser:smoke:built"], /--prefix tests/u);
+  assert.match(
+    packageJson.scripts["test:browser:chromium:desktop:built"],
+    /--prefix tests/u,
+  );
+  assert.match(
+    packageJson.scripts["test:browser:mobile:built"],
+    /--prefix tests/u,
+  );
+  assert.match(
+    packageJson.scripts["test:browser:smoke:non-chromium:built"],
+    /--prefix tests/u,
+  );
 
   for (const packagePath of [
     "node_modules/@playwright/test",
@@ -141,15 +131,15 @@ test("browser test tooling is isolated from the companion runtime tree", async (
   }
   assert.equal(
     browserTestsLock.packages["node_modules/@playwright/test"].version,
-    "1.61.1"
+    "1.62.1"
   );
   assert.equal(
     browserTestsLock.packages["node_modules/playwright"].version,
-    "1.61.1"
+    "1.62.1"
   );
   assert.equal(
     browserTestsLock.packages["node_modules/playwright-core"].version,
-    "1.61.1"
+    "1.62.1"
   );
   for (const packagePath of [
     "node_modules/@mermaid-js/mermaid-zenuml",

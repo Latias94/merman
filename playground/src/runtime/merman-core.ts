@@ -11,9 +11,18 @@ import type {
   RuntimeCatalog,
   ValidationResult,
 } from "@mermanjs/web";
-import type { DiagramFont } from "../lib/diagram-font.ts";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
 import type { SafeInlineSvg } from "./render-artifact.ts";
+import type { ConfiguredMermanOperationInput } from "./merman-operation-input.ts";
+export {
+  isMermanSvgPipeline,
+  MERMAN_SVG_PIPELINES,
+} from "./merman-operation-input.ts";
+export type {
+  MermanLayoutEnvironment,
+  MermanSvgPipeline,
+  MermanTextMeasurementMode,
+} from "./merman-operation-input.ts";
 
 export type MermanLoadStage =
   | "acquire"
@@ -25,43 +34,7 @@ export type MermanLoadStage =
 
 export type MermanRecovery = "reload" | "retry";
 export type MermanRequestCache = "default" | "reload";
-export const MERMAN_SVG_PIPELINES = [
-  "parity",
-  "readable",
-  "resvg-safe",
-] as const;
-export type MermanSvgPipeline = (typeof MERMAN_SVG_PIPELINES)[number];
-export type MermanTextMeasurementMode = "browser" | "headless";
 export type MermanRenderFailureStage = "render" | "svg-validation";
-
-export interface MermanLayoutEnvironment {
-  readonly containerHeight: number;
-  readonly containerWidth: number;
-  readonly screenAvailableWidth?: number;
-}
-
-export interface MermanRenderOptions {
-  diagramFont?: DiagramFont;
-  layoutEnvironment?: MermanLayoutEnvironment;
-  presentationProfileId?: string | null;
-  presentationThemePresetId?: string | null;
-  svgPipeline?: MermanSvgPipeline;
-  textMeasurementMode?: MermanTextMeasurementMode;
-}
-
-export type MermanUserRenderOptions = Omit<
-  MermanRenderOptions,
-  "layoutEnvironment"
->;
-
-export function isMermanSvgPipeline(
-  value: unknown
-): value is MermanSvgPipeline {
-  return (
-    typeof value === "string" &&
-    MERMAN_SVG_PIPELINES.some((pipeline) => pipeline === value)
-  );
-}
 
 export type MermanRenderResult =
   | {
@@ -94,45 +67,16 @@ export interface MermanDomainFacade {
   readonly packageVersion: string;
   presentationCatalog(): PresentationCatalog;
   runtimeCatalog(): RuntimeCatalog;
-  detectDiagram(
-    code: string,
-    theme?: string,
-    configJson?: string,
-    options?: MermanRenderOptions
-  ): DiagramDetectionFacts;
+  detectDiagram(input: ConfiguredMermanOperationInput): DiagramDetectionFacts;
   getAsciiCapabilities(): AsciiCapability[];
   getAsciiSupportedDiagrams(): AsciiDiagramType[];
   getSupportedDiagrams(): DiagramType[];
   getThemes(): ThemeName[];
-  layoutJson(
-    code: string,
-    theme?: string,
-    configJson?: string,
-    options?: MermanRenderOptions
-  ): string;
-  parseJson(
-    code: string,
-    theme?: string,
-    configJson?: string,
-    options?: MermanRenderOptions
-  ): string;
-  render(
-    code: string,
-    theme: string,
-    configJson?: string,
-    options?: MermanRenderOptions
-  ): MermanRenderResult;
-  renderAscii(
-    code: string,
-    theme?: string,
-    configJson?: string
-  ): MermanAsciiResult;
-  svgPlan(
-    code: string,
-    theme?: string,
-    configJson?: string,
-    options?: MermanRenderOptions
-  ): SvgPlanResult;
+  layoutJson(input: ConfiguredMermanOperationInput): string;
+  parseJson(input: ConfiguredMermanOperationInput): string;
+  render(input: ConfiguredMermanOperationInput): MermanRenderResult;
+  renderAscii(input: ConfiguredMermanOperationInput): MermanAsciiResult;
+  svgPlan(input: ConfiguredMermanOperationInput): SvgPlanResult;
   validate(code: string): ValidationResult;
 }
 

@@ -11,7 +11,7 @@ import {
 test("progress gate accepts complete cold and warm execution paths", () => {
   const merman = createBenchmarkProgressGate({
     engine: "merman",
-    mode: "realm-cold",
+    intentKind: "cold-measured",
   });
   for (const event of [
     "fonts_wait_start",
@@ -36,7 +36,7 @@ test("progress gate accepts complete cold and warm execution paths", () => {
 
   const mermaid = createBenchmarkProgressGate({
     engine: "mermaid",
-    mode: "realm-cold",
+    intentKind: "cold-measured",
   });
   for (const event of [
     "fonts_wait_start",
@@ -61,7 +61,7 @@ test("progress gate accepts complete cold and warm execution paths", () => {
 
   const warm = createBenchmarkProgressGate({
     engine: "mermaid",
-    mode: "warm",
+    intentKind: "warm-measured",
   });
   for (const event of [
     "fonts_wait_start",
@@ -80,20 +80,20 @@ test("progress gate accepts complete cold and warm execution paths", () => {
 test("progress gate rejects duplicate, out-of-order, and inapplicable events", () => {
   const duplicate = createBenchmarkProgressGate({
     engine: "merman",
-    mode: "realm-cold",
+    intentKind: "cold-measured",
   });
   duplicate.observe("fonts_wait_start");
   assert.throws(() => duplicate.observe("fonts_wait_start"), /twice/);
 
   const outOfOrder = createBenchmarkProgressGate({
     engine: "merman",
-    mode: "realm-cold",
+    intentKind: "cold-measured",
   });
   assert.throws(() => outOfOrder.observe("render_start"), /requires/);
 
   const wrongEngine = createBenchmarkProgressGate({
     engine: "mermaid",
-    mode: "realm-cold",
+    intentKind: "cold-measured",
   });
   wrongEngine.observe("fonts_wait_start");
   wrongEngine.observe("adapter_import_start");
@@ -104,7 +104,7 @@ test("progress gate rejects duplicate, out-of-order, and inapplicable events", (
 
   const incomplete = createBenchmarkProgressGate({
     engine: "merman",
-    mode: "realm-cold",
+    intentKind: "cold-measured",
   });
   incomplete.observe("fonts_wait_start");
   assert.throws(() => incomplete.assertComplete(), /incomplete/);
@@ -114,6 +114,7 @@ test("overlapping engine and resource stages own independent deadlines", () => {
   const timer = fakeTimer();
   const timedOut: string[] = [];
   const watchdog = createBenchmarkStageWatchdog(
+    { engine: "merman", intentKind: "cold-measured" },
     (stage) => timedOut.push(stage),
     timer,
     30
@@ -132,6 +133,7 @@ test("budgeted SVG completes render and starts the isolated presentation deadlin
   const timer = fakeTimer();
   const timedOut: string[] = [];
   const watchdog = createBenchmarkStageWatchdog(
+    { engine: "merman", intentKind: "cold-measured" },
     (stage) => timedOut.push(stage),
     timer
   );
@@ -145,7 +147,11 @@ test("budgeted SVG completes render and starts the isolated presentation deadlin
 
 test("stage completion and disposal clear every timer idempotently", () => {
   const timer = fakeTimer();
-  const watchdog = createBenchmarkStageWatchdog(() => undefined, timer);
+  const watchdog = createBenchmarkStageWatchdog(
+    { engine: "merman", intentKind: "cold-measured" },
+    () => undefined,
+    timer
+  );
 
   watchdog.observe("fonts_wait_start");
   watchdog.observe("adapter_import_start");
@@ -158,7 +164,12 @@ test("stage completion and disposal clear every timer idempotently", () => {
 
 test("synchronous work cannot clear an already exceeded deadline", () => {
   const timer = fakeTimer();
-  const watchdog = createBenchmarkStageWatchdog(() => undefined, timer, 30);
+  const watchdog = createBenchmarkStageWatchdog(
+    { engine: "merman", intentKind: "cold-measured" },
+    () => undefined,
+    timer,
+    30
+  );
 
   watchdog.observe("render_start");
   timer.advance(31);

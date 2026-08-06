@@ -5,24 +5,23 @@
   "type": "module",
   "packageManager": "npm@11.17.0",
   "engines": {
-    "node": ">=22.12.0",
+    "node": "^22.13.0 || >=24.0.0",
     "npm": ">=11.17.0"
   },
   "scripts": {
-    "benchmark:corpus": "node run-benchmark-corpus.mjs",
+    "benchmark:corpus": "node --experimental-strip-types run-benchmark-corpus.mjs",
     "install:browsers": "playwright install --with-deps chromium firefox webkit",
-    "test": "playwright test",
-    "test:chromium": "playwright test --project=chromium-desktop --project=chromium-mobile",
-    "test:smoke": "playwright test --grep @smoke",
-    "test:smoke:non-chromium": "playwright test --grep @smoke --project=firefox-smoke --project=webkit-smoke",
-    "test:zenuml-isolation": "playwright test benchmark.realm.spec.ts --project=chromium-desktop --project=chromium-mobile",
+    "test": "playwright test --project=chromium-desktop",
+    "test:desktop": "playwright test --project=chromium-desktop",
+    "test:mobile": "playwright test --project=chromium-mobile-interactions",
+    "test:smoke:non-chromium": "playwright test --project=firefox-smoke --project=webkit-smoke",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
-    "@playwright/test": "1.61.1",
+    "@playwright/test": "1.62.1",
     "@types/node": "^22",
-    "playwright": "1.61.1",
+    "playwright": "1.62.1",
     "typescript": "5.7.3"
   }
 }

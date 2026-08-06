@@ -8,7 +8,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { SvgViewportController } from "@/src/components/SvgViewport";
+import {
+  useSvgViewportZoom,
+  type SvgViewportController,
+} from "@/src/components/SvgViewport";
 
 export function ViewportControls({
   controller,
@@ -17,13 +20,14 @@ export function ViewportControls({
   controller: SvgViewportController;
   t: (key: string) => string;
 }) {
+  const zoom = useSvgViewportZoom(controller);
   return (
     <div className="flex items-center gap-1">
       <ArtifactIconButton label={t("preview.zoomOut")} onClick={controller.zoomOut}>
         <ZoomOut className="size-4" />
       </ArtifactIconButton>
       <span className="w-16 text-center text-xs tabular-nums text-muted-foreground">
-        {formatZoomPercent(controller.zoom)}
+        {formatZoomPercent(zoom)}
       </span>
       <ArtifactIconButton label={t("preview.zoomIn")} onClick={controller.zoomIn}>
         <ZoomIn className="size-4" />

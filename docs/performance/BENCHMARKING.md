@@ -447,19 +447,25 @@ npm --prefix playground run benchmark:corpus:built -- \
 
 The corpus runner derives its inventory from generated examples whose evidence role is
 `family-baseline`. It starts a fresh Chromium process for every selected fixture to bound retained
-renderer state. Within that fixture, Merman and Mermaid.js still use the same page, source bytes,
-theme, viewport, warmup policy, iteration count, and deterministic AB/BA schedule. Independent cold
-and warm controller runs report first-publishable SVG and reused-engine publishable SVG separately.
-Both engines pass through the production browser adapters and the same strict SVG evidence checks.
+renderer state, and each page accepts exactly one fixture id plus its precomputed cold and warm
+seeds. Within that fixture, Merman and Mermaid.js still use the same page, source bytes, theme,
+viewport, warmup policy, iteration count, and deterministic AB/BA sample plan. Independent cold and
+warm controller runs report first-publishable SVG and reused-engine publishable SVG separately. Both
+engines pass through the production browser adapters and the same strict SVG evidence checks.
 
-Corpus schema `1` embeds the raw schema-`5` controller reports, fixture byte counts and SHA-256
-digests, family coverage, actual order, seeds, versions, failures, skips, and process-isolation mode.
-It never overwrites an existing output. A whole-corpus budget rejects plans that would retain more
-than 4,096 raw samples before the first fixture runs. In each successful fixture mode's
-`report.aggregates.ratios`, the numerator is Mermaid.js and the denominator is Merman, so values
-greater than `1` favor Merman.
+Corpus schema `2` separates the single-fixture page envelope from the aggregate corpus report. A
+page returns exactly one success or structured failure row plus stable generated-catalog identity;
+it does not fabricate `pending` or `not-selected` rows for the rest of the catalog. The CLI converts
+page crashes, early closes, browser disconnects, timeouts, invalidation, and cancellation into the
+same fixture envelope, then one shared linear assembler validates order, seeds, options, catalog and
+version identity while deriving coverage, failures, and terminal status. The aggregate embeds raw
+schema-`6` controller reports, fixture byte counts and SHA-256 digests, actual execution order, and
+fresh-process isolation. It never overwrites an existing output. A whole-corpus budget rejects plans
+that would retain more than 4,096 raw samples before the first fixture runs. In each successful
+fixture mode's `report.aggregates.ratios`, the numerator is Mermaid.js and the denominator is Merman,
+so values greater than `1` favor Merman.
 
-An even `--iterations` value is required by the balanced schedule. A two-iteration, zero-warmup run
+An even `--iterations` value is required by the balanced plan. A two-iteration, zero-warmup run
 is useful only to verify coverage and discover large candidates. The default six iterations and two
 warmups provide better diagnostic ranking, but they are not a universal admission threshold. Use a
 targeted rerun, inspect raw samples, variance, and absolute milliseconds, then confirm any production

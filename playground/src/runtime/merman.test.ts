@@ -12,7 +12,17 @@ import {
   type MermanRuntimeDependencies,
   type MermanSession,
 } from "./merman-core.ts";
-import { configuredMermanOperationInput } from "./merman-operation-input.ts";
+import {
+  configuredMermanOperationInput,
+  freezeRenderOperation,
+  renderOperationWithSvgPipeline,
+  sameRenderOperation,
+  type FreezeRenderOperationInput,
+} from "./merman-operation-input.ts";
+import {
+  DEFAULT_WORKSPACE_SNAPSHOT,
+  type WorkspaceSnapshot,
+} from "../lib/workspace-snapshot.ts";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -84,10 +94,11 @@ test("freezes one configured input for detection, parse, layout, and render", ()
 
   assert.equal(Object.isFrozen(input), true);
   assert.match(
-    input.source,
+    input.configuredSource,
     /%%\{init: \{"layout":"elk","theme":"forest","fontFamily":"Arial, Helvetica, sans-serif","themeVariables":\{"fontFamily":"Arial, Helvetica, sans-serif"\}\}\}%%/,
   );
-  assert.match(input.source, /flowchart TD/);
+  assert.equal(input.source, "flowchart TD\n  A --> B\n");
+  assert.match(input.configuredSource, /flowchart TD/);
   assert.deepEqual(input.bindingOptions, {
     version: 2,
     presentation: {
@@ -133,7 +144,7 @@ test("keeps the default font in Mermaid config without enabling a presentation t
     { diagramFont: "trebuchet" },
   );
 
-  assert.match(input.source, /trebuchet ms/);
+  assert.match(input.configuredSource, /trebuchet ms/);
   assert.deepEqual(input.bindingOptions, { version: 2 });
 });
 
@@ -162,9 +173,55 @@ test("keeps presentation theme, profile, and SVG pipeline independent", () => {
     version: 2,
     svg: { pipeline: "readable" },
   });
-  assert.match(themeOnly.source, /"theme":"dark"/);
-  assert.match(profileOnly.source, /"theme":"forest"/);
-  assert.match(pipelineOnly.source, /"theme":"neutral"/);
+  assert.match(themeOnly.configuredSource, /"theme":"dark"/);
+  assert.match(profileOnly.configuredSource, /"theme":"forest"/);
+  assert.match(pipelineOnly.configuredSource, /"theme":"neutral"/);
+});
+
+test("freezes invalid config as operation evidence instead of throwing", () => {
+  const input = configuredMermanOperationInput(
+    "flowchart TD\nA",
+    "default",
+    "{invalid",
+    undefined,
+  );
+
+  assert.equal(input.configuredSource, input.source);
+  assert.equal(Object.isFrozen(input.configurationError), true);
+  assert.match(input.configurationError?.summary ?? "", /JSON/);
+});
+
+test("identity covers every render-operation axis", () => {
+  const base = operation();
+  assert.equal(sameRenderOperation(base, operation()), true);
+  assert.equal(Object.isFrozen(base.bindingOptions), true);
+  assert.equal(Object.isFrozen(base.layoutEnvironment), true);
+  assert.equal(Object.isFrozen(base.versions), true);
+  assert.equal(Object.isFrozen(base.viewport), true);
+
+  const variants = [
+    operation({ workspace: { code: "flowchart TD\nB" } }),
+    operation({ workspace: { mermaidConfig: '{"layout":"elk"}' } }),
+    operation({ workspace: { diagramTheme: "dark" } }),
+    operation({ workspace: { diagramFont: "arial" } }),
+    operation({ workspace: { presentationProfileId: "profile" } }),
+    operation({ workspace: { presentationThemePresetId: "preset" } }),
+    operation({ workspace: { svgPipeline: "readable" } }),
+    operation({ workspace: { textMeasurementMode: "headless" } }),
+    operation({ layoutEnvironment: { containerWidth: 801, containerHeight: 600 } }),
+    operation({ compareEnabled: false }),
+    operation({ diagnosticsEnabled: true }),
+    operation({ viewport: { width: 801, height: 600 } }),
+    operation({ versions: { merman: "next", mermaid: "11.16.0" } }),
+  ];
+  for (const variant of variants) {
+    assert.equal(sameRenderOperation(base, variant), false);
+  }
+
+  const resvg = renderOperationWithSvgPipeline(base, "resvg-safe");
+  assert.equal(resvg.svgPipeline, "resvg-safe");
+  assert.deepEqual(resvg.bindingOptions.svg, { pipeline: "resvg-safe" });
+  assert.equal(sameRenderOperation(base, resvg), false);
 });
 
 test("coalesces callers and starts module import and WASM fetch together", async () => {
@@ -203,6 +260,40 @@ test("coalesces callers and starts module import and WASM fetch together", async
   assert.equal(runtime.store.getState().status, "ready");
   assert.deepEqual(calls, ["import", "fetch", "initialize"]);
 });
+
+function operation({
+  compareEnabled = true,
+  diagnosticsEnabled = false,
+  layoutEnvironment = {
+    containerWidth: 800,
+    containerHeight: 600,
+    screenAvailableWidth: 1280,
+  },
+  versions = { merman: "test", mermaid: "11.16.0" },
+  viewport = { width: 800, height: 600 },
+  workspace: workspaceOverrides = {},
+}: {
+  compareEnabled?: boolean;
+  diagnosticsEnabled?: boolean;
+  layoutEnvironment?: FreezeRenderOperationInput["layoutEnvironment"];
+  versions?: FreezeRenderOperationInput["versions"];
+  viewport?: FreezeRenderOperationInput["viewport"];
+  workspace?: Partial<WorkspaceSnapshot>;
+} = {}) {
+  const workspace: WorkspaceSnapshot = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    code: "flowchart TD\nA",
+    ...workspaceOverrides,
+  };
+  return freezeRenderOperation({
+    compareEnabled,
+    diagnosticsEnabled,
+    layoutEnvironment,
+    versions,
+    viewport,
+    workspace,
+  });
+}
 
 test("retries a compile failure with one reload response", async () => {
   const fetchModes: MermanRequestCache[] = [];
