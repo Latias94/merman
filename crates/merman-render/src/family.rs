@@ -884,15 +884,13 @@ fn prepare_pair<S, L>(
 struct FlowchartSvgLabelPreparation(bool);
 
 impl FlowchartSvgLabelPreparation {
-    const DISABLED: Self = Self(false);
-
     const fn enabled(self) -> bool {
         self.0
     }
 }
 
 const DEFAULT_FLOWCHART_SVG_LABEL_PREPARATION: FlowchartSvgLabelPreparation =
-    FlowchartSvgLabelPreparation::DISABLED;
+    FlowchartSvgLabelPreparation(true);
 
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
@@ -1799,7 +1797,7 @@ A traced-edge@-->|edge label words| B["delta epsilon"]
     }
 
     #[test]
-    fn public_flowchart_preparation_uses_the_disabled_sidecar_control() {
+    fn public_flowchart_preparation_enables_prepared_svg_label_reuse() {
         let source = r#"---
 config:
   htmlLabels: false
@@ -1828,8 +1826,8 @@ A -->|control label| B
             flowchart
                 .svg_label_sidecar()
                 .node_owner("A", false)
-                .is_none(),
-            "the committed control must keep runtime sidecar reuse disabled"
+                .is_some(),
+            "the public Flowchart preparation path must build the label sidecar"
         );
     }
 
@@ -1837,7 +1835,7 @@ A -->|control label| B
     fn routed_host_and_fallback_traces_match_a_no_sidecar_family_control() {
         for outcome in [SidecarHostOutcome::Success, SidecarHostOutcome::Missing] {
             let (control_indexed, control_trace, control_report, control_svg) =
-                render_with_sidecar_host_control(FlowchartSvgLabelPreparation::DISABLED, outcome);
+                render_with_sidecar_host_control(FlowchartSvgLabelPreparation(false), outcome);
             let (sidecar_indexed, sidecar_trace, sidecar_report, sidecar_svg) =
                 render_with_sidecar_host_control(FlowchartSvgLabelPreparation(true), outcome);
 
