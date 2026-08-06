@@ -264,7 +264,8 @@ fn consume_attribute_qualifiers(mut selector: &str) -> Option<&str> {
         let mut quote = None;
         let mut escaped = false;
         let mut end = None;
-        for (index, ch) in selector.char_indices().skip(1) {
+        let mut chars = selector.char_indices().skip(1).peekable();
+        while let Some((index, ch)) = chars.next() {
             if escaped {
                 escaped = false;
                 continue;
@@ -281,6 +282,8 @@ fn consume_attribute_qualifiers(mut selector: &str) -> Option<&str> {
             }
             if matches!(ch, '\'' | '"') {
                 quote = Some(ch);
+            } else if ch == '/' && chars.peek().is_some_and(|(_, next)| *next == '*') {
+                return None;
             } else if ch == ']' {
                 end = Some(index + ch.len_utf8());
                 break;
@@ -456,6 +459,25 @@ mod tests {
                 "#diagram",
             ),
             "#diagram svg[data-x] + .outside, #diagram svg[data-x]~.outside, #diagram svg[data-x] /* guard */ + .outside, #diagram svg[data-x"
+        );
+    }
+
+    #[test]
+    fn scoped_css_fails_closed_for_attribute_comments_and_sibling_suffixes() {
+        assert_eq!(
+            scope_selector(
+                "svg[data-x/* ] */] + .outside, svg[data-x]/*guard*/+.outside, svg[a][b] + .outside, svg[a][b] ~ .outside",
+                "#diagram",
+            ),
+            "#diagram svg[data-x/* ] */] + .outside, #diagram svg[data-x]/*guard*/+.outside, #diagram svg[a][b] + .outside, #diagram svg[a][b] ~ .outside"
+        );
+    }
+
+    #[test]
+    fn scoped_css_handles_escaped_brackets_and_unclosed_repeated_attributes() {
+        assert_eq!(
+            scope_selector(r"svg[data-label=a\]b] .node, svg[a][b", "#diagram"),
+            r"#diagram[data-label=a\]b] .node, #diagram svg[a][b"
         );
     }
 
