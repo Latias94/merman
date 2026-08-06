@@ -139,10 +139,13 @@ surface, but the Playground does not load it in addition to the full renderer: s
 whole-site evidence showed that the split did not lower cold transfer or preserve peak memory under
 the R16 rule. The full/editor comparison and its exact 35-family/11-query semantic matrix are
 on-demand architecture evidence, not a normal browser gate. Receipt schema 2 carries selection
-input schema 3, which content-binds every production page runtime closure, the Worker/equivalence
-closure, exact runtime package provenance, the measurement contract, and equivalence evidence.
-Normal prepared tests recompute those digests and the derived decision hermetically; only stale
-decision inputs require another browser measurement.
+input schema 4, which content-binds every production page runtime closure, the Worker/equivalence
+closure, portable runtime JavaScript and package contracts, the stable WASM source/profile/capability
+contract, the measurement contract, and equivalence evidence. Current generated JavaScript and
+WASM files must still match their own provenance, but platform-specific WASM binary identity and
+host-form tool descriptions do not invalidate portable receipt authority. Normal prepared tests
+recompute those digests and the derived decision hermetically; only stale semantic or build inputs
+require another browser measurement.
 Tailwind v4 automatic source detection is disabled. Its explicit `App`, product-component, and UI
 primitive roots are structurally checked as a subset of the production TypeScript runtime closure,
 so test or tooling strings cannot alter shipped CSS without entering R16's bound inputs.

@@ -427,7 +427,7 @@ Results:
 
 - Native TypeScript Worker tests passed: 56 tests.
 - Pure artifact-decision and authority tests passed: 24 tests.
-- Focused build-graph tests passed: 45 tests.
+- Focused build-graph tests passed: 46 tests.
 - Production Playground build and dist verification passed with Vite 8.2.0.
 - Real Chromium Monaco Worker smoke passed: 6 tests, including all 35 semantic-token family
   baselines, request-local rename failure, Retry recovery, and Benchmark isolation.
@@ -438,14 +438,53 @@ Results:
   `e52016004129f4a12c0b316be1890f614898003afc1318fd543c4f07b674596c` for both.
 - All six cold/warm primary latency comparisons passed the joint 5% and 20 ms limit.
 - The editor split failed the selection rule because cold transfer was 7,504,756 bytes versus
-  6,141,789 bytes for full, and peak memory was 31,017,357 bytes versus 30,811,105 bytes for full.
+  6,141,789 bytes for full, and peak memory was 31,121,413 bytes versus 30,804,954 bytes for full.
 - The authoritative result therefore retains `@mermanjs/web` for both the main renderer and the
-  language Worker. Receipt schema 2 carries selection-input schema 3, which binds the measurement
-  contract, every production page runtime closure, the Worker/equivalence closure, exact runtime
-  package provenance, and semantic evidence to deterministic content digests. The hermetic
-  authority verifier recomputes those inputs and the derived decision without a browser. The
-  complete receipt is checked in at
+  language Worker. Receipt schema 2 carries selection-input schema 4, which binds the measurement
+  contract, every production page runtime closure, the Worker/equivalence closure, portable runtime
+  JavaScript and package contracts, stable WASM source/profile/capability inputs, and semantic
+  evidence to deterministic content digests. Current generated JavaScript and WASM artifacts must
+  still match their provenance, while platform-specific WASM binary identity and host-form tool
+  descriptions do not invalidate the cross-platform receipt. The hermetic authority verifier
+  recomputes those inputs and the derived decision without a browser. The complete receipt is
+  checked in at
   [`editor-artifact-receipt-v2.json`](./editor-artifact-receipt-v2.json).
+
+### 2026-08-06 - Portable R16 And ZenUML Evidence Boundaries
+
+Changes:
+
+- Narrowed R16 package freshness from platform-specific WASM output bytes to the portable runtime
+  contract: exact runtime JavaScript and package metadata plus stable WASM source, artifact profile,
+  and runtime capabilities.
+- Kept generated-artifact integrity strict by validating every current runtime JavaScript and WASM
+  file against its own provenance before computing the portable selection digest.
+- Bound ZenUML browser admission to the generated runtime security projections and executing browser
+  sources rather than the build-plan generators that produce those projections.
+- Canonicalized the ZenUML probe contract so the JavaScript verifier and Rust `xtask` hash the same
+  representation.
+
+Commands:
+
+```bash
+npx --yes node@24.18.0 --test playground/scripts/editor-artifact-measurement/contract.test.mjs playground/scripts/zenuml-browser-admission.test.mjs
+npm run verify:zenuml-candidate --prefix playground
+npm run verify:zenuml-browser-admission --prefix playground
+cargo run --locked -p xtask -- verify-mermaid-reference
+npm run measure:editor-artifacts --prefix playground -- --out docs/workstreams/web-wasm-playground/editor-artifact-receipt-v2.json
+npm run verify:editor-artifact-authority --prefix playground
+```
+
+Results:
+
+- The Node 24 contract suite passed 25 tests, including host-specific WASM drift and ZenUML source
+  boundary regressions.
+- Offline ZenUML evidence verification and `xtask verify-mermaid-reference` passed after a real
+  Chromium evidence refresh.
+- A fresh four-block measurement from clean revision `5b9b28d04` produced authoritative receipt
+  schema 2 / selection-input schema 4.
+- Full and editor remained exactly equivalent across all 385 family/query cells; the selection still
+  retains full because editor transfer and peak memory are both higher.
 
 ### 2026-08-05 - Canonical Opaque Artifacts And Authoritative Build Graphs
 

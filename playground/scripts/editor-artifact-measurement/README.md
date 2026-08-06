@@ -23,17 +23,23 @@ directories. A receipt records the Git revision and whether the worktree was
 dirty. Only a fresh-build receipt from an unchanged clean worktree is marked
 authoritative; dirty or reused-build receipts remain explicitly provisional.
 The checked receipt also binds the measurement contract, every production page
-runtime closure, the Worker/equivalence closure, exact full/editor runtime
-package provenance, and equivalence evidence through selection-input digests.
-`npm run verify:editor-artifact-authority` recomputes those digests and the
-derived decision without building or launching a browser. Once the exact Web
-package JS/WASM bytes are bound, package source and tool provenance do not
-independently invalidate a receipt. Documentation, browser-test-only changes,
-emitted declarations, and source maps do not force an R16 rerun. Playground
-runtime and transitive build-config changes do: Vite may split shared chunks
-across any production HTML entry, and the PostCSS/Tailwind build can project
-lazy-workbench classes into the initial stylesheet. Tailwind automatic source
-detection is disabled; its explicit source roots are all members of the
+runtime closure, the Worker/equivalence closure, the portable full/editor
+runtime package contract, and equivalence evidence through selection-input
+digests. The package contract binds exact runtime JavaScript, package exports,
+artifact profile and capabilities, and the WASM source digest. Before computing
+that contract, the verifier still requires every current JavaScript and WASM
+runtime artifact to match its own provenance record. It deliberately excludes
+the platform-specific WASM binary identity, build-input digest, and host-form
+tool descriptions: the same pinned sources and toolchain release can emit
+different bytes on supported builders. `npm run verify:editor-artifact-authority`
+recomputes the portable digests and the derived decision without building or
+launching a browser. Documentation, browser-test-only changes, emitted
+declarations, source maps, and host-only WASM rebuild differences do not force an
+R16 freshness failure. Source, profile, capability, runtime JavaScript,
+Playground runtime, and transitive build-config changes do. Vite may split shared
+chunks across any production HTML entry, and the PostCSS/Tailwind build can
+project lazy-workbench classes into the initial stylesheet. Tailwind automatic
+source detection is disabled; its explicit source roots are all members of the
 production TypeScript runtime closure, so test and tooling text cannot mutate
 the measured CSS.
 
