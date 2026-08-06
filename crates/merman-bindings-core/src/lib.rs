@@ -32,10 +32,7 @@ mod ascii;
 #[cfg(feature = "svg")]
 mod render;
 
-pub use artifact_contract::{
-    ArtifactContractSpec, ValidatedArtifactContract, full_native_artifact_contract,
-    node_static_svg_artifact_contract, web_artifact_contract,
-};
+pub use artifact_contract::{ArtifactContractSpec, ValidatedArtifactContract};
 pub use capability::{
     CAPABILITY_DESCRIPTOR_DIGEST, CAPABILITY_DESCRIPTOR_SCHEMA_VERSION, CapabilityDescriptor,
     CapabilityKey, OperationKey, OperationSpec, OutputDescriptor, OutputKey, TargetDescriptor,

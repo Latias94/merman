@@ -4,11 +4,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::LazyLock;
 
 use merman_bindings_core::{
-    BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingError, BindingErrorKind,
-    BindingIconRegistryErrorDetails, BindingOperationRequest, BindingPayloadSchemaKey,
-    BindingResourceErrorDetails, BindingStatus, CAPABILITY_DESCRIPTOR_DIGEST,
-    RUNTIME_CATALOG_SCHEMA_VERSION, TargetKey, ValidatedArtifactContract,
-    node_static_svg_artifact_contract,
+    ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingError,
+    BindingErrorKind, BindingIconRegistryErrorDetails, BindingOperationRequest,
+    BindingPayloadSchemaKey, BindingResourceErrorDetails, BindingStatus, BindingTransportKey,
+    CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationKey, RUNTIME_CATALOG_SCHEMA_VERSION,
+    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -24,8 +24,32 @@ const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
 } else {
     TargetKey::Native
 };
+const NODE_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+];
+const NODE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
+
+// Keep feature selection in the transport owner. Dependency features may be unified by Cargo.
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
-    node_static_svg_artifact_contract(NODE_TARGET);
+    ArtifactContractSpec::new(NODE_TARGET, BindingTransportKey::Node)
+        .with_operations(NODE_OPERATIONS)
+        .with_supplemental_capabilities(NODE_SUPPLEMENTAL_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+        .materialize();
 static NODE_WIRE_CONTRACT: LazyLock<NodeWireContract> = LazyLock::new(|| {
     let contract = serde_json::from_str::<NodeWireContract>(NODE_WIRE_CONTRACT_JSON)
         .expect("the embedded Node wire contract must be valid JSON");

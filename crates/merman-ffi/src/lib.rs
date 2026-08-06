@@ -9,8 +9,8 @@
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
     BindingEngineServices, BindingError, BindingErrorKind, BindingIconRegistryErrorDetails,
-    BindingOperationRequest, BindingResourceErrorDetails, BindingStatus, BindingTransportKey,
-    OperationKey, ValidatedArtifactContract, full_native_artifact_contract,
+    BindingOperationRequest, BindingResourceErrorDetails, BindingStatus, OperationKey,
+    ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
@@ -272,7 +272,7 @@ static ALLOCATION_REGISTRY: OnceLock<Mutex<NativeAllocationRegistry>> = OnceLock
 static RUNTIME_CATALOG: OnceLock<Box<[u8]>> = OnceLock::new();
 static RUNTIME_CATALOG_DIGEST: OnceLock<Box<[u8]>> = OnceLock::new();
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
-    full_native_artifact_contract(BindingTransportKey::NativeC);
+    merman_bindings_core::native_sdk_artifact_contract!(NativeC);
 
 fn reentrant_call_failure() -> NativeFailure {
     NativeFailure::reentrant_call("a host callback must not re-enter the same native engine")
@@ -4171,6 +4171,51 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             catalog["capabilities"],
             serde_json::to_value(native_artifact_contract().runtime_capabilities()).unwrap()
         );
+        let operation_ids = catalog["capabilities"]["operation_ids"].as_array().unwrap();
+        for (operation_id, expected) in [
+            ("analysis-json", cfg!(feature = "analysis")),
+            ("ascii", cfg!(feature = "ascii")),
+            ("jpeg", cfg!(feature = "jpeg")),
+            ("pdf", cfg!(feature = "pdf")),
+            ("png", cfg!(feature = "png")),
+            ("semantic-json", true),
+            ("svg", cfg!(feature = "svg")),
+        ] {
+            assert_eq!(
+                operation_ids.iter().any(|id| id == operation_id),
+                expected,
+                "operation {operation_id} must follow merman-ffi features"
+            );
+        }
+        let capability_ids = catalog["capabilities"]["capability_ids"]
+            .as_array()
+            .unwrap();
+        for (capability_id, expected) in [
+            ("layout-cytoscape", cfg!(feature = "layout-cytoscape")),
+            ("layout-elk", cfg!(feature = "layout-elk")),
+            ("math", cfg!(feature = "math")),
+        ] {
+            assert_eq!(
+                capability_ids.iter().any(|id| id == capability_id),
+                expected,
+                "capability {capability_id} must follow merman-ffi features"
+            );
+        }
+        let exposes_system_adapters = cfg!(all(
+            feature = "system-clock",
+            feature = "system-random",
+            feature = "system-timezone"
+        ));
+        let system_adapter_ids = catalog["capabilities"]["system_adapter_ids"]
+            .as_array()
+            .unwrap();
+        for adapter_id in ["system-clock", "system-random", "system-timezone"] {
+            assert_eq!(
+                system_adapter_ids.iter().any(|id| id == adapter_id),
+                exposes_system_adapters,
+                "system adapter {adapter_id} must follow merman-ffi features"
+            );
+        }
         assert!(
             !catalog["capabilities"]["system_adapter_ids"]
                 .as_array()
@@ -5024,7 +5069,7 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
     }
 
     #[test]
-    fn svg_operation_follows_the_resolved_dependency_surface_and_owns_its_result() {
+    fn svg_operation_follows_the_ffi_feature_surface_and_owns_its_result() {
         let api = api_table();
         let mut config_result = native_result();
         let mut token = 0;

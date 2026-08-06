@@ -4,15 +4,15 @@ use crate::XtaskError;
 #[cfg(test)]
 use merman_bindings_core::TextMeasurementProviderSource;
 use merman_bindings_core::{
-    BINDING_OPERATION_METADATA_CONTRACT_SCHEMA_VERSION, BINDING_OPTIONS_SCHEMA_VERSION,
-    BindingOperationMetadataContract, BindingOptionGroupKey, BindingPayloadSchemaKey,
-    BindingTransportKey, BindingUnavailableOperationExpectation, CapabilityKey,
-    ConstructorServiceKey, MetadataKey, RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN,
-    RUNTIME_CATALOG_IDENTIFIER_PATTERN, RUNTIME_CATALOG_MAX_SAFE_INTEGER,
-    RUNTIME_CATALOG_SCHEMA_VERSION, RuntimeConstructorResourceLimit, RuntimeOutputContract,
+    ArtifactContractSpec, BINDING_OPERATION_METADATA_CONTRACT_SCHEMA_VERSION,
+    BINDING_OPTIONS_SCHEMA_VERSION, BindingOperationMetadataContract, BindingOptionGroupKey,
+    BindingPayloadSchemaKey, BindingTransportKey, BindingUnavailableOperationExpectation,
+    CapabilityKey, ConstructorServiceKey, MetadataKey, OperationKey,
+    RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN, RUNTIME_CATALOG_IDENTIFIER_PATTERN,
+    RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION,
+    RuntimeConstructorResourceLimit, RuntimeOutputContract, RuntimePolicyExposure,
     TEXT_MEASUREMENT_PROTOCOL_VERSION, TargetKey, TextMeasurementProviderKey,
-    ValidatedArtifactContract, binding_operation_expectations, full_native_artifact_contract,
-    node_static_svg_artifact_contract, operation_metadata_contract,
+    ValidatedArtifactContract, binding_operation_expectations, operation_metadata_contract,
     runtime_constructor_resource_limits,
 };
 use serde::Serialize;
@@ -29,6 +29,46 @@ const UNIFFI_PYTHON_OUTPUT: &str = "crates/merman-uniffi/python/binding_contract
 const PYTHON_OUTPUT: &str = "platforms/python/merman/src/merman/_binding_contract.py";
 const KOTLIN_OUTPUT: &str = "platforms/android/src/main/kotlin/io/merman/MermanBindingContract.kt";
 const DART_OUTPUT: &str = "platforms/flutter/lib/src/generated/binding_contract.dart";
+const FULL_NODE_OPERATIONS: &[OperationKey] = &[
+    OperationKey::LayoutJson,
+    OperationKey::SemanticJson,
+    OperationKey::Svg,
+    OperationKey::SvgPlanJson,
+];
+const FULL_NODE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    CapabilityKey::LayoutCytoscape,
+    CapabilityKey::LayoutElk,
+    CapabilityKey::Math,
+];
+const FULL_NATIVE_OPERATIONS: &[OperationKey] = &[
+    OperationKey::AnalysisFactsJson,
+    OperationKey::AnalysisJson,
+    OperationKey::Ascii,
+    OperationKey::DocumentAnalysisFactsJson,
+    OperationKey::DocumentAnalysisJson,
+    OperationKey::Jpeg,
+    OperationKey::LayoutJson,
+    OperationKey::Pdf,
+    OperationKey::Png,
+    OperationKey::SemanticJson,
+    OperationKey::Svg,
+    OperationKey::SvgPlanJson,
+    OperationKey::ValidationJson,
+];
+const FULL_NATIVE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    CapabilityKey::LayoutCytoscape,
+    CapabilityKey::LayoutElk,
+    CapabilityKey::Math,
+];
+const FULL_NATIVE_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
+    ConstructorServiceKey::HostTextMeasurement,
+    ConstructorServiceKey::IconRegistry,
+];
+const FULL_NATIVE_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
+    CapabilityKey::SystemClock,
+    CapabilityKey::SystemRandom,
+    CapabilityKey::SystemTimezone,
+];
 
 #[derive(Serialize)]
 struct MetadataProjection {
@@ -257,13 +297,27 @@ fn artifact_profile_projection(
 }
 
 fn node_artifact_profile_projection(target: TargetKey) -> BindingArtifactProfileProjection {
-    artifact_profile_projection(node_static_svg_artifact_contract(target))
+    artifact_profile_projection(
+        ArtifactContractSpec::new(target, BindingTransportKey::Node)
+            .with_operations(FULL_NODE_OPERATIONS)
+            .with_supplemental_capabilities(FULL_NODE_SUPPLEMENTAL_CAPABILITIES)
+            .with_all_available_metadata()
+            .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+            .materialize(),
+    )
 }
 
 fn android_artifact_profile_projection() -> BindingArtifactProfileProjection {
-    artifact_profile_projection(full_native_artifact_contract(
-        BindingTransportKey::AndroidJni,
-    ))
+    artifact_profile_projection(
+        ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::AndroidJni)
+            .with_operations(FULL_NATIVE_OPERATIONS)
+            .with_supplemental_capabilities(FULL_NATIVE_SUPPLEMENTAL_CAPABILITIES)
+            .with_all_available_metadata()
+            .with_constructor_services(FULL_NATIVE_CONSTRUCTOR_SERVICES)
+            .with_system_adapters(FULL_NATIVE_SYSTEM_ADAPTERS)
+            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
+            .materialize(),
+    )
 }
 
 fn render_node_wire_contract_json() -> String {

@@ -9,7 +9,7 @@ use merman_bindings_core::BindingEngineServices;
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
     BindingError, BindingErrorKind, BindingOperationMetadata, BindingOutputPlan, BindingStatus,
-    BindingTransportKey, OperationKey, ValidatedArtifactContract, full_native_artifact_contract,
+    OperationKey, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
@@ -29,7 +29,7 @@ static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
 static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
-    full_native_artifact_contract(BindingTransportKey::UniFfi);
+    merman_bindings_core::native_sdk_artifact_contract!(UniFfi);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MermanErrorKind {
@@ -131,7 +131,6 @@ impl MermanError {
     }
 }
 
-#[cfg(not(feature = "svg"))]
 fn missing_capability_error(capability_id: &'static str, message: &'static str) -> MermanError {
     MermanError::from_binding(BindingError::missing_capability(capability_id, message))
 }
@@ -779,6 +778,12 @@ impl Merman {
     }
 
     pub fn ascii_capabilities(&self) -> Vec<MermanAsciiCapability> {
+        if !native_artifact_contract()
+            .runtime_capabilities()
+            .has_capability("ascii")
+        {
+            return Vec::new();
+        }
         ASCII_CAPABILITIES
             .get_or_init(|| {
                 merman_bindings_core::ascii_capabilities()
@@ -837,6 +842,15 @@ impl Merman {
     }
 
     pub fn lint_rule_catalog(&self) -> Result<Vec<MermanLintRuleCatalogEntry>, MermanError> {
+        if !native_artifact_contract()
+            .runtime_capabilities()
+            .has_capability("analysis")
+        {
+            return Err(missing_capability_error(
+                "analysis",
+                "lint rule catalog requires the analysis capability",
+            ));
+        }
         Ok(merman_bindings_core::lint_rule_catalog()
             .map_err(MermanError::from_binding)?
             .into_iter()
@@ -847,6 +861,15 @@ impl Merman {
     pub fn configurable_lint_rule_catalog(
         &self,
     ) -> Result<Vec<MermanLintRuleCatalogEntry>, MermanError> {
+        if !native_artifact_contract()
+            .runtime_capabilities()
+            .has_capability("analysis")
+        {
+            return Err(missing_capability_error(
+                "analysis",
+                "configurable lint rule catalog requires the analysis capability",
+            ));
+        }
         Ok(merman_bindings_core::configurable_lint_rule_catalog()
             .map_err(MermanError::from_binding)?
             .into_iter()
@@ -1904,7 +1927,7 @@ mod tests {
     }
 
     #[test]
-    fn engine_render_svg_matches_the_resolved_transport_surface() {
+    fn engine_render_svg_matches_the_uniffi_feature_surface() {
         let result = engine().render_svg("flowchart TD\nA[Hello] --> B[World]".to_string(), None);
 
         if native_artifact_contract()
@@ -2572,6 +2595,50 @@ mod tests {
         let has_ascii = runtime_capability_ids.iter().any(|id| id == "ascii");
         let has_analysis = runtime_capability_ids.iter().any(|id| id == "analysis");
         let has_svg = runtime_capability_ids.iter().any(|id| id == "svg");
+        assert_eq!(has_ascii, cfg!(feature = "ascii"));
+        assert_eq!(has_analysis, cfg!(feature = "analysis"));
+        assert_eq!(has_svg, cfg!(feature = "svg"));
+        let operation_ids = runtime_catalog_value["capabilities"]["operation_ids"]
+            .as_array()
+            .unwrap();
+        for (operation_id, expected) in [
+            ("jpeg", cfg!(feature = "jpeg")),
+            ("pdf", cfg!(feature = "pdf")),
+            ("png", cfg!(feature = "png")),
+            ("semantic-json", true),
+        ] {
+            assert_eq!(
+                operation_ids.iter().any(|id| id == operation_id),
+                expected,
+                "operation {operation_id} must follow merman-uniffi features"
+            );
+        }
+        for (capability_id, expected) in [
+            ("layout-cytoscape", cfg!(feature = "layout-cytoscape")),
+            ("layout-elk", cfg!(feature = "layout-elk")),
+            ("math", cfg!(feature = "math")),
+        ] {
+            assert_eq!(
+                runtime_capability_ids.iter().any(|id| id == capability_id),
+                expected,
+                "capability {capability_id} must follow merman-uniffi features"
+            );
+        }
+        let exposes_system_adapters = cfg!(all(
+            feature = "system-clock",
+            feature = "system-random",
+            feature = "system-timezone"
+        ));
+        let system_adapter_ids = runtime_catalog_value["capabilities"]["system_adapter_ids"]
+            .as_array()
+            .unwrap();
+        for adapter_id in ["system-clock", "system-random", "system-timezone"] {
+            assert_eq!(
+                system_adapter_ids.iter().any(|id| id == adapter_id),
+                exposes_system_adapters,
+                "system adapter {adapter_id} must follow merman-uniffi features"
+            );
+        }
 
         assert!(
             engine
@@ -2737,6 +2804,16 @@ mod tests {
                     .map(merman_bindings_core::ConstructorServiceKey::id)
                     .collect::<Vec<_>>()
             )
+        );
+        #[cfg(feature = "svg")]
+        assert_eq!(
+            runtime_catalog["constructor_service_ids"],
+            serde_json::json!(["host-text-measurement", "icon-registry"])
+        );
+        #[cfg(not(feature = "svg"))]
+        assert_eq!(
+            runtime_catalog["constructor_service_ids"],
+            serde_json::json!([])
         );
         assert!(
             runtime_catalog["payload_schemas"]

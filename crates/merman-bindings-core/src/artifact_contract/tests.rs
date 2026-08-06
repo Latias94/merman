@@ -19,32 +19,6 @@ fn panics(action: impl FnOnce()) -> bool {
 }
 
 #[test]
-fn full_native_recipe_is_identical_across_public_native_facades() {
-    let rust = full_native_artifact_contract(crate::BindingTransportKey::Rust);
-
-    for transport in [
-        crate::BindingTransportKey::AndroidJni,
-        crate::BindingTransportKey::NativeC,
-        crate::BindingTransportKey::UniFfi,
-    ] {
-        assert_eq!(full_native_artifact_contract(transport), rust);
-    }
-}
-
-#[test]
-fn full_native_recipe_rejects_private_or_non_native_facades() {
-    for transport in [
-        crate::BindingTransportKey::Node,
-        crate::BindingTransportKey::Typst,
-        crate::BindingTransportKey::Web,
-    ] {
-        assert!(panics(|| {
-            let _ = full_native_artifact_contract(transport);
-        }));
-    }
-}
-
-#[test]
 fn transport_exposure_rejects_the_wrong_target() {
     assert!(panics(|| {
         let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Web);
@@ -292,12 +266,6 @@ fn semantic_contract_rejects_unadvertised_request_option_groups_after_feature_un
 fn full_default_snapshot_matches_the_feature_owned_declaration() {
     assert_eq!(
         DEFAULT_ARTIFACT_SNAPSHOT
-            .operation_keys()
-            .collect::<Vec<_>>(),
-        FULL_NATIVE_OPERATIONS
-    );
-    assert_eq!(
-        DEFAULT_ARTIFACT_SNAPSHOT
             .payload_schema_keys()
             .collect::<Vec<_>>(),
         BindingPayloadSchemaKey::ALL
@@ -306,12 +274,27 @@ fn full_default_snapshot_matches_the_feature_owned_declaration() {
         DEFAULT_ARTIFACT_SNAPSHOT
             .constructor_service_keys()
             .collect::<Vec<_>>(),
-        FULL_NATIVE_CONSTRUCTOR_SERVICES
+        if cfg!(feature = "svg") {
+            vec![
+                ConstructorServiceKey::HostTextMeasurement,
+                ConstructorServiceKey::IconRegistry,
+            ]
+        } else {
+            Vec::new()
+        }
     );
-    let expected_system_adapters = if FULL_NATIVE_SYSTEM_ADAPTERS.len() == 3 {
-        FULL_NATIVE_SYSTEM_ADAPTERS
+    let expected_system_adapters = if cfg!(all(
+        feature = "system-clock",
+        feature = "system-random",
+        feature = "system-timezone"
+    )) {
+        vec![
+            CapabilityKey::SystemClock,
+            CapabilityKey::SystemRandom,
+            CapabilityKey::SystemTimezone,
+        ]
     } else {
-        &[]
+        Vec::new()
     };
     assert_eq!(
         DEFAULT_ARTIFACT_SNAPSHOT
@@ -321,7 +304,7 @@ fn full_default_snapshot_matches_the_feature_owned_declaration() {
     );
     assert_eq!(
         DEFAULT_ARTIFACT_SNAPSHOT.runtime_policy_exposure(),
-        DEFAULT_RUNTIME_POLICY
+        RuntimePolicyExposure::BindingOptions
     );
 
     let expected_metadata = MetadataKey::ALL
@@ -339,15 +322,6 @@ fn full_default_snapshot_matches_the_feature_owned_declaration() {
             .collect::<Vec<_>>(),
         expected_metadata
     );
-
-    for operation in FULL_NATIVE_OPERATIONS {
-        assert!(
-            operation
-                .spec()
-                .capability
-                .is_none_or(|capability| DEFAULT_ARTIFACT_SNAPSHOT.exposes_capability(capability))
-        );
-    }
 }
 
 #[test]
@@ -389,34 +363,6 @@ fn typed_transport_extensions_are_explicit_and_exact() {
             .with_transport_extensions(&[TransportCompiledExtensionKey::Editor])
             .materialize();
     }));
-}
-
-#[test]
-fn shared_web_recipe_owns_operations_and_feature_capabilities() {
-    let contract = web_artifact_contract(&[], &[]);
-    assert_eq!(contract.target(), TargetKey::Web);
-    assert_eq!(
-        contract.operation_keys().collect::<Vec<_>>(),
-        WEB_OPERATIONS
-    );
-    assert_eq!(
-        contract.capability_keys().collect::<Vec<_>>(),
-        ArtifactContractSpec::new(TargetKey::Web, crate::BindingTransportKey::Web)
-            .with_operations(WEB_OPERATIONS)
-            .with_supplemental_capabilities(WEB_SUPPLEMENTAL_CAPABILITIES)
-            .with_all_available_metadata()
-            .with_constructor_services(&[])
-            .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
-            .with_transport_extensions(&[])
-            .materialize()
-            .capability_keys()
-            .collect::<Vec<_>>()
-    );
-    assert!(
-        web_artifact_contract(&[], &[TransportCompiledExtensionKey::Editor])
-            .capability_keys()
-            .any(|capability| capability == CapabilityKey::Editor)
-    );
 }
 
 #[test]

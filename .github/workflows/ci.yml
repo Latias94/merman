@@ -435,15 +435,22 @@ jobs:
       - name: Test external Cargo feature unification contract
         if: matrix.parity
         run: |
+          ambient_core_features="merman-bindings-core/analysis,merman-bindings-core/ascii,merman-bindings-core/jpeg,merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-elk,merman-bindings-core/math,merman-bindings-core/pdf,merman-bindings-core/png,merman-bindings-core/svg,merman-bindings-core/system-clock,merman-bindings-core/system-random,merman-bindings-core/system-timezone"
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
             --lib --cargo-quiet \
             -E 'test(render_and_layout_entry_points_report_missing_svg_capability) | test(ascii_entry_point_reports_missing_ascii_feature) | test(analysis_entry_points_report_missing_analysis_feature)'
-          cargo nextest run --locked -p merman-ffi --no-default-features \
+          cargo nextest run --locked -p merman-ffi -p merman-bindings-core \
+            --no-default-features --features "$ambient_core_features" \
             --lib --cargo-quiet \
-            -E 'test(metadata_collect_returns_owned_catalogs_and_typed_failures) | test(svg_operation_follows_the_resolved_dependency_surface_and_owns_its_result)'
-          cargo nextest run --locked -p merman-uniffi --no-default-features \
+            -E 'package(merman-ffi) & (test(metadata_collect_returns_owned_catalogs_and_typed_failures) | test(runtime_catalog_is_the_flat_artifact_owned_contract) | test(svg_operation_follows_the_ffi_feature_surface_and_owns_its_result))'
+          cargo nextest run --locked -p merman-uniffi -p merman-bindings-core \
+            --no-default-features --features "$ambient_core_features" \
             --lib --cargo-quiet \
-            -E 'test(engine_exposes_metadata) | test(engine_render_svg_matches_the_resolved_transport_surface)'
+            -E 'package(merman-uniffi) & (test(engine_exposes_metadata) | test(engine_render_svg_matches_the_uniffi_feature_surface))'
+          cargo nextest run --locked -p merman-wasm -p merman-bindings-core \
+            --no-default-features --features "$ambient_core_features" \
+            --lib --cargo-quiet \
+            -E 'package(merman-wasm) & test(runtime_catalog_follows_the_wasm_feature_surface_and_local_relations)'
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
             --features merman-bindings-core/svg,merman/layout-cytoscape,merman/layout-elk,merman/math,merman/system-timing \
             --lib --cargo-quiet

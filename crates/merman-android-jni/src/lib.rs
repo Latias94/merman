@@ -18,8 +18,7 @@ use jni::{
 };
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
-    BindingError, BindingOperationRequest, BindingOperationResult, BindingTransportKey,
-    ValidatedArtifactContract, full_native_artifact_contract,
+    BindingError, BindingOperationRequest, BindingOperationResult, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{BindingIconRegistry, BindingStatus, IconPack, build_icon_registry};
@@ -100,7 +99,7 @@ fn next_jni_engine_token(last_token: u64) -> Result<u64, BindingError> {
 }
 
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
-    full_native_artifact_contract(BindingTransportKey::AndroidJni);
+    merman_bindings_core::native_sdk_artifact_contract!(AndroidJni);
 
 fn android_artifact_contract() -> &'static ValidatedArtifactContract {
     &ARTIFACT_CONTRACT

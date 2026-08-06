@@ -1611,11 +1611,11 @@ mod tests {
 
     #[test]
     fn explicit_native_policy_follows_the_default_artifact_exposure() {
+        let contract = crate::artifact_contract::default_artifact_contract();
         assert_eq!(
-            crate::artifact_contract::DEFAULT_RUNTIME_POLICY,
+            contract.runtime_policy_exposure(),
             crate::RuntimePolicyExposure::BindingOptions
         );
-        let contract = crate::artifact_contract::default_artifact_contract();
         let capabilities = contract.runtime_capabilities();
         let missing_adapter = contract
             .validate_native_runtime_policy()

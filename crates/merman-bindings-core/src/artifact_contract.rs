@@ -23,7 +23,9 @@ enum StaticMetadataSelection {
 ///
 /// The declaration contains no raw capability or operation IDs and can live in a `const` or
 /// `static`. [`Self::materialize`] verifies and produces the immutable
-/// [`ValidatedArtifactContract`] snapshot during constant evaluation.
+/// [`ValidatedArtifactContract`] snapshot during constant evaluation. Feature-gated selections
+/// must be declared by the transport crate that owns the artifact; Cargo may unify this crate's
+/// dependency features without enabling the corresponding public transport feature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArtifactContractSpec {
     target: TargetKey,
@@ -46,52 +48,82 @@ const RUNTIME_POLICY_CONFIGURED: u8 = 1 << 4;
 const TRANSPORT_EXTENSIONS_CONFIGURED: u8 = 1 << 5;
 const SYSTEM_ADAPTERS_CONFIGURED: u8 = 1 << 6;
 
-const NODE_STATIC_SVG_CAPABILITIES: &[CapabilityKey] = &[
-    #[cfg(feature = "layout-cytoscape")]
-    CapabilityKey::LayoutCytoscape,
-    #[cfg(feature = "layout-elk")]
-    CapabilityKey::LayoutElk,
-    #[cfg(feature = "math")]
-    CapabilityKey::Math,
-];
-const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
-    #[cfg(feature = "svg")]
-    OperationKey::LayoutJson,
-    OperationKey::SemanticJson,
-    #[cfg(feature = "svg")]
-    OperationKey::Svg,
-    #[cfg(feature = "svg")]
-    OperationKey::SvgPlanJson,
-];
-const WEB_OPERATIONS: &[OperationKey] = &[
-    #[cfg(feature = "analysis")]
-    OperationKey::AnalysisFactsJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::AnalysisJson,
-    #[cfg(feature = "ascii")]
-    OperationKey::Ascii,
-    #[cfg(feature = "analysis")]
-    OperationKey::DocumentAnalysisFactsJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::DocumentAnalysisJson,
-    #[cfg(feature = "svg")]
-    OperationKey::LayoutJson,
-    OperationKey::SemanticJson,
-    #[cfg(feature = "svg")]
-    OperationKey::Svg,
-    #[cfg(feature = "svg")]
-    OperationKey::SvgPlanJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::ValidationJson,
-];
-const WEB_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
-    #[cfg(feature = "layout-cytoscape")]
-    CapabilityKey::LayoutCytoscape,
-    #[cfg(feature = "layout-elk")]
-    CapabilityKey::LayoutElk,
-    #[cfg(feature = "math")]
-    CapabilityKey::Math,
-];
+/// Materializes Merman's maintained native SDK profile using the calling crate's features.
+///
+/// The fixed transport arms intentionally keep Cargo feature selection at the artifact owner.
+/// Dependency feature unification may widen what bindings-core compiled, but cannot widen the
+/// operations, services, or adapters selected by this macro expansion.
+#[macro_export]
+macro_rules! native_sdk_artifact_contract {
+    ($transport:ident $(,)?) => {{
+        const TRANSPORT: $crate::BindingTransportKey = $crate::BindingTransportKey::$transport;
+        const _: () = match TRANSPORT {
+            $crate::BindingTransportKey::AndroidJni
+            | $crate::BindingTransportKey::NativeC
+            | $crate::BindingTransportKey::Rust
+            | $crate::BindingTransportKey::UniFfi => {}
+            _ => panic!("native SDK profile requires a maintained native transport"),
+        };
+        const OPERATIONS: &[$crate::OperationKey] = &[
+            #[cfg(feature = "analysis")]
+            $crate::OperationKey::AnalysisFactsJson,
+            #[cfg(feature = "analysis")]
+            $crate::OperationKey::AnalysisJson,
+            #[cfg(feature = "ascii")]
+            $crate::OperationKey::Ascii,
+            #[cfg(feature = "analysis")]
+            $crate::OperationKey::DocumentAnalysisFactsJson,
+            #[cfg(feature = "analysis")]
+            $crate::OperationKey::DocumentAnalysisJson,
+            #[cfg(feature = "jpeg")]
+            $crate::OperationKey::Jpeg,
+            #[cfg(feature = "svg")]
+            $crate::OperationKey::LayoutJson,
+            #[cfg(feature = "pdf")]
+            $crate::OperationKey::Pdf,
+            #[cfg(feature = "png")]
+            $crate::OperationKey::Png,
+            $crate::OperationKey::SemanticJson,
+            #[cfg(feature = "svg")]
+            $crate::OperationKey::Svg,
+            #[cfg(feature = "svg")]
+            $crate::OperationKey::SvgPlanJson,
+            #[cfg(feature = "analysis")]
+            $crate::OperationKey::ValidationJson,
+        ];
+        const SUPPLEMENTAL_CAPABILITIES: &[$crate::CapabilityKey] = &[
+            #[cfg(feature = "layout-cytoscape")]
+            $crate::CapabilityKey::LayoutCytoscape,
+            #[cfg(feature = "layout-elk")]
+            $crate::CapabilityKey::LayoutElk,
+            #[cfg(feature = "math")]
+            $crate::CapabilityKey::Math,
+        ];
+        const CONSTRUCTOR_SERVICES: &[$crate::ConstructorServiceKey] = &[
+            #[cfg(feature = "svg")]
+            $crate::ConstructorServiceKey::HostTextMeasurement,
+            #[cfg(feature = "svg")]
+            $crate::ConstructorServiceKey::IconRegistry,
+        ];
+        const SYSTEM_ADAPTERS: &[$crate::CapabilityKey] = &[
+            #[cfg(feature = "system-clock")]
+            $crate::CapabilityKey::SystemClock,
+            #[cfg(feature = "system-random")]
+            $crate::CapabilityKey::SystemRandom,
+            #[cfg(feature = "system-timezone")]
+            $crate::CapabilityKey::SystemTimezone,
+        ];
+
+        $crate::ArtifactContractSpec::new($crate::TargetKey::Native, TRANSPORT)
+            .with_operations(OPERATIONS)
+            .with_supplemental_capabilities(SUPPLEMENTAL_CAPABILITIES)
+            .with_all_available_metadata()
+            .with_constructor_services(CONSTRUCTOR_SERVICES)
+            .with_system_adapters(SYSTEM_ADAPTERS)
+            .with_runtime_policy_exposure($crate::RuntimePolicyExposure::BindingOptions)
+            .materialize()
+    }};
+}
 
 impl ArtifactContractSpec {
     #[must_use]
@@ -304,41 +336,6 @@ impl ArtifactContractSpec {
             runtime_policy: self.runtime_policy,
         }
     }
-}
-
-/// Materializes the package-owned private Node static-SVG artifact contract.
-///
-/// Keeping this typed recipe in bindings-core gives the Rust transport and host-language
-/// generators one authority for capability, operation, metadata, option, and provider discovery.
-#[must_use]
-pub const fn node_static_svg_artifact_contract(target: TargetKey) -> ValidatedArtifactContract {
-    ArtifactContractSpec::new(target, crate::BindingTransportKey::Node)
-        .with_operations(NODE_STATIC_SVG_OPERATIONS)
-        .with_supplemental_capabilities(NODE_STATIC_SVG_CAPABILITIES)
-        .with_all_available_metadata()
-        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
-        .materialize()
-}
-
-/// Materializes the shared Web/WASM artifact recipe.
-///
-/// Binding-core owns the feature-gated operation and supplemental capability selection. The
-/// transport crate supplies only constructor services it actually implements for the current
-/// target and typed transport extensions such as the editor facade. Extension capabilities are
-/// exposed by construction, so callers cannot compile and advertise them through separate lists.
-#[must_use]
-pub const fn web_artifact_contract(
-    constructor_services: &'static [ConstructorServiceKey],
-    transport_extensions: &'static [TransportCompiledExtensionKey],
-) -> ValidatedArtifactContract {
-    ArtifactContractSpec::new(TargetKey::Web, BindingTransportKey::Web)
-        .with_operations(WEB_OPERATIONS)
-        .with_supplemental_capabilities(WEB_SUPPLEMENTAL_CAPABILITIES)
-        .with_all_available_metadata()
-        .with_constructor_services(constructor_services)
-        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
-        .with_transport_extensions(transport_extensions)
-        .materialize()
 }
 
 const fn transport_extension_bits(extensions: &[TransportCompiledExtensionKey]) -> u64 {
@@ -876,89 +873,8 @@ impl ValidatedArtifactContract {
 
 static DEFAULT_ARTIFACT_CONTRACT: OnceLock<Arc<ValidatedArtifactContract>> = OnceLock::new();
 
-const FULL_NATIVE_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
-    #[cfg(feature = "svg")]
-    ConstructorServiceKey::HostTextMeasurement,
-    #[cfg(feature = "svg")]
-    ConstructorServiceKey::IconRegistry,
-];
-const FULL_NATIVE_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
-    #[cfg(feature = "system-clock")]
-    CapabilityKey::SystemClock,
-    #[cfg(feature = "system-random")]
-    CapabilityKey::SystemRandom,
-    #[cfg(feature = "system-timezone")]
-    CapabilityKey::SystemTimezone,
-];
-const FULL_NATIVE_OPERATIONS: &[OperationKey] = &[
-    #[cfg(feature = "analysis")]
-    OperationKey::AnalysisFactsJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::AnalysisJson,
-    #[cfg(feature = "ascii")]
-    OperationKey::Ascii,
-    #[cfg(feature = "analysis")]
-    OperationKey::DocumentAnalysisFactsJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::DocumentAnalysisJson,
-    #[cfg(feature = "jpeg")]
-    OperationKey::Jpeg,
-    #[cfg(feature = "svg")]
-    OperationKey::LayoutJson,
-    #[cfg(feature = "pdf")]
-    OperationKey::Pdf,
-    #[cfg(feature = "png")]
-    OperationKey::Png,
-    OperationKey::SemanticJson,
-    #[cfg(feature = "svg")]
-    OperationKey::Svg,
-    #[cfg(feature = "svg")]
-    OperationKey::SvgPlanJson,
-    #[cfg(feature = "analysis")]
-    OperationKey::ValidationJson,
-];
-const FULL_NATIVE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
-    #[cfg(feature = "layout-cytoscape")]
-    CapabilityKey::LayoutCytoscape,
-    #[cfg(feature = "layout-elk")]
-    CapabilityKey::LayoutElk,
-    #[cfg(feature = "math")]
-    CapabilityKey::Math,
-];
-pub(crate) const DEFAULT_RUNTIME_POLICY: RuntimePolicyExposure =
-    RuntimePolicyExposure::BindingOptions;
-
-/// Materializes the shared full native SDK surface for one maintained native transport.
-///
-/// C, UniFFI, Android JNI, and the Rust facade intentionally expose the same compiled operation,
-/// metadata, option, constructor-service, and system-adapter selection. Keeping the recipe here
-/// prevents transport crates and host-language generators from growing parallel handwritten
-/// capability vocabularies.
-#[must_use]
-pub const fn full_native_artifact_contract(
-    transport: BindingTransportKey,
-) -> ValidatedArtifactContract {
-    match transport {
-        BindingTransportKey::AndroidJni
-        | BindingTransportKey::NativeC
-        | BindingTransportKey::Rust
-        | BindingTransportKey::UniFfi => {}
-        BindingTransportKey::Node | BindingTransportKey::Typst | BindingTransportKey::Web => {
-            panic!("transport is not a full native SDK facade")
-        }
-    }
-    ArtifactContractSpec::new(TargetKey::Native, transport)
-        .with_operations(FULL_NATIVE_OPERATIONS)
-        .with_supplemental_capabilities(FULL_NATIVE_SUPPLEMENTAL_CAPABILITIES)
-        .with_all_available_metadata()
-        .with_constructor_services(FULL_NATIVE_CONSTRUCTOR_SERVICES)
-        .with_system_adapters(FULL_NATIVE_SYSTEM_ADAPTERS)
-        .with_runtime_policy_exposure(DEFAULT_RUNTIME_POLICY)
-        .materialize()
-}
-
 pub(crate) const DEFAULT_ARTIFACT_SNAPSHOT: ValidatedArtifactContract =
-    full_native_artifact_contract(BindingTransportKey::Rust);
+    crate::native_sdk_artifact_contract!(Rust);
 
 pub(crate) fn default_artifact_contract() -> Arc<ValidatedArtifactContract> {
     Arc::clone(DEFAULT_ARTIFACT_CONTRACT.get_or_init(|| Arc::new(DEFAULT_ARTIFACT_SNAPSHOT)))

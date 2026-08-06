@@ -6,8 +6,9 @@
 
 use crate::XtaskError;
 use merman_bindings_core::{
-    BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract, RuntimeResourceContract,
-    binding_resource_contract, web_artifact_contract,
+    ArtifactContractSpec, BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract,
+    BindingTransportKey, CapabilityKey, OperationKey, RuntimePolicyExposure,
+    RuntimeResourceContract, TargetKey, binding_resource_contract,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -25,6 +26,23 @@ const FLUTTER_OUTPUT: &str = "platforms/flutter/lib/src/generated/resource_optio
 const SWIFT_OUTPUT: &str = "platforms/apple/Sources/Merman/Generated/MermanResourceContract.swift";
 // `generate_python_package` exclusively owns the package-local `_resource_options.py` copy.
 const UNIFFI_PYTHON_TEMPLATE_OUTPUT: &str = "crates/merman-uniffi/python/resource_options.py";
+const FULL_WEB_OPERATIONS: &[OperationKey] = &[
+    OperationKey::AnalysisFactsJson,
+    OperationKey::AnalysisJson,
+    OperationKey::Ascii,
+    OperationKey::DocumentAnalysisFactsJson,
+    OperationKey::DocumentAnalysisJson,
+    OperationKey::LayoutJson,
+    OperationKey::SemanticJson,
+    OperationKey::Svg,
+    OperationKey::SvgPlanJson,
+    OperationKey::ValidationJson,
+];
+const FULL_WEB_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    CapabilityKey::LayoutCytoscape,
+    CapabilityKey::LayoutElk,
+    CapabilityKey::Math,
+];
 const DART_RESERVED_WORDS: &[&str] = &[
     "abstract",
     "as",
@@ -489,7 +507,12 @@ fn generated_preamble(comment: &str) -> String {
 
 fn web_resource_contract() -> RuntimeResourceContract {
     const WEB_CONTRACT: merman_bindings_core::ValidatedArtifactContract =
-        web_artifact_contract(&[], &[]);
+        ArtifactContractSpec::new(TargetKey::Web, BindingTransportKey::Web)
+            .with_operations(FULL_WEB_OPERATIONS)
+            .with_supplemental_capabilities(FULL_WEB_SUPPLEMENTAL_CAPABILITIES)
+            .with_all_available_metadata()
+            .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+            .materialize();
 
     WEB_CONTRACT.runtime_catalog(0).resources
 }

@@ -6,8 +6,9 @@
 //! classification are delegated to `merman-bindings-core`.
 
 use merman_bindings_core::{
-    BindingError, BindingOperationRequest, RuntimeCatalog, TransportCompiledExtensionKey,
-    ValidatedArtifactContract, web_artifact_contract,
+    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingTransportKey,
+    CapabilityKey, ConstructorServiceKey, OperationKey, RuntimeCatalog, RuntimePolicyExposure,
+    TargetKey, TransportCompiledExtensionKey, ValidatedArtifactContract,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -36,16 +37,54 @@ use serde::Deserialize;
 /// This is independent from the native C ABI and the Typst plugin ABI. It changes when the
 /// JavaScript/WASM export or runtime-contract wire shape becomes incompatible.
 pub const WASM_TRANSPORT_API_VERSION: u32 = 3;
+const WASM_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson,
+    #[cfg(feature = "ascii")]
+    OperationKey::Ascii,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisJson,
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::ValidationJson,
+];
+const WASM_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
 const WASM_TRANSPORT_EXTENSIONS: &[TransportCompiledExtensionKey] = &[
     #[cfg(feature = "editor")]
     TransportCompiledExtensionKey::Editor,
 ];
-const WASM_CONSTRUCTOR_SERVICES: &[merman_bindings_core::ConstructorServiceKey] = &[
+const WASM_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
     #[cfg(all(feature = "svg", target_arch = "wasm32"))]
-    merman_bindings_core::ConstructorServiceKey::HostTextMeasurement,
+    ConstructorServiceKey::HostTextMeasurement,
 ];
+
+// Keep feature selection in the transport owner. Dependency features may be unified by Cargo.
 static ARTIFACT_CONTRACT: ValidatedArtifactContract =
-    web_artifact_contract(WASM_CONSTRUCTOR_SERVICES, WASM_TRANSPORT_EXTENSIONS);
+    ArtifactContractSpec::new(TargetKey::Web, BindingTransportKey::Web)
+        .with_operations(WASM_OPERATIONS)
+        .with_supplemental_capabilities(WASM_SUPPLEMENTAL_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_constructor_services(WASM_CONSTRUCTOR_SERVICES)
+        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+        .with_transport_extensions(WASM_TRANSPORT_EXTENSIONS)
+        .materialize();
 
 fn wasm_artifact_contract() -> &'static ValidatedArtifactContract {
     &ARTIFACT_CONTRACT
@@ -253,13 +292,24 @@ pub fn presentation_catalog() -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = asciiSupportedDiagrams)]
 pub fn ascii_supported_diagrams() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(merman_bindings_core::ascii_supported_diagrams())
+    serde_wasm_bindgen::to_value(wasm_ascii_supported_diagrams())
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
 #[wasm_bindgen(js_name = asciiCapabilities)]
 pub fn ascii_capabilities() -> Result<JsValue, JsValue> {
     json_value_result(wasm_artifact_contract().metadata_json("ascii-capabilities"))
+}
+
+fn wasm_ascii_supported_diagrams() -> &'static [&'static str] {
+    if wasm_artifact_contract()
+        .runtime_capabilities()
+        .has_capability("ascii")
+    {
+        merman_bindings_core::ascii_supported_diagrams()
+    } else {
+        &[]
+    }
 }
 
 fn options_bytes(options_json: Option<&str>) -> &[u8] {
@@ -869,7 +919,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_catalog_tracks_the_resolved_dependency_surface_and_local_relations() {
+    fn runtime_catalog_follows_the_wasm_feature_surface_and_local_relations() {
         let catalog = wasm_runtime_catalog();
         assert_eq!(
             catalog
@@ -891,6 +941,10 @@ mod tests {
         assert_eq!(
             capabilities.has_capability("ascii"),
             cfg!(feature = "ascii")
+        );
+        assert_eq!(
+            wasm_ascii_supported_diagrams().is_empty(),
+            !cfg!(feature = "ascii")
         );
         assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
         #[cfg(feature = "svg")]
