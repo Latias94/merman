@@ -96,6 +96,7 @@ class RevisionMeasurementCleanupTests(unittest.TestCase):
                 self.assertEqual(kwargs["output_root"], output_root)
                 self.assertEqual(kwargs["rust_toolchain"], {"fixture": True})
                 self.assertIs(kwargs["runner"], runner)
+                self.assertIs(kwargs["capture_size_evidence"], False)
                 artifact = output_root / "build" / "ffi-full-native" / "artifact.a"
                 artifact.parent.mkdir(parents=True)
                 artifact.write_bytes(b"large build output")

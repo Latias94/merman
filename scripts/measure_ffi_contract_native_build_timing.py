@@ -677,6 +677,7 @@ def _measure_revision(
             output_root=output_root,
             rust_toolchain=rust_toolchain,
             runner=runner,
+            capture_size_evidence=False,
         )
         if len(measurements) != 1:
             raise NativeBuildTimingError(

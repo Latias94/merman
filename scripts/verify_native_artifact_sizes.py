@@ -460,7 +460,13 @@ def capture_native_artifact_measurements(
     output_root: Path,
     rust_toolchain: Mapping[str, Any],
     runner: ProcessRunner,
+    capture_size_evidence: bool = True,
 ) -> tuple[dict[str, Any], ...]:
+    """Runs exact clean native builds and optionally captures stripped size evidence.
+
+    Timing evidence uses the same build recipe and compiler-artifact admission while deliberately
+    skipping artifact copies, stripping, and hashing that happen after Cargo has finished.
+    """
     try:
         validated_toolchain = validate_rust_toolchain(rust_toolchain)
     except FfiBaselineContractError as error:
@@ -495,8 +501,9 @@ def capture_native_artifact_measurements(
     for profile in profiles:
         target_dir = output_root / "build" / profile.label
         _prepare_empty_directory(target_dir, f"{profile.label} target directory")
-        artifact_dir = output_root / "artifacts" / profile.label
-        _prepare_empty_directory(artifact_dir, f"{profile.label} artifact directory")
+        if capture_size_evidence:
+            artifact_dir = output_root / "artifacts" / profile.label
+            _prepare_empty_directory(artifact_dir, f"{profile.label} artifact directory")
         command = native_build_command(
             profile,
             repo_root=repo_root,
@@ -517,9 +524,8 @@ def capture_native_artifact_measurements(
             target_dir=target_dir,
             host_target=host_target,
         )
-        rows = []
-        for artifact_kind, source in artifacts:
-            rows.append(
+        rows = (
+            [
                 _measure_artifact(
                     profile,
                     artifact_kind,
@@ -529,7 +535,11 @@ def capture_native_artifact_measurements(
                     strip_tool=apple_toolchain.strip,
                     runner=runner,
                 )
-            )
+                for artifact_kind, source in artifacts
+            ]
+            if capture_size_evidence
+            else []
+        )
         measurements.append(
             {
                 "profile": profile.projection(host_target),
