@@ -113,7 +113,8 @@ runners use the same fixture.
 
 | Unit | Decision | Durable boundary |
 |---|---|---|
-| U5 Flowchart work accounting | `accepted-structural` | One render-owned meter spans Dagre and ELK through neutral lower-crate controls; public causal controls are non-regressing. |
+| U5 Flowchart work accounting | `accepted-structural` | One render-owned meter spans Dagre and ELK through neutral lower-crate controls; public causal controls are recorded in [the U5 receipt](flowchart_layout_work_accounting_2026-08-04.md). |
+| Interactive layout-work policy calibration | `provisional-calibration` | A release corpus sweep, exact `W/W-1` check, and configuration boundary were recorded, but the receipt is being superseded by a release-v2 run with isolated phase/failure lanes and a true node/edge cardinality curve; see [the provisional receipt](interactive_layout_work_calibration_2026-08-07.md). |
 | U9 Sequence operation metrics | `accepted-latency`, `accepted-memory` | Reuse is private to the exact built-in carrier and semantic owner; host/custom callbacks remain unchanged. |
 | U9 Requirement Markdown width | `rejected-as-written`, `rejected-upper-bound` | The old shared change reduced opaque callbacks; a compliant owner-local variant could save at most 13.249 us / 7.379%, below admission. |
 | U9 Mindmap inline metrics | `rejected-superseded` | U8 already removed every admissible discarded built-in request; the remaining opaque callbacks are observable behavior. |

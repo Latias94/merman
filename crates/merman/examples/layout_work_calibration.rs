@@ -11,10 +11,15 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::time::Instant;
 
 const LAYOUT_WORK_LIMIT_ID: &str = "max_layout_work_units";
+const DEFAULT_BOUNDARY_MAX_NODES: usize = 16_384;
 const DEFAULT_BOUNDARY_MAX_ITERATIONS: usize = 65_536;
 const ARCHITECTURE_BOUNDARY_NODES: usize = 32;
+const MINIMUM_HEADROOM_UNITS: usize = 100_000;
+const MINIMUM_HEADROOM_PERCENT: f64 = 10.0;
+const CEILING_ROUNDING_QUANTUM: usize = 100_000;
 const EXPECTED_CALIBRATION_FEATURES: [&str; 5] = [
     "svg",
     "layout-cytoscape",
@@ -29,7 +34,9 @@ struct Arguments {
     corpus_path: PathBuf,
     json_out: PathBuf,
     expected_max_fixture: Option<String>,
+    boundary_max_nodes: usize,
     boundary_max_iterations: usize,
+    probe: Option<ProbeRequest>,
 }
 
 #[derive(Debug, Serialize)]
@@ -39,7 +46,78 @@ struct CalibrationReport {
     provenance: Provenance,
     policy: PolicyReport,
     fixture_corpus: FixtureCorpusReport,
-    boundary: BoundaryReport,
+    cardinality_boundary: CardinalityBoundaryReport,
+    configuration_boundary: ConfigurationBoundaryReport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProbeRequest {
+    input: ProbeInput,
+    stage: ProbeStage,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ProbeInput {
+    Fixture(String),
+    LinearFlowchart { nodes: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ProbeStage {
+    Semantic,
+    Layout,
+    Svg,
+}
+
+#[derive(Debug, Serialize)]
+struct SingleProbeReport {
+    schema_version: u32,
+    report_kind: &'static str,
+    authoritative_date: String,
+    provenance: Provenance,
+    policy: PolicyReport,
+    input: SingleProbeInputReport,
+    stage: ProbeStage,
+    outcome: SingleProbeOutcome,
+}
+
+#[derive(Debug, Serialize)]
+struct SingleProbeInputReport {
+    kind: &'static str,
+    name: String,
+    source_path: Option<String>,
+    nodes: Option<usize>,
+    edges: Option<usize>,
+    source_sha256: String,
+    source_bytes: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum SingleProbeOutcome {
+    AcceptedSemantic {
+        elapsed_ns: u64,
+        semantic_kind: String,
+        diagram_type: String,
+    },
+    AcceptedLayout {
+        elapsed_ns: u64,
+        layout_json_sha256: String,
+        layout_json_bytes: usize,
+    },
+    AcceptedSvg {
+        elapsed_ns: u64,
+        layout_work_units: usize,
+        svg_sha256: String,
+        svg_bytes: usize,
+        svg_elements: usize,
+    },
+    Rejected {
+        elapsed_ns: u64,
+        rejection: LimitRejection,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,8 +173,17 @@ struct FixtureCorpusReport {
     maximum_layout_work_units: usize,
     headroom_units: usize,
     headroom_percent: f64,
+    headroom_policy: HeadroomPolicyReport,
     exact_limit_check: ExactLimitCheck,
     fixtures: Vec<FixtureReport>,
+}
+
+#[derive(Debug, Serialize)]
+struct HeadroomPolicyReport {
+    minimum_headroom_units: usize,
+    minimum_headroom_percent: f64,
+    ceiling_rounding_quantum: usize,
+    calculated_minimum_ceiling: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -135,20 +222,20 @@ struct LimitRejection {
 }
 
 #[derive(Debug, Serialize)]
-struct BoundaryReport {
+struct ConfigurationBoundaryReport {
     curve: &'static str,
     search_contract: &'static str,
     fixed_nodes: usize,
     fixed_edges: usize,
     minimum_effective_iterations: usize,
     first_rejected_iterations: usize,
-    accepted: BoundaryAccepted,
-    rejected: BoundaryRejected,
-    next_rejected: BoundaryRejected,
+    accepted: ConfigurationBoundaryAccepted,
+    rejected: ConfigurationBoundaryRejected,
+    next_rejected: ConfigurationBoundaryRejected,
 }
 
 #[derive(Debug, Serialize)]
-struct BoundaryAccepted {
+struct ConfigurationBoundaryAccepted {
     configured_iterations: usize,
     source_sha256: String,
     source_bytes: usize,
@@ -159,16 +246,52 @@ struct BoundaryAccepted {
 }
 
 #[derive(Debug, Serialize)]
-struct BoundaryRejected {
+struct ConfigurationBoundaryRejected {
     configured_iterations: usize,
     source_sha256: String,
     source_bytes: usize,
     rejection: LimitRejection,
 }
 
-enum BoundaryProbe {
-    Accepted(BoundaryAccepted),
-    Rejected(BoundaryRejected),
+enum ConfigurationBoundaryProbe {
+    Accepted(ConfigurationBoundaryAccepted),
+    Rejected(ConfigurationBoundaryRejected),
+}
+
+#[derive(Debug, Serialize)]
+struct CardinalityBoundaryReport {
+    curve: &'static str,
+    search_contract: &'static str,
+    adjacent_rejection_nodes: usize,
+    accepted: CardinalityBoundaryAccepted,
+    rejected: CardinalityBoundaryRejected,
+    next_rejected: CardinalityBoundaryRejected,
+}
+
+#[derive(Debug, Serialize)]
+struct CardinalityBoundaryAccepted {
+    nodes: usize,
+    edges: usize,
+    source_sha256: String,
+    source_bytes: usize,
+    layout_work_units: usize,
+    svg_sha256: String,
+    svg_bytes: usize,
+    svg_elements: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct CardinalityBoundaryRejected {
+    nodes: usize,
+    edges: usize,
+    source_sha256: String,
+    source_bytes: usize,
+    rejection: LimitRejection,
+}
+
+enum CardinalityBoundaryProbe {
+    Accepted(CardinalityBoundaryAccepted),
+    Rejected(CardinalityBoundaryRejected),
 }
 
 #[derive(Debug, Deserialize)]
@@ -212,13 +335,29 @@ fn main() -> Result<(), Box<dyn Error>> {
         .value(ResourceLimitId::MaxLayoutWorkUnits)
         .ok_or("interactive profile must bound layout work")?;
 
+    if let Some(probe) = args.probe {
+        let report = run_single_probe(
+            &workspace_root,
+            &corpus,
+            &preflight,
+            probe,
+            policy,
+            max_layout_work_units,
+            args.authoritative_date,
+        )?;
+        write_json_report(&args.json_out, &report)?;
+        return Ok(());
+    }
+
     let fixture_corpus = calibrate_fixture_corpus(
         &corpus,
         &workspace_root,
         max_layout_work_units,
         args.expected_max_fixture.as_deref(),
     )?;
-    let boundary =
+    let cardinality_boundary =
+        find_flowchart_cardinality_boundary(max_layout_work_units, args.boundary_max_nodes)?;
+    let configuration_boundary =
         find_architecture_iteration_boundary(max_layout_work_units, args.boundary_max_iterations)?;
     let postflight = capture_source_snapshot(&workspace_root, &corpus, &owned_paths)?;
     if preflight != postflight {
@@ -241,15 +380,188 @@ fn main() -> Result<(), Box<dyn Error>> {
             max_layout_work_units,
         },
         fixture_corpus,
-        boundary,
+        cardinality_boundary,
+        configuration_boundary,
     };
 
-    if let Some(parent) = args.json_out.parent() {
+    write_json_report(&args.json_out, &report)?;
+    Ok(())
+}
+
+fn write_json_report<T: Serialize>(path: &Path, report: &T) -> Result<(), Box<dyn Error>> {
+    if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&args.json_out, serde_json::to_vec_pretty(&report)?)?;
-    println!("wrote {}", args.json_out.display());
+    fs::write(path, serde_json::to_vec_pretty(report)?)?;
+    println!("wrote {}", path.display());
     Ok(())
+}
+
+fn run_single_probe(
+    workspace_root: &Path,
+    corpus: &CorpusSelection,
+    snapshot: &SourceSnapshot,
+    request: ProbeRequest,
+    base_policy: RenderResourcePolicy,
+    default_max_layout_work_units: usize,
+    authoritative_date: String,
+) -> Result<SingleProbeReport, Box<dyn Error>> {
+    let (input, source) = resolve_probe_source(corpus, &request.input)?;
+    let (policy, expected_max, expected_override) = match request.limit {
+        Some(limit) => (
+            base_policy.with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)?,
+            limit,
+            Some(limit),
+        ),
+        None => (base_policy, default_max_layout_work_units, None),
+    };
+    let renderer = HeadlessRenderer::new().with_resource_policy(policy);
+    let outcome = match request.stage {
+        ProbeStage::Semantic => {
+            let started = Instant::now();
+            let semantic = renderer
+                .prepare_semantic_sync(&source)?
+                .ok_or("probe source was not recognized")?;
+            SingleProbeOutcome::AcceptedSemantic {
+                elapsed_ns: elapsed_ns(started),
+                semantic_kind: semantic.semantic_kind().to_string(),
+                diagram_type: semantic.metadata().diagram_type.clone(),
+            }
+        }
+        ProbeStage::Layout => {
+            let started = Instant::now();
+            match renderer.prepare_render_sync(&source) {
+                Ok(Some(prepared)) => {
+                    let layout_json = prepared.layout_json()?;
+                    let bytes = serde_json::to_vec(&layout_json)?;
+                    SingleProbeOutcome::AcceptedLayout {
+                        elapsed_ns: elapsed_ns(started),
+                        layout_json_sha256: sha256_hex(&bytes),
+                        layout_json_bytes: bytes.len(),
+                    }
+                }
+                Ok(None) => return Err("probe source was not recognized".into()),
+                Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit))) => {
+                    SingleProbeOutcome::Rejected {
+                        elapsed_ns: elapsed_ns(started),
+                        rejection: validate_layout_rejection(
+                            limit,
+                            expected_max,
+                            expected_override,
+                        )?,
+                    }
+                }
+                Err(error) => {
+                    return Err(format!("layout probe failed unexpectedly: {error}").into());
+                }
+            }
+        }
+        ProbeStage::Svg => {
+            let started = Instant::now();
+            match renderer.render_svg_report_sync(&source) {
+                Ok(Some(rendered)) => {
+                    let svg = rendered.svg();
+                    let document = roxmltree::Document::parse(svg)?;
+                    SingleProbeOutcome::AcceptedSvg {
+                        elapsed_ns: elapsed_ns(started),
+                        layout_work_units: rendered.report().layout_work_units(),
+                        svg_sha256: sha256_hex(svg.as_bytes()),
+                        svg_bytes: svg.len(),
+                        svg_elements: document
+                            .descendants()
+                            .filter(|node| node.is_element())
+                            .count(),
+                    }
+                }
+                Ok(None) => return Err("probe source was not recognized".into()),
+                Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit))) => {
+                    SingleProbeOutcome::Rejected {
+                        elapsed_ns: elapsed_ns(started),
+                        rejection: validate_layout_rejection(
+                            limit,
+                            expected_max,
+                            expected_override,
+                        )?,
+                    }
+                }
+                Err(error) => return Err(format!("SVG probe failed unexpectedly: {error}").into()),
+            }
+        }
+    };
+
+    Ok(SingleProbeReport {
+        schema_version: 1,
+        report_kind: "single_probe",
+        authoritative_date,
+        provenance: provenance(workspace_root, snapshot.clone())?,
+        policy: policy_report(&policy)?,
+        input,
+        stage: request.stage,
+        outcome,
+    })
+}
+
+fn resolve_probe_source(
+    corpus: &CorpusSelection,
+    input: &ProbeInput,
+) -> Result<(SingleProbeInputReport, String), Box<dyn Error>> {
+    match input {
+        ProbeInput::Fixture(name) => {
+            let fixture = corpus
+                .fixtures
+                .iter()
+                .find(|fixture| fixture.name == *name)
+                .ok_or_else(|| format!("probe fixture not found in corpus: {name}"))?;
+            let source = fs::read_to_string(&fixture.path)?;
+            Ok((
+                SingleProbeInputReport {
+                    kind: "fixture",
+                    name: fixture.name.clone(),
+                    source_path: Some(fixture.source_path.clone()),
+                    nodes: None,
+                    edges: None,
+                    source_sha256: sha256_hex(source.as_bytes()),
+                    source_bytes: source.len(),
+                },
+                source,
+            ))
+        }
+        ProbeInput::LinearFlowchart { nodes } => {
+            let source = linear_flowchart_source(*nodes);
+            Ok((
+                SingleProbeInputReport {
+                    kind: "linear_flowchart",
+                    name: format!("linear_flowchart_{nodes}"),
+                    source_path: None,
+                    nodes: Some(*nodes),
+                    edges: Some(nodes.saturating_sub(1)),
+                    source_sha256: sha256_hex(source.as_bytes()),
+                    source_bytes: source.len(),
+                },
+                source,
+            ))
+        }
+    }
+}
+
+fn elapsed_ns(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX)
+}
+
+fn policy_report(policy: &RenderResourcePolicy) -> Result<PolicyReport, Box<dyn Error>> {
+    Ok(PolicyReport {
+        profile: RenderResourceProfile::Interactive.id(),
+        explicit_overrides: policy
+            .explicit_overrides()
+            .map(|(id, value)| PolicyOverride {
+                id: id.as_str(),
+                value,
+            })
+            .collect(),
+        max_layout_work_units: policy
+            .value(ResourceLimitId::MaxLayoutWorkUnits)
+            .ok_or("interactive probe policy must bound layout work")?,
+    })
 }
 
 fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
@@ -261,7 +573,11 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
         .join("corpus.json");
     let mut json_out = None;
     let mut expected_max_fixture = None;
+    let mut boundary_max_nodes = DEFAULT_BOUNDARY_MAX_NODES;
     let mut boundary_max_iterations = DEFAULT_BOUNDARY_MAX_ITERATIONS;
+    let mut probe_input = None;
+    let mut probe_stage = None;
+    let mut probe_limit = None;
     let mut args = env::args().skip(1);
 
     while let Some(argument) = args.next() {
@@ -272,14 +588,39 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
             "--expected-max-fixture" => {
                 expected_max_fixture = Some(next_value(&mut args, &argument)?)
             }
+            "--boundary-max-nodes" => {
+                boundary_max_nodes = parse_positive_usize(&mut args, &argument)?
+            }
             "--boundary-max-iterations" => {
                 boundary_max_iterations = parse_positive_usize(&mut args, &argument)?
+            }
+            "--probe-fixture" => {
+                if probe_input.is_some() {
+                    return Err("only one probe input may be selected".into());
+                }
+                probe_input = Some(ProbeInput::Fixture(next_value(&mut args, &argument)?));
+            }
+            "--probe-flowchart-nodes" => {
+                if probe_input.is_some() {
+                    return Err("only one probe input may be selected".into());
+                }
+                probe_input = Some(ProbeInput::LinearFlowchart {
+                    nodes: parse_positive_usize(&mut args, &argument)?,
+                });
+            }
+            "--probe-stage" => {
+                probe_stage = Some(parse_probe_stage(&next_value(&mut args, &argument)?)?);
+            }
+            "--probe-limit" => {
+                probe_limit = Some(parse_positive_usize(&mut args, &argument)?);
             }
             "--help" | "-h" => {
                 println!(
                     "usage: layout_work_calibration --authoritative-date YYYY-MM-DD \\
                      --json-out PATH [--corpus PATH] [--expected-max-fixture NAME] \\
-                     [--boundary-max-iterations N]"
+                     [--boundary-max-nodes N] [--boundary-max-iterations N] \\
+                     [--probe-fixture NAME | --probe-flowchart-nodes N] \\
+                     [--probe-stage semantic|layout|svg] [--probe-limit N]"
                 );
                 std::process::exit(0);
             }
@@ -297,13 +638,29 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
         )
         .into());
     }
+    if boundary_max_nodes < 2 {
+        return Err("--boundary-max-nodes must be at least 2".into());
+    }
+    let probe = match (probe_input, probe_stage, probe_limit) {
+        (None, None, None) => None,
+        (Some(input), Some(stage), limit) => Some(ProbeRequest {
+            input,
+            stage,
+            limit,
+        }),
+        (None, Some(_), _) => return Err("--probe-stage requires a probe input".into()),
+        (Some(_), None, _) => return Err("a probe input requires --probe-stage".into()),
+        (None, None, Some(_)) => return Err("--probe-limit requires a probe input".into()),
+    };
 
     Ok(Arguments {
         authoritative_date,
         corpus_path,
         json_out,
         expected_max_fixture,
+        boundary_max_nodes,
         boundary_max_iterations,
+        probe,
     })
 }
 
@@ -327,6 +684,15 @@ fn parse_positive_usize(
         return Err(format!("{flag} must be positive").into());
     }
     Ok(parsed)
+}
+
+fn parse_probe_stage(value: &str) -> Result<ProbeStage, Box<dyn Error>> {
+    match value {
+        "semantic" => Ok(ProbeStage::Semantic),
+        "layout" => Ok(ProbeStage::Layout),
+        "svg" => Ok(ProbeStage::Svg),
+        _ => Err(format!("unknown --probe-stage value `{value}`").into()),
+    }
 }
 
 fn validate_authoritative_date(value: &str) -> Result<(), Box<dyn Error>> {
@@ -554,6 +920,21 @@ fn calibrate_fixture_corpus(
     }
     let headroom_units = max_layout_work_units - maximum.layout_work_units;
     let headroom_percent = headroom_units as f64 * 100.0 / maximum.layout_work_units as f64;
+    let required_with_minimum = maximum
+        .layout_work_units
+        .checked_add(MINIMUM_HEADROOM_UNITS)
+        .ok_or("headroom policy overflow")?;
+    let calculated_minimum_ceiling =
+        round_up_to_quantum(required_with_minimum, CEILING_ROUNDING_QUANTUM)?;
+    if max_layout_work_units != calculated_minimum_ceiling
+        || headroom_units < MINIMUM_HEADROOM_UNITS
+        || headroom_percent < MINIMUM_HEADROOM_PERCENT
+    {
+        return Err(format!(
+            "interactive ceiling {max_layout_work_units} does not satisfy the registered headroom policy: minimum_units={MINIMUM_HEADROOM_UNITS}, minimum_percent={MINIMUM_HEADROOM_PERCENT}, calculated_minimum_ceiling={calculated_minimum_ceiling}, observed_headroom_units={headroom_units}, observed_headroom_percent={headroom_percent:.6}"
+        )
+        .into());
+    }
     let maximum_input = corpus
         .fixtures
         .iter()
@@ -571,9 +952,28 @@ fn calibrate_fixture_corpus(
         maximum_layout_work_units: maximum.layout_work_units,
         headroom_units,
         headroom_percent,
+        headroom_policy: HeadroomPolicyReport {
+            minimum_headroom_units: MINIMUM_HEADROOM_UNITS,
+            minimum_headroom_percent: MINIMUM_HEADROOM_PERCENT,
+            ceiling_rounding_quantum: CEILING_ROUNDING_QUANTUM,
+            calculated_minimum_ceiling,
+        },
         exact_limit_check,
         fixtures,
     })
+}
+
+fn round_up_to_quantum(value: usize, quantum: usize) -> Result<usize, Box<dyn Error>> {
+    if quantum == 0 {
+        return Err("headroom rounding quantum must be positive".into());
+    }
+    let remainder = value % quantum;
+    if remainder == 0 {
+        return Ok(value);
+    }
+    value
+        .checked_add(quantum - remainder)
+        .ok_or_else(|| "headroom rounding overflow".into())
 }
 
 fn verify_exact_work_limit(
@@ -687,17 +1087,145 @@ fn validate_layout_rejection(
     })
 }
 
+fn find_flowchart_cardinality_boundary(
+    max_layout_work_units: usize,
+    boundary_max_nodes: usize,
+) -> Result<CardinalityBoundaryReport, Box<dyn Error>> {
+    let renderer =
+        HeadlessRenderer::new().with_resource_profile(RenderResourceProfile::Interactive);
+    let mut accepted_nodes = 1usize;
+    match probe_linear_flowchart(&renderer, accepted_nodes, max_layout_work_units)? {
+        CardinalityBoundaryProbe::Accepted(_) => {}
+        CardinalityBoundaryProbe::Rejected(_) => {
+            return Err("single-node Flowchart must be accepted".into());
+        }
+    }
+
+    let mut rejected_nodes = 2usize;
+    while let CardinalityBoundaryProbe::Accepted(_) =
+        probe_linear_flowchart(&renderer, rejected_nodes, max_layout_work_units)?
+    {
+        accepted_nodes = rejected_nodes;
+        rejected_nodes = rejected_nodes
+            .checked_mul(2)
+            .ok_or("Flowchart boundary node count overflow")?;
+        if rejected_nodes > boundary_max_nodes {
+            return Err(format!(
+                "no Flowchart layout-work rejection found by {boundary_max_nodes} nodes"
+            )
+            .into());
+        }
+    }
+
+    while accepted_nodes + 1 < rejected_nodes {
+        let midpoint = accepted_nodes + (rejected_nodes - accepted_nodes) / 2;
+        match probe_linear_flowchart(&renderer, midpoint, max_layout_work_units)? {
+            CardinalityBoundaryProbe::Accepted(_) => accepted_nodes = midpoint,
+            CardinalityBoundaryProbe::Rejected(_) => rejected_nodes = midpoint,
+        }
+    }
+
+    let accepted = match probe_linear_flowchart(&renderer, accepted_nodes, max_layout_work_units)? {
+        CardinalityBoundaryProbe::Accepted(accepted) => accepted,
+        CardinalityBoundaryProbe::Rejected(_) => {
+            return Err("Flowchart boundary accepted point became rejected".into());
+        }
+    };
+    let rejected = match probe_linear_flowchart(&renderer, rejected_nodes, max_layout_work_units)? {
+        CardinalityBoundaryProbe::Rejected(rejected) => rejected,
+        CardinalityBoundaryProbe::Accepted(_) => {
+            return Err("Flowchart boundary rejected point became accepted".into());
+        }
+    };
+    let next_nodes = rejected_nodes
+        .checked_add(1)
+        .ok_or("Flowchart boundary node count overflow")?;
+    let next_rejected = match probe_linear_flowchart(&renderer, next_nodes, max_layout_work_units)?
+    {
+        CardinalityBoundaryProbe::Rejected(rejected) => rejected,
+        CardinalityBoundaryProbe::Accepted(_) => {
+            return Err("Flowchart boundary was not monotonic at the adjacent point".into());
+        }
+    };
+
+    Ok(CardinalityBoundaryReport {
+        curve: "flowchart-linear-chain-v1",
+        search_contract: "A deterministic N-node/N-1-edge linear Flowchart chain is searched by exponential bracketing and binary search. The receipt claims only this registered curve's adjacent accepted/rejected boundary; it does not generalize the result to every Flowchart topology.",
+        adjacent_rejection_nodes: rejected_nodes,
+        accepted,
+        rejected,
+        next_rejected,
+    })
+}
+
+fn probe_linear_flowchart(
+    renderer: &HeadlessRenderer,
+    nodes: usize,
+    max_layout_work_units: usize,
+) -> Result<CardinalityBoundaryProbe, Box<dyn Error>> {
+    let source = linear_flowchart_source(nodes);
+    let source_sha256 = sha256_hex(source.as_bytes());
+    let source_bytes = source.len();
+    let edges = nodes.saturating_sub(1);
+
+    match renderer.render_svg_report_sync(&source) {
+        Ok(Some(rendered)) => {
+            let svg = rendered.svg();
+            let document = roxmltree::Document::parse(svg)?;
+            Ok(CardinalityBoundaryProbe::Accepted(
+                CardinalityBoundaryAccepted {
+                    nodes,
+                    edges,
+                    source_sha256,
+                    source_bytes,
+                    layout_work_units: rendered.report().layout_work_units(),
+                    svg_sha256: sha256_hex(svg.as_bytes()),
+                    svg_bytes: svg.len(),
+                    svg_elements: document
+                        .descendants()
+                        .filter(|node| node.is_element())
+                        .count(),
+                },
+            ))
+        }
+        Ok(None) => Err("linear Flowchart was not recognized".into()),
+        Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit))) => Ok(
+            CardinalityBoundaryProbe::Rejected(CardinalityBoundaryRejected {
+                nodes,
+                edges,
+                source_sha256,
+                source_bytes,
+                rejection: validate_layout_rejection(limit, max_layout_work_units, None)?,
+            }),
+        ),
+        Err(error) => Err(format!("linear Flowchart probe failed unexpectedly: {error}").into()),
+    }
+}
+
+fn linear_flowchart_source(nodes: usize) -> String {
+    assert!(nodes > 0);
+    let mut source = String::with_capacity(nodes * 48);
+    source.push_str("flowchart LR\n");
+    for node in 0..nodes {
+        writeln!(&mut source, "  n{node}[\"Node {node}\"]").expect("write to String");
+    }
+    for node in 1..nodes {
+        writeln!(&mut source, "  n{} --> n{node}", node - 1).expect("write to String");
+    }
+    source
+}
+
 fn find_architecture_iteration_boundary(
     max_layout_work_units: usize,
     boundary_max_iterations: usize,
-) -> Result<BoundaryReport, Box<dyn Error>> {
+) -> Result<ConfigurationBoundaryReport, Box<dyn Error>> {
     let renderer =
         HeadlessRenderer::new().with_resource_profile(RenderResourceProfile::Interactive);
     let minimum_effective_iterations = ARCHITECTURE_BOUNDARY_NODES * 5;
     let mut accepted_iterations = minimum_effective_iterations;
     match probe_architecture_iterations(&renderer, accepted_iterations, max_layout_work_units)? {
-        BoundaryProbe::Accepted(_) => {}
-        BoundaryProbe::Rejected(_) => {
+        ConfigurationBoundaryProbe::Accepted(_) => {}
+        ConfigurationBoundaryProbe::Rejected(_) => {
             return Err("minimum effective Architecture iteration count must be accepted".into());
         }
     }
@@ -706,7 +1234,7 @@ fn find_architecture_iteration_boundary(
         .checked_mul(2)
         .ok_or("Architecture iteration count overflow")?
         .min(boundary_max_iterations);
-    while let BoundaryProbe::Accepted(_) =
+    while let ConfigurationBoundaryProbe::Accepted(_) =
         probe_architecture_iterations(&renderer, rejected_iterations, max_layout_work_units)?
     {
         if rejected_iterations == boundary_max_iterations {
@@ -725,24 +1253,24 @@ fn find_architecture_iteration_boundary(
     while accepted_iterations + 1 < rejected_iterations {
         let midpoint = accepted_iterations + (rejected_iterations - accepted_iterations) / 2;
         match probe_architecture_iterations(&renderer, midpoint, max_layout_work_units)? {
-            BoundaryProbe::Accepted(_) => accepted_iterations = midpoint,
-            BoundaryProbe::Rejected(_) => rejected_iterations = midpoint,
+            ConfigurationBoundaryProbe::Accepted(_) => accepted_iterations = midpoint,
+            ConfigurationBoundaryProbe::Rejected(_) => rejected_iterations = midpoint,
         }
     }
 
     let accepted =
         match probe_architecture_iterations(&renderer, accepted_iterations, max_layout_work_units)?
         {
-            BoundaryProbe::Accepted(accepted) => accepted,
-            BoundaryProbe::Rejected(_) => {
+            ConfigurationBoundaryProbe::Accepted(accepted) => accepted,
+            ConfigurationBoundaryProbe::Rejected(_) => {
                 return Err("boundary accepted point became rejected".into());
             }
         };
     let rejected =
         match probe_architecture_iterations(&renderer, rejected_iterations, max_layout_work_units)?
         {
-            BoundaryProbe::Rejected(rejected) => rejected,
-            BoundaryProbe::Accepted(_) => {
+            ConfigurationBoundaryProbe::Rejected(rejected) => rejected,
+            ConfigurationBoundaryProbe::Accepted(_) => {
                 return Err("boundary rejected point became accepted".into());
             }
         };
@@ -751,15 +1279,15 @@ fn find_architecture_iteration_boundary(
         .ok_or("Architecture iteration count overflow")?;
     let next_rejected =
         match probe_architecture_iterations(&renderer, next_iterations, max_layout_work_units)? {
-            BoundaryProbe::Rejected(rejected) => rejected,
-            BoundaryProbe::Accepted(_) => {
+            ConfigurationBoundaryProbe::Rejected(rejected) => rejected,
+            ConfigurationBoundaryProbe::Accepted(_) => {
                 return Err(
                     "Architecture iteration boundary was not monotonic after rejection".into(),
                 );
             }
         };
 
-    Ok(BoundaryReport {
+    Ok(ConfigurationBoundaryReport {
         curve: "architecture-num-iter-v1",
         search_contract: "A fixed 32-node/31-edge Architecture graph varies only configured numIter. Above the 5*nodes floor, FCoSE admission is a strictly increasing positive linear function of numIter for this fixed shape; binary search is accepted only after N-1 succeeds and both N and N+1 ceiling-reject max_layout_work_units.",
         fixed_nodes: ARCHITECTURE_BOUNDARY_NODES,
@@ -776,7 +1304,7 @@ fn probe_architecture_iterations(
     renderer: &HeadlessRenderer,
     configured_iterations: usize,
     max_layout_work_units: usize,
-) -> Result<BoundaryProbe, Box<dyn Error>> {
+) -> Result<ConfigurationBoundaryProbe, Box<dyn Error>> {
     let source = architecture_iteration_source(configured_iterations);
     let source_sha256 = sha256_hex(source.as_bytes());
     let source_bytes = source.len();
@@ -785,28 +1313,30 @@ fn probe_architecture_iterations(
         Ok(Some(rendered)) => {
             let svg = rendered.svg();
             let document = roxmltree::Document::parse(svg)?;
-            Ok(BoundaryProbe::Accepted(BoundaryAccepted {
-                configured_iterations,
-                source_sha256,
-                source_bytes,
-                layout_work_units: rendered.report().layout_work_units(),
-                svg_sha256: sha256_hex(svg.as_bytes()),
-                svg_bytes: svg.len(),
-                svg_elements: document
-                    .descendants()
-                    .filter(|node| node.is_element())
-                    .count(),
-            }))
+            Ok(ConfigurationBoundaryProbe::Accepted(
+                ConfigurationBoundaryAccepted {
+                    configured_iterations,
+                    source_sha256,
+                    source_bytes,
+                    layout_work_units: rendered.report().layout_work_units(),
+                    svg_sha256: sha256_hex(svg.as_bytes()),
+                    svg_bytes: svg.len(),
+                    svg_elements: document
+                        .descendants()
+                        .filter(|node| node.is_element())
+                        .count(),
+                },
+            ))
         }
         Ok(None) => Err("Architecture iteration probe was not recognized".into()),
-        Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit))) => {
-            Ok(BoundaryProbe::Rejected(BoundaryRejected {
+        Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit))) => Ok(
+            ConfigurationBoundaryProbe::Rejected(ConfigurationBoundaryRejected {
                 configured_iterations,
                 source_sha256,
                 source_bytes,
                 rejection: validate_layout_rejection(limit, max_layout_work_units, None)?,
-            }))
-        }
+            }),
+        ),
         Err(error) => {
             Err(format!("Architecture iteration probe failed unexpectedly: {error}").into())
         }
@@ -982,5 +1512,29 @@ mod tests {
         assert_eq!(source.matches("  service n").count(), 32);
         assert_eq!(source.matches(":R -- L:").count(), 31);
         assert_eq!(source, architecture_iteration_source(123));
+    }
+
+    #[test]
+    fn linear_flowchart_source_has_exact_cardinality() {
+        let source = linear_flowchart_source(123);
+
+        assert_eq!(source.matches("[\"Node ").count(), 123);
+        assert_eq!(source.matches(" --> ").count(), 122);
+        assert_eq!(source, linear_flowchart_source(123));
+    }
+
+    #[test]
+    fn headroom_rounding_is_checked_and_deterministic() {
+        assert_eq!(round_up_to_quantum(800_000, 100_000).unwrap(), 800_000);
+        assert_eq!(round_up_to_quantum(800_001, 100_000).unwrap(), 900_000);
+        assert!(round_up_to_quantum(usize::MAX, 100_000).is_err());
+    }
+
+    #[test]
+    fn probe_stage_accepts_only_registered_values() {
+        assert_eq!(parse_probe_stage("semantic").unwrap(), ProbeStage::Semantic);
+        assert_eq!(parse_probe_stage("layout").unwrap(), ProbeStage::Layout);
+        assert_eq!(parse_probe_stage("svg").unwrap(), ProbeStage::Svg);
+        assert!(parse_probe_stage("parse").is_err());
     }
 }

@@ -501,6 +501,23 @@ cargo bench -p merman --bench mindmap_layout_stress
 cargo nextest run -p merman-render -p merman-bindings-core
 ```
 
+Layout-work ceiling changes must additionally run the fail-closed release calibration probe against
+the closed public fixture manifest and an adjacent typed rejection boundary:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
+  --example layout_work_calibration --features complete-svg
+target/release/examples/layout_work_calibration \
+  --authoritative-date YYYY-MM-DD \
+  --corpus tools/bench/corpus.json \
+  --json-out target/bench/layout-work-calibration.json \
+  --expected-max-fixture flowchart_large \
+  --boundary-max-iterations 65536
+```
+
+The current `interactive` calibration is recorded in
+[`interactive_layout_work_calibration_2026-08-07.md`](../performance/interactive_layout_work_calibration_2026-08-07.md).
+
 For each changed budget, record the fixture/source hash, profile, explicit overrides, host target,
 peak RSS (or WASM linear memory), timeout, successful output size, and the first rejected cardinality.
 Do not infer a safe limit from a single warm render: compare cold parse, layout, SVG postprocess, and
