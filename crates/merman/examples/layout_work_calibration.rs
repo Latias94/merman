@@ -1,6 +1,7 @@
 use merman::svg::{
     HeadlessError, HeadlessRenderer, RenderError, RenderResourcePolicy, RenderResourceProfile,
     ResourceLimitCause, ResourceLimitExceeded, ResourceLimitId, ResourceLimitPhase,
+    SvgRenderOptions,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -69,6 +70,7 @@ enum ProbeStage {
     Semantic,
     Layout,
     Svg,
+    EndToEnd,
 }
 
 #[derive(Debug, Serialize)]
@@ -429,9 +431,12 @@ fn run_single_probe(
             }
         }
         ProbeStage::Layout => {
+            let semantic = renderer
+                .prepare_semantic_sync(&source)?
+                .ok_or("probe source was not recognized")?;
             let started = Instant::now();
-            match renderer.prepare_render_sync(&source) {
-                Ok(Some(prepared)) => {
+            match semantic.continue_layout() {
+                Ok(prepared) => {
                     let layout_json = prepared.layout_json()?;
                     let bytes = serde_json::to_vec(&layout_json)?;
                     SingleProbeOutcome::AcceptedLayout {
@@ -440,7 +445,6 @@ fn run_single_probe(
                         layout_json_bytes: bytes.len(),
                     }
                 }
-                Ok(None) => return Err("probe source was not recognized".into()),
                 Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit))) => {
                     SingleProbeOutcome::Rejected {
                         elapsed_ns: elapsed_ns(started),
@@ -457,6 +461,39 @@ fn run_single_probe(
             }
         }
         ProbeStage::Svg => {
+            let prepared = renderer
+                .prepare_render_sync(&source)?
+                .ok_or("probe source was not recognized")?;
+            let started = Instant::now();
+            match prepared.render_svg_report(&SvgRenderOptions::default()) {
+                Ok(rendered) => {
+                    let svg = rendered.svg();
+                    let document = roxmltree::Document::parse(svg)?;
+                    SingleProbeOutcome::AcceptedSvg {
+                        elapsed_ns: elapsed_ns(started),
+                        layout_work_units: rendered.report().layout_work_units(),
+                        svg_sha256: sha256_hex(svg.as_bytes()),
+                        svg_bytes: svg.len(),
+                        svg_elements: document
+                            .descendants()
+                            .filter(|node| node.is_element())
+                            .count(),
+                    }
+                }
+                Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit))) => {
+                    SingleProbeOutcome::Rejected {
+                        elapsed_ns: elapsed_ns(started),
+                        rejection: validate_layout_rejection(
+                            limit,
+                            expected_max,
+                            expected_override,
+                        )?,
+                    }
+                }
+                Err(error) => return Err(format!("SVG probe failed unexpectedly: {error}").into()),
+            }
+        }
+        ProbeStage::EndToEnd => {
             let started = Instant::now();
             match renderer.render_svg_report_sync(&source) {
                 Ok(Some(rendered)) => {
@@ -484,7 +521,9 @@ fn run_single_probe(
                         )?,
                     }
                 }
-                Err(error) => return Err(format!("SVG probe failed unexpectedly: {error}").into()),
+                Err(error) => {
+                    return Err(format!("end-to-end probe failed unexpectedly: {error}").into());
+                }
             }
         }
     };
@@ -620,7 +659,7 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
                      --json-out PATH [--corpus PATH] [--expected-max-fixture NAME] \\
                      [--boundary-max-nodes N] [--boundary-max-iterations N] \\
                      [--probe-fixture NAME | --probe-flowchart-nodes N] \\
-                     [--probe-stage semantic|layout|svg] [--probe-limit N]"
+                     [--probe-stage semantic|layout|svg|end-to-end] [--probe-limit N]"
                 );
                 std::process::exit(0);
             }
@@ -691,6 +730,7 @@ fn parse_probe_stage(value: &str) -> Result<ProbeStage, Box<dyn Error>> {
         "semantic" => Ok(ProbeStage::Semantic),
         "layout" => Ok(ProbeStage::Layout),
         "svg" => Ok(ProbeStage::Svg),
+        "end-to-end" => Ok(ProbeStage::EndToEnd),
         _ => Err(format!("unknown --probe-stage value `{value}`").into()),
     }
 }
@@ -1535,6 +1575,10 @@ mod tests {
         assert_eq!(parse_probe_stage("semantic").unwrap(), ProbeStage::Semantic);
         assert_eq!(parse_probe_stage("layout").unwrap(), ProbeStage::Layout);
         assert_eq!(parse_probe_stage("svg").unwrap(), ProbeStage::Svg);
+        assert_eq!(
+            parse_probe_stage("end-to-end").unwrap(),
+            ProbeStage::EndToEnd
+        );
         assert!(parse_probe_stage("parse").is_err());
     }
 }
