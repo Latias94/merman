@@ -2705,6 +2705,8 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
         changed_selection = copy.deepcopy(source)
         changed_selection["selection"]["groups"]["head"] = "render"
         changed_selection["fixtures"][0]["bytes"]["head"]["sha256"] = "b" * 64
+        changed_selection["method"]["bootstrap_seed"] = 20260806
+        changed_selection["method"]["bootstrap_resamples"] = 20_000
         compare_self._validate_reuse_comparison_contract(
             source=changed_selection,
             report=report,

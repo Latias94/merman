@@ -1281,8 +1281,6 @@ _REUSABLE_DISCOVERY_METHOD_FIELDS = (
     "absolute_threshold_ns",
     "absolute_threshold_us",
     "confidence_level",
-    "bootstrap_seed",
-    "bootstrap_resamples",
     "interval_contract",
 )
 
