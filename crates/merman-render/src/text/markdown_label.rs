@@ -1,5 +1,10 @@
 //! Mermaid HTML/XHTML label fragment helpers.
 
+use super::{
+    is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace,
+    trim_html_collapsible_ascii_whitespace,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MermaidMarkdownBlockKind {
     Paragraph,
@@ -74,7 +79,19 @@ fn mermaid_markdown_top_level_blocks(markdown: &str) -> Vec<MermaidMarkdownBlock
                         let line_start = markdown[..range.start]
                             .rfind('\n')
                             .map_or(0, |newline| newline + 1);
-                        line_start..range.end
+                        // Marked keeps an EOF whitespace-only continuation in the raw indented
+                        // code token. That spelling is observable after Mermaid switches the HTML
+                        // label to `white-space: break-spaces` (for example, Mindmap delimiter
+                        // indentation can own a final line box).
+                        let range_end = if markdown[range.end..]
+                            .chars()
+                            .all(is_html_collapsible_ascii_whitespace)
+                        {
+                            markdown.len()
+                        } else {
+                            range.end
+                        };
+                        line_start..range_end
                     } else {
                         range
                     };
@@ -116,7 +133,7 @@ fn mermaid_markdown_paragraph_to_fragment(
     }
 
     fn is_punctuation(ch: char) -> bool {
-        !ch.is_whitespace() && !ch.is_alphanumeric()
+        !is_ecmascript_whitespace(ch) && !ch.is_alphanumeric()
     }
 
     fn mermaid_delim_can_open_close(
@@ -124,8 +141,8 @@ fn mermaid_markdown_paragraph_to_fragment(
         prev: Option<char>,
         next: Option<char>,
     ) -> (bool, bool) {
-        let prev_is_ws = prev.is_none_or(|c| c.is_whitespace());
-        let next_is_ws = next.is_none_or(|c| c.is_whitespace());
+        let prev_is_ws = prev.is_none_or(is_ecmascript_whitespace);
+        let next_is_ws = next.is_none_or(is_ecmascript_whitespace);
         let prev_is_punct = prev.is_some_and(is_punctuation);
         let next_is_punct = next.is_some_and(is_punctuation);
 
@@ -393,7 +410,7 @@ fn mermaid_collapse_raw_html_label_text(markdown: &str) -> String {
     let mut out = String::with_capacity(markdown.len());
     let mut pending_space = false;
     for ch in markdown.chars() {
-        if ch.is_whitespace() {
+        if is_html_collapsible_ascii_whitespace(ch) {
             pending_space = true;
             continue;
         }
@@ -403,7 +420,7 @@ fn mermaid_collapse_raw_html_label_text(markdown: &str) -> String {
         pending_space = false;
         out.push(ch);
     }
-    out.trim().to_string()
+    trim_html_collapsible_ascii_whitespace(&out).to_string()
 }
 
 fn mermaid_markdown_to_label_fragment(
@@ -728,6 +745,12 @@ mod tests {
     fn html_label_fragment_preserves_marked_indented_code_tokens() {
         let input = "    first line\n    second line";
         assert_eq!(mermaid_markdown_to_html_label_fragment(input, true), input);
+
+        let trailing_indentation = "    first line\n    second line\n  ";
+        assert_eq!(
+            mermaid_markdown_to_html_label_fragment(trailing_indentation, true),
+            trailing_indentation
+        );
     }
 
     #[test]

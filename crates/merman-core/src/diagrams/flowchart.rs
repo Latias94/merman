@@ -1505,19 +1505,18 @@ impl FlowchartSemanticSource {
         }
 
         let mut render_nodes = Vec::with_capacity(nodes.len());
-        let mut node_render_label_sources = Vec::new();
+        let mut render_label_sources = FlowchartRenderLabelSources::default();
         for (index, node) in nodes.into_iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
             let (node, render_label_source) = flow_node_to_model(node, &meta.effective_config);
             if let Some(source) = render_label_source {
-                node_render_label_sources.push((node.id.clone(), source));
+                render_label_sources.insert_node(node.id.clone(), source);
             }
             render_nodes.push(node);
         }
         let mut render_edges = Vec::with_capacity(edges.len());
-        let mut edge_render_label_sources = Vec::new();
         for (index, edge) in edges.into_iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
@@ -1525,7 +1524,7 @@ impl FlowchartSemanticSource {
             match flow_edge_to_model(edge, meta) {
                 Ok((edge, render_label_source)) => {
                     if let Some(source) = render_label_source {
-                        edge_render_label_sources.push((edge.id.clone(), source));
+                        render_label_sources.insert_edge(edge.id.clone(), source);
                     }
                     render_edges.push(edge);
                 }
@@ -1533,14 +1532,13 @@ impl FlowchartSemanticSource {
             }
         }
         let mut render_subgraphs = Vec::with_capacity(subgraphs.len());
-        let mut subgraph_render_title_sources = Vec::with_capacity(subgraphs.len());
         for (index, subgraph) in subgraphs.into_iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
             let (subgraph, render_title_source) =
                 flow_subgraph_to_model(subgraph, &meta.effective_config);
-            subgraph_render_title_sources.push((subgraph.id.clone(), render_title_source));
+            render_label_sources.set_subgraph(subgraph.id.clone(), render_title_source);
             render_subgraphs.push(subgraph);
         }
         let mut render_tooltips = rustc_hash::FxHashMap::default();
@@ -1570,16 +1568,6 @@ impl FlowchartSemanticSource {
             tooltips: render_tooltips,
             warning_facts,
         };
-        let mut render_label_sources = FlowchartRenderLabelSources::default();
-        for (id, source) in node_render_label_sources {
-            render_label_sources.insert_node(id, source);
-        }
-        for (id, source) in edge_render_label_sources {
-            render_label_sources.insert_edge(id, source);
-        }
-        for (id, source) in subgraph_render_title_sources {
-            render_label_sources.set_subgraph(id, source);
-        }
         Ok(Ok((model, render_label_sources)))
     }
 }

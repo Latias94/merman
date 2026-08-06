@@ -19,11 +19,13 @@ use std::sync::Arc;
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds_controlled;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
-use super::{FlowEdge, FlowSubgraph, FlowchartModel};
 use super::{
-    FlowchartLabelMetricsRequest, flowchart_apply_html_node_class_box_metrics,
-    flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
-    flowchart_label_metrics_for_layout, flowchart_label_text_is_empty_for_mode,
+    FlowEdge, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources, FlowchartRenderModelRef,
+};
+use super::{
+    FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, PreparedFlowchartSvgLabel,
+    flowchart_apply_html_node_class_box_metrics, flowchart_effective_text_style_for_classes,
+    flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
 };
 
 type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
@@ -100,21 +102,6 @@ impl dugong::WorkControl for DagreOperationWorkControl {
             dugong::WorkError::Interrupted
         })
     }
-}
-
-pub(super) fn flowchart_svg_plain_computed_width_px(
-    measurer: &dyn TextMeasurer,
-    plain: &str,
-    style: &TextStyle,
-    max_width_px: Option<f64>,
-) -> f64 {
-    let wrapped_lines =
-        crate::text::wrap_svg_text_lines_by_measurement(measurer, plain, style, max_width_px, true);
-    let mut width: f64 = 0.0;
-    for line in wrapped_lines {
-        width = width.max(measurer.measure_svg_text_computed_length_px(line.trim_end(), style));
-    }
-    width
 }
 
 fn rank_dir_from_flow(direction: &str) -> RankDir {
@@ -428,11 +415,10 @@ fn merge_flowchart_self_loop_segments(
     output
 }
 
-fn edge_label_is_non_empty(edge: &FlowEdge, html_labels: bool) -> bool {
-    edge.label
-        .as_deref()
-        .map(|text| !flowchart_label_text_is_empty_for_mode(text, html_labels))
-        .unwrap_or(false)
+fn edge_label_is_non_empty(model: &FlowchartRenderModelRef<'_>, edge: &FlowEdge) -> bool {
+    model
+        .edge_label_for_render(edge)
+        .is_some_and(|text| !crate::flowchart::flowchart_label_is_empty_for_render(text))
 }
 
 fn lowest_common_parent(
@@ -1489,8 +1475,27 @@ pub(crate) fn layout_flowchart_typed(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn layout_flowchart_typed_with_work_meter(
     model: &FlowchartModel,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    work_meter: Arc<OperationWorkMeter>,
+) -> Result<FlowchartLayout> {
+    layout_flowchart_typed_with_render_labels_and_work_meter(
+        model,
+        &FlowchartRenderLabelSources::default(),
+        effective_config,
+        measurer,
+        math_renderer,
+        work_meter,
+    )
+}
+
+pub(crate) fn layout_flowchart_typed_with_render_labels_and_work_meter(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderLabelSources,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -1499,6 +1504,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
     let mut work_control = DagreOperationWorkControl::new(work_meter);
     layout_flowchart_with_model(
         model,
+        render_label_sources,
         effective_config,
         measurer,
         math_renderer,
@@ -1508,11 +1514,14 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
 
 fn layout_flowchart_with_model(
     model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderLabelSources,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_control: &mut DagreOperationWorkControl,
 ) -> Result<FlowchartLayout> {
+    let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
+    let model = &render_model;
     // Shape validation is an adapter-owned full node scan. Charge it before touching the model so
     // a low operation budget still bounds invalid inputs and preserves the old preflight's
     // resource-error precedence when the scan itself cannot be admitted.
@@ -1544,7 +1553,8 @@ fn layout_flowchart_with_model(
             continue;
         }
 
-        let helper_edges = super::flowchart_self_loop_helper_edges(e);
+        let mut helper_edges = super::flowchart_self_loop_helper_edges(e);
+        helper_edges.edge_mid.label = model.edge_label_for_render(e).map(str::to_owned);
         if self_loop_label_node_id_set.insert(helper_edges.special_id_1.clone()) {
             self_loop_label_node_ids.push(helper_edges.special_id_1.clone());
         }
@@ -1671,7 +1681,7 @@ fn layout_flowchart_with_model(
         if subgraph_ids.contains(n.id.as_str()) {
             continue;
         }
-        let raw_label = n.label.as_deref().unwrap_or(&n.id);
+        let raw_label = model.node_label_for_render(n).unwrap_or(&n.id);
         let label_type = n.label_type.as_deref().unwrap_or("text");
         let node_text_style = flowchart_effective_text_style_for_node_classes(
             node_label_base_style,
@@ -1679,32 +1689,30 @@ fn layout_flowchart_with_model(
             &n.classes,
             &n.styles,
         );
-        let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-            measurer,
-            raw_label,
-            label_type,
-            style: node_text_style.as_ref(),
-            max_width_px: Some(wrapping_width),
-            wrap_mode: node_wrap_mode,
-            config: effective_config,
-            math_renderer,
-        });
-        if node_wrap_mode == WrapMode::SvgLike
+        let use_computed_svg_width = node_wrap_mode == WrapMode::SvgLike
             && label_type != "markdown"
             && !raw_label.contains('<')
             && !raw_label.contains('>')
-            && super::is_flowchart_process_shape(n.layout_shape.as_deref().unwrap_or("squareRect"))
-        {
-            let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
-                raw_label, label_type, false,
-            );
-            metrics.width = flowchart_svg_plain_computed_width_px(
+            && super::is_flowchart_process_shape(n.layout_shape.as_deref().unwrap_or("squareRect"));
+        let mut metrics = if use_computed_svg_width {
+            PreparedFlowchartSvgLabel::new(raw_label).metrics(
                 measurer,
-                &plain,
                 node_text_style.as_ref(),
                 Some(wrapping_width),
-            );
-        }
+                FlowchartSvgWidthMode::ComputedLength,
+            )
+        } else {
+            flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+                measurer,
+                raw_label,
+                label_type,
+                style: node_text_style.as_ref(),
+                max_width_px: Some(wrapping_width),
+                wrap_mode: node_wrap_mode,
+                config: effective_config,
+                math_renderer,
+            })
+        };
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
             flowchart_apply_html_node_class_box_metrics(
                 &mut metrics,
@@ -1750,9 +1758,10 @@ fn layout_flowchart_with_model(
             &sg.classes,
             &sg.styles,
         );
+        let title = model.subgraph_title_for_render(sg);
         let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
-            raw_label: &sg.title,
+            raw_label: title,
             label_type,
             style: sg_text_style.as_ref(),
             max_width_px: Some(cluster_title_wrapping_width),
@@ -1763,7 +1772,7 @@ fn layout_flowchart_with_model(
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
             flowchart_apply_html_node_class_box_metrics(
                 &mut metrics,
-                &sg.title,
+                title,
                 label_type,
                 sg_text_style.as_ref(),
                 &model.class_defs,
@@ -2006,8 +2015,8 @@ fn layout_flowchart_with_model(
         let from = e.from.clone();
         let to = e.to.clone();
 
-        if edge_label_is_non_empty(e, edge_html_labels) {
-            let label_text = e.label.as_deref().unwrap_or_default();
+        if edge_label_is_non_empty(model, e) {
+            let label_text = model.edge_label_for_render(e).unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
             let edge_text_style = flowchart_effective_text_style_for_classes(
                 edge_label_base_style,
@@ -2155,6 +2164,7 @@ fn layout_flowchart_with_model(
     type Rect = merman_core::geom::Box2;
 
     struct ClusterTitleMetricsContext<'a> {
+        model: &'a FlowchartRenderModelRef<'a>,
         subgraphs_by_id: &'a FlowSubgraphIndex<'a>,
         class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
         measurer: &'a dyn TextMeasurer,
@@ -2171,6 +2181,7 @@ fn layout_flowchart_with_model(
         ctx: &ClusterTitleMetricsContext<'_>,
     ) -> Option<(f64, f64)> {
         let sg = ctx.subgraphs_by_id.get(id)?;
+        let title = ctx.model.subgraph_title_for_render(sg);
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
         let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
@@ -2186,7 +2197,7 @@ fn layout_flowchart_with_model(
         );
         let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
-            raw_label: &sg.title,
+            raw_label: title,
             label_type,
             style: text_style.as_ref(),
             max_width_px: title_width_limit,
@@ -2585,6 +2596,7 @@ fn layout_flowchart_with_model(
 
     {
         let title_metrics_ctx = ClusterTitleMetricsContext {
+            model,
             subgraphs_by_id: &subgraphs_by_id,
             class_defs: &model.class_defs,
             measurer,
@@ -2944,7 +2956,7 @@ fn layout_flowchart_with_model(
     work_control.charge_adapter(render_edges.len())?;
     let labeled_edges: std::collections::HashSet<&str> = render_edges
         .iter()
-        .filter(|e| edge_label_is_non_empty(e, edge_html_labels))
+        .filter(|e| edge_label_is_non_empty(model, e))
         .map(|e| e.id.as_str())
         .collect();
 
@@ -3132,6 +3144,7 @@ fn layout_flowchart_with_model(
     work_control.charge_adapter(cluster_work)?;
 
     struct ClusterRectContext<'a> {
+        model: &'a FlowchartRenderModelRef<'a>,
         subgraphs_by_id: &'a FlowSubgraphIndex<'a>,
         class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
         leaf_rects: &'a std::collections::HashMap<String, Rect>,
@@ -3253,6 +3266,7 @@ fn layout_flowchart_with_model(
             }
 
             let label_type = sg.label_type.as_deref().unwrap_or("text");
+            let title = ctx.model.subgraph_title_for_render(sg);
             let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
             let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
                 ctx.html_label_text_style
@@ -3267,7 +3281,7 @@ fn layout_flowchart_with_model(
             );
             let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
-                raw_label: &sg.title,
+                raw_label: title,
                 label_type,
                 style: text_style.as_ref(),
                 max_width_px: title_width_limit,
@@ -3406,6 +3420,7 @@ fn layout_flowchart_with_model(
     }
 
     let cluster_rect_ctx = ClusterRectContext {
+        model,
         subgraphs_by_id: &subgraphs_by_id,
         class_defs: &model.class_defs,
         leaf_rects: &leaf_rects,
@@ -3442,6 +3457,7 @@ fn layout_flowchart_with_model(
         if sg.nodes.is_empty() {
             continue;
         }
+        let title = model.subgraph_title_for_render(sg);
 
         let (rect, base_width) = if extracted_graphs.contains_key(&sg.id) {
             // For extracted (recursive) clusters, match Mermaid's `updateNodeBounds(...)` intent by
@@ -3462,7 +3478,7 @@ fn layout_flowchart_with_model(
             let rect = adjust_cluster_rect_for_title(
                 rect,
                 sg,
-                &sg.title,
+                title,
                 sg.label_type.as_deref().unwrap_or("text"),
                 false,
                 &title_adjust_ctx,
@@ -3473,7 +3489,7 @@ fn layout_flowchart_with_model(
             let rect = adjust_cluster_rect_for_title(
                 r,
                 sg,
-                &sg.title,
+                title,
                 sg.label_type.as_deref().unwrap_or("text"),
                 true,
                 &title_adjust_ctx,
@@ -3499,7 +3515,7 @@ fn layout_flowchart_with_model(
         );
         let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
-            raw_label: &sg.title,
+            raw_label: title,
             label_type,
             style: title_text_style.as_ref(),
             max_width_px: title_width_limit,
@@ -3878,7 +3894,7 @@ mod tests {
     }
 
     #[test]
-    fn dagre_html_nbsp_only_edge_labels_participate_in_layout() {
+    fn dagre_html_nbsp_only_edge_labels_respect_source_provenance() {
         let nbsp = '\u{00A0}';
         let source = format!("flowchart LR\nA -- \"&nbsp;\" --> B\nC -- \"{nbsp}\" --> D\n");
         let parsed = Engine::new()
@@ -3897,14 +3913,21 @@ mod tests {
         .expect("layout ok");
 
         assert_eq!(layout.edges.len(), 2);
-        for edge in &layout.edges {
-            let label = edge
-                .label
-                .as_ref()
-                .expect("HTML NBSP-only edge label must reach Dagre");
-            assert!(label.width > 0.0, "{label:?}");
-            assert!(label.height > 0.0, "{label:?}");
-        }
+        let entity_label = layout
+            .edges
+            .iter()
+            .find(|edge| edge.from == "A")
+            .and_then(|edge| edge.label.as_ref())
+            .expect("entity-authored NBSP label must reach Dagre");
+        assert!(entity_label.width > 0.0, "{entity_label:?}");
+        assert!(entity_label.height > 0.0, "{entity_label:?}");
+
+        let direct_label = layout
+            .edges
+            .iter()
+            .find(|edge| edge.from == "C")
+            .and_then(|edge| edge.label.as_ref());
+        assert!(direct_label.is_none(), "{direct_label:?}");
     }
 
     #[test]

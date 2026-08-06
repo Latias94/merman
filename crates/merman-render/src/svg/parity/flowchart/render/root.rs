@@ -174,14 +174,8 @@ fn flowchart_elk_edges<'a>(ctx: &'a FlowchartRenderCtx<'a>) -> Vec<&'a crate::fl
 }
 
 fn edge_label_is_empty(ctx: &FlowchartRenderCtx<'_>, edge: &crate::flowchart::FlowEdge) -> bool {
-    let label_text = edge.label.as_deref().unwrap_or_default();
-    let label_type = edge.label_type.as_deref().unwrap_or("text");
-    let label_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
-    crate::flowchart::flowchart_label_text_is_empty_for_mode(&label_plain, ctx.edge_html_labels)
-        && crate::flowchart::flowchart_label_text_is_empty_for_mode(
-            label_text,
-            ctx.edge_html_labels,
-        )
+    let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
+    crate::flowchart::flowchart_label_is_empty_for_render(label_text)
 }
 
 pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
@@ -633,20 +627,4 @@ fn initialize_flowchart_root_frame<'a>(
 
     frame.dom_order = dom_order;
     frame.initialized = true;
-}
-
-pub(super) fn flowchart_wrap_svg_text_lines(
-    measurer: &dyn TextMeasurer,
-    text: &str,
-    style: &crate::text::TextStyle,
-    max_width_px: Option<f64>,
-    break_long_words: bool,
-) -> Vec<String> {
-    crate::text::wrap_svg_text_lines_by_measurement(
-        measurer,
-        text,
-        style,
-        max_width_px,
-        break_long_words,
-    )
 }

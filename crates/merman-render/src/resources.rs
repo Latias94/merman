@@ -1,4 +1,3 @@
-use merman_core::RenderSemanticModel;
 use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
 use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
@@ -12,6 +11,7 @@ pub use merman_core::resources::{
 use merman_core::resources::{
     InputResourceLimitExceeded, InputResourceLimitId, InputResourceLimitPhase, InputResourcePolicy,
 };
+use merman_core::{ParsedDiagramRender, RenderSemanticModel};
 
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
@@ -445,6 +445,25 @@ impl RenderResourcePolicy {
         model: &RenderSemanticModel,
     ) -> Result<(), ResourceLimitExceeded> {
         let complexity = ModelComplexity::from_render_model(model);
+        self.check_render_model_complexity(model, complexity)
+    }
+
+    pub fn check_parsed_render(
+        &self,
+        parsed: &ParsedDiagramRender,
+    ) -> Result<(), ResourceLimitExceeded> {
+        let mut complexity = ModelComplexity::from_render_model(parsed.model());
+        complexity.text_bytes = complexity
+            .text_bytes
+            .saturating_add(parsed.retained_render_context_bytes());
+        self.check_render_model_complexity(parsed.model(), complexity)
+    }
+
+    fn check_render_model_complexity(
+        &self,
+        model: &RenderSemanticModel,
+        complexity: ModelComplexity,
+    ) -> Result<(), ResourceLimitExceeded> {
         self.check_model_complexity(complexity)?;
 
         if matches!(

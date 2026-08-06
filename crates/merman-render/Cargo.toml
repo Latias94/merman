@@ -68,6 +68,7 @@ roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true
 unicode-width.workspace = true
 unicode-linebreak.workspace = true
+unicode-segmentation.workspace = true
 
 [dev-dependencies]
 futures = { workspace = true, features = ["executor"] }

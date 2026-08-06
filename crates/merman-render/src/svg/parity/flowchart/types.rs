@@ -7,6 +7,7 @@ use super::super::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
+    pub(in crate::svg::parity::flowchart) model: &'a crate::flowchart::FlowchartRenderModelRef<'a>,
     pub(in crate::svg::parity::flowchart) diagram_id: &'a str,
     pub(in crate::svg::parity::flowchart) diagram_type: &'a str,
     pub(in crate::svg::parity::flowchart) tx: f64,
@@ -20,6 +21,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(in crate::svg::parity::flowchart) node_html_labels: bool,
     pub(in crate::svg::parity::flowchart) edge_html_labels: bool,
+    pub(in crate::svg::parity::flowchart) swimlane_title_html_labels: bool,
     pub(in crate::svg::parity::flowchart) uses_elk_adapter_dom: bool,
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_border_color: String,

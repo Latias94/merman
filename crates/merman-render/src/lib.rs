@@ -342,9 +342,26 @@ fn layout_class_elk_typed_by_feature(
     })
 }
 
+#[cfg(all(test, feature = "layout-elk"))]
 pub(crate) fn layout_flowchart_typed_by_engine(
     diagram_type: &str,
     model: &FlowchartModel,
+    effective_config: &merman_core::MermaidConfig,
+    options: &LayoutExecution<'_>,
+) -> Result<model::FlowchartLayout> {
+    layout_flowchart_typed_with_render_labels_by_engine(
+        diagram_type,
+        model,
+        &merman_core::diagrams::flowchart::FlowchartRenderLabelSources::default(),
+        effective_config,
+        options,
+    )
+}
+
+pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
+    diagram_type: &str,
+    model: &FlowchartModel,
+    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
@@ -352,13 +369,15 @@ pub(crate) fn layout_flowchart_typed_by_engine(
         return layout_flowchart_elk_typed_by_feature(
             diagram_type,
             model,
+            render_label_sources,
             effective_config,
             options,
         );
     }
 
-    flowchart::layout_flowchart_typed_with_work_meter(
+    flowchart::layout_flowchart_typed_with_render_labels_and_work_meter(
         model,
+        render_label_sources,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
@@ -370,11 +389,13 @@ pub(crate) fn layout_flowchart_typed_by_engine(
 fn layout_flowchart_elk_typed_by_feature(
     _diagram_type: &str,
     model: &FlowchartModel,
+    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
-    flowchart::elk::layout_flowchart_elk_typed_with_operation_seed(
+    flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         model,
+        render_label_sources,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
@@ -387,6 +408,7 @@ fn layout_flowchart_elk_typed_by_feature(
 fn layout_flowchart_elk_typed_by_feature(
     diagram_type: &str,
     _model: &FlowchartModel,
+    _render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {

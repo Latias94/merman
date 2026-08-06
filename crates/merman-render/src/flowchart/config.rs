@@ -157,6 +157,21 @@ impl<'a> FlowchartConfigView<'a> {
             .unwrap_or(true)
     }
 
+    pub(crate) fn swimlane_title_html_labels(&self) -> bool {
+        // Mermaid 11.16's dedicated Swimlane cluster renderer bypasses the root-level setting and
+        // calls `evaluate(siteConfig.flowchart.htmlLabels)` directly.
+        match self.flowchart_config.get("htmlLabels") {
+            None => true,
+            Some(Value::Bool(false) | Value::Null) => false,
+            Some(Value::Number(value)) => value.as_f64() != Some(0.0),
+            Some(Value::String(value)) => !matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "false" | "null" | "0"
+            ),
+            Some(_) => true,
+        }
+    }
+
     pub(crate) fn node_wrap_mode(&self) -> WrapMode {
         flowchart_wrap_mode(self.node_html_labels())
     }
@@ -371,6 +386,34 @@ mod tests {
         assert!(!config.effective_html_labels());
         assert_eq!(settings.node_wrap_mode, WrapMode::HtmlLike);
         assert_eq!(settings.edge_wrap_mode, WrapMode::SvgLike);
+    }
+
+    #[test]
+    fn swimlane_title_html_labels_follow_mermaid_evaluate_semantics() {
+        for false_like in [
+            json!(false),
+            Value::Null,
+            json!(0),
+            json!(0.0),
+            json!(-0.0),
+            json!("false"),
+            json!("null"),
+            json!("0"),
+        ] {
+            let cfg = json!({ "flowchart": { "htmlLabels": false_like } });
+            assert!(
+                !FlowchartConfigView::new(&cfg).swimlane_title_html_labels(),
+                "{cfg}"
+            );
+        }
+
+        for true_like in [json!(true), json!(1), json!(-1), json!("true"), json!("1")] {
+            let cfg = json!({ "flowchart": { "htmlLabels": true_like } });
+            assert!(
+                FlowchartConfigView::new(&cfg).swimlane_title_html_labels(),
+                "{cfg}"
+            );
+        }
     }
 
     #[test]

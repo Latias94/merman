@@ -91,7 +91,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let x = layout_node.x + ctx.tx - origin_x;
     let y = layout_node.y + ctx.ty - origin_y;
 
-    if helpers::try_render_self_loop_label_placeholder(out, node_id, x, y) {
+    if helpers::try_render_self_loop_label_placeholder(out, node_id, x, y, ctx.node_html_labels) {
         return Ok(());
     }
 

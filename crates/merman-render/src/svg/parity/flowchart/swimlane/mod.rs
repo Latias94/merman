@@ -13,6 +13,7 @@ pub(super) use cluster::render_swimlane_cluster;
 pub(in crate::svg::parity) fn render_swimlane_svg_model_with_config(
     layout: &SwimlaneLayout,
     model: &crate::flowchart::FlowchartModel,
+    render_label_sources: &crate::flowchart::FlowchartRenderLabelSources,
     effective_config: &merman_core::MermaidConfig,
     diagram_type: &str,
     diagram_title: Option<&str>,
@@ -23,6 +24,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_model_with_config(
         &flowchart_layout,
         layout,
         model,
+        render_label_sources,
         effective_config,
         diagram_type,
         diagram_title,

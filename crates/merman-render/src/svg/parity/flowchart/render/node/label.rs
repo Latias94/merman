@@ -8,11 +8,10 @@ use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDe
 use crate::svg::parity::flowchart::util::{
     HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, flowchart_html_contains_img_tag,
 };
-use crate::svg::parity::flowchart::write_flowchart_svg_text;
-use crate::svg::parity::flowchart::write_flowchart_svg_text_markdown_wrapped;
+use crate::svg::parity::flowchart::{
+    write_flowchart_svg_source_word_lines, write_flowchart_svg_text_markdown_wrapped,
+};
 use crate::svg::parity::{escape_xml_display, fmt_display};
-
-use super::super::root::flowchart_wrap_svg_text_lines;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_label(
     out: &mut String,
@@ -22,8 +21,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     compiled_styles: &FlowchartCompiledStyles,
     details: &mut FlowchartRenderDetails,
 ) {
-    let label_text_plain =
-        flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
+    let prepared_svg_label = (!ctx.node_html_labels && label.label_type != "markdown")
+        .then(|| crate::flowchart::PreparedFlowchartSvgLabel::new(label.text));
+    let label_text_plain = prepared_svg_label.as_ref().map_or_else(
+        || flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels),
+        |prepared| prepared.plain_text().to_string(),
+    );
     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
         &ctx.html_label_text_style
     } else {
@@ -127,15 +130,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 Some(ctx.wrapping_width),
             );
         } else {
-            let wrapped = flowchart_wrap_svg_text_lines(
-                ctx.measurer,
-                &label_text_plain,
-                &node_text_style,
-                Some(ctx.wrapping_width),
-                true,
-            )
-            .join("\n");
-            write_flowchart_svg_text(out, &wrapped, true);
+            let wrapped = prepared_svg_label
+                .as_ref()
+                .expect("non-Markdown SVG labels are prepared before emission")
+                .wrapped_lines(
+                    ctx.measurer,
+                    &node_text_style,
+                    Some(ctx.wrapping_width),
+                    true,
+                );
+            write_flowchart_svg_source_word_lines(out, &wrapped, true);
         }
         out.push_str("</g></g></g>");
     } else {

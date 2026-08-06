@@ -3,7 +3,10 @@ use crate::config::{config_bool, value_at};
 use crate::model::{
     Bounds, RailroadDiagramLayout, RailroadElementLayout, RailroadPathLayout, RailroadRuleLayout,
 };
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{
+    TextMeasurer, TextStyle, is_ecmascript_whitespace, trim_ecmascript_whitespace,
+    trim_start_ecmascript_whitespace,
+};
 use merman_core::diagrams::railroad::{
     RailroadAstNode, RailroadDiagramRenderModel, RailroadRepeatBound, RailroadRuleModel,
 };
@@ -163,36 +166,6 @@ fn sanitize_color_value(value: Option<&serde_json::Value>, fallback: &str) -> St
         .filter(|value| is_valid_color_value(value))
         .unwrap_or(fallback)
         .to_string()
-}
-
-fn is_ecmascript_whitespace(character: char) -> bool {
-    matches!(
-        character,
-        '\u{0009}'
-            | '\u{000A}'
-            | '\u{000B}'
-            | '\u{000C}'
-            | '\u{000D}'
-            | '\u{0020}'
-            | '\u{00A0}'
-            | '\u{1680}'
-            | '\u{2000}'
-            ..='\u{200A}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202F}'
-                | '\u{205F}'
-                | '\u{3000}'
-                | '\u{FEFF}'
-    )
-}
-
-fn trim_ecmascript_whitespace(value: &str) -> &str {
-    value.trim_matches(is_ecmascript_whitespace)
-}
-
-fn trim_start_ecmascript_whitespace(value: &str) -> &str {
-    value.trim_start_matches(is_ecmascript_whitespace)
 }
 
 fn is_valid_color_value(value: &str) -> bool {

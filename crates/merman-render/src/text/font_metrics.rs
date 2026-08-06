@@ -4,8 +4,9 @@ use super::line_break::html_break_spaces_segments;
 use super::metrics::{style_requests_bold_font_weight, style_requests_italic_font_style};
 use super::{
     DeterministicTextMeasurer, FLOWCHART_DEFAULT_FONT_KEY, TextMeasurer, TextMetrics, TextStyle,
-    WrapMode, font_key_uses_courier_metrics, round_to_1_64_px,
-    svg_wrapped_first_line_bbox_height_px,
+    WrapMode, font_key_uses_courier_metrics, is_html_collapsible_ascii_whitespace,
+    round_to_1_64_px, svg_wrapped_first_line_bbox_height_px,
+    trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
 
 const MERMAID_CALCULATE_TEXT_DIMENSIONS_FALLBACK_FONT_KEY: &str =
@@ -401,10 +402,15 @@ impl VendoredFontMetricsTextMeasurer {
         }
         if let (Some(a), Some(b)) = (*prevprev, *prev) {
             if b == ' ' {
-                if !(a.is_whitespace() || ch.is_whitespace()) {
+                if !(is_html_collapsible_ascii_whitespace(a)
+                    || is_html_collapsible_ascii_whitespace(ch))
+                {
                     *em += Self::lookup_space_trigram_em(profile.space_trigrams, a, ch);
                 }
-            } else if !(a.is_whitespace() || b.is_whitespace() || ch.is_whitespace()) {
+            } else if !(is_html_collapsible_ascii_whitespace(a)
+                || is_html_collapsible_ascii_whitespace(b)
+                || is_html_collapsible_ascii_whitespace(ch))
+            {
                 *em += Self::lookup_trigram_em(profile.trigrams, a, b, ch);
             }
         }
@@ -578,7 +584,7 @@ impl VendoredFontMetricsTextMeasurer {
         font_size: f64,
     ) -> (f64, f64) {
         let profile = Self::metric_profile(table);
-        let t = text.trim_end();
+        let t = trim_end_html_collapsible_ascii_whitespace(text);
         if t.is_empty() {
             return (0.0, 0.0);
         }
@@ -586,28 +592,28 @@ impl VendoredFontMetricsTextMeasurer {
         let first = t.chars().next().unwrap_or(' ');
         let last = t.chars().last().unwrap_or(' ');
 
-        // Mermaid's SVG label renderer tokenizes whitespace into multiple inner `<tspan>` runs
-        // (one word per run, with a leading space on subsequent runs).
+        // The caller supplies a canonical Mermaid `createFormattedText` row: tokenization has
+        // already happened, words are joined by one ASCII space, and non-separator whitespace
+        // inside Markdown words remains part of that word. Model the emitted inner `<tspan>` runs
+        // without reparsing the original source here.
         //
         // These boundaries can affect shaping/kerning vs treating the text as one run, and those
         // small differences bubble into Dagre layout and viewBox parity. Mirror the upstream
         // behavior by summing per-run advances when whitespace tokenization would occur.
         let advance_px_unscaled = {
-            let words: Vec<&str> = t.split_whitespace().filter(|s| !s.is_empty()).collect();
-            if words.len() >= 2 {
-                let mut sum_px = 0.0f64;
-                for (idx, w) in words.iter().enumerate() {
-                    if idx == 0 {
-                        sum_px += Self::line_width_px(profile, w, font_size);
-                    } else {
-                        let seg = format!(" {w}");
-                        sum_px += Self::line_width_px(profile, &seg, font_size);
-                    }
-                }
-                sum_px
-            } else {
-                Self::line_width_px(profile, t, font_size)
+            let mut words = t.split(' ').filter(|word| !word.is_empty());
+            let Some(first_word) = words.next() else {
+                return (0.0, 0.0);
+            };
+            let mut sum_px = Self::line_width_px(profile, first_word, font_size);
+            for word in words {
+                sum_px += Self::line_width_chars_px(
+                    profile,
+                    std::iter::once(' ').chain(word.chars()),
+                    font_size,
+                );
             }
+            sum_px
         };
 
         let advance_px = advance_px_unscaled * table.svg_scale;
@@ -634,7 +640,7 @@ impl VendoredFontMetricsTextMeasurer {
         font_size: f64,
     ) -> (f64, f64) {
         let profile = Self::metric_profile(table);
-        let t = text.trim_end();
+        let t = trim_end_html_collapsible_ascii_whitespace(text);
         if t.is_empty() {
             return (0.0, 0.0);
         }
@@ -671,7 +677,7 @@ impl VendoredFontMetricsTextMeasurer {
         font_size: f64,
     ) -> (f64, f64) {
         let profile = Self::metric_profile(table);
-        let t = text.trim_end();
+        let t = trim_end_html_collapsible_ascii_whitespace(text);
         if t.is_empty() {
             return (0.0, 0.0);
         }
@@ -720,7 +726,7 @@ impl VendoredFontMetricsTextMeasurer {
         font_size: f64,
     ) -> (f64, f64) {
         let profile = Self::metric_profile(table);
-        let t = text.trim_end();
+        let t = trim_end_html_collapsible_ascii_whitespace(text);
         if t.is_empty() {
             return (0.0, 0.0);
         }
@@ -818,14 +824,14 @@ impl VendoredFontMetricsTextMeasurer {
                 }
 
                 let candidate = format!("{cur}{tok}");
-                let candidate_trimmed = candidate.trim_end();
+                let candidate_trimmed = trim_end_html_collapsible_ascii_whitespace(&candidate);
                 if width_fn(table, candidate_trimmed, font_size) <= w {
                     cur = candidate;
                     continue;
                 }
 
-                if !cur.trim().is_empty() {
-                    out.push(cur.trim_end().to_string());
+                if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
+                    out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
                     cur.clear();
                     tokens.push_front(tok);
                     continue;
@@ -849,8 +855,8 @@ impl VendoredFontMetricsTextMeasurer {
                 }
             }
 
-            if !cur.trim().is_empty() {
-                out.push(cur.trim_end().to_string());
+            if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
+                out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
             }
 
             if out.is_empty() {
@@ -867,14 +873,22 @@ impl VendoredFontMetricsTextMeasurer {
         }
     }
 
-    fn line_width_px(profile: FontMetricProfile<'_>, text: &str, font_size: f64) -> f64 {
+    fn line_width_chars_px(
+        profile: FontMetricProfile<'_>,
+        characters: impl IntoIterator<Item = char>,
+        font_size: f64,
+    ) -> f64 {
         let mut em = 0.0;
         let mut prevprev: Option<char> = None;
         let mut prev: Option<char> = None;
-        for ch in text.chars() {
+        for ch in characters {
             Self::accumulate_line_char_em(profile, &mut em, &mut prevprev, &mut prev, ch);
         }
         em * font_size
+    }
+
+    fn line_width_px(profile: FontMetricProfile<'_>, text: &str, font_size: f64) -> f64 {
+        Self::line_width_chars_px(profile, text.chars(), font_size)
     }
 
     fn split_token_to_width_px(
@@ -899,7 +913,9 @@ impl VendoredFontMetricsTextMeasurer {
                 em += Self::lookup_profile_kern_em(profile, p, ch_norm);
             }
             if let (Some(a), Some(b)) = (prevprev, prev)
-                && !(a.is_whitespace() || b.is_whitespace() || ch_norm.is_whitespace())
+                && !(is_html_collapsible_ascii_whitespace(a)
+                    || is_html_collapsible_ascii_whitespace(b)
+                    || is_html_collapsible_ascii_whitespace(ch_norm))
             {
                 em += Self::lookup_trigram_em(profile.trigrams, a, b, ch_norm);
             }
@@ -967,14 +983,14 @@ impl VendoredFontMetricsTextMeasurer {
             }
 
             let candidate = format!("{cur}{tok}");
-            let candidate_trimmed = candidate.trim_end();
+            let candidate_trimmed = trim_end_html_collapsible_ascii_whitespace(&candidate);
             if Self::line_width_px(profile, candidate_trimmed, font_size) <= max_width_px {
                 cur = candidate;
                 continue;
             }
 
-            if !cur.trim().is_empty() {
-                out.push(cur.trim_end().to_string());
+            if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
+                out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
                 cur.clear();
             }
 
@@ -995,8 +1011,8 @@ impl VendoredFontMetricsTextMeasurer {
             }
         }
 
-        if !cur.trim().is_empty() {
-            out.push(cur.trim_end().to_string());
+        if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
+            out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
         }
 
         if out.is_empty() {
@@ -1299,6 +1315,16 @@ fn vendored_measure_wrapped_impl(
 }
 
 impl TextMeasurer for VendoredFontMetricsTextMeasurer {
+    #[allow(private_interfaces)]
+    fn begin_svg_text_computed_length(
+        &self,
+        style: &TextStyle,
+    ) -> Option<crate::environment::BuiltinSvgComputedLength> {
+        Some(crate::environment::BuiltinSvgComputedLength::vendored(
+            style,
+        ))
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.measure_wrapped(text, style, None, WrapMode::SvgLike)
     }
@@ -1468,7 +1494,7 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
                         text,
                         style.font_size,
                     ),
-                    height: if text.trim_end().is_empty() {
+                    height: if trim_end_html_collapsible_ascii_whitespace(text).is_empty() {
                         0.0
                     } else {
                         Self::svg_vertical_height_with_table_px(

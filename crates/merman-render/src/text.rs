@@ -1,3 +1,4 @@
+mod create_text;
 mod deterministic;
 mod flowchart_parity;
 mod font_metrics;
@@ -11,8 +12,10 @@ mod measure;
 mod metrics;
 mod svg_metrics;
 mod types;
+mod whitespace;
 mod wrap;
 
+pub(crate) use create_text::non_markdown_svg_words;
 pub use deterministic::DeterministicTextMeasurer;
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
 pub use font_metrics::VendoredFontMetricsTextMeasurer;
@@ -52,6 +55,11 @@ pub(crate) use svg_metrics::{
     svg_wrapped_first_line_bbox_height_px,
 };
 pub use types::{TextMetrics, TextStyle, WrapMode};
+pub(crate) use whitespace::{
+    is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, trim_ecmascript_whitespace,
+    trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
+    trim_start_ecmascript_whitespace,
+};
 pub(crate) use wrap::wrap_svg_text_lines_by_measurement;
 pub use wrap::{
     ceil_to_1_64_px, round_to_1_64_px, round_to_1_64_px_ties_to_even, split_html_br_lines,

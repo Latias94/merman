@@ -174,6 +174,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     };
 
     let label_type = sg.label_type.as_deref().unwrap_or("text");
+    let render_title = ctx.model.subgraph_title_for_render(sg);
 
     let mut class_attr = String::new();
     for c in &sg.classes {
@@ -196,7 +197,6 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     if !ctx.edge_html_labels {
         let label_w = cluster.title_label.width.max(0.0);
         let label_left = left + rect_w / 2.0 - label_w / 2.0;
-        let title_text = flowchart_label_plain_text(&cluster.title, label_type, false);
         let _ = write!(
             out,
             r#"<g class="{}" id="{}" data-look="{}">"#,
@@ -221,16 +221,17 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             fmt_display(label_top)
         );
         if label_type == "markdown" {
-            write_flowchart_svg_text_markdown(out, &cluster.title, true);
+            write_flowchart_svg_text_markdown(out, render_title, true);
         } else {
-            write_flowchart_svg_text(out, &title_text, true);
+            let source_lines =
+                crate::flowchart::flowchart_non_markdown_svg_source_word_lines(render_title);
+            write_flowchart_svg_source_word_lines(out, &source_lines, true);
         }
         out.push_str("</g></g></g>");
         return;
     }
 
-    let title_html =
-        flowchart_label_html(&cluster.title, label_type, ctx.config, ctx.math_renderer);
+    let title_html = flowchart_label_html(render_title, label_type, ctx.config, ctx.math_renderer);
     let label_w = cluster.title_label.width.max(0.0);
     let label_h = cluster.title_label.height.max(0.0);
     let label_left = left + rect_w / 2.0 - label_w / 2.0;

@@ -50,7 +50,7 @@ fn measure_flowchart_layout_node_label(
     n: &LayoutNode,
 ) -> Option<crate::text::TextMetrics> {
     let flow_node = ctx.nodes_by_id.get(n.id.as_str())?;
-    let label = flow_node.label.as_deref().unwrap_or("");
+    let label = ctx.model.node_label_for_render(flow_node).unwrap_or("");
     let label_type = flow_node
         .label_type
         .as_deref()

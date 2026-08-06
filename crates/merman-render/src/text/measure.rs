@@ -42,6 +42,19 @@ pub trait TextMeasurer {
         None
     }
 
+    /// Starts an exact streaming computed-length probe when this measurer is a built-in profile.
+    ///
+    /// The return type is crate-private so external measurers cannot bypass their observable host
+    /// callback order. They use the default `None` and continue receiving every complete request.
+    #[doc(hidden)]
+    #[allow(private_interfaces)]
+    fn begin_svg_text_computed_length(
+        &self,
+        _style: &TextStyle,
+    ) -> Option<crate::environment::BuiltinSvgComputedLength> {
+        None
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics;
 
     /// Measures SVG `<tspan>.getComputedTextLength()`-like widths (advance length along the

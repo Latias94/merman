@@ -1,5 +1,7 @@
 //! Mermaid-like Markdown tokenization helpers.
 
+use super::{is_ecmascript_whitespace, trim_ecmascript_whitespace};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MermaidMarkdownWordType {
     Normal,
@@ -82,7 +84,7 @@ pub(crate) fn mermaid_markdown_to_lines(
         let lines: Vec<&str> = s.split('\n').collect();
         let mut min_indent: Option<usize> = None;
         for l in &lines {
-            if l.trim().is_empty() {
+            if trim_ecmascript_whitespace(l).is_empty() {
                 continue;
             }
             let indent = l
@@ -134,7 +136,7 @@ pub(crate) fn mermaid_markdown_to_lines(
     }
 
     fn is_punctuation(ch: char) -> bool {
-        !ch.is_whitespace() && !ch.is_alphanumeric()
+        !is_ecmascript_whitespace(ch) && !ch.is_alphanumeric()
     }
 
     fn mermaid_delim_can_open_close(
@@ -142,8 +144,8 @@ pub(crate) fn mermaid_markdown_to_lines(
         prev: Option<char>,
         next: Option<char>,
     ) -> (bool, bool) {
-        let prev_is_ws = prev.is_none_or(|c| c.is_whitespace());
-        let next_is_ws = next.is_none_or(|c| c.is_whitespace());
+        let prev_is_ws = prev.is_none_or(is_ecmascript_whitespace);
+        let next_is_ws = next.is_none_or(is_ecmascript_whitespace);
         let prev_is_punct = prev.is_some_and(is_punctuation);
         let next_is_punct = next.is_some_and(is_punctuation);
 
@@ -366,6 +368,19 @@ pub(crate) fn mermaid_markdown_to_lines(
                     }
                 }
                 pulldown_cmark::Event::Text(text) if in_paragraph && skipped_inline_depth == 0 => {
+                    // pulldown-cmark eagerly synthesizes Unicode for HTML entities, while Marked
+                    // keeps entity spellings in `node.text`. Preserve the source only when its
+                    // full HTML-entity decode is exactly the emitted event; unrelated synthesized
+                    // text (escapes, autolinks, and other extensions) keeps pulldown's payload.
+                    let source_text = markdown
+                        .get(range.clone())
+                        .filter(|raw| {
+                            raw.contains('&')
+                                && merman_core::entities::decode_html_entities_to_unicode(raw)
+                                    .as_ref()
+                                    == text.as_ref()
+                        })
+                        .unwrap_or(text.as_ref());
                     let word_type = style_stack
                         .last()
                         .copied()
@@ -373,22 +388,23 @@ pub(crate) fn mermaid_markdown_to_lines(
                     let join_first_word =
                         previous_text.is_some_and(|(end, can_join): (usize, bool)| {
                             end == range.start && can_join
-                        }) && text
+                        }) && source_text
                             .chars()
                             .next()
-                            .is_some_and(|character| !character.is_whitespace());
+                            .is_some_and(|character| !is_ecmascript_whitespace(character));
                     append_text(
                         &mut out,
                         &mut line_idx,
-                        text.as_ref(),
+                        source_text,
                         word_type,
                         join_first_word,
                     );
                     previous_text = Some((
                         range.end,
-                        text.chars()
+                        source_text
+                            .chars()
                             .last()
-                            .is_some_and(|character| !character.is_whitespace()),
+                            .is_some_and(|character| !is_ecmascript_whitespace(character)),
                     ));
                 }
                 pulldown_cmark::Event::Code(_) if in_paragraph && skipped_inline_depth == 0 => {
@@ -703,13 +719,47 @@ mod tests {
             vec![vec![
                 ("styled".to_string(), Em),
                 ("#tag".to_string(), Strong),
-                ("&".to_string(), Strong),
+                ("&amp;".to_string(), Strong),
                 ("value".to_string(), Strong),
             ]]
         );
         assert_eq!(
             mermaid_markdown_to_lines("`**CoreResult~T~**`", true),
             vec![vec![("CoreResult~T~".to_string(), Strong)]]
+        );
+    }
+
+    #[test]
+    fn full_delimiter_fallback_preserves_marked_entity_spelling() {
+        use MermaidMarkdownWordType::*;
+
+        assert_eq!(
+            mermaid_markdown_to_lines("***&copy;***", true),
+            vec![vec![("&copy;".to_string(), Strong)]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("**_x_ &nbsp; y**", true),
+            vec![vec![
+                ("x".to_string(), Em),
+                ("&nbsp;".to_string(), Strong),
+                ("y".to_string(), Strong),
+            ]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("***&#160;***", true),
+            vec![vec![("&#160;".to_string(), Strong)]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("***x&nbsp;y***", true),
+            vec![vec![("x&nbsp;y".to_string(), Strong)]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("***&NotEqualTilde;***", true),
+            vec![vec![("&NotEqualTilde;".to_string(), Strong)]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("***&#39;***", true),
+            vec![vec![("'".to_string(), Strong)]],
         );
     }
 

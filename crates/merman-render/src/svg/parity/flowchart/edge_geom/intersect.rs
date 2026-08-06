@@ -727,11 +727,11 @@ fn compute_node_label_metrics_for_intersection(
     node_id: &str,
 ) -> Option<crate::text::TextMetrics> {
     let flow_node = ctx.nodes_by_id.get(node_id)?;
-    let label_text = flow_node.label.clone().unwrap_or_default();
-    let label_type = flow_node
-        .label_type
-        .clone()
-        .unwrap_or_else(|| "text".to_string());
+    let label_text = ctx
+        .model
+        .node_label_for_render(flow_node)
+        .unwrap_or_default();
+    let label_type = flow_node.label_type.as_deref().unwrap_or("text");
 
     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
         &ctx.html_label_text_style
@@ -747,8 +747,8 @@ fn compute_node_label_metrics_for_intersection(
     let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
         crate::flowchart::FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
-            raw_label: &label_text,
-            label_type: &label_type,
+            raw_label: label_text,
+            label_type,
             style: &node_text_style,
             max_width_px: Some(ctx.wrapping_width),
             wrap_mode: ctx.node_wrap_mode,
@@ -900,11 +900,11 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             return intersect_rect(node, point);
         };
 
-        let label_text = flow_node.label.clone().unwrap_or_default();
-        let label_type = flow_node
-            .label_type
-            .clone()
-            .unwrap_or_else(|| "text".to_string());
+        let label_text = ctx
+            .model
+            .node_label_for_render(flow_node)
+            .unwrap_or_default();
+        let label_type = flow_node.label_type.as_deref().unwrap_or("text");
 
         let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
             &ctx.html_label_text_style
@@ -920,8 +920,8 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
-                raw_label: &label_text,
-                label_type: &label_type,
+                raw_label: label_text,
+                label_type,
                 style: &node_text_style,
                 max_width_px: Some(ctx.wrapping_width),
                 wrap_mode: ctx.node_wrap_mode,
@@ -982,11 +982,11 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             return intersect_rect(node, point);
         };
 
-        let label_text = flow_node.label.clone().unwrap_or_default();
-        let label_type = flow_node
-            .label_type
-            .clone()
-            .unwrap_or_else(|| "text".to_string());
+        let label_text = ctx
+            .model
+            .node_label_for_render(flow_node)
+            .unwrap_or_default();
+        let label_type = flow_node.label_type.as_deref().unwrap_or("text");
 
         let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
             &ctx.html_label_text_style
@@ -1002,8 +1002,8 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
-                raw_label: &label_text,
-                label_type: &label_type,
+                raw_label: label_text,
+                label_type,
                 style: &node_text_style,
                 max_width_px: Some(ctx.wrapping_width),
                 wrap_mode: ctx.node_wrap_mode,

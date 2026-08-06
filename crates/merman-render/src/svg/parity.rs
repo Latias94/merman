@@ -480,6 +480,7 @@ fn render_builtin_family_artifact_raw(
             flowchart::render_flowchart_svg_model_with_config(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
+                artifact.label_sources(),
                 effective_config,
                 diagram_type,
                 title,
@@ -487,14 +488,17 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        BuiltinFamilyArtifact::Swimlane(pair) => flowchart::render_swimlane_svg_model_with_config(
-            pair.layout(),
-            pair.semantic(),
-            effective_config,
-            diagram_type,
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Swimlane(artifact) => {
+            flowchart::render_swimlane_svg_model_with_config(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.label_sources(),
+                effective_config,
+                diagram_type,
+                title,
+                options,
+            )
+        }
         BuiltinFamilyArtifact::Cynefin(pair) => cynefin::render_cynefin_diagram_svg_model(
             pair.layout(),
             pair.semantic(),

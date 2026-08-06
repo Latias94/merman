@@ -19,7 +19,7 @@ use crate::text::TextMeasurer;
 use icu_collator::{Collator, options::CollatorOptions};
 use icu_locale_core::Locale;
 use merman_core::MermaidConfig;
-use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_core::diagrams::flowchart::{FlowchartModel, FlowchartRenderLabelSources};
 use std::cmp::Ordering;
 use std::sync::{Arc, OnceLock};
 
@@ -74,6 +74,7 @@ fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
 /// Lays out a Swimlane model under the resource policy owned by the render operation.
 pub(crate) fn layout_swimlane_typed_with_work_meter(
     model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderLabelSources,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -87,7 +88,13 @@ pub(crate) fn layout_swimlane_typed_with_work_meter(
     ))?;
     work_meter.charge(swimlane_core_layout_work_units(source_nodes, source_edges))?;
     let config = config::SwimlaneConfig::from_config(effective_config);
-    let mut working = prepare::prepare(model, effective_config, measurer, math_renderer);
+    let mut working = prepare::prepare(
+        model,
+        render_label_sources,
+        effective_config,
+        measurer,
+        math_renderer,
+    );
     let reversed = sugiyama::run(&mut working, config);
     for edge in &mut working.original_edges {
         edge.reversed_for_layout = reversed.contains(&edge.id);

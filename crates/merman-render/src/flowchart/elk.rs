@@ -6,22 +6,23 @@ use crate::model::{
 use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use merman_core::MermaidConfig;
+use merman_core::{MermaidConfig, ParsedDiagramRender, RenderSemanticModel};
 use merman_layout_elk as elk;
 use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::sync::Arc;
 
-use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartModel};
+use merman_core::diagrams::flowchart::{
+    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
+};
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
-use super::layout::flowchart_svg_plain_computed_width_px;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{
-    FlowchartLabelMetricsRequest, flowchart_apply_html_node_class_box_metrics,
+    FlowchartLabelMetricsRequest, FlowchartRenderModelRef, FlowchartSvgWidthMode,
+    PreparedFlowchartSvgLabel, flowchart_apply_html_node_class_box_metrics,
     flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
-    flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
-    flowchart_label_text_is_empty_for_mode,
+    flowchart_label_metrics_for_layout,
 };
 
 struct ElkOperationWorkControl {
@@ -119,17 +120,31 @@ pub(crate) fn layout_flowchart_elk_typed(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartLayout> {
-    let graph = build_flowchart_elk_graph(model, effective_config, measurer, math_renderer)?;
+    let render_label_sources = FlowchartRenderLabelSources::default();
+    let graph = build_flowchart_elk_graph_with_render_labels(
+        model,
+        &render_label_sources,
+        effective_config,
+        measurer,
+        math_renderer,
+    )?;
     let layout = elk::layout(&graph).map_err(|err| Error::InvalidModel {
         message: format!("ELK layout failed: {err}"),
     })?;
-    flowchart_layout_from_elk(model, effective_config, &graph, layout)
+    flowchart_layout_from_elk_with_render_labels(
+        model,
+        &render_label_sources,
+        effective_config,
+        &graph,
+        layout,
+    )
 }
 
 /// Lays out a Flowchart through ELK using the render operation's captured seed.
 ///
 /// This is intentionally crate-private. The public typed function above is a raw diagnostic API
 /// and fails closed when source configuration uses ELK's `randomSeed = 0` sentinel.
+#[cfg(test)]
 pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
     model: &FlowchartModel,
     effective_config: &MermaidConfig,
@@ -138,9 +153,30 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
     operation_seed: elk::ElkOperationSeed,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
-    let mut work_control = ElkOperationWorkControl::new(work_meter);
-    let graph = build_flowchart_elk_graph_with_work_control(
+    layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         model,
+        &FlowchartRenderLabelSources::default(),
+        effective_config,
+        measurer,
+        math_renderer,
+        operation_seed,
+        work_meter,
+    )
+}
+
+pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderLabelSources,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    operation_seed: elk::ElkOperationSeed,
+    work_meter: Arc<OperationWorkMeter>,
+) -> Result<FlowchartLayout> {
+    let mut work_control = ElkOperationWorkControl::new(work_meter);
+    let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
+        model,
+        render_label_sources,
         effective_config,
         measurer,
         math_renderer,
@@ -154,8 +190,9 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
         Ok(layout) => layout,
         Err(error) => return Err(work_control.map_elk_error(error)),
     };
-    flowchart_layout_from_elk_with_work_control(
+    flowchart_layout_from_elk_with_render_labels_and_work_control(
         model,
+        render_label_sources,
         effective_config,
         &graph,
         layout,
@@ -170,16 +207,61 @@ fn flowchart_layout_from_elk(
     graph: &elk::Graph,
     layout: elk::LayoutResult,
 ) -> Result<FlowchartLayout> {
-    flowchart_layout_from_elk_with_work_control(model, effective_config, graph, layout, None)
+    flowchart_layout_from_elk_with_render_labels(
+        model,
+        &FlowchartRenderLabelSources::default(),
+        effective_config,
+        graph,
+        layout,
+    )
 }
 
+#[cfg(test)]
+fn flowchart_layout_from_elk_with_render_labels(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderLabelSources,
+    effective_config: &MermaidConfig,
+    graph: &elk::Graph,
+    layout: elk::LayoutResult,
+) -> Result<FlowchartLayout> {
+    flowchart_layout_from_elk_with_render_labels_and_work_control(
+        model,
+        render_label_sources,
+        effective_config,
+        graph,
+        layout,
+        None,
+    )
+}
+
+#[cfg(test)]
 fn flowchart_layout_from_elk_with_work_control(
     model: &FlowchartModel,
     effective_config: &MermaidConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
+    work_control: Option<&mut ElkOperationWorkControl>,
+) -> Result<FlowchartLayout> {
+    flowchart_layout_from_elk_with_render_labels_and_work_control(
+        model,
+        &FlowchartRenderLabelSources::default(),
+        effective_config,
+        graph,
+        layout,
+        work_control,
+    )
+}
+
+fn flowchart_layout_from_elk_with_render_labels_and_work_control(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderLabelSources,
+    effective_config: &MermaidConfig,
+    graph: &elk::Graph,
+    layout: elk::LayoutResult,
     mut work_control: Option<&mut ElkOperationWorkControl>,
 ) -> Result<FlowchartLayout> {
+    let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
+    let model = &render_model;
     let effective_config_value = effective_config.as_value();
     let FlowchartLayoutSettings {
         cluster_padding,
@@ -460,18 +542,86 @@ fn polyline_midpoint(points: &[LayoutPoint]) -> Option<LayoutPoint> {
     }
 }
 
+/// Builds the ELK input graph from the complete parser-owned Flowchart render artifact.
+///
+/// Flowchart labels retain source spelling that is not recoverable from the public semantic
+/// model alone (for example an authored `&lt;` versus a literal `<`). Accepting the parsed artifact
+/// keeps that provenance paired with the effective configuration and prevents diagnostics from
+/// silently measuring a different createText payload than the normal render pipeline.
 pub fn build_flowchart_elk_graph(
+    parsed: &ParsedDiagramRender,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Result<elk::Graph> {
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "expected Flowchart render model, got {}",
+                parsed.model().kind()
+            ),
+        });
+    };
+    let empty_sources = FlowchartRenderLabelSources::default();
+    let render_label_sources = parsed
+        .flowchart_render_label_sources()
+        .unwrap_or(&empty_sources);
+    build_flowchart_elk_graph_with_render_labels(
+        model,
+        render_label_sources,
+        &parsed.metadata().effective_config,
+        measurer,
+        math_renderer,
+    )
+}
+
+#[cfg(test)]
+fn build_flowchart_elk_graph_from_semantic(
     model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<elk::Graph> {
-    build_flowchart_elk_graph_with_work_control(
+    build_flowchart_elk_graph_with_render_labels(
         model,
+        &FlowchartRenderLabelSources::default(),
+        effective_config,
+        measurer,
+        math_renderer,
+    )
+}
+
+fn build_flowchart_elk_graph_with_render_labels(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderLabelSources,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Result<elk::Graph> {
+    build_flowchart_elk_graph_with_render_labels_and_work_control(
+        model,
+        render_label_sources,
         effective_config,
         measurer,
         math_renderer,
         None,
+    )
+}
+
+#[cfg(test)]
+fn build_flowchart_elk_graph_with_work_control(
+    model: &FlowchartModel,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    work_control: Option<&mut ElkOperationWorkControl>,
+) -> Result<elk::Graph> {
+    build_flowchart_elk_graph_with_render_labels_and_work_control(
+        model,
+        &FlowchartRenderLabelSources::default(),
+        effective_config,
+        measurer,
+        math_renderer,
+        work_control,
     )
 }
 
@@ -534,13 +684,16 @@ fn comparison_sort_work_units(
     checked_adapter_mul(work_control, items, levels)
 }
 
-fn build_flowchart_elk_graph_with_work_control(
+fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderLabelSources,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     mut work_control: Option<&mut ElkOperationWorkControl>,
 ) -> Result<elk::Graph> {
+    let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
+    let model = &render_model;
     // Shape validation only walks nodes. Charge that tranche before the validation scan; the
     // hierarchy and edge tranches are charged by their actual owners below.
     charge_adapter_work(&mut work_control, model.nodes.len())?;
@@ -607,7 +760,7 @@ fn build_flowchart_elk_graph_with_work_control(
     let include_children_groups = include_children_groups(model, &parent_by_id, &mut work_control)?;
 
     let cluster_measure_ctx = ElkMeasureContext {
-        model,
+        model: render_model,
         effective_config,
         measurer,
         math_renderer,
@@ -616,7 +769,7 @@ fn build_flowchart_elk_graph_with_work_control(
         cluster_wrap_mode,
     };
     let node_measure_ctx = NodeMeasureContext {
-        model,
+        model: render_model,
         effective_config,
         measurer,
         math_renderer,
@@ -670,7 +823,7 @@ fn build_flowchart_elk_graph_with_work_control(
         let label = edge_label(
             edge,
             EdgeMeasureContext {
-                model,
+                model: render_model,
                 effective_config,
                 measurer,
                 math_renderer,
@@ -696,7 +849,7 @@ fn build_flowchart_elk_graph_with_work_control(
 
 #[derive(Clone, Copy)]
 struct ElkMeasureContext<'a> {
-    model: &'a FlowchartModel,
+    model: FlowchartRenderModelRef<'a>,
     effective_config: &'a MermaidConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -707,7 +860,7 @@ struct ElkMeasureContext<'a> {
 
 #[derive(Clone, Copy)]
 struct NodeMeasureContext<'a> {
-    model: &'a FlowchartModel,
+    model: FlowchartRenderModelRef<'a>,
     effective_config: &'a MermaidConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -722,7 +875,7 @@ struct NodeMeasureContext<'a> {
 
 #[derive(Clone, Copy)]
 struct EdgeMeasureContext<'a> {
-    model: &'a FlowchartModel,
+    model: FlowchartRenderModelRef<'a>,
     effective_config: &'a MermaidConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -1434,6 +1587,7 @@ fn mark_include_children_path<'a>(
 
 fn subgraph_label(sg: &FlowSubgraph, ctx: &ElkMeasureContext<'_>) -> Option<elk::Label> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
+    let title = ctx.model.subgraph_title_for_render(sg);
     let text_style = flowchart_effective_text_style_for_classes(
         ctx.cluster_label_base_style,
         &ctx.model.class_defs,
@@ -1442,7 +1596,7 @@ fn subgraph_label(sg: &FlowSubgraph, ctx: &ElkMeasureContext<'_>) -> Option<elk:
     );
     let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
         measurer: ctx.measurer,
-        raw_label: &sg.title,
+        raw_label: title,
         label_type,
         style: text_style.as_ref(),
         max_width_px: Some(ctx.cluster_title_wrapping_width),
@@ -1460,7 +1614,7 @@ fn node_dimensions_and_label(
     node: &FlowNode,
     ctx: NodeMeasureContext<'_>,
 ) -> (f64, f64, elk::Label) {
-    let raw_label = node.label.as_deref().unwrap_or(&node.id);
+    let raw_label = ctx.model.node_label_for_render(node).unwrap_or(&node.id);
     let label_type = node.label_type.as_deref().unwrap_or("text");
     let node_text_style = flowchart_effective_text_style_for_node_classes(
         ctx.node_label_base_style,
@@ -1468,30 +1622,30 @@ fn node_dimensions_and_label(
         &node.classes,
         &node.styles,
     );
-    let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-        measurer: ctx.measurer,
-        raw_label,
-        label_type,
-        style: node_text_style.as_ref(),
-        max_width_px: Some(ctx.wrapping_width),
-        wrap_mode: ctx.node_wrap_mode,
-        config: ctx.effective_config,
-        math_renderer: ctx.math_renderer,
-    });
-    if ctx.node_wrap_mode == WrapMode::SvgLike
+    let use_computed_svg_width = ctx.node_wrap_mode == WrapMode::SvgLike
         && label_type != "markdown"
         && !raw_label.contains('<')
         && !raw_label.contains('>')
-        && super::is_flowchart_process_shape(node.layout_shape.as_deref().unwrap_or("squareRect"))
-    {
-        let plain = flowchart_label_plain_text_for_layout(raw_label, label_type, false);
-        metrics.width = flowchart_svg_plain_computed_width_px(
+        && super::is_flowchart_process_shape(node.layout_shape.as_deref().unwrap_or("squareRect"));
+    let mut metrics = if use_computed_svg_width {
+        PreparedFlowchartSvgLabel::new(raw_label).metrics(
             ctx.measurer,
-            &plain,
             node_text_style.as_ref(),
             Some(ctx.wrapping_width),
-        );
-    }
+            FlowchartSvgWidthMode::ComputedLength,
+        )
+    } else {
+        flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+            measurer: ctx.measurer,
+            raw_label,
+            label_type,
+            style: node_text_style.as_ref(),
+            max_width_px: Some(ctx.wrapping_width),
+            wrap_mode: ctx.node_wrap_mode,
+            config: ctx.effective_config,
+            math_renderer: ctx.math_renderer,
+        })
+    };
     if ctx.node_wrap_mode == WrapMode::HtmlLike && ctx.class_html_labels {
         flowchart_apply_html_node_class_box_metrics(
             &mut metrics,
@@ -1525,15 +1679,12 @@ fn node_dimensions_and_label(
 }
 
 fn edge_label(edge: &FlowEdge, ctx: EdgeMeasureContext<'_>) -> Option<elk::Label> {
-    if flowchart_label_text_is_empty_for_mode(
-        edge.label.as_deref().unwrap_or_default(),
-        ctx.edge_html_labels,
-    ) {
+    let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
+    let label_type = edge.label_type.as_deref().unwrap_or("text");
+    if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
         return None;
     }
 
-    let label_text = edge.label.as_deref().unwrap_or_default();
-    let label_type = edge.label_type.as_deref().unwrap_or("text");
     let edge_text_style = flowchart_effective_text_style_for_classes(
         ctx.edge_label_base_style,
         &ctx.model.class_defs,
@@ -1623,12 +1774,21 @@ fn subgraph_to_elk_node(
 mod tests {
     use super::*;
     use indexmap::IndexMap;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    use merman_core::{Engine, ParseOptions};
     use serde_json::json;
 
     const NON_LATTICE_COMPUTED_LENGTH_PX: f64 = 73.123_456_789;
 
     struct NonLatticeComputedLengthMeasurer;
+
+    fn build_flowchart_elk_graph(
+        model: &FlowchartModel,
+        effective_config: &MermaidConfig,
+        measurer: &dyn TextMeasurer,
+        math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    ) -> Result<elk::Graph> {
+        build_flowchart_elk_graph_from_semantic(model, effective_config, measurer, math_renderer)
+    }
 
     impl TextMeasurer for NonLatticeComputedLengthMeasurer {
         fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
@@ -1653,16 +1813,9 @@ mod tests {
             )
             .expect("parse ok")
             .expect("diagram detected");
-        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
-            panic!("expected Flowchart render model");
-        };
-        let graph = build_flowchart_elk_graph(
-            model,
-            &parsed.metadata().effective_config,
-            &NonLatticeComputedLengthMeasurer,
-            None,
-        )
-        .expect("ELK graph");
+        let graph =
+            super::build_flowchart_elk_graph(&parsed, &NonLatticeComputedLengthMeasurer, None)
+                .expect("ELK graph");
         let label = graph
             .nodes
             .iter()
@@ -1674,33 +1827,47 @@ mod tests {
     }
 
     #[test]
-    fn elk_html_nbsp_only_edge_labels_participate_in_layout() {
+    fn elk_html_nbsp_only_edge_labels_respect_source_provenance() {
         let nbsp = '\u{00A0}';
-        let source = format!("flowchart LR\nA -- \"&nbsp;\" --> B\nC -- \"{nbsp}\" --> D\n");
+        let source = format!(
+            "flowchart LR\nA -- \"&nbsp;\" --> B\nC -- \"{nbsp}\" --> D\nE[\"&lt;Less&lt;\"]\n"
+        );
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
             .expect("parse ok")
             .expect("diagram detected");
-        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
-            panic!("expected Flowchart render model");
-        };
-        let graph = build_flowchart_elk_graph(
-            model,
-            &parsed.metadata().effective_config,
+        let graph = super::build_flowchart_elk_graph(
+            &parsed,
             &crate::text::VendoredFontMetricsTextMeasurer::default(),
             None,
         )
         .expect("ELK graph ok");
 
         assert_eq!(graph.edges.len(), 2);
-        for edge in &graph.edges {
-            let label = edge
-                .label
-                .as_ref()
-                .expect("HTML NBSP-only edge label must reach ELK");
-            assert!(label.width > 0.0, "{label:?}");
-            assert!(label.height > 0.0, "{label:?}");
-        }
+        let entity_label = graph
+            .edges
+            .iter()
+            .find(|edge| edge.source == "A")
+            .and_then(|edge| edge.label.as_ref())
+            .expect("entity-authored NBSP label must reach ELK");
+        assert!(entity_label.width > 0.0, "{entity_label:?}");
+        assert!(entity_label.height > 0.0, "{entity_label:?}");
+
+        let direct_label = graph
+            .edges
+            .iter()
+            .find(|edge| edge.source == "C")
+            .and_then(|edge| edge.label.as_ref());
+        assert!(direct_label.is_none(), "{direct_label:?}");
+
+        let escaped_angle_label = graph
+            .nodes
+            .iter()
+            .find(|node| node.id == "E")
+            .and_then(|node| node.label)
+            .expect("entity-authored angle brackets must retain a visible ELK label");
+        assert!(escaped_angle_label.width > 0.0, "{escaped_angle_label:?}");
+        assert!(escaped_angle_label.height > 0.0, "{escaped_angle_label:?}");
     }
 
     fn node(id: &str, label: Option<&str>, label_type: Option<&str>) -> FlowNode {

@@ -11,6 +11,7 @@ use super::*;
 pub(in crate::svg::parity) fn render_flowchart_svg_model_with_config(
     layout: &FlowchartLayout,
     model: &crate::flowchart::FlowchartModel,
+    render_label_sources: &crate::flowchart::FlowchartRenderLabelSources,
     effective_config: &merman_core::MermaidConfig,
     diagram_type: &str,
     diagram_title: Option<&str>,
@@ -22,6 +23,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_model_with_config(
             layout,
             swimlane_layout: None,
             model,
+            render_label_sources,
             effective_config,
             diagram_type,
             diagram_title,
@@ -35,6 +37,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_svg_model_with_swimlan
     layout: &FlowchartLayout,
     swimlane_layout: &crate::model::SwimlaneLayout,
     model: &crate::flowchart::FlowchartModel,
+    render_label_sources: &crate::flowchart::FlowchartRenderLabelSources,
     effective_config: &merman_core::MermaidConfig,
     diagram_type: &str,
     diagram_title: Option<&str>,
@@ -45,6 +48,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_svg_model_with_swimlan
             layout,
             swimlane_layout: Some(swimlane_layout),
             model,
+            render_label_sources,
             effective_config,
             diagram_type,
             diagram_title,
@@ -58,6 +62,7 @@ struct FlowchartSvgModelRequest<'a> {
     layout: &'a FlowchartLayout,
     swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
     model: &'a crate::flowchart::FlowchartModel,
+    render_label_sources: &'a crate::flowchart::FlowchartRenderLabelSources,
     effective_config: &'a merman_core::MermaidConfig,
     diagram_type: &'a str,
     diagram_title: Option<&'a str>,
@@ -72,11 +77,14 @@ fn render_flowchart_svg_model(
         layout,
         swimlane_layout,
         model,
+        render_label_sources,
         effective_config,
         diagram_type,
         diagram_title,
         presentation_policy,
     } = request;
+    let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources);
+    let model = &render_model;
     if model
         .nodes
         .iter()
@@ -118,6 +126,7 @@ fn render_flowchart_svg_model(
         wrapping_width,
         node_html_labels,
         edge_html_labels,
+        swimlane_title_html_labels,
         node_wrap_mode,
         edge_wrap_mode,
         diagram_padding,
@@ -244,6 +253,7 @@ fn render_flowchart_svg_model(
 
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let ctx = FlowchartRenderCtx {
+        model,
         diagram_id,
         diagram_type,
         tx,
@@ -256,6 +266,7 @@ fn render_flowchart_svg_model(
         icon_registry: options.icon_registry(),
         node_html_labels,
         edge_html_labels,
+        swimlane_title_html_labels,
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         class_defs: &model.class_defs,
         node_border_color,

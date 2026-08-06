@@ -377,6 +377,14 @@ impl RenderSemanticContext {
         self.flowchart_label_sources.unwrap_or_default()
     }
 
+    /// Borrows Flowchart's parser-owned render label sources when this context owns them.
+    #[doc(hidden)]
+    pub fn flowchart_label_sources(
+        &self,
+    ) -> Option<&crate::diagrams::flowchart::FlowchartRenderLabelSources> {
+        self.flowchart_label_sources.as_ref()
+    }
+
     pub(crate) fn retained_text_bytes(&self) -> usize {
         self.flowchart_label_sources
             .as_ref()
@@ -907,6 +915,14 @@ impl ParsedDiagramRender {
     #[doc(hidden)]
     pub fn retained_render_context_bytes(&self) -> usize {
         self.context.retained_text_bytes()
+    }
+
+    /// Borrows parser-owned Flowchart render label sources without consuming the parsed model.
+    #[doc(hidden)]
+    pub fn flowchart_render_label_sources(
+        &self,
+    ) -> Option<&crate::diagrams::flowchart::FlowchartRenderLabelSources> {
+        self.context.flowchart_label_sources()
     }
 }
 

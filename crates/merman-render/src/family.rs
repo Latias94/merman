@@ -204,14 +204,19 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 }
 
 #[derive(Debug)]
-pub(crate) struct FlowchartFamilyArtifact {
-    pair: FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout>,
+pub(crate) struct FlowchartFamilyArtifact<L> {
+    pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
+    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
     policy: Option<FlowchartPresentationPolicy>,
 }
 
-impl FlowchartFamilyArtifact {
-    pub(crate) fn pair(&self) -> &FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout> {
+impl<L> FlowchartFamilyArtifact<L> {
+    pub(crate) fn pair(&self) -> &FamilyPair<diagrams::flowchart::FlowchartModel, L> {
         &self.pair
+    }
+
+    pub(crate) fn label_sources(&self) -> &diagrams::flowchart::FlowchartRenderLabelSources {
+        &self.label_sources
     }
 
     pub(crate) const fn policy(&self) -> Option<FlowchartPresentationPolicy> {
@@ -235,8 +240,8 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
-    Flowchart(Box<FlowchartFamilyArtifact>),
-    Swimlane(Box<FamilyPair<diagrams::flowchart::FlowchartModel, SwimlaneLayout>>),
+    Flowchart(Box<FlowchartFamilyArtifact<FlowchartLayout>>),
+    Swimlane(Box<FlowchartFamilyArtifact<SwimlaneLayout>>),
     #[cfg(feature = "layout-cytoscape")]
     Architecture(
         Box<
@@ -457,7 +462,7 @@ impl BuiltinFamilyArtifact {
             Self::Sequence(pair) => pair.compatibility_json(metadata),
             Self::Zenuml(pair) => pair.compatibility_json(metadata),
             Self::Flowchart(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::Swimlane(pair) => pair.compatibility_json(metadata),
+            Self::Swimlane(artifact) => artifact.pair.compatibility_json(metadata),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => pair.compatibility_json(metadata),
             Self::Class(pair) => pair.compatibility_json(metadata),
@@ -496,7 +501,7 @@ impl BuiltinFamilyArtifact {
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout()),
             Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
             Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
-            Self::Swimlane(pair) => LayoutProjection::SwimlaneDiagram(pair.layout()),
+            Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
             Self::Class(pair) => LayoutProjection::ClassDiagram(pair.layout()),
@@ -870,19 +875,24 @@ fn prepare_pair<S, L>(
     Ok(Box::new(FamilyPair::new(semantic, layout)))
 }
 
-fn prepare_flowchart_artifact(
+fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
+    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
     policy: Option<FlowchartPresentationPolicy>,
-    layout: impl FnOnce(&diagrams::flowchart::FlowchartModel) -> Result<FlowchartLayout>,
-) -> Result<Box<FlowchartFamilyArtifact>> {
-    let layout = layout(&semantic)?;
+    layout: impl FnOnce(
+        &diagrams::flowchart::FlowchartModel,
+        &diagrams::flowchart::FlowchartRenderLabelSources,
+    ) -> Result<L>,
+) -> Result<Box<FlowchartFamilyArtifact<L>>> {
+    let layout = layout(&semantic, &label_sources)?;
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
+        label_sources,
         policy,
     }))
 }
 
-fn flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel) -> bool {
+fn semantic_flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel) -> bool {
     model
         .nodes
         .iter()
@@ -915,10 +925,18 @@ fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -
         .any(crate::math::contains_delimited_math)
 }
 
-fn model_requires_math(model: &RenderSemanticModel) -> bool {
-    match model {
+fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
+    match parsed.model() {
         RenderSemanticModel::Class(model) => crate::class::class_requires_math(model),
-        RenderSemanticModel::Flowchart(model) => flowchart_requires_math(model),
+        RenderSemanticModel::Flowchart(model) => {
+            parsed.flowchart_render_label_sources().map_or_else(
+                || semantic_flowchart_requires_math(model),
+                |label_sources| {
+                    crate::flowchart::FlowchartRenderModelRef::new(model, label_sources)
+                        .requires_math()
+                },
+            )
+        }
         RenderSemanticModel::Mindmap(model) => mindmap_requires_math(model),
         RenderSemanticModel::Sequence(model) => sequence_requires_math(model),
         _ => false,
@@ -933,11 +951,10 @@ fn capability_is_available(capability: RenderCapability, session: &RenderSession
     }
 }
 
-fn required_capabilities(
-    meta: &ParseMetadata,
-    model: &RenderSemanticModel,
-) -> Vec<RenderCapability> {
+fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> {
     let mut required = Vec::with_capacity(2);
+    let meta = parsed.metadata();
+    let model = parsed.model();
     let effective_config = &meta.effective_config;
     match model {
         RenderSemanticModel::Architecture(_) => {
@@ -959,17 +976,15 @@ fn required_capabilities(
         _ => {}
     }
 
-    if model_requires_math(model) {
+    if parsed_render_requires_math(parsed) {
         required.push(RenderCapability::Math);
     }
     required
 }
 
-fn validate_render_input(
-    meta: &ParseMetadata,
-    model: &RenderSemanticModel,
-    session: &RenderSession,
-) -> Result<()> {
+fn validate_render_input(parsed: &ParsedDiagramRender, session: &RenderSession) -> Result<()> {
+    let meta = parsed.metadata();
+    let model = parsed.model();
     let diagram_type = meta.diagram_type.as_str();
     if let RenderSemanticModel::CustomJson(custom) = model {
         return Err(Error::NonRenderableCustomModel {
@@ -988,7 +1003,7 @@ fn validate_render_input(
         });
     }
 
-    session.resource_policy().check_render_model(model)?;
+    session.resource_policy().check_parsed_render(parsed)?;
     Ok(())
 }
 
@@ -1008,8 +1023,8 @@ pub fn plan_render_with_policy(
 ) -> Result<RenderCapabilityPlan> {
     let meta = parsed.metadata();
     let model = parsed.model();
-    validate_render_input(meta, model, session)?;
-    let required = required_capabilities(meta, model);
+    validate_render_input(parsed, session)?;
+    let required = required_capabilities(parsed);
     let missing = required
         .iter()
         .copied()
@@ -1127,7 +1142,8 @@ fn prepare_non_class_render(
     session: RenderSession,
     render_policy: PresentationRenderPolicy,
 ) -> Result<FamilyRenderArtifact> {
-    let (meta, model) = parsed.into_parts();
+    let (meta, model, render_context) = parsed.into_render_parts();
+    let flowchart_label_sources = render_context.into_flowchart_label_sources();
     let diagram_type = meta.diagram_type.as_str();
     let execution = LayoutExecution::new(options, &session);
     let effective_config = meta.effective_config.as_value();
@@ -1181,26 +1197,38 @@ fn prepare_non_class_render(
         RenderSemanticModel::Flowchart(model)
             if meta.effective_config.get_str("layout") == Some("swimlane") =>
         {
-            BuiltinFamilyArtifact::Swimlane(prepare_pair(model, |model| {
-                crate::swimlane::layout_swimlane_typed_with_work_meter(
-                    model,
-                    &meta.effective_config,
-                    execution.text_measurer(),
-                    execution.math_renderer(),
-                    execution.work_meter(),
-                )
-            })?)
+            BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
+                model,
+                flowchart_label_sources,
+                None,
+                |model, label_sources| {
+                    crate::swimlane::layout_swimlane_typed_with_work_meter(
+                        model,
+                        label_sources,
+                        &meta.effective_config,
+                        execution.text_measurer(),
+                        execution.math_renderer(),
+                        execution.work_meter(),
+                    )
+                },
+            )?)
         }
-        RenderSemanticModel::Flowchart(model) => BuiltinFamilyArtifact::Flowchart(
-            prepare_flowchart_artifact(model, render_policy.flowchart(), |model| {
-                crate::layout_flowchart_typed_by_engine(
-                    diagram_type,
-                    model,
-                    &meta.effective_config,
-                    &execution,
-                )
-            })?,
-        ),
+        RenderSemanticModel::Flowchart(model) => {
+            BuiltinFamilyArtifact::Flowchart(prepare_flowchart_artifact(
+                model,
+                flowchart_label_sources,
+                render_policy.flowchart(),
+                |model, label_sources| {
+                    crate::layout_flowchart_typed_with_render_labels_by_engine(
+                        diagram_type,
+                        model,
+                        label_sources,
+                        &meta.effective_config,
+                        &execution,
+                    )
+                },
+            )?)
+        }
         #[cfg(feature = "layout-cytoscape")]
         RenderSemanticModel::Architecture(model) => {
             BuiltinFamilyArtifact::Architecture(prepare_pair(model, |model| {
@@ -1729,6 +1757,49 @@ system - satisfies -> req1
         assert_eq!(limit.limit, "max_model_items");
         assert_eq!(limit.actual, 5);
         assert_eq!(limit.max, 4);
+    }
+
+    #[test]
+    fn flowchart_math_capability_uses_parser_owned_render_spelling() {
+        for source in [
+            "flowchart TD\nA[\"#36;#36;node#36;#36;\"]\n",
+            "flowchart TD\nA -->|#36;#36;edge#36;#36;| B\n",
+            "flowchart TD\nsubgraph S[\"#36;#36;group#36;#36;\"]\nA\nend\n",
+        ] {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Flowchart source should produce a render model");
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .without_math_renderer()
+                .begin_session()
+                .unwrap();
+
+            let plan = plan_render(&parsed, &session).unwrap();
+            assert!(
+                !plan
+                    .required_capabilities()
+                    .contains(&RenderCapability::Math),
+                "encoded dollar entities remain ordinary createText input: {source}"
+            );
+            prepare(parsed, &LayoutOptions::default(), session)
+                .expect("encoded dollar entities must not require a Math renderer");
+        }
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart TD\nA[\"$$x$$\"]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .without_math_renderer()
+            .begin_session()
+            .unwrap();
+        let plan = plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
     }
 
     #[test]

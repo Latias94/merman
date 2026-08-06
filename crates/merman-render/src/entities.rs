@@ -13,6 +13,18 @@ pub(crate) fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str
     merman_core::entities::decode_mermaid_entities_to_unicode(text)
 }
 
+/// Mirrors Mermaid `createText.ts::decodeHTMLEntities` for SVG text nodes.
+///
+/// SVG labels are assigned through `textContent`, so Mermaid decodes only the entities introduced
+/// by its sanitizer. Other spellings such as `&nbsp;`, `&#160;`, and unknown entities remain
+/// literal text and must continue to participate in text measurement with that spelling.
+pub(crate) fn decode_svg_text_content_entities(text: &str) -> Cow<'_, str> {
+    if !text.contains("&lt;") && !text.contains("&gt;") && !text.contains("&amp;") {
+        return Cow::Borrowed(text);
+    }
+    Cow::Owned(decode_stage1_lt_gt_amp(text))
+}
+
 /// Decodes a minimal subset of entities used by Mermaid labels.
 ///
 /// This matches the historical replacement order used in this repo:
@@ -91,7 +103,10 @@ fn decode_stage2_quot_apos(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_entities_minimal, decode_mermaid_entities_for_render_text};
+    use super::{
+        decode_entities_minimal, decode_mermaid_entities_for_render_text,
+        decode_svg_text_content_entities,
+    };
 
     #[test]
     fn mermaid_placeholders_share_one_render_text_decoder() {
@@ -131,6 +146,14 @@ mod tests {
         assert_eq!(
             decode_entities_minimal("a &lt; b &amp;&amp; b &gt; c"),
             "a < b && b > c"
+        );
+    }
+
+    #[test]
+    fn svg_text_content_decodes_only_sanitizer_entities() {
+        assert_eq!(
+            decode_svg_text_content_entities("&amp; &lt; &gt; &nbsp; &#160; &quot; &unknown;"),
+            "& < > &nbsp; &#160; &quot; &unknown;"
         );
     }
 }

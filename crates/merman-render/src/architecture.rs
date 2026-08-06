@@ -2732,7 +2732,9 @@ mod tests {
             panic!("expected layout work resource error");
         };
         assert_eq!(error.cause, ResourceLimitCause::Ceiling);
-        assert_eq!(error.actual, 12);
+        // Admission now includes the adapter's source-sized spatial planning pass before any
+        // allocation or FCoSE work. Keep the rejection assertion aligned with that full plan.
+        assert_eq!(error.actual, 22);
         assert_eq!(error.max, 9);
         assert_eq!(narrow_meter.used(), 0);
     }

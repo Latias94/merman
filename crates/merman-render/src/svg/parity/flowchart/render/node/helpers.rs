@@ -39,6 +39,7 @@ pub(super) fn try_render_self_loop_label_placeholder(
     node_id: &str,
     x: f64,
     y: f64,
+    html_labels: bool,
 ) -> bool {
     if !is_self_loop_label_node_id(node_id) {
         return false;
@@ -46,11 +47,21 @@ pub(super) fn try_render_self_loop_label_placeholder(
 
     let _ = write!(
         out,
-        r#"<g class="label edgeLabel" id="{}" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
+        r#"<g class="label edgeLabel" id="{}" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/>"#,
         escape_xml_display(node_id),
         fmt_display(x),
         fmt_display(y)
     );
+    if html_labels {
+        out.push_str(
+            r#"<foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject>"#,
+        );
+    } else {
+        out.push_str(
+            r#"<g><rect class="background" style="stroke: none"/><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"/></text></g>"#,
+        );
+    }
+    out.push_str("</g></g>");
     true
 }
 
@@ -262,7 +273,7 @@ pub(super) fn resolve_node_render_info<'a>(
             class_attr_base: "node",
             wrapped_in_a: false,
             href: None,
-            label_text: sg.title.as_str(),
+            label_text: ctx.model.subgraph_title_for_render(sg),
             label_text_is_node_id: false,
             label_type: sg.label_type.as_deref().unwrap_or("text"),
             shape: "squareRect",
@@ -306,11 +317,12 @@ pub(super) fn resolve_node_render_info<'a>(
         // emit an anchor element in the SVG.
         let wrapped_in_a = link_present;
 
-        let (label_text, label_text_is_node_id) = if let Some(v) = node.label.as_deref() {
-            (v, false)
-        } else {
-            ("", true)
-        };
+        let (label_text, label_text_is_node_id) =
+            if let Some(v) = ctx.model.node_label_for_render(node) {
+                (v, false)
+            } else {
+                ("", true)
+            };
 
         Some(ResolvedNodeRenderInfo {
             dom_idx,

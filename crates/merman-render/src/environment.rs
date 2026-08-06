@@ -207,6 +207,18 @@ impl BuiltinTextMeasurementOperationCarrier {
             _ => None,
         }
     }
+
+    pub(crate) fn into_svg_computed_length(
+        self,
+        style: &TextStyle,
+    ) -> Option<BuiltinSvgComputedLength> {
+        match (self.phase, self.operation) {
+            (TextMeasurementPhase::ComputedLength, TextMeasurementOperation::ComputedLength) => {
+                Some(BuiltinSvgComputedLength::new(self.profile, style))
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Private authority for one complete rich HTML measurement operation.
@@ -256,6 +268,51 @@ enum BuiltinInlineRawLineWidth {
         font_size: f64,
         em: f64,
     },
+}
+
+/// Streaming `getComputedTextLength()` state for a qualified built-in SVG text route.
+///
+/// Flowchart's createText wrapper probes every growing word prefix. Retaining the exact vendored
+/// scalar state avoids rescanning and reallocating the complete prefix while preserving the same
+/// kerning/trigram accumulation order. Host-backed and opaque custom measurers cannot construct
+/// this state, so their observable callback sequence remains unchanged.
+#[derive(Debug, Clone)]
+pub(crate) struct BuiltinSvgComputedLength {
+    line: BuiltinInlineRawLineWidth,
+}
+
+impl BuiltinSvgComputedLength {
+    fn new(profile: BuiltinTextMeasurementProfile, style: &TextStyle) -> Self {
+        let (line, _) = BuiltinInlineRawLineWidth::new(profile, style);
+        Self { line }
+    }
+
+    pub(crate) fn vendored(style: &TextStyle) -> Self {
+        Self::new(BuiltinTextMeasurementProfile::VendoredParity, style)
+    }
+
+    pub(crate) fn deterministic(style: &TextStyle) -> Self {
+        Self::new(BuiltinTextMeasurementProfile::Deterministic, style)
+    }
+
+    pub(crate) fn push_text(&mut self, text: &str) {
+        for ch in text.chars() {
+            self.line.push_char(ch);
+        }
+    }
+
+    pub(crate) fn width_px(&self) -> f64 {
+        let width = self.line.width_px();
+        if width.is_finite() && width >= 0.0 {
+            width
+        } else {
+            0.0
+        }
+    }
+
+    pub(crate) fn reset(&mut self) {
+        self.line.reset();
+    }
 }
 
 impl BuiltinInlineRawLineWidth {
@@ -1012,6 +1069,15 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
         operation: TextMeasurementOperation,
     ) -> Option<BuiltinTextMeasurementOperationCarrier> {
         RoutedTextMeasurer::builtin_operation_carrier(self, operation)
+    }
+
+    #[allow(private_interfaces)]
+    fn begin_svg_text_computed_length(
+        &self,
+        style: &TextStyle,
+    ) -> Option<BuiltinSvgComputedLength> {
+        self.builtin_operation_carrier(TextMeasurementOperation::ComputedLength)
+            .and_then(|carrier| carrier.into_svg_computed_length(style))
     }
 
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {

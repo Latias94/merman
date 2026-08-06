@@ -2,7 +2,10 @@
 //!
 //! This module intentionally mirrors Mermaid behavior (including quirks) for parity.
 
-use super::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
+use super::{
+    DeterministicTextMeasurer, TextMeasurer, TextStyle, trim_end_html_collapsible_ascii_whitespace,
+    trim_html_collapsible_ascii_whitespace,
+};
 
 pub fn ceil_to_1_64_px(v: f64) -> f64 {
     if !(v.is_finite() && v >= 0.0) {
@@ -79,13 +82,20 @@ pub fn wrap_text_lines_measurer(
             }
 
             let candidate = format!("{cur}{tok}");
-            if measurer.measure(candidate.trim_end(), style).width <= max_width_px {
+            if measurer
+                .measure(
+                    trim_end_html_collapsible_ascii_whitespace(&candidate),
+                    style,
+                )
+                .width
+                <= max_width_px
+            {
                 cur = candidate;
                 continue;
             }
 
-            if !cur.trim().is_empty() {
-                out.push(cur.trim_end().to_string());
+            if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
+                out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
                 cur.clear();
                 tokens.push_front(tok);
                 continue;
@@ -114,8 +124,8 @@ pub fn wrap_text_lines_measurer(
             }
         }
 
-        if !cur.trim().is_empty() {
-            out.push(cur.trim_end().to_string());
+        if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
+            out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
         }
 
         if out.is_empty() {
@@ -204,14 +214,14 @@ pub(crate) fn wrap_svg_text_lines_by_measurement(
             }
 
             let candidate = format!("{cur}{tok}");
-            let candidate_trimmed = candidate.trim_end();
+            let candidate_trimmed = trim_end_html_collapsible_ascii_whitespace(&candidate);
             if measure_w_px(measurer, style, candidate_trimmed) <= max_width_px {
                 cur = candidate;
                 continue;
             }
 
-            if !cur.trim().is_empty() {
-                out.push(cur.trim_end().to_string());
+            if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
+                out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
                 cur.clear();
                 tokens.push_front(tok);
                 continue;
@@ -238,8 +248,8 @@ pub(crate) fn wrap_svg_text_lines_by_measurement(
             }
         }
 
-        if !cur.trim().is_empty() {
-            out.push(cur.trim_end().to_string());
+        if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
+            out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
         }
 
         if out.is_empty() {

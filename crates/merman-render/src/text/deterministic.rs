@@ -1,6 +1,10 @@
 //! Deterministic text measurement and wrapping fallback.
 
-use super::{TextMeasurer, TextMetrics, TextStyle, WrapMode, estimate_line_width_px};
+use super::{
+    TextMeasurer, TextMetrics, TextStyle, WrapMode, estimate_line_width_px,
+    is_html_collapsible_ascii_whitespace, trim_end_html_collapsible_ascii_whitespace,
+    trim_html_collapsible_ascii_whitespace,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct DeterministicTextMeasurer {
@@ -9,10 +13,6 @@ pub struct DeterministicTextMeasurer {
 }
 
 impl DeterministicTextMeasurer {
-    fn is_html_collapsible_ascii_whitespace(ch: char) -> bool {
-        matches!(ch, '\t' | '\n' | '\u{000C}' | '\r' | ' ')
-    }
-
     fn replace_br_variants(text: &str) -> String {
         let mut out = String::with_capacity(text.len());
         let mut i = 0usize;
@@ -76,7 +76,9 @@ impl DeterministicTextMeasurer {
     }
 
     pub fn normalized_text_lines(text: &str) -> Vec<String> {
-        Self::normalized_text_lines_with(text, |line| line.trim().is_empty())
+        Self::normalized_text_lines_with(text, |line| {
+            trim_html_collapsible_ascii_whitespace(line).is_empty()
+        })
     }
 
     pub(crate) fn normalized_text_lines_for_wrap_mode(
@@ -85,9 +87,11 @@ impl DeterministicTextMeasurer {
     ) -> Vec<String> {
         Self::normalized_text_lines_with(text, |line| match wrap_mode {
             WrapMode::HtmlLike => line
-                .trim_matches(Self::is_html_collapsible_ascii_whitespace)
+                .trim_matches(is_html_collapsible_ascii_whitespace)
                 .is_empty(),
-            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => line.trim().is_empty(),
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => line
+                .trim_matches(is_html_collapsible_ascii_whitespace)
+                .is_empty(),
         })
     }
 
@@ -110,17 +114,21 @@ impl DeterministicTextMeasurer {
 
     fn trim_wrapped_line_end(text: &str, wrap_mode: WrapMode) -> &str {
         match wrap_mode {
-            WrapMode::HtmlLike => text.trim_end_matches(Self::is_html_collapsible_ascii_whitespace),
-            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => text.trim_end(),
+            WrapMode::HtmlLike => text.trim_end_matches(is_html_collapsible_ascii_whitespace),
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
+                text.trim_end_matches(is_html_collapsible_ascii_whitespace)
+            }
         }
     }
 
     fn wrapped_line_has_visible_content(text: &str, wrap_mode: WrapMode) -> bool {
         match wrap_mode {
             WrapMode::HtmlLike => !text
-                .trim_matches(Self::is_html_collapsible_ascii_whitespace)
+                .trim_matches(is_html_collapsible_ascii_whitespace)
                 .is_empty(),
-            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => !text.trim().is_empty(),
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => !text
+                .trim_matches(is_html_collapsible_ascii_whitespace)
+                .is_empty(),
         }
     }
 
@@ -187,6 +195,15 @@ impl DeterministicTextMeasurer {
 }
 
 impl TextMeasurer for DeterministicTextMeasurer {
+    #[allow(private_interfaces)]
+    fn begin_svg_text_computed_length(
+        &self,
+        style: &TextStyle,
+    ) -> Option<crate::environment::BuiltinSvgComputedLength> {
+        (self.char_width_factor == 0.0)
+            .then(|| crate::environment::BuiltinSvgComputedLength::deterministic(style))
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.measure_wrapped(text, style, None, WrapMode::SvgLike)
     }
@@ -213,7 +230,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
     }
 
     fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
-        let t = text.trim_end();
+        let t = trim_end_html_collapsible_ascii_whitespace(text);
         if t.is_empty() {
             return 0.0;
         }
@@ -221,7 +238,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
     }
 
     fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
-        if text.trim_end().is_empty() {
+        if trim_end_html_collapsible_ascii_whitespace(text).is_empty() {
             0.0
         } else {
             super::svg_wrapped_first_line_bbox_height_px(style)

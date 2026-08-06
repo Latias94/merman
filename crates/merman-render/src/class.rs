@@ -1812,7 +1812,18 @@ pub(crate) fn class_svg_single_line_plain_label_width_px(
         return None;
     }
 
-    let width = measurer.measure_svg_tspan_text_bbox_width_px(trimmed, text_style);
+    let canonical_line = analysis.lines.into_iter().next()?.into_iter().fold(
+        String::new(),
+        |mut line, (word, _)| {
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(&word);
+            line
+        },
+    );
+    let (left, right) = measurer.measure_svg_text_bbox_x(&canonical_line, text_style);
+    let width = left + right;
     (width.is_finite() && width > 0.0).then_some(width)
 }
 
@@ -3298,6 +3309,14 @@ mod tests {
                 line_count: 1,
             }
         }
+
+        fn measure_svg_text_bbox_x(&self, _text: &str, _style: &TextStyle) -> (f64, f64) {
+            (31.0, 42.123_456_789)
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            panic!("formatted Class labels must not use the single-tspan operation")
+        }
     }
 
     impl TextMeasurer for ClassMathGeometryMeasurer {
@@ -3603,7 +3622,7 @@ mod tests {
     }
 
     #[test]
-    fn class_svg_plain_underscore_uses_single_tspan_bbox_precision() {
+    fn class_svg_plain_underscore_uses_formatted_text_bbox_precision() {
         assert_eq!(
             super::class_svg_single_line_plain_label_width_px(
                 "driver_license",
@@ -3615,7 +3634,7 @@ mod tests {
     }
 
     #[test]
-    fn class_svg_single_tspan_bbox_uses_semantic_markdown_analysis() {
+    fn class_svg_formatted_bbox_uses_semantic_markdown_analysis() {
         let style = default_style();
         for literal in [
             "driver_license",

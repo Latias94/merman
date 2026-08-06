@@ -526,6 +526,21 @@ mod tests {
     }
 
     #[test]
+    fn mindmap_break_spaces_preserves_trailing_indentation_line_box() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let source = "\n    Multi-line root\n    with three lines\n  ";
+        assert_eq!(
+            crate::text::mermaid_markdown_to_html_label_fragment(source, true),
+            "    Multi-line root\n    with three lines\n  "
+        );
+        let (width, height) = super::mindmap_label_bbox_px(source, &measurer, &style, 200.0);
+
+        assert_eq!(width, 200.0);
+        assert_eq!(height, 72.0);
+    }
+
+    #[test]
     fn mindmap_html_labels_measure_visible_content_instead_of_markup() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));

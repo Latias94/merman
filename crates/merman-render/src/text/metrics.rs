@@ -3,20 +3,13 @@
 use super::line_break::html_break_spaces_segments;
 use super::{
     MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle, WrapMode, ceil_to_1_64_px,
-    mermaid_markdown_to_lines, mermaid_xhtml_label_plain_text, round_to_1_64_px, wrap,
+    is_html_collapsible_ascii_whitespace, mermaid_markdown_to_lines,
+    mermaid_xhtml_label_plain_text, round_to_1_64_px, trim_html_collapsible_ascii_whitespace, wrap,
 };
 use crate::environment::{
     BuiltinInlineHtmlWidth, BuiltinTextMeasurementOperationCarrier, InlineHtmlMeasurementCarrier,
     TextMeasurementOperation,
 };
-
-fn is_html_collapsible_ascii_whitespace(ch: char) -> bool {
-    matches!(ch, '\t' | '\n' | '\u{000C}' | '\r' | ' ')
-}
-
-fn trim_html_collapsible_ascii_whitespace(input: &str) -> &str {
-    input.trim_matches(is_html_collapsible_ascii_whitespace)
-}
 
 // This input has already passed through the lightweight HTML parser. Do not use the generic text
 // normalizer here: its Unicode trim would erase a final NBSP-only line before inline measurement.
@@ -1002,19 +995,37 @@ fn explicit_inline_html_line_boxes(
                 .filter(|(runs, has_image)| !runs.is_empty() || !**has_image)
                 .count()
         })
-        .unwrap_or(0)
+        // With no visible runs, N explicit `<br>` elements produce N line boxes. The parser keeps
+        // one initial row plus one row per break, while block-end rows are suppressed below.
+        .unwrap_or_else(|| runs_by_line.len().saturating_sub(1))
 }
 
 fn finish_inline_html_layout<M: TextMeasurer + ?Sized>(
     measurer: &M,
     carrier: InlineHtmlMeasurementCarrier,
     runs_by_line: &[Vec<InlineTextRun>],
+    break_spaces_runs_by_line: Option<&[Vec<InlineTextRun>]>,
     style: &TextStyle,
     max_width: Option<f64>,
     explicit_line_boxes: usize,
 ) -> TextMetrics {
-    let layout = measure_inline_html_layout(measurer, carrier, runs_by_line, style, max_width);
-    let width = if let Some(max_width) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
+    let collapsed = measure_inline_html_layout(measurer, carrier, runs_by_line, style, max_width);
+    let active_max_width = max_width.filter(|width| width.is_finite() && *width > 0.0);
+    let break_spaces_active = active_max_width.is_some_and(|max_width| {
+        collapsed.natural_width >= max_width && collapsed.min_content_width <= max_width
+    });
+    let layout = if break_spaces_active {
+        break_spaces_runs_by_line
+            .map(|runs| measure_inline_html_layout(measurer, carrier, runs, style, max_width))
+            .unwrap_or(collapsed)
+    } else {
+        collapsed
+    };
+    let width = if break_spaces_active {
+        active_max_width
+            .unwrap_or(layout.natural_width)
+            .max(layout.min_content_width)
+    } else if let Some(max_width) = active_max_width {
         if layout.natural_width > max_width {
             layout
                 .wrapped_width
@@ -1315,32 +1326,35 @@ mod inline_planning_tests {
                 Some("sans-serif".to_string()),
             )
         };
-        assert_eq!(
-            calls,
-            vec![
-                regular("aa BB cc"),
-                regular("aa "),
-                bold("BB"),
-                regular(" cc"),
-                regular("aa "),
-                bold("BB"),
-                regular(" cc"),
-                regular("aa "),
-                bold("BB"),
-                regular(" "),
-                regular("cc"),
-                regular("aa "),
-                regular("aa "),
-                bold("BB"),
-                regular(" "),
-                regular("aa "),
-                bold("BB"),
-                regular(" cc"),
-                bold("BB"),
-                regular(" "),
-                regular("cc"),
-            ]
-        );
+        let layout_pass = vec![
+            regular("aa "),
+            bold("BB"),
+            regular(" cc"),
+            regular("aa "),
+            bold("BB"),
+            regular(" "),
+            regular("cc"),
+            regular("aa "),
+            regular("aa "),
+            bold("BB"),
+            regular(" "),
+            regular("aa "),
+            bold("BB"),
+            regular(" cc"),
+            bold("BB"),
+            regular(" "),
+            regular("cc"),
+        ];
+        let mut expected = vec![
+            regular("aa BB cc"),
+            regular("aa "),
+            bold("BB"),
+            regular(" cc"),
+        ];
+        // Mermaid remeasures after switching from nowrap to break-spaces at the width boundary.
+        expected.extend(layout_pass.iter().cloned());
+        expected.extend(layout_pass);
+        assert_eq!(calls, expected);
         assert_eq!(metrics.width, 4.0);
         assert_eq!(metrics.line_count, 3);
     }
@@ -1490,10 +1504,16 @@ mod inline_planning_tests {
                 .iter()
                 .map(|(_, text)| text.as_str())
                 .collect::<Vec<_>>(),
-            vec![
-                "aa BB cc", "aa ", "BB", " cc", "aa ", "BB", " cc", "aa ", "BB", " ", "cc", "aa ",
-                "aa ", "BB", " ", "aa ", "BB", " cc", "BB", " ", "cc",
-            ]
+            {
+                let layout_pass = [
+                    "aa ", "BB", " cc", "aa ", "BB", " ", "cc", "aa ", "aa ", "BB", " ", "aa ",
+                    "BB", " cc", "BB", " ", "cc",
+                ];
+                let mut expected = vec!["aa BB cc", "aa ", "BB", " cc"];
+                expected.extend(layout_pass);
+                expected.extend(layout_pass);
+                expected
+            }
         );
         assert_eq!(metrics.width, 4.0);
         assert_eq!(metrics.line_count, 3);
@@ -2102,42 +2122,21 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     // Mermaid supports inline FontAwesome icons via `<i class="fa fa-..."></i>` inside HTML
     // labels. Upstream layout is computed with FontAwesome CSS available, while exported SVGs
     // keep only the empty `<i>` element. Model the layout-time glyph advance explicitly.
-    fn decode_html_entity(entity: &str) -> Option<char> {
-        match entity {
-            "nbsp" => Some('\u{00A0}'),
-            "lt" => Some('<'),
-            "gt" => Some('>'),
-            "amp" => Some('&'),
-            "quot" => Some('"'),
-            "apos" => Some('\''),
-            "#39" => Some('\''),
-            _ => {
-                if let Some(hex) = entity
-                    .strip_prefix("#x")
-                    .or_else(|| entity.strip_prefix("#X"))
-                {
-                    u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
-                } else if let Some(dec) = entity.strip_prefix('#') {
-                    dec.parse::<u32>().ok().and_then(char::from_u32)
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
     let mut plain = String::new();
     let mut icon_width_px_by_line: Vec<f64> = vec![0.0];
     let mut icon_on_line: Vec<bool> = vec![false];
     let mut image_on_line: Vec<bool> = vec![false];
     let mut inline_runs_by_line: Vec<Vec<InlineTextRun>> = vec![Vec::new()];
+    let mut break_spaces_runs_by_line: Option<Vec<Vec<InlineTextRun>>> = None;
     let mut strong_depth: usize = 0;
     let mut em_depth: usize = 0;
     let mut code_depth: usize = 0;
     let mut fa_icon_depth: usize = 0;
+    let mut inline_replaced_boundary = false;
 
     let html = html.replace("\r\n", "\n");
     let mut it = html.chars().peekable();
+    let mut entity_reference = String::new();
     while let Some(ch) = it.next() {
         if ch == '<' {
             let mut tag = String::new();
@@ -2147,9 +2146,9 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                 }
                 tag.push(c);
             }
-            let tag = tag.trim();
+            let tag = trim_html_collapsible_ascii_whitespace(&tag);
             let tag_lower = tag.to_ascii_lowercase();
-            let tag_trim = tag_lower.trim();
+            let tag_trim = trim_html_collapsible_ascii_whitespace(&tag_lower);
             if tag_trim.starts_with('!') || tag_trim.starts_with('?') {
                 continue;
             }
@@ -2157,7 +2156,8 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
             let name = tag_trim
                 .trim_start_matches('/')
                 .trim_end_matches('/')
-                .split_whitespace()
+                .split(is_html_collapsible_ascii_whitespace)
+                .filter(|part| !part.is_empty())
                 .next()
                 .unwrap_or("");
 
@@ -2191,6 +2191,13 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                         if let Some(runs) = inline_runs_by_line.get_mut(line_idx) {
                             runs.push(InlineTextRun::default());
                         }
+                        if let Some(runs) = break_spaces_runs_by_line
+                            .as_mut()
+                            .and_then(|lines| lines.last_mut())
+                        {
+                            runs.push(InlineTextRun::default());
+                        }
+                        inline_replaced_boundary = true;
                         fa_icon_depth += 1;
                     } else {
                         em_depth += 1;
@@ -2207,6 +2214,7 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                     if let Some(slot) = image_on_line.last_mut() {
                         *slot = true;
                     }
+                    inline_replaced_boundary = true;
                 }
                 "br" => {
                     plain.push('\n');
@@ -2214,34 +2222,52 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                     icon_on_line.push(false);
                     image_on_line.push(false);
                     inline_runs_by_line.push(Vec::new());
+                    if let Some(lines) = break_spaces_runs_by_line.as_mut() {
+                        lines.push(Vec::new());
+                    }
+                    inline_replaced_boundary = false;
                 }
                 "p" | "div" | "li" | "tr" | "ul" | "ol" if is_closing => {
-                    plain.push('\n');
-                    icon_width_px_by_line.push(0.0);
-                    icon_on_line.push(false);
-                    image_on_line.push(false);
-                    inline_runs_by_line.push(Vec::new());
+                    // A block end starts the next line only when the current line has content.
+                    // Reusing the `<br>` branch here would append a phantom row after
+                    // `<p><br></p>` and make blank-only labels impossible to count exactly.
+                    if !plain.ends_with('\n') && !plain.is_empty() {
+                        plain.push('\n');
+                        icon_width_px_by_line.push(0.0);
+                        icon_on_line.push(false);
+                        image_on_line.push(false);
+                        inline_runs_by_line.push(Vec::new());
+                        if let Some(lines) = break_spaces_runs_by_line.as_mut() {
+                            lines.push(Vec::new());
+                        }
+                    }
+                    inline_replaced_boundary = false;
                 }
                 _ => {}
             }
             continue;
         }
 
-        let mut push_char =
-            |decoded: char,
-             plain: &mut String,
-             icon_width_px_by_line: &mut Vec<f64>,
-             icon_on_line: &mut Vec<bool>,
-             inline_runs_by_line: &mut Vec<Vec<InlineTextRun>>| {
-                plain.push(decoded);
-                if decoded == '\n' {
-                    icon_width_px_by_line.push(0.0);
-                    icon_on_line.push(false);
-                    image_on_line.push(false);
-                    inline_runs_by_line.push(Vec::new());
-                    return;
-                }
-                if let Some(runs) = inline_runs_by_line.last_mut() {
+        let push_char = |decoded: char,
+                         plain: &mut String,
+                         icon_on_line: &mut Vec<bool>,
+                         inline_runs_by_line: &mut Vec<Vec<InlineTextRun>>,
+                         break_spaces_runs_by_line: &mut Option<Vec<Vec<InlineTextRun>>>,
+                         inline_replaced_boundary: &mut bool| {
+            if wrap_mode == WrapMode::HtmlLike
+                && is_html_collapsible_ascii_whitespace(decoded)
+                && break_spaces_runs_by_line.is_none()
+            {
+                // The browser decodes entities before it decides whether fixed-width
+                // `break-spaces` layout is needed. Lazily fork the exact-text projection at the
+                // first decoded whitespace so literal and entity-produced whitespace share the
+                // same semantics without duplicating every ordinary label up front.
+                *break_spaces_runs_by_line = Some(inline_runs_by_line.clone());
+            }
+            if let Some(lines) = break_spaces_runs_by_line.as_mut() {
+                if decoded == '\n' || decoded == '\r' {
+                    lines.push(Vec::new());
+                } else if let Some(runs) = lines.last_mut() {
                     push_inline_text_char(
                         runs,
                         decoded,
@@ -2250,10 +2276,38 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                         code_depth > 0,
                     );
                 }
+            }
+            let decoded = if is_html_collapsible_ascii_whitespace(decoded) {
+                ' '
+            } else {
+                decoded
             };
+            if decoded == ' ' {
+                let line_has_visual = icon_on_line.last().copied().unwrap_or(false)
+                    || image_on_line.last().copied().unwrap_or(false);
+                if (plain.ends_with(' ') && !*inline_replaced_boundary)
+                    || (plain.ends_with('\n') && !line_has_visual)
+                    || (plain.is_empty() && !line_has_visual)
+                {
+                    return;
+                }
+            }
+            plain.push(decoded);
+            if let Some(runs) = inline_runs_by_line.last_mut() {
+                push_inline_text_char(
+                    runs,
+                    decoded,
+                    strong_depth > 0,
+                    em_depth > 0,
+                    code_depth > 0,
+                );
+            }
+            *inline_replaced_boundary = false;
+        };
 
         if ch == '&' {
-            let mut entity = String::new();
+            entity_reference.clear();
+            entity_reference.push('&');
             let mut saw_semicolon = false;
             while let Some(&c) = it.peek() {
                 if c == ';' {
@@ -2261,42 +2315,29 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                     saw_semicolon = true;
                     break;
                 }
-                if c == '<' || c == '&' || c.is_whitespace() || entity.len() > 32 {
+                if c == '<'
+                    || c == '&'
+                    || is_html_collapsible_ascii_whitespace(c)
+                    || entity_reference.len() > 65
+                {
                     break;
                 }
-                entity.push(c);
+                entity_reference.push(c);
                 it.next();
             }
             if saw_semicolon {
-                if let Some(decoded) = decode_html_entity(entity.as_str()) {
-                    push_char(
-                        decoded,
-                        &mut plain,
-                        &mut icon_width_px_by_line,
-                        &mut icon_on_line,
-                        &mut inline_runs_by_line,
-                    );
-                } else {
-                    for literal in format!("&{entity};").chars() {
-                        push_char(
-                            literal,
-                            &mut plain,
-                            &mut icon_width_px_by_line,
-                            &mut icon_on_line,
-                            &mut inline_runs_by_line,
-                        );
-                    }
-                }
-            } else {
-                for literal in format!("&{entity}").chars() {
-                    push_char(
-                        literal,
-                        &mut plain,
-                        &mut icon_width_px_by_line,
-                        &mut icon_on_line,
-                        &mut inline_runs_by_line,
-                    );
-                }
+                entity_reference.push(';');
+            }
+            let decoded = merman_core::entities::decode_html_entities_to_unicode(&entity_reference);
+            for decoded in decoded.chars() {
+                push_char(
+                    decoded,
+                    &mut plain,
+                    &mut icon_on_line,
+                    &mut inline_runs_by_line,
+                    &mut break_spaces_runs_by_line,
+                    &mut inline_replaced_boundary,
+                );
             }
             continue;
         }
@@ -2304,10 +2345,21 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
         push_char(
             ch,
             &mut plain,
-            &mut icon_width_px_by_line,
             &mut icon_on_line,
             &mut inline_runs_by_line,
+            &mut break_spaces_runs_by_line,
+            &mut inline_replaced_boundary,
         );
+    }
+
+    if let Some(lines) = break_spaces_runs_by_line.as_mut() {
+        while lines.len() > 1
+            && lines
+                .last()
+                .is_some_and(|runs| runs.iter().all(|run| run.text.is_empty()))
+        {
+            lines.pop();
+        }
     }
 
     // Keep whitespace adjacent to inline icons: in HTML it becomes significant when it separates
@@ -2343,6 +2395,7 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
             measurer,
             carrier,
             &inline_runs_by_line,
+            break_spaces_runs_by_line.as_deref(),
             style,
             max_width,
             explicit_line_boxes,
@@ -2381,6 +2434,7 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
             measurer,
             carrier,
             &inline_runs_by_line,
+            break_spaces_runs_by_line.as_deref(),
             style,
             max_width,
             explicit_line_boxes,
@@ -2396,7 +2450,8 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                 let mut has_width_override = false;
 
                 for (idx, line) in lines.iter().enumerate() {
-                    if !icon_on_line[idx] || !line.starts_with(char::is_whitespace) {
+                    if !icon_on_line[idx] || !line.starts_with(is_html_collapsible_ascii_whitespace)
+                    {
                         continue;
                     }
                     let text = trim_html_collapsible_ascii_whitespace(line);
@@ -2571,7 +2626,12 @@ fn markdown_word_line_plain_text_and_width_px(
     let mut runs = Vec::new();
 
     for (word_idx, (word, ty)) in words.iter().enumerate() {
-        let visible_word = merman_core::entities::decode_html_entities_to_unicode(word);
+        let visible_word = match wrap_mode {
+            WrapMode::HtmlLike => merman_core::entities::decode_html_entities_to_unicode(word),
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
+                crate::entities::decode_svg_text_content_entities(word)
+            }
+        };
         let bold = *ty == MermaidMarkdownWordType::Strong;
         let italic = *ty == MermaidMarkdownWordType::Em;
 
@@ -2826,7 +2886,7 @@ fn measure_markdown_with_inline_styles_impl(
                 .map(|p| p.text.as_str())
                 .collect::<Vec<_>>()
                 .join("\n");
-            let has_any_text = !total_text.trim().is_empty();
+            let has_any_text = !trim_html_collapsible_ascii_whitespace(&total_text).is_empty();
 
             // Mermaid renders a single standalone Markdown image without a `<p>` wrapper and
             // applies fixed `80px` sizing. In the upstream fixtures, missing/empty `src` yields
@@ -2856,7 +2916,7 @@ fn measure_markdown_with_inline_styles_impl(
             let mut line_count: usize = 0;
 
             for p in paragraphs {
-                let p_text = p.text.trim().to_string();
+                let p_text = trim_html_collapsible_ascii_whitespace(&p.text).to_string();
                 let text_metrics = if p_text.is_empty() {
                     TextMetrics {
                         width: 0.0,
@@ -2925,10 +2985,9 @@ fn measure_markdown_with_inline_styles_impl(
     }
 
     let plain = plain_lines.join("\n");
-    let plain = if wrap_mode == WrapMode::HtmlLike {
-        trim_html_collapsible_ascii_whitespace(&plain).to_string()
-    } else {
-        plain.trim().to_string()
+    let plain = match wrap_mode {
+        WrapMode::HtmlLike => trim_html_collapsible_ascii_whitespace(&plain).to_string(),
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => plain,
     };
     let base = if manually_wrap_words {
         measurer.measure_wrapped(&plain, style, None, wrap_mode)

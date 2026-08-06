@@ -156,22 +156,28 @@ Evidence fixture:
 
 - Class (SVG labels): `fixtures/class/stress_class_svg_font_size_px_string_precedence_026.mmd`
 
-#### Flowchart-specific: quoted-string whitespace height parity
+#### Flowchart-specific: parser-label boundary whitespace
 
-Mermaid FlowDB preserves whitespace for `labelType=string` labels (quoted strings), but upstream
-SVG baselines do **not** consistently allocate extra line height for *trailing-only* whitespace.
-This is easy to over-model in headless measurement and causes large `parity-root` deltas.
+Mermaid FlowDB applies ECMAScript `String.trim()` to parser-produced node, edge, and subgraph
+labels before HTML entities are decoded. Interior whitespace is preserved, while direct boundary
+whitespace such as U+00A0 is removed. Entity spelling remains significant at this stage, so a
+boundary `&nbsp;` survives and becomes U+00A0 during HTML rendering. ShapeData labels bypass this
+parser-label trim and retain their YAML value.
+
+Do not infer label semantics from browser box geometry alone. Upstream SVG baselines can still
+allocate surprising line boxes even after the FlowDB text value has been trimmed; model text and
+browser-dependent measurement are separate evidence surfaces.
 
 Gap check:
 
 - Use `parity-root` to surface the symptom:  
   `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter whitespace_068`
-- Inspect whether node heights inflate (e.g. a 1-line label becomes 2 lines worth of height) and
-  whether root `viewBox` height grows as a result.
+- Inspect label text separately from node height and root `viewBox` geometry.
 
 Evidence fixture:
 
 - `fixtures/flowchart/stress_flowchart_html_label_whitespace_068.mmd`
+- `fixtures/flowchart/stress_flowchart_nbsp_source_provenance_079.mmd`
 
 ### 2) `htmlLabels` semantics (diagram-specific precedence)
 
