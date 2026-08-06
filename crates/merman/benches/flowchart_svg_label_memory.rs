@@ -2,15 +2,16 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::{HeadlessRenderer, RenderFamilyKind, RuntimePolicy};
+use merman::svg::{HeadlessRenderer, PreparedRender, RenderFamilyKind, RuntimePolicy};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-const RESPONSE_SCHEMA_VERSION: u32 = 2;
+const RESPONSE_SCHEMA_VERSION: u32 = 3;
 const REQUEST_SCHEMA_VERSION: u32 = 1;
 const LANE_ID: &str = "flowchart-svg-label-artifact-memory";
 const PUBLIC_OPERATION: &str = "prepare-render";
@@ -54,9 +55,9 @@ struct SemanticProjection {
     metadata_diagram_type_matches: bool,
     prepared_family_flowchart: bool,
     html_labels_disabled: bool,
-    unique_source_labels: bool,
-    retained_label_state_alive_at_checkpoint: bool,
-    prepared_state_released_after_drop: bool,
+    prepared_render_alive_at_checkpoint: bool,
+    projected_node_labels_match_workload: bool,
+    unique_projected_node_labels: bool,
 }
 
 impl SemanticProjection {
@@ -67,9 +68,9 @@ impl SemanticProjection {
             metadata_diagram_type_matches: false,
             prepared_family_flowchart: false,
             html_labels_disabled: false,
-            unique_source_labels: false,
-            retained_label_state_alive_at_checkpoint: false,
-            prepared_state_released_after_drop: false,
+            prepared_render_alive_at_checkpoint: false,
+            projected_node_labels_match_workload: false,
+            unique_projected_node_labels: false,
         }
     }
 }
@@ -78,7 +79,7 @@ impl SemanticProjection {
 struct SemanticOutput {
     #[serde(flatten)]
     projection: SemanticProjection,
-    prepared_label_count: u32,
+    projected_node_label_count: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,6 +107,7 @@ struct ProbeResponse {
     live_bytes_after: u64,
     peak_live_bytes: u64,
     peak_growth_bytes: u64,
+    live_bytes_after_drop: u64,
     counter_overflowed: bool,
     counter_underflowed: bool,
 }
@@ -224,6 +226,28 @@ fn sha256_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+fn projected_node_labels(prepared: &PreparedRender) -> Result<(u32, bool), ProbeError> {
+    let projection = prepared
+        .layout_json()
+        .map_err(|error| ProbeError::new(format!("layout projection failed: {error}")))?;
+    let nodes = projection
+        .get("semantic")
+        .and_then(|semantic| semantic.get("nodes"))
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| ProbeError::new("prepared Flowchart projection has no semantic nodes"))?;
+    let count = u32::try_from(nodes.len())
+        .map_err(|_| ProbeError::new("prepared Flowchart node count exceeds u32"))?;
+    let mut labels = HashSet::with_capacity(nodes.len());
+    for node in nodes {
+        let label = node
+            .get("label")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| ProbeError::new("prepared Flowchart node has no string label"))?;
+        labels.insert(label);
+    }
+    Ok((count, labels.len() == nodes.len()))
+}
+
 fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     if std::env::args_os().nth(1).is_some() {
         return Err(ProbeError::new(
@@ -247,43 +271,67 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
         .parse_metadata_sync(&source)
         .map_err(|error| ProbeError::new(format!("metadata preparation failed: {error}")))?;
 
-    let prepared_label_count = request.scale * LABELS_PER_SCALE;
-    let workload_units = prepared_label_count;
+    let input_label_count = request.scale * LABELS_PER_SCALE;
+    let workload_units = input_label_count;
     let snapshot_live_bytes = ALLOCATOR.begin_measurement();
-    let (prepared, mut projection) = match request.mode {
-        Mode::Operation => {
-            let prepared = renderer
-                .prepare_render_sync(&source)
-                .map_err(|error| ProbeError::new(format!("render preparation failed: {error}")))?
-                .ok_or_else(|| ProbeError::new("render preparation returned no diagram"))?;
-            let projection = SemanticProjection {
-                kind: SEMANTIC_KIND,
-                label_profile: LABEL_PROFILE,
-                metadata_diagram_type_matches: prepared.metadata().diagram_type == DIAGRAM_TYPE,
-                prepared_family_flowchart: prepared.family_kind() == RenderFamilyKind::Flowchart,
-                html_labels_disabled: prepared.metadata().effective_config.get_bool("htmlLabels")
-                    == Some(false),
-                unique_source_labels: true,
-                retained_label_state_alive_at_checkpoint: true,
-                prepared_state_released_after_drop: false,
-            };
-            (Some(prepared), projection)
-        }
-        Mode::Zero => (None, SemanticProjection::zero()),
-    };
+    let (prepared, metadata_diagram_type_matches, prepared_family_flowchart, html_labels_disabled) =
+        match request.mode {
+            Mode::Operation => {
+                let prepared = renderer
+                    .prepare_render_sync(&source)
+                    .map_err(|error| {
+                        ProbeError::new(format!("render preparation failed: {error}"))
+                    })?
+                    .ok_or_else(|| ProbeError::new("render preparation returned no diagram"))?;
+                let metadata_diagram_type_matches =
+                    prepared.metadata().diagram_type == DIAGRAM_TYPE;
+                let prepared_family_flowchart =
+                    prepared.family_kind() == RenderFamilyKind::Flowchart;
+                let html_labels_disabled =
+                    prepared.metadata().effective_config.get_bool("htmlLabels") == Some(false);
+                (
+                    Some(prepared),
+                    metadata_diagram_type_matches,
+                    prepared_family_flowchart,
+                    html_labels_disabled,
+                )
+            }
+            Mode::Zero => (None, false, false, false),
+        };
 
     // Keep the prepared artifact live until the allocator records the checkpoint.
-    std::hint::black_box(prepared.as_ref());
+    let prepared_render_alive_at_checkpoint = std::hint::black_box(prepared.as_ref()).is_some();
     let metrics = ALLOCATOR.finish_measurement(snapshot_live_bytes);
+
+    // Inspect the public prepared projection after the allocator checkpoint so the receipt proves
+    // the measured artifact contains the registered label workload without charging compatibility
+    // JSON materialization to the candidate's retained-memory result.
+    let (projected_node_label_count, unique_projected_node_labels) = prepared
+        .as_ref()
+        .map(projected_node_labels)
+        .transpose()?
+        .unwrap_or((0, false));
+    let projected_node_labels_match_workload =
+        projected_node_label_count == input_label_count && prepared.is_some();
     drop(prepared);
+    let live_bytes_after_drop = ALLOCATOR.begin_measurement();
+    ALLOCATOR.stop_measurement();
 
     let operation = matches!(request.mode, Mode::Operation);
-    if operation {
-        let live_bytes_after_drop = ALLOCATOR.begin_measurement();
-        ALLOCATOR.stop_measurement();
-        projection.prepared_state_released_after_drop =
-            live_bytes_after_drop <= snapshot_live_bytes;
-    }
+    let projection = if operation {
+        SemanticProjection {
+            kind: SEMANTIC_KIND,
+            label_profile: LABEL_PROFILE,
+            metadata_diagram_type_matches,
+            prepared_family_flowchart,
+            html_labels_disabled,
+            prepared_render_alive_at_checkpoint,
+            projected_node_labels_match_workload,
+            unique_projected_node_labels,
+        }
+    } else {
+        SemanticProjection::zero()
+    };
     let projection_bytes = serde_json::to_vec(&projection).map_err(|error| {
         ProbeError::new(format!("failed to serialize semantic projection: {error}"))
     })?;
@@ -312,7 +360,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
         workload_units,
         semantic_output: SemanticOutput {
             projection,
-            prepared_label_count: if operation { prepared_label_count } else { 0 },
+            projected_node_label_count,
         },
         snapshot_live_bytes: metrics.snapshot_live_bytes,
         allocation_count: metrics.allocation_count,
@@ -320,6 +368,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
         live_bytes_after: metrics.live_bytes_after,
         peak_live_bytes: metrics.peak_live_bytes,
         peak_growth_bytes: metrics.peak_growth_bytes,
+        live_bytes_after_drop,
         counter_overflowed: metrics.counter_overflowed,
         counter_underflowed: metrics.counter_underflowed,
     })

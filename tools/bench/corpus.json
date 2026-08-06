@@ -214,10 +214,10 @@
         "metadata_diagram_type_matches",
         "prepared_family_flowchart",
         "html_labels_disabled",
-        "unique_source_labels",
-        "retained_label_state_alive_at_checkpoint",
-        "prepared_state_released_after_drop",
-        "prepared_label_count"
+        "prepared_render_alive_at_checkpoint",
+        "projected_node_labels_match_workload",
+        "unique_projected_node_labels",
+        "projected_node_label_count"
       ]
     },
     {

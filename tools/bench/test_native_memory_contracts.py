@@ -356,6 +356,45 @@ class NativeMemoryProtocolContractsTest(unittest.TestCase):
             BINDING_DATA_SHA256,
         )
 
+    def test_schema_v3_records_and_bounds_post_drop_live_bytes(self) -> None:
+        validate = self.api("validate_response")
+        error = self.contract_error()
+        baseline = binding_protocol_response(scale=10)
+        baseline["schema_version"] = 3
+        baseline["live_bytes_after_drop"] = baseline["snapshot_live_bytes"]
+
+        sample = validate(
+            json.dumps(baseline) + "\n",
+            "",
+            expected=expected_echo(baseline),
+            semantic_contract=binding_semantic_contract(),
+            workload_units_per_scale=1,
+        )
+        self.assertEqual(sample["live_bytes_after_drop"], 400)
+
+        missing = dict(baseline)
+        del missing["live_bytes_after_drop"]
+        with self.assertRaises(error):
+            validate(
+                json.dumps(missing) + "\n",
+                "",
+                expected=expected_echo(baseline),
+                semantic_contract=binding_semantic_contract(),
+                workload_units_per_scale=1,
+            )
+
+        leaked = dict(baseline)
+        leaked["live_bytes_after"] = 450
+        leaked["live_bytes_after_drop"] = 401
+        with self.assertRaisesRegex(error, "pre-operation snapshot"):
+            validate(
+                json.dumps(leaked) + "\n",
+                "",
+                expected=expected_echo(baseline),
+                semantic_contract=binding_semantic_contract(),
+                workload_units_per_scale=1,
+            )
+
     def test_schema_v2_rejects_semantic_drift_and_type_confusion(self) -> None:
         validate = self.api("validate_response")
         error = self.contract_error()

@@ -54,6 +54,8 @@ _PROTOCOL_FIELDS_BY_SCHEMA = {
         }
     ),
     2: _COMMON_PROTOCOL_FIELDS | frozenset({"workload_units", "semantic_output"}),
+    3: _COMMON_PROTOCOL_FIELDS
+    | frozenset({"workload_units", "semantic_output", "live_bytes_after_drop"}),
 }
 _ECHO_FIELDS = (
     "lane_id",
@@ -363,7 +365,7 @@ def _validate_payload(
         if semantic_contract is None or workload_units_per_scale is None:
             if require_semantic_contract:
                 raise MemoryContractError(
-                    "schema version 2 requires an owner semantic response contract"
+                    "semantic native-memory schemas require an owner response contract"
                 )
         else:
             _validate_semantic_output(
@@ -373,6 +375,8 @@ def _validate_payload(
             )
     for field in _COUNTER_FIELDS:
         _require_int(payload, field, minimum=0)
+    if schema_version >= 3:
+        _require_int(payload, "live_bytes_after_drop", minimum=0)
 
     _require_lowercase_hex(
         payload["executable_sha256"],
@@ -416,6 +420,16 @@ def _validate_payload(
             raise MemoryContractError(
                 "peak_growth_bytes does not match the live-byte snapshot"
             )
+        if schema_version >= 3:
+            live_after_drop = int(payload["live_bytes_after_drop"])
+            if live_after_drop > live_after:
+                raise MemoryContractError(
+                    "live_bytes_after_drop exceeds the measured live-byte checkpoint"
+                )
+            if live_after_drop > snapshot:
+                raise MemoryContractError(
+                    "live_bytes_after_drop exceeds the pre-operation snapshot"
+                )
 
     if expected is not None:
         expected_fields = frozenset(expected)

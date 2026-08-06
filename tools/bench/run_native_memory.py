@@ -326,8 +326,10 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
         probe = contract["probe"]
         if not isinstance(probe, dict) or frozenset(probe) != _PROBE_FIELDS:
             raise DriverContractError("owner contract probe fields differ")
-        if probe["protocol_schema_version"] != 2:
-            raise DriverContractError("schema-v2 owner probe must use protocol schema 2")
+        if probe["protocol_schema_version"] not in (2, 3):
+            raise DriverContractError(
+                "schema-v2 owner probe must use semantic protocol schema 2 or 3"
+            )
         package = _nonempty_string(probe["package"], field="probe.package")
         if package != lane.owner:
             raise DriverContractError("owner contract probe package differs from lane owner")

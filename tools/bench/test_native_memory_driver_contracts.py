@@ -73,7 +73,7 @@ BINDING_OUTPUT_SHA256 = "5c5a3cdbe1f692c630006b4c365f348d93d8afd6ea99ecf45d8d2e1
 ELK_HIERARCHY_OUTPUT_SHA256 = (
     "30d91e9ca3384155ebe26a4b4315d740c9746cb899a77eb513b1f966d6adb901"
 )
-FLOWCHART_LABEL_OUTPUT_SHA256 = "8f2ba86d19094317a475fbff76af6a2cd7dcd58b24624e4da5f4b0bb1ac8053d"
+FLOWCHART_LABEL_OUTPUT_SHA256 = "940be12b7e2e58603380f52bbfcec8e42baf12d985832f0c966a4eade71312ca"
 
 
 def response_for(request: dict[str, object]) -> dict[str, object]:
@@ -208,7 +208,7 @@ def flowchart_label_response_for(request: dict[str, object]) -> dict[str, object
     zero = request["mode"] == "zero"
     retained = 0 if zero else scale * 1_000
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "lane_id": request["lane_id"],
         "public_operation": "prepare-render",
         "process_lifecycle": "fresh-process",
@@ -230,10 +230,10 @@ def flowchart_label_response_for(request: dict[str, object]) -> dict[str, object
             "metadata_diagram_type_matches": not zero,
             "prepared_family_flowchart": not zero,
             "html_labels_disabled": not zero,
-            "unique_source_labels": not zero,
-            "retained_label_state_alive_at_checkpoint": not zero,
-            "prepared_state_released_after_drop": not zero,
-            "prepared_label_count": 0 if zero else scale,
+            "prepared_render_alive_at_checkpoint": not zero,
+            "projected_node_labels_match_workload": not zero,
+            "unique_projected_node_labels": not zero,
+            "projected_node_label_count": 0 if zero else scale,
         },
         "snapshot_live_bytes": 100,
         "allocation_count": 0 if zero else scale * 10,
@@ -241,6 +241,7 @@ def flowchart_label_response_for(request: dict[str, object]) -> dict[str, object
         "live_bytes_after": 100 + retained,
         "peak_live_bytes": 100 if zero else 100 + scale * 2_000,
         "peak_growth_bytes": 0 if zero else scale * 2_000,
+        "live_bytes_after_drop": 100,
         "counter_overflowed": False,
         "counter_underflowed": False,
     }
@@ -462,7 +463,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             contract["semantic_response"]["operation_output_sha256"],
         )
 
-    def test_flowchart_label_contract_registers_retained_prepared_state(self) -> None:
+    def test_flowchart_label_contract_registers_public_prepared_render_state(self) -> None:
         lane = self.flowchart_label_lane()
         contract = run_native_memory.load_owner_contract(
             FLOWCHART_LABEL_CONTRACT_PATH,
@@ -479,7 +480,9 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         self.assertEqual(contract["schema_version"], 2)
         self.assertEqual(contract["evidence_class"], "candidate-bound")
         self.assertIs(contract["candidate_admission"], True)
-        self.assertEqual(contract["scale"]["dimension"], "prepared_label_count")
+        self.assertEqual(
+            contract["scale"]["dimension"], "projected_node_label_count"
+        )
         self.assertEqual(contract["scale"]["units_per_scale"], 1)
         self.assertEqual(
             set(contract["metrics"]),
@@ -493,6 +496,16 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         self.assertEqual(recipe.package, "merman")
         self.assertEqual(recipe.bench, "flowchart_svg_label_memory")
         self.assertEqual(recipe.features, ("svg",))
+        self.assertEqual(contract["probe"]["protocol_schema_version"], 3)
+        self.assertEqual(
+            [entry["path"] for entry in contract["probe"]["inputs"]],
+            [
+                "crates/merman/benches/flowchart_svg_label_memory.rs",
+                "crates/merman/benches/native_memory/allocator.rs",
+                "crates/merman/Cargo.toml",
+                "Cargo.lock",
+            ],
+        )
         projection = json.dumps(
             contract["semantic_response"]["operation"],
             separators=(",", ":"),
