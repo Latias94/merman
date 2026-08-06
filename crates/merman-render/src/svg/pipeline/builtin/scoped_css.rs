@@ -194,12 +194,14 @@ fn scope_selector(selector: &str, scope: &str) -> String {
             let trimmed = part.trim();
             if trimmed.is_empty() {
                 String::new()
-            } else if trimmed == ":root" || trimmed == "svg" {
-                scope.to_string()
             } else {
                 let expanded = trimmed.replace('&', scope);
-                if expanded.starts_with(scope) {
+                if is_safely_scoped_selector(&expanded, scope) {
                     expanded
+                } else if let Some(scoped) = replace_root_selector(&expanded, ":root", scope) {
+                    scoped
+                } else if let Some(scoped) = replace_root_selector(&expanded, "svg", scope) {
+                    scoped
                 } else {
                     format!("{scope} {expanded}")
                 }
@@ -207,6 +209,86 @@ fn scope_selector(selector: &str, scope: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn replace_root_selector(selector: &str, root: &str, scope: &str) -> Option<String> {
+    let suffix = selector.strip_prefix(root)?;
+    if !is_safe_root_suffix(suffix, true) {
+        return None;
+    }
+    Some(format!("{scope}{suffix}"))
+}
+
+fn is_safely_scoped_selector(selector: &str, scope: &str) -> bool {
+    let Some(suffix) = selector.strip_prefix(scope) else {
+        return false;
+    };
+    is_safe_root_suffix(suffix, false)
+}
+
+fn is_safe_root_suffix(suffix: &str, require_attribute_qualifier: bool) -> bool {
+    if suffix.is_empty() {
+        return true;
+    }
+    if suffix.starts_with('>') {
+        return !require_attribute_qualifier;
+    }
+    if suffix.chars().next().is_some_and(char::is_whitespace) {
+        if require_attribute_qualifier {
+            return false;
+        }
+        return !starts_with_sibling_or_comment(suffix.trim_start());
+    }
+    if !suffix.starts_with('[') {
+        return false;
+    }
+
+    let Some(rest) = consume_attribute_qualifiers(suffix) else {
+        return false;
+    };
+    if rest.is_empty() || rest.starts_with('>') {
+        return true;
+    }
+    if rest.chars().next().is_some_and(char::is_whitespace) {
+        return !starts_with_sibling_or_comment(rest.trim_start());
+    }
+    false
+}
+
+fn starts_with_sibling_or_comment(selector: &str) -> bool {
+    matches!(selector.chars().next(), Some('+' | '~' | '/'))
+}
+
+fn consume_attribute_qualifiers(mut selector: &str) -> Option<&str> {
+    while selector.starts_with('[') {
+        let mut quote = None;
+        let mut escaped = false;
+        let mut end = None;
+        for (index, ch) in selector.char_indices().skip(1) {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if let Some(open_quote) = quote {
+                if ch == open_quote {
+                    quote = None;
+                }
+                continue;
+            }
+            if matches!(ch, '\'' | '"') {
+                quote = Some(ch);
+            } else if ch == ']' {
+                end = Some(index + ch.len_utf8());
+                break;
+            }
+        }
+        selector = &selector[end?..];
+    }
+    Some(selector)
 }
 
 fn css_escape_id(id: &str) -> String {
@@ -331,6 +413,50 @@ mod tests {
             .unwrap();
 
         assert!(out.contains("#diagram :not(#diagram) {background:green !important}"));
+    }
+
+    #[test]
+    fn scoped_css_preserves_root_svg_selector_qualifiers() {
+        assert_eq!(
+            scope_selector(
+                r#"svg[aria-roledescription="classDiagram"] g.classGroup rect, svg > g, :root, svg-icon"#,
+                "#diagram",
+            ),
+            r#"#diagram[aria-roledescription="classDiagram"] g.classGroup rect, #diagram svg > g, #diagram, #diagram svg-icon"#
+        );
+    }
+
+    #[test]
+    fn scoped_css_does_not_escape_through_root_siblings_or_id_prefixes() {
+        assert_eq!(
+            scope_selector(
+                "svg + .outside, svg ~ .outside, svg:has(+ .outside), #diagram-other .node",
+                "#diagram",
+            ),
+            "#diagram svg + .outside, #diagram svg ~ .outside, #diagram svg:has(+ .outside), #diagram #diagram-other .node"
+        );
+    }
+
+    #[test]
+    fn scoped_css_parses_repeated_and_escaped_root_attributes() {
+        assert_eq!(
+            scope_selector(
+                r#"svg[data-label="a]b"][data-path="a\"b"] .node"#,
+                "#diagram",
+            ),
+            r#"#diagram[data-label="a]b"][data-path="a\"b"] .node"#
+        );
+    }
+
+    #[test]
+    fn scoped_css_keeps_ambiguous_root_suffixes_inside_the_scope() {
+        assert_eq!(
+            scope_selector(
+                "svg[data-x] + .outside, svg[data-x]~.outside, svg[data-x] /* guard */ + .outside, svg[data-x",
+                "#diagram",
+            ),
+            "#diagram svg[data-x] + .outside, #diagram svg[data-x]~.outside, #diagram svg[data-x] /* guard */ + .outside, #diagram svg[data-x"
+        );
     }
 
     #[test]
