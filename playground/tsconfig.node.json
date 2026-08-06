@@ -5,6 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowJs": true,
+    "types": ["node"],
     "outDir": "node_modules/.tmp/tsconfig-node",
     "tsBuildInfoFile": "node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "allowSyntheticDefaultImports": true,
@@ -12,7 +13,6 @@
   },
   "include": [
     "vite.config.ts",
-    "scripts/csp-policy.mjs",
-    "scripts/opaque-realm-csp.mjs"
+    "scripts/**/*.mjs"
   ]
 }

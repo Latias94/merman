@@ -26,6 +26,12 @@
     "editor": "Editor",
     "preview": "Preview"
   },
+  "features": {
+    "loading": "Loading {{feature}}...",
+    "loadFailed": "{{feature}} could not be loaded",
+    "reloadDescription": "Reload the page to request this feature again.",
+    "reload": "Reload page"
+  },
   "textMeasurement": {
     "browser": "Browser",
     "headless": "Headless"
@@ -83,8 +89,11 @@
     "warmups": "Warmups per engine",
     "run": "Run",
     "runAgain": "Run again",
+    "changeSettings": "Change settings",
+    "backToResult": "Back to result",
     "running": "Running",
     "cancel": "Cancel",
+    "cancelledShowingPrevious": "The latest run was cancelled. Showing the previous result.",
     "download": "Download JSON",
     "notReady": "Render engine loading",
     "empty": "Enter Mermaid code first",
@@ -94,7 +103,7 @@
     "progress": "Benchmark progress",
     "sampleProgress": "{{completed}} of {{total}} operations",
     "block": "Block {{block}}",
-    "frozenSource": "Frozen source",
+    "currentSource": "Current source",
     "versions": "Package versions",
     "resourceBounds": "Source / SVG limits",
     "presentationReady": "Strictly publishable SVG",
@@ -129,8 +138,7 @@
     "stages": {
       "pausing": "Pausing live rendering",
       "creating-realm": "Creating isolated runtime",
-      "sampling": "Measuring presentation",
-      "cleanup": "Releasing benchmark resources"
+      "sampling": "Measuring presentation"
     },
     "purposes": {
       "setup": "Engine setup",

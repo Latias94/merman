@@ -1,5 +1,5 @@
 import type { CompareRenderPayload } from "../../runtime/realm/channel-protocol.ts";
-import type { BenchmarkFailureStage } from "../protocol.ts";
+import type { BenchmarkFailureStage } from "../phase-contract.ts";
 import type { BenchmarkTraceMark } from "../trace.ts";
 import {
   projectError,

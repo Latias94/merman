@@ -2,7 +2,9 @@
 
 - Status: accepted
 - Date: 2026-07-18
-- Amended: 2026-07-23 (package-surface projection delegated to ADR-0076)
+- Amended: 2026-07-23 (package-surface projection delegated to ADR-0076); 2026-08-05
+  (benchmark phase, plan, lifecycle, corpus evidence, explicit WASM ownership, and browser
+  validation contracts unified)
 - Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `3`, editor-token, diagnostics, and facts schema `1`
 
 These version fields describe the first public contract shapes after the 0.8 refactor. Their
@@ -49,6 +51,12 @@ byte-cache authority; the Playground does not use Cache Storage or a service wor
 compile/initialization failure may perform exactly one `fetch(..., { cache: "reload" })` recovery.
 An ESM import failure requires page reload because the browser module map cannot be evicted by the
 application.
+
+The generated wasm-bindgen shim has no implicit module-path fallback. A browser package wrapper
+supplies its package-relative `MERMAN_WASM_URL` only for the public no-argument initialization
+contract; explicit callers pass a response, bytes, URL, request, or module. The production Vite
+manifest must therefore show one URL-owning chunk for the hashed WASM and a shim with no asset
+ownership.
 
 An initialized wasm-bindgen module is Window-realm state and cannot be unloaded. Disposing a
 session releases explicitly owned measurement resources and request state; it does not claim to
@@ -99,6 +107,12 @@ and SVG validation. A rejection advances the queue. A timeout or protocol failur
 destroys the realm before another operation can start.
 
 Compare and benchmark never share a Mermaid object, operation queue, or iframe.
+Their generated browser artifact projections are also separate activation leaves: opening Compare
+does not fetch the opaque Benchmark bootstrap. A single declarative artifact plan owns both leaves,
+their engine identities, derived output/manifest names, CSP placeholders, realm shape, and resource
+policies; builders and verifiers do not maintain parallel inventories. The Playground injects its
+pause-coordinator capability into the lazily created Benchmark runtime; the standalone corpus uses
+no coordinator. Benchmark chunks therefore do not gain a reverse dependency on Compare ownership.
 
 ### 5. Benchmark Evidence Has Explicit Clock And Publication Boundaries
 
@@ -110,8 +124,13 @@ new engine iframe; this means a new Window/module realm, not a proven network-co
 but they are diagnostics and do not prove HTTP cache provenance when the browser omits transfer
 details.
 
-Benchmark protocol `1` carries trace schema `1`. Each sample records one realm-local monotonic
-event vector:
+Benchmark protocol `3` carries trace schema `1`. Request identity binds the protocol version, realm
+version, run id and capability, request id, sample id, discriminated sample intent, and engine. One
+closed phase contract owns applicability, event order, predecessor and failure-prefix rules,
+publication boundary, progress applicability, and watchdog transitions for all cold/warm and
+Merman/Mermaid paths. Cold samples and the first warm setup bind the complete frozen payload to an
+`inputId`; later warm samples carry only that identity and reuse the realm-owned payload. Each sample
+records one realm-local monotonic event vector:
 
 ```text
 sample_start
@@ -130,7 +149,8 @@ sample_end
 ```
 
 Inapplicable or unobserved events are `null`, not zero. The controller validates ordering and
-derives non-overlapping observations instead of summing spans. Realm-local `budgeted_svg_ready`
+derives non-overlapping observations instead of summing spans. Failure traces retain their real
+completed or half-open prefix instead of fabricating missing phase ends. Realm-local `budgeted_svg_ready`
 means only that the engine produced a response within its output budget;
 `isolated_presentation_ready` means the isolated document completed DOM insertion, layout, and a
 real animation frame. Neither event claims that the parent may publish the markup.
@@ -139,18 +159,40 @@ Every measured sample also records one parent-clock publication vector from samp
 through isolated-presentation progress receipt, response receipt, response-envelope validation,
 and the shared strict SVG projector. `firstPublishableSvgMs` and `warmPublishableSvgMs` are the
 primary comparable totals because both engines cross exactly that parent-side boundary. Response
-delivery, envelope-validation, and strict-validation spans remain separate evidence. The UI may
-summarize median, p95, min, max, mean, and coefficient of variation; report schema `4` retains both raw
-realm-local events and parent publication evidence.
+delivery, envelope-validation, and strict-validation spans remain separate evidence. A dispatch
+deadline owns the interval before the first progress event, the phase watchdog owns only the active
+contract phases, and a final-response deadline begins after isolated presentation. Progress cannot
+extend an unrelated or already-completed deadline. The UI may summarize median, p95, min, max,
+mean, and coefficient of variation; report schema `6` retains both raw realm-local events and parent
+publication evidence.
 
-Runs use the same frozen source/options, `document.fonts.ready`, equal real-source warmups, a
-recorded deterministic seed, and balanced interleaved AB/BA blocks. Failed samples never enter
-aggregates. Corresponding ratios are absent when either engine has an invalid or failed sample.
-Cancellation, timeout, iframe failure, protocol failure, hidden visibility, navigation, or freeze
-produces an explicit terminal state. Visibility/lifecycle invalidation suppresses all aggregates so
-no result spans an invalid environment boundary.
+One complete immutable sample plan is the authority for setup, warmup rounds, measured cold/warm
+blocks, balanced interleaved AB/BA order, realm creation and reuse, aggregation eligibility, exact
+budgets, and report metadata. Runs use the same frozen source/options, `document.fonts.ready`, equal
+real-source warmups, and a recorded deterministic seed. Failed samples never enter aggregates.
+Corresponding ratios are absent when either engine has an invalid or failed sample. A typed browser
+lifecycle adapter projects hidden, freeze/resume, and pagehide/pageshow transitions; Compare and
+Benchmark still own separate realms, queues, clocks, and failure domains. Cancellation, timeout,
+iframe failure, protocol failure, hidden visibility, navigation, or freeze produces an explicit
+terminal state. Visibility/lifecycle invalidation suppresses all aggregates so no result spans an
+invalid environment boundary.
+
+The trusted Merman benchmark engine imports package-owned compiled runtime modules without loading
+the public package entry that owns the application WASM URL. The parent resolves and validates the
+plan-authorized same-origin WASM URL before handing that bounded resource identity to the trusted
+Merman realm. The realm owns the measured fetch, validates the response, copies it into memory, and
+supplies a fresh `Response` to initialization. The opaque artifact plan rejects an embedded WASM
+data URL and applies an engine-local transfer budget; the generic channel budget remains broad
+enough for the independently bundled Mermaid engine.
 
 No report is uploaded or persisted remotely. Download is an explicit local action.
+
+Corpus schema `2` makes one page execute exactly one requested fixture and return exactly one
+success or structured failure envelope. The CLI retains a fresh browser process per fixture and
+projects crash, early close, disconnect, timeout, cancellation, and invalidation through that same
+shape. One linear assembler validates fixture order, seeds, options, catalog identity, versions,
+and report schema before deriving coverage and terminal status; it never creates placeholder rows
+for fixtures a page did not execute.
 
 The execution iframe retains the requested client viewport but is transformed to a stable
 one-CSS-pixel presentation footprint. This keeps real animation-frame evidence observable in
@@ -159,10 +201,17 @@ headless and foreground browsers without letting the hidden benchmark UI affect 
 ### 6. Editor Intelligence Belongs To A Dedicated Worker
 
 The Playground loads local Monaco code and its editor worker; it does not use Monaco's default CDN
-loader. Merman language intelligence runs in a dedicated module Worker using the editor artifact
-selected by ADR-0076 (`@mermanjs/web-editor`, backed by the `web-editor` artifact profile).
-The selected editor artifact includes invariant language semantics, analysis, and editor APIs but
-excludes SVG rendering, ASCII, layout, math, and system adapters.
+loader. Merman language intelligence runs in a dedicated module Worker. A same-revision R16
+whole-site measurement compares the full package in both realms with a dedicated `web-editor`
+Worker, including exact 35-family/11-query results, cold and warm transfer, startup latency, and
+cross-origin-isolated peak memory. The measured choice is the complete `@mermanjs/web` artifact:
+the main renderer already requires it, while adding the editor WASM creates a second compiled
+artifact and does not satisfy the lower-cold-bytes/no-memory-regression selection rule. The
+measurement remains an explicit on-demand architectural receipt rather than a browser CI gate.
+Receipt schema 2 binds the decision to deterministic measurement, startup/Worker closure, exact
+runtime package-provenance, and semantic-evidence digests. A hermetic verifier checks those
+inputs, the selected dependency/import path, and every derived decision field during normal tests;
+only a selection-sensitive change requires the browser-heavy measurement to be rerun.
 
 The editor Worker owns one analyzed document URI and monotonically increasing version. `didOpen`,
 `didChange`, query, versioned result validation, and disposal cross its typed channel. Diagnostics,
@@ -203,7 +252,21 @@ language query. A reusable render engine or general runtime factory remains defe
 benchmark evidence shows that its construction cost and consumer ownership justify a new stable
 API.
 
-### 9. Deployment Cache Headers Remain A Hosting Concern
+### 9. Toolchain And Browser Verification Stay Proportional
+
+The current Playground baseline uses Vite 8.2 with its React plugin and native static-asset URL
+handling; `vite-plugin-wasm` is not part of production or tooling. React/ReactDOM and
+Playwright/Test are exact lockstep pairs. TypeScript remains on the admitted 5.x line. Monaco
+remains on 0.55.1 because 0.56 removes the contribution-only editor entry used to keep JSON and
+other language support activation-owned; adopting that release requires a replacement graph with
+equivalent lazy ownership rather than loading every language and LSP client at startup.
+
+Chromium desktop owns the complete mandatory browser contract. Firefox and WebKit each own one
+focused startup/render/Compare/theme/BFCache smoke flow. Chromium mobile owns a small on-demand
+interaction suite, while software-keyboard, browser-chrome, and safe-area behavior remains an
+explicit real-device residual. Mobile emulation is not a Pages dependency.
+
+### 10. Deployment Cache Headers Remain A Hosting Concern
 
 The production build guarantees content-hashed assets and validates the emitted WASM reference and
 MIME in browser tests. The observed deployment currently serves hashed assets with
@@ -216,7 +279,10 @@ is already deployed.
 
 Durable guards operate on contracts rather than private spelling:
 
-- TypeScript/package import graphs and public export manifests enforce package ownership.
+- TypeScript's configured module resolver enforces source and type-only ownership; Vite's production
+  manifest separately enforces emitted static/dynamic reachability and asset ownership.
+- The Vite manifest proves exactly one hashed-WASM asset owner; emitted realm verification rejects
+  embedded WASM data URLs and runtime module requests.
 - WASM profile manifests, smoke tests, ABI checks, and size budgets enforce capability surfaces.
 - Closed channel validators and browser tests enforce realm capability and lifecycle behavior.
 - Generated example checks enforce exact 35-family set coverage, per-example provenance, and

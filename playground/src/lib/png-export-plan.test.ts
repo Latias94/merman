@@ -8,7 +8,8 @@ import {
 } from "./png-export-plan.ts";
 
 test("keeps the requested scale when the raster fits the default budget", () => {
-  assert.deepEqual(planPngRaster(640, 360, 2), {
+  const plan = planPngRaster(640, 360, 2);
+  assert.deepEqual(plan, {
     sourceWidth: 640,
     sourceHeight: 360,
     requestedScale: 2,
@@ -17,6 +18,27 @@ test("keeps the requested scale when the raster fits the default budget", () => 
     outputHeight: 720,
     downscaled: false,
   });
+  assert.equal(Object.isFrozen(plan), true);
+});
+
+test("clones limits before calculation", () => {
+  const limits = { maxSide: 1_024, maxPixels: 1_000_000 };
+  const plan = planPngRaster(800, 600, 2, limits);
+  limits.maxSide = 1;
+  limits.maxPixels = 1;
+
+  assert.deepEqual([plan.outputWidth, plan.outputHeight], [1_024, 768]);
+  assert.equal(Object.isFrozen(plan), true);
+});
+
+test("a callback cannot mutate the published raster plan", () => {
+  const plan = planPngRaster(640, 360, 2);
+  const observer = (received: typeof plan) => {
+    assert.equal(Reflect.set(received, "outputWidth", 1), false);
+  };
+
+  observer(plan);
+  assert.equal(plan.outputWidth, 1_280);
 });
 
 test("proportionally downsamples a huge square before canvas allocation", () => {

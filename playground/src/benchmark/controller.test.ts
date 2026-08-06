@@ -6,8 +6,15 @@ import {
   validateBenchmarkRunRequest,
   type BenchmarkControllerDependencies,
   type BenchmarkRunRequest,
-  type BenchmarkLifecycleTarget,
 } from "./controller.ts";
+import {
+  createBenchmarkDocumentLifecycle,
+  type BenchmarkLifecycleEventTarget,
+} from "./document-lifecycle.ts";
+import {
+  benchmarkIntentModeFromKind,
+  benchmarkIntentRoleFromKind,
+} from "./sample-plan.ts";
 import {
   BENCHMARK_PROTOCOL_VERSION,
   type BenchmarkSampleFailure,
@@ -31,7 +38,7 @@ import { BENCHMARK_PUBLICATION_CLOCK_BOUNDARY } from "./publication.ts";
 test("realm-cold runs deterministic balanced blocks with one fresh realm per sample", async () => {
   const harness = createHarness();
   const controller = createBenchmarkController(harness.dependencies);
-  const report = await controller.run(runRequest("realm-cold", 4, 0));
+  const report = await controller.start(runRequest("realm-cold", 4, 0)).completion;
 
   assert.equal(report.terminalStatus, "success");
   assert.equal(harness.createCount, 8);
@@ -42,14 +49,20 @@ test("realm-cold runs deterministic balanced blocks with one fresh realm per sam
   assert.equal(harness.listenerCount, 0);
   assert.deepEqual(
     harness.sampleInputs.map((sample) => sample.engine),
-    report.schedule.blocks.flatMap((block) => block.order)
+    report.plan.blocks.flatMap((block) => block.order)
   );
-  assert(harness.sampleInputs.every((sample) => sample.mode === "realm-cold"));
+  assert(
+    harness.sampleInputs.every(
+      (sample) => benchmarkIntentModeFromKind(sample.intentKind) === "realm-cold"
+    )
+  );
   assert(
     harness.sampleInputs.every(
       (sample) =>
+        "payload" in sample &&
+        "payload" in harness.sampleInputs[0] &&
         JSON.stringify(sample.payload) ===
-        JSON.stringify(harness.sampleInputs[0].payload)
+          JSON.stringify(harness.sampleInputs[0].payload)
     )
   );
   assert(report.aggregates);
@@ -69,7 +82,7 @@ test("realm-cold runs deterministic balanced blocks with one fresh realm per sam
 test("warm mode creates two engine realms, applies equal warmups, and reuses each realm", async () => {
   const harness = createHarness();
   const controller = createBenchmarkController(harness.dependencies);
-  const report = await controller.run(runRequest("warm", 4, 2));
+  const report = await controller.start(runRequest("warm", 4, 2)).completion;
 
   assert.equal(report.terminalStatus, "success");
   assert.equal(harness.createCount, 2);
@@ -78,14 +91,29 @@ test("warm mode creates two engine realms, applies equal warmups, and reuses eac
   for (const engine of ["merman", "mermaid"] as const) {
     const inputs = harness.sampleInputs.filter((sample) => sample.engine === engine);
     assert.equal(inputs.length, 7);
-    assert.equal(inputs[0].mode, "realm-cold");
-    assert.equal(inputs[0].role, "warmup");
+    assert.equal(benchmarkIntentModeFromKind(inputs[0].intentKind), "realm-cold");
+    assert.equal(benchmarkIntentRoleFromKind(inputs[0].intentKind), "warmup");
+    assert.equal("payload" in inputs[0], true);
+    assert(inputs.slice(1).every((sample) => !("payload" in sample)));
+    assert(inputs.every((sample) => sample.inputId === inputs[0].inputId));
     assert.deepEqual(
-      inputs.slice(1).map((sample) => sample.mode),
+      inputs.slice(1).map((sample) =>
+        benchmarkIntentModeFromKind(sample.intentKind)
+      ),
       Array(6).fill("warm")
     );
-    assert.equal(inputs.filter((sample) => sample.role === "warmup").length, 3);
-    assert.equal(inputs.filter((sample) => sample.role === "measured").length, 4);
+    assert.equal(
+      inputs.filter(
+        (sample) => benchmarkIntentRoleFromKind(sample.intentKind) === "warmup"
+      ).length,
+      3
+    );
+    assert.equal(
+      inputs.filter(
+        (sample) => benchmarkIntentRoleFromKind(sample.intentKind) === "measured"
+      ).length,
+      4
+    );
   }
   assert(report.aggregates);
   assert.equal(report.aggregates.ratios.warmIsolatedPresentationMs, 1.5);
@@ -105,14 +133,18 @@ test("warm mode creates two engine realms, applies equal warmups, and reuses eac
 test("realm failure remains raw evidence and fails every ratio closed", async () => {
   let failed = false;
   const harness = createHarness((input) => {
-    if (!failed && input.engine === "mermaid" && input.role === "measured") {
+    if (
+      !failed &&
+      input.engine === "mermaid" &&
+      benchmarkIntentRoleFromKind(input.intentKind) === "measured"
+    ) {
       failed = true;
       return realmFailure(input);
     }
     return realmSuccess(input);
   });
   const controller = createBenchmarkController(harness.dependencies);
-  const report = await controller.run(runRequest("realm-cold", 4, 0));
+  const report = await controller.start(runRequest("realm-cold", 4, 0)).completion;
 
   assert.equal(report.terminalStatus, "complete-with-errors");
   assert.equal(report.samples.filter((sample) => sample.outcome === "failure").length, 1);
@@ -131,7 +163,7 @@ test("observed package version drift becomes retained protocol failure", async (
       : result;
   });
   const controller = createBenchmarkController(harness.dependencies);
-  const report = await controller.run(runRequest("realm-cold", 2, 0));
+  const report = await controller.start(runRequest("realm-cold", 2, 0)).completion;
 
   assert.equal(report.terminalStatus, "complete-with-errors");
   const drift = report.samples.find(
@@ -146,7 +178,7 @@ test("visibility invalidation is atomic, retains the transition, and releases al
   const pending = Promise.withResolvers<BenchmarkRealmSampleResult>();
   const harness = createHarness(() => pending.promise);
   const controller = createBenchmarkController(harness.dependencies);
-  const running = controller.run(runRequest("realm-cold", 4, 0));
+  const running = controller.start(runRequest("realm-cold", 4, 0)).completion;
   await waitFor(() => harness.sampleInputs.length === 1);
 
   harness.visibilityState = "hidden";
@@ -168,7 +200,7 @@ test("pagehide and freeze each invalidate without publishing a partial aggregate
       const pending = Promise.withResolvers<BenchmarkRealmSampleResult>();
       const harness = createHarness(() => pending.promise);
       const controller = createBenchmarkController(harness.dependencies);
-      const running = controller.run(runRequest("realm-cold", 4, 0));
+      const running = controller.start(runRequest("realm-cold", 4, 0)).completion;
       await waitFor(() => harness.sampleInputs.length === 1);
 
       if (kind === "pagehide") {
@@ -193,31 +225,85 @@ test("cancel closes active resources, rejects overlapping work, and permits a cl
     block ? pending.promise : realmSuccess(input)
   );
   const controller = createBenchmarkController(harness.dependencies);
-  const first = controller.run(runRequest("realm-cold", 4, 0));
+  const firstRun = controller.start(runRequest("realm-cold", 4, 0));
+  const first = firstRun.completion;
   await waitFor(() => harness.sampleInputs.length === 1);
+  const activeState = controller.store.getState();
+  assert.equal(activeState.status, "running");
+  assert.equal(activeState.activeRunId, firstRun.runId);
 
-  await assert.rejects(
-    controller.run(runRequest("realm-cold", 4, 0)),
-    /already active/
+  assert.throws(
+    () => controller.start(runRequest("realm-cold", 4, 0)),
+    /already active/,
   );
   controller.cancel("dialog-closed");
   const cancelled = await first;
   assert.equal(cancelled.terminalStatus, "cancelled");
   assert.equal(cancelled.aggregates, null);
+  const cancelledState = controller.store.getState();
+  assert.equal(cancelledState.status, "cancelled");
+  assert.equal(cancelledState.retained.report, cancelled);
+  assert.equal(cancelledState.cancellation, null);
   assert.equal(harness.liveRealms, 0);
   pending.reject(new Error("disposed"));
 
   block = false;
-  const rerun = await controller.run(runRequest("realm-cold", 4, 0));
+  const rerun = await controller.start(runRequest("realm-cold", 4, 0)).completion;
   assert.equal(rerun.terminalStatus, "success");
   assert.equal(harness.liveRealms, 0);
+});
+
+test("cancelling a rerun restores the retained report and its stale state", async () => {
+  const pending = Promise.withResolvers<BenchmarkRealmSampleResult>();
+  let block = false;
+  const harness = createHarness((input) =>
+    block ? pending.promise : realmSuccess(input)
+  );
+  const controller = createBenchmarkController(harness.dependencies);
+  const retained = await controller.start(runRequest("realm-cold", 2, 0)).completion;
+  controller.markStale();
+  const beforeRejectedStart = controller.store.getState();
+  const oversized = runRequest("realm-cold", 2, 0);
+  assert.throws(
+    () =>
+      controller.start({
+        ...oversized,
+        payload: {
+          ...oversized.payload,
+          source: "x".repeat(REALM_BUDGETS.sourceBytes + 1),
+        },
+      }),
+    /byte budget/,
+  );
+  assert.strictEqual(controller.store.getState(), beforeRejectedStart);
+
+  block = true;
+  const rerun = controller.start(runRequest("realm-cold", 4, 0)).completion;
+  await waitFor(() => harness.sampleInputs.length === 5);
+  const running = controller.store.getState();
+  assert.equal(running.status, "running");
+  assert.equal(running.retained?.report, retained);
+  assert.equal(running.retained?.stale, true);
+  assert.equal(running.stale, false);
+
+  controller.cancel("dialog-closed");
+  const cancelled = await rerun;
+  const restored = controller.store.getState();
+  assert.equal(restored.status, "cancelled");
+  assert.equal(restored.retained.report, retained);
+  assert.equal(restored.retained.stale, true);
+  assert.equal(restored.cancellation?.report, cancelled);
+
+  pending.reject(new Error("disposed"));
+  await Promise.resolve();
+  assert.strictEqual(controller.store.getState(), restored);
 });
 
 test("whole-run watchdog terminates cross-realm work and releases the coordinator", async () => {
   const pending = Promise.withResolvers<BenchmarkRealmSampleResult>();
   const harness = createHarness(() => pending.promise);
   const controller = createBenchmarkController(harness.dependencies);
-  const running = controller.run(runRequest("realm-cold", 4, 0));
+  const running = controller.start(runRequest("realm-cold", 4, 0)).completion;
   await waitFor(() => harness.sampleInputs.length === 1);
 
   harness.fireRunTimeout();
@@ -239,22 +325,23 @@ test("validation accepts exact cold limits and rejects overflow before pause or 
   };
   const exactRequest = { ...exact, payload: exactPayload };
   assert.equal(
-    validateBenchmarkRunRequest(exactRequest, 1).schedule.blocks.length,
+    validateBenchmarkRunRequest(exactRequest, 1).plan.blocks.length,
     1_000
   );
 
   const harness = createHarness();
   const controller = createBenchmarkController(harness.dependencies);
-  await assert.rejects(
-    controller.run({
-      ...exactRequest,
-      payload: { ...exactPayload, source: `${exactPayload.source}x` },
-    }),
-    /byte budget/
+  assert.throws(
+    () =>
+      controller.start({
+        ...exactRequest,
+        payload: { ...exactPayload, source: `${exactPayload.source}x` },
+      }),
+    /byte budget/,
   );
-  await assert.rejects(
-    controller.run(runRequest("warm", 1_000, 0)),
-    /retained sample budget/
+  assert.throws(
+    () => controller.start(runRequest("warm", 1_000, 0)),
+    /retained sample budget/,
   );
   assert.equal(harness.pauseCount, 0);
   assert.equal(harness.createCount, 0);
@@ -263,7 +350,7 @@ test("validation accepts exact cold limits and rejects overflow before pause or 
 test("stale state is external to the immutable retained report", async () => {
   const harness = createHarness();
   const controller = createBenchmarkController(harness.dependencies);
-  const report = await controller.run(runRequest("realm-cold", 2, 0));
+  const report = await controller.start(runRequest("realm-cold", 2, 0)).completion;
   controller.markStale();
 
   const state = controller.store.getState();
@@ -278,10 +365,8 @@ function runRequest(
   iterations: number,
   warmups: number
 ): BenchmarkRunRequest & { payload: BenchmarkRunRequest["payload"] } {
-  return {
-    mode,
+  const common = {
     iterations,
-    warmups,
     seed: 0x1234_5678,
     payload: {
       source: "flowchart TD\nA-->B",
@@ -299,7 +384,10 @@ function runRequest(
       effectiveLayoutId: "dagre",
     },
     versions: { merman: "test-merman", mermaid: "test-mermaid" },
-  };
+  } as const;
+  return mode === "warm"
+    ? { ...common, mode: "warm", warmups }
+    : { ...common, mode: "realm-cold", warmups: 0 };
 }
 
 function createHarness(
@@ -320,6 +408,11 @@ function createHarness(
   let now = 100;
   let nextTimer = 0;
   const timers = new Map<number, Readonly<{ callback: () => void; timeoutMs: number }>>();
+  const lifecycle = createBenchmarkDocumentLifecycle({
+    documentTarget,
+    getVisibilityState: () => visibilityState,
+    windowTarget,
+  });
 
   const dependencies: BenchmarkControllerDependencies = {
     clearTimer(handle) {
@@ -375,10 +468,8 @@ function createHarness(
     createSeed: () => 7,
     createToken: () => "r".repeat(43),
     dateNow: () => 1_753_000_000_000 + now,
+    lifecycle,
     now: () => now,
-    getVisibilityState: () => visibilityState,
-    documentTarget,
-    windowTarget,
     getEnvironment: () => ({
       userAgent: "test",
       language: "en-US",
@@ -436,7 +527,7 @@ function createHarness(
   };
 }
 
-class FakeLifecycleTarget implements BenchmarkLifecycleTarget {
+class FakeLifecycleTarget implements BenchmarkLifecycleEventTarget {
   readonly listeners = new Map<string, Set<(event: unknown) => void>>();
 
   get listenerCount(): number {
@@ -462,8 +553,9 @@ class FakeLifecycleTarget implements BenchmarkLifecycleTarget {
 }
 
 function realmSuccess(input: BenchmarkSampleInput): BenchmarkRealmSampleResult {
+  const mode = benchmarkIntentModeFromKind(input.intentKind);
   const trace =
-    input.mode === "warm"
+    mode === "warm"
       ? warmTrace(input.engine)
       : coldTrace(input.engine);
   const scale = input.engine === "merman" ? 1 : 1.5;
@@ -475,6 +567,7 @@ function realmSuccess(input: BenchmarkSampleInput): BenchmarkRealmSampleResult {
     realmId: `realm-${input.engine}`,
     realmToken: "t".repeat(43),
     sequence: 1,
+    requestId: input.sampleId,
     ...input,
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
     trace,
@@ -503,6 +596,7 @@ function realmFailure(input: BenchmarkSampleInput): BenchmarkSampleFailure {
     realmId: `realm-${input.engine}`,
     realmToken: "t".repeat(43),
     sequence: 1,
+    requestId: input.sampleId,
     ...input,
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
     trace: {

@@ -59,6 +59,12 @@ use `application/wasm`. Browser HTTP cache is the sole persistent byte cache. A 
 compile/initialization failure may refetch once with `cache: reload`; there is no application Cache
 Storage, service worker, or product warmup.
 
+wasm-pack generates the raw shim without a default module path. The public package loader restores
+the supported no-argument initialization contract by supplying its package-relative
+`MERMAN_WASM_URL`; explicit callers retain control of the actual response or bytes. In production,
+the package entry is the unique Vite-manifest owner of the hashed WASM while the raw shim owns no
+asset URL.
+
 BFCache entry suspends publication and disposes replaceable realms while retaining a valid main
 session. BFCache restoration resumes or reacquires it and schedules the latest request once.
 Non-persisted exit and HMR dispose explicitly release owned resources. Window-realm destruction
@@ -78,6 +84,13 @@ registration, initialization, render, and ZenUML recovery. The parent alone conv
 markup into `SafeInlineSvg` through the shared strict validator immediately before publication.
 Timeout, protocol corruption, invalid SVG, or navigation poisons and destroys the realm.
 
+One declarative artifact plan owns engine identities, source entries, generated/public outputs,
+realm shape, resource policies, page inputs, and CSP placeholders. Bootstrap versus page ownership
+derives the document and manifest shape instead of storing redundant profile labels. Node builders
+and verifiers consume that plan directly. Checked-in generated TypeScript leaves retain literal
+Vite imports and keep Compare, opaque Benchmark Mermaid, and trusted Benchmark Merman activation
+payloads separate.
+
 The visible interactive render timer measures the actual source. There is no hidden synthetic
 render. The preview separately records when a validated artifact reaches its presentation
 boundary; this feedback is not represented as a formal cross-engine benchmark.
@@ -90,22 +103,52 @@ iframe/module realm; `warm` reuses it. It does not claim that realm-cold means n
 Resource Timing entries are retained as observations without inferring unavailable HTTP-cache
 provenance.
 
-Protocol `1` and trace schema `1` record realm-local events for font readiness, adapter/engine
+Protocol `3` and trace schema `1` record realm-local events for font readiness, adapter/engine
 imports, resource acquisition, registration, initialization, budgeted output, isolated DOM
-insertion, layout, and presentation. Those events do not claim parent publication safety. Report
-schema `4` adds one parent-clock vector from sample dispatch through response delivery, envelope
-validation, and strict SVG projection. Parent-side first/warm publishable-SVG totals are the primary
-cross-engine metrics. The controller alone derives intervals and aggregate statistics. Equal
-real-source warmups, a recorded seed, and balanced AB/BA blocks reduce order bias. Failed samples
-are excluded, ratios fail closed, and hidden/frozen/navigation boundaries invalidate the run and
-suppress aggregates. Evidence can be downloaded locally as versioned JSON; it is not uploaded.
+insertion, layout, and presentation. One closed phase contract owns applicability, event order,
+failure prefixes, progress, publication boundary, and watchdog transitions. Those events do not
+claim parent publication safety. Report schema `6` adds one parent-clock vector from sample dispatch
+through response delivery, envelope validation, and strict SVG projection. Parent-side first/warm
+publishable-SVG totals are the primary cross-engine metrics.
+
+One immutable sample plan owns setup, warmups, measured cold/warm blocks, balanced AB/BA order,
+realm reuse, exact work budgets, and aggregation eligibility; the controller interprets that plan
+instead of reconstructing counters or schedules. The first request in a reused realm binds the full
+payload to an `inputId`; later warm requests transmit only that identity. A typed lifecycle adapter projects
+hidden/frozen/resumed/page navigation events without sharing Compare and Benchmark clocks or
+realms. Failed samples are excluded, ratios fail closed, and invalid lifecycle boundaries suppress
+aggregates. Corpus schema `2` runs one requested fixture per page, keeps a fresh browser process per
+fixture, and linearly aggregates one success or structured failure row for every selected fixture.
+Evidence can be downloaded locally as versioned JSON; it is not uploaded.
+
+The parent gives the trusted Merman realm only the plan-authorized same-origin WASM URL. That realm
+owns the measured fetch, validates the response, copies it into memory, and initializes the compiled
+shim with a fresh `Response`. Its private bundle imports the package-owned shim and measurement
+implementation without executing the public package entry, so it contains neither a second WASM
+binary nor a fallback asset request. The artifact plan enforces this emitted contract and an
+engine-local byte budget.
 
 ## Editor
 
 The Playground configures a local Monaco instance before mounting the editor. Monaco's editor
 worker and the Merman language Worker are local module workers; no CDN loader is used.
 
-The Merman Worker imports `@mermanjs/web-editor` and owns one disposable `BrowserEditorSession`.
+The Merman Worker imports the selected complete `@mermanjs/web` artifact and owns one disposable
+`BrowserEditorSession`. The dedicated `@mermanjs/web-editor` package remains a supported public
+surface, but the Playground does not load it in addition to the full renderer: same-revision
+whole-site evidence showed that the split did not lower cold transfer or preserve peak memory under
+the R16 rule. The full/editor comparison and its exact 35-family/11-query semantic matrix are
+on-demand architecture evidence, not a normal browser gate. Receipt schema 2 carries selection
+input schema 4, which content-binds every production page runtime closure, the Worker/equivalence
+closure, portable runtime JavaScript and package contracts, the stable WASM source/profile/capability
+contract, the measurement contract, and equivalence evidence. Current generated JavaScript and
+WASM files must still match their own provenance, but platform-specific WASM binary identity and
+host-form tool descriptions do not invalidate portable receipt authority. Normal prepared tests
+recompute those digests and the derived decision hermetically; only stale semantic or build inputs
+require another browser measurement.
+Tailwind v4 automatic source detection is disabled. Its explicit `App`, product-component, and UI
+primitive roots are structurally checked as a subset of the production TypeScript runtime closure,
+so test or tooling strings cannot alter shipped CSS without entering R16's bound inputs.
 `didOpen` constructs its analyzed document, `didChange` atomically replaces the snapshot with a
 newer source/version, and queries do not resend or compare source text. Diagnostics, detection,
 completions, hover, code actions, symbols, definition, references, rename, and semantic tokens all
@@ -151,14 +194,33 @@ the app does not simulate that policy with Cache Storage.
 
 ## Verification
 
+The maintained frontend baseline is Vite 8.2, React/ReactDOM 19.2.8, ESLint 10, Tailwind 4,
+Playwright/Test 1.62.1, and the grouped current Radix, Lucide, Sonner, i18n, and resizable-panel
+releases recorded in the lock. Vite uses native static `new URL(..., import.meta.url)` handling;
+`vite-plugin-wasm` is absent. The resizable wrapper maps the application's direction vocabulary to
+v4 orientation and percentage sizes. Monaco 0.55.1 and TypeScript 5.7.3 remain deliberate holds:
+Monaco 0.56 removes the contribution-only entry required by the current lazy language graph, and
+TypeScript 7 is outside the admitted tooling line.
+
+Validation is layered: hermetic TypeScript/Vite/policy tests first, prepared unit and production
+artifact verification second, then mandatory Chromium desktop plus focused Firefox/WebKit smoke.
+The compact Chromium mobile suite is on demand and the remaining real-device checks live in
+[MOBILE_QA.md](./MOBILE_QA.md).
+
 The closed lane is protected by:
 
 - Web package type/export/preset/smoke/ABI and size-budget gates;
 - exact generated diagram and example catalog checks;
 - runtime, render coordinator, realm protocol, queue, benchmark, and Worker unit tests;
-- production build graph and artifact checks;
-- real-browser startup, render, Compare, Monaco Worker, BFCache/teardown, accessibility, responsive,
-  CSP, and benchmark tests.
+- TypeScript-resolved source/type ownership and Vite-manifest emitted ownership as separate graphs;
+- plan-driven prepared artifact, CSP, public-byte, and production dist checks;
+- mandatory Chromium desktop coverage for startup, render, Compare, Monaco Worker,
+  BFCache/teardown, accessibility, CSP, and benchmark behavior;
+- one focused mandatory startup/render/Compare/theme/focus flow with BFCache Compare-realm cleanup
+  in each of Firefox and WebKit;
+- an on-demand Chromium mobile-interaction lane for compact controls, dialog scrolling, workspace
+  tabs, touch pan/zoom, shortened visual viewports, and overflow. Real iOS Safari and Android
+  Chrome remain an explicit release residual documented in [MOBILE_QA.md](./MOBILE_QA.md).
 
 Historical `TODO.md`, `MILESTONES.md`, `EVIDENCE_AND_GATES.md`, and journal entries record how the
 lane was built. They are not current runtime or release contracts.

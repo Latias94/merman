@@ -1,7 +1,10 @@
 import { create } from "zustand";
 import type { ThemeName } from "@mermanjs/web";
 import type { DiagramFont } from "../lib/diagram-font.ts";
-import { DEFAULT_MERMAID_CONFIG } from "../lib/mermaid-config.ts";
+import {
+  DEFAULT_WORKSPACE_SNAPSHOT,
+  type WorkspaceSnapshot,
+} from "../lib/workspace-snapshot.ts";
 import type {
   MermanSvgPipeline,
   MermanTextMeasurementMode,
@@ -16,6 +19,7 @@ export type WorkspacePane = "editor" | "preview";
 export type TextMeasurementMode = MermanTextMeasurementMode;
 export type SvgPipeline = MermanSvgPipeline;
 export type { DiagramFont };
+export { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot };
 
 export interface AppState {
   // Editor state
@@ -39,6 +43,7 @@ export interface AppState {
   setTextMeasurementMode: (mode: TextMeasurementMode) => void;
   diagramFont: DiagramFont;
   setDiagramFont: (font: DiagramFont) => void;
+  applyWorkspaceSnapshot: (snapshot: WorkspaceSnapshot) => void;
 
   // Workbench theme
   uiTheme: UITheme;
@@ -50,17 +55,22 @@ export interface AppState {
   setWorkspacePane: (pane: WorkspacePane) => void;
   previewMode: PreviewMode;
   setPreviewMode: (mode: PreviewMode) => void;
-  showExamples: boolean;
-  setShowExamples: (open: boolean) => void;
-  toggleExamples: () => void;
 }
 
-// Default source
-const DEFAULT_CODE = `flowchart TD
-    A[Start] --> B{Condition?}
-    B -->|Yes| C[Execute]
-    B -->|No| D[End]
-    C --> D`;
+export function selectWorkspaceSnapshot(
+  state: Pick<AppState, keyof WorkspaceSnapshot>
+): WorkspaceSnapshot {
+  return {
+    code: state.code,
+    mermaidConfig: state.mermaidConfig,
+    diagramTheme: state.diagramTheme,
+    presentationThemePresetId: state.presentationThemePresetId,
+    presentationProfileId: state.presentationProfileId,
+    svgPipeline: state.svgPipeline,
+    textMeasurementMode: state.textMeasurementMode,
+    diagramFont: state.diagramFont,
+  };
+}
 
 function getInitialUITheme(): UITheme {
   if (typeof window === "undefined") return "dark";
@@ -113,28 +123,30 @@ const initialResolvedTheme = resolveUITheme(initialUITheme);
 
 export const useAppStore = create<AppState>((set) => ({
   // Editor state
-  code: DEFAULT_CODE,
+  code: DEFAULT_WORKSPACE_SNAPSHOT.code,
   setCode: (code) => set({ code }),
-  mermaidConfig: DEFAULT_MERMAID_CONFIG,
+  mermaidConfig: DEFAULT_WORKSPACE_SNAPSHOT.mermaidConfig,
   setMermaidConfig: (mermaidConfig) => set({ mermaidConfig }),
   editorMode: "code",
   setEditorMode: (editorMode) => set({ editorMode }),
 
   // Diagram presentation
-  diagramTheme: "default",
+  diagramTheme: DEFAULT_WORKSPACE_SNAPSHOT.diagramTheme,
   setDiagramTheme: (diagramTheme) => set({ diagramTheme }),
-  presentationThemePresetId: null,
+  presentationThemePresetId:
+    DEFAULT_WORKSPACE_SNAPSHOT.presentationThemePresetId,
   setPresentationThemePresetId: (presentationThemePresetId) =>
     set({ presentationThemePresetId }),
-  presentationProfileId: null,
+  presentationProfileId: DEFAULT_WORKSPACE_SNAPSHOT.presentationProfileId,
   setPresentationProfileId: (presentationProfileId) =>
     set({ presentationProfileId }),
-  svgPipeline: "parity",
+  svgPipeline: DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
   setSvgPipeline: (svgPipeline) => set({ svgPipeline }),
-  textMeasurementMode: "browser",
+  textMeasurementMode: DEFAULT_WORKSPACE_SNAPSHOT.textMeasurementMode,
   setTextMeasurementMode: (textMeasurementMode) => set({ textMeasurementMode }),
-  diagramFont: "trebuchet",
+  diagramFont: DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
   setDiagramFont: (diagramFont) => set({ diagramFont }),
+  applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot }),
 
   // Workbench theme
   uiTheme: initialUITheme,
@@ -151,9 +163,6 @@ export const useAppStore = create<AppState>((set) => ({
   setWorkspacePane: (workspacePane) => set({ workspacePane }),
   previewMode: "svg",
   setPreviewMode: (previewMode) => set({ previewMode }),
-  showExamples: false,
-  setShowExamples: (showExamples) => set({ showExamples }),
-  toggleExamples: () => set((state) => ({ showExamples: !state.showExamples })),
 }));
 
 applyResolvedTheme(initialResolvedTheme);

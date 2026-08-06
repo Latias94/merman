@@ -220,15 +220,31 @@ export function createMermaidRealmController({
   const render = (
     input: MermaidRealmRenderInput
   ): Promise<MermaidRealmRenderResult> => {
+    const frozenInput = freezeMermaidRealmRenderInput(input);
     requestSequence += 1;
     const requestId = `${kind}-${requestSequence}`;
     const operationGeneration = generation;
     return operationQueue.enqueue(() =>
-      run(input, requestId, operationGeneration)
+      run(frozenInput, requestId, operationGeneration)
     );
   };
 
   return { dispose, render, reset };
+}
+
+function freezeMermaidRealmRenderInput(
+  input: MermaidRealmRenderInput
+): MermaidRealmRenderInput {
+  return Object.freeze({
+    ...input,
+    externalRequirements: Object.freeze({
+      externalDiagrams: Object.freeze([
+        ...input.externalRequirements.externalDiagrams,
+      ]),
+      layoutModules: Object.freeze([...input.externalRequirements.layoutModules]),
+    }),
+    viewport: Object.freeze({ ...input.viewport }),
+  });
 }
 
 function failure(

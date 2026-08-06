@@ -1,107 +1,106 @@
 import { createHash } from "node:crypto";
-import {
-  mkdir,
-  readdir,
-  rename,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { build } from "vite";
 
+import {
+  OPAQUE_REALM_ARTIFACT_PLAN,
+  artifactOutputFiles,
+  publicEngineFiles,
+} from "./opaque-realm-artifact-plan.mjs";
+import { renderOpaqueRealmBrowserProjections } from "./opaque-realm-browser-projection.mjs";
+import { assertNoRuntimeModuleRequests } from "./runtime-module-request-policy.mjs";
+
 const playgroundRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  ".."
+  "..",
 );
-const outputRoot = path.join(playgroundRoot, ".runtime");
-const publicEngineRoot = path.join(playgroundRoot, "public", "opaque-realm");
-const legacyOutputs = new Set([
-  "opaque-benchmark-mermaid.js",
-  "opaque-benchmark-mermaid.json",
-  "opaque-compare.js",
-  "opaque-compare.json",
-  "compare-mermaid-engine.js",
-  "compare-mermaid-engine.json",
-  "benchmark-mermaid-engine.js",
-  "benchmark-mermaid-engine.json",
-]);
-const legacyPublicEngineOutputs = new Set([
-  "compare-mermaid-engine.js",
-  "benchmark-mermaid-engine.js",
-]);
+const plan = OPAQUE_REALM_ARTIFACT_PLAN;
+const outputRoot = path.join(playgroundRoot, plan.roots.generated);
+const publicEngineRoot = path.join(playgroundRoot, plan.roots.publicEngines);
+const browserProjections = renderOpaqueRealmBrowserProjections(plan);
+const metadataDestination = path.join(playgroundRoot, plan.browserMetadataModule);
 
-const engines = [
-  {
-    id: "mermaid",
-    file: "mermaid-engine",
-    entry: "src/runtime/realm/engines/mermaid-engine-artifact-entry.ts",
-  },
-  {
-    id: "benchmark-merman",
-    file: "benchmark-merman-engine",
-    entry: "src/benchmark/realm/engines/benchmark-merman-artifact-entry.ts",
-  },
-];
-
-const bootstraps = [
-  {
-    id: "compare",
-    engineId: "mermaid",
-    file: "opaque-compare-bootstrap",
-    entry: "src/runtime/realm/opaque-compare-entry.ts",
-  },
-  {
-    id: "benchmark",
-    engineId: "mermaid",
-    file: "opaque-benchmark-mermaid-bootstrap",
-    entry: "src/benchmark/realm/opaque-mermaid-entry.ts",
-  },
-];
+await mkdir(path.dirname(metadataDestination), { recursive: true });
+await atomicWrite(
+  metadataDestination,
+  browserProjections.get(plan.browserMetadataModule),
+);
 
 const generated = [];
 const engineManifests = new Map();
-for (const artifact of engines) {
-  const built = await buildArtifact(artifact, "es");
-  generated.push(...built.outputs);
-  engineManifests.set(artifact.id, built.manifest);
-}
-for (const artifact of bootstraps) {
-  const engineManifest = engineManifests.get(artifact.engineId);
-  if (!engineManifest) {
-    throw new Error(`${artifact.id} has no engine artifact identity.`);
+for (const engine of plan.engines) {
+  const built = await buildArtifact({
+    id: engine.id,
+    entry: engine.entry,
+    outputBase: engine.outputBase,
+    format: "es",
+    expectedExports: engine.exports,
+  });
+  if (built.manifest.bytes > engine.maxBytes) {
+    throw new Error(
+      `${engine.id} engine exceeds its byte budget (${built.manifest.bytes} > ${engine.maxBytes}).`,
+    );
   }
-  const built = await buildArtifact(artifact, "iife", engineManifest);
+  if (
+    engine.resourcePolicy === "same-origin-wasm-v1" &&
+    /data:application\/wasm/iu.test(built.source)
+  ) {
+    throw new Error(`${engine.id} engine embeds its parent-owned WASM resource.`);
+  }
+  generated.push(...built.outputs);
+  engineManifests.set(engine.id, built.manifest);
+}
+for (const realm of plan.realms) {
+  if (!realm.bootstrap) continue;
+  const engineManifest = engineManifests.get(realm.engine);
+  if (!engineManifest) {
+    throw new Error(`${realm.key} has no engine artifact identity.`);
+  }
+  const built = await buildArtifact(
+    {
+      id: realm.kind,
+      entry: realm.bootstrap.entry,
+      outputBase: realm.bootstrap.outputBase,
+      format: "iife",
+      expectedExports: [],
+    },
+    engineManifest,
+  );
+  if (built.manifest.bytes > realm.bootstrap.maxBytes) {
+    throw new Error(`${realm.key} bootstrap exceeds its byte budget.`);
+  }
   generated.push(...built.outputs);
 }
-const expectedOutputs = new Set(generated.map(({ file }) => file));
+
 await mkdir(outputRoot, { recursive: true });
 await mkdir(publicEngineRoot, { recursive: true });
-await rejectUnknownOutputs(expectedOutputs);
-await rejectUnknownPublicEngineOutputs();
+await assertOwnedDirectory(outputRoot, artifactOutputFiles(plan));
+await assertOwnedDirectory(publicEngineRoot, publicEngineFiles(plan));
 for (const { file, value } of generated) {
   await atomicWrite(path.join(outputRoot, file), value);
 }
-for (const { file, value } of generated.filter(({ file }) =>
-  file.endsWith("-engine.js")
-)) {
-  await atomicWrite(path.join(publicEngineRoot, file), value);
+for (const engine of plan.engines.filter((candidate) => candidate.publish)) {
+  const output = generated.find(
+    ({ file }) => file === `${engine.outputBase}.js`,
+  );
+  if (!output) throw new Error(`Missing generated engine ${engine.id}.`);
+  await atomicWrite(
+    path.join(publicEngineRoot, `${engine.outputBase}.js`),
+    output.value,
+  );
 }
-for (const legacy of legacyOutputs) {
-  await unlink(path.join(outputRoot, legacy)).catch((error) => {
-    if (error?.code !== "ENOENT") throw error;
-  });
+for (const [file, source] of browserProjections) {
+  const destination = path.join(playgroundRoot, file);
+  await mkdir(path.dirname(destination), { recursive: true });
+  await atomicWrite(destination, source);
 }
-for (const legacy of legacyPublicEngineOutputs) {
-  await unlink(path.join(publicEngineRoot, legacy)).catch((error) => {
-    if (error?.code !== "ENOENT") throw error;
-  });
-}
-await assertExactOutputs(expectedOutputs);
-await assertExactPublicEngineOutputs();
+await assertExactDirectory(outputRoot, artifactOutputFiles(plan));
+await assertExactDirectory(publicEngineRoot, publicEngineFiles(plan));
 
-async function buildArtifact(artifact, format, engineManifest = null) {
+async function buildArtifact(artifact, engineManifest = null) {
   const output = await build({
     configFile: false,
     root: playgroundRoot,
@@ -122,7 +121,7 @@ async function buildArtifact(artifact, format, engineManifest = null) {
       minify: "oxc",
       lib: {
         entry: path.join(playgroundRoot, artifact.entry),
-        formats: [format],
+        formats: [artifact.format],
         name: `Merman${pascalCase(artifact.id)}Artifact`,
       },
       rolldownOptions: {
@@ -130,11 +129,11 @@ async function buildArtifact(artifact, format, engineManifest = null) {
       },
     },
   });
-  const chunks = Array.isArray(output)
+  const outputs = Array.isArray(output)
     ? output.flatMap((item) => item.output)
     : output.output;
-  const scripts = chunks.filter((item) => item.type === "chunk");
-  const assets = chunks.filter((item) => item.type === "asset");
+  const scripts = outputs.filter((item) => item.type === "chunk");
+  const assets = outputs.filter((item) => item.type === "asset");
   if (scripts.length !== 1) {
     throw new Error(`${artifact.id} must emit exactly one script.`);
   }
@@ -142,18 +141,29 @@ async function buildArtifact(artifact, format, engineManifest = null) {
     throw new Error(
       `${artifact.id} emitted external assets: ${assets
         .map((item) => item.fileName)
-        .join(", ")}`
+        .join(", ")}`,
     );
   }
-  const source = scripts[0].code;
-  assertSelfContainedScript(artifact.id, source, format);
+  const [script] = scripts;
+  assertChunkContract(artifact, script);
+  const source = script.code;
+  if (!source.trim()) throw new Error(`${artifact.id} script is empty.`);
+  if (artifact.format === "es") {
+    assertNoRuntimeModuleRequests(source, `${artifact.outputBase}.js`);
+  }
+  if (/sourceMappingURL=/u.test(source)) {
+    throw new Error(`${artifact.id} retains an external source map.`);
+  }
+  if (artifact.format === "iife" && /<\/script/iu.test(source)) {
+    throw new Error(`${artifact.id} contains an inline-script terminator.`);
+  }
   const sha256 = createHash("sha256").update(source).digest("hex");
   const manifest = {
     schemaVersion: 1,
     id: artifact.id,
     bytes: Buffer.byteLength(source),
     sha256,
-    ...(format === "iife"
+    ...(artifact.format === "iife"
       ? {
           cspHash: `sha256-${createHash("sha256")
             .update(source)
@@ -164,74 +174,56 @@ async function buildArtifact(artifact, format, engineManifest = null) {
   };
   return {
     manifest,
+    source,
     outputs: [
-      { file: `${artifact.file}.js`, value: source },
+      { file: `${artifact.outputBase}.js`, value: source },
       {
-        file: `${artifact.file}.json`,
+        file: `${artifact.outputBase}.json`,
         value: `${JSON.stringify(manifest, null, 2)}\n`,
       },
     ],
   };
 }
 
-async function rejectUnknownOutputs(expected) {
-  const entries = await readdir(outputRoot, { withFileTypes: true });
+function assertChunkContract(artifact, chunk) {
+  const externalImports = [
+    ...(chunk.imports ?? []),
+    ...(chunk.dynamicImports ?? []),
+  ].filter((file) => file !== chunk.fileName);
+  if (externalImports.length !== 0) {
+    throw new Error(
+      `${artifact.id} emitted external module requests: ${externalImports.join(", ")}`,
+    );
+  }
+  const actualExports = [...(chunk.exports ?? [])].sort();
+  const expectedExports = [...artifact.expectedExports].sort();
+  if (JSON.stringify(actualExports) !== JSON.stringify(expectedExports)) {
+    throw new Error(
+      `${artifact.id} exports ${actualExports.join(", ") || "nothing"}; expected ${expectedExports.join(", ") || "nothing"}.`,
+    );
+  }
+}
+
+async function assertOwnedDirectory(directory, expectedFiles) {
+  const expected = new Set(expectedFiles);
+  const entries = await readdir(directory, { withFileTypes: true });
   const unknown = entries
-    .filter(
-      (entry) =>
-        !entry.isFile() ||
-        (!expected.has(entry.name) && !legacyOutputs.has(entry.name))
-    )
+    .filter((entry) => !entry.isFile() || !expected.has(entry.name))
     .map((entry) => entry.name)
     .sort();
   if (unknown.length > 0) {
     throw new Error(
-      `Opaque realm output directory contains unowned files: ${unknown.join(", ")}`
+      `${path.relative(playgroundRoot, directory)} contains unowned outputs: ${unknown.join(", ")}`,
     );
   }
 }
 
-async function assertExactOutputs(expected) {
-  const actual = (await readdir(outputRoot)).sort();
-  const wanted = [...expected].sort();
-  if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
-    throw new Error(
-      `Opaque realm output set is invalid: expected ${wanted.join(", ")}; found ${actual.join(", ")}`
-    );
-  }
-}
-
-function publicEngineFiles() {
-  return generated
-    .map(({ file }) => file)
-    .filter((file) => file.endsWith("-engine.js"))
-    .sort();
-}
-
-async function rejectUnknownPublicEngineOutputs() {
-  const expected = new Set(publicEngineFiles());
-  const entries = await readdir(publicEngineRoot, { withFileTypes: true });
-  const unknown = entries
-    .filter(
-      (entry) =>
-        !entry.isFile() ||
-        (!expected.has(entry.name) && !legacyPublicEngineOutputs.has(entry.name))
-    )
-    .map((entry) => entry.name)
-    .sort();
-  if (unknown.length > 0) {
-    throw new Error(
-      `Opaque realm public artifact directory contains unowned files: ${unknown.join(", ")}`
-    );
-  }
-}
-
-async function assertExactPublicEngineOutputs() {
-  const actual = (await readdir(publicEngineRoot)).sort();
-  const expected = publicEngineFiles();
+async function assertExactDirectory(directory, expectedFiles) {
+  const actual = (await readdir(directory)).sort();
+  const expected = [...expectedFiles].sort();
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(
-      `Opaque realm public artifact set is invalid: expected ${expected.join(", ")}; found ${actual.join(", ")}`
+      `${path.relative(playgroundRoot, directory)} output set is invalid: expected ${expected.join(", ")}; found ${actual.join(", ")}`,
     );
   }
 }
@@ -247,22 +239,9 @@ async function atomicWrite(destination, value) {
   }
 }
 
-function assertSelfContainedScript(id, source, format) {
-  if (!source.trim()) throw new Error(`${id} script is empty.`);
-  if (/sourceMappingURL=/.test(source)) {
-    throw new Error(`${id} retains an external source map.`);
-  }
-  if (/^\s*import\s/m.test(source)) {
-    throw new Error(`${id} retains a static module import.`);
-  }
-  if (format === "iife" && /<\/script/i.test(source)) {
-    throw new Error(`${id} contains an inline-script terminator.`);
-  }
-}
-
 function pascalCase(value) {
   return value
-    .split(/[^a-z0-9]+/i)
+    .split(/[^a-z0-9]+/iu)
     .filter(Boolean)
     .map((part) => `${part[0].toUpperCase()}${part.slice(1)}`)
     .join("");

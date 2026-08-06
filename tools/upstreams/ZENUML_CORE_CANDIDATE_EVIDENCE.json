@@ -1,7 +1,7 @@
 {
   "schemaVersion": 5,
   "harness": "playground/scripts/zenuml-core-candidate-matrix.mjs",
-  "harnessSha256": "22b9a27e1096a2f4007d52117387c97864cccf6e711f2a2174a22fa27c5793a0",
+  "harnessSha256": "fb071834c9e0b354bb957d3a275e7f0bd6dfc772b7603ec7d29abd3df5b8fc99",
   "command": "npm run verify:zenuml-candidate",
   "onlineCommand": "npm run verify:zenuml-candidate:online",
   "oracle": {
@@ -2395,20 +2395,20 @@
   "executionIsolation": {
     "artifact": "tools/upstreams/ZENUML_BROWSER_SECURITY_EVIDENCE.json",
     "probeContract": "tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json",
-    "projectCount": 2,
+    "projectCount": 1,
     "probeCount": 13,
-    "observationCount": 26,
-    "passedObservationCount": 26,
-    "artifactSha256": "955cbfd31b9c7c92d3b858827bd4672008851a28bd8e1a3e9f1706da3e2ca626"
+    "observationCount": 13,
+    "passedObservationCount": 13,
+    "artifactSha256": "e7a35d6e7430387b55479cb1ef06dfb9c0e8f6720c0026d390d486d1c5d65e18"
   },
   "security": {
     "artifact": "tools/upstreams/ZENUML_BROWSER_SECURITY_EVIDENCE.json",
     "probeContract": "tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json",
-    "projectCount": 2,
+    "projectCount": 1,
     "probeCount": 18,
-    "observationCount": 36,
-    "passedObservationCount": 36,
-    "artifactSha256": "955cbfd31b9c7c92d3b858827bd4672008851a28bd8e1a3e9f1706da3e2ca626"
+    "observationCount": 18,
+    "passedObservationCount": 18,
+    "artifactSha256": "e7a35d6e7430387b55479cb1ef06dfb9c0e8f6720c0026d390d486d1c5d65e18"
   },
   "resource": {
     "measurementScope": "runtime-entry",

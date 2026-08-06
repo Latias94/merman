@@ -12,6 +12,7 @@ import {
 } from "../trace.ts";
 import {
   createBenchmarkRealmSession,
+  type BenchmarkSampleInput,
   type BenchmarkRealmSessionDependencies,
 } from "./controller.ts";
 import {
@@ -214,7 +215,7 @@ test("parent watchdog rejects a sample that sends no progress", async () => {
   assert.equal(harness.pendingTimers.size, 2);
   harness.fireTimeout(REALM_BUDGETS.stageTimeoutMs);
 
-  await assert.rejects(pending, /progress.*timed out/i);
+  await assert.rejects(pending, /dispatch.*timed out/i);
   assert.equal(harness.poisonCount, 1);
   assert.equal(harness.pendingTimers.size, 0);
   harness.close();
@@ -232,7 +233,7 @@ test("duplicate progress poisons the realm without extending any deadline", asyn
   const pending = session.sample(sampleInput("realm-cold", "cold-1"));
   const request = await harness.nextRequest();
   harness.respond(progressResponse(request, "fonts_wait_start", 1));
-  await harness.waitForTimerSetCount(4);
+  await harness.waitForTimerSetCount(3);
   const timerSetCount = harness.timerSetCount;
   harness.respond(progressResponse(request, "fonts_wait_start", 2));
 
@@ -257,7 +258,7 @@ test("progress in one stage cannot extend an overlapping stage deadline", async 
   harness.respond(progressResponse(request, "fonts_wait_start", 1));
   harness.respond(progressResponse(request, "adapter_import_start", 2));
   harness.respond(progressResponse(request, "adapter_import_end", 3));
-  await harness.waitForTimerSetCount(7);
+  await harness.waitForTimerSetCount(4);
   harness.fireTimeout(REALM_BUDGETS.stageTimeoutMs);
 
   await assert.rejects(pending, /during fonts/);
@@ -313,23 +314,31 @@ const WARM_PROGRESS = Object.freeze([
   "isolated_presentation_ready",
 ] as const satisfies readonly BenchmarkTraceMark[]);
 
-function sampleInput(mode: "realm-cold" | "warm", requestId: string) {
-  return {
+function sampleInput(
+  mode: "realm-cold" | "warm",
+  requestId: string
+): BenchmarkSampleInput {
+  const identity = {
     runId: "run-1",
     runToken: RUN_TOKEN,
-    requestId,
+    inputId: "input-1",
+    sampleId: requestId,
     engine: "merman" as const,
-    mode,
-    role: "measured" as const,
-    payload: {
-      source: "flowchart TD\nA-->B",
-      configJson: "{}",
-      theme: "default",
-      diagramFont: "trebuchet" as const,
-      externalRequirements: { externalDiagrams: [], layoutModules: [] },
-      viewport: { width: 800, height: 600 },
-    },
   };
+  return mode === "realm-cold"
+    ? {
+        ...identity,
+        intentKind: "cold-measured",
+        payload: {
+          source: "flowchart TD\nA-->B",
+          configJson: "{}",
+          theme: "default",
+          diagramFont: "trebuchet",
+          externalRequirements: { externalDiagrams: [], layoutModules: [] },
+          viewport: { width: 800, height: 600 },
+        },
+      }
+    : { ...identity, intentKind: "warm-measured" };
 }
 
 function successResponse(
@@ -347,9 +356,9 @@ function successResponse(
     runId: request.runId,
     runToken: request.runToken,
     requestId: request.requestId,
+    sampleId: request.sampleId,
     engine: request.engine,
-    mode: request.mode,
-    role: request.role,
+    intentKind: request.intentKind,
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
     trace,
     resources: [],
@@ -369,9 +378,9 @@ function failureResponse(request: BenchmarkSampleRequest, sequence: number) {
     runId: request.runId,
     runToken: request.runToken,
     requestId: request.requestId,
+    sampleId: request.sampleId,
     engine: request.engine,
-    mode: request.mode,
-    role: request.role,
+    intentKind: request.intentKind,
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
     trace: {
       ...coldTrace(),
@@ -404,9 +413,9 @@ function progressResponse(
     runId: request.runId,
     runToken: request.runToken,
     requestId: request.requestId,
+    sampleId: request.sampleId,
     engine: request.engine,
-    mode: request.mode,
-    role: request.role,
+    intentKind: request.intentKind,
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
     event,
   };
@@ -430,7 +439,7 @@ function coldTrace(): BenchmarkRawTrace {
   return {
     sample_start: 0 as const,
     fonts_wait_start: 0,
-    fonts_wait_end: 7,
+    fonts_wait_end: 1,
     adapter_import_start: 0,
     adapter_import_end: 2,
     engine_import_start: 2,

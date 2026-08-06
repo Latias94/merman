@@ -1,6 +1,18 @@
 const WHOLE_CORPUS_TIMEOUT =
   "Browser corpus exceeded its whole-corpus CLI timeout.";
 
+export class BenchmarkPageOperationError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = "BenchmarkPageOperationError";
+    this.code = code;
+  }
+}
+
+export function isBenchmarkPageOperationError(error) {
+  return error instanceof BenchmarkPageOperationError;
+}
+
 export async function cancelBenchmarkPage(page, browser, reason) {
   const operations = [];
   if (page) {
@@ -22,12 +34,16 @@ export async function runBenchmarkStartupOperation({
   operation,
 }) {
   const timeoutMs = deadlineMs - Date.now();
-  if (timeoutMs <= 0) throw new Error(WHOLE_CORPUS_TIMEOUT);
+  if (timeoutMs <= 0) {
+    throw new BenchmarkPageOperationError("cli-timeout", WHOLE_CORPUS_TIMEOUT);
+  }
 
   const { promise: terminalFailure, reject } = Promise.withResolvers();
   const timeout = setTimeout(() => {
     void Promise.resolve(onTimeout?.()).catch(() => {});
-    reject(new Error(WHOLE_CORPUS_TIMEOUT));
+    reject(
+      new BenchmarkPageOperationError("cli-timeout", WHOLE_CORPUS_TIMEOUT)
+    );
   }, timeoutMs);
 
   try {
@@ -47,25 +63,33 @@ export async function runBenchmarkPageOperation({
   page,
 }) {
   const timeoutMs = deadlineMs - Date.now();
-  if (timeoutMs <= 0) throw new Error(WHOLE_CORPUS_TIMEOUT);
+  if (timeoutMs <= 0) {
+    throw new BenchmarkPageOperationError("cli-timeout", WHOLE_CORPUS_TIMEOUT);
+  }
 
   let settled = false;
   const { promise: terminalFailure, reject } = Promise.withResolvers();
-  const fail = (message) => {
+  const fail = (code, message) => {
     if (settled) return;
     settled = true;
-    reject(new Error(message));
+    reject(new BenchmarkPageOperationError(code, message));
   };
-  const onCrash = () => fail("Benchmark page crashed.");
+  const onCrash = () => fail("browser-crash", "Benchmark page crashed.");
   const onClose = () =>
-    fail("Benchmark page closed before producing evidence.");
+    fail(
+      "browser-page-close",
+      "Benchmark page closed before producing evidence."
+    );
   const onDisconnected = () =>
-    fail("Benchmark browser disconnected before producing evidence.");
+    fail(
+      "browser-disconnected",
+      "Benchmark browser disconnected before producing evidence."
+    );
   page.once("crash", onCrash);
   page.once("close", onClose);
   browser.once("disconnected", onDisconnected);
   const timeout = setTimeout(() => {
-    fail(WHOLE_CORPUS_TIMEOUT);
+    fail("cli-timeout", WHOLE_CORPUS_TIMEOUT);
     void cancelBenchmarkPage(page, browser, "cli-timeout");
   }, timeoutMs);
 

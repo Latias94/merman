@@ -1,3 +1,5 @@
+import { OPAQUE_REALM_ARTIFACT_PLAN } from "./opaque-realm-artifact-plan.mjs";
+
 const COMMON_DIRECTIVES = Object.freeze({
   "default-src": ["'none'"],
   "style-src": ["'self'", "'unsafe-inline'"],
@@ -16,53 +18,56 @@ export function isCspHash(value) {
   );
 }
 
-export function createExpectedCspPolicies(hashes) {
-  const indexHashes = quotedHashes(hashes["index.html"], "index.html", 2);
-  const benchmarkHashes = quotedHashes(
-    hashes["benchmark.html"],
-    "benchmark.html",
-    0,
+export function createExpectedCspPolicies(
+  hashes,
+  plan = OPAQUE_REALM_ARTIFACT_PLAN,
+) {
+  return Object.freeze(
+    Object.fromEntries(
+      plan.pages.map((page) => {
+        const pageHashes = quotedHashes(
+          hashes[page.source],
+          page.source,
+          page.inlineRealms.length,
+        );
+        return [page.source, policyForProfile(page.cspProfile, pageHashes)];
+      }),
+    ),
   );
-  const corpusHashes = quotedHashes(
-    hashes["benchmark-corpus.html"],
-    "benchmark-corpus.html",
-    1,
-  );
-  return Object.freeze({
-    "index.html": Object.freeze({
+}
+
+function policyForProfile(profile, hashes) {
+  const scriptSources = [
+    "'self'",
+    "blob:",
+    ...hashes,
+    "'wasm-unsafe-eval'",
+  ];
+  if (profile === "playground-v1") {
+    return Object.freeze({
       ...COMMON_DIRECTIVES,
-      "script-src": [
-        "'self'",
-        "blob:",
-        ...indexHashes,
-        "'wasm-unsafe-eval'",
-      ],
+      "script-src": scriptSources,
       "worker-src": ["'self'"],
       "frame-src": ["'self'"],
-    }),
-    "benchmark-corpus.html": Object.freeze({
+    });
+  }
+  if (profile === "benchmark-corpus-v1") {
+    return Object.freeze({
       ...COMMON_DIRECTIVES,
-      "script-src": [
-        "'self'",
-        "blob:",
-        ...corpusHashes,
-        "'wasm-unsafe-eval'",
-      ],
+      "script-src": scriptSources,
       "worker-src": ["'none'"],
       "frame-src": ["'self'"],
-    }),
-    "benchmark.html": Object.freeze({
+    });
+  }
+  if (profile === "trusted-benchmark-v1") {
+    return Object.freeze({
       ...COMMON_DIRECTIVES,
-      "script-src": [
-        "'self'",
-        "blob:",
-        ...benchmarkHashes,
-        "'wasm-unsafe-eval'",
-      ],
+      "script-src": scriptSources,
       "worker-src": ["'none'"],
       "frame-src": ["'none'"],
-    }),
-  });
+    });
+  }
+  throw new CspContractError(`Unknown CSP profile: ${String(profile)}.`);
 }
 
 export class CspContractError extends Error {

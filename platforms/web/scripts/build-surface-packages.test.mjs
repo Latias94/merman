@@ -12,6 +12,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 
+import { initMerman as initMermanCore } from "../dist/runtime-core.js";
+import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 import { packageEntrySource, replaceDirectory } from "./build-surface-packages.mjs";
 import { webPackages } from "./surface-manifest.mjs";
 
@@ -55,7 +57,16 @@ describe("browser package assembly", () => {
     const source = packageEntrySource(descriptor);
     assert.match(source, /artifacts\/wasm\/merman_wasm\.js/);
     assert.match(source, /MERMAN_WASM_URL/);
+    assert.match(source, /wasmModulePromise \?\?= loadPackageWasmModule\(\)/);
+    assert.match(
+      source,
+      /input \?\? \{ module_or_path: MERMAN_WASM_URL \}/,
+    );
     assert.match(source, /assertBrowserRuntime, bindSurfaceRuntime/);
+    assert.match(
+      source,
+      /bindSurfaceRuntime\(loadMermanWasmModule, implementation, MERMAN_WASM_URL\)/,
+    );
     assert.match(source, /from "\.\.\/runtime-core\.js"/);
     assert.match(source, /from "\.\.\/runtime-analysis\.js"/);
     assert.doesNotMatch(source, /from "\.\.\/runtime-ascii\.js"/);
@@ -77,5 +88,27 @@ describe("browser package assembly", () => {
       /export type MermanWasmModule = Required<Pick<SharedMermanWasmModule,[\s\S]*\| "analyze"/,
     );
     assert.doesNotMatch(source, /\| "renderSvg"/);
+  });
+
+  it("supplies the package WASM URL to a caller loader without replacing its module", async () => {
+    const wasmUrl = "https://example.test/merman_wasm_bg.wasm";
+    let receivedInput = null;
+    const module = {
+      async default(input) {
+        receivedInput = input;
+      },
+    };
+    const runtime = bindSurfaceRuntime(
+      async () => {
+        throw new Error("default loader should not run");
+      },
+      { initMerman: initMermanCore },
+      wasmUrl,
+    );
+
+    const loaded = await runtime.initMerman(async () => module);
+
+    assert.equal(loaded, module);
+    assert.deepEqual(receivedInput, { module_or_path: wasmUrl });
   });
 });

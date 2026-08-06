@@ -1,7 +1,7 @@
 # Web WASM Playground - Evidence And Gates
 
 Status: Closed
-Last updated: 2026-06-29
+Last updated: 2026-08-05
 
 ## Smallest Current Repro
 
@@ -395,3 +395,259 @@ Verification claim:
 
 - Verified claim: the lane is closed; residual npm publishing, raster/PDF export, and broader
   browser QA are explicit follow-on candidates rather than active lane debt.
+
+### 2026-08-05 - R16 Editor Worker Artifact Decision
+
+Changes:
+
+- Replaced the VM/transpile semantic-token harness with importable TypeScript protocol, client,
+  runtime, and Monaco adapter tests.
+- Bound read-only Worker queries to URI/version, retained one in-flight plus one latest source
+  snapshot, added request deadlines and bounded tombstones, and validated all 11 query result
+  shapes before Monaco projection.
+- Kept message envelopes and request payloads exact while projecting away unknown nested result
+  fields, matching the forward-compatible diagnostics contract.
+- Added an on-demand dual-build measurement for the complete and editor Worker artifacts. Browser
+  measurement is deliberately not a CI gate.
+- Removed the duplicate JSON Schema projection; `contract.mjs` plus the receipt `schemaVersion` is
+  the single executable evidence contract.
+
+Commands:
+
+```bash
+npm run test:editor-worker --prefix playground
+npm run test:editor-artifact-decision --prefix playground
+npm run test:build-graph --prefix playground
+npm run build --prefix playground
+npm --prefix playground/tests test -- monaco.worker.spec.ts --project=chromium-desktop
+npm run measure:editor-artifacts --prefix playground
+```
+
+Results:
+
+- Native TypeScript Worker tests passed: 56 tests.
+- Pure artifact-decision and authority tests passed: 24 tests.
+- Focused build-graph tests passed: 46 tests.
+- Production Playground build and dist verification passed with Vite 8.2.0.
+- Real Chromium Monaco Worker smoke passed: 6 tests, including all 35 semantic-token family
+  baselines, request-local rename failure, Retry recovery, and Benchmark isolation.
+- The fresh same-commit measurement ran against the clean revision recorded in the receipt with
+  four balanced AB/BA blocks. Its receipt is authoritative.
+- Full and editor Workers were exactly equivalent across 35 families and 11 query kinds: 385 cells
+  per variant, zero mismatches, and aggregate SHA-256
+  `e52016004129f4a12c0b316be1890f614898003afc1318fd543c4f07b674596c` for both.
+- All six cold/warm primary latency comparisons passed the joint 5% and 20 ms limit.
+- The editor split failed the selection rule because cold transfer was 7,504,756 bytes versus
+  6,141,789 bytes for full, and peak memory was 31,121,413 bytes versus 30,804,954 bytes for full.
+- The authoritative result therefore retains `@mermanjs/web` for both the main renderer and the
+  language Worker. Receipt schema 2 carries selection-input schema 4, which binds the measurement
+  contract, every production page runtime closure, the Worker/equivalence closure, portable runtime
+  JavaScript and package contracts, stable WASM source/profile/capability inputs, and semantic
+  evidence to deterministic content digests. Current generated JavaScript and WASM artifacts must
+  still match their provenance, while platform-specific WASM binary identity and host-form tool
+  descriptions do not invalidate the cross-platform receipt. The hermetic authority verifier
+  recomputes those inputs and the derived decision without a browser. The complete receipt is
+  checked in at
+  [`editor-artifact-receipt-v2.json`](./editor-artifact-receipt-v2.json).
+
+### 2026-08-06 - Portable R16 And ZenUML Evidence Boundaries
+
+Changes:
+
+- Narrowed R16 package freshness from platform-specific WASM output bytes to the portable runtime
+  contract: exact runtime JavaScript and package metadata plus stable WASM source, artifact profile,
+  and runtime capabilities.
+- Kept generated-artifact integrity strict by validating every current runtime JavaScript and WASM
+  file against its own provenance before computing the portable selection digest.
+- Bound ZenUML browser admission to the generated runtime security projections and executing browser
+  sources rather than the build-plan generators that produce those projections.
+- Canonicalized the ZenUML probe contract so the JavaScript verifier and Rust `xtask` hash the same
+  representation.
+
+Commands:
+
+```bash
+npx --yes node@24.18.0 --test playground/scripts/editor-artifact-measurement/contract.test.mjs playground/scripts/zenuml-browser-admission.test.mjs
+npm run verify:zenuml-candidate --prefix playground
+npm run verify:zenuml-browser-admission --prefix playground
+cargo run --locked -p xtask -- verify-mermaid-reference
+npm run measure:editor-artifacts --prefix playground -- --out docs/workstreams/web-wasm-playground/editor-artifact-receipt-v2.json
+npm run verify:editor-artifact-authority --prefix playground
+```
+
+Results:
+
+- The Node 24 contract suite passed 25 tests, including host-specific WASM drift and ZenUML source
+  boundary regressions.
+- Offline ZenUML evidence verification and `xtask verify-mermaid-reference` passed after a real
+  Chromium evidence refresh.
+- A fresh four-block measurement from clean revision `5b9b28d04` produced authoritative receipt
+  schema 2 / selection-input schema 4.
+- Full and editor remained exactly equivalent across all 385 family/query cells; the selection still
+  retains full because editor transfer and peak memory are both higher.
+
+### 2026-08-05 - Canonical Opaque Artifacts And Authoritative Build Graphs
+
+Changes:
+
+- Replaced six repeated engine/bootstrap/page/output inventories with one validated opaque-realm
+  artifact plan consumed by the builder, verifier, CSP injector, Vite inputs, dist verifier, and
+  generated browser projections.
+- Split Compare, opaque Benchmark Mermaid, and trusted Benchmark Merman into separate static
+  projection leaves. Opening Compare no longer transfers the Benchmark bootstrap.
+- Replaced the handwritten extension/alias resolver with TypeScript configuration and module
+  resolution. Source ownership includes type-only edges without reimplementing package exports,
+  paths, or extension rules.
+- Disabled Tailwind v4 automatic source detection and limited production class scanning to `App`,
+  product components, and UI primitives. A compiler-backed test proves every scanned file belongs
+  to the production TypeScript runtime closure, excluding tests and tooling.
+- Added one Vite manifest adapter for entries, static/reachable closure, emitted files, and asset
+  ownership. Optional-feature, realm-isolation, dist, and Playwright helpers consume that adapter.
+- Removed engine sentinels, source-marker/version/package searches, legacy output lists, duplicated
+  manifest traversal, and parser-oriented resolver tests after their structural/behavioral evidence
+  passed.
+- Added an emitted-JavaScript AST gate for engine module requests because Rolldown metadata alone
+  does not report computed `import(url)` calls. Bootstrap blob imports remain separately digest-bound.
+- Injected the Playground pause-coordinator capability into the browser Benchmark factory. Benchmark
+  feature and corpus closures now fail if either can reach the Compare artifact root.
+- Added the checked [validation migration ledger](../../../playground/scripts/validation-migration-ledger.json),
+  mapping each removed or retained gate to its stable invariant and proving tests.
+- Added explicit ESLint and Node TypeScript project coverage for `scripts/**/*.mjs`.
+
+Commands:
+
+```bash
+npm run test:build-graph --prefix playground
+npm test --prefix playground
+npm run build:prepared --prefix playground
+npm --prefix playground/tests test -- benchmark.controller.spec.ts benchmark.realm.spec.ts --project=chromium-desktop
+npm --prefix playground/tests test -- playground.smoke.spec.ts --project=chromium-desktop --grep "Compare owns one local Mermaid realm"
+npm run record:zenuml-browser-admission --prefix playground
+npm run verify:zenuml-browser-admission --prefix playground
+```
+
+Results:
+
+- Hermetic artifact/source/Vite/CSP/package policy suite passed: 35 tests.
+- Complete prepared unit suite passed, including 53 Worker, 54 realm, and 98 benchmark tests.
+- Vite 8.2.0 production build and plan-driven dist verification passed. The manifest contains
+  distinct `opaque-compare-artifact` and `opaque-mermaid-artifact` activation roots; all optional
+  workbenches remain outside the initial static closure.
+- Chromium Benchmark controller and realm flows passed: 9 tests, including reversible settings,
+  retained-result reruns, lifecycle invalidation, denied authority, cold/warm reuse,
+  poisoning/replacement, and hidden-realm behavior.
+- Chromium Compare activation and coherent publication passed without fetching its artifact before
+  user activation: 1 test.
+- ZenUML browser admission evidence was regenerated from the final source list and verified.
+
+### 2026-08-05 - Right-Sized Browser Verification And Mobile Interaction Coverage
+
+Changes:
+
+- Replaced the duplicated full desktop/mobile Playwright matrix with three explicit ownership
+  lanes: mandatory Chromium desktop coverage, mandatory focused Firefox/WebKit smoke coverage, and
+  an on-demand Chromium mobile-interaction suite.
+- Added one linear non-Chromium smoke flow that covers production WASM startup, the initial render,
+  dialog focus restoration, Compare realm publication, system-theme changes, and Compare realm
+  cleanup on a persisted BFCache `pagehide` event.
+- Added focused portrait, shortened-viewport, and landscape mobile contracts for compact toolbar
+  controls, workspace navigation, dialog scroll ownership, Preview touch pan/zoom/fit, and
+  document overflow.
+- Made benchmark settings reversible and retained their selected inputs after a run, so users can
+  return to the configuration step without discarding the last result.
+- Narrowed Playwright WebKit error normalization to the exact `SecurityError` name,
+  `The operation is insecure.` message, and injected `web-inspector://bootstrap.js` stack tuple.
+  Other init-script and application-origin errors remain failures.
+- Removed stale mobile branches from desktop scenarios and removed an unused ZenUML test alias.
+- Added [MOBILE_QA.md](./MOBILE_QA.md) for the remaining real-device iOS Safari and Android Chrome
+  checks instead of representing emulation as complete device evidence.
+
+Commands:
+
+```bash
+npm run test:browser:chromium:desktop:built --prefix playground
+npm run test:browser:smoke:non-chromium:built --prefix playground
+npm run test:browser:mobile:built --prefix playground
+npm run test:browser:typecheck --prefix playground
+npm run record:zenuml-browser-admission --prefix playground
+npm run verify:zenuml-browser-admission --prefix playground
+```
+
+Results:
+
+- The previous mandatory configuration discovered 88 full Chromium cases: 44 desktop cases plus
+  the same 44 cases under mobile emulation.
+- The final mandatory configuration discovers 48 cases: 46 Chromium desktop cases and one focused
+  smoke case in each of Firefox and WebKit. Even after adding focused idle-Worker and responsive
+  focus regressions, this is 40 fewer mandatory selections than the previous duplicated matrix, a
+  45.5% reduction, while preserving browser-engine coverage.
+- The focused on-demand mobile lane contains 4 interaction cases and completed 4/4 in 7.9 seconds.
+- Firefox and WebKit smoke completed 2/2 in 8.9 seconds.
+- Chromium desktop completed 46/46 in 1.6 minutes. An earlier run exposed one stale focus
+  assumption in manual tab activation; the scenario was corrected, passed in isolation, and then
+  passed again as part of this complete final run.
+- No exact historical wall-clock comparison is claimed. Reconstructing a self-consistent old
+  generated browser artifact would have required a second ad hoc validation/build path, so the
+  comparison intentionally uses reproducible Playwright discovery counts plus current measured
+  lane times.
+
+### 2026-08-05 - Vite 8, Explicit WASM Ownership, And Dependency Integration
+
+Changes:
+
+- Upgraded the Playground to Vite 8.2.0 and `@vitejs/plugin-react` 6.0.5, removed
+  `vite-plugin-wasm`, migrated the local resizable-panel boundary to v4, and aligned the approved
+  React, Radix, Lucide, Sonner, Tailwind, i18n, ESLint, and Playwright peer groups.
+- Kept Mermaid 11.16.0, Monaco 0.55.1, TypeScript 5.7.3, and the Node 22 type line intentionally.
+  Monaco 0.56 removes the contribution-only entry used by the current editor closure; Mermaid and
+  TypeScript changes remain owned by their dedicated alignment/support decisions.
+- Configured wasm-bindgen to omit its implicit default module path. Public Web package wrappers
+  preserve no-argument initialization by supplying the generated WASM URL, while the trusted
+  Benchmark engine supplies a verified in-memory `Response` explicitly.
+- Removed public package-entry imports from opaque engine library builds. The Benchmark Merman
+  artifact now uses the private compiled runtime boundary, and shared Mermaid configuration uses
+  the private compiled catalog projection.
+- Added per-engine artifact budgets, an embedded-WASM data-URL rejection, and a global Vite
+  manifest invariant requiring one WASM URL owner inside the Merman package closure.
+- Right-sized the viewport commit-count assertion around the 100-event pointer-move hot path.
+  A one-time Radix tooltip close on `pointerdown` is unrelated low-frequency work and is no longer
+  misclassified as a viewport-frequency regression.
+- Updated the architecture context, ADR, workstream design, package documentation, release
+  playbook, validation tiers, and mobile/browser posture to match the emitted system.
+
+Commands:
+
+```bash
+npm run verify:dependencies --prefix playground
+npm audit --prefix playground
+npm audit --omit=dev --prefix playground
+npm audit --prefix playground/tests
+npm run test:prepared --prefix playground
+npm run build --prefix playground
+npm run test:browser:chromium:desktop:built --prefix playground
+npm run test:browser:smoke:non-chromium:built --prefix playground
+npm run test:browser:mobile:built --prefix playground
+npm --prefix playground/tests run test:desktop -- viewport-workspace.spec.ts \
+  --grep "100-event pan" --repeat-each=10
+```
+
+Results:
+
+- Dependency trees and the generated 250,560-byte production license report passed. The Playground
+  complete and production audits plus the browser-test tooling complete audit reported zero
+  vulnerabilities; the browser-test package has no production dependency graph to audit.
+- `npm outdated` reports only the intentional lines above: Node types 22.20.1, Mermaid 11.16.0,
+  Monaco 0.55.1, and TypeScript 5.7.3. The Playwright runtime and test package are exactly 1.62.1.
+- Complete prepared tests passed, including 45 build-graph, 56 editor Worker, 24 R16
+  contract/authority, 4 dependency-policy, and 98 Benchmark tests, plus all focused runtime,
+  store/share, realm, config, requirement, example, and export tests.
+- Vite 8.2.0 transformed 3,083 modules. Dist verification found exactly one
+  `merman_wasm_bg-Dpd0uUA1.wasm`, one JavaScript shim, and one WASM URL owner in the full Web
+  package closure. The initial JavaScript closure is 4,217.52 KiB raw and 1,106.94 KiB gzip.
+- The trusted Merman engine artifact is 45,341 bytes with no embedded WASM data URL, down 99.86%
+  from the measured 33,565,060-byte duplicated form. The Mermaid engine artifact is 10,179,147
+  bytes with no embedded Merman WASM, down 76.72% from 43,717,823 bytes.
+- Chromium desktop passed 46/46 in 1.6 minutes. Firefox/WebKit smoke passed 2/2 in 9.5 seconds.
+  The on-demand mobile interaction lane passed 4/4 in 7.1 seconds.
+- The focused 100-event viewport hot-path scenario passed 10/10 repeated executions after the
+  commit probe was scoped to pointer frequency rather than unrelated document-level UI work.

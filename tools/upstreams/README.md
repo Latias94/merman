@@ -22,7 +22,7 @@ complete materialized runtime graph, and generated projections. The
 built-in inventory is extracted from the pinned Mermaid checkout during materialized verification;
 an added, removed, renamed, or reordered upstream registration is a release-graph change rather
 than a local admission-only decision. `ZENUML_CORE_ADMISSION.json` keeps the oracle-to-candidate decision evidence,
-`ZENUML_BROWSER_SECURITY_EVIDENCE.json` records executable desktop/mobile isolation and security
+`ZENUML_BROWSER_SECURITY_EVIDENCE.json` records executable desktop isolation and security
 observations, and `ZENUML_CORE_V4_DEFERRED_ADMISSION.json` binds the outside-range `4.2.0` identity
 to a separate unfinished major-admission inventory. The package-manager lockfiles remain generated
 materialization evidence; do not edit them by hand.
@@ -39,7 +39,7 @@ render, browser-security, resource, license, and release-surface evidence is ind
 reference bundle and fails on a missing or modified artifact.
 
 The selected `@zenuml/core@3.50.1` package declares an exact optional CLI peer on
-`playwright-core@1.57.0`, while the Playground browser-test harness uses `1.61.1`. The application
+`playwright-core@1.57.0`, while the Playground browser-test harness uses `1.62.1`. The application
 runtime and browser-test harness are therefore separate npm projects with separate locks. The
 runtime tree intentionally leaves the optional CLI peer absent; the test tree owns Playwright and
 Axe without making either visible to ZenUML Core. Both trees must pass independent `npm ci` and
@@ -73,7 +73,7 @@ npm run verify:zenuml-candidate
 ```
 
 When a security-critical source named by `ZENUML_BROWSER_SECURITY_EVIDENCE.json` changes, run the
-real desktop/mobile Chromium probes and record their observed results before regenerating candidate
+real desktop Chromium probes and record their observed results before regenerating candidate
 evidence:
 
 ```bash

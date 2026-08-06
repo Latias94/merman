@@ -6,6 +6,18 @@ import {
   normalizeMermaidExternalRequirements,
   type MermaidExternalRequirements,
 } from "../mermaid-requirements.ts";
+import {
+  exceedsUtf8ByteBudget,
+  utf8ByteLength,
+} from "../../lib/utf8.ts";
+import {
+  isRealmEngineArtifactId,
+  REALM_ENGINE_RESOURCE_POLICIES,
+  type RealmEngineArtifactId,
+} from "./generated/opaque-realm-plan.generated.ts";
+
+export { utf8ByteLength } from "../../lib/utf8.ts";
+export type { RealmEngineArtifactId } from "./generated/opaque-realm-plan.generated.ts";
 
 export const REALM_PROTOCOL_VERSION = 2 as const;
 
@@ -38,9 +50,6 @@ export const BENCHMARK_BUDGETS = Object.freeze({
 });
 
 export type RealmKind = "compare" | "benchmark";
-export type RealmEngineArtifactId =
-  | "mermaid"
-  | "benchmark-merman";
 
 export interface RealmEngineArtifactIdentity {
   readonly bytes: number;
@@ -184,10 +193,6 @@ const FAILURE_STAGES = new Set<CompareFailureStage>([
   ...COMPARE_OPERATION_STAGES,
 ]);
 const OPERATION_STAGES = new Set(COMPARE_OPERATION_STAGES);
-const UTF8_CHUNK_CODE_UNITS = 16_000;
-const UTF8_ENCODER = new TextEncoder();
-const UTF8_SCRATCH = new Uint8Array(64 * 1024);
-
 export class RealmProtocolError extends Error {
   constructor(message: string) {
     super(message);
@@ -210,10 +215,6 @@ export class RealmTimeoutError extends RealmProtocolError {
     super(message);
     this.name = "RealmTimeoutError";
   }
-}
-
-export function utf8ByteLength(value: string): number {
-  return countUtf8Bytes(value, Number.POSITIVE_INFINITY);
 }
 
 export function assertEncodedMessageBudget(value: unknown): void {
@@ -349,6 +350,7 @@ export function validateRealmEngineArtifact(
   if (
     expected.schemaVersion !== 1 ||
     artifact.schemaVersion !== 1 ||
+    !isRealmEngineArtifactId(artifact.id) ||
     artifact.id !== expected.id ||
     artifact.bytes !== expected.bytes ||
     artifact.sha256 !== expected.sha256 ||
@@ -374,9 +376,13 @@ export function validateRealmEngineArtifact(
   ) {
     throw new RealmProtocolError("Realm engine resource URL is invalid.");
   }
-  if (artifact.id !== "benchmark-merman" && resourceUrl !== null) {
+  const resourcePolicy = REALM_ENGINE_RESOURCE_POLICIES[artifact.id];
+  if (
+    (resourcePolicy === "none-v1" && resourceUrl !== null) ||
+    (resourcePolicy === "same-origin-wasm-v1" && resourceUrl === null)
+  ) {
     throw new RealmProtocolError(
-      "Only the Merman benchmark may receive an engine resource URL."
+      "Realm engine resource URL does not match its generated policy."
     );
   }
   return Object.freeze({
@@ -768,39 +774,7 @@ function assertTextBudget(value: string, limit: number, label: string): void {
 }
 
 function exceedsUtf8Budget(value: string, limit: number): boolean {
-  return countUtf8Bytes(value, limit) > limit;
-}
-
-function countUtf8Bytes(value: string, stopAfter: number): number {
-  let bytes = 0;
-  let offset = 0;
-  while (offset < value.length) {
-    let end = Math.min(value.length, offset + UTF8_CHUNK_CODE_UNITS);
-    if (
-      end < value.length &&
-      isHighSurrogate(value.charCodeAt(end - 1)) &&
-      isLowSurrogate(value.charCodeAt(end))
-    ) {
-      end += 1;
-    }
-    const chunk = value.slice(offset, end);
-    const encoded = UTF8_ENCODER.encodeInto(chunk, UTF8_SCRATCH);
-    if (encoded.read !== chunk.length) {
-      throw new RealmProtocolError("Realm UTF-8 budget counter exhausted its buffer.");
-    }
-    bytes += encoded.written;
-    if (bytes > stopAfter) return bytes;
-    offset = end;
-  }
-  return bytes;
-}
-
-function isHighSurrogate(value: number): boolean {
-  return value >= 0xd800 && value <= 0xdbff;
-}
-
-function isLowSurrogate(value: number): boolean {
-  return value >= 0xdc00 && value <= 0xdfff;
+  return exceedsUtf8ByteBudget(value, limit);
 }
 
 function expectRecord(value: unknown, label: string): Record<string, unknown> {

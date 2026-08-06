@@ -1,8 +1,8 @@
 import {
   lazy,
-  Suspense,
   useEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type KeyboardEvent,
 } from "react";
@@ -17,73 +17,27 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
-import {
-  useAppStore,
-  type TextMeasurementMode,
-  type WorkspacePane,
-} from "./store";
-import { isDiagramFont } from "./lib/diagram-font";
-import { useShare } from "./hooks/useShare";
-import { normalizeThemeName } from "@mermanjs/web";
+import { CodeEditor } from "./components/Editor";
+import { Preview } from "./components/Preview";
+import { LazyFeatureBoundary } from "./components/LazyFeatureBoundary";
+import { useAppStore, type WorkspacePane } from "./store";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
 
-const CodeEditor = lazy(() =>
-  import("./components/Editor").then((module) => ({
-    default: module.CodeEditor,
-  }))
-);
 const ConfigEditor = lazy(() =>
-  import("./components/ConfigEditor").then((module) => ({
+  import("./components/ConfigEditorFeature").then((module) => ({
     default: module.ConfigEditor,
   }))
 );
-const Preview = lazy(() =>
-  import("./components/Preview").then((module) => ({
-    default: module.Preview,
-  }))
-);
-const ExampleGallery = lazy(() =>
-  import("./components/ExampleGallery").then((module) => ({
-    default: module.ExampleGallery,
-  }))
-);
-
-const TEXT_MEASUREMENT_VALUES = new Set<TextMeasurementMode>([
-  "browser",
-  "headless",
-]);
 export default function App() {
   const { t, i18n } = useTranslation();
-  const {
-    setCode,
-    setDiagramTheme,
-    setPresentationProfileId,
-    setPresentationThemePresetId,
-    setSvgPipeline,
-    setTextMeasurementMode,
-    setDiagramFont,
-    setMermaidConfig,
-    editorMode,
-    setEditorMode,
-    workspacePane,
-    setWorkspacePane,
-  } = useAppStore(
+  const { editorMode, setEditorMode, workspacePane, setWorkspacePane } = useAppStore(
     useShallow((state) => ({
       editorMode: state.editorMode,
-      setCode: state.setCode,
-      setDiagramFont: state.setDiagramFont,
-      setDiagramTheme: state.setDiagramTheme,
       setEditorMode: state.setEditorMode,
-      setPresentationProfileId: state.setPresentationProfileId,
-      setPresentationThemePresetId: state.setPresentationThemePresetId,
-      setMermaidConfig: state.setMermaidConfig,
-      setSvgPipeline: state.setSvgPipeline,
-      setTextMeasurementMode: state.setTextMeasurementMode,
       setWorkspacePane: state.setWorkspacePane,
       workspacePane: state.workspacePane,
     }))
   );
-  const { initialData } = useShare();
   const isNarrowLayout = useNarrowLayout();
 
   useEffect(() => {
@@ -95,38 +49,6 @@ export default function App() {
       ?.setAttribute("content", t("app.description"));
   }, [i18n.language, t]);
 
-  // Apply shared inputs only after the URL payload has been decoded and validated.
-  useEffect(() => {
-    if (initialData) {
-      setCode(initialData.code);
-      if (initialData.theme) {
-        setDiagramTheme(normalizeThemeName(initialData.theme));
-      }
-      setPresentationThemePresetId(initialData.presentationThemePresetId);
-      setPresentationProfileId(initialData.presentationProfileId);
-      setSvgPipeline(initialData.svgPipeline);
-      if (initialData.config !== undefined) {
-        setMermaidConfig(initialData.config);
-      }
-      if (isTextMeasurementMode(initialData.textMeasurementMode)) {
-        setTextMeasurementMode(initialData.textMeasurementMode);
-      }
-      if (isDiagramFont(initialData.diagramFont)) {
-        setDiagramFont(initialData.diagramFont);
-      }
-    }
-  }, [
-    initialData,
-    setCode,
-    setDiagramFont,
-    setDiagramTheme,
-    setMermaidConfig,
-    setPresentationProfileId,
-    setPresentationThemePresetId,
-    setSvgPipeline,
-    setTextMeasurementMode,
-  ]);
-
   return (
     <TooltipProvider delayDuration={300}>
       <RenderCoordinatorBridge />
@@ -134,10 +56,6 @@ export default function App() {
         <Toolbar />
 
         <main className="relative min-h-0 flex-1 overflow-hidden">
-          <Suspense fallback={null}>
-            <ExampleGallery />
-          </Suspense>
-
           <div className="flex h-full min-h-0 flex-col overflow-hidden">
             {isNarrowLayout && (
               <WorkspaceTabs
@@ -149,14 +67,16 @@ export default function App() {
             )}
             <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
               <ResizablePanel
-                defaultSize={45}
-                minSize={25}
-                maxSize={75}
+                defaultSize="45%"
+                minSize="25%"
+                maxSize="75%"
                 className="bg-card"
                 id={isNarrowLayout ? "workspace-editor-panel" : undefined}
                 role={isNarrowLayout ? "tabpanel" : undefined}
                 aria-labelledby={isNarrowLayout ? "workspace-editor-tab" : undefined}
                 hidden={isNarrowLayout && workspacePane !== "editor"}
+                onFocusCapture={() => setWorkspacePane("editor")}
+                onPointerDownCapture={() => setWorkspacePane("editor")}
               >
                 <EditorPanel
                   editorMode={editorMode}
@@ -171,12 +91,14 @@ export default function App() {
               />
 
               <ResizablePanel
-                defaultSize={55}
-                minSize={25}
+                defaultSize="55%"
+                minSize="25%"
                 id={isNarrowLayout ? "workspace-preview-panel" : undefined}
                 role={isNarrowLayout ? "tabpanel" : undefined}
                 aria-labelledby={isNarrowLayout ? "workspace-preview-tab" : undefined}
                 hidden={isNarrowLayout && workspacePane !== "preview"}
+                onFocusCapture={() => setWorkspacePane("preview")}
+                onPointerDownCapture={() => setWorkspacePane("preview")}
               >
                 <PreviewPanel t={t} />
               </ResizablePanel>
@@ -190,12 +112,6 @@ export default function App() {
   );
 }
 
-function isTextMeasurementMode(
-  value: string | undefined
-): value is TextMeasurementMode {
-  return Boolean(value && TEXT_MEASUREMENT_VALUES.has(value as TextMeasurementMode));
-}
-
 function EditorPanel({
   editorMode,
   setEditorMode,
@@ -205,10 +121,19 @@ function EditorPanel({
   setEditorMode(mode: "code" | "config"): void;
   t(key: string): string;
 }) {
+  const [hasActivatedConfig, setHasActivatedConfig] = useState(
+    editorMode === "config",
+  );
+  const configActivated = hasActivatedConfig || editorMode === "config";
+
   return (
     <Tabs
       value={editorMode}
-      onValueChange={(value) => setEditorMode(value as "code" | "config")}
+      onValueChange={(value) => {
+        const mode = value as "code" | "config";
+        if (mode === "config") setHasActivatedConfig(true);
+        setEditorMode(mode);
+      }}
       activationMode="manual"
       className="h-full min-h-0 gap-0 bg-card"
     >
@@ -233,18 +158,21 @@ function EditorPanel({
         forceMount
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        <Suspense fallback={<PanelLoading label={t("editor.loading")} />}>
-          <CodeEditor className="h-full min-h-0" />
-        </Suspense>
+        <CodeEditor className="h-full min-h-0" />
       </TabsContent>
       <TabsContent
         value="config"
-        forceMount
+        forceMount={configActivated ? true : undefined}
         className="mt-0 min-h-0 data-[state=inactive]:hidden"
       >
-        <Suspense fallback={<PanelLoading label={t("editor.loading")} />}>
-          <ConfigEditor className="h-full min-h-0" />
-        </Suspense>
+        {configActivated && (
+          <LazyFeatureBoundary
+            feature={t("editor.configMode")}
+            presentation={{ kind: "panel" }}
+          >
+            <ConfigEditor className="h-full min-h-0" />
+          </LazyFeatureBoundary>
+        )}
       </TabsContent>
     </Tabs>
   );
@@ -258,17 +186,7 @@ function PreviewPanel({ t }: { t(key: string): string }) {
           {t("preview.title")}
         </span>
       </div>
-      <Suspense fallback={<PanelLoading label={t("preview.loading")} />}>
-        <Preview className="min-h-0 flex-1 bg-[linear-gradient(to_right,var(--preview-grid)_1px,transparent_1px),linear-gradient(to_bottom,var(--preview-grid)_1px,transparent_1px)] bg-[size:20px_20px]" />
-      </Suspense>
-    </div>
-  );
-}
-
-function PanelLoading({ label }: { label: string }) {
-  return (
-    <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
-      {label}
+      <Preview className="min-h-0 flex-1 bg-[linear-gradient(to_right,var(--preview-grid)_1px,transparent_1px),linear-gradient(to_bottom,var(--preview-grid)_1px,transparent_1px)] bg-[size:20px_20px]" />
     </div>
   );
 }

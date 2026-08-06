@@ -1,19 +1,48 @@
-import type {
-  EditorCodeAction,
-  EditorCompletionList,
-  DiagramDetectionFacts,
-  EditorDiagnosticsResult,
-  EditorDocumentSymbol,
-  EditorHover,
-  EditorLocation,
-  EditorPosition,
-  EditorPrepareRename,
-  EditorSemanticTokenLegend,
-  EditorWorkspaceEdit,
-} from "@mermanjs/web";
+import type { EditorPosition, EditorSemanticTokenLegend } from "@mermanjs/web";
 
-export const EDITOR_WORKER_PROTOCOL = 3 as const;
-export const EDITOR_SCHEMA_VERSION = 1 as const;
+import type {
+  EditorWorkerQuery,
+  EditorWorkerQueryResult,
+  EditorWorkerQueryResults,
+} from "./protocol-query-results.ts";
+import {
+  projectEditorSemanticTokenLegend,
+  projectEditorWorkerQueryResult,
+} from "./protocol-query-results.ts";
+import {
+  EditorWorkerProtocolProjectionError,
+  assertSchema,
+  expectBoolean,
+  expectNonEmptyString,
+  expectNonNegativeSafeInteger,
+  expectNullableString,
+  expectPositiveSafeInteger,
+  expectRecord,
+  expectRequestId,
+  expectSetValue,
+  expectString,
+  fail,
+  isPositiveSafeInteger,
+  schema,
+} from "./protocol-schema.ts";
+import {
+  EDITOR_SCHEMA_VERSION,
+  EDITOR_WORKER_PROTOCOL,
+  MERMAN_WEB_TRANSPORT_API_VERSION,
+} from "./protocol-version.ts";
+
+export { projectEditorSemanticTokenLegend, projectEditorWorkerQueryResult };
+export type {
+  EditorWorkerQuery,
+  EditorWorkerQueryResult,
+  EditorWorkerQueryResults,
+};
+export {
+  EDITOR_SCHEMA_VERSION,
+  EDITOR_WORKER_PROTOCOL,
+  MERMAN_WEB_TRANSPORT_API_VERSION,
+  EditorWorkerProtocolProjectionError,
+};
 
 export type EditorWorkerErrorCode =
   | "INITIALIZATION_FAILED"
@@ -23,61 +52,14 @@ export type EditorWorkerErrorCode =
   | "QUERY_FAILED"
   | "STALE_DOCUMENT";
 
-export interface EditorDocumentSnapshot {
+export interface EditorDocumentIdentity {
   readonly uri: string;
   readonly version: number;
+}
+
+export interface EditorDocumentSnapshot extends EditorDocumentIdentity {
   readonly source: string;
 }
-
-export type EditorWorkerQuery =
-  | { readonly kind: "diagnostics" }
-  | { readonly kind: "diagramDetection" }
-  | { readonly kind: "codeActions" }
-  | {
-      readonly kind: "completions";
-      readonly position: EditorPosition;
-    }
-  | {
-      readonly kind: "hover";
-      readonly position: EditorPosition;
-    }
-  | { readonly kind: "documentSymbols" }
-  | {
-      readonly kind: "definition";
-      readonly position: EditorPosition;
-    }
-  | {
-      readonly kind: "references";
-      readonly position: EditorPosition;
-      readonly includeDeclaration: boolean;
-    }
-  | {
-      readonly kind: "prepareRename";
-      readonly position: EditorPosition;
-    }
-  | {
-      readonly kind: "rename";
-      readonly position: EditorPosition;
-      readonly newName: string;
-    }
-  | { readonly kind: "semanticTokens" };
-
-export interface EditorWorkerQueryResults {
-  diagnostics: EditorDiagnosticsResult;
-  diagramDetection: DiagramDetectionFacts;
-  codeActions: EditorCodeAction[];
-  completions: EditorCompletionList;
-  hover: EditorHover | null;
-  documentSymbols: EditorDocumentSymbol[];
-  definition: EditorLocation | null;
-  references: EditorLocation[];
-  prepareRename: EditorPrepareRename | null;
-  rename: EditorWorkspaceEdit | null;
-  semanticTokens: Uint32Array;
-}
-
-export type EditorWorkerQueryResult<Query extends EditorWorkerQuery> =
-  EditorWorkerQueryResults[Query["kind"]];
 
 interface EditorWorkerRequestBase {
   readonly protocol: typeof EDITOR_WORKER_PROTOCOL;
@@ -111,29 +93,328 @@ interface EditorWorkerResponseBase {
   readonly requestId: number;
 }
 
+export interface EditorWorkerReadyResponse extends EditorWorkerResponseBase {
+  readonly type: "ready";
+  readonly transportApiVersion: number;
+  readonly editorSchema: typeof EDITOR_SCHEMA_VERSION;
+  readonly legendDigest: string;
+  readonly legend: EditorSemanticTokenLegend;
+}
+
+export interface EditorWorkerSyncResponse extends EditorWorkerResponseBase {
+  readonly type: "result";
+  readonly result: null;
+}
+
+export interface EditorWorkerRawQueryResponse extends EditorWorkerResponseBase {
+  readonly type: "queryResult";
+  readonly uri: string;
+  readonly version: number;
+  readonly legendDigest: string;
+  readonly result: unknown;
+}
+
+export interface EditorWorkerErrorResponse extends EditorWorkerResponseBase {
+  readonly type: "error";
+  readonly code: EditorWorkerErrorCode;
+  readonly message: string;
+  readonly detail: string | null;
+  readonly nativeCode: string | null;
+}
+
 export type EditorWorkerResponse =
-  | (EditorWorkerResponseBase & {
-      readonly type: "ready";
-      readonly transportApiVersion: number;
-      readonly editorSchema: typeof EDITOR_SCHEMA_VERSION;
-      readonly legendDigest: string;
-      readonly legend: EditorSemanticTokenLegend;
-    })
-  | (EditorWorkerResponseBase & {
-      readonly type: "result";
-      readonly result: unknown;
-    })
-  | (EditorWorkerResponseBase & {
-      readonly type: "queryResult";
-      readonly uri: string;
-      readonly version: number;
-      readonly legendDigest: string;
-      readonly result: unknown;
-    })
-  | (EditorWorkerResponseBase & {
-      readonly type: "error";
-      readonly code: EditorWorkerErrorCode;
-      readonly message: string;
-      readonly detail: string | null;
-      readonly nativeCode: string | null;
-    });
+  | EditorWorkerErrorResponse
+  | EditorWorkerRawQueryResponse
+  | EditorWorkerReadyResponse
+  | EditorWorkerSyncResponse;
+
+const INITIALIZE_REQUEST_SCHEMA = schema(["protocol", "requestId", "type"]);
+const DOCUMENT_REQUEST_SCHEMA = schema([
+  "protocol",
+  "requestId",
+  "type",
+  "document",
+]);
+const QUERY_REQUEST_SCHEMA = schema([
+  "protocol",
+  "requestId",
+  "type",
+  "uri",
+  "version",
+  "legendDigest",
+  "query",
+]);
+const DISPOSE_REQUEST_SCHEMA = schema(["protocol", "type"]);
+const DOCUMENT_IDENTITY_SCHEMA = schema(["uri", "version"]);
+const DOCUMENT_SCHEMA = schema(["uri", "version", "source"]);
+const POSITION_SCHEMA = schema(["line", "character"]);
+const READY_RESPONSE_SCHEMA = schema([
+  "protocol",
+  "requestId",
+  "type",
+  "transportApiVersion",
+  "editorSchema",
+  "legendDigest",
+  "legend",
+]);
+const SYNC_RESPONSE_SCHEMA = schema([
+  "protocol",
+  "requestId",
+  "type",
+  "result",
+]);
+const QUERY_RESPONSE_SCHEMA = schema([
+  "protocol",
+  "requestId",
+  "type",
+  "uri",
+  "version",
+  "legendDigest",
+  "result",
+]);
+const ERROR_RESPONSE_SCHEMA = schema([
+  "protocol",
+  "requestId",
+  "type",
+  "code",
+  "message",
+  "detail",
+  "nativeCode",
+]);
+
+const NO_ARGUMENT_QUERY_SCHEMA = schema(["kind"]);
+const POSITION_QUERY_SCHEMA = schema(["kind", "position"]);
+const REFERENCES_QUERY_SCHEMA = schema([
+  "kind",
+  "position",
+  "includeDeclaration",
+]);
+const RENAME_QUERY_SCHEMA = schema(["kind", "position", "newName"]);
+
+const WORKER_ERROR_CODES = new Set<EditorWorkerErrorCode>([
+  "INITIALIZATION_FAILED",
+  "INVALID_STATE",
+  "OPERATION_REJECTED",
+  "PROTOCOL_MISMATCH",
+  "QUERY_FAILED",
+  "STALE_DOCUMENT",
+]);
+export function projectEditorWorkerRequest(
+  value: unknown,
+): EditorWorkerRequest {
+  const request = expectRecord(value, "editor worker request");
+  if (request.protocol !== EDITOR_WORKER_PROTOCOL) {
+    fail("Editor worker request protocol is invalid.");
+  }
+
+  switch (request.type) {
+    case "initialize":
+      assertSchema(request, INITIALIZE_REQUEST_SCHEMA, "initialize request");
+      return {
+        protocol: EDITOR_WORKER_PROTOCOL,
+        requestId: expectRequestId(request.requestId),
+        type: "initialize",
+      };
+    case "didOpen":
+    case "didChange": {
+      assertSchema(request, DOCUMENT_REQUEST_SCHEMA, `${request.type} request`);
+      return {
+        protocol: EDITOR_WORKER_PROTOCOL,
+        requestId: expectRequestId(request.requestId),
+        type: request.type,
+        document: projectEditorDocumentSnapshot(request.document),
+      };
+    }
+    case "query":
+      assertSchema(request, QUERY_REQUEST_SCHEMA, "query request");
+      return {
+        protocol: EDITOR_WORKER_PROTOCOL,
+        requestId: expectRequestId(request.requestId),
+        type: "query",
+        uri: expectNonEmptyString(request.uri, "query URI"),
+        version: expectPositiveSafeInteger(request.version, "query version"),
+        legendDigest: expectNonEmptyString(
+          request.legendDigest,
+          "query legend digest",
+        ),
+        query: projectEditorWorkerQuery(request.query),
+      };
+    case "dispose":
+      assertSchema(request, DISPOSE_REQUEST_SCHEMA, "dispose request");
+      return { protocol: EDITOR_WORKER_PROTOCOL, type: "dispose" };
+    default:
+      fail("Editor worker request type is invalid.");
+  }
+}
+
+export function projectEditorDocumentSnapshot(
+  value: unknown,
+): EditorDocumentSnapshot {
+  const document = expectRecord(value, "editor document snapshot");
+  assertSchema(document, DOCUMENT_SCHEMA, "editor document snapshot");
+  return {
+    ...projectEditorDocumentIdentityFields(document),
+    source: expectString(document.source, "document source"),
+  };
+}
+
+export function projectEditorDocumentIdentity(
+  value: unknown,
+): EditorDocumentIdentity {
+  const document = expectRecord(value, "editor document identity");
+  assertSchema(document, DOCUMENT_IDENTITY_SCHEMA, "editor document identity");
+  return projectEditorDocumentIdentityFields(document);
+}
+
+function projectEditorDocumentIdentityFields(
+  document: Record<string, unknown>,
+): EditorDocumentIdentity {
+  return {
+    uri: expectNonEmptyString(document.uri, "document URI"),
+    version: expectPositiveSafeInteger(document.version, "document version"),
+  };
+}
+
+export function projectEditorWorkerQuery(value: unknown): EditorWorkerQuery {
+  const query = expectRecord(value, "editor worker query");
+  switch (query.kind) {
+    case "codeActions":
+    case "diagnostics":
+    case "diagramDetection":
+    case "documentSymbols":
+    case "semanticTokens":
+      assertSchema(query, NO_ARGUMENT_QUERY_SCHEMA, `${query.kind} query`);
+      return { kind: query.kind };
+    case "completions":
+    case "definition":
+    case "hover":
+    case "prepareRename":
+      assertSchema(query, POSITION_QUERY_SCHEMA, `${query.kind} query`);
+      return {
+        kind: query.kind,
+        position: projectRequestPosition(query.position),
+      };
+    case "references":
+      assertSchema(query, REFERENCES_QUERY_SCHEMA, "references query");
+      return {
+        kind: "references",
+        position: projectRequestPosition(query.position),
+        includeDeclaration: expectBoolean(
+          query.includeDeclaration,
+          "references includeDeclaration",
+        ),
+      };
+    case "rename":
+      assertSchema(query, RENAME_QUERY_SCHEMA, "rename query");
+      return {
+        kind: "rename",
+        position: projectRequestPosition(query.position),
+        newName: expectString(query.newName, "rename newName"),
+      };
+    default:
+      fail("Editor worker query kind is invalid.");
+  }
+}
+
+export function projectEditorWorkerResponse(
+  value: unknown,
+): EditorWorkerResponse {
+  const response = expectRecord(value, "editor worker response");
+  if (response.protocol !== EDITOR_WORKER_PROTOCOL) {
+    fail("Editor worker response protocol is invalid.");
+  }
+  const requestId = expectRequestId(response.requestId);
+
+  switch (response.type) {
+    case "ready":
+      assertSchema(response, READY_RESPONSE_SCHEMA, "ready response");
+      if (response.editorSchema !== EDITOR_SCHEMA_VERSION) {
+        fail("Editor worker schema version is invalid.");
+      }
+      if (
+        response.transportApiVersion !== MERMAN_WEB_TRANSPORT_API_VERSION
+      ) {
+        fail("Merman Web transport API version is incompatible.");
+      }
+      return {
+        protocol: EDITOR_WORKER_PROTOCOL,
+        requestId,
+        type: "ready",
+        transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
+        editorSchema: EDITOR_SCHEMA_VERSION,
+        legendDigest: expectNonEmptyString(
+          response.legendDigest,
+          "legend digest",
+        ),
+        legend: projectEditorSemanticTokenLegend(response.legend),
+      };
+    case "result":
+      assertSchema(response, SYNC_RESPONSE_SCHEMA, "synchronization response");
+      if (response.result !== null) {
+        fail("Editor worker synchronization result must be null.");
+      }
+      return {
+        protocol: EDITOR_WORKER_PROTOCOL,
+        requestId,
+        type: "result",
+        result: null,
+      };
+    case "queryResult":
+      assertSchema(response, QUERY_RESPONSE_SCHEMA, "query response");
+      return {
+        protocol: EDITOR_WORKER_PROTOCOL,
+        requestId,
+        type: "queryResult",
+        uri: expectNonEmptyString(response.uri, "query response URI"),
+        version: expectPositiveSafeInteger(
+          response.version,
+          "query response version",
+        ),
+        legendDigest: expectNonEmptyString(
+          response.legendDigest,
+          "query response legend digest",
+        ),
+        result: response.result,
+      };
+    case "error":
+      assertSchema(response, ERROR_RESPONSE_SCHEMA, "error response");
+      return {
+        protocol: EDITOR_WORKER_PROTOCOL,
+        requestId,
+        type: "error",
+        code: expectSetValue(
+          response.code,
+          WORKER_ERROR_CODES,
+          "worker error code",
+        ),
+        message: expectString(response.message, "worker error message"),
+        detail: expectNullableString(response.detail, "worker error detail"),
+        nativeCode: expectNullableString(
+          response.nativeCode,
+          "native error code",
+        ),
+      };
+    default:
+      fail("Editor worker response type is invalid.");
+  }
+}
+
+export function requestIdFromEditorWorkerMessage(value: unknown): number | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const requestId = (value as Record<string, unknown>).requestId;
+  return isPositiveSafeInteger(requestId) ? requestId : null;
+}
+
+function projectRequestPosition(value: unknown): EditorPosition {
+  const position = expectRecord(value, "editor position");
+  assertSchema(position, POSITION_SCHEMA, "editor position");
+  return {
+    line: expectNonNegativeSafeInteger(position.line, "position line"),
+    character: expectNonNegativeSafeInteger(
+      position.character,
+      "position character",
+    ),
+  };
+}
