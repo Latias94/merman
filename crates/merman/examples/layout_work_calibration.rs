@@ -395,13 +395,6 @@ fn load_corpus(
         source_path
             .strip_prefix(workspace_root)
             .map_err(|_| format!("corpus fixture escapes the workspace: {}", fixture.source))?;
-        if source_path.file_stem().and_then(|stem| stem.to_str()) != Some(&fixture.name) {
-            return Err(format!(
-                "corpus fixture name/source mismatch: {} -> {}",
-                fixture.name, fixture.source
-            )
-            .into());
-        }
         fixtures.push(FixtureInput {
             name: fixture.name,
             source_path: fixture.source,
