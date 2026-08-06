@@ -159,15 +159,20 @@ impl<'a> BindingOperationRequest<'a> {
         }
     }
 
+    /// Attaches a document URI; an empty byte slice is normalized to omission.
     #[must_use]
     pub const fn with_uri(mut self, uri: &'a [u8]) -> Self {
-        self.uri = Some(uri);
+        self.uri = if uri.is_empty() { None } else { Some(uri) };
         self
     }
 
+    /// Attaches an optional document URI; `None` and an empty byte slice are equivalent.
     #[must_use]
     pub const fn with_optional_uri(mut self, uri: Option<&'a [u8]>) -> Self {
-        self.uri = uri;
+        self.uri = match uri {
+            Some(uri) if !uri.is_empty() => Some(uri),
+            Some(_) | None => None,
+        };
         self
     }
 
@@ -967,6 +972,9 @@ mod tests {
         let defaults = BindingOperationRequest::new("semantic-json", b"flowchart TD\nA");
         assert_eq!(defaults.uri(), None);
         assert_eq!(defaults.options_json(), b"");
+
+        assert_eq!(defaults.with_uri(b"").uri(), None);
+        assert_eq!(defaults.with_optional_uri(Some(b"")).uri(), None);
     }
 
     #[test]
@@ -1288,6 +1296,32 @@ mod tests {
             unexpected
                 .message()
                 .contains("does not accept a document URI")
+        );
+
+        let empty_document_uri = engine
+            .execute(
+                BindingOperationRequest::new("document-analysis-json", b"flowchart TD\nA --> B")
+                    .with_uri(b"")
+                    .with_options_json(b"{"),
+            )
+            .expect_err("an empty URI is omission, so URI admission still wins");
+        assert_eq!(empty_document_uri.status(), BindingStatus::InvalidArgument);
+        assert!(
+            empty_document_uri
+                .message()
+                .contains("requires a document URI")
+        );
+
+        let empty_non_document_uri = engine
+            .execute(
+                BindingOperationRequest::new("semantic-json", b"flowchart TD\nA --> B")
+                    .with_uri(b"")
+                    .with_options_json(b"{"),
+            )
+            .expect_err("an empty URI is omission, so option parsing is reached");
+        assert_eq!(
+            empty_non_document_uri.status(),
+            BindingStatus::OptionsJsonError
         );
     }
 

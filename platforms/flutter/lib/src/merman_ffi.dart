@@ -2013,7 +2013,8 @@ class MermanEngine {
     String? optionsJson,
   }) {
     final token = _requireToken();
-    if (operation.requiresUri != (uri != null)) {
+    final requestUri = uri == null || uri.isEmpty ? null : uri;
+    if (operation.requiresUri != (requestUri != null)) {
       throw MermanException.contract(
         'operation `${operation.operationId}` ${operation.requiresUri ? 'requires' : 'does not accept'} a URI',
       );
@@ -2023,7 +2024,7 @@ class MermanEngine {
         token,
         operation,
         source,
-        uri: uri,
+        uri: requestUri,
         optionsJson: optionsJson,
       ),
     );
