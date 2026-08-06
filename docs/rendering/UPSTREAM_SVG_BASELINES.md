@@ -51,6 +51,19 @@ We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.
 The CLI version and Mermaid version do not always match 1:1, so we use `npm overrides`
 to force Mermaid `11.16.0`.
 
+Imported fixtures can carry host initialization settings that Mermaid does not allow diagram
+frontmatter or directives to override. `gen-upstream-svgs`, semantic/layout snapshot generation,
+and SVG comparison all consume the committed `fixtures/_config/render_contexts.json` catalog so
+they render with the same effective host `securityLevel`. Loose contexts are passed to Mermaid CLI
+as host config. Sandbox contexts are projected to strict for SVG-body parity because Mermaid's
+sandbox iframe is a browser-owned isolation boundary that a headless SVG API cannot reproduce.
+The generator fails closed when the catalog is absent or invalid, and each affected fixture records
+the effective host-security projection in its provenance `renderer_profile`. A profile migration
+therefore requires real regeneration of every affected fixture; editing manifest hashes or profile
+names without measured output is not valid provenance. Generation captures the catalog once for
+both rendering and provenance, then aborts and rolls back if the catalog changes before the
+transaction commits.
+
 Install:
 
 - `cd tools/mermaid-cli && npm install`

@@ -121,7 +121,12 @@ pub(super) fn compare_gantt_request(
             crate::cmd::upstream_svg_baseline_skip_reason(fact.diagram, stem).map(str::to_string)
         },
         |state, input| {
-            let semantic = match probe_renderer.prepare_semantic_sync(input.text) {
+            let fixture_renderer =
+                match crate::cmd::fixture_site_config_for_path(input.fixture_path) {
+                    Some(site_config) => probe_renderer.clone().with_site_config(site_config),
+                    None => probe_renderer.clone(),
+                };
+            let semantic = match fixture_renderer.prepare_semantic_sync(input.text) {
                 Ok(Some(v)) => v,
                 Ok(None) => {
                     return Err(format!(
@@ -161,14 +166,7 @@ pub(super) fn compare_gantt_request(
             )
             .map_err(|err| format!("invalid calibrated Gantt baseline time: {err}"))?
             {
-                let renderer = merman::svg::HeadlessRenderer::new()
-                    .with_engine(engine.clone())
-                    .with_parse_options(fact.parse_policy.options())
-                    .with_layout_options(layout_opts.clone())
-                    .with_environment(
-                        merman::svg::RenderEnvironment::deterministic()
-                            .with_runtime_policy(runtime_policy),
-                    );
+                let renderer = fixture_renderer.clone().with_runtime_policy(runtime_policy);
                 let semantic = renderer
                     .prepare_semantic_sync(input.text)
                     .map_err(|err| {

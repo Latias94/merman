@@ -63,20 +63,6 @@ fn write_flowchart_upstream_metadata(
     let _ = writeln!(report, "- Upstream provenance: `{provenance}`");
 }
 
-fn flowchart_fixture_site_config(path: &Path) -> Option<merman::MermaidConfig> {
-    let fixtures_root = crate::cmd::fixtures_root();
-    let is_committed_fixture = path.starts_with(&fixtures_root)
-        || fs::canonicalize(path)
-            .ok()
-            .zip(fs::canonicalize(fixtures_root).ok())
-            .is_some_and(|(path, root)| path.starts_with(root));
-    if is_committed_fixture {
-        crate::cmd::fixture_site_config_for_path(path)
-    } else {
-        None
-    }
-}
-
 pub(super) fn compare_flowchart_args(
     fact: DiagramVerificationFact,
     args: Vec<String>,
@@ -346,7 +332,8 @@ fn run_flowchart_compare_with_math_renderer(
                 sanitize_svg_id(input.stem)
             };
 
-            let fixture_engine = match flowchart_fixture_site_config(input.fixture_path) {
+            let fixture_engine = match crate::cmd::fixture_site_config_for_path(input.fixture_path)
+            {
                 Some(site_config) => engine.clone().with_site_config(site_config),
                 None => engine.clone(),
             };

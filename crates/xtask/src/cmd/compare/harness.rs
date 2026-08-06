@@ -982,7 +982,12 @@ pub(crate) fn run_canonical_svg_compare(
             }
         },
         |state, input| {
-            let semantic = renderer
+            let fixture_renderer =
+                match crate::cmd::fixture_site_config_for_path(input.fixture_path) {
+                    Some(site_config) => renderer.clone().with_site_config(site_config),
+                    None => renderer.clone(),
+                };
+            let semantic = fixture_renderer
                 .prepare_semantic_sync(input.text)
                 .map_err(|error| {
                     format!("parse failed for {}: {error}", input.fixture_path.display())

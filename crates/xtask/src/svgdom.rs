@@ -423,6 +423,7 @@ fn is_geometry_attr(name: &str) -> bool {
             | "ry"
             | "width"
             | "height"
+            | "label-offset-y"
     )
 }
 
@@ -2468,13 +2469,17 @@ mod tests {
 
     #[test]
     fn parity_masks_geometry_attrs_as_n() {
-        let svg = r#"<svg><rect x="12.3" y="4.56" width="7" height="8"/></svg>"#;
+        let svg = r#"<svg><path x="12.3" y="4.56" width="7" height="8" label-offset-y="9.19347190389631"/></svg>"#;
         let dom = dom_signature(svg, DomMode::Parity, 3).unwrap();
-        let rect = &dom.children[0];
-        assert_eq!(rect.attrs.get("x").map(|s| s.as_str()), Some("<n>"));
-        assert_eq!(rect.attrs.get("y").map(|s| s.as_str()), Some("<n>"));
-        assert_eq!(rect.attrs.get("width").map(|s| s.as_str()), Some("<n>"));
-        assert_eq!(rect.attrs.get("height").map(|s| s.as_str()), Some("<n>"));
+        let path = &dom.children[0];
+        assert_eq!(path.attrs.get("x").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(path.attrs.get("y").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(path.attrs.get("width").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(path.attrs.get("height").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(
+            path.attrs.get("label-offset-y").map(|s| s.as_str()),
+            Some("<n>")
+        );
     }
 
     #[test]
