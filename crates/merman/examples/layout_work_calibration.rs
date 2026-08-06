@@ -1,26 +1,28 @@
 use merman::svg::{
     HeadlessError, HeadlessRenderer, RenderError, RenderResourcePolicy, RenderResourceProfile,
-    ResourceLimitId,
+    ResourceLimitCause, ResourceLimitExceeded, ResourceLimitId, ResourceLimitPhase,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::env;
 use std::error::Error;
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 const LAYOUT_WORK_LIMIT_ID: &str = "max_layout_work_units";
-const DEFAULT_BOUNDARY_MAX_NODES: usize = 16_384;
+const DEFAULT_BOUNDARY_MAX_ITERATIONS: usize = 65_536;
+const ARCHITECTURE_BOUNDARY_NODES: usize = 32;
 
 #[derive(Debug)]
 struct Arguments {
     authoritative_date: String,
-    fixtures_dir: PathBuf,
+    corpus_path: PathBuf,
     json_out: PathBuf,
     expected_max_fixture: Option<String>,
-    boundary_max_nodes: usize,
+    boundary_max_iterations: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -33,16 +35,34 @@ struct CalibrationReport {
     boundary: BoundaryReport,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SourceSnapshot {
+    git_revision: String,
+    cargo_lock_sha256: String,
+    cargo_manifest_sha256: String,
+    corpus_manifest_sha256: String,
+    calibration_source_sha256: String,
+    executable_sha256: String,
+}
+
 #[derive(Debug, Serialize)]
 struct Provenance {
-    git_revision: Option<String>,
-    tracked_worktree_dirty: Option<bool>,
-    cargo_lock_sha256: Option<String>,
+    git_revision: String,
+    tracked_worktree_clean: bool,
+    owned_inputs_tracked: bool,
+    postflight_identical: bool,
+    cargo_lock_sha256: String,
+    cargo_manifest_sha256: String,
+    corpus_manifest_sha256: String,
+    calibration_source_sha256: String,
+    executable_path: String,
+    executable_sha256: String,
     build_profile: &'static str,
     target_os: &'static str,
     target_arch: &'static str,
-    rustc: Option<String>,
-    cargo: Option<String>,
+    enabled_features: Vec<&'static str>,
+    rustc: String,
+    cargo: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -60,7 +80,9 @@ struct PolicyOverride {
 
 #[derive(Debug, Serialize)]
 struct FixtureCorpusReport {
-    fixtures_dir: String,
+    corpus_manifest: String,
+    corpus_schema_version: u32,
+    fixture_members_sha256: String,
     fixture_count: usize,
     maximum_layout_work_fixture: String,
     maximum_layout_work_units: usize,
@@ -88,6 +110,7 @@ struct ExactLimitCheck {
     fixture: String,
     observed_layout_work_units: usize,
     accepted_limit: usize,
+    accepted_explicit_overrides: Vec<PolicyOverride>,
     accepted_svg_sha256: String,
     rejected_limit: usize,
     rejection: LimitRejection,
@@ -101,13 +124,17 @@ struct LimitRejection {
     actual: usize,
     max: usize,
     profile: String,
+    explicit_overrides: Vec<PolicyOverride>,
 }
 
 #[derive(Debug, Serialize)]
 struct BoundaryReport {
     curve: &'static str,
     search_contract: &'static str,
-    first_rejected_nodes: usize,
+    fixed_nodes: usize,
+    fixed_edges: usize,
+    minimum_effective_iterations: usize,
+    first_rejected_iterations: usize,
     accepted: BoundaryAccepted,
     rejected: BoundaryRejected,
     next_rejected: BoundaryRejected,
@@ -115,8 +142,7 @@ struct BoundaryReport {
 
 #[derive(Debug, Serialize)]
 struct BoundaryAccepted {
-    nodes: usize,
-    edges: usize,
+    configured_iterations: usize,
     source_sha256: String,
     source_bytes: usize,
     layout_work_units: usize,
@@ -127,16 +153,10 @@ struct BoundaryAccepted {
 
 #[derive(Debug, Serialize)]
 struct BoundaryRejected {
-    nodes: usize,
-    edges: usize,
+    configured_iterations: usize,
     source_sha256: String,
     source_bytes: usize,
-    cause: String,
-    phase: String,
-    limit: String,
-    actual: usize,
-    max: usize,
-    profile: String,
+    rejection: LimitRejection,
 }
 
 enum BoundaryProbe {
@@ -144,28 +164,63 @@ enum BoundaryProbe {
     Rejected(BoundaryRejected),
 }
 
+#[derive(Debug, Deserialize)]
+struct CorpusManifest {
+    schema_version: u32,
+    fixtures: Vec<CorpusFixtureEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CorpusFixtureEntry {
+    name: String,
+    source: String,
+}
+
+#[derive(Debug)]
+struct CorpusSelection {
+    path: PathBuf,
+    schema_version: u32,
+    manifest_sha256: String,
+    fixtures: Vec<FixtureInput>,
+}
+
+#[derive(Debug)]
+struct FixtureInput {
+    name: String,
+    source_path: String,
+    path: PathBuf,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = parse_arguments()?;
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()?;
+    let corpus = load_corpus(&workspace_root, &args.corpus_path)?;
+    let owned_paths = owned_input_paths(&workspace_root, &corpus);
+    let preflight = capture_source_snapshot(&workspace_root, &corpus, &owned_paths)?;
     let policy = RenderResourcePolicy::interactive();
     let max_layout_work_units = policy
         .value(ResourceLimitId::MaxLayoutWorkUnits)
         .ok_or("interactive profile must bound layout work")?;
 
     let fixture_corpus = calibrate_fixture_corpus(
-        &args.fixtures_dir,
+        &corpus,
         &workspace_root,
         max_layout_work_units,
         args.expected_max_fixture.as_deref(),
     )?;
-    let boundary = find_flowchart_boundary(max_layout_work_units, args.boundary_max_nodes)?;
+    let boundary =
+        find_architecture_iteration_boundary(max_layout_work_units, args.boundary_max_iterations)?;
+    let postflight = capture_source_snapshot(&workspace_root, &corpus, &owned_paths)?;
+    if preflight != postflight {
+        return Err("calibration inputs or executable changed during the run".into());
+    }
 
     let report = CalibrationReport {
         schema_version: 1,
         authoritative_date: args.authoritative_date,
-        provenance: provenance(&workspace_root),
+        provenance: provenance(&workspace_root, preflight)?,
         policy: PolicyReport {
             profile: RenderResourceProfile::Interactive.id(),
             explicit_overrides: policy
@@ -191,30 +246,32 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
     let mut authoritative_date = None;
-    let mut fixtures_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("benches")
-        .join("fixtures");
+    let mut corpus_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("tools")
+        .join("bench")
+        .join("corpus.json");
     let mut json_out = None;
     let mut expected_max_fixture = None;
-    let mut boundary_max_nodes = DEFAULT_BOUNDARY_MAX_NODES;
+    let mut boundary_max_iterations = DEFAULT_BOUNDARY_MAX_ITERATIONS;
     let mut args = env::args().skip(1);
 
     while let Some(argument) = args.next() {
         match argument.as_str() {
             "--authoritative-date" => authoritative_date = Some(next_value(&mut args, &argument)?),
-            "--fixtures-dir" => fixtures_dir = PathBuf::from(next_value(&mut args, &argument)?),
+            "--corpus" => corpus_path = PathBuf::from(next_value(&mut args, &argument)?),
             "--json-out" => json_out = Some(PathBuf::from(next_value(&mut args, &argument)?)),
             "--expected-max-fixture" => {
                 expected_max_fixture = Some(next_value(&mut args, &argument)?)
             }
-            "--boundary-max-nodes" => {
-                boundary_max_nodes = parse_positive_usize(&mut args, &argument)?
+            "--boundary-max-iterations" => {
+                boundary_max_iterations = parse_positive_usize(&mut args, &argument)?
             }
             "--help" | "-h" => {
                 println!(
                     "usage: layout_work_calibration --authoritative-date YYYY-MM-DD \\
-                     --json-out PATH [--fixtures-dir PATH] [--expected-max-fixture NAME] \\
-                     [--boundary-max-nodes N]"
+                     --json-out PATH [--corpus PATH] [--expected-max-fixture NAME] \\
+                     [--boundary-max-iterations N]"
                 );
                 std::process::exit(0);
             }
@@ -225,16 +282,20 @@ fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
     let authoritative_date = authoritative_date.ok_or("--authoritative-date is required")?;
     validate_authoritative_date(&authoritative_date)?;
     let json_out = json_out.ok_or("--json-out is required")?;
-    if boundary_max_nodes < 2 {
-        return Err("--boundary-max-nodes must be at least 2".into());
+    if boundary_max_iterations <= ARCHITECTURE_BOUNDARY_NODES * 5 {
+        return Err(format!(
+            "--boundary-max-iterations must exceed {}",
+            ARCHITECTURE_BOUNDARY_NODES * 5
+        )
+        .into());
     }
 
     Ok(Arguments {
         authoritative_date,
-        fixtures_dir,
+        corpus_path,
         json_out,
         expected_max_fixture,
-        boundary_max_nodes,
+        boundary_max_iterations,
     })
 }
 
@@ -275,57 +336,189 @@ fn validate_authoritative_date(value: &str) -> Result<(), Box<dyn Error>> {
     Err("--authoritative-date must use YYYY-MM-DD".into())
 }
 
+fn load_corpus(
+    workspace_root: &Path,
+    configured_path: &Path,
+) -> Result<CorpusSelection, Box<dyn Error>> {
+    let path = if configured_path.is_absolute() {
+        configured_path.to_path_buf()
+    } else {
+        workspace_root.join(configured_path)
+    }
+    .canonicalize()?;
+    path.strip_prefix(workspace_root)
+        .map_err(|_| "corpus manifest must stay inside the workspace")?;
+
+    let bytes = fs::read(&path)?;
+    let manifest: CorpusManifest = serde_json::from_slice(&bytes)?;
+    if manifest.schema_version != 2 {
+        return Err(format!(
+            "unsupported benchmark corpus schema {}; expected 2",
+            manifest.schema_version
+        )
+        .into());
+    }
+    if manifest.fixtures.is_empty() {
+        return Err("benchmark corpus contains no fixtures".into());
+    }
+
+    let mut names = BTreeSet::new();
+    let mut sources = BTreeSet::new();
+    let mut fixtures = Vec::with_capacity(manifest.fixtures.len());
+    for fixture in manifest.fixtures {
+        if !names.insert(fixture.name.clone()) {
+            return Err(format!("duplicate corpus fixture name `{}`", fixture.name).into());
+        }
+        if !sources.insert(fixture.source.clone()) {
+            return Err(format!("duplicate corpus fixture source `{}`", fixture.source).into());
+        }
+        let relative = Path::new(&fixture.source);
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|component| !matches!(component, Component::Normal(_)))
+        {
+            return Err(format!(
+                "corpus fixture source must be a normalized workspace-relative path: {}",
+                fixture.source
+            )
+            .into());
+        }
+        if relative
+            .extension()
+            .and_then(|extension| extension.to_str())
+            != Some("mmd")
+        {
+            return Err(format!("corpus fixture is not an .mmd file: {}", fixture.source).into());
+        }
+        let source_path = workspace_root.join(relative).canonicalize()?;
+        source_path
+            .strip_prefix(workspace_root)
+            .map_err(|_| format!("corpus fixture escapes the workspace: {}", fixture.source))?;
+        if source_path.file_stem().and_then(|stem| stem.to_str()) != Some(&fixture.name) {
+            return Err(format!(
+                "corpus fixture name/source mismatch: {} -> {}",
+                fixture.name, fixture.source
+            )
+            .into());
+        }
+        fixtures.push(FixtureInput {
+            name: fixture.name,
+            source_path: fixture.source,
+            path: source_path,
+        });
+    }
+
+    Ok(CorpusSelection {
+        path,
+        schema_version: manifest.schema_version,
+        manifest_sha256: sha256_hex(&bytes),
+        fixtures,
+    })
+}
+
+fn owned_input_paths(workspace_root: &Path, corpus: &CorpusSelection) -> Vec<PathBuf> {
+    let mut paths = vec![
+        workspace_root.join("Cargo.lock"),
+        workspace_root.join("crates/merman/Cargo.toml"),
+        workspace_root.join("crates/merman/examples/layout_work_calibration.rs"),
+        corpus.path.clone(),
+    ];
+    paths.extend(corpus.fixtures.iter().map(|fixture| fixture.path.clone()));
+    paths
+}
+
+fn capture_source_snapshot(
+    workspace_root: &Path,
+    corpus: &CorpusSelection,
+    owned_paths: &[PathBuf],
+) -> Result<SourceSnapshot, Box<dyn Error>> {
+    let tracked_status = command_required(
+        workspace_root,
+        "git",
+        &["status", "--porcelain", "--untracked-files=no"],
+    )?;
+    if !tracked_status.is_empty() {
+        return Err("tracked worktree must be clean for decision-grade calibration".into());
+    }
+    for path in owned_paths {
+        let relative = workspace_relative_path(path, workspace_root)?;
+        command_required(
+            workspace_root,
+            "git",
+            &["ls-files", "--error-unmatch", "--", &relative],
+        )
+        .map_err(|_| format!("calibration input is not tracked at HEAD: {relative}"))?;
+    }
+
+    let executable = env::current_exe()?.canonicalize()?;
+    let corpus_manifest_sha256 = sha256_file(&corpus.path)?;
+    if corpus_manifest_sha256 != corpus.manifest_sha256 {
+        return Err("corpus manifest changed after it was parsed".into());
+    }
+    Ok(SourceSnapshot {
+        git_revision: command_required(workspace_root, "git", &["rev-parse", "HEAD"])?,
+        cargo_lock_sha256: sha256_file(&workspace_root.join("Cargo.lock"))?,
+        cargo_manifest_sha256: sha256_file(&workspace_root.join("crates/merman/Cargo.toml"))?,
+        corpus_manifest_sha256,
+        calibration_source_sha256: sha256_file(
+            &workspace_root.join("crates/merman/examples/layout_work_calibration.rs"),
+        )?,
+        executable_sha256: sha256_file(&executable)?,
+    })
+}
+
 fn calibrate_fixture_corpus(
-    fixtures_dir: &Path,
+    corpus: &CorpusSelection,
     workspace_root: &Path,
     max_layout_work_units: usize,
     expected_max_fixture: Option<&str>,
 ) -> Result<FixtureCorpusReport, Box<dyn Error>> {
-    let mut paths = fs::read_dir(fixtures_dir)?
-        .map(|entry| entry.map(|entry| entry.path()))
-        .collect::<Result<Vec<_>, _>>()?;
-    paths.retain(|path| path.extension().and_then(|extension| extension.to_str()) == Some("mmd"));
-    paths.sort();
-    if paths.is_empty() {
-        return Err(format!("no .mmd fixtures under {}", fixtures_dir.display()).into());
-    }
-
     let interactive =
         HeadlessRenderer::new().with_resource_profile(RenderResourceProfile::Interactive);
     let unbounded = HeadlessRenderer::new()
         .with_resource_profile(RenderResourceProfile::UnboundedForTrustedInput);
-    let mut fixtures = Vec::with_capacity(paths.len());
+    let mut fixtures = Vec::with_capacity(corpus.fixtures.len());
+    let mut member_hasher = Sha256::new();
 
-    for path in &paths {
-        let name = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .ok_or_else(|| format!("invalid fixture name: {}", path.display()))?
-            .to_string();
-        let source = fs::read_to_string(path)?;
+    for input in &corpus.fixtures {
+        let source = fs::read_to_string(&input.path)?;
+        let source_sha256 = sha256_hex(source.as_bytes());
+        member_hasher.update(input.name.as_bytes());
+        member_hasher.update([0]);
+        member_hasher.update(input.source_path.as_bytes());
+        member_hasher.update([0]);
+        member_hasher.update(source_sha256.as_bytes());
+        member_hasher.update([b'\n']);
         let unbounded_render = unbounded
             .render_svg_report_sync(&source)?
-            .ok_or_else(|| format!("{name}: unsupported fixture"))?;
+            .ok_or_else(|| format!("{}: unsupported fixture", input.name))?;
         let interactive_render = interactive
             .render_svg_report_sync(&source)?
-            .ok_or_else(|| format!("{name}: unsupported interactive fixture"))?;
+            .ok_or_else(|| format!("{}: unsupported interactive fixture", input.name))?;
         if unbounded_render.svg() != interactive_render.svg() {
-            return Err(format!("{name}: resource profile changed successful SVG output").into());
+            return Err(format!(
+                "{}: resource profile changed successful SVG output",
+                input.name
+            )
+            .into());
         }
         if unbounded_render.report().layout_work_units()
             != interactive_render.report().layout_work_units()
         {
-            return Err(
-                format!("{name}: resource profile changed successful work accounting").into(),
-            );
+            return Err(format!(
+                "{}: resource profile changed successful work accounting",
+                input.name
+            )
+            .into());
         }
 
         let svg = interactive_render.svg();
         let document = roxmltree::Document::parse(svg)?;
         fixtures.push(FixtureReport {
-            name,
-            source_path: display_relative_path(path, workspace_root),
-            source_sha256: sha256_hex(source.as_bytes()),
+            name: input.name.clone(),
+            source_path: input.source_path.clone(),
+            source_sha256,
             source_bytes: source.len(),
             layout_work_units: interactive_render.report().layout_work_units(),
             svg_sha256: sha256_hex(svg.as_bytes()),
@@ -360,15 +553,18 @@ fn calibrate_fixture_corpus(
     }
     let headroom_units = max_layout_work_units - maximum.layout_work_units;
     let headroom_percent = headroom_units as f64 * 100.0 / maximum.layout_work_units as f64;
-    let maximum_path = paths
+    let maximum_input = corpus
+        .fixtures
         .iter()
-        .find(|path| path.file_stem().and_then(|stem| stem.to_str()) == Some(&maximum.name))
-        .ok_or("maximum fixture path disappeared")?;
-    let maximum_source = fs::read_to_string(maximum_path)?;
+        .find(|input| input.name == maximum.name)
+        .ok_or("maximum corpus fixture disappeared")?;
+    let maximum_source = fs::read_to_string(&maximum_input.path)?;
     let exact_limit_check = verify_exact_work_limit(&maximum_source, maximum)?;
 
     Ok(FixtureCorpusReport {
-        fixtures_dir: display_relative_path(fixtures_dir, workspace_root),
+        corpus_manifest: display_relative_path(&corpus.path, workspace_root),
+        corpus_schema_version: corpus.schema_version,
+        fixture_members_sha256: format!("{:x}", member_hasher.finalize()),
         fixture_count: fixtures.len(),
         maximum_layout_work_fixture: maximum.name.clone(),
         maximum_layout_work_units: maximum.layout_work_units,
@@ -415,17 +611,8 @@ fn verify_exact_work_limit(
         .with_resource_policy(rejected_policy)
         .render_svg_report_sync(source)
     {
-        Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit)))
-            if limit.limit == LAYOUT_WORK_LIMIT_ID =>
-        {
-            LimitRejection {
-                cause: limit.cause.as_str().to_string(),
-                phase: limit.phase.to_string(),
-                limit: limit.limit.to_string(),
-                actual: limit.actual,
-                max: limit.max,
-                profile: limit.profile.id().to_string(),
-            }
+        Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit))) => {
+            validate_layout_rejection(limit, rejected_limit, Some(rejected_limit))?
         }
         Ok(_) => return Err("maximum fixture succeeded one unit below observed work".into()),
         Err(error) => {
@@ -435,108 +622,170 @@ fn verify_exact_work_limit(
             .into());
         }
     };
-    if rejection.max != rejected_limit {
-        return Err(format!(
-            "one-below rejection reported max {}, expected {rejected_limit}",
-            rejection.max
-        )
-        .into());
-    }
-
     Ok(ExactLimitCheck {
         fixture: expected.name.clone(),
         observed_layout_work_units,
         accepted_limit: observed_layout_work_units,
+        accepted_explicit_overrides: vec![PolicyOverride {
+            id: LAYOUT_WORK_LIMIT_ID,
+            value: observed_layout_work_units,
+        }],
         accepted_svg_sha256,
         rejected_limit,
         rejection,
     })
 }
 
-fn find_flowchart_boundary(
-    max_layout_work_units: usize,
-    boundary_max_nodes: usize,
-) -> Result<BoundaryReport, Box<dyn Error>> {
-    let renderer =
-        HeadlessRenderer::new().with_resource_profile(RenderResourceProfile::Interactive);
-    let mut accepted_nodes = 1usize;
-    match probe_linear_flowchart(&renderer, accepted_nodes)? {
-        BoundaryProbe::Accepted(_) => {}
-        BoundaryProbe::Rejected(_) => return Err("single-node flowchart must be accepted".into()),
-    }
-
-    let mut rejected_nodes = 2usize;
-    while let BoundaryProbe::Accepted(_) = probe_linear_flowchart(&renderer, rejected_nodes)? {
-        accepted_nodes = rejected_nodes;
-        rejected_nodes = rejected_nodes
-            .checked_mul(2)
-            .ok_or("boundary node count overflow")?;
-        if rejected_nodes > boundary_max_nodes {
-            return Err(
-                format!("no layout-work rejection found by {boundary_max_nodes} nodes").into(),
-            );
-        }
-    }
-
-    while accepted_nodes + 1 < rejected_nodes {
-        let midpoint = accepted_nodes + (rejected_nodes - accepted_nodes) / 2;
-        match probe_linear_flowchart(&renderer, midpoint)? {
-            BoundaryProbe::Accepted(_) => accepted_nodes = midpoint,
-            BoundaryProbe::Rejected(_) => rejected_nodes = midpoint,
-        }
-    }
-
-    let accepted = match probe_linear_flowchart(&renderer, accepted_nodes)? {
-        BoundaryProbe::Accepted(accepted) => accepted,
-        BoundaryProbe::Rejected(_) => return Err("boundary accepted point became rejected".into()),
-    };
-    let rejected = match probe_linear_flowchart(&renderer, rejected_nodes)? {
-        BoundaryProbe::Rejected(rejected) => rejected,
-        BoundaryProbe::Accepted(_) => return Err("boundary rejected point became accepted".into()),
-    };
-    let next_nodes = rejected_nodes
-        .checked_add(1)
-        .ok_or("boundary node count overflow")?;
-    let next_rejected = match probe_linear_flowchart(&renderer, next_nodes)? {
-        BoundaryProbe::Rejected(rejected) => rejected,
-        BoundaryProbe::Accepted(_) => {
-            return Err("linear boundary was not monotonic immediately after rejection".into());
-        }
-    };
-    if rejected.max != max_layout_work_units {
+fn validate_layout_rejection(
+    limit: ResourceLimitExceeded,
+    expected_max: usize,
+    expected_override: Option<usize>,
+) -> Result<LimitRejection, Box<dyn Error>> {
+    if limit.cause != ResourceLimitCause::Ceiling
+        || limit.phase != ResourceLimitPhase::LayoutModel
+        || limit.limit != LAYOUT_WORK_LIMIT_ID
+        || limit.profile != RenderResourceProfile::Interactive
+        || limit.max != expected_max
+        || limit.actual <= limit.max
+    {
         return Err(format!(
-            "boundary rejection reported max {}, expected {max_layout_work_units}",
-            rejected.max
+            "unexpected layout-work rejection: cause={} phase={} limit={} actual={} max={} profile={}",
+            limit.cause,
+            limit.phase,
+            limit.limit,
+            limit.actual,
+            limit.max,
+            limit.profile.id()
         )
         .into());
     }
+    match expected_override {
+        Some(value)
+            if limit.explicit_overrides.len() == 1
+                && limit.explicit_overrides[0].id == ResourceLimitId::MaxLayoutWorkUnits
+                && limit.explicit_overrides[0].value == value => {}
+        None if limit.explicit_overrides.is_empty() => {}
+        _ => return Err("layout-work rejection reported unexpected explicit overrides".into()),
+    }
+
+    Ok(LimitRejection {
+        cause: limit.cause.as_str().to_string(),
+        phase: limit.phase.to_string(),
+        limit: limit.limit.to_string(),
+        actual: limit.actual,
+        max: limit.max,
+        profile: limit.profile.id().to_string(),
+        explicit_overrides: limit
+            .explicit_overrides
+            .into_iter()
+            .map(|entry| PolicyOverride {
+                id: entry.id.as_str(),
+                value: entry.value,
+            })
+            .collect(),
+    })
+}
+
+fn find_architecture_iteration_boundary(
+    max_layout_work_units: usize,
+    boundary_max_iterations: usize,
+) -> Result<BoundaryReport, Box<dyn Error>> {
+    let renderer =
+        HeadlessRenderer::new().with_resource_profile(RenderResourceProfile::Interactive);
+    let minimum_effective_iterations = ARCHITECTURE_BOUNDARY_NODES * 5;
+    let mut accepted_iterations = minimum_effective_iterations;
+    match probe_architecture_iterations(&renderer, accepted_iterations, max_layout_work_units)? {
+        BoundaryProbe::Accepted(_) => {}
+        BoundaryProbe::Rejected(_) => {
+            return Err("minimum effective Architecture iteration count must be accepted".into());
+        }
+    }
+
+    let mut rejected_iterations = accepted_iterations
+        .checked_mul(2)
+        .ok_or("Architecture iteration count overflow")?
+        .min(boundary_max_iterations);
+    while let BoundaryProbe::Accepted(_) =
+        probe_architecture_iterations(&renderer, rejected_iterations, max_layout_work_units)?
+    {
+        if rejected_iterations == boundary_max_iterations {
+            return Err(format!(
+                "no layout-work rejection found by {boundary_max_iterations} Architecture iterations"
+            )
+            .into());
+        }
+        accepted_iterations = rejected_iterations;
+        rejected_iterations = rejected_iterations
+            .checked_mul(2)
+            .ok_or("Architecture iteration count overflow")?
+            .min(boundary_max_iterations);
+    }
+
+    while accepted_iterations + 1 < rejected_iterations {
+        let midpoint = accepted_iterations + (rejected_iterations - accepted_iterations) / 2;
+        match probe_architecture_iterations(&renderer, midpoint, max_layout_work_units)? {
+            BoundaryProbe::Accepted(_) => accepted_iterations = midpoint,
+            BoundaryProbe::Rejected(_) => rejected_iterations = midpoint,
+        }
+    }
+
+    let accepted =
+        match probe_architecture_iterations(&renderer, accepted_iterations, max_layout_work_units)?
+        {
+            BoundaryProbe::Accepted(accepted) => accepted,
+            BoundaryProbe::Rejected(_) => {
+                return Err("boundary accepted point became rejected".into());
+            }
+        };
+    let rejected =
+        match probe_architecture_iterations(&renderer, rejected_iterations, max_layout_work_units)?
+        {
+            BoundaryProbe::Rejected(rejected) => rejected,
+            BoundaryProbe::Accepted(_) => {
+                return Err("boundary rejected point became accepted".into());
+            }
+        };
+    let next_iterations = rejected_iterations
+        .checked_add(1)
+        .ok_or("Architecture iteration count overflow")?;
+    let next_rejected =
+        match probe_architecture_iterations(&renderer, next_iterations, max_layout_work_units)? {
+            BoundaryProbe::Rejected(rejected) => rejected,
+            BoundaryProbe::Accepted(_) => {
+                return Err(
+                    "Architecture iteration boundary was not monotonic after rejection".into(),
+                );
+            }
+        };
 
     Ok(BoundaryReport {
-        curve: "flowchart-linear-chain-v1",
-        search_contract: "N labeled nodes and N-1 directed chain edges; binary search is accepted only after N-1 succeeds and both N and N+1 reject max_layout_work_units",
-        first_rejected_nodes: rejected_nodes,
+        curve: "architecture-num-iter-v1",
+        search_contract: "A fixed 32-node/31-edge Architecture graph varies only configured numIter. Above the 5*nodes floor, FCoSE admission is a strictly increasing positive linear function of numIter for this fixed shape; binary search is accepted only after N-1 succeeds and both N and N+1 ceiling-reject max_layout_work_units.",
+        fixed_nodes: ARCHITECTURE_BOUNDARY_NODES,
+        fixed_edges: ARCHITECTURE_BOUNDARY_NODES - 1,
+        minimum_effective_iterations,
+        first_rejected_iterations: rejected_iterations,
         accepted,
         rejected,
         next_rejected,
     })
 }
 
-fn probe_linear_flowchart(
+fn probe_architecture_iterations(
     renderer: &HeadlessRenderer,
-    nodes: usize,
+    configured_iterations: usize,
+    max_layout_work_units: usize,
 ) -> Result<BoundaryProbe, Box<dyn Error>> {
-    let source = linear_flowchart_source(nodes);
+    let source = architecture_iteration_source(configured_iterations);
     let source_sha256 = sha256_hex(source.as_bytes());
     let source_bytes = source.len();
-    let edges = nodes.saturating_sub(1);
 
     match renderer.render_svg_report_sync(&source) {
         Ok(Some(rendered)) => {
             let svg = rendered.svg();
             let document = roxmltree::Document::parse(svg)?;
             Ok(BoundaryProbe::Accepted(BoundaryAccepted {
-                nodes,
-                edges,
+                configured_iterations,
                 source_sha256,
                 source_bytes,
                 layout_work_units: rendered.report().layout_work_units(),
@@ -548,52 +797,55 @@ fn probe_linear_flowchart(
                     .count(),
             }))
         }
-        Ok(None) => Err("linear Flowchart was not recognized".into()),
-        Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit)))
-            if limit.limit == LAYOUT_WORK_LIMIT_ID =>
-        {
+        Ok(None) => Err("Architecture iteration probe was not recognized".into()),
+        Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit))) => {
             Ok(BoundaryProbe::Rejected(BoundaryRejected {
-                nodes,
-                edges,
+                configured_iterations,
                 source_sha256,
                 source_bytes,
-                cause: limit.cause.as_str().to_string(),
-                phase: limit.phase.to_string(),
-                limit: limit.limit.to_string(),
-                actual: limit.actual,
-                max: limit.max,
-                profile: limit.profile.id().to_string(),
+                rejection: validate_layout_rejection(limit, max_layout_work_units, None)?,
             }))
         }
-        Err(error) => Err(format!("linear Flowchart probe failed unexpectedly: {error}").into()),
+        Err(error) => {
+            Err(format!("Architecture iteration probe failed unexpectedly: {error}").into())
+        }
     }
 }
 
-fn linear_flowchart_source(nodes: usize) -> String {
-    assert!(nodes > 0);
-    let mut source = String::with_capacity(nodes * 48);
-    source.push_str("flowchart LR\n");
-    for node in 0..nodes {
-        writeln!(&mut source, "  n{node}[\"Node {node}\"]").expect("write to String");
+fn architecture_iteration_source(configured_iterations: usize) -> String {
+    assert!(configured_iterations > 0);
+    let mut source = String::with_capacity(ARCHITECTURE_BOUNDARY_NODES * 64);
+    writeln!(
+        &mut source,
+        "%%{{init: {{\"architecture\": {{\"numIter\": {configured_iterations}, \"randomize\": false, \"seed\": 1}}}}}}%%"
+    )
+    .expect("write to String");
+    source.push_str("architecture-beta\n");
+    for node in 0..ARCHITECTURE_BOUNDARY_NODES {
+        writeln!(&mut source, "  service n{node}(server)[Node {node}]").expect("write to String");
     }
-    for node in 1..nodes {
-        writeln!(&mut source, "  n{} --> n{node}", node - 1).expect("write to String");
+    for node in 1..ARCHITECTURE_BOUNDARY_NODES {
+        writeln!(&mut source, "  n{}:R -- L:n{node}", node - 1).expect("write to String");
     }
     source
 }
 
-fn provenance(workspace_root: &Path) -> Provenance {
-    Provenance {
-        git_revision: command_output(workspace_root, "git", &["rev-parse", "HEAD"]),
-        tracked_worktree_dirty: command_output(
-            workspace_root,
-            "git",
-            &["status", "--porcelain", "--untracked-files=no"],
-        )
-        .map(|output| !output.is_empty()),
-        cargo_lock_sha256: fs::read(workspace_root.join("Cargo.lock"))
-            .ok()
-            .map(|bytes| sha256_hex(&bytes)),
+fn provenance(
+    workspace_root: &Path,
+    snapshot: SourceSnapshot,
+) -> Result<Provenance, Box<dyn Error>> {
+    let executable = env::current_exe()?.canonicalize()?;
+    Ok(Provenance {
+        git_revision: snapshot.git_revision,
+        tracked_worktree_clean: true,
+        owned_inputs_tracked: true,
+        postflight_identical: true,
+        cargo_lock_sha256: snapshot.cargo_lock_sha256,
+        cargo_manifest_sha256: snapshot.cargo_manifest_sha256,
+        corpus_manifest_sha256: snapshot.corpus_manifest_sha256,
+        calibration_source_sha256: snapshot.calibration_source_sha256,
+        executable_path: display_relative_path(&executable, workspace_root),
+        executable_sha256: snapshot.executable_sha256,
         build_profile: if cfg!(debug_assertions) {
             "dev"
         } else {
@@ -601,23 +853,48 @@ fn provenance(workspace_root: &Path) -> Provenance {
         },
         target_os: env::consts::OS,
         target_arch: env::consts::ARCH,
-        rustc: command_output(workspace_root, "rustc", &["--version"]),
-        cargo: command_output(workspace_root, "cargo", &["--version"]),
-    }
+        enabled_features: enabled_features(),
+        rustc: command_required(workspace_root, "rustc", &["--version"])?,
+        cargo: command_required(workspace_root, "cargo", &["--version"])?,
+    })
 }
 
-fn command_output(cwd: &Path, command: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(command)
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
+fn enabled_features() -> Vec<&'static str> {
+    let mut features = Vec::new();
+    if cfg!(feature = "svg") {
+        features.push("svg");
     }
-    String::from_utf8(output.stdout)
-        .ok()
-        .map(|output| output.trim().to_string())
+    if cfg!(feature = "layout-cytoscape") {
+        features.push("layout-cytoscape");
+    }
+    if cfg!(feature = "layout-elk") {
+        features.push("layout-elk");
+    }
+    if cfg!(feature = "math") {
+        features.push("math");
+    }
+    features
+}
+
+fn command_required(cwd: &Path, command: &str, args: &[&str]) -> Result<String, Box<dyn Error>> {
+    let output = Command::new(command).args(args).current_dir(cwd).output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "command failed: {command} {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        )
+        .into());
+    }
+    Ok(String::from_utf8(output.stdout)?.trim().to_string())
+}
+
+fn workspace_relative_path(path: &Path, workspace_root: &Path) -> Result<String, Box<dyn Error>> {
+    let canonical = path.canonicalize()?;
+    let relative = canonical
+        .strip_prefix(workspace_root)
+        .map_err(|_| format!("path escapes workspace: {}", canonical.display()))?;
+    Ok(relative.to_string_lossy().replace('\\', "/"))
 }
 
 fn display_relative_path(path: &Path, workspace_root: &Path) -> String {
@@ -637,6 +914,10 @@ fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+fn sha256_file(path: &Path) -> Result<String, Box<dyn Error>> {
+    Ok(sha256_hex(&fs::read(path)?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -649,11 +930,12 @@ mod tests {
     }
 
     #[test]
-    fn linear_flowchart_source_has_exact_cardinality() {
-        let source = linear_flowchart_source(4);
+    fn architecture_iteration_source_has_exact_cardinality() {
+        let source = architecture_iteration_source(123);
 
-        assert_eq!(source.matches("[\"Node ").count(), 4);
-        assert_eq!(source.matches(" --> ").count(), 3);
-        assert_eq!(source, linear_flowchart_source(4));
+        assert!(source.contains(r#""numIter": 123"#));
+        assert_eq!(source.matches("  service n").count(), 32);
+        assert_eq!(source.matches(":R -- L:").count(), 31);
+        assert_eq!(source, architecture_iteration_source(123));
     }
 }
