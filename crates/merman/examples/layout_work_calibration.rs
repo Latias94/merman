@@ -66,6 +66,7 @@ struct FixtureCorpusReport {
     maximum_layout_work_units: usize,
     headroom_units: usize,
     headroom_percent: f64,
+    exact_limit_check: ExactLimitCheck,
     fixtures: Vec<FixtureReport>,
 }
 
@@ -80,6 +81,26 @@ struct FixtureReport {
     svg_bytes: usize,
     svg_elements: usize,
     interactive_accepted: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ExactLimitCheck {
+    fixture: String,
+    observed_layout_work_units: usize,
+    accepted_limit: usize,
+    accepted_svg_sha256: String,
+    rejected_limit: usize,
+    rejection: LimitRejection,
+}
+
+#[derive(Debug, Serialize)]
+struct LimitRejection {
+    cause: String,
+    phase: String,
+    limit: String,
+    actual: usize,
+    max: usize,
+    profile: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -275,13 +296,13 @@ fn calibrate_fixture_corpus(
         .with_resource_profile(RenderResourceProfile::UnboundedForTrustedInput);
     let mut fixtures = Vec::with_capacity(paths.len());
 
-    for path in paths {
+    for path in &paths {
         let name = path
             .file_stem()
             .and_then(|stem| stem.to_str())
             .ok_or_else(|| format!("invalid fixture name: {}", path.display()))?
             .to_string();
-        let source = fs::read_to_string(&path)?;
+        let source = fs::read_to_string(path)?;
         let unbounded_render = unbounded
             .render_svg_report_sync(&source)?
             .ok_or_else(|| format!("{name}: unsupported fixture"))?;
@@ -303,7 +324,7 @@ fn calibrate_fixture_corpus(
         let document = roxmltree::Document::parse(svg)?;
         fixtures.push(FixtureReport {
             name,
-            source_path: display_relative_path(&path, workspace_root),
+            source_path: display_relative_path(path, workspace_root),
             source_sha256: sha256_hex(source.as_bytes()),
             source_bytes: source.len(),
             layout_work_units: interactive_render.report().layout_work_units(),
@@ -339,6 +360,12 @@ fn calibrate_fixture_corpus(
     }
     let headroom_units = max_layout_work_units - maximum.layout_work_units;
     let headroom_percent = headroom_units as f64 * 100.0 / maximum.layout_work_units as f64;
+    let maximum_path = paths
+        .iter()
+        .find(|path| path.file_stem().and_then(|stem| stem.to_str()) == Some(&maximum.name))
+        .ok_or("maximum fixture path disappeared")?;
+    let maximum_source = fs::read_to_string(maximum_path)?;
+    let exact_limit_check = verify_exact_work_limit(&maximum_source, maximum)?;
 
     Ok(FixtureCorpusReport {
         fixtures_dir: display_relative_path(fixtures_dir, workspace_root),
@@ -347,7 +374,82 @@ fn calibrate_fixture_corpus(
         maximum_layout_work_units: maximum.layout_work_units,
         headroom_units,
         headroom_percent,
+        exact_limit_check,
         fixtures,
+    })
+}
+
+fn verify_exact_work_limit(
+    source: &str,
+    expected: &FixtureReport,
+) -> Result<ExactLimitCheck, Box<dyn Error>> {
+    let observed_layout_work_units = expected.layout_work_units;
+    let rejected_limit = observed_layout_work_units
+        .checked_sub(1)
+        .filter(|limit| *limit > 0)
+        .ok_or("maximum fixture must consume at least two layout-work units")?;
+
+    let accepted_policy = RenderResourcePolicy::interactive().with_limit(
+        ResourceLimitId::MaxLayoutWorkUnits,
+        observed_layout_work_units,
+    )?;
+    let accepted = HeadlessRenderer::new()
+        .with_resource_policy(accepted_policy)
+        .render_svg_report_sync(source)?
+        .ok_or("maximum fixture was not recognized at its exact work limit")?;
+    if accepted.report().layout_work_units() != observed_layout_work_units {
+        return Err(format!(
+            "maximum fixture work changed at its exact limit: expected {observed_layout_work_units}, observed {}",
+            accepted.report().layout_work_units()
+        )
+        .into());
+    }
+    let accepted_svg_sha256 = sha256_hex(accepted.svg().as_bytes());
+    if accepted_svg_sha256 != expected.svg_sha256 {
+        return Err("maximum fixture SVG changed at its exact work limit".into());
+    }
+
+    let rejected_policy = RenderResourcePolicy::interactive()
+        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, rejected_limit)?;
+    let rejection = match HeadlessRenderer::new()
+        .with_resource_policy(rejected_policy)
+        .render_svg_report_sync(source)
+    {
+        Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit)))
+            if limit.limit == LAYOUT_WORK_LIMIT_ID =>
+        {
+            LimitRejection {
+                cause: limit.cause.as_str().to_string(),
+                phase: limit.phase.to_string(),
+                limit: limit.limit.to_string(),
+                actual: limit.actual,
+                max: limit.max,
+                profile: limit.profile.id().to_string(),
+            }
+        }
+        Ok(_) => return Err("maximum fixture succeeded one unit below observed work".into()),
+        Err(error) => {
+            return Err(format!(
+                "maximum fixture failed unexpectedly one unit below observed work: {error}"
+            )
+            .into());
+        }
+    };
+    if rejection.max != rejected_limit {
+        return Err(format!(
+            "one-below rejection reported max {}, expected {rejected_limit}",
+            rejection.max
+        )
+        .into());
+    }
+
+    Ok(ExactLimitCheck {
+        fixture: expected.name.clone(),
+        observed_layout_work_units,
+        accepted_limit: observed_layout_work_units,
+        accepted_svg_sha256,
+        rejected_limit,
+        rejection,
     })
 }
 
