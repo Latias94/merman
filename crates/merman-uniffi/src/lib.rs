@@ -2121,6 +2121,63 @@ mod tests {
         assert_eq!(reusable, plan);
     }
 
+    #[cfg(all(
+        feature = "svg",
+        not(any(feature = "layout-cytoscape", feature = "layout-elk", feature = "math"))
+    ))]
+    #[test]
+    fn optional_render_capabilities_follow_the_uniffi_owner_contract() {
+        let facade = engine();
+        let catalog: Value = serde_json::from_str(&facade.runtime_catalog_json().unwrap()).unwrap();
+        let capability_ids = catalog["capabilities"]["capability_ids"]
+            .as_array()
+            .expect("capability IDs");
+        assert!(capability_ids.iter().any(|id| id == "svg"));
+
+        for (capability_id, source) in [
+            (
+                "layout-cytoscape",
+                "architecture-beta\n  service api(server)[API]",
+            ),
+            (
+                "layout-elk",
+                "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
+            ),
+            ("math", "flowchart TD\nA[\"$$x^2$$\"] --> B"),
+        ] {
+            assert!(!capability_ids.iter().any(|id| id == capability_id));
+
+            let plan: Value = serde_json::from_str(
+                &facade
+                    .svg_plan_json(source.to_string(), None)
+                    .expect("SVG plan"),
+            )
+            .unwrap();
+            assert_eq!(
+                plan["required_capability_ids"],
+                serde_json::json!([capability_id])
+            );
+            assert_eq!(
+                plan["missing_capability_ids"],
+                serde_json::json!([capability_id])
+            );
+            assert_eq!(plan["ready"], false);
+
+            let error = facade
+                .render_svg(source.to_string(), None)
+                .expect_err("the UniFFI owner contract must reject ambient render capabilities");
+            assert_missing_capability(&error, capability_id);
+        }
+
+        let error = facade
+            .render_svg(
+                "flowchart TD\nA --> B".to_string(),
+                Some(r#"{"environment":{"math_renderer":"ratex"}}"#.to_string()),
+            )
+            .expect_err("explicit ratex selection requires owner-selected math");
+        assert_missing_capability(&error, "math");
+    }
+
     #[test]
     fn generic_one_shot_native_policy_matches_the_owner_adapter_probe() {
         let request = MermanOperationRequest {

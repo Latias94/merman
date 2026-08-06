@@ -85,12 +85,67 @@ pub enum RenderCapability {
 }
 
 impl RenderCapability {
+    const fn bit(self) -> u8 {
+        match self {
+            Self::LayoutCytoscape => 1 << 0,
+            Self::LayoutElk => 1 << 1,
+            Self::Math => 1 << 2,
+        }
+    }
+
     pub const fn id(self) -> &'static str {
         match self {
             Self::LayoutCytoscape => "layout-cytoscape",
             Self::LayoutElk => "layout-elk",
             Self::Math => "math",
         }
+    }
+}
+
+const ALL_RENDER_CAPABILITY_BITS: u8 = RenderCapability::LayoutCytoscape.bit()
+    | RenderCapability::LayoutElk.bit()
+    | RenderCapability::Math.bit();
+
+/// Operation-level permission for optional renderer capabilities.
+///
+/// The policy does not claim that a backend is compiled or that a service is installed. Effective
+/// availability requires both this permission and the concrete backend/service. The unrestricted
+/// default preserves the direct Rust renderer API, while artifact facades can project their exact
+/// owner-selected capability contract without depending on binding-specific types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderCapabilityPolicy {
+    allowed_bits: u8,
+}
+
+impl RenderCapabilityPolicy {
+    /// Allows every optional renderer capability that is otherwise available.
+    pub const fn unrestricted() -> Self {
+        Self {
+            allowed_bits: ALL_RENDER_CAPABILITY_BITS,
+        }
+    }
+
+    /// Denies every optional renderer capability until explicitly allowed.
+    pub const fn deny_all() -> Self {
+        Self { allowed_bits: 0 }
+    }
+
+    /// Allows one optional renderer capability.
+    #[must_use]
+    pub const fn with_allowed(mut self, capability: RenderCapability) -> Self {
+        self.allowed_bits |= capability.bit();
+        self
+    }
+
+    /// Reports whether this policy permits the capability.
+    pub const fn allows(self, capability: RenderCapability) -> bool {
+        self.allowed_bits & capability.bit() != 0
+    }
+}
+
+impl Default for RenderCapabilityPolicy {
+    fn default() -> Self {
+        Self::unrestricted()
     }
 }
 
@@ -434,6 +489,29 @@ mod tests {
                 )
             );
         }
+    }
+
+    #[test]
+    fn render_capability_policy_is_a_small_explicit_allow_mask() {
+        let denied = RenderCapabilityPolicy::deny_all();
+        for capability in [
+            RenderCapability::LayoutCytoscape,
+            RenderCapability::LayoutElk,
+            RenderCapability::Math,
+        ] {
+            assert!(!denied.allows(capability));
+            assert!(
+                RenderCapabilityPolicy::unrestricted().allows(capability),
+                "unrestricted policy denied {}",
+                capability.id()
+            );
+        }
+
+        let math_only = denied.with_allowed(RenderCapability::Math);
+        assert!(math_only.allows(RenderCapability::Math));
+        assert!(!math_only.allows(RenderCapability::LayoutCytoscape));
+        assert!(!math_only.allows(RenderCapability::LayoutElk));
+        assert_eq!(std::mem::size_of::<RenderCapabilityPolicy>(), 1);
     }
 
     #[cfg(feature = "layout-elk")]

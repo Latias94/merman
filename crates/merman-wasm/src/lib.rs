@@ -644,14 +644,76 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn svg_plan_reports_the_owner_capability_payload() {
-        let result =
-            merman_bindings_core::svg_plan_json(b"flowchart TD\nA[Hello] --> B[World]", b"")
-                .unwrap();
+        let result = execute_wasm_operation(
+            "svg-plan-json",
+            b"flowchart TD\nA[Hello] --> B[World]",
+            b"",
+            None,
+        )
+        .unwrap();
         let plan: serde_json::Value = serde_json::from_slice(&result).unwrap();
 
         assert_eq!(plan["planned_operation_id"], "svg");
         assert_eq!(plan["missing_capability_ids"], serde_json::json!([]));
         assert_eq!(plan["ready"], true);
+    }
+
+    #[cfg(all(
+        feature = "svg",
+        not(any(feature = "layout-cytoscape", feature = "layout-elk", feature = "math"))
+    ))]
+    #[test]
+    fn optional_render_capabilities_follow_the_wasm_owner_contract() {
+        let capabilities = wasm_artifact_contract().runtime_capabilities();
+        assert!(capabilities.has_capability("svg"));
+
+        for (capability_id, source) in [
+            (
+                "layout-cytoscape",
+                "architecture-beta\n  service api(server)[API]",
+            ),
+            (
+                "layout-elk",
+                "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
+            ),
+            ("math", "flowchart TD\nA[\"$$x^2$$\"] --> B"),
+        ] {
+            assert!(!capabilities.has_capability(capability_id));
+
+            let plan =
+                execute_wasm_operation("svg-plan-json", source.as_bytes(), b"", None).unwrap();
+            let plan: serde_json::Value = serde_json::from_slice(&plan).unwrap();
+            assert_eq!(
+                plan["required_capability_ids"],
+                serde_json::json!([capability_id])
+            );
+            assert_eq!(
+                plan["missing_capability_ids"],
+                serde_json::json!([capability_id])
+            );
+            assert_eq!(plan["ready"], false);
+
+            let error = execute_wasm_operation("svg", source.as_bytes(), b"", None)
+                .expect_err("the WASM owner contract must reject ambient render capabilities");
+            assert_eq!(
+                error.status(),
+                merman_bindings_core::BindingStatus::UnsupportedOperation
+            );
+            assert_eq!(error.capability_id(), Some(capability_id));
+        }
+
+        let error = execute_wasm_operation(
+            "svg",
+            b"flowchart TD\nA --> B",
+            br#"{"environment":{"math_renderer":"ratex"}}"#,
+            None,
+        )
+        .expect_err("explicit ratex selection requires owner-selected math");
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::UnsupportedOperation
+        );
+        assert_eq!(error.capability_id(), Some("math"));
     }
 
     #[cfg(feature = "analysis")]

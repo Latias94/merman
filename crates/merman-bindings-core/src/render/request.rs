@@ -10,8 +10,9 @@ use crate::common::{
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use merman::svg::{
     HeadlessRenderer, HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions,
-    MeasurementProfileId, Presentation, PresentationProfile, RenderEnvironment,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemeRole,
+    MeasurementProfileId, Presentation, PresentationProfile, RenderCapability,
+    RenderCapabilityPolicy, RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy,
+    TextMeasurementProfileIdentity, ThemeRole,
 };
 
 #[derive(Clone)]
@@ -120,9 +121,21 @@ pub(super) fn pipeline_for_options(
     options: &BindingOptions,
 ) -> Result<merman::svg::SvgPipeline, BindingError> {
     Ok(
-        RenderOperationConfig::compile(options, merman::runtime::RuntimePolicy::deterministic())?
+        compile_for_test(options, merman::runtime::RuntimePolicy::deterministic())?
             .output
             .pipeline(),
+    )
+}
+
+#[cfg(test)]
+fn compile_for_test(
+    options: &BindingOptions,
+    runtime_policy: merman::runtime::RuntimePolicy,
+) -> Result<RenderOperationConfig, BindingError> {
+    RenderOperationConfig::compile(
+        options,
+        runtime_policy,
+        RenderCapabilityPolicy::unrestricted(),
     )
 }
 
@@ -130,9 +143,11 @@ impl RenderOperationConfig {
     pub(super) fn compile(
         options: &BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
+        capability_policy: RenderCapabilityPolicy,
     ) -> Result<Self, BindingError> {
-        let mut environment =
-            RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
+        let mut environment = RenderEnvironment::deterministic()
+            .with_capability_policy(capability_policy)
+            .with_runtime_policy(runtime_policy);
         environment = environment.with_resource_policy(binding_resource_policy(
             options.analysis.resources.as_ref(),
         )?);
@@ -157,10 +172,12 @@ impl RenderOperationConfig {
                         environment = environment.without_math_renderer();
                     }
                     "ratex" => {
-                        if !merman::svg::math_available() {
+                        if !capability_policy.allows(RenderCapability::Math)
+                            || !merman::svg::math_available()
+                        {
                             return Err(BindingError::missing_capability(
                                 "math",
-                                "environment.math_renderer=ratex requires the compiled math capability",
+                                "environment.math_renderer=ratex requires the artifact-owned math capability",
                             ));
                         }
                         environment = environment.with_compiled_math_renderer();
@@ -616,11 +633,8 @@ mod tests {
             }"##,
         )
         .expect("valid export options");
-        let config = RenderOperationConfig::compile(
-            &options,
-            merman::runtime::RuntimePolicy::deterministic(),
-        )
-        .expect("export options compile");
+        let config = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
+            .expect("export options compile");
         assert_eq!(config.raster_options.scale, 1.5);
         assert_eq!(config.raster_options.jpeg_quality, 82);
         let fit = config.raster_options.fit_to.expect("fit box");
@@ -647,11 +661,8 @@ mod tests {
             br#"{"svg":{"diagram_id":"docs-flow","viewBoxPadding":12.5}}"#,
         )
         .expect("valid SVG options");
-        let config = RenderOperationConfig::compile(
-            &options,
-            merman::runtime::RuntimePolicy::deterministic(),
-        )
-        .expect("SVG options compile");
+        let config = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
+            .expect("SVG options compile");
 
         assert_eq!(config.svg.diagram_id.as_deref(), Some("docs-flow"));
         assert_eq!(config.svg.viewbox_padding, 12.5);
@@ -662,10 +673,7 @@ mod tests {
     fn svg_viewbox_padding_rejects_negative_or_unrepresentable_values() {
         let error = crate::common::parse_options(br#"{"svg":{"viewbox_padding":-1}}"#)
             .and_then(|options| {
-                RenderOperationConfig::compile(
-                    &options,
-                    merman::runtime::RuntimePolicy::deterministic(),
-                )
+                compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
             })
             .err()
             .expect("negative SVG padding");
@@ -682,12 +690,9 @@ mod tests {
     fn export_options_reject_backend_colors_that_would_be_ignored() {
         let options = crate::common::parse_options(br#"{"raster":{"background":"not-a-color"}}"#)
             .expect("JSON shape is valid");
-        let error = RenderOperationConfig::compile(
-            &options,
-            merman::runtime::RuntimePolicy::deterministic(),
-        )
-        .err()
-        .expect("unsupported backend color");
+        let error = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
+            .err()
+            .expect("unsupported backend color");
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("raster.background"));
     }
@@ -718,12 +723,9 @@ mod tests {
 
         for &(options_json, expected_field) in cases {
             let options = crate::common::parse_options(options_json).expect("valid JSON shape");
-            let error = RenderOperationConfig::compile(
-                &options,
-                merman::runtime::RuntimePolicy::deterministic(),
-            )
-            .err()
-            .expect("invalid export option must fail before backend work");
+            let error = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
+                .err()
+                .expect("invalid export option must fail before backend work");
             assert_eq!(error.status(), BindingStatus::InvalidArgument);
             assert!(
                 error.message().contains(expected_field),

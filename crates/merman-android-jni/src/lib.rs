@@ -7,6 +7,9 @@
 //! typed method set, and every diagram operation goes through `BindingEngine::execute` with the
 //! generated operation vocabulary.
 
+mod artifact_contract;
+
+use artifact_contract::android_artifact_contract;
 #[cfg(feature = "svg")]
 use jni::objects::Global;
 use jni::{
@@ -18,7 +21,7 @@ use jni::{
 };
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
-    BindingError, BindingOperationRequest, BindingOperationResult, ValidatedArtifactContract,
+    BindingError, BindingOperationRequest, BindingOperationResult,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{BindingIconRegistry, BindingStatus, IconPack, build_icon_registry};
@@ -96,13 +99,6 @@ fn next_jni_engine_token(last_token: u64) -> Result<u64, BindingError> {
     token
         .filter(|token| *token <= i64::MAX as u64)
         .ok_or_else(|| BindingError::internal("Android engine token space is exhausted"))
-}
-
-static ARTIFACT_CONTRACT: ValidatedArtifactContract =
-    merman_bindings_core::native_sdk_artifact_contract!(AndroidJni);
-
-fn android_artifact_contract() -> &'static ValidatedArtifactContract {
-    &ARTIFACT_CONTRACT
 }
 
 #[cfg(feature = "svg")]

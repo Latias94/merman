@@ -90,8 +90,8 @@ pub use merman_render::text::{
     VendoredFontMetricsTextMeasurer, WrapMode,
 };
 pub use merman_render::{
-    Error as RenderError, LayoutOptions, RenderCapability, Result as RenderResult,
-    layout_cytoscape_available, layout_elk_available, math_available,
+    Error as RenderError, LayoutOptions, RenderCapability, RenderCapabilityPolicy,
+    Result as RenderResult, layout_cytoscape_available, layout_elk_available, math_available,
 };
 
 mod operation;

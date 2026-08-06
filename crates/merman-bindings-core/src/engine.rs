@@ -169,7 +169,8 @@ impl BindingEngine {
         base_options: common::BaseBindingOptions,
         services: BindingEngineServices,
     ) -> Result<Self, BindingError> {
-        let configs = BindingOperationConfigs::compile(options, runtime_policy.clone())?;
+        let configs =
+            BindingOperationConfigs::compile(options, runtime_policy.clone(), &artifact_contract)?;
         #[cfg(feature = "svg")]
         let render = configs.render.materialize(&services);
         Ok(Self {
@@ -214,8 +215,11 @@ impl BindingEngine {
                     .base_options
                     .apply_overlay(overlay, &self.artifact_contract)?;
                 self.services.validate_options(&options)?;
-                let configs =
-                    BindingOperationConfigs::compile(&options, self.runtime_policy.clone())?;
+                let configs = BindingOperationConfigs::compile(
+                    &options,
+                    self.runtime_policy.clone(),
+                    &self.artifact_contract,
+                )?;
                 Ok(PreparedRequestOverlay::Override(configs))
             }
         }
@@ -775,6 +779,7 @@ impl BindingOperationConfigs {
     fn compile(
         options: &common::BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
+        artifact_contract: &ValidatedArtifactContract,
     ) -> Result<Self, BindingError> {
         let runtime_policy = common::binding_runtime_policy_from(options, runtime_policy)?;
         let semantic = SemanticOperationConfig::compile(options, runtime_policy.clone())?;
@@ -782,8 +787,13 @@ impl BindingOperationConfigs {
         let analysis =
             common::artifact_analysis_options(options)?.with_runtime_policy(runtime_policy.clone());
         #[cfg(feature = "svg")]
-        let render =
-            crate::render::RenderOperationConfig::compile(options, runtime_policy.clone())?;
+        let render = crate::render::RenderOperationConfig::compile(
+            options,
+            runtime_policy.clone(),
+            artifact_contract.render_capability_policy(),
+        )?;
+        #[cfg(not(feature = "svg"))]
+        let _ = artifact_contract;
         #[cfg(feature = "ascii")]
         let ascii = crate::ascii::AsciiOperationConfig::compile(options, runtime_policy)?;
 

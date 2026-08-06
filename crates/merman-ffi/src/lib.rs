@@ -5104,6 +5104,100 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         );
     }
 
+    #[cfg(all(
+        feature = "svg",
+        not(any(feature = "layout-cytoscape", feature = "layout-elk", feature = "math"))
+    ))]
+    #[test]
+    fn optional_render_capabilities_follow_the_native_c_owner_contract() {
+        let api = api_table();
+
+        let mut catalog_result = native_result();
+        assert_eq!(
+            unsafe { api.runtime_catalog.unwrap()(&mut catalog_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        let catalog = result_json(&catalog_result);
+        let capability_ids = catalog["capabilities"]["capability_ids"]
+            .as_array()
+            .expect("capability IDs");
+        assert!(capability_ids.iter().any(|id| id == "svg"));
+        unsafe { api.result_free.unwrap()(&mut catalog_result) };
+
+        let mut config_result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        for (capability_id, source) in [
+            (
+                "layout-cytoscape",
+                b"architecture-beta\n  service api(server)[API]".as_slice(),
+            ),
+            (
+                "layout-elk",
+                b"---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B".as_slice(),
+            ),
+            ("math", b"flowchart TD\nA[\"$$x^2$$\"] --> B".as_slice()),
+        ] {
+            assert!(!capability_ids.iter().any(|id| id == capability_id));
+
+            let plan_request = native_request(MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON, source);
+            let mut plan_result = native_result();
+            assert_eq!(
+                unsafe { api.execute_collect.unwrap()(token, &plan_request, &mut plan_result) },
+                MERMAN_NATIVE_STATUS_OK
+            );
+            let plan_bytes =
+                unsafe { std::slice::from_raw_parts(plan_result.data.data, plan_result.data.len) };
+            let plan: serde_json::Value = serde_json::from_slice(plan_bytes).unwrap();
+            assert_eq!(
+                plan["required_capability_ids"],
+                serde_json::json!([capability_id])
+            );
+            assert_eq!(
+                plan["missing_capability_ids"],
+                serde_json::json!([capability_id])
+            );
+            assert_eq!(plan["ready"], false);
+            unsafe { api.result_free.unwrap()(&mut plan_result) };
+
+            let render_request = native_request(MERMAN_NATIVE_OPERATION_SVG, source);
+            let mut render_result = native_result();
+            assert_eq!(
+                unsafe { api.execute_collect.unwrap()(token, &render_request, &mut render_result) },
+                MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+            );
+            let error = result_json(&render_result);
+            assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
+            assert_eq!(error["capability_id"], capability_id);
+            unsafe { api.result_free.unwrap()(&mut render_result) };
+        }
+
+        let ratex_request = native_request_with_options(
+            MERMAN_NATIVE_OPERATION_SVG,
+            b"flowchart TD\nA --> B",
+            br#"{"environment":{"math_renderer":"ratex"}}"#,
+        );
+        let mut ratex_result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &ratex_request, &mut ratex_result) },
+            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+        );
+        let error = result_json(&ratex_result);
+        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
+        assert_eq!(error["capability_id"], "math");
+        unsafe { api.result_free.unwrap()(&mut ratex_result) };
+
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
     #[test]
     fn acquired_engine_reference_cannot_enter_after_successful_close() {
         let api = api_table();

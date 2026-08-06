@@ -812,6 +812,27 @@ impl ValidatedArtifactContract {
         self.capabilities.contains(key)
     }
 
+    #[cfg(feature = "svg")]
+    pub(crate) fn render_capability_policy(&self) -> merman::svg::RenderCapabilityPolicy {
+        let mut policy = merman::svg::RenderCapabilityPolicy::deny_all();
+        for (owner_capability, render_capability) in [
+            (
+                CapabilityKey::LayoutCytoscape,
+                merman::svg::RenderCapability::LayoutCytoscape,
+            ),
+            (
+                CapabilityKey::LayoutElk,
+                merman::svg::RenderCapability::LayoutElk,
+            ),
+            (CapabilityKey::Math, merman::svg::RenderCapability::Math),
+        ] {
+            if self.capabilities.contains(owner_capability) {
+                policy = policy.with_allowed(render_capability);
+            }
+        }
+        policy
+    }
+
     pub(crate) fn exposes_option_group(&self, key: BindingOptionGroupKey) -> bool {
         self.option_groups.contains(key)
     }

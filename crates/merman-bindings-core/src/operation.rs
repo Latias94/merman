@@ -1774,7 +1774,7 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn elk_layout_request_follows_the_resolved_dependency_feature_set() {
+    fn elk_layout_request_follows_the_artifact_owner_feature() {
         let engine = BindingEngine::new(b"").unwrap();
         let result = engine.execute(BindingOperationRequest {
             operation_id: "svg",
@@ -1783,10 +1783,10 @@ mod tests {
             options_json: b"",
         });
 
-        if merman::svg::layout_elk_available() {
+        if cfg!(feature = "layout-elk") {
             assert_eq!(result.unwrap().media_type, "image/svg+xml");
         } else {
-            let error = result.expect_err("ELK is not compiled");
+            let error = result.expect_err("the artifact owner did not select ELK");
             assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
             assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
             assert_eq!(error.capability_id(), Some("layout-elk"));

@@ -255,7 +255,7 @@ mod tests {
             "flowchart TD\nA --> B",
             br#"{"presentation":{"profile":"merman-modern"}}"#,
         );
-        let expected = if merman::svg::layout_elk_available() {
+        let expected = if cfg!(feature = "layout-elk") {
             "active"
         } else {
             "blocked"
@@ -264,20 +264,17 @@ mod tests {
             default_flowchart["presentation_aspects"][2]["state"],
             expected
         );
-        assert_eq!(
-            default_flowchart["ready"],
-            merman::svg::layout_elk_available()
-        );
+        assert_eq!(default_flowchart["ready"], cfg!(feature = "layout-elk"));
     }
 
     #[cfg(feature = "svg")]
     #[test]
-    fn elk_flowchart_plan_follows_the_resolved_dependency_feature_set() {
+    fn elk_flowchart_plan_follows_the_artifact_owner_feature() {
         let value = plan(
             "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
             b"",
         );
-        let expected_missing = if merman::svg::layout_elk_available() {
+        let expected_missing = if cfg!(feature = "layout-elk") {
             serde_json::json!([])
         } else {
             serde_json::json!(["layout-elk"])
@@ -288,7 +285,7 @@ mod tests {
             serde_json::json!(["layout-elk"])
         );
         assert_eq!(value["missing_capability_ids"], expected_missing);
-        assert_eq!(value["ready"], merman::svg::layout_elk_available());
+        assert_eq!(value["ready"], cfg!(feature = "layout-elk"));
     }
 
     #[cfg(feature = "svg")]
@@ -299,8 +296,8 @@ mod tests {
             b"",
         );
         let expected_missing = [
-            (!merman::svg::layout_elk_available()).then_some("layout-elk"),
-            (!merman::svg::math_available()).then_some("math"),
+            (!cfg!(feature = "layout-elk")).then_some("layout-elk"),
+            (!cfg!(feature = "math")).then_some("math"),
         ]
         .into_iter()
         .flatten()
