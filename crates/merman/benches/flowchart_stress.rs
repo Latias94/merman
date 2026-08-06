@@ -463,6 +463,47 @@ fn bench_flowchart_curves(c: &mut Criterion) {
     );
 }
 
+fn flowchart_svg_label_reuse_source(nodes: usize, unique_text: bool) -> String {
+    assert!(nodes >= 2);
+    let mut source = String::from(
+        r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 120
+---
+flowchart LR
+"#,
+    );
+    for node in 0..nodes {
+        let suffix = if unique_text {
+            format!(" unique node {node}")
+        } else {
+            String::new()
+        };
+        writeln!(
+            &mut source,
+            "  N{node}[\"alpha beta gamma delta epsilon zeta eta theta{suffix}\"]"
+        )
+        .expect("write node");
+    }
+    for edge in 1..nodes {
+        let suffix = if unique_text {
+            format!(" unique edge {edge}")
+        } else {
+            String::new()
+        };
+        writeln!(
+            &mut source,
+            "  N{} -->|edge label alpha beta gamma delta{suffix}| N{edge}",
+            edge - 1
+        )
+        .expect("write edge");
+    }
+    source
+}
+
 fn bench_emit_svg_controls(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
@@ -470,10 +511,25 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
     let environment = RenderEnvironment::deterministic();
     let mut group = c.benchmark_group("emit_svg_stress");
 
-    for (name, input) in [
-        ("flowchart_medium", FLOWCHART_MEDIUM),
-        ("flowchart_ports_heavy", FLOWCHART_PORTS_HEAVY),
-    ] {
+    let mut cases = vec![
+        ("flowchart_medium".to_string(), FLOWCHART_MEDIUM.to_string()),
+        (
+            "flowchart_ports_heavy".to_string(),
+            FLOWCHART_PORTS_HEAVY.to_string(),
+        ),
+    ];
+    for nodes in [8, 64, 256] {
+        cases.push((
+            format!("label_phase_reuse_repeated_n{nodes:03}"),
+            flowchart_svg_label_reuse_source(nodes, false),
+        ));
+        cases.push((
+            format!("label_phase_reuse_unique_n{nodes:03}"),
+            flowchart_svg_label_reuse_source(nodes, true),
+        ));
+    }
+
+    for (name, input) in &cases {
         let parsed = engine
             .parse_diagram_for_render_model_sync(input, parse_opts)
             .expect("parse")
