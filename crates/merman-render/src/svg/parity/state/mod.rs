@@ -3,7 +3,6 @@ use rustc_hash::FxHashMap;
 use std::sync::Arc;
 mod context;
 mod edge;
-mod links;
 mod node;
 mod rough_cache;
 pub(in crate::svg::parity) mod roughjs;
@@ -24,7 +23,6 @@ use roughjs::{
 
 use context::*;
 use edge::*;
-use links::*;
 use node::*;
 use rough_cache::*;
 use style::*;
@@ -33,7 +31,6 @@ use viewport::*;
 type StateSvgModel = merman_core::diagrams::state::StateDiagramRenderModel;
 type StateSvgState = merman_core::diagrams::state::StateDiagramRenderState;
 type StateSvgLink = merman_core::diagrams::state::StateDiagramRenderLink;
-type StateSvgLinks = merman_core::diagrams::state::StateDiagramRenderLinks;
 type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
 type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
 type StateRoughPathPair = (Arc<String>, Arc<String>);
@@ -55,7 +52,7 @@ struct StateRenderCtx<'a> {
     nested_roots: std::collections::BTreeSet<String>,
     hidden_prefixes: Vec<String>,
     security_level_loose: bool,
-    links: &'a std::collections::HashMap<String, StateSvgLinks>,
+    links: &'a std::collections::HashMap<String, StateSvgLink>,
     states: &'a std::collections::HashMap<String, StateSvgState>,
     edges: &'a [StateSvgEdge],
     include_edges: bool,

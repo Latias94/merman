@@ -15,8 +15,9 @@ fn render_svg(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
 
 fn render_resvg_safe(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
     renderer
-        .render_svg_resvg_safe_sync(source)
+        .render_resvg_compatible_svg_sync(source)
         .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
+        .map(merman::svg::ResvgCompatibleSvg::into_string)
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
@@ -60,6 +61,79 @@ fn strict_click_javascript_url_does_not_emit_renderable_href() {
     assert_xml_parseable("security-url", &svg);
     assert!(!svg.to_ascii_lowercase().contains("javascript:"), "{svg}");
     assert!(!svg.contains(r#"xlink:href="about:blank""#), "{svg}");
+}
+
+#[test]
+fn kanban_ticket_navigation_is_preserved_under_strict_mermaid_security() {
+    let source = r#"---
+config:
+  kanban:
+    ticketBaseUrl: 'https://mermaidchart.atlassian.net/browse/#TICKET#'
+---
+kanban
+  Todo
+    id4[Create parsing tests]@{ ticket: MC-2038 }
+"#;
+    let renderer = HeadlessRenderer::new().with_diagram_id("security-kanban-link");
+
+    let parity = render_svg(&renderer, "security-kanban-link", source);
+    let resvg_safe = render_resvg_safe(&renderer, "security-kanban-link-resvg", source);
+
+    for svg in [&parity, &resvg_safe] {
+        assert_xml_parseable("security-kanban-link-output", svg);
+        assert!(
+            svg.contains(r#"xlink:href="https://mermaidchart.atlassian.net/browse/MC-2038""#),
+            "{svg}"
+        );
+        assert!(!svg.contains(r#"target="_blank""#), "{svg}");
+    }
+}
+
+#[test]
+fn kanban_strict_security_removes_an_unsafe_ticket_href_but_keeps_the_anchor() {
+    let renderer = HeadlessRenderer::new()
+        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "strict",
+            "kanban": {
+                "ticketBaseUrl": "javascript:alert('#TICKET#')"
+            }
+        })))
+        .with_diagram_id("security-kanban-strict");
+    let source = "kanban\n  Todo\n    id4[Create parsing tests]@{ ticket: MC-2038 }\n";
+
+    let svg = render_svg(&renderer, "security-kanban-strict", source);
+
+    assert_xml_parseable("security-kanban-strict", &svg);
+    assert!(svg.contains(r#"<a class="kanban-ticket-link">"#), "{svg}");
+    assert!(!svg.contains("xlink:href"), "{svg}");
+    assert!(!svg.contains(r#"target="_blank""#), "{svg}");
+    assert!(!svg.to_ascii_lowercase().contains("javascript:"), "{svg}");
+    assert!(!svg.contains("about:blank"), "{svg}");
+    assert!(svg.contains("MC-2038"), "{svg}");
+}
+
+#[test]
+fn kanban_loose_parity_and_resvg_safe_keep_separate_security_contracts() {
+    let renderer = HeadlessRenderer::new()
+        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose",
+            "kanban": {
+                "ticketBaseUrl": "javascript:alert('#TICKET#')"
+            }
+        })))
+        .with_diagram_id("security-kanban-loose");
+    let source = "kanban\n  Todo\n    id4[Create parsing tests]@{ ticket: MC-2038 }\n";
+
+    let parity = render_svg(&renderer, "security-kanban-loose-parity", source);
+    let resvg_safe = render_resvg_safe(&renderer, "security-kanban-loose-resvg", source);
+
+    assert!(parity.contains("javascript:alert("), "{parity}");
+    assert!(parity.contains(r#"target="_blank""#), "{parity}");
+    assert!(
+        !resvg_safe.to_ascii_lowercase().contains("javascript:"),
+        "{resvg_safe}"
+    );
+    assert!(resvg_safe.contains("MC-2038"), "{resvg_safe}");
 }
 
 #[test]
@@ -177,7 +251,9 @@ fn raw_resvg_safe_pipeline_strips_active_svg_content() {
 </svg>"##;
 
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let out = merman::svg::svg_resvg_safe(svg, &session).unwrap();
+    let out = merman::svg::finalize_resvg_svg(svg, &session)
+        .unwrap()
+        .into_string();
 
     assert_xml_parseable("raw-resvg-safe-active-content", &out);
     let lower = out.to_ascii_lowercase();

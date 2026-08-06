@@ -25,7 +25,7 @@ pub struct StateDiagramRenderModel {
     #[serde(default)]
     pub relations: Vec<StateDiagramRenderRelation>,
     #[serde(default)]
-    pub links: HashMap<String, StateDiagramRenderLinks>,
+    pub links: HashMap<String, StateDiagramRenderLink>,
     #[serde(default)]
     pub states: HashMap<String, StateDiagramRenderState>,
     #[serde(default, rename = "styleClasses")]
@@ -97,13 +97,6 @@ pub struct StateDiagramRenderLink {
     pub url: String,
     #[serde(default)]
     pub tooltip: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum StateDiagramRenderLinks {
-    One(StateDiagramRenderLink),
-    Many(Vec<StateDiagramRenderLink>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -47,10 +47,6 @@ const admissionPath = path.join(
   "upstreams",
   "ZENUML_CORE_ADMISSION.json"
 );
-const inlineValidatorRelativePaths = Object.freeze([
-  "platforms/web/src/svg-safety-policy.ts",
-  "platforms/web/src/svg-safety.ts",
-]);
 const officialNpmRegistry = "https://registry.npmjs.org/";
 const publishPredicate =
   "https://github.com/npm/attestation/tree/main/specs/publish/v0.1";
@@ -388,14 +384,7 @@ const admission = JSON.parse(await readFile(admissionPath, "utf8"));
 const zenuml = bundle.externalDiagrams.find((diagram) => diagram.id === "zenuml");
 assert(zenuml, "reference bundle must contain ZenUML");
 const sources = await loadCorpusSources();
-const harnessSha256 = await fileSha256(scriptPath);
-const inlineValidatorSources = await Promise.all(
-  inlineValidatorRelativePaths.map(async (relativePath) => ({
-    path: relativePath,
-    sha256: await fileSha256(path.join(workspaceRoot, relativePath)),
-  }))
-);
-const assertSafeSvgWithMessagePrefix = await loadInlineSvgValidator();
+const assertSelfContainedSvgWithMessagePrefix = await loadInlineSvgValidator();
 const browserAdmission = await loadVerifiedBrowserAdmissionEvidence(workspaceRoot);
 
 if (!online) {
@@ -403,12 +392,10 @@ if (!online) {
   const attestationArtifacts = await loadAttestationArtifacts(zenuml);
   verifyEvidence(evidence, {
     bundle,
-    harnessSha256,
     sources,
     zenuml,
     attestationArtifacts,
     browserAdmission,
-    inlineValidatorSources,
   });
   verifyAdmissionFixtureCounts(admission, evidence.corpus.fixtureCount);
   verifyAdmissionBrowserEvidence(admission, evidence);
@@ -483,14 +470,12 @@ try {
   );
   const strictInlineSvg = validateStrictInlineSvgCorpus(
     candidateObservation.nativeSvgs,
-    sources,
-    inlineValidatorSources
+    sources
   );
 
   const evidence = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     harness: "playground/scripts/zenuml-core-candidate-matrix.mjs",
-    harnessSha256,
     command: "npm run verify:zenuml-candidate",
     onlineCommand: "npm run verify:zenuml-candidate:online",
     oracle: packageEvidence(oracle, supplyChainResults.oracle.evidence),
@@ -544,12 +529,10 @@ try {
 
   verifyEvidence(evidence, {
     bundle,
-    harnessSha256,
     sources,
     zenuml,
     attestationArtifacts,
     browserAdmission,
-    inlineValidatorSources,
   });
   synchronizeAdmissionFixtureCounts(admission, evidence.corpus.fixtureCount);
   synchronizeAdmissionBrowserEvidence(admission, evidence);
@@ -605,8 +588,8 @@ async function loadInlineSvgValidator() {
   assert.deepEqual(errors, [], "strict inline SVG validator failed to transpile");
   const encoded = Buffer.from(transpiled.outputText).toString("base64");
   const module = await import(`data:text/javascript;base64,${encoded}`);
-  assert.equal(typeof module.assertSafeSvgWithMessagePrefix, "function");
-  return module.assertSafeSvgWithMessagePrefix;
+  assert.equal(typeof module.assertSelfContainedSvgWithMessagePrefix, "function");
+  return module.assertSelfContainedSvgWithMessagePrefix;
 }
 
 async function loadCorpusSources() {
@@ -807,7 +790,7 @@ function classifyBehaviorProbes(oracleRows, candidateRows) {
   });
 }
 
-function validateStrictInlineSvgCorpus(nativeSvgs, sources, validatorSources) {
+function validateStrictInlineSvgCorpus(nativeSvgs, sources) {
   assert.equal(nativeSvgs.length, sources.length);
   assert.deepEqual(
     nativeSvgs.map(({ name }) => name),
@@ -818,7 +801,7 @@ function validateStrictInlineSvgCorpus(nativeSvgs, sources, validatorSources) {
   const fixtures = [];
   for (const { name, svg } of nativeSvgs) {
     assert.equal(typeof svg, "string", `${name} has no native SVG output`);
-    assertSafeSvgWithMessagePrefix(svg, `ZenUML fixture ${name}`);
+    assertSelfContainedSvgWithMessagePrefix(svg, `ZenUML fixture ${name}`);
     assert.doesNotMatch(
       svg,
       /<foreignObject(?:\s|>)/iu,
@@ -841,7 +824,6 @@ function validateStrictInlineSvgCorpus(nativeSvgs, sources, validatorSources) {
     passedCount: nativeSvgs.length,
     totalSvgBytes,
     maxSvgBytes,
-    validatorSources,
     fixtures,
   };
 }
@@ -1240,16 +1222,13 @@ function verifyAdmissionBrowserEvidence(admission, evidence) {
 
 function verifyEvidence(evidence, context) {
   const {
-    harnessSha256: expectedHarness,
     sources,
     zenuml,
     attestationArtifacts,
     browserAdmission,
-    inlineValidatorSources,
   } = context;
-  assert.equal(evidence.schemaVersion, 5);
+  assert.equal(evidence.schemaVersion, 6);
   assert.equal(evidence.harness, "playground/scripts/zenuml-core-candidate-matrix.mjs");
-  assert.equal(evidence.harnessSha256, expectedHarness);
   assert.equal(evidence.command, "npm run verify:zenuml-candidate");
   assert.equal(evidence.onlineCommand, "npm run verify:zenuml-candidate:online");
   for (const [name, reference] of [
@@ -1325,10 +1304,6 @@ function verifyEvidence(evidence, context) {
     assert(fixture.svgBytes > 0);
     assert.match(fixture.svgSha256, /^[a-f0-9]{64}$/u);
   }
-  assert.deepEqual(
-    evidence.strictInlineSvg.validatorSources,
-    inlineValidatorSources
-  );
   assert.deepEqual(
     evidence.executionIsolation,
     browserEvidenceSummary(browserAdmission, "execution-isolation")
@@ -1469,10 +1444,6 @@ function readPath(value, pointer) {
 
 function corpusDigest(inputs) {
   return createHash("sha256").update(JSON.stringify(inputs)).digest("hex");
-}
-
-async function fileSha256(file) {
-  return createHash("sha256").update(await readFile(file)).digest("hex");
 }
 
 async function fetchJson(url) {

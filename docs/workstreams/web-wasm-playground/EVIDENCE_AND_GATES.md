@@ -445,10 +445,34 @@ Results:
   JavaScript and package contracts, stable WASM source/profile/capability inputs, and semantic
   evidence to deterministic content digests. Current generated JavaScript and WASM artifacts must
   still match their provenance, while platform-specific WASM binary identity and host-form tool
-  descriptions do not invalidate the cross-platform receipt. The hermetic authority verifier
-  recomputes those inputs and the derived decision without a browser. The complete receipt is
-  checked in at
+  descriptions do not invalidate the cross-platform receipt. The checked receipt is historical
+  on-demand architecture evidence; its normal authority verifier validates the derived decision
+  and the current dependency/lockfile/Worker-import topology without recomputing historical content
+  digests. Routine implementation drift uses ordinary build, provenance, semantic, and contract
+  tests rather than a browser-measurement gate. The complete receipt is checked in at
   [`editor-artifact-receipt-v2.json`](./editor-artifact-receipt-v2.json).
+
+### 2026-08-06 - Behavior-Owned Evidence Boundaries
+
+Changes:
+
+- Removed the R16 freshness gate that compared current build/runtime/package digests with the
+  checked browser-measurement receipt. Those hashes remain recorded historical capture provenance
+  and are checked for receipt shape and internally derived consistency, not current-source identity.
+- Kept the fast selection-topology contract: the selected package must match current Playground
+  dependency declarations, exact local lockfile resolutions, and the actual language Worker import
+  graph.
+- Kept browser measurement on demand for an explicit full/editor architecture reconsideration;
+  normal source, Rust/WASM, Vite, and dependency changes do not require Chromium remeasurement.
+- Kept ZenUML evidence bound to the probe contract, artifact digest, observed categories, and
+  pass/count facts. Implementation source-byte hashes were removed because they turned ordinary
+  security-policy maintenance into a stale evidence failure.
+
+Validation intent:
+
+- Fast Node contract and topology tests run in normal prepared validation.
+- Chromium R16 and ZenUML browser lanes remain explicit on-demand evidence refresh commands, not
+  merge gates.
 
 ### 2026-08-06 - Portable R16 And ZenUML Evidence Boundaries
 

@@ -19,28 +19,6 @@ const reporterPath = path.join(
   "scripts",
   "zenuml-admission-reporter.mjs"
 );
-export const BROWSER_ADMISSION_SOURCE_RELATIVE_PATHS = Object.freeze(
-  [
-    "platforms/web/src/svg-safety-policy.ts",
-    "platforms/web/src/svg-safety.ts",
-    "playground/scripts/zenuml-admission-reporter.mjs",
-    "playground/scripts/zenuml-browser-admission.mjs",
-    "playground/src/benchmark/realm/generated/benchmark-mermaid.generated.ts",
-    "playground/src/benchmark/realm/bootstrap.ts",
-    "playground/src/benchmark/realm/controller.ts",
-    "playground/src/benchmark/realm/engines/mermaid.ts",
-    "playground/src/benchmark/realm/opaque-mermaid-artifact.ts",
-    "playground/src/benchmark/realm/opaque-mermaid-entry.ts",
-    "playground/src/runtime/realm/browser-realm-channel.ts",
-    "playground/src/runtime/realm/channel-protocol.ts",
-    "playground/src/runtime/realm/generated/opaque-realm-plan.generated.ts",
-    "playground/src/runtime/realm/opaque-realm-document.ts",
-    "playground/src/runtime/realm/opaque-realm-projection.ts",
-    "playground/src/runtime/render-artifact.ts",
-    "playground/tests/benchmark.realm.spec.ts",
-  ].sort()
-);
-
 export async function loadVerifiedBrowserAdmissionEvidence(
   workspaceRoot = defaultWorkspaceRoot
 ) {
@@ -51,8 +29,7 @@ export async function loadVerifiedBrowserAdmissionEvidence(
   const evidencePath = path.join(workspaceRoot, evidenceRelativePath);
   const serialized = await readFile(evidencePath, "utf8");
   const evidence = JSON.parse(serialized);
-  const expectedSources = await sourceEvidence(workspaceRoot);
-  validateEvidence(evidence, contract, expectedSources);
+  validateEvidence(evidence, contract);
   assert.equal(serialized, canonicalJson(evidence));
   return {
     evidence,
@@ -88,15 +65,14 @@ function validateContract(contract) {
   }
 }
 
-function validateEvidence(evidence, contract, expectedSources) {
-  assert.equal(evidence.schemaVersion, 1);
+function validateEvidence(evidence, contract) {
+  assert.equal(evidence.schemaVersion, 2);
   assert.equal(evidence.command, "npm run test:zenuml-browser-admission");
   assert.equal(
     evidence.generatedBy,
     "playground/scripts/zenuml-browser-admission.mjs"
   );
   assert.deepEqual(evidence.projects, contract.projects);
-  assert.deepEqual(evidence.sourceFiles, expectedSources);
   assert.equal(evidence.probeContract.path, probeContractRelativePath);
   assert.equal(
     evidence.probeContract.sha256,
@@ -183,17 +159,13 @@ async function runBrowserAdmission(workspaceRoot) {
       path.join(workspaceRoot, probeContractRelativePath)
     );
     validateContract(contract);
-    return buildEvidence(
-      report,
-      contract,
-      await sourceEvidence(workspaceRoot)
-    );
+    return buildEvidence(report, contract);
   } finally {
     await rm(temporaryReport, { force: true });
   }
 }
 
-function buildEvidence(report, contract, sources) {
+function buildEvidence(report, contract) {
   const observations = new Map();
   for (const category of Object.keys(contract.categories)) {
     observations.set(
@@ -227,14 +199,13 @@ function buildEvidence(report, contract, sources) {
   }
 
   const evidence = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedBy: "playground/scripts/zenuml-browser-admission.mjs",
     command: "npm run test:zenuml-browser-admission",
     probeContract: {
       path: probeContractRelativePath,
       sha256: sha256(canonicalJson(contract)),
     },
-    sourceFiles: sources,
     projects: contract.projects,
   };
   for (const [category, requiredProbes] of Object.entries(contract.categories)) {
@@ -265,17 +236,8 @@ function buildEvidence(report, contract, sources) {
       probes,
     };
   }
-  validateEvidence(evidence, contract, sources);
+  validateEvidence(evidence, contract);
   return evidence;
-}
-
-async function sourceEvidence(workspaceRoot) {
-  return Promise.all(
-    BROWSER_ADMISSION_SOURCE_RELATIVE_PATHS.map(async (relativePath) => ({
-      path: relativePath,
-      sha256: sha256(await readFile(path.join(workspaceRoot, relativePath))),
-    }))
-  );
 }
 
 function camelCategory(category) {

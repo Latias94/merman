@@ -28,7 +28,7 @@ test("preview preserves safe HTML-compatible SVG through inert DOM parsing", asy
 }) => {
   await page.goto(sourceOrigin);
   const rendered = await page.evaluate(async () => {
-    const { projectSafeInlineSvg } = await import(
+    const { projectNavigableInlineSvg } = await import(
       "/src/runtime/" + "render-artifact.ts"
     );
     const { prepareSvgForResponsivePreview } = await import(
@@ -48,7 +48,8 @@ test("preview preserves safe HTML-compatible SVG through inert DOM parsing", asy
 
     return cases.map((svg) => {
       const preview = prepareSvgForResponsivePreview(
-        projectSafeInlineSvg(svg)
+        projectNavigableInlineSvg(svg),
+        document
       );
       if (!preview) return { prepared: false };
 
@@ -147,4 +148,150 @@ test("preview preserves safe HTML-compatible SVG through inert DOM parsing", asy
       text: "",
     },
   ]);
+});
+
+test("preview hardens external anchors without mutating the export source", async ({
+  page,
+}) => {
+  await page.goto(sourceOrigin);
+  const result = await page.evaluate(async () => {
+    const { projectNavigableInlineSvg } = await import(
+      "/src/runtime/" + "render-artifact.ts"
+    );
+    const { prepareSvgForResponsivePreview } = await import(
+      "/src/lib/" + "svg-geometry.ts"
+    );
+    const source = [
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="240" height="80">',
+      '<a href="https://example.test/browse/MC-1" target="_top" rel="nofollow"><text>https</text></a>',
+      '<a xlink:href="mailto:maintainer@example.test"><text>mail</text></a>',
+      '<a href="tel:+1234567890"><text>tel</text></a>',
+      '<a href="../browse/MC-2"><text>relative</text></a>',
+      '<a href="#local-ticket" target="_top"><text>fragment</text></a>',
+      "</svg>",
+    ].join("");
+    const artifact = projectNavigableInlineSvg(source);
+    const preview = prepareSvgForResponsivePreview(artifact, document);
+    if (!preview) throw new Error("Expected a prepared SVG preview.");
+
+    const anchors = [...preview.takeNode().querySelectorAll("a")].map(
+      (anchor) => ({
+        href:
+          anchor.getAttribute("href") ??
+          anchor.getAttributeNS("http://www.w3.org/1999/xlink", "href") ??
+          anchor.getAttribute("xlink:href"),
+        rel: anchor.getAttribute("rel"),
+        target: anchor.getAttribute("target"),
+      })
+    );
+    return {
+      anchors,
+      exportSourceUnchanged: artifact.svg === source,
+      exportSourceHasHardening:
+        artifact.svg.includes('target="_blank"') ||
+        artifact.svg.includes("noopener") ||
+        artifact.svg.includes("noreferrer"),
+    };
+  });
+
+  expect(result).toEqual({
+    anchors: [
+      {
+        href: "https://example.test/browse/MC-1",
+        rel: "nofollow noopener noreferrer",
+        target: "_blank",
+      },
+      {
+        href: "mailto:maintainer@example.test",
+        rel: "noopener noreferrer",
+        target: "_blank",
+      },
+      {
+        href: "tel:+1234567890",
+        rel: "noopener noreferrer",
+        target: "_blank",
+      },
+      {
+        href: "../browse/MC-2",
+        rel: "noopener noreferrer",
+        target: "_blank",
+      },
+      {
+        href: "#local-ticket",
+        rel: null,
+        target: "_self",
+      },
+    ],
+    exportSourceHasHardening: false,
+    exportSourceUnchanged: true,
+  });
+});
+
+test("preview binds fragment references to the actual mount document", async ({
+  page,
+}) => {
+  await page.route("**/mount-document-fixture", (route) =>
+    route.fulfill({
+      body: [
+        "<!doctype html>",
+        '<html><head><base href="https://collector.example/external.svg"></head>',
+        "<body></body></html>",
+      ].join(""),
+      contentType: "text/html",
+    })
+  );
+  await page.goto(sourceOrigin);
+  const result = await page.evaluate(async () => {
+    const { projectNavigableInlineSvg } = await import(
+      "/src/runtime/" + "render-artifact.ts"
+    );
+    const { prepareSvgForResponsivePreview } = await import(
+      "/src/lib/" + "svg-geometry.ts"
+    );
+    const frame = document.createElement("iframe");
+    const loaded = new Promise<void>((resolve, reject) => {
+      frame.addEventListener("load", () => resolve(), { once: true });
+      frame.addEventListener(
+        "error",
+        () => reject(new Error("Mount-document fixture failed to load.")),
+        { once: true }
+      );
+    });
+    frame.src = "/mount-document-fixture";
+    document.body.append(frame);
+    await loaded;
+    const mountDocument = frame.contentDocument;
+    if (!mountDocument) {
+      throw new Error("Mount-document fixture is not same-origin.");
+    }
+
+    let fragmentError = "";
+    try {
+      prepareSvgForResponsivePreview(
+        projectNavigableInlineSvg(
+          '<svg xmlns="http://www.w3.org/2000/svg"><use href="#node"/></svg>'
+        ),
+        mountDocument
+      )?.takeNode();
+    } catch (error) {
+      fragmentError = error instanceof Error ? error.message : String(error);
+    }
+
+    const fragmentFreePreview = prepareSvgForResponsivePreview(
+      projectNavigableInlineSvg(
+        '<svg xmlns="http://www.w3.org/2000/svg"><text>safe</text></svg>'
+      ),
+      mountDocument
+    );
+    const result = {
+      fragmentError,
+      fragmentFreePrepared:
+        fragmentFreePreview?.takeNode().ownerDocument === mountDocument,
+    };
+    frame.remove();
+    return result;
+  });
+
+  expect(result.fragmentError).toMatch(/base URI differs/u);
+  expect(result.fragmentFreePrepared).toBe(true);
 });

@@ -4,9 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { assertSafeSvgForDom } = await import(
-  pathToFileURL(path.join(packageRoot, "dist", "svg-safety.js")).href
-);
+const {
+  assertNavigableSvgForDom,
+  assertSelfContainedSvgForDom,
+  prepareNavigableSvgForDomMount,
+  prepareSelfContainedSvgForDomMount,
+} = await import(pathToFileURL(path.join(packageRoot, "dist", "svg-safety.js")).href);
 
 const PNG_1X1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -19,12 +22,293 @@ const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
 const MAX_ENCODED_IMAGE_BYTES = 24 * 1024 * 1024;
 const MAX_SVG_SOURCE_BYTES = 64 * 1024 * 1024;
 
+const localDocument = Object.freeze({
+  URL: "https://example.com/playground?diagram=1#current",
+  baseURI: "https://example.com/playground?diagram=1#base",
+});
+const externalBaseDocument = Object.freeze({
+  URL: "https://example.com/playground?diagram=1",
+  baseURI: "https://collector.example/external.svg",
+});
+
+const fragmentSvg = '<svg><defs><path id="node"/></defs><use href="#node"/></svg>';
+const fragmentAdmission = assertSelfContainedSvgForDom(fragmentSvg);
+assert.equal(fragmentAdmission.hasFragmentReferences, true);
+assert.doesNotThrow(() =>
+  prepareSelfContainedSvgForDomMount(
+    fragmentAdmission,
+    mockRoot(fragmentSvg, localDocument),
+    localDocument,
+  ),
+);
+assert.throws(
+  () =>
+    prepareSelfContainedSvgForDomMount(
+      fragmentAdmission,
+      mockRoot(fragmentSvg, externalBaseDocument),
+      externalBaseDocument,
+    ),
+  /base URI differs/,
+);
+
+const fragmentFreeSvg = "<svg><text>safe</text></svg>";
+const fragmentFreeAdmission = assertSelfContainedSvgForDom(fragmentFreeSvg);
+assert.equal(fragmentFreeAdmission.hasFragmentReferences, false);
+assert.doesNotThrow(() =>
+  prepareSelfContainedSvgForDomMount(
+    fragmentFreeAdmission,
+    mockRoot(fragmentFreeSvg, externalBaseDocument),
+    externalBaseDocument,
+  ),
+);
+assert.throws(
+  () =>
+    prepareSelfContainedSvgForDomMount(
+      Object.freeze({ hasFragmentReferences: false }),
+      mockRoot(fragmentFreeSvg, localDocument),
+      localDocument,
+    ),
+  /was not created/,
+);
+const invalidDocument = Object.freeze({ URL: ":", baseURI: ":" });
+assert.throws(
+  () =>
+    prepareSelfContainedSvgForDomMount(
+      fragmentAdmission,
+      mockRoot(fragmentSvg, invalidDocument),
+      invalidDocument,
+    ),
+  /invalid URL or base URI/,
+);
+
+const colorSvg = '<svg><rect fill="#fff" stroke="#12345678"/></svg>';
+const colorAdmission = assertSelfContainedSvgForDom(colorSvg);
+assert.equal(colorAdmission.hasFragmentReferences, false);
+assert.doesNotThrow(() =>
+  prepareSelfContainedSvgForDomMount(
+    colorAdmission,
+    mockRoot(colorSvg, externalBaseDocument),
+    externalBaseDocument,
+  ),
+);
+const paintServerSvg =
+  '<svg><defs><linearGradient id="paint"/></defs><rect fill="url(#paint)"/></svg>';
+const paintServerAdmission = assertSelfContainedSvgForDom(paintServerSvg);
+assert.equal(paintServerAdmission.hasFragmentReferences, true);
+assert.throws(
+  () =>
+    prepareSelfContainedSvgForDomMount(
+      paintServerAdmission,
+      mockRoot(paintServerSvg, externalBaseDocument),
+      externalBaseDocument,
+    ),
+  /base URI differs/,
+);
+
+const externalAnchorAttributes = new Map([
+  ["href", "https://example.com/ticket/MC-1"],
+  ["rel", "external NOOPENER"],
+]);
+const externalAnchor = {
+  getAttribute(name) {
+    return externalAnchorAttributes.get(name) ?? null;
+  },
+  getAttributeNS() {
+    return null;
+  },
+  setAttribute(name, value) {
+    externalAnchorAttributes.set(name, value);
+  },
+};
+const navigableAdmission = assertNavigableSvgForDom(
+  '<svg><a href="https://example.com/ticket/MC-1">ticket</a></svg>',
+);
+const navigableRoot = {
+  ownerDocument: localDocument,
+  outerHTML: '<svg><a href="https://example.com/ticket/MC-1">ticket</a></svg>',
+  querySelectorAll() {
+    return [externalAnchor];
+  },
+};
+prepareNavigableSvgForDomMount(navigableAdmission, navigableRoot, localDocument);
+assert.equal(externalAnchorAttributes.get("target"), "_blank");
+assert.equal(externalAnchorAttributes.get("rel"), "external noopener noreferrer");
+assert.throws(
+  () =>
+    prepareNavigableSvgForDomMount(
+      fragmentFreeAdmission,
+      navigableRoot,
+      localDocument,
+    ),
+  /self-contained capability, not navigable capability/,
+);
+assert.throws(
+  () =>
+    prepareNavigableSvgForDomMount(
+      structuredClone(navigableAdmission),
+      navigableRoot,
+      localDocument,
+    ),
+  /was not created/,
+);
+assert.throws(
+  () =>
+    prepareNavigableSvgForDomMount(
+      navigableAdmission,
+      mockRoot('<svg><image href="https://example.com/tracker.png"/></svg>', localDocument),
+      localDocument,
+    ),
+  /external resource references/,
+);
+
+function mockRoot(svg, ownerDocument, anchors = []) {
+  return {
+    ownerDocument,
+    outerHTML: svg,
+    querySelectorAll() {
+      return anchors;
+    },
+  };
+}
+
 function rasterDataUrl(format, payload) {
   return `data:image/${format};base64,${payload}`;
 }
 
 function svgRaster(dataUrl, element = "image") {
   return `<svg><${element} href="${dataUrl}"/></svg>`;
+}
+
+for (const href of [
+  "#node",
+  "http://example.com/ticket/MC-1",
+  "https://example.com/ticket/MC-1",
+  "HTTPS://EXAMPLE.COM/ticket/MC-1",
+  "ftp://example.com/ticket/MC-1",
+  "ftps://example.com/ticket/MC-1",
+  "mailto:maintainer@example.com?subject=MC-1",
+  "tel:+1234567890",
+  "callto:+1234567890",
+  "sms:+1234567890",
+  "cid:ticket-MC-1@example.com",
+  "xmpp:maintainer@example.com",
+  "matrix:r/room:example.com",
+  "/ticket/MC-1",
+  "ticket/MC-1",
+  "../ticket/MC-1",
+  "https://example.com/ticket/MC-1?source=kanban&amp;view=compact",
+]) {
+  assert.doesNotThrow(() =>
+    assertNavigableSvgForDom(`<svg><a href="${href}"><text>ticket</text></a></svg>`),
+  );
+}
+assert.doesNotThrow(() =>
+  assertNavigableSvgForDom(
+    '<svg xmlns:xlink="http://www.w3.org/1999/xlink"><a xlink:href="https://example.com/ticket/MC-1"><text>ticket</text></a></svg>',
+  ),
+);
+assert.doesNotThrow(() =>
+  assertNavigableSvgForDom(
+    '<svg><a href="https://example.com/ticket/MC-1" target="_blank" rel="noopener noreferrer"><text>ticket</text></a></svg>',
+  ),
+);
+assert.doesNotThrow(() =>
+  assertNavigableSvgForDom(
+    '<svg><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><a href="../ticket/MC-1" target="_self">ticket</a></div></foreignObject></svg>',
+  ),
+);
+assert.throws(
+  () =>
+    assertSelfContainedSvgForDom(
+      '<svg><a href="https://example.com/ticket/MC-1"><text>ticket</text></a></svg>',
+    ),
+  /external/,
+);
+assert.throws(
+  () => assertSelfContainedSvgForDom('<svg><a href="#node" target="_top">node</a></svg>'),
+  /navigation target/,
+);
+assert.throws(
+  () => assertSelfContainedSvgForDom('<svg><a href="#node" download="node.svg">node</a></svg>'),
+  /navigation download/,
+);
+
+for (const target of ["_self", "_blank", "_parent", "_top"]) {
+  assert.doesNotThrow(() =>
+    assertNavigableSvgForDom(
+      `<svg><a href="https://example.com/ticket/MC-1" target="${target}">ticket</a></svg>`,
+    ),
+  );
+}
+
+for (const href of [
+  "//example.com/ticket/MC-1",
+  "\\\\example.com/ticket/MC-1",
+  "javascript:alert(1)",
+  "data:text/html;base64,PHNjcmlwdD4=",
+  "blob:https://example.com/id",
+  "file:///tmp/ticket",
+  "java&#115;cript:alert(1)",
+  "https&colon;//example.com/ticket/MC-1",
+  " https://example.com/ticket/MC-1",
+  "https:\n//example.com/ticket/MC-1",
+  "",
+  "http://",
+]) {
+  assert.throws(
+    () =>
+      assertNavigableSvgForDom(`<svg><a href="${href}"><text>ticket</text></a></svg>`),
+    /navigation URL/,
+  );
+}
+
+for (const svg of [
+  '<svg><image href="https://example.com/image.png"/></svg>',
+  '<svg><use href="https://example.com/sprite.svg#icon"/></svg>',
+  '<svg><filter><feImage href="https://example.com/filter.png"/></filter></svg>',
+  '<svg><text href="https://example.com/not-an-anchor">text</text></svg>',
+  '<svg><rect fill="url(https://example.com/fill.svg#paint)"/></svg>',
+  '<svg><style>rect { fill: url(https://example.com/fill.svg#paint); }</style></svg>',
+]) {
+  assert.throws(() => assertNavigableSvgForDom(svg), /external/);
+}
+
+for (const assertSvg of [assertSelfContainedSvgForDom, assertNavigableSvgForDom]) {
+  for (const svg of [
+    String.raw`<svg><image href="\000023tracker"/></svg>`,
+    String.raw`<svg><use href="\000023tracker"/></svg>`,
+    String.raw`<svg><filter><feImage href="\000023tracker"/></filter></svg>`,
+    String.raw`<svg xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="\000023tracker"/></svg>`,
+  ]) {
+    assert.throws(() => assertSvg(svg), /external/);
+  }
+}
+assert.throws(
+  () =>
+    assertNavigableSvgForDom(
+      String.raw`<svg><a href="\000023tracker"><text>ticket</text></a></svg>`,
+    ),
+  /navigation URL/,
+);
+assert.throws(
+  () =>
+    assertSelfContainedSvgForDom(
+      String.raw`<svg><a href="\000023tracker"><text>ticket</text></a></svg>`,
+    ),
+  /external/,
+);
+
+for (const svg of [
+  '<svg><a href="https://example.com/ticket/MC-1" target="named-context">ticket</a></svg>',
+  '<svg><a href="#node" target=" _blank ">ticket</a></svg>',
+  '<svg><a href="#node" target="&#10;_blank">ticket</a></svg>',
+  '<svg><a href="https://example.com/ticket/MC-1" rel="nofollow opener">ticket</a></svg>',
+  '<svg><a href="https://example.com/ticket/MC-1" download="ticket.html">ticket</a></svg>',
+  '<svg><a href="#node" ping="https://example.com/track">ticket</a></svg>',
+  '<svg><a href="#node" ping="#track">ticket</a></svg>',
+  '<svg><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><a href="https://example.com/ticket/MC-1" attributionsrc="https://example.com/track">ticket</a></div></foreignObject></svg>',
+]) {
+  assert.throws(() => assertNavigableSvgForDom(svg), /navigation/);
 }
 
 function pngChunk(type, data) {
@@ -172,39 +456,39 @@ function animatedWebp() {
 }
 
 assert.doesNotThrow(() =>
-  assertSafeSvgForDom(
+  assertSelfContainedSvgForDom(
     '<svg><defs><linearGradient id="fill"></linearGradient><filter id="shadow"></filter></defs><rect fill="url(#fill)" filter="url(#shadow)"/></svg>',
   ),
 );
 assert.doesNotThrow(() =>
-  assertSafeSvgForDom('<svg><style>text { fill: url(/* local */ #fill); }</style><text>ok</text></svg>'),
+  assertSelfContainedSvgForDom('<svg><style>text { fill: url(/* local */ #fill); }</style><text>ok</text></svg>'),
 );
-assert.doesNotThrow(() => assertSafeSvgForDom("<svg><style/></svg>"));
+assert.doesNotThrow(() => assertSelfContainedSvgForDom("<svg><style/></svg>"));
 assert.doesNotThrow(() =>
-  assertSafeSvgForDom(
+  assertSelfContainedSvgForDom(
     "<svg><style>/*\u0130*/ text { fill: red; }</StYlE><text>ok</text></svg>",
   ),
 );
 assert.doesNotThrow(() =>
-  assertSafeSvgForDom(
+  assertSelfContainedSvgForDom(
     '<svg><foreignObject width="10" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell"><span class="nodeLabel"><p>A</p></span></div></foreignObject></svg>',
   ),
 );
 assert.doesNotThrow(() =>
-  assertSafeSvgForDom(
+  assertSelfContainedSvgForDom(
     '<svg><style>div.mermaidTooltip{position:absolute;pointer-events:none;z-index:100;}</style><text>ok</text></svg>',
   ),
 );
 assert.doesNotThrow(() =>
-  assertSafeSvgForDom("<!-- generated by test --><svg><text>ok</text></svg><!-- trailing comment -->"),
+  assertSelfContainedSvgForDom("<!-- generated by test --><svg><text>ok</text></svg><!-- trailing comment -->"),
 );
 assert.doesNotThrow(() =>
-  assertSafeSvgForDom(
+  assertSelfContainedSvgForDom(
     `${Array.from({ length: 2_000 }, (_, index) => `<!-- ${index} -->`).join("")}<svg><text>ok</text></svg>`,
   ),
 );
 assert.doesNotThrow(() =>
-  assertSafeSvgForDom(
+  assertSelfContainedSvgForDom(
     `<svg><image href="${rasterDataUrl("png", PNG_1X1)}"/><filter><feImage href="${rasterDataUrl("png", PNG_1X1)}"/></filter></svg>`,
   ),
 );
@@ -214,22 +498,22 @@ for (const [format, payload] of [
   ["webp", WEBP_1X1],
   ["webp", WEBP_LOSSLESS_1X1],
 ]) {
-  assert.doesNotThrow(() => assertSafeSvgForDom(svgRaster(rasterDataUrl(format, payload))));
+  assert.doesNotThrow(() => assertSelfContainedSvgForDom(svgRaster(rasterDataUrl(format, payload))));
 }
 for (const payload of [WEBP_1X1, WEBP_LOSSLESS_1X1]) {
   assert.doesNotThrow(() =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       svgRaster(rasterDataUrl("webp", extendedStaticWebp(payload, 1, 1, 1, 1).toString("base64"))),
     ),
   );
 }
 
 assert.throws(
-  () => assertSafeSvgForDom(svgRaster("data:image/png;base64,iVBORw0KGgo=")),
+  () => assertSelfContainedSvgForDom(svgRaster("data:image/png;base64,iVBORw0KGgo=")),
   /malformed embedded raster image/,
 );
 assert.throws(
-  () => assertSafeSvgForDom(svgRaster(rasterDataUrl("gif", PNG_1X1))),
+  () => assertSelfContainedSvgForDom(svgRaster(rasterDataUrl("gif", PNG_1X1))),
   /MIME type does not match/,
 );
 const gifOutsideLogicalScreen = Buffer.from(GIF_1X1, "base64");
@@ -238,7 +522,7 @@ gifOutsideLogicalScreen.writeUInt16LE(0xffff, gifImageDescriptor + 5);
 gifOutsideLogicalScreen.writeUInt16LE(0xffff, gifImageDescriptor + 7);
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       svgRaster(rasterDataUrl("gif", gifOutsideLogicalScreen.toString("base64"))),
     ),
   /malformed embedded raster image/,
@@ -246,24 +530,24 @@ assert.throws(
 for (const payload of [WEBP_1X1, WEBP_LOSSLESS_1X1]) {
   const mismatched = extendedStaticWebp(payload, 1, 1, 8192, 4096);
   assert.throws(
-    () => assertSafeSvgForDom(svgRaster(rasterDataUrl("webp", mismatched.toString("base64")))),
+    () => assertSelfContainedSvgForDom(svgRaster(rasterDataUrl("webp", mismatched.toString("base64")))),
     /malformed embedded raster image/,
   );
 }
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       svgRaster(rasterDataUrl("png", Buffer.alloc(MAX_IMAGE_BYTES + 1).toString("base64"))),
     ),
   /per-image byte limit/,
 );
 assert.throws(
-  () => assertSafeSvgForDom("€".repeat(Math.floor(MAX_SVG_SOURCE_BYTES / 3) + 1)),
+  () => assertSelfContainedSvgForDom("€".repeat(Math.floor(MAX_SVG_SOURCE_BYTES / 3) + 1)),
   /source byte limit/,
 );
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       svgRaster(rasterDataUrl("png", "A".repeat(MAX_ENCODED_IMAGE_BYTES + 4))),
     ),
   /per-image encoded byte limit/,
@@ -271,7 +555,7 @@ assert.throws(
 const maximumBytes = structuralPngWithDecodedBytes(MAX_IMAGE_BYTES).toString("base64");
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       `<svg><image href="${rasterDataUrl("png", maximumBytes)}"/><feImage href="${rasterDataUrl("png", maximumBytes)}"/><image href="${rasterDataUrl("png", PNG_1X1)}"/></svg>`,
     ),
   /aggregate byte limit/,
@@ -281,21 +565,21 @@ const encodedAggregateOverflow = structuralPngWithDecodedBytes(1024 * 1024 + 1).
 );
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       `<svg><image href="${rasterDataUrl("png", maximumBytes)}"/><feImage href="${rasterDataUrl("png", maximumBytes)}"/><image href="${rasterDataUrl("png", encodedAggregateOverflow)}"/></svg>`,
     ),
   /aggregate encoded byte limit/,
 );
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       svgRaster(rasterDataUrl("png", structuralPng(0, 1).toString("base64"))),
     ),
   /malformed embedded raster image/,
 );
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       svgRaster(rasterDataUrl("png", structuralPng(4097, 4096).toString("base64")), "feImage"),
     ),
   /per-image pixel limit/,
@@ -303,7 +587,7 @@ assert.throws(
 const maximumPixels = structuralPng(4096, 4096).toString("base64");
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       `<svg><image href="${rasterDataUrl("png", maximumPixels)}"/><feImage href="${rasterDataUrl("png", maximumPixels)}"/><image href="${rasterDataUrl("png", PNG_1X1)}"/></svg>`,
     ),
   /aggregate pixel limit/,
@@ -314,7 +598,7 @@ for (const [format, bytes] of [
   ["webp", animatedWebp()],
 ]) {
   assert.throws(
-    () => assertSafeSvgForDom(svgRaster(rasterDataUrl(format, bytes.toString("base64")))),
+    () => assertSelfContainedSvgForDom(svgRaster(rasterDataUrl(format, bytes.toString("base64")))),
     /animated or multi-frame/,
   );
 }
@@ -322,7 +606,7 @@ for (const chunkType of ["fcTL", "fdAT"]) {
   const data = Buffer.alloc(chunkType === "fcTL" ? 26 : 4);
   assert.throws(
     () =>
-      assertSafeSvgForDom(
+      assertSelfContainedSvgForDom(
         svgRaster(
           rasterDataUrl("png", pngWithMetadata(chunkType, data).toString("base64")),
         ),
@@ -332,7 +616,7 @@ for (const chunkType of ["fcTL", "fdAT"]) {
 }
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       svgRaster(
         rasterDataUrl("gif", gifWithApplicationExtension("NETSCAPE2.0").toString("base64")),
       ),
@@ -344,13 +628,13 @@ for (const gif of [
   gifWithPlainTextExtension(),
 ]) {
   assert.throws(
-    () => assertSafeSvgForDom(svgRaster(rasterDataUrl("gif", gif.toString("base64")))),
+    () => assertSelfContainedSvgForDom(svgRaster(rasterDataUrl("gif", gif.toString("base64")))),
     /malformed embedded raster image/,
   );
 }
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       svgRaster(
         rasterDataUrl("png", pngWithMetadata("vpAg", Buffer.alloc(0)).toString("base64")),
       ),
@@ -367,7 +651,7 @@ for (const webp of [
   ]),
 ]) {
   assert.throws(
-    () => assertSafeSvgForDom(svgRaster(rasterDataUrl("webp", webp.toString("base64")))),
+    () => assertSelfContainedSvgForDom(svgRaster(rasterDataUrl("webp", webp.toString("base64")))),
     /malformed embedded raster image/,
   );
 }
@@ -378,14 +662,14 @@ for (const [type, data] of [
 ]) {
   assert.throws(
     () =>
-      assertSafeSvgForDom(
+      assertSelfContainedSvgForDom(
         svgRaster(rasterDataUrl("png", pngWithMetadata(type, data).toString("base64"))),
       ),
     /malformed embedded raster image/,
   );
 }
 assert.doesNotThrow(() =>
-  assertSafeSvgForDom(
+  assertSelfContainedSvgForDom(
     svgRaster(
       rasterDataUrl(
         "png",
@@ -398,64 +682,64 @@ assert.doesNotThrow(() =>
 );
 
 assert.throws(
-  () => assertSafeSvgForDom('<svg><image href="https://example.com/a.png"/></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><image href="https://example.com/a.png"/></svg>'),
   /external/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg></svg><style>button{color:red}</style>'),
+  () => assertSelfContainedSvgForDom('<svg></svg><style>button{color:red}</style>'),
   /malformed/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg></svg><button autofocus>run</button>'),
+  () => assertSelfContainedSvgForDom('<svg></svg><button autofocus>run</button>'),
   /malformed/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><div tabindex="0">run</div></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><div tabindex="0">run</div></svg>'),
   /unsupported element/,
 );
 assert.throws(
-  () => assertSafeSvgForDom("<svg><g></svg></g>"),
+  () => assertSelfContainedSvgForDom("<svg><g></svg></g>"),
   /malformed/,
 );
 assert.throws(
-  () => assertSafeSvgForDom("text before root<svg></svg>"),
+  () => assertSelfContainedSvgForDom("text before root<svg></svg>"),
   /non-SVG/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><rect fill="url(https://example.com/fill.svg#x)"/></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><rect fill="url(https://example.com/fill.svg#x)"/></svg>'),
   /external/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><text style="fill:url(javascript:alert(1))">x</text></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><text style="fill:url(javascript:alert(1))">x</text></svg>'),
   /CSS URL/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><text style="fill:u&#114l(https://example.com/a.svg#x)">x</text></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><text style="fill:u&#114l(https://example.com/a.svg#x)">x</text></svg>'),
   /CSS resource|CSS URL/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><text style="fill:url&lpar;https://example.com/a.svg#x&rpar;">x</text></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><text style="fill:url&lpar;https://example.com/a.svg#x&rpar;">x</text></svg>'),
   /CSS resource|CSS URL/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><style>@im&#112ort "https://example.com/a.css";</style></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><style>@im&#112ort "https://example.com/a.css";</style></svg>'),
   /CSS resource/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><style>@im&#x2f;*hidden*&#x2f;port "https://example.com/a.css";</style></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><style>@im&#x2f;*hidden*&#x2f;port "https://example.com/a.css";</style></svg>'),
   /CSS resource/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><style>text { fill: u&#x72l(https://example.com/a.svg#x); }</style></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><style>text { fill: u&#x72l(https://example.com/a.svg#x); }</style></svg>'),
   /CSS resource|CSS URL/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><style>text { fill: u&#x2f;*hidden*&#x2f;rl(javascript:alert(1)); }</style></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><style>text { fill: u&#x2f;*hidden*&#x2f;rl(javascript:alert(1)); }</style></svg>'),
   /CSS resource|CSS URL/,
 );
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       "<svg><style>text { fill: \\75\r\nrl(javascript:alert(1)); }</style></svg>",
     ),
   /CSS resource|CSS URL/,
@@ -463,107 +747,107 @@ assert.throws(
 // An unterminated raw-text element must fail before later pseudo tags are treated as CSS.
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       '<svg><style>text { fill: red; }<style>@import "https://example.com/a.css";</svg>',
     ),
   /malformed SVG output/,
 );
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       '<svg><style>text { fill: url(#ok); stroke: /* padding #safe */ url(https://example.com/x.svg#x); }</style></svg>',
     ),
   /CSS resource|CSS URL/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><a href="java&#115cript:alert(1)">x</a></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><a href="java&#115cript:alert(1)">x</a></svg>'),
   /external|unsafe URL/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><a href="javascript&colon;alert(1)">x</a></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><a href="javascript&colon;alert(1)">x</a></svg>'),
   /external|unsafe URL/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><foreignObject><div onclick="alert(1)">x</div></foreignObject></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><foreignObject><div onclick="alert(1)">x</div></foreignObject></svg>'),
   /event/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><text OnClick="alert(1)">x</text></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><text OnClick="alert(1)">x</text></svg>'),
   /event/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg OnLoad="alert(1)"><text>x</text></svg>'),
+  () => assertSelfContainedSvgForDom('<svg OnLoad="alert(1)"><text>x</text></svg>'),
   /event/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><foreignObject><img srcset="https://example.com/a.png 1x"/></foreignObject></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><foreignObject><img srcset="https://example.com/a.png 1x"/></foreignObject></svg>'),
   /foreignObject/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><image srcset="https://example.com/a.png 1x"/></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><image srcset="https://example.com/a.png 1x"/></svg>'),
   /srcset/,
 );
 assert.throws(
-  () => assertSafeSvgForDom("<svg><foreignObject><button>run</button></foreignObject></svg>"),
+  () => assertSelfContainedSvgForDom("<svg><foreignObject><button>run</button></foreignObject></svg>"),
   /foreignObject/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><foreignObject><input value="x"/></foreignObject></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><foreignObject><input value="x"/></foreignObject></svg>'),
   /foreignObject/,
 );
 assert.throws(
-  () => assertSafeSvgForDom("<svg><foreignObject><style>button{color:red}</style></foreignObject></svg>"),
+  () => assertSelfContainedSvgForDom("<svg><foreignObject><style>button{color:red}</style></foreignObject></svg>"),
   /foreignObject/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><foreignObject><div tabindex="0">focus</div></foreignObject></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><foreignObject><div tabindex="0">focus</div></foreignObject></svg>'),
   /interactive/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><foreignObject tabindex="0"><div>focus</div></foreignObject></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><foreignObject tabindex="0"><div>focus</div></foreignObject></svg>'),
   /interactive/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><a href="#node" ping="https://example.com/ping">x</a></svg>'),
-  /external/,
+  () => assertSelfContainedSvgForDom('<svg><a href="#node" ping="https://example.com/ping">x</a></svg>'),
+  /navigation tracking/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg xml:base="https://example.com/sprite.svg"><use href="#icon"/></svg>'),
+  () => assertSelfContainedSvgForDom('<svg xml:base="https://example.com/sprite.svg"><use href="#icon"/></svg>'),
   /base/,
 );
 assert.throws(
   () =>
-    assertSafeSvgForDom(
+    assertSelfContainedSvgForDom(
       '<svg><foreignObject><div style="background-image:image-set(&quot;https://example.com/a.png&quot; 1x)">x</div></foreignObject></svg>',
     ),
   /CSS resource/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><style>svg{position:fixed;inset:0;z-index:999999}</style></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><style>svg{position:fixed;inset:0;z-index:999999}</style></svg>'),
   /viewport-escaping CSS/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg style="position:fixed;inset:0"></svg>'),
+  () => assertSelfContainedSvgForDom('<svg style="position:fixed;inset:0"></svg>'),
   /viewport-escaping CSS/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><style>svg{position:absolute;inset:0;z-index:999999}</style></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><style>svg{position:absolute;inset:0;z-index:999999}</style></svg>'),
   /viewport-escaping CSS/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><style>@media all{svg{position:absolute;inset:0;z-index:999999}}</style></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><style>@media all{svg{position:absolute;inset:0;z-index:999999}}</style></svg>'),
   /viewport-escaping CSS/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><style>@supports(display:block){svg{position:fixed;inset:0}}</style></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><style>@supports(display:block){svg{position:fixed;inset:0}}</style></svg>'),
   /viewport-escaping CSS/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg style="position:absolute;left:0;top:0"></svg>'),
+  () => assertSelfContainedSvgForDom('<svg style="position:absolute;left:0;top:0"></svg>'),
   /viewport-escaping CSS/,
 );
 assert.throws(
-  () => assertSafeSvgForDom('<svg><animate attributeName="href" to="https://example.com/x"/></svg>'),
+  () => assertSelfContainedSvgForDom('<svg><animate attributeName="href" to="https://example.com/x"/></svg>'),
   /active/,
 );
 

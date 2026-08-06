@@ -115,6 +115,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     };
     let wrapped_in_a = resolved.wrapped_in_a;
     let href = resolved.href;
+    let target = resolved.target;
     let shape: &str = resolved.shape;
     let node_icon = resolved.node_icon;
     let node_img = resolved.node_img;
@@ -143,7 +144,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             class_attr_base,
             node_classes: node_classes_for_wrapper,
             wrapped_in_a,
-            href,
+            href: href.as_ref(),
+            target,
             x,
             y,
             tooltip_enabled,

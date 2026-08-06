@@ -204,7 +204,7 @@ If an input needs a layout engine or math renderer that was not compiled, Merman
 Merman prioritizes parser, model, layout, theme, sanitizer, and SVG DOM convergence with pinned Mermaid source. It does not claim byte-for-byte Chromium pixels.
 
 - Browser font fallback, `getBBox()` floats, `foreignObject`, and RoughJS path geometry can remain documented residuals where no robust headless derivation exists.
-- Mermaid-parity SVG can contain HTML labels. Use `render_svg_resvg_safe_sync()` or an export command when the consumer cannot render `foreignObject`.
+- Mermaid-parity SVG can contain HTML labels. Use `render_resvg_compatible_svg_sync()` or an export command when a raster consumer cannot render `foreignObject`; browser DOM insertion still requires a Web-host admission policy.
 - PNG, JPEG, and PDF are integration outputs with explicit allocation and resource limits; they are not browser screenshot parity contracts.
 - ASCII/Unicode support varies by diagram family and should be capability-checked.
 

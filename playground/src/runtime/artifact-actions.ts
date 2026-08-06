@@ -14,8 +14,8 @@ import {
   type RenderPublicationId,
 } from "./render-coordinator.ts";
 import {
-  assertSafeInlineSvgArtifact,
-  type SafeInlineSvg,
+  assertNavigableInlineSvgArtifact,
+  type NavigableInlineSvg,
 } from "./render-artifact.ts";
 
 export type ArtifactEngine = "merman" | "mermaid";
@@ -55,14 +55,14 @@ export interface ArtifactActionOwner {
 
 export interface ArtifactActionIo {
   copyAscii(ascii: string): Promise<void>;
-  copySvg(artifact: SafeInlineSvg): Promise<void>;
+  copySvg(artifact: NavigableInlineSvg): Promise<void>;
   downloadAscii(ascii: string, filename: string): void;
   downloadPng(
-    artifact: SafeInlineSvg,
+    artifact: NavigableInlineSvg,
     filename: string,
     scale: number
   ): Promise<PngRasterPlan>;
-  downloadSvg(artifact: SafeInlineSvg, filename: string): void;
+  downloadSvg(artifact: NavigableInlineSvg, filename: string): void;
 }
 
 export interface ArtifactActionDependencies {
@@ -106,15 +106,15 @@ type FrozenActionPlan =
       readonly ascii: string;
       readonly filename: string;
     }
-  | { readonly action: "copy-svg"; readonly artifact: SafeInlineSvg }
+  | { readonly action: "copy-svg"; readonly artifact: NavigableInlineSvg }
   | {
       readonly action: "download-svg";
-      readonly artifact: SafeInlineSvg;
+      readonly artifact: NavigableInlineSvg;
       readonly filename: string;
     }
   | {
       readonly action: "download-png";
-      readonly artifact: SafeInlineSvg;
+      readonly artifact: NavigableInlineSvg;
       readonly engine: "mermaid";
       readonly filename: string;
       readonly scale: number;
@@ -259,7 +259,7 @@ function currentAscii(publication: CompletedRenderBatch): string {
 function currentSvg(
   publication: CompletedRenderBatch,
   engine: ArtifactEngine
-): SafeInlineSvg {
+): NavigableInlineSvg {
   return engine === "merman"
     ? successfulMermanArtifact(publication).artifact
     : successfulMermaidArtifact(publication).artifact;
@@ -267,7 +267,7 @@ function currentSvg(
 
 function artifactForPng(
   plan: Extract<FrozenActionPlan, { readonly action: "download-png" }>
-): SafeInlineSvg {
+): NavigableInlineSvg {
   if (plan.engine === "mermaid") return plan.artifact;
 
   let result;
@@ -290,7 +290,7 @@ function artifactForPng(
     );
   }
   try {
-    assertSafeInlineSvgArtifact(result.artifact);
+    assertNavigableInlineSvgArtifact(result.artifact);
   } catch (error) {
     throw new ArtifactActionError(
       "svg-render-failed",

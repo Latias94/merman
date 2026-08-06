@@ -604,6 +604,10 @@ click Class1 href "notes://do-your-thing/id" "tip" _self
         loose.contains(r#"xlink:href="notes://do-your-thing/id""#),
         "expected loose mode to preserve Mermaid formatUrl-compatible Class custom protocols: {loose}"
     );
+    assert!(
+        loose.contains(r#"target="_self""#),
+        "expected loose class parity to preserve the Mermaid link target: {loose}"
+    );
 }
 
 #[cfg(feature = "layout-elk")]

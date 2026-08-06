@@ -6,10 +6,9 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
 use super::{
-    Note, StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
-    StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
-    StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass, StateStmt,
-    Stmt,
+    Note, StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderModel,
+    StateDiagramRenderNode, StateDiagramRenderNote, StateDiagramRenderRelation,
+    StateDiagramRenderState, StateDiagramRenderStyleClass, StateStmt, Stmt,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -49,7 +48,7 @@ pub(super) struct StateDb {
     acc_title: Option<String>,
     acc_descr: Option<String>,
     generated_id_cnt: usize,
-    links: HashMap<String, Vec<Link>>,
+    links: HashMap<String, Link>,
 }
 
 impl StateDb {
@@ -214,13 +213,13 @@ impl StateDb {
     }
 
     fn add_link(&mut self, state_id: &str, url: &str, tooltip: &str) {
-        self.links
-            .entry(state_id.to_string())
-            .or_default()
-            .push(Link {
+        self.links.insert(
+            state_id.to_string(),
+            Link {
                 url: url.to_string(),
                 tooltip: tooltip.to_string(),
-            });
+            },
+        );
     }
 
     fn ensure_state(&mut self, id: &str) -> &mut StateRecord {
@@ -449,27 +448,17 @@ impl StateDb {
             })
             .collect();
 
-        let links: HashMap<String, StateDiagramRenderLinks> = self
+        let links: HashMap<String, StateDiagramRenderLink> = self
             .links
             .iter()
-            .map(|(k, v)| {
-                let links = if v.len() == 1 {
-                    let l = &v[0];
-                    StateDiagramRenderLinks::One(StateDiagramRenderLink {
-                        url: l.url.clone(),
-                        tooltip: l.tooltip.clone(),
-                    })
-                } else {
-                    StateDiagramRenderLinks::Many(
-                        v.iter()
-                            .map(|l| StateDiagramRenderLink {
-                                url: l.url.clone(),
-                                tooltip: l.tooltip.clone(),
-                            })
-                            .collect(),
-                    )
-                };
-                (k.clone(), links)
+            .map(|(key, link)| {
+                (
+                    key.clone(),
+                    StateDiagramRenderLink {
+                        url: link.url.clone(),
+                        tooltip: link.tooltip.clone(),
+                    },
+                )
             })
             .collect();
 

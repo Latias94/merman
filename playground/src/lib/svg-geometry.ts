@@ -1,7 +1,9 @@
+import { prepareNavigableSvgForDomMount } from "@mermanjs/web";
+
 import {
-  assertSafeInlineSvgArtifact,
-  projectSafeInlineSvg,
-  type SafeInlineSvg,
+  assertNavigableInlineSvgArtifact,
+  projectNavigableInlineSvg,
+  type NavigableInlineSvg,
 } from "../runtime/render-artifact.ts";
 
 export interface SvgDimensions {
@@ -33,40 +35,50 @@ export function parseSvgDimensions(svg: string): SvgDimensions | null {
 }
 
 export function prepareSvgForResponsivePreview(
-  artifact: SafeInlineSvg
+  artifact: NavigableInlineSvg,
+  ownerDocument: Document
 ): PreparedSvgPreview | null {
-  assertSafeInlineSvgArtifact(artifact);
-  const parsed = parseSvgRootForHtmlMount(artifact.svg);
+  assertNavigableInlineSvgArtifact(artifact);
+  const Parser = ownerDocument.defaultView?.DOMParser ?? globalThis.DOMParser;
+  if (!Parser) return null;
+  const parsed = parseSvgRootForHtmlMount(new Parser(), artifact.svg);
   if (!parsed) return null;
+  const root = ownerDocument.importNode(parsed.root, true) as Element;
 
-  const dimensions = resolveSvgDimensions(parsed.root);
+  const dimensions = resolveSvgDimensions(root);
   if (dimensions) {
-    ensureViewBox(parsed.root, dimensions);
-    parsed.root.setAttribute("width", "100%");
-    parsed.root.setAttribute("height", "100%");
+    ensureViewBox(root, dimensions);
+    root.setAttribute("width", "100%");
+    root.setAttribute("height", "100%");
     appendRootStyle(
-      parsed.root,
+      root,
       "display:block;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important"
     );
   }
 
-  const template = parsed.root;
+  const template = root;
   template.remove();
   return Object.freeze({
     dimensions: dimensions ? Object.freeze({ ...dimensions }) : null,
     takeNode(): Element {
-      return template.parentNode
+      const node = template.parentNode
         ? (template.cloneNode(true) as Element)
         : template;
+      prepareNavigableSvgForDomMount(
+        artifact.mountAdmission,
+        node,
+        ownerDocument
+      );
+      return node;
     },
   });
 }
 
 export function sizeSvgForRasterization(
-  artifact: SafeInlineSvg,
+  artifact: NavigableInlineSvg,
   renderedDimensions: SvgDimensions
-): SafeInlineSvg | null {
-  assertSafeInlineSvgArtifact(artifact);
+): NavigableInlineSvg | null {
+  assertNavigableInlineSvgArtifact(artifact);
   if (
     !isPositiveFinite(renderedDimensions.width) ||
     !isPositiveFinite(renderedDimensions.height)
@@ -88,7 +100,7 @@ export function sizeSvgForRasterization(
     parsed.root,
     `display:block;width:${width}px!important;height:${height}px!important;max-width:none!important;max-height:none!important`
   );
-  return projectSafeInlineSvg(
+  return projectNavigableInlineSvg(
     new XMLSerializer().serializeToString(parsed.root)
   );
 }
@@ -105,8 +117,11 @@ function parseSvgRoot(svg: string): ParsedSvgRoot | null {
   return parseSvgRootAsHtml(parser, svg);
 }
 
-function parseSvgRootForHtmlMount(svg: string): ParsedSvgRoot | null {
-  return parseSvgRootAsHtml(new DOMParser(), svg);
+function parseSvgRootForHtmlMount(
+  parser: DOMParser,
+  svg: string
+): ParsedSvgRoot | null {
+  return parseSvgRootAsHtml(parser, svg);
 }
 
 function parseSvgRootAsHtml(

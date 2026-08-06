@@ -429,6 +429,16 @@ click S1 "https://example.com" "Go to Example""#,
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram-v2
+S0
+click S0 "https://example.com/empty" """#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+    assert_eq!(res.model["links"]["S0"]["tooltip"], json!(""));
+
+    let res = block_on(engine.parse_diagram(
+        r#"stateDiagram-v2
 S2
 click S2 href "https://example.com""#,
         ParseOptions::default(),
@@ -440,6 +450,68 @@ click S2 href "https://example.com""#,
         json!("https://example.com")
     );
     assert_eq!(res.model["links"]["S2"]["tooltip"], json!(""));
+
+    let res = block_on(engine.parse_diagram(
+        r#"stateDiagram-v2
+S3
+click S3 href "jav&#x61;script:alert(1)""#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        res.model["links"]["S3"]["url"],
+        json!("jav&ﬂ°x61¶ßscript:alert(1)")
+    );
+}
+
+#[test]
+fn parse_diagram_state_v2_repeated_clicks_keep_the_last_link() {
+    let engine = Engine::new();
+
+    let res = block_on(engine.parse_diagram(
+        r#"stateDiagram-v2
+S1
+click S1 "https://example.com/first" "First"
+click S1 "https://example.com/last" "Last""#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(
+        res.model["links"]["S1"]["url"],
+        json!("https://example.com/last")
+    );
+    assert_eq!(res.model["links"]["S1"]["tooltip"], json!("Last"));
+}
+
+#[test]
+fn typed_state_links_preserve_upstream_tooltips_and_last_wins() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            r#"stateDiagram-v2
+S1
+S2
+click S1 "https://example.com/first" "First"
+click S1 "https://example.com/last" ""
+click S2 href "https://example.com/omitted"
+"#,
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::State(model) = parsed.model() else {
+        panic!("expected typed state render model");
+    };
+
+    let explicit_empty = model.links.get("S1").expect("S1 link");
+    assert_eq!(explicit_empty.url, "https://example.com/last");
+    assert_eq!(explicit_empty.tooltip, "");
+
+    let omitted = model.links.get("S2").expect("S2 link");
+    assert_eq!(omitted.url, "https://example.com/omitted");
+    assert_eq!(omitted.tooltip, "");
 }
 
 #[test]

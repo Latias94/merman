@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn render_svg_resvg_safe_pipeline_selects_export_contract() {
+    fn render_resvg_compatible_pipeline_selects_export_contract() {
         let source = b"flowchart TD
 A[Start] --> B{Is it working?}
 B -->|Yes| C[Ship it]

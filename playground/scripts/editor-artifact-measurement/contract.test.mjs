@@ -36,7 +36,7 @@ import {
   runtimePackageArtifactPaths,
   runtimePackageProvenanceContract,
 } from "./selection-inputs.mjs";
-import { verifyEditorArtifactAuthority } from "./verify-editor-artifact-receipt.mjs";
+import { verifyEditorArtifactSelectionTopology } from "./verify-editor-artifact-receipt.mjs";
 
 test("selects editor only when semantics and every R16 metric pass", () => {
   const decision = decideEditorArtifact(
@@ -315,9 +315,9 @@ test("validates stored derived receipt evidence", () => {
   );
 });
 
-test("binds artifact authority to deterministic selection inputs and package choice", () => {
+test("binds the recorded artifact decision to the current package topology", () => {
   const receipt = createEditorArtifactReceipt(validReceiptInput());
-  const verified = verifyEditorArtifactAuthority({
+  const verified = verifyEditorArtifactSelectionTopology({
     packageDependencies: {
       "@mermanjs/web": "file:../platforms/web/packages/full",
       "@mermanjs/web-editor": "file:../platforms/web/packages/editor",
@@ -325,55 +325,117 @@ test("binds artifact authority to deterministic selection inputs and package cho
     },
     packageLock: editorPackageLock(),
     receipt,
-    selectionInputs: receipt.selectionInputs,
+    workerStartupGraph: workerStartupGraph(),
     workerGraph: workerGraph("@mermanjs/web-editor"),
   });
   assert.equal(verified.selected, "editor");
-
-  assert.throws(
-    () =>
-      verifyEditorArtifactAuthority({
-        packageDependencies: {
-          "@mermanjs/web": "file:../platforms/web/packages/full",
-          "@mermanjs/web-editor": "file:../platforms/web/packages/editor",
-        },
-        packageLock: editorPackageLock(),
-        receipt,
-        selectionInputs: {
-          ...receipt.selectionInputs,
-          buildRuntimeClosureSha256: digest("stale"),
-        },
-        workerGraph: workerGraph("@mermanjs/web-editor"),
-      }),
-    /buildRuntimeClosureSha256 changed/u,
+  assert.equal(
+    verified.receiptCommit,
+    "0123456789abcdef0123456789abcdef01234567",
   );
   assert.throws(
     () =>
-      verifyEditorArtifactAuthority({
+      verifyEditorArtifactSelectionTopology({
         packageDependencies: {
           "@mermanjs/web": "file:../platforms/web/packages/full",
         },
         packageLock: editorPackageLock(),
         receipt,
-        selectionInputs: receipt.selectionInputs,
+        workerStartupGraph: workerStartupGraph(),
         workerGraph: workerGraph("@mermanjs/web-editor"),
       }),
     /dependencies do not match/u,
   );
+  const wrongResolution = editorPackageLock();
+  wrongResolution.packages["node_modules/@mermanjs/web-editor"].resolved =
+    "../platforms/web/packages/full";
+  assert.throws(
+    () =>
+      verifyEditorArtifactSelectionTopology({
+        packageDependencies: {
+          "@mermanjs/web": "file:../platforms/web/packages/full",
+          "@mermanjs/web-editor": "file:../platforms/web/packages/editor",
+        },
+        packageLock: wrongResolution,
+        receipt,
+        workerStartupGraph: workerStartupGraph(),
+        workerGraph: workerGraph("@mermanjs/web-editor"),
+      }),
+    /must resolve/u,
+  );
 });
 
-test("artifact authority follows indirect runtime package imports", () => {
+test("artifact selection topology follows indirect runtime package imports", () => {
   const receipt = createEditorArtifactReceipt(validReceiptInput());
   assert.doesNotThrow(() =>
-    verifyEditorArtifactAuthority({
+    verifyEditorArtifactSelectionTopology({
       packageDependencies: {
         "@mermanjs/web": "file:../platforms/web/packages/full",
         "@mermanjs/web-editor": "file:../platforms/web/packages/editor",
       },
       packageLock: editorPackageLock(),
       receipt,
-      selectionInputs: receipt.selectionInputs,
+      workerStartupGraph: workerStartupGraph(),
       workerGraph: workerGraph("@mermanjs/web-editor", { indirect: true }),
+    }),
+  );
+});
+
+test("artifact selection topology follows the production worker import after retargeting", () => {
+  const receipt = createEditorArtifactReceipt(validReceiptInput());
+  const graph = workerGraph("@mermanjs/web-editor");
+  const historicalWorker = "src/editor/merman-language.worker.ts";
+  const replacementWorker = "src/editor/replacement-language.worker.ts";
+  graph.files.add(replacementWorker);
+  graph.edges.push({
+    external: true,
+    from: replacementWorker,
+    kind: "static",
+    specifier: "@mermanjs/web",
+    to: null,
+  });
+
+  assert(graph.files.has(historicalWorker));
+  assert.throws(
+    () =>
+      verifyEditorArtifactSelectionTopology({
+        packageDependencies: {
+          "@mermanjs/web": "file:../platforms/web/packages/full",
+          "@mermanjs/web-editor": "file:../platforms/web/packages/editor",
+        },
+        packageLock: editorPackageLock(),
+        receipt,
+        workerStartupGraph: workerStartupGraph(replacementWorker),
+        workerGraph: graph,
+      }),
+    /Language Worker imports do not match/u,
+  );
+});
+
+test("selection topology ignores historical capture provenance drift", () => {
+  const receipt = structuredClone(
+    createEditorArtifactReceipt(validReceiptInput()),
+  );
+  receipt.selectionInputs.buildRuntimeClosureSha256 = digest(
+    "later-build-runtime",
+  );
+  receipt.selectionInputs.fullPackageProvenanceSha256 = digest(
+    "later-full-package",
+  );
+  receipt.selectionInputs.editorPackageProvenanceSha256 = digest(
+    "later-editor-package",
+  );
+
+  assert.doesNotThrow(() =>
+    verifyEditorArtifactSelectionTopology({
+      packageDependencies: {
+        "@mermanjs/web": "file:../platforms/web/packages/full",
+        "@mermanjs/web-editor": "file:../platforms/web/packages/editor",
+      },
+      packageLock: editorPackageLock(),
+      receipt,
+      workerStartupGraph: workerStartupGraph(),
+      workerGraph: workerGraph("@mermanjs/web-editor"),
     }),
   );
 });
@@ -401,7 +463,7 @@ test("selection input hashing is order-independent and path-bound", () => {
   assert.throws(() => digestEntries([first, first]), /duplicated/u);
 });
 
-test("measurement freshness ignores documentation but binds executable inputs", (t) => {
+test("measurement capture provenance ignores documentation but binds executable inputs", (t) => {
   const repositoryRoot = mkdtempSync(
     path.join(tmpdir(), "merman-editor-artifact-inputs-"),
   );
@@ -430,7 +492,7 @@ test("measurement freshness ignores documentation but binds executable inputs", 
   assert.notEqual(measurementContractDigest(repositoryRoot), initial);
 });
 
-test("build freshness covers every planned production runtime entry", () => {
+test("build capture provenance covers every planned production runtime entry", () => {
   const graph = {
     files: new Set([
       "src/main.tsx",
@@ -462,7 +524,7 @@ test("build freshness covers every planned production runtime entry", () => {
   ]);
 });
 
-test("build freshness includes dynamic sources but excludes type-only inputs", () => {
+test("build capture provenance includes dynamic sources but excludes type-only inputs", () => {
   const graph = {
     files: new Set([
       "src/main.tsx",
@@ -493,7 +555,7 @@ test("build freshness includes dynamic sources but excludes type-only inputs", (
   );
 });
 
-test("package provenance freshness binds portable runtime modules", () => {
+test("package capture provenance binds portable runtime modules", () => {
   assert.deepEqual(
     runtimePackageArtifactPaths({
       javascriptModules: ["package-entries/editor.js", "runtime-core.js"],
@@ -513,7 +575,7 @@ test("package provenance freshness binds portable runtime modules", () => {
   );
 });
 
-test("package freshness binds WASM sources without binding platform-specific binaries", () => {
+test("package capture provenance binds WASM sources without binding platform-specific binaries", () => {
   const provenance = {
     schema_version: 2,
     package: { id: "editor", name: "@mermanjs/web-editor" },
@@ -837,9 +899,33 @@ function editorPackageLock() {
           "@mermanjs/web-editor": "file:../platforms/web/packages/editor",
         },
       },
-      "node_modules/@mermanjs/web": { link: true },
-      "node_modules/@mermanjs/web-editor": { link: true },
+      "node_modules/@mermanjs/web": {
+        link: true,
+        resolved: "../platforms/web/packages/full",
+      },
+      "node_modules/@mermanjs/web-editor": {
+        link: true,
+        resolved: "../platforms/web/packages/editor",
+      },
     },
+  };
+}
+
+function workerStartupGraph(
+  workerEntry = "src/editor/merman-language.worker.ts",
+) {
+  const browserRoot = "src/editor/worker-browser.ts";
+  return {
+    files: new Set([browserRoot, workerEntry]),
+    edges: [
+      {
+        external: false,
+        from: browserRoot,
+        kind: "static",
+        specifier: `./${path.posix.basename(workerEntry)}?worker`,
+        to: workerEntry,
+      },
+    ],
   };
 }
 

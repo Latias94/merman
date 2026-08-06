@@ -647,13 +647,13 @@ flowchart TD
         "expected loose mode to preserve Mermaid-renderable mailto links: {loose}"
     );
     assert!(
-        loose.contains(r#"<a transform=""#),
-        "expected loose mode to keep Mermaid's anchor wrappers for declared links: {loose}"
+        loose.contains(r#"target="_blank""#),
+        "expected loose flowchart parity to preserve the Mermaid link target: {loose}"
     );
     assert!(
-        !loose.contains(r#"xlink:href="notes://do-your-thing/id""#)
-            && !loose.contains(r#"xlink:href="javascript:alert(1)""#),
-        "expected loose mode SVG sanitizer parity to omit unknown and script hrefs: {loose}"
+        loose.contains(r#"xlink:href="notes://do-your-thing/id""#)
+            && loose.contains(r#"xlink:href="javascript:alert(1)""#),
+        "expected loose mode to skip Mermaid's final SVG sanitizer for trusted links: {loose}"
     );
 }
 

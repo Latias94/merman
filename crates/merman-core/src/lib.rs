@@ -28,6 +28,7 @@ pub mod preprocess;
 pub mod resources;
 pub mod runtime;
 pub mod sanitize;
+pub mod svg_security;
 mod theme;
 pub mod theme_color;
 pub mod time;
