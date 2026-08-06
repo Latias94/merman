@@ -16,24 +16,12 @@
       "sha256": "ed915775295c6a1c66097bdbea5c6c00e613f0cd88fe7f5584bf77cbbb11c0cd"
     },
     {
-      "path": "playground/scripts/build-opaque-realm.mjs",
-      "sha256": "0f1a83c5e9a510a3554b1f3d5ba1e74c57cdfecdd1e9b3098cde15b0d000ce60"
-    },
-    {
-      "path": "playground/scripts/opaque-realm-artifact-plan.mjs",
-      "sha256": "f56da073bd8c9891248e8ef9bb9cacc1ff032402e0ea0398608a566f6533e40d"
-    },
-    {
-      "path": "playground/scripts/opaque-realm-browser-projection.mjs",
-      "sha256": "131bc598d8d1e023a04c7322edef2246331dfa4f1c2a6c4c6792d26382eda557"
-    },
-    {
       "path": "playground/scripts/zenuml-admission-reporter.mjs",
       "sha256": "57cbe205cf0e4d5050dad72fb8840c8007408e1bf06b2ab8b4aa5132cc3a579c"
     },
     {
       "path": "playground/scripts/zenuml-browser-admission.mjs",
-      "sha256": "768d1c3879fc829adc47393f9262f66f156d5bf53a69f0c2ab476da87e16e4e1"
+      "sha256": "6dd95b4a22d2a3a4529979b20cfd00688ce7a1c316236f46c2c3b17cd181da06"
     },
     {
       "path": "playground/src/benchmark/realm/bootstrap.ts",
@@ -46,6 +34,10 @@
     {
       "path": "playground/src/benchmark/realm/engines/mermaid.ts",
       "sha256": "c32e2041dc9b10200329cd3904a2c91c994cf85031adead40988fd8aa377c1fc"
+    },
+    {
+      "path": "playground/src/benchmark/realm/generated/benchmark-mermaid.generated.ts",
+      "sha256": "9f4ee7acbf3f4f34e5c66c257e3a40ebf6c34589118cb595ad908023e0da10cb"
     },
     {
       "path": "playground/src/benchmark/realm/opaque-mermaid-artifact.ts",
@@ -64,8 +56,8 @@
       "sha256": "2d98f8e6d4a9415cc28be16a10896586448e045315f0157e22753d1b81da5fbc"
     },
     {
-      "path": "playground/src/runtime/realm/opaque-compare-artifact.ts",
-      "sha256": "7dd48db50ef2b8eb5fe3739c2902a184738e40f1b8894badaafdb7ade3325cc2"
+      "path": "playground/src/runtime/realm/generated/opaque-realm-plan.generated.ts",
+      "sha256": "807bbaf4ea49a616fcca1f48465ea2300a4efd71a6f8184762fc710e3812fe78"
     },
     {
       "path": "playground/src/runtime/realm/opaque-realm-document.ts",

@@ -179,36 +179,48 @@ function packageProvenanceDigest(repositoryRoot, packageId) {
       return [relativePath, artifact];
     }),
   );
+  const wasmRuntimeArtifactPaths = [...provenanceArtifacts.keys()].filter(
+    (relativePath) =>
+      relativePath.startsWith("artifacts/wasm/") &&
+      /\.(?:js|wasm)$/u.test(relativePath),
+  );
   const runtimeArtifactPaths = runtimePackageArtifactPaths({
     javascriptModules: packageRuntimeDistClosure(
       path.join(packageRoot, "dist"),
       packageId,
     ).javascriptModules,
-    wasmArtifactPaths: [...provenanceArtifacts.keys()].filter((relativePath) =>
-      relativePath.startsWith("artifacts/wasm/"),
-    ),
+    wasmArtifactPaths: wasmRuntimeArtifactPaths,
   });
-  const artifactFiles = runtimeArtifactPaths.map((relativePath) => {
-    const artifact = provenanceArtifacts.get(relativePath);
-    if (!artifact) {
-      throw new Error(
-        `Web package ${packageId} provenance is missing runtime artifact ${relativePath}.`,
-      );
-    }
-    const bytes = readFileSync(path.join(packageRoot, relativePath));
-    if (
-      artifact.bytes !== bytes.byteLength ||
-      artifact.sha256 !== `sha256:${sha256(bytes)}`
-    ) {
-      throw new Error(
-        `Web package ${packageId} provenance is stale for ${relativePath}.`,
-      );
-    }
-    return {
-      bytes,
-      path: `platforms/web/packages/${packageId}/${relativePath}`,
-    };
-  });
+  const selectedArtifactPaths = new Set(runtimeArtifactPaths);
+  const artifactFiles = [
+    ...new Set([...runtimeArtifactPaths, ...wasmRuntimeArtifactPaths]),
+  ]
+    .sort((left, right) => left.localeCompare(right, "en"))
+    .flatMap((relativePath) => {
+      const artifact = provenanceArtifacts.get(relativePath);
+      if (!artifact) {
+        throw new Error(
+          `Web package ${packageId} provenance is missing runtime artifact ${relativePath}.`,
+        );
+      }
+      const bytes = readFileSync(path.join(packageRoot, relativePath));
+      if (
+        artifact.bytes !== bytes.byteLength ||
+        artifact.sha256 !== `sha256:${sha256(bytes)}`
+      ) {
+        throw new Error(
+          `Web package ${packageId} provenance is stale for ${relativePath}.`,
+        );
+      }
+      return selectedArtifactPaths.has(relativePath)
+        ? [
+            {
+              bytes,
+              path: `platforms/web/packages/${packageId}/${relativePath}`,
+            },
+          ]
+        : [];
+    });
   const normalizedProvenance = Buffer.from(
     JSON.stringify(
       runtimePackageProvenanceContract(provenance, runtimeArtifactPaths),
@@ -234,9 +246,17 @@ export function runtimePackageProvenanceContract(
   provenance,
   runtimeArtifactPaths,
 ) {
+  const packageId = provenance.package?.id ?? "unknown";
   const artifactsByPath = new Map(
     provenance.artifact_files.map((artifact) => [artifact.path, artifact]),
   );
+  const wasmSource = {
+    path: requiredPackageArtifactPath(provenance.wasm?.path, packageId),
+    sha256: requiredSha256(
+      provenance.wasm?.source_digest,
+      `Web package ${packageId} WASM source digest`,
+    ),
+  };
   return {
     schemaVersion: provenance.schema_version,
     package: provenance.package,
@@ -246,6 +266,7 @@ export function runtimePackageProvenanceContract(
     artifactFiles: runtimeArtifactPaths.map((relativePath) =>
       artifactsByPath.get(relativePath),
     ),
+    wasmSource,
   };
 }
 
@@ -257,7 +278,7 @@ export function runtimePackageArtifactPaths({
     ...new Set([
       ...javascriptModules.map((relativePath) => `dist/${relativePath}`),
       ...wasmArtifactPaths.filter((relativePath) =>
-        /\.(?:js|wasm)$/u.test(relativePath),
+        /^artifacts\/wasm\/.+\.js$/u.test(relativePath),
       ),
     ]),
   ].sort((left, right) => left.localeCompare(right, "en"));
@@ -341,6 +362,13 @@ function requiredPackageArtifactPath(value, packageId) {
     value.includes("/../")
   ) {
     throw new Error(`Web package ${packageId} artifact path is invalid.`);
+  }
+  return value;
+}
+
+function requiredSha256(value, label) {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/u.test(value)) {
+    throw new Error(`${label} is invalid.`);
   }
   return value;
 }

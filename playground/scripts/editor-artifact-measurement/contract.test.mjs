@@ -493,7 +493,7 @@ test("build freshness includes dynamic sources but excludes type-only inputs", (
   );
 });
 
-test("package provenance freshness binds runtime modules without declarations or maps", () => {
+test("package provenance freshness binds portable runtime modules", () => {
   assert.deepEqual(
     runtimePackageArtifactPaths({
       javascriptModules: ["package-entries/editor.js", "runtime-core.js"],
@@ -502,10 +502,10 @@ test("package provenance freshness binds runtime modules without declarations or
         "artifacts/wasm/merman_wasm.d.ts",
         "artifacts/wasm/merman_wasm_bg.wasm",
         "artifacts/wasm/merman_wasm_bg.wasm.d.ts",
+        "dist/not-in-runtime-closure.js",
       ],
     }),
     [
-      "artifacts/wasm/merman_wasm_bg.wasm",
       "artifacts/wasm/merman_wasm.js",
       "dist/package-entries/editor.js",
       "dist/runtime-core.js",
@@ -513,7 +513,7 @@ test("package provenance freshness binds runtime modules without declarations or
   );
 });
 
-test("package freshness ignores source provenance after binding runtime bytes", () => {
+test("package freshness binds WASM sources without binding platform-specific binaries", () => {
   const provenance = {
     schema_version: 2,
     package: { id: "editor", name: "@mermanjs/web-editor" },
@@ -539,17 +539,21 @@ test("package freshness ignores source provenance after binding runtime bytes", 
       tool_versions: { rustc: "rustc old" },
     },
   };
-  const paths = [
-    "artifacts/wasm/merman_wasm_bg.wasm",
-    "dist/package-entries/editor.js",
-  ];
+  const paths = ["dist/package-entries/editor.js"];
   const contract = runtimePackageProvenanceContract(provenance, paths);
-  const sourceDrift = structuredClone(provenance);
-  sourceDrift.wasm.input_digest = digest("new-inputs");
-  sourceDrift.wasm.source_digest = digest("new-sources");
-  sourceDrift.wasm.tool_versions.rustc = "rustc new";
+  const platformDrift = structuredClone(provenance);
+  platformDrift.artifact_files[1].bytes = 56;
+  platformDrift.artifact_files[1].sha256 = `sha256:${digest("other-wasm")}`;
+  platformDrift.wasm.input_digest = digest("new-inputs");
+  platformDrift.wasm.tool_versions.rustc = "rustc same-version other-host";
 
   assert.deepEqual(
+    runtimePackageProvenanceContract(platformDrift, paths),
+    contract,
+  );
+  const sourceDrift = structuredClone(provenance);
+  sourceDrift.wasm.source_digest = digest("new-sources");
+  assert.notDeepEqual(
     runtimePackageProvenanceContract(sourceDrift, paths),
     contract,
   );
@@ -814,7 +818,7 @@ function validReceiptInput() {
 
 function validSelectionInputs() {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     buildRuntimeClosureSha256: digest("build-runtime-closure"),
     measurementContractSha256: digest("measurement-contract"),
     workerClosureSha256: digest("worker-closure"),
