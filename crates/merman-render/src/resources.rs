@@ -26,7 +26,7 @@ pub const WASM_RESVG_TREE_DEPTH_HARD_CAP: usize = 64;
 /// The icon renderer adds at least one wrapping `<g>` before whole-document validation, so this
 /// remains strictly below the WebAssembly backend hard cap.
 pub const MAX_PORTABLE_ICON_BODY_XML_DEPTH: usize = 32;
-const _: () = assert!(MAX_PORTABLE_ICON_BODY_XML_DEPTH + 1 <= WASM_RESVG_TREE_DEPTH_HARD_CAP);
+const _: () = assert!(MAX_PORTABLE_ICON_BODY_XML_DEPTH < WASM_RESVG_TREE_DEPTH_HARD_CAP);
 
 #[cfg(not(target_arch = "wasm32"))]
 pub const MAX_RESVG_TREE_DEPTH: usize = 256;

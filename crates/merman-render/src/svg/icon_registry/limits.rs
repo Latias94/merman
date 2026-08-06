@@ -285,7 +285,7 @@ pub const ICON_REGISTRY_RESOURCE_LIMIT_DESCRIPTORS: &[IconRegistryResourceLimitD
 
 pub const fn icon_registry_resource_limit_descriptors()
 -> &'static [IconRegistryResourceLimitDescriptor] {
-    &ICON_REGISTRY_RESOURCE_LIMIT_DESCRIPTORS
+    ICON_REGISTRY_RESOURCE_LIMIT_DESCRIPTORS
 }
 
 #[derive(Debug, Clone, Copy)]

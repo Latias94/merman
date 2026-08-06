@@ -86,11 +86,11 @@ pub(super) fn render_resolved_icon(
         .extra_class
         .map(|class| format!(r#" class="{}""#, escape_xml_attr(class)))
         .unwrap_or_default();
-    let xlink_attr = icon
-        .body
-        .uses_xlink()
-        .then_some(r#" xmlns:xlink="http://www.w3.org/1999/xlink""#)
-        .unwrap_or_default();
+    let xlink_attr = if icon.body.uses_xlink() {
+        r#" xmlns:xlink="http://www.w3.org/1999/xlink""#
+    } else {
+        ""
+    };
     let open = format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg"{xlink_attr}{class_attr} width="{width}" height="{height}" viewBox="{} {} {} {}">"#,
         js_number(transformed.left),
@@ -247,7 +247,7 @@ fn icon_render_work_units(
 }
 
 const fn ceil_div(value: usize, divisor: usize) -> usize {
-    value / divisor + if value % divisor == 0 { 0 } else { 1 }
+    value / divisor + if value.is_multiple_of(divisor) { 0 } else { 1 }
 }
 
 fn render_dimension(value: f64, name: &'static str) -> crate::Result<String> {

@@ -231,11 +231,6 @@ pub fn runtime_catalog() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
-#[wasm_bindgen(js_name = metadataJson)]
-pub fn metadata_json(id: &str) -> Result<JsValue, JsValue> {
-    json_value_result(wasm_artifact_contract().metadata_json(id))
-}
-
 #[wasm_bindgen(js_name = diagramFamilyCapabilities)]
 pub fn diagram_family_capabilities() -> Result<JsValue, JsValue> {
     json_value_result(wasm_artifact_contract().metadata_json("diagram-family-capabilities"))
