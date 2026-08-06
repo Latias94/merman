@@ -42,7 +42,8 @@ DEFAULT_REPEATS = 5
 DEFAULT_SEED = 0x4D45524D414E
 DEFAULT_BOOTSTRAP_RESAMPLES = 10_000
 DEFAULT_TIMEOUT_SECONDS = 300
-_METRICS = ("allocation_count", "allocated_bytes", "peak_growth_bytes")
+_REQUIRED_METRICS = ("allocation_count", "allocated_bytes", "peak_growth_bytes")
+_OPTIONAL_METRICS = ("retained_growth_bytes",)
 _OWNER_CONTRACT_COMMON_FIELDS = frozenset(
     {
         "schema_version",
@@ -256,9 +257,18 @@ def _resolve_repo_file(root: Path, relative: str, *, field: str) -> Path:
 
 def _validate_metrics_contract(contract: Mapping[str, object]) -> None:
     metrics = contract["metrics"]
-    if not isinstance(metrics, dict) or frozenset(metrics) != frozenset(_METRICS):
-        raise DriverContractError("owner contract must define exactly three allocator metrics")
-    for metric in _METRICS:
+    if not isinstance(metrics, dict):
+        raise DriverContractError("owner contract metrics must be an object")
+    metric_names = frozenset(metrics)
+    required = frozenset(_REQUIRED_METRICS)
+    allowed = required | frozenset(_OPTIONAL_METRICS)
+    if not required.issubset(metric_names) or not metric_names.issubset(allowed):
+        raise DriverContractError(
+            "owner contract must define the three allocator metrics and only supported optional metrics"
+        )
+    for metric in (*_REQUIRED_METRICS, *_OPTIONAL_METRICS):
+        if metric not in metrics:
+            continue
         bounds = metrics[metric]
         if not isinstance(bounds, dict) or frozenset(bounds) != _BOUND_FIELDS:
             raise DriverContractError(f"owner contract bounds differ for {metric}")
@@ -373,6 +383,12 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
             )
 
     _validate_metrics_contract(contract)
+    metrics = contract["metrics"]
+    assert isinstance(metrics, Mapping)
+    if frozenset(metrics) != frozenset(lane.measurement_metrics):
+        raise DriverContractError(
+            "owner contract metrics differ from lane measurement_metrics"
+        )
     return contract
 
 
@@ -671,7 +687,12 @@ def analyze_samples(
     assert isinstance(metric_contracts, Mapping)
     metrics: dict[str, object] = {}
     outcomes: list[str] = []
-    for metric in _METRICS:
+    metric_names = tuple(
+        metric
+        for metric in (*_REQUIRED_METRICS, *_OPTIONAL_METRICS)
+        if metric in metric_contracts
+    )
+    for metric in metric_names:
         bounds = metric_contracts[metric]
         assert isinstance(bounds, Mapping)
         try:

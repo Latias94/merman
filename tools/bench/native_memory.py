@@ -78,7 +78,12 @@ _COUNTER_FIELDS = (
     "peak_growth_bytes",
 )
 _ADJUSTED_METRICS = frozenset(
-    {"allocation_count", "allocated_bytes", "peak_growth_bytes"}
+    {
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes",
+        "retained_growth_bytes",
+    }
 )
 _OUTCOMES = frozenset(
     {"pass", "inconclusive", "failed_bound", "contract_failure"}
@@ -647,8 +652,23 @@ def paired_adjustments(
 
     values: dict[int, list[tuple[int, int, int]]] = {}
     for (scale, seed, repeat), pair in pairs.items():
-        operation = int(pair["operation"][metric])
-        zero = int(pair["zero"][metric])
+        if metric == "retained_growth_bytes":
+            retained_by_mode: dict[str, int] = {}
+            for mode in ("operation", "zero"):
+                snapshot = int(pair[mode]["snapshot_live_bytes"])
+                live_after = int(pair[mode]["live_bytes_after"])
+                if live_after < snapshot:
+                    raise MemoryContractError(
+                        "retained_growth_bytes cannot be derived when "
+                        f"{mode} live_bytes_after is below snapshot_live_bytes "
+                        f"at scale={scale}, seed={seed}, repeat={repeat}"
+                    )
+                retained_by_mode[mode] = live_after - snapshot
+            operation = retained_by_mode["operation"]
+            zero = retained_by_mode["zero"]
+        else:
+            operation = int(pair["operation"][metric])
+            zero = int(pair["zero"][metric])
         values.setdefault(scale, []).append((repeat, seed, operation - zero))
 
     return {

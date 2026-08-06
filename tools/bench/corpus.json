@@ -186,6 +186,41 @@
       ]
     },
     {
+      "id": "flowchart-svg-label-artifact-memory",
+      "kind": "public",
+      "owner": "merman",
+      "public_operation": "prepare-render",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "fresh-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-system-allocator-subprocess",
+      "required_features": ["svg"],
+      "selector": "memory/flowchart_svg_label_artifact/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 2, 4, 10, 32, 100],
+      "workload": "flowchart-non-markdown-svg-node-label-prepare-v1",
+      "evidence_contract": "docs/performance/contracts/flowchart-svg-label-artifact-memory-v1.json",
+      "measurement_metrics": [
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes",
+        "retained_growth_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "kind",
+        "label_profile",
+        "metadata_diagram_type_matches",
+        "prepared_family_flowchart",
+        "html_labels_disabled",
+        "unique_source_labels",
+        "retained_label_state_alive_at_checkpoint",
+        "prepared_state_released_after_drop",
+        "prepared_label_count"
+      ]
+    },
+    {
       "id": "flowchart-elk-separate-children-memory",
       "kind": "public",
       "owner": "merman",

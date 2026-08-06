@@ -58,6 +58,13 @@ ELK_HIERARCHY_CONTRACT_PATH = (
     / "contracts"
     / "flowchart-elk-separate-children-memory-v2.json"
 )
+FLOWCHART_LABEL_CONTRACT_PATH = (
+    ROOT
+    / "docs"
+    / "performance"
+    / "contracts"
+    / "flowchart-svg-label-artifact-memory-v1.json"
+)
 EXECUTABLE_SHA256 = "a" * 64
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 BINDING_DATA_SHA256 = "471b942eb8877b2ee7c38b86567b13f79fba101df1e5b4767b3421a200e0ad3f"
@@ -66,6 +73,7 @@ BINDING_OUTPUT_SHA256 = "5c5a3cdbe1f692c630006b4c365f348d93d8afd6ea99ecf45d8d2e1
 ELK_HIERARCHY_OUTPUT_SHA256 = (
     "30d91e9ca3384155ebe26a4b4315d740c9746cb899a77eb513b1f966d6adb901"
 )
+FLOWCHART_LABEL_OUTPUT_SHA256 = "8f2ba86d19094317a475fbff76af6a2cd7dcd58b24624e4da5f4b0bb1ac8053d"
 
 
 def response_for(request: dict[str, object]) -> dict[str, object]:
@@ -195,6 +203,49 @@ def elk_hierarchy_response_for(request: dict[str, object]) -> dict[str, object]:
     }
 
 
+def flowchart_label_response_for(request: dict[str, object]) -> dict[str, object]:
+    scale = int(request["scale"])
+    zero = request["mode"] == "zero"
+    retained = 0 if zero else scale * 1_000
+    return {
+        "schema_version": 2,
+        "lane_id": request["lane_id"],
+        "public_operation": "prepare-render",
+        "process_lifecycle": "fresh-process",
+        "engine_lifecycle": "reused-engine",
+        "logical_operations_per_estimate": 1,
+        "mode": request["mode"],
+        "scale": scale,
+        "seed": request["seed"],
+        "repeat": request["repeat"],
+        "pid": 1234,
+        "executable_sha256": EXECUTABLE_SHA256,
+        "invocation_id": request["invocation_id"],
+        "nonce": request["nonce"],
+        "output_sha256": EMPTY_SHA256 if zero else FLOWCHART_LABEL_OUTPUT_SHA256,
+        "workload_units": scale,
+        "semantic_output": {
+            "kind": "flowchart-prepared-render-v1",
+            "label_profile": "flowchart-non-markdown-svg-node-v1",
+            "metadata_diagram_type_matches": not zero,
+            "prepared_family_flowchart": not zero,
+            "html_labels_disabled": not zero,
+            "unique_source_labels": not zero,
+            "retained_label_state_alive_at_checkpoint": not zero,
+            "prepared_state_released_after_drop": not zero,
+            "prepared_label_count": 0 if zero else scale,
+        },
+        "snapshot_live_bytes": 100,
+        "allocation_count": 0 if zero else scale * 10,
+        "allocated_bytes": 0 if zero else scale * 10_000,
+        "live_bytes_after": 100 + retained,
+        "peak_live_bytes": 100 if zero else 100 + scale * 2_000,
+        "peak_growth_bytes": 0 if zero else scale * 2_000,
+        "counter_overflowed": False,
+        "counter_underflowed": False,
+    }
+
+
 def validate_zero_work_smoke_report(report: Mapping[str, object]) -> None:
     if report.get("outcome") != "protocol_smoke_pass" or report.get("exit_code") != 0:
         raise ValueError("native-memory smoke report did not pass its protocol contract")
@@ -270,6 +321,13 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         )
 
     @staticmethod
+    def flowchart_label_lane():
+        return resolve_lane_selector(
+            load_corpus(CORPUS_PATH),
+            "flowchart-svg-label-artifact-memory",
+        )
+
+    @staticmethod
     def args(**overrides: object) -> argparse.Namespace:
         values: dict[str, object] = {
             "corpus": str(CORPUS_PATH),
@@ -317,9 +375,29 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             candidate = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
             candidate["evidence_class"] = "candidate-bound"
             candidate["candidate_admission"] = True
+            candidate["metrics"]["retained_growth_bytes"] = {
+                "slope_cap": 2.0,
+                "max_scale_cap": 1000000,
+            }
             path.write_text(json.dumps(candidate), encoding="utf-8")
-            loaded = run_native_memory.load_owner_contract(path, lane=self.lane())
+            retained_lane = replace(
+                self.lane(),
+                measurement_metrics=(
+                    "allocation_count",
+                    "allocated_bytes",
+                    "peak_growth_bytes",
+                    "retained_growth_bytes",
+                ),
+            )
+            loaded = run_native_memory.load_owner_contract(path, lane=retained_lane)
             self.assertIs(loaded["candidate_admission"], True)
+            self.assertIn("retained_growth_bytes", loaded["metrics"])
+
+            with self.assertRaisesRegex(
+                run_native_memory.DriverContractError,
+                "metrics differ from lane measurement_metrics",
+            ):
+                run_native_memory.load_owner_contract(path, lane=self.lane())
 
             candidate["candidate_admission"] = False
             path.write_text(json.dumps(candidate), encoding="utf-8")
@@ -383,6 +461,80 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             hashlib.sha256(projection).hexdigest(),
             contract["semantic_response"]["operation_output_sha256"],
         )
+
+    def test_flowchart_label_contract_registers_retained_prepared_state(self) -> None:
+        lane = self.flowchart_label_lane()
+        contract = run_native_memory.load_owner_contract(
+            FLOWCHART_LABEL_CONTRACT_PATH,
+            lane=lane,
+        )
+        recipe = run_native_memory.memory_recipe(
+            ROOT,
+            target_dir=ROOT / "target",
+            toolchain=None,
+            corpus=CORPUS_PATH,
+            contract=contract,
+        )
+
+        self.assertEqual(contract["schema_version"], 2)
+        self.assertEqual(contract["evidence_class"], "candidate-bound")
+        self.assertIs(contract["candidate_admission"], True)
+        self.assertEqual(contract["scale"]["dimension"], "prepared_label_count")
+        self.assertEqual(contract["scale"]["units_per_scale"], 1)
+        self.assertEqual(
+            set(contract["metrics"]),
+            {
+                "allocation_count",
+                "allocated_bytes",
+                "peak_growth_bytes",
+                "retained_growth_bytes",
+            },
+        )
+        self.assertEqual(recipe.package, "merman")
+        self.assertEqual(recipe.bench, "flowchart_svg_label_memory")
+        self.assertEqual(recipe.features, ("svg",))
+        projection = json.dumps(
+            contract["semantic_response"]["operation"],
+            separators=(",", ":"),
+        ).encode("utf-8")
+        self.assertEqual(
+            hashlib.sha256(projection).hexdigest(),
+            contract["semantic_response"]["operation_output_sha256"],
+        )
+
+    def test_flowchart_label_analysis_includes_retained_growth(self) -> None:
+        lane = self.flowchart_label_lane()
+        contract = run_native_memory.load_owner_contract(
+            FLOWCHART_LABEL_CONTRACT_PATH,
+            lane=lane,
+        )
+        nonces = (f"{index:032x}" for index in range(60))
+        schedule = run_native_memory.build_schedule(
+            lane_id=lane.id,
+            repeats=5,
+            seed=1,
+            run_id="flowchart-label-analysis",
+            nonce_factory=lambda: next(nonces),
+        )
+        samples = []
+        for pid, entry in enumerate(schedule, start=10_000):
+            response = flowchart_label_response_for(dict(entry["request"]))
+            response["pid"] = pid
+            samples.append(response)
+
+        analysis, outcomes = run_native_memory.analyze_samples(
+            samples,
+            contract=contract,
+            bootstrap_resamples=100,
+            seed_material="flowchart-label-analysis",
+        )
+
+        self.assertEqual(set(analysis["metrics"]), set(contract["metrics"]))
+        self.assertEqual(
+            analysis["metrics"]["retained_growth_bytes"]["adjustments"][100],
+            (100_000,) * 5,
+        )
+        self.assertEqual(outcomes, ["pass", "pass", "pass", "pass"])
 
     def test_elk_hierarchy_v2_cannot_be_promoted_by_renaming_the_lane(
         self,

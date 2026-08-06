@@ -277,11 +277,17 @@ def _load_lanes(data: dict[str, object], schema_version: int) -> tuple[LaneMetad
                 raise ValueError(
                     f"memory lane {lane_id} requires an owner evidence contract"
                 )
-            if frozenset(measurement_metrics) != frozenset(
+            required_metrics = frozenset(
                 {"allocation_count", "allocated_bytes", "peak_growth_bytes"}
-            ):
+            )
+            supported_metrics = required_metrics | {"retained_growth_bytes"}
+            registered_metrics = frozenset(measurement_metrics)
+            if not required_metrics.issubset(
+                registered_metrics
+            ) or not registered_metrics.issubset(supported_metrics):
                 raise ValueError(
-                    f"memory lane {lane_id} must register the native allocator metrics"
+                    f"memory lane {lane_id} must register the three native allocator "
+                    "metrics and only supported optional metrics"
                 )
             if public_operation == "render-svg":
                 required_output = {
