@@ -96,10 +96,15 @@ export function CodeEditor({ className }: CodeEditorProps) {
     let registration: MermaidLanguageRegistration | null = null;
     let client: ReturnType<typeof startMermanLanguageWorker>["client"] | null =
       null;
+    let failureSubscription: { dispose(): void } | null = null;
 
     try {
       const startup = startMermanLanguageWorker();
       client = startup.client;
+      failureSubscription = startup.client.onDidFail((error) => {
+        if (!active || languageGenerationRef.current !== generation) return;
+        markLanguageUnavailable(error, generation);
+      });
       void startup.ready
         .then((identity) => {
           if (!active || languageGenerationRef.current !== generation) {
@@ -136,6 +141,7 @@ export function CodeEditor({ className }: CodeEditorProps) {
 
     return () => {
       active = false;
+      failureSubscription?.dispose();
       if (languageGenerationRef.current === generation) {
         languageGenerationRef.current += 1;
       }

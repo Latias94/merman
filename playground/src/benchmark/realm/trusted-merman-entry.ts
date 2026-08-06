@@ -6,13 +6,13 @@ import {
   type RealmEngineArtifactIdentity,
 } from "../../runtime/realm/channel-protocol.ts";
 import { startBenchmarkRealm } from "./bootstrap.ts";
-import engineManifest from "../../../.runtime/benchmark-merman-engine.json";
+import { BENCHMARK_MERMAN_ARTIFACT_PROJECTION } from "./generated/benchmark-merman.generated.ts";
 import "./benchmark-realm.css";
 
 const boot = readBootIdentity();
 void startBenchmarkRealm(
   boot,
-  engineManifest as RealmEngineArtifactIdentity,
+  BENCHMARK_MERMAN_ARTIFACT_PROJECTION.manifest as RealmEngineArtifactIdentity,
   "merman"
 );
 

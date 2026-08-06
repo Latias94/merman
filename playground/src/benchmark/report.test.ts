@@ -14,15 +14,18 @@ import { BENCHMARK_PROTOCOL_VERSION } from "./protocol.ts";
 import { BENCHMARK_TRACE_SCHEMA_VERSION } from "./trace.ts";
 import { REALM_PROTOCOL_VERSION } from "../runtime/realm/channel-protocol.ts";
 import { BENCHMARK_PUBLICATION_CLOCK_BOUNDARY } from "./publication.ts";
+import {
+  createBenchmarkSamplePlan,
+  type BenchmarkSampleIntent,
+  type BenchmarkSamplePlan,
+} from "./sample-plan.ts";
 
 test("report derives intervals from raw traces and strips capability tokens", () => {
+  const plan = coldPlan();
+  const intent = plan.samples[1];
   const sample = projectBenchmarkRealmSample(
-    {
-      blockIndex: 0,
-      orderIndex: 0,
-      purpose: "measured",
-    },
-    realmSuccess("merman", "realm-cold", "sample-1", coldTrace())
+    intent,
+    realmSuccess(intent, coldTrace())
   );
 
   assert.equal(sample.outcome, "success");
@@ -36,20 +39,21 @@ test("report derives intervals from raw traces and strips capability tokens", ()
 });
 
 test("failed samples remain in evidence but cannot produce a ratio", () => {
-  const evidence = baseEvidence([
+  const plan = coldPlan();
+  const evidence = baseEvidence(plan, [
     projectBenchmarkRealmSample(
-      { blockIndex: 0, orderIndex: 0, purpose: "measured" },
-      realmSuccess("merman", "realm-cold", "m-1", coldTrace())
+      plan.samples[0],
+      realmFailure(plan.samples[0])
     ),
     projectBenchmarkRealmSample(
-      { blockIndex: 0, orderIndex: 1, purpose: "measured" },
-      realmFailure("mermaid", "realm-cold", "j-1")
+      plan.samples[1],
+      realmSuccess(plan.samples[1], coldTrace())
     ),
   ]);
   const report = buildBenchmarkReport(evidence, "complete-with-errors");
 
   assert.equal(report.samples.length, 2);
-  assert.equal(report.samples[1].outcome, "failure");
+  assert.equal(report.samples[0].outcome, "failure");
   assert(report.aggregates);
   assert.equal(report.aggregates.ratios.firstIsolatedPresentationMs, null);
   assert.equal(
@@ -63,13 +67,11 @@ test("failed samples remain in evidence but cannot produce a ratio", () => {
 });
 
 test("transport failures preserve the engine source and structured error detail", () => {
+  const intent = coldPlan().samples[0];
   const sample = projectBenchmarkTransportFailure(
-    { blockIndex: 0, orderIndex: 1, purpose: "measured" },
+    intent,
     {
-      engine: "mermaid",
-      mode: "realm-cold",
       requestId: "mermaid-reset",
-      role: "measured",
       runId: "run-1",
     },
     {
@@ -91,10 +93,11 @@ test("transport failures preserve the engine source and structured error detail"
 });
 
 test("cancelled and invalidated reports suppress all aggregates", () => {
-  const evidence = baseEvidence([
+  const plan = coldPlan();
+  const evidence = baseEvidence(plan, [
     projectBenchmarkRealmSample(
-      { blockIndex: 0, orderIndex: 0, purpose: "measured" },
-      realmSuccess("merman", "realm-cold", "m-1", coldTrace())
+      plan.samples[0],
+      realmSuccess(plan.samples[0], coldTrace())
     ),
   ]);
 
@@ -102,23 +105,26 @@ test("cancelled and invalidated reports suppress all aggregates", () => {
   assert.equal(buildBenchmarkReport(evidence, "invalidated").aggregates, null);
 });
 
-test("ratio requires the same measured block identities on both engines", () => {
-  const merman = projectBenchmarkRealmSample(
-    { blockIndex: 0, orderIndex: 0, purpose: "measured" },
-    realmSuccess("merman", "realm-cold", "m-1", coldTrace())
+test("report rejects samples whose metadata drifts from the sample plan", () => {
+  const plan = coldPlan();
+  const sample = projectBenchmarkRealmSample(
+    plan.samples[0],
+    realmSuccess(plan.samples[0], coldTrace())
   );
-  const mermaid = projectBenchmarkRealmSample(
-    { blockIndex: 1, orderIndex: 0, purpose: "measured" },
-    realmSuccess("mermaid", "realm-cold", "j-1", coldTrace())
+  assert.throws(
+    () =>
+      buildBenchmarkReport(
+        baseEvidence(plan, [
+          Object.freeze({ ...sample, sessionId: "wrong-session" }),
+        ]),
+        "cancelled"
+      ),
+    /does not match its plan intent/
   );
-  const report = buildBenchmarkReport(baseEvidence([merman, mermaid]), "success");
-
-  assert(report.aggregates);
-  assert.equal(report.aggregates.ratios.firstIsolatedPresentationMs, null);
 });
 
 test("JSON download exactly serializes the displayed report and revokes its URL", () => {
-  const report = buildBenchmarkReport(baseEvidence([]), "success");
+  const report = buildBenchmarkReport(baseEvidence(coldPlan(), []), "cancelled");
   const calls: string[] = [];
   const blobs: Blob[] = [];
 
@@ -149,6 +155,7 @@ test("JSON download exactly serializes the displayed report and revokes its URL"
 });
 
 function baseEvidence(
+  plan: BenchmarkSamplePlan,
   samples: BenchmarkRunEvidence["samples"]
 ): BenchmarkRunEvidence {
   return {
@@ -160,10 +167,6 @@ function baseEvidence(
     },
     run: {
       id: "run-1",
-      seed: 7,
-      mode: "realm-cold",
-      iterations: 1,
-      warmups: 0,
       startedAt: "2026-07-19T00:00:00.000Z",
       endedAt: "2026-07-19T00:00:01.000Z",
       durationMs: 1000,
@@ -183,10 +186,7 @@ function baseEvidence(
         effectiveLayoutId: "dagre",
       },
     },
-    schedule: {
-      seed: 7,
-      blocks: [{ index: 0, order: ["merman", "mermaid"] }],
-    },
+    plan,
     versions: {
       expected: { merman: "0.8.0-alpha.1", mermaid: "11.16.0" },
       observed: { merman: ["test-merman"], mermaid: [] },
@@ -206,9 +206,7 @@ function baseEvidence(
 }
 
 function realmSuccess(
-  engine: "merman" | "mermaid",
-  mode: "realm-cold" | "warm",
-  requestId: string,
+  intent: BenchmarkSampleIntent,
   trace: ReturnType<typeof coldTrace>
 ) {
   return {
@@ -221,15 +219,15 @@ function realmSuccess(
     sequence: 1,
     runId: "run-1",
     runToken: "r".repeat(43),
-    requestId,
-    engine,
-    mode,
-    role: "measured" as const,
+    requestId: intent.sampleId,
+    sampleId: intent.sampleId,
+    engine: intent.engine,
+    intentKind: intent.kind,
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
     trace,
     resources: [],
     resourceError: null,
-    version: `test-${engine}`,
+    version: `test-${intent.engine}`,
     parentPublication: parentPublication(),
     svgBytes: 100,
   };
@@ -247,9 +245,7 @@ function parentPublication() {
 }
 
 function realmFailure(
-  engine: "merman" | "mermaid",
-  mode: "realm-cold" | "warm",
-  requestId: string
+  intent: BenchmarkSampleIntent
 ) {
   return {
     type: "benchmark-sample-failure" as const,
@@ -261,19 +257,28 @@ function realmFailure(
     sequence: 1,
     runId: "run-1",
     runToken: "r".repeat(43),
-    requestId,
-    engine,
-    mode,
-    role: "measured" as const,
+    requestId: intent.sampleId,
+    sampleId: intent.sampleId,
+    engine: intent.engine,
+    intentKind: intent.kind,
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
     trace: { ...coldTrace(), budgeted_svg_ready: null, isolated_dom_inserted: null, isolated_layout_box_ready: null, isolated_presentation_ready: null },
     resources: [],
     resourceError: null,
-    version: `test-${engine}`,
+    version: `test-${intent.engine}`,
     stage: "render" as const,
     message: "render failed",
-    detail: engine === "mermaid" ? '{"hash":{"token":"INVALID"}}' : null,
+    detail:
+      intent.engine === "mermaid" ? '{"hash":{"token":"INVALID"}}' : null,
   };
+}
+
+function coldPlan(): BenchmarkSamplePlan {
+  return createBenchmarkSamplePlan({
+    iterations: 2,
+    mode: "realm-cold",
+    seed: 7,
+  });
 }
 
 function coldTrace() {

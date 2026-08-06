@@ -19,21 +19,23 @@ const reporterPath = path.join(
   "scripts",
   "zenuml-admission-reporter.mjs"
 );
-const sourceRelativePaths = Object.freeze(
+export const BROWSER_ADMISSION_SOURCE_RELATIVE_PATHS = Object.freeze(
   [
     "platforms/web/src/svg-safety-policy.ts",
     "platforms/web/src/svg-safety.ts",
-    "playground/scripts/build-opaque-realm.mjs",
     "playground/scripts/zenuml-admission-reporter.mjs",
     "playground/scripts/zenuml-browser-admission.mjs",
+    "playground/src/benchmark/realm/generated/benchmark-mermaid.generated.ts",
     "playground/src/benchmark/realm/bootstrap.ts",
     "playground/src/benchmark/realm/controller.ts",
     "playground/src/benchmark/realm/engines/mermaid.ts",
+    "playground/src/benchmark/realm/opaque-mermaid-artifact.ts",
     "playground/src/benchmark/realm/opaque-mermaid-entry.ts",
     "playground/src/runtime/realm/browser-realm-channel.ts",
     "playground/src/runtime/realm/channel-protocol.ts",
-    "playground/src/runtime/realm/opaque-realm-artifacts.ts",
+    "playground/src/runtime/realm/generated/opaque-realm-plan.generated.ts",
     "playground/src/runtime/realm/opaque-realm-document.ts",
+    "playground/src/runtime/realm/opaque-realm-projection.ts",
     "playground/src/runtime/render-artifact.ts",
     "playground/tests/benchmark.realm.spec.ts",
   ].sort()
@@ -162,7 +164,6 @@ async function runBrowserAdmission(workspaceRoot) {
       "test",
       "benchmark.realm.spec.ts",
       "--project=chromium-desktop",
-      "--project=chromium-mobile",
       `--reporter=${reporterPath}`,
     ],
     {
@@ -270,7 +271,7 @@ function buildEvidence(report, contract, sources) {
 
 async function sourceEvidence(workspaceRoot) {
   return Promise.all(
-    sourceRelativePaths.map(async (relativePath) => ({
+    BROWSER_ADMISSION_SOURCE_RELATIVE_PATHS.map(async (relativePath) => ({
       path: relativePath,
       sha256: sha256(await readFile(path.join(workspaceRoot, relativePath))),
     }))

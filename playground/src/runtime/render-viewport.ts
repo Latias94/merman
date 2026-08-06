@@ -12,9 +12,7 @@ export function capturePlaygroundLayoutEnvironment(): MermanLayoutEnvironment {
     containerWidth: PLAYGROUND_RENDER_VIEWPORT.width,
     containerHeight: PLAYGROUND_RENDER_VIEWPORT.height,
   };
-  return Object.freeze(
-    Number.isFinite(availableWidth) && availableWidth > 0
-      ? { ...container, screenAvailableWidth: availableWidth }
-      : container
-  );
+  return Number.isFinite(availableWidth) && availableWidth > 0
+    ? { ...container, screenAvailableWidth: availableWidth }
+    : container;
 }

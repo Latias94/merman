@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useShallow } from "zustand/react/shallow";
 import { ChevronRight, Code, Search, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -37,15 +36,17 @@ const categoryKeys: Record<string, string> = {
   Grammar: "examples.categories.grammar",
 };
 
-export function ExampleGallery() {
+export function ExampleGallery({
+  open,
+  onOpenChange,
+  restoreFocus,
+}: {
+  readonly open: boolean;
+  onOpenChange(open: boolean): void;
+  restoreFocus(): void;
+}) {
   const { t } = useTranslation();
-  const { showExamples, setShowExamples, setCode } = useAppStore(
-    useShallow((state) => ({
-      setCode: state.setCode,
-      setShowExamples: state.setShowExamples,
-      showExamples: state.showExamples,
-    }))
-  );
+  const setCode = useAppStore((state) => state.setCode);
   const asciiSupport = useAsciiSupport();
   const searchRef = useRef<HTMLInputElement>(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -103,16 +104,7 @@ export function ExampleGallery() {
 
   const handleSelectExample = (example: Example) => {
     setCode(example.source);
-    setShowExamples(false);
-  };
-
-  const handleOpenChange = (open: boolean) => {
-    setShowExamples(open);
-    if (!open) {
-      setQuery("");
-      setSelectedCategory("All");
-      setAsciiOnly(false);
-    }
+    onOpenChange(false);
   };
 
   const getCategoryLabel = (category: string) => {
@@ -121,17 +113,24 @@ export function ExampleGallery() {
   };
 
   return (
-    <Dialog open={showExamples} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        safeArea={false}
         showCloseButton={false}
         className="grid h-[100dvh] w-screen max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[min(90dvh,54rem)] sm:w-[calc(100vw-2rem)] sm:max-w-[76rem] sm:rounded-md sm:border"
+        style={{
+          paddingTop: "env(safe-area-inset-top)",
+          paddingRight: "env(safe-area-inset-right)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          paddingLeft: "env(safe-area-inset-left)",
+        }}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           searchRef.current?.focus();
         }}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          document.getElementById("examples-trigger")?.focus();
+          restoreFocus();
         }}
       >
         <DialogHeader className="border-b bg-muted/15 p-4 pr-14 text-left sm:px-5">
@@ -143,7 +142,7 @@ export function ExampleGallery() {
             <Button
               variant="ghost"
               size="icon"
-              className="absolute right-3 top-3"
+              className="absolute right-3 top-3 size-10 sm:size-9"
               aria-label={t("examples.close")}
             >
               <X className="size-5" />

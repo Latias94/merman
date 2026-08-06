@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runInNewContext } from "node:vm";
 import { projectSafeInlineSvg } from "./render-artifact.ts";
 
+import type { MermanDomainFacade } from "./merman-core.ts";
 import type {
-  MermanDomainFacade,
-  MermanRenderOptions,
-} from "./merman-core.ts";
+  ConfiguredMermanOperationInput,
+  FrozenRenderOperation,
+} from "./merman-operation-input.ts";
+import {
+  DEFAULT_WORKSPACE_SNAPSHOT,
+  type WorkspaceSnapshot,
+} from "../lib/workspace-snapshot.ts";
+import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
 import {
   createRenderCoordinator,
   type RenderCoordinatorInput,
@@ -15,91 +20,8 @@ import type {
   MermaidRealmController,
   MermaidRealmRenderResult,
 } from "./mermaid-realm-controller.ts";
-import { projectError } from "./error-projection.ts";
 
 const VIEWPORT = { width: 800, height: 600 };
-
-test("projects binding and cyclic object failures without object coercion", () => {
-  const binding = projectError({
-    version: 1,
-    ok: false,
-    code: 5,
-    code_name: "MERMAN_PARSE_ERROR",
-    message: "Expected a diagram statement.",
-  });
-  assert.equal(binding.summary, "Expected a diagram statement.");
-  assert.doesNotMatch(binding.summary, /\[object Object\]/);
-  assert.match(binding.detail ?? "", /"code_name": "MERMAN_PARSE_ERROR"/);
-
-  const cyclic: { message: string; self?: unknown } = {
-    message: "Structured failure",
-  };
-  cyclic.self = cyclic;
-  const projected = projectError(cyclic);
-  assert.equal(projected.summary, "Structured failure");
-  assert.match(projected.detail ?? "", /\[circular\]/);
-  assert.doesNotMatch(projected.detail ?? "", /\[object Object\]/);
-
-  const opaque = new Proxy(
-    {},
-    {
-      get() {
-        throw new Error("unreadable getter");
-      },
-      ownKeys() {
-        throw new Error("unreadable keys");
-      },
-    }
-  );
-  assert.doesNotThrow(() => projectError(opaque));
-  assert.equal(projectError(opaque).detail, '"[unreadable object]"');
-
-  const hostilePrototype = new Proxy(
-    {},
-    {
-      getPrototypeOf() {
-        throw new Error("unreadable prototype");
-      },
-    }
-  );
-  assert.deepEqual(projectError(hostilePrototype), {
-    summary: "Unexpected error.",
-    detail: '"[unreadable error]"',
-  });
-
-  const parserError = new Error("Parse error on line 2");
-  Object.assign(parserError, {
-    hash: {
-      expected: ["NODE_TEXT"],
-      loc: { first_column: 4, first_line: 2 },
-      token: "INVALID",
-    },
-  });
-  const parserProjection = projectError(parserError);
-  assert.equal(parserProjection.summary, "Parse error on line 2");
-  assert.match(parserProjection.detail ?? "", /"token": "INVALID"/);
-  assert.match(parserProjection.detail ?? "", /"first_line": 2/);
-
-  const crossRealmError = runInNewContext(
-    'Object.assign(new Error("Cross-realm Merman failure."), { code: "MERMAN_CROSS_REALM" })'
-  );
-  assert.equal(crossRealmError instanceof Error, false);
-  const crossRealmProjection = projectError(crossRealmError);
-  assert.equal(crossRealmProjection.summary, "Cross-realm Merman failure.");
-  assert.match(crossRealmProjection.detail ?? "", /MERMAN_CROSS_REALM/);
-  assert.doesNotMatch(crossRealmProjection.summary, /\[object Object\]/);
-  assert.doesNotMatch(crossRealmProjection.detail ?? "", /\[object Object\]/);
-
-  const oversizedBinding = projectError({
-    version: 1,
-    ok: false,
-    code: 5,
-    code_name: "MERMAN_PARSE_ERROR",
-    message: "x".repeat(9_001),
-  });
-  assert.ok(oversizedBinding.summary.length < 9_001);
-  assert.match(oversizedBinding.summary, /\[truncated\]$/);
-});
 
 test("latest request publishes Merman and Mermaid as one coherent batch", async () => {
   const first = deferred<MermaidRealmRenderResult>();
@@ -110,7 +32,7 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
     compareViewport: VIEWPORT,
     debounceMs: 0,
   });
-  coordinator.setCompareEnabled(true);
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
 
   coordinator.setInput(input("first"));
   await waitFor(() => compare.calls.length === 1);
@@ -131,26 +53,27 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
   if (state.mermaid.artifact.kind === "safe-inline-svg") {
     assert.match(state.mermaid.artifact.svg, /second/);
   }
-  assert.equal(state.snapshot.source, "second");
+  assert.equal(state.snapshot.operation.source, "second");
 });
 
 test("request identity includes all presentation axes and stores the same-snapshot SVG plan", async () => {
   const planCalls: {
-    options: Readonly<MermanRenderOptions>;
+    operation: FrozenRenderOperation;
     result: ReturnType<MermanDomainFacade["svgPlan"]>;
   }[] = [];
   const domainFacade: MermanDomainFacade = {
     ...facade(),
-    svgPlan(source, _theme, _configJson, options = {}) {
+    svgPlan(input) {
+      const operation = input as FrozenRenderOperation;
       const result = svgPlan({
-        diagramType: source,
-        profileId: options.presentationProfileId ?? null,
+        diagramType: operation.source,
+        profileId: operation.presentationProfileId,
       });
-      planCalls.push({ options, result });
+      planCalls.push({ operation, result });
       return result;
     },
   };
-  const optionCases: MermanRenderOptions[] = [
+  const workspaceCases: Array<Partial<WorkspaceSnapshot>> = [
     {
       diagramFont: "trebuchet",
       presentationProfileId: null,
@@ -186,16 +109,17 @@ test("request identity includes all presentation axes and stores the same-snapsh
     debounceMs: 0,
   });
 
-  for (const options of optionCases) {
+  for (const workspace of workspaceCases) {
     const previousPlanCallCount = planCalls.length;
-    coordinator.setInput({ ...input("identity", domainFacade), options });
+    coordinator.setInput(input("identity", domainFacade, workspace));
     await waitFor(() => coordinator.store.getState().status === "success");
     const state = coordinator.store.getState();
     assert.equal(state.status, "success");
     if (state.status !== "success") continue;
-    assert.equal(Object.isFrozen(state.snapshot.options), true);
+    assert.equal(Object.isFrozen(state.snapshot.operation), true);
+    assert.equal(Object.isFrozen(state.snapshot.operation.bindingOptions), true);
 
-    if (!options.presentationProfileId) {
+    if (!workspace.presentationProfileId) {
       assert.equal(planCalls.length, previousPlanCallCount);
       assert.equal(state.svgPlan, null);
       continue;
@@ -204,23 +128,127 @@ test("request identity includes all presentation axes and stores the same-snapsh
     assert.equal(planCalls.length, previousPlanCallCount + 1);
     const planCall = planCalls.at(-1);
     assert.ok(planCall);
-    assert.equal(planCall.options, state.snapshot.options);
-    assert.equal(state.svgPlan, planCall.result);
+    assert.equal(planCall.operation, state.snapshot.operation);
+    assert.deepEqual(state.svgPlan, planCall.result);
+    assert.equal(Object.isFrozen(state.svgPlan), true);
+    assert.equal(Object.isFrozen(state.svgPlan?.presentation_aspects), true);
+    planCall.result.required_capability_ids.push("late-capability");
+    assert.deepEqual(state.svgPlan?.required_capability_ids, []);
   }
 
   assert.equal(planCalls.length, 2);
 });
 
-test("freezes browser layout geometry into each render snapshot", async () => {
-  let screenAvailableWidth = 1280;
-  const renderOptions: Array<Readonly<MermanRenderOptions>> = [];
+test("deduplicates only when both the operation and facade authority are unchanged", async () => {
+  let firstRenderCalls = 0;
+  const firstFacade: MermanDomainFacade = {
+    ...facade("same-version"),
+    render(input) {
+      firstRenderCalls += 1;
+      return facade("same-version").render(input);
+    },
+  };
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+
+  coordinator.setInput(input("stable", firstFacade));
+  await waitFor(() => firstRenderCalls === 1);
+  coordinator.setInput(input("stable", firstFacade));
+  await Promise.resolve();
+  assert.equal(firstRenderCalls, 1);
+
+  let replacementRenderCalls = 0;
+  const replacementFacade: MermanDomainFacade = {
+    ...facade("same-version"),
+    render(input) {
+      replacementRenderCalls += 1;
+      return facade("same-version").render(input);
+    },
+  };
+  coordinator.setInput(input("stable", replacementFacade));
+  await waitFor(() => replacementRenderCalls === 1);
+  assert.equal(firstRenderCalls, 1);
+});
+
+test("passes one frozen operation to every Merman projection", async () => {
+  const operations: FrozenRenderOperation[] = [];
+  const capture = (input: ConfiguredMermanOperationInput) => {
+    operations.push(input as FrozenRenderOperation);
+    return input as FrozenRenderOperation;
+  };
   const domainFacade: MermanDomainFacade = {
     ...facade(),
-    render(source, _theme, _configJson, options = {}) {
-      renderOptions.push(options);
+    detectDiagram(input) {
+      capture(input);
+      return facade().detectDiagram(input);
+    },
+    svgPlan(input) {
+      const operation = capture(input);
+      return svgPlan({ profileId: operation.presentationProfileId });
+    },
+    render(input) {
+      const operation = capture(input);
       return {
         artifact: projectSafeInlineSvg(
-          `<svg xmlns="http://www.w3.org/2000/svg"><text>${source}</text></svg>`
+          `<svg xmlns="http://www.w3.org/2000/svg"><text>${operation.source}</text></svg>`
+        ),
+        error: null,
+        renderTime: 1,
+        status: "success",
+      };
+    },
+    renderAscii(input) {
+      capture(input);
+      return { ascii: "ascii", error: null, status: "success" };
+    },
+    parseJson(input) {
+      capture(input);
+      return "{}";
+    },
+    layoutJson(input) {
+      capture(input);
+      return "{}";
+    },
+  };
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setFeatures({ compareEnabled: false, diagnosticsEnabled: true });
+  coordinator.setInput(
+    input("one-operation", domainFacade, {
+      presentationProfileId: "future-profile",
+    })
+  );
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  if (state.status !== "success") return;
+  assert.equal(operations.length, 6);
+  assert.ok(operations.every((operation) => operation === state.snapshot.operation));
+  assert.equal(Object.isFrozen(state), true);
+  assert.equal(Object.isFrozen(state.detection), true);
+  assert.equal(Object.isFrozen(state.diagnostics), true);
+  assert.equal(Object.isFrozen(state.merman), true);
+  assert.equal(Reflect.set(state, "publishedAt", 99), false);
+});
+
+test("freezes browser layout geometry into each render snapshot", async () => {
+  let screenAvailableWidth = 1280;
+  const renderOperations: FrozenRenderOperation[] = [];
+  const domainFacade: MermanDomainFacade = {
+    ...facade(),
+    render(input) {
+      const operation = input as FrozenRenderOperation;
+      renderOperations.push(operation);
+      return {
+        artifact: projectSafeInlineSvg(
+          `<svg xmlns="http://www.w3.org/2000/svg"><text>${operation.source}</text></svg>`
         ),
         error: null,
         renderTime: 2,
@@ -240,18 +268,18 @@ test("freezes browser layout geometry into each render snapshot", async () => {
   });
 
   coordinator.setInput(input("layout-environment", domainFacade));
-  await waitFor(() => renderOptions.length === 1);
-  assert.deepEqual(renderOptions[0].layoutEnvironment, {
+  await waitFor(() => renderOperations.length === 1);
+  assert.deepEqual(renderOperations[0].layoutEnvironment, {
     containerWidth: 800,
     containerHeight: 600,
     screenAvailableWidth: 1280,
   });
-  assert.equal(Object.isFrozen(renderOptions[0].layoutEnvironment), true);
+  assert.equal(Object.isFrozen(renderOperations[0].layoutEnvironment), true);
 
   screenAvailableWidth = 1440;
   coordinator.setInput(input("layout-environment", domainFacade));
-  await waitFor(() => renderOptions.length === 2);
-  assert.equal(renderOptions[1].layoutEnvironment?.screenAvailableWidth, 1440);
+  await waitFor(() => renderOperations.length === 2);
+  assert.equal(renderOperations[1].layoutEnvironment.screenAvailableWidth, 1440);
 });
 
 test("keeps a successful render when SVG plan collection fails", async () => {
@@ -260,19 +288,16 @@ test("keeps a successful render when SVG plan collection fails", async () => {
     compareViewport: VIEWPORT,
     debounceMs: 0,
   });
-  coordinator.setInput({
-    ...input("plan-failure", {
+  coordinator.setInput(
+    input("plan-failure", {
       ...facade(),
       svgPlan() {
         throw new Error("SVG plan unavailable.");
       },
-    }),
-    options: {
-      diagramFont: "trebuchet",
+    }, {
       presentationProfileId: "future-profile",
-      textMeasurementMode: "browser",
-    },
-  });
+    })
+  );
   await waitFor(() => coordinator.store.getState().status === "success");
 
   const state = coordinator.store.getState();
@@ -379,7 +404,7 @@ test("updating disables old pair and partial replaces the failed pane", async ()
     compareViewport: VIEWPORT,
     debounceMs: 0,
   });
-  coordinator.setCompareEnabled(true);
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
 
   coordinator.setInput(input("stable"));
   await waitFor(() => compare.calls.length === 1);
@@ -391,7 +416,6 @@ test("updating disables old pair and partial replaces the failed pane", async ()
   const updating = coordinator.store.getState();
   assert.equal(updating.status, "updating");
   if (updating.status === "updating") {
-    assert.equal(updating.actionsEnabled, false);
     const previousMermaid = updating.previous.mermaid;
     assert.equal(previousMermaid?.status, "success");
     assert.match(
@@ -413,7 +437,6 @@ test("updating disables old pair and partial replaces the failed pane", async ()
   const partial = coordinator.store.getState();
   assert.equal(partial.status, "partial");
   if (partial.status !== "partial") return;
-  assert.equal(partial.actionsEnabled, true);
   assert.equal(partial.merman.status, "success");
   assert.match(
     partial.merman.status === "success" ? partial.merman.artifact.svg : "",
@@ -426,6 +449,70 @@ test("updating disables old pair and partial replaces the failed pane", async ()
   assert.equal("svg" in partial.mermaid, false);
 });
 
+test("treats a Mermaid realm version mismatch as a protocol failure", async () => {
+  const realmResult = deferred<MermaidRealmRenderResult>();
+  const compare = fakeCompare([realmResult.promise]);
+  const coordinator = createRenderCoordinator({
+    compare,
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setInput(input("version-mismatch"));
+  await waitFor(() => compare.calls.length === 1);
+  realmResult.resolve({
+    ...mermaidSuccess("version-mismatch"),
+    version: "0.0.0",
+  });
+  await waitFor(() => coordinator.store.getState().status === "partial");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "partial");
+  if (state.status !== "partial" || state.mermaid.status !== "failure") return;
+  assert.equal(state.mermaid.stage, "protocol");
+  assert.match(state.mermaid.message, new RegExp(MERMAID_JS_VERSION));
+  assert.match(state.mermaid.message, /0\.0\.0/);
+});
+
+test("marks each presented engine by rebuilding an immutable completed publication", async () => {
+  const realmResult = deferred<MermaidRealmRenderResult>();
+  const compare = fakeCompare([realmResult.promise]);
+  const coordinator = createRenderCoordinator({
+    compare,
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setInput(input("presentation"));
+  await waitFor(() => compare.calls.length === 1);
+  realmResult.resolve(mermaidSuccess("presentation"));
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const initial = coordinator.store.getState();
+  assert.equal(initial.status, "success");
+  if (initial.status !== "success" || !initial.mermaid) return;
+  const publicationId = initial.snapshot.publicationId;
+
+  coordinator.markPresented(publicationId, "merman", 10);
+  const afterMerman = coordinator.store.getState();
+  assert.notEqual(afterMerman, initial);
+  assert.equal(initial.merman.presentedAt, null);
+  assert.equal(afterMerman.status, "success");
+  if (afterMerman.status !== "success" || !afterMerman.mermaid) return;
+  assert.equal(afterMerman.merman.presentedAt, 10);
+  assert.equal(Object.isFrozen(afterMerman), true);
+  assert.equal(Object.isFrozen(afterMerman.merman), true);
+
+  coordinator.markPresented(publicationId, "mermaid", 20);
+  const afterMermaid = coordinator.store.getState();
+  assert.notEqual(afterMermaid, afterMerman);
+  assert.equal(afterMerman.mermaid.presentedAt, null);
+  assert.equal(afterMermaid.status, "success");
+  if (afterMermaid.status !== "success" || !afterMermaid.mermaid) return;
+  assert.equal(afterMermaid.mermaid.presentedAt, 20);
+  assert.equal(Object.isFrozen(afterMermaid.mermaid), true);
+});
+
 test("a completed Mermaid failure replaces stale success without borrowing Merman error", async () => {
   const first = deferred<MermaidRealmRenderResult>();
   const second = deferred<MermaidRealmRenderResult>();
@@ -435,7 +522,7 @@ test("a completed Mermaid failure replaces stale success without borrowing Merma
     compareViewport: VIEWPORT,
     debounceMs: 0,
   });
-  coordinator.setCompareEnabled(true);
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
 
   coordinator.setInput(input("stable"));
   await waitFor(() => compare.calls.length === 1);
@@ -456,7 +543,7 @@ test("a completed Mermaid failure replaces stale success without borrowing Merma
   const completed = coordinator.store.getState();
   assert.equal(completed.status, "failed");
   if (completed.status !== "failed" || !completed.mermaid) return;
-  assert.equal(completed.snapshot.source, "invalid");
+  assert.equal(completed.snapshot.operation.source, "invalid");
   assert.equal(completed.merman.message, "Source is invalid.");
   assert.match(completed.merman.detail ?? "", /MERMAN_PARSE_ERROR/);
   assert.equal(completed.mermaid.message, "Parse error on line 1");
@@ -473,7 +560,7 @@ test("pause waits for active work and resumes only the latest snapshot", async (
     compareViewport: VIEWPORT,
     debounceMs: 0,
   });
-  coordinator.setCompareEnabled(true);
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
   coordinator.setInput(input("active"));
   await waitFor(() => compare.calls.length === 1);
 
@@ -500,7 +587,7 @@ test("blank source and suspend reject every late completion", async () => {
     compareViewport: VIEWPORT,
     debounceMs: 0,
   });
-  coordinator.setCompareEnabled(true);
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
   coordinator.setInput(input("active"));
   await waitFor(() => compare.calls.length === 1);
 
@@ -522,7 +609,7 @@ test("request exceptions become typed failures and later work still runs", async
     compareViewport: VIEWPORT,
     debounceMs: 0,
   });
-  coordinator.setCompareEnabled(true);
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
   coordinator.setInput(input("throws", throwingFacade()));
   await waitFor(() => compare.calls.length === 1);
   rejected.reject(new Error("channel failed"));
@@ -633,16 +720,15 @@ test("normalizes an unprojected ASCII failure without failing the SVG result", a
 
 function input(
   source: string,
-  domainFacade: MermanDomainFacade = facade()
+  domainFacade: MermanDomainFacade = facade(),
+  workspace: Partial<WorkspaceSnapshot> = {}
 ): RenderCoordinatorInput {
   return {
     facade: domainFacade,
-    source,
-    theme: "default",
-    configJson: "{}",
-    options: {
-      diagramFont: "trebuchet",
-      textMeasurementMode: "browser",
+    workspace: {
+      ...DEFAULT_WORKSPACE_SNAPSHOT,
+      code: source,
+      ...workspace,
     },
   };
 }
@@ -689,9 +775,9 @@ function rawFailureFacade(error: unknown): MermanDomainFacade {
   };
 }
 
-function facade(): MermanDomainFacade {
+function facade(packageVersion = "test-merman"): MermanDomainFacade {
   return {
-    packageVersion: "test-merman",
+    packageVersion,
     presentationCatalog: () => ({
       schema_version: 1,
       theme_presets: [],
@@ -705,28 +791,24 @@ function facade(): MermanDomainFacade {
       effectiveLayoutId: "dagre",
     }),
     getAsciiSupportedDiagrams: () => ["flowchart"],
-    render: (source: string) => ({
+    render: (input: ConfiguredMermanOperationInput) => ({
       artifact: projectSafeInlineSvg(
-        `<svg xmlns="http://www.w3.org/2000/svg"><text>${source}</text></svg>`
+        `<svg xmlns="http://www.w3.org/2000/svg"><text>${input.source}</text></svg>`
       ),
       error: null,
       renderTime: 2,
       status: "success",
     }),
-    renderAscii: (source: string) => ({
-      ascii: source,
+    renderAscii: (input: ConfiguredMermanOperationInput) => ({
+      ascii: input.source,
       error: null,
       status: "success",
     }),
-    svgPlan: (
-      source: string,
-      _theme?: string,
-      _configJson?: string,
-      options?: MermanRenderOptions,
-    ) =>
+    svgPlan: (input: ConfiguredMermanOperationInput) =>
       svgPlan({
-        diagramType: source,
-        profileId: options?.presentationProfileId ?? null,
+        diagramType: input.source,
+        profileId:
+          (input as FrozenRenderOperation).presentationProfileId ?? null,
       }),
   } as unknown as MermanDomainFacade;
 }
@@ -772,7 +854,9 @@ function fakeCompare(
   };
 }
 
-function mermaidSuccess(label: string): MermaidRealmRenderResult {
+function mermaidSuccess(
+  label: string
+): Extract<MermaidRealmRenderResult, { status: "success" }> {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg"><text>${label}</text></svg>`;
   return {
     status: "success",
@@ -780,7 +864,7 @@ function mermaidSuccess(label: string): MermaidRealmRenderResult {
     prepareTimeMs: 1,
     renderTimeMs: 2,
     presentationTimeMs: 3,
-    version: "11.16.0",
+    version: MERMAID_JS_VERSION,
   };
 }
 

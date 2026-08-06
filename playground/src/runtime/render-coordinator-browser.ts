@@ -1,5 +1,6 @@
 import { compareMermaidRealmController } from "./mermaid-realm.ts";
 import { createRenderCoordinator } from "./render-coordinator.ts";
+import type { RenderPublicationId } from "./render-coordinator.ts";
 import {
   capturePlaygroundLayoutEnvironment,
   PLAYGROUND_RENDER_VIEWPORT,
@@ -14,16 +15,13 @@ export const renderCoordinator = createRenderCoordinator({
 export const renderCoordinatorStore = renderCoordinator.store;
 export const disposeRenderCoordinator = () => renderCoordinator.dispose();
 export const markRenderCoordinatorPresented = (
-  requestId: number,
+  publicationId: RenderPublicationId,
   engine: "merman" | "mermaid",
   at: number
-) => renderCoordinator.markPresented(requestId, engine, at);
+) => renderCoordinator.markPresented(publicationId, engine, at);
 export const pauseRenderCoordinator = () => renderCoordinator.pause();
 export const refreshRenderCoordinator = () => renderCoordinator.refresh();
 export const resumeRenderCoordinator = () => renderCoordinator.resume();
-export const setCompareEnabled = (enabled: boolean) =>
-  renderCoordinator.setCompareEnabled(enabled);
-export const setDiagnosticsEnabled = (enabled: boolean) =>
-  renderCoordinator.setDiagnosticsEnabled(enabled);
+export const setRenderFeatures = renderCoordinator.setFeatures;
 export const setRenderCoordinatorInput = renderCoordinator.setInput;
 export const suspendRenderCoordinator = () => renderCoordinator.suspend();

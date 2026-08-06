@@ -12,10 +12,7 @@ import {
 } from "./helpers/playground";
 import { PLAYGROUND_RENDER_VIEWPORT } from "../src/runtime/render-viewport";
 
-test("@smoke loads the production WASM and renders a safe SVG", async ({
-  page,
-  isMobile,
-}, testInfo) => {
+test("loads the production WASM and renders a safe SVG", async ({ page }, testInfo) => {
   const errors = monitorBrowserErrors(page);
   const wasmResponse = await openPlayground(page);
 
@@ -26,9 +23,6 @@ test("@smoke loads the production WASM and renders a safe SVG", async ({
     /\/assets\/merman_wasm_bg-[\w-]+\.wasm$/,
   );
   expect(wasmResponse.url()).not.toContain("/@fs/");
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await waitForPreviewSvg(page);
   const resources = await playgroundResourceCounts(page);
   expect(resources.measurementProbes).toBe(3);
@@ -47,25 +41,16 @@ test("@smoke loads the production WASM and renders a safe SVG", async ({
   errors.assertNone();
 });
 
-test("editing the source publishes the matching SVG without page overflow", async ({
-  page,
-  isMobile,
-}) => {
+test("editing the source publishes the matching SVG without page overflow", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
-  if (!isMobile) {
-    await waitForPreviewSvg(page);
-  }
+  await waitForPreviewSvg(page);
 
   await replaceEditorSource(
     page,
     "flowchart LR\n  browser[Browser smoke] --> rendered[Rendered]",
   );
   await expect(page.locator("footer")).toContainText("2 Lines");
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
-
   await expect.poll(() => previewSvgText(page)).toContain("Browser smoke");
   await expectNoDocumentOverflow(page);
   await expect(page.locator("header")).toBeVisible();
@@ -73,39 +58,21 @@ test("editing the source publishes the matching SVG without page overflow", asyn
   errors.assertNone();
 });
 
-test("canonical detection clears invalid and stale diagram types", async ({
-  page,
-  isMobile,
-}) => {
+test("canonical detection clears invalid and stale diagram types", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
 
   await replaceEditorSource(page, "flowchart LR\n  A --> B");
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await expect(page.locator("footer")).toContainText("Flowchart");
 
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Editor", exact: true }).click();
-  }
   await replaceEditorSource(page, "unknownDiagram\n  A --> B");
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await expect(page.locator("footer")).toContainText("Unknown");
 
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Editor", exact: true }).click();
-  }
   await replaceEditorSource(page, "flowchart TD\n  stale --> result");
   await replaceEditorSource(
     page,
     'gitGraph\n  commit id:"C0"\n  branch feature',
   );
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await expect(page.locator("footer")).toContainText("Git Graph");
 
   errors.assertNone();
@@ -113,13 +80,12 @@ test("canonical detection clears invalid and stale diagram types", async ({
 
 test("Compare owns one local Mermaid realm and publishes one coherent batch", async ({
   page,
-  isMobile,
 }) => {
   const errors = monitorBrowserErrors(page);
   const opaqueArtifactRequests: string[] = [];
   page.on("request", (request) => {
     const pathname = new URL(request.url()).pathname;
-    if (/\/assets\/opaque-realm-artifacts-[\w-]+\.js$/.test(pathname)) {
+    if (/\/assets\/opaque-compare-artifact-[\w-]+\.js$/u.test(pathname)) {
       opaqueArtifactRequests.push(request.url());
     }
   });
@@ -129,9 +95,6 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
     page,
     "flowchart LR\n  compare_start[Compare start] --> ready[Ready]",
   );
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await waitForPreviewSvg(page);
   expect(opaqueArtifactRequests).toEqual([]);
 
@@ -151,9 +114,6 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
     expect(new URL(requestUrl).origin).toBe(new URL(page.url()).origin);
   }
 
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Editor", exact: true }).click();
-  }
   await replaceEditorSource(
     page,
     "flowchart LR\n  superseded[Superseded] --> stale[Stale]",
@@ -162,11 +122,6 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
     page,
     "flowchart LR\n  latest_batch[Latest batch] --> coherent[Coherent]",
   );
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-    await page.getByRole("tab", { name: "Compare", exact: true }).click();
-  }
-
   await expect
     .poll(() => compareSvgTexts(page))
     .toEqual([
@@ -206,7 +161,6 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
 
 test("Compare detection and rendering share external ELK configuration", async ({
   page,
-  isMobile,
 }) => {
   const errors = monitorBrowserErrors(page);
 
@@ -216,9 +170,6 @@ test("Compare detection and rendering share external ELK configuration", async (
     page,
     "flowchart LR\n  configured_input[Configured input] --> elk_ready[ELK ready]",
   );
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await waitForPreviewSvg(page);
   await page.getByRole("tab", { name: "Compare", exact: true }).click();
 
@@ -234,7 +185,6 @@ test("Compare detection and rendering share external ELK configuration", async (
 
 test("Compare isolates container-sensitive Gantt rendering from pane width", async ({
   page,
-  isMobile,
 }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
@@ -248,9 +198,6 @@ test("Compare isolates container-sensitive Gantt rendering from pane width", asy
       "  Task1 :a1, 2024-01-01, 1d",
     ].join("\n"),
   );
-  if (isMobile) {
-    await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  }
   await page.getByRole("tab", { name: "Compare", exact: true }).click();
 
   await expect.poll(() => mermaidCompareViewBoxWidth(page)).toBe(800);

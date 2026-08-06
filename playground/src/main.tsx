@@ -14,7 +14,13 @@ import {
   suspendRenderCoordinator,
 } from "./runtime/render-coordinator-browser";
 import { configureLocalMonaco } from "./editor/monaco";
-import { installUIThemeLifecycle } from "./store";
+import { installUIThemeLifecycle, useAppStore } from "./store";
+import { decodeShareHash } from "./lib/share";
+
+const sharedWorkspace = decodeShareHash(window.location.hash);
+if (sharedWorkspace) {
+  useAppStore.getState().applyWorkspaceSnapshot(sharedWorkspace);
+}
 
 const monacoOwner = configureLocalMonaco();
 const removeThemeLifecycle = installUIThemeLifecycle();

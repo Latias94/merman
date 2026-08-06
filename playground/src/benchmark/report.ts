@@ -15,7 +15,16 @@ import type {
   BenchmarkRealmSampleResult,
 } from "./realm/controller.ts";
 import type { BenchmarkParentPublicationEvidence } from "./publication.ts";
-import type { BalancedBenchmarkSchedule } from "./schedule.ts";
+import {
+  benchmarkIntentMode,
+  benchmarkIntentPurpose,
+  benchmarkIntentRole,
+  isBenchmarkAggregationIntent,
+  type BenchmarkSampleIntent,
+  type BenchmarkSampleIntentKind,
+  type BenchmarkSamplePlan,
+  type BenchmarkSamplePurpose,
+} from "./sample-plan.ts";
 import {
   calculateBenchmarkStatistics,
   calculateMedianRatio,
@@ -64,7 +73,6 @@ export type BenchmarkTerminalStatus =
   | "cancelled"
   | "invalidated"
   | "failed";
-export type BenchmarkSamplePurpose = "setup" | "warmup" | "measured";
 
 export interface BenchmarkDetectionSnapshot {
   readonly diagramType: string | null;
@@ -94,25 +102,26 @@ export interface BenchmarkEnvironmentTransition {
   readonly visibilityState: string;
 }
 
-export interface BenchmarkSampleMetadata {
+interface BenchmarkRecordedSampleBase {
+  readonly aggregateKey: string | null;
   readonly blockIndex: number | null;
-  readonly orderIndex: number;
-  readonly purpose: BenchmarkSamplePurpose;
-}
-
-interface BenchmarkRecordedSampleBase extends BenchmarkSampleMetadata {
   readonly engine: BenchmarkEngine;
   readonly failure: BenchmarkRecordedFailureDetail | null;
   readonly intervals: BenchmarkReportIntervals | null;
+  readonly intentKind: BenchmarkSampleIntentKind;
   readonly mode: BenchmarkSampleMode;
+  readonly orderIndex: 0 | 1;
   readonly parentPublication: BenchmarkParentPublicationEvidence | null;
+  readonly purpose: BenchmarkSamplePurpose;
   readonly realmCreation: BenchmarkRealmCreationEvidence | null;
   readonly requestId: string;
   readonly resourceError: string | null;
   readonly resources: readonly BenchmarkResourceObservation[];
   readonly role: "measured" | "warmup";
   readonly runId: string;
+  readonly sampleId: string;
   readonly sequence: number | null;
+  readonly sessionId: string;
   readonly svgBytes: number | null;
   readonly trace: BenchmarkRawTrace | null;
   readonly version: string | null;
@@ -156,14 +165,10 @@ export interface BenchmarkRunEvidence {
     readonly durationMs: number;
     readonly endedAt: string;
     readonly id: string;
-    readonly iterations: number;
-    readonly mode: BenchmarkSampleMode;
-    readonly seed: number;
     readonly startedAt: string;
-    readonly warmups: number;
   };
+  readonly plan: BenchmarkSamplePlan;
   readonly samples: readonly BenchmarkRecordedSample[];
-  readonly schedule: BalancedBenchmarkSchedule;
   readonly schemaVersion: typeof BENCHMARK_REPORT_SCHEMA_VERSION;
   readonly terminalError: BenchmarkRecordedFailureDetail | null;
   readonly transitions: readonly BenchmarkEnvironmentTransition[];
@@ -194,21 +199,30 @@ export interface BenchmarkReportDownloadDependencies {
 }
 
 export function projectBenchmarkRealmSample(
-  metadata: BenchmarkSampleMetadata,
+  intent: BenchmarkSampleIntent,
   result: BenchmarkRealmSampleResult,
   realmCreation: BenchmarkRealmCreationEvidence | null = null
 ): BenchmarkRecordedSample {
+  const mode = benchmarkIntentMode(intent);
   const common = {
-    ...metadata,
-    engine: result.engine,
-    mode: result.mode,
+    aggregateKey: isBenchmarkAggregationIntent(intent)
+      ? intent.aggregateKey
+      : null,
+    blockIndex: isBenchmarkAggregationIntent(intent) ? intent.blockIndex : null,
+    engine: intent.engine,
+    intentKind: intent.kind,
+    mode,
+    orderIndex: intent.orderIndex,
+    purpose: benchmarkIntentPurpose(intent),
     realmCreation,
     requestId: result.requestId,
     resourceError: result.resourceError,
     resources: result.resources,
-    role: result.role,
+    role: benchmarkIntentRole(intent),
     runId: result.runId,
+    sampleId: intent.sampleId,
     sequence: result.sequence,
+    sessionId: intent.sessionId,
   } as const;
   if (result.type === "benchmark-sample-success") {
     return Object.freeze({
@@ -218,7 +232,8 @@ export function projectBenchmarkRealmSample(
       trace: result.trace,
       intervals: deriveReportIntervals(
         result.trace,
-        result.mode,
+        intent.engine,
+        mode,
         result.parentPublication
       ),
       parentPublication: result.parentPublication,
@@ -233,7 +248,7 @@ export function projectBenchmarkRealmSample(
     intervals:
       result.trace === null
         ? null
-        : deriveReportIntervals(result.trace, result.mode, null),
+        : deriveReportIntervals(result.trace, intent.engine, mode, null),
     parentPublication: null,
     version: result.version,
     failure: Object.freeze({
@@ -247,12 +262,9 @@ export function projectBenchmarkRealmSample(
 }
 
 export function projectBenchmarkTransportFailure(
-  metadata: BenchmarkSampleMetadata,
+  intent: BenchmarkSampleIntent,
   input: Readonly<{
-    engine: BenchmarkEngine;
-    mode: BenchmarkSampleMode;
     requestId: string;
-    role: "measured" | "warmup";
     runId: string;
   }>,
   error: unknown,
@@ -261,15 +273,23 @@ export function projectBenchmarkTransportFailure(
 ): BenchmarkRecordedFailure {
   const projection = projectError(error);
   return Object.freeze({
-    ...metadata,
+    aggregateKey: isBenchmarkAggregationIntent(intent)
+      ? intent.aggregateKey
+      : null,
+    blockIndex: isBenchmarkAggregationIntent(intent) ? intent.blockIndex : null,
     outcome: "failure",
-    engine: input.engine,
-    mode: input.mode,
+    engine: intent.engine,
+    intentKind: intent.kind,
+    mode: benchmarkIntentMode(intent),
+    orderIndex: intent.orderIndex,
+    purpose: benchmarkIntentPurpose(intent),
     realmCreation,
     requestId: input.requestId,
-    role: input.role,
+    role: benchmarkIntentRole(intent),
     runId: input.runId,
+    sampleId: intent.sampleId,
     sequence: null,
+    sessionId: intent.sessionId,
     trace: null,
     intervals: null,
     parentPublication: null,
@@ -301,14 +321,35 @@ export function buildBenchmarkReport(
   evidence: BenchmarkRunEvidence,
   terminalStatus: BenchmarkTerminalStatus
 ): BenchmarkReport {
+  validateEvidenceSamples(evidence.plan, evidence.samples, terminalStatus);
   const report: BenchmarkReport = {
-    ...evidence,
+    environment: Object.freeze({ ...evidence.environment }),
+    input: projectFrozenInput(evidence.input),
+    protocols: Object.freeze({ ...evidence.protocols }),
+    run: Object.freeze({ ...evidence.run }),
+    plan: evidence.plan,
+    samples: Object.freeze([...evidence.samples]),
+    schemaVersion: evidence.schemaVersion,
+    terminalError:
+      evidence.terminalError === null
+        ? null
+        : Object.freeze({ ...evidence.terminalError }),
+    transitions: Object.freeze(
+      evidence.transitions.map((transition) => Object.freeze({ ...transition }))
+    ),
+    versions: Object.freeze({
+      expected: Object.freeze({ ...evidence.versions.expected }),
+      observed: Object.freeze({
+        merman: Object.freeze([...evidence.versions.observed.merman]),
+        mermaid: Object.freeze([...evidence.versions.observed.mermaid]),
+      }),
+    }),
     terminalStatus,
     aggregates: shouldAggregate(terminalStatus)
-      ? buildAggregates(evidence.samples, evidence.run.iterations)
+      ? buildAggregates(evidence.samples, evidence.plan)
       : null,
   };
-  return deepFreeze(report);
+  return Object.freeze(report);
 }
 
 export function serializeBenchmarkReport(report: BenchmarkReport): string {
@@ -339,10 +380,11 @@ function shouldAggregate(status: BenchmarkTerminalStatus): boolean {
 
 function deriveReportIntervals(
   trace: BenchmarkRawTrace,
+  engine: BenchmarkEngine,
   mode: BenchmarkSampleMode,
   parentPublication: BenchmarkParentPublicationEvidence | null
 ): BenchmarkReportIntervals {
-  const local = deriveBenchmarkIntervals(trace, { mode });
+  const local = deriveBenchmarkIntervals(trace, { engine, mode });
   return Object.freeze({
     ...local,
     isolatedPresentationReceiptMs:
@@ -360,12 +402,13 @@ function deriveReportIntervals(
 
 function buildAggregates(
   samples: readonly BenchmarkRecordedSample[],
-  expectedIterations: number
+  plan: BenchmarkSamplePlan
 ): BenchmarkAggregates {
   const engines = {
     merman: buildEngineStatistics(samples, "merman"),
     mermaid: buildEngineStatistics(samples, "mermaid"),
   } as const;
+  const expectedIterations = plan.iterations;
   const measuredSuccessCounts = {
     merman: countMeasuredSuccesses(samples, "merman"),
     mermaid: countMeasuredSuccesses(samples, "mermaid"),
@@ -479,12 +522,74 @@ function browserDownloadDependencies(): BenchmarkReportDownloadDependencies {
   };
 }
 
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === "object" && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const nested of Object.values(value as Record<string, unknown>)) {
-      deepFreeze(nested);
+function validateEvidenceSamples(
+  plan: BenchmarkSamplePlan,
+  samples: readonly BenchmarkRecordedSample[],
+  terminalStatus: BenchmarkTerminalStatus
+): void {
+  if (samples.length > plan.samples.length) {
+    throw new Error("Benchmark report contains more samples than its plan.");
+  }
+  for (const [index, sample] of samples.entries()) {
+    const intent = plan.samples[index];
+    if (!intent || intent.sampleId !== sample.sampleId) {
+      throw new Error("Benchmark report samples do not follow plan order.");
+    }
+    const aggregateKey = isBenchmarkAggregationIntent(intent)
+      ? intent.aggregateKey
+      : null;
+    const blockIndex = isBenchmarkAggregationIntent(intent)
+      ? intent.blockIndex
+      : null;
+    if (
+      sample.engine !== intent.engine ||
+      sample.intentKind !== intent.kind ||
+      sample.mode !== benchmarkIntentMode(intent) ||
+      sample.role !== benchmarkIntentRole(intent) ||
+      sample.purpose !== benchmarkIntentPurpose(intent) ||
+      sample.orderIndex !== intent.orderIndex ||
+      sample.sessionId !== intent.sessionId ||
+      sample.aggregateKey !== aggregateKey ||
+      sample.blockIndex !== blockIndex
+    ) {
+      throw new Error(
+        `Benchmark report sample ${sample.sampleId} does not match its plan intent.`
+      );
     }
   }
-  return value;
+  if (terminalStatus === "success") {
+    if (
+      samples.length !== plan.samples.length ||
+      samples.some((sample) => sample.outcome !== "success")
+    ) {
+      throw new Error(
+        "A successful benchmark report must contain every planned successful sample."
+      );
+    }
+  }
+  if (
+    terminalStatus === "complete-with-errors" &&
+    !samples.some((sample) => sample.outcome === "failure")
+  ) {
+    throw new Error(
+      "A complete-with-errors benchmark report must contain failure evidence."
+    );
+  }
+}
+
+function projectFrozenInput(input: BenchmarkFrozenInput): BenchmarkFrozenInput {
+  return Object.freeze({
+    source: input.source,
+    configJson: input.configJson,
+    theme: input.theme,
+    diagramFont: input.diagramFont,
+    externalRequirements: Object.freeze({
+      externalDiagrams: Object.freeze([
+        ...input.externalRequirements.externalDiagrams,
+      ]),
+      layoutModules: Object.freeze([...input.externalRequirements.layoutModules]),
+    }),
+    viewport: Object.freeze({ ...input.viewport }),
+    detection: Object.freeze({ ...input.detection }),
+  });
 }

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   createMermaidRealmController,
   type MermaidRealmExecutionResult,
+  type MermaidRealmRenderInput,
   type MermaidRealmSession,
 } from "./mermaid-realm-controller.ts";
 import { RealmTimeoutError } from "./realm/channel-protocol.ts";
@@ -80,6 +81,57 @@ test("concurrent controller callers cannot interleave one realm", async () => {
   assert.equal((await firstRender).status, "success");
   assert.equal((await secondRender).status, "success");
   assert.deepEqual(calls, ["compare-1", "compare-2"]);
+});
+
+test("snapshots and freezes a queued render input before the realm can observe it", async () => {
+  const first = deferred<MermaidRealmExecutionResult>();
+  const observed: MermaidRealmRenderInput[] = [];
+  const session = fakeSession(async (input, requestId) => {
+    observed.push(input);
+    return requestId === "compare-1" ? first.promise : success("second");
+  });
+  const controller = createMermaidRealmController({
+    kind: "compare",
+    createSession: async () => session,
+  });
+  const mutableInput = {
+    source: "flowchart TD\nA-->B",
+    configJson: "{}",
+    theme: "forest",
+    diagramFont: "arial" as const,
+    externalRequirements: {
+      externalDiagrams: ["zenuml"],
+      layoutModules: ["elk"],
+    },
+    viewport: { width: 640, height: 480 },
+  };
+
+  const active = controller.render(INPUT);
+  const queued = controller.render(
+    mutableInput as unknown as MermaidRealmRenderInput
+  );
+  mutableInput.source = "mutated";
+  mutableInput.configJson = '{"theme":"dark"}';
+  mutableInput.externalRequirements.externalDiagrams.push("zenuml");
+  mutableInput.externalRequirements.layoutModules.push("tidy-tree");
+  mutableInput.viewport.width = 1;
+  await waitFor(() => observed.length === 1);
+  first.resolve(success("first"));
+  await active;
+  await queued;
+
+  assert.equal(observed.length, 2);
+  const snapshot = observed[1];
+  assert.equal(snapshot.source, "flowchart TD\nA-->B");
+  assert.equal(snapshot.configJson, "{}");
+  assert.deepEqual(snapshot.externalRequirements.externalDiagrams, ["zenuml"]);
+  assert.deepEqual(snapshot.externalRequirements.layoutModules, ["elk"]);
+  assert.deepEqual(snapshot.viewport, { width: 640, height: 480 });
+  assert.equal(Object.isFrozen(snapshot), true);
+  assert.equal(Object.isFrozen(snapshot.externalRequirements), true);
+  assert.equal(Object.isFrozen(snapshot.externalRequirements.externalDiagrams), true);
+  assert.equal(Object.isFrozen(snapshot.externalRequirements.layoutModules), true);
+  assert.equal(Object.isFrozen(snapshot.viewport), true);
 });
 
 test("timeout destroys the old realm before a later operation creates one", async () => {

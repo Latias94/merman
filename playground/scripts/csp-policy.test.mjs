@@ -12,13 +12,19 @@ import {
   parseCspPolicy,
   verifyHtmlCsp,
 } from "./csp-policy.mjs";
-import {
-  injectOpaqueRealmCspHashes,
-  loadOpaqueRealmCspHashes,
-} from "./opaque-realm-csp.mjs";
+import { injectOpaqueRealmCspHashes } from "./opaque-realm-csp.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const hashes = loadOpaqueRealmCspHashes(root);
+const hashes = Object.freeze({
+  "index.html": Object.freeze([
+    "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+  ]),
+  "benchmark-corpus.html": Object.freeze([
+    "sha256-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+  ]),
+  "benchmark.html": Object.freeze([]),
+});
 const expectedPolicies = createExpectedCspPolicies(hashes);
 const mainPolicy = `default-src 'none'; script-src 'self' blob: ${hashes["index.html"].map((hash) => `'${hash}'`).join(" ")} 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'`;
 
@@ -91,7 +97,7 @@ test("opaque bootstrap CSP injection fails closed on template drift", () => {
   const wrongPolicies = createExpectedCspPolicies({
     ...hashes,
     "index.html": [
-      "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      "sha256-DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
       hashes["index.html"][1],
     ],
   });

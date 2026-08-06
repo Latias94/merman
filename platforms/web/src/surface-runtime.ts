@@ -4,6 +4,7 @@ import {
 } from "./runtime-state.js";
 import type {
   MermanInitInput,
+  MermanWasmSource,
   MermanWasmLoader,
   MermanWasmModule,
   MermanWasmModuleBase,
@@ -50,6 +51,19 @@ export function assertBrowserRuntime(): void {
   }
 }
 
+function withPackageDefaultWasmSource<Module extends MermanWasmModuleBase>(
+  init: MermanInitInput<Module> | undefined,
+  wasm: MermanWasmSource,
+): MermanInitInput<Module> | undefined {
+  if (typeof init === "function") {
+    return { loader: init, wasm };
+  }
+  if (init?.loader && init.wasm === undefined) {
+    return { loader: init.loader, wasm };
+  }
+  return init;
+}
+
 export type SurfaceRuntime<
   Module extends MermanWasmModuleBase = MermanWasmModule,
   Implementation extends SurfaceImplementation = SurfaceImplementation,
@@ -67,14 +81,23 @@ export function bindSurfaceRuntime<
 >(
   surfaceLoader: MermanWasmLoader<Module>,
   implementation: Implementation,
+  packageDefaultWasmSource?: MermanWasmSource,
 ): SurfaceRuntime<Module, Implementation> {
   const sharedLoader = surfaceLoader as unknown as MermanWasmLoader;
   const state = createMermanRuntimeState(sharedLoader);
   const runtime: Record<string, RuntimeFunction> = {};
 
   for (const [name, binding] of Object.entries(implementation)) {
-    runtime[name] = (...args: unknown[]) =>
-      withMermanRuntimeState(state, () => binding(...args));
+    runtime[name] =
+      name === "initMerman" && packageDefaultWasmSource !== undefined
+        ? (init?: MermanInitInput<Module>) =>
+            withMermanRuntimeState(state, () =>
+              binding(
+                withPackageDefaultWasmSource(init, packageDefaultWasmSource),
+              ),
+            )
+        : (...args: unknown[]) =>
+            withMermanRuntimeState(state, () => binding(...args));
   }
 
   return runtime as SurfaceRuntime<Module, Implementation>;

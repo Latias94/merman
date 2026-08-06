@@ -13,6 +13,39 @@ import {
 const WASM_GLUE_SPECIFIER = "../../artifacts/wasm/merman_wasm.js";
 
 export function packageDistClosure(distRoot, packageId) {
+  const runtime = packageRuntimeDistClosure(distRoot, packageId);
+  const { root } = runtime;
+  const entryRoot = path.join(root, "package-entries");
+  const declarations = collectStaticModuleGraph({
+    entry: path.join(entryRoot, `${packageId}.d.ts`),
+    root,
+    mode: "declaration",
+  });
+
+  assertClosedPackageGraph(declarations, packageId, "declaration");
+  if (declarations.dynamicImports.length !== 0) {
+    throw new Error(`${packageId} declaration closure must not use dynamic imports.`);
+  }
+
+  const declarationModules = relativeModuleFiles(declarations);
+  const moduleFiles = uniqueSorted([
+    ...runtime.javascriptModules,
+    ...declarationModules,
+  ]);
+  const files = [...moduleFiles];
+  for (const relative of moduleFiles) {
+    const map = `${relative}.map`;
+    if (existsSync(path.join(root, ...map.split("/")))) files.push(map);
+  }
+
+  return Object.freeze({
+    ...runtime,
+    files: Object.freeze(uniqueSorted(files)),
+    declarationModules: Object.freeze(declarationModules),
+  });
+}
+
+export function packageRuntimeDistClosure(distRoot, packageId) {
   const root = path.resolve(distRoot);
   const entryRoot = path.join(root, "package-entries");
   const descriptor = webPackages.find(({ id }) => id === packageId);
@@ -24,14 +57,7 @@ export function packageDistClosure(distRoot, packageId) {
     root,
     mode: "runtime",
   });
-  const declarations = collectStaticModuleGraph({
-    entry: path.join(entryRoot, `${packageId}.d.ts`),
-    root,
-    mode: "declaration",
-  });
-
   assertClosedPackageGraph(javascript, packageId, "JavaScript");
-  assertClosedPackageGraph(declarations, packageId, "declaration");
   assertDeclaredSurfaceModuleGraph(javascript, descriptor);
   const dynamicImports = javascript.dynamicImports;
   if (
@@ -42,28 +68,11 @@ export function packageDistClosure(distRoot, packageId) {
       `${packageId} JavaScript closure must dynamically import only ${WASM_GLUE_SPECIFIER}.`,
     );
   }
-  if (declarations.dynamicImports.length !== 0) {
-    throw new Error(`${packageId} declaration closure must not use dynamic imports.`);
-  }
-
   const javascriptModules = relativeModuleFiles(javascript);
-  const declarationModules = relativeModuleFiles(declarations);
-  const moduleFiles = uniqueSorted([
-    ...javascriptModules,
-    ...declarationModules,
-  ]);
-  const files = [...moduleFiles];
-  for (const relative of moduleFiles) {
-    const map = `${relative}.map`;
-    if (existsSync(path.join(root, ...map.split("/")))) files.push(map);
-  }
-
   return Object.freeze({
     root,
     packageId,
-    files: Object.freeze(uniqueSorted(files)),
     javascriptModules: Object.freeze(javascriptModules),
-    declarationModules: Object.freeze(declarationModules),
   });
 }
 

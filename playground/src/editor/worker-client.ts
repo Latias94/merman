@@ -1,7 +1,12 @@
-import type { EditorSemanticTokenLegend } from "@mermanjs/web";
 import {
-  EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
+  EditorWorkerProtocolProjectionError,
+  projectEditorDocumentIdentity,
+  projectEditorDocumentSnapshot,
+  projectEditorWorkerQuery,
+  projectEditorWorkerQueryResult,
+  projectEditorWorkerResponse,
+  type EditorDocumentIdentity,
   type EditorDocumentSnapshot,
   type EditorWorkerErrorCode,
   type EditorWorkerQuery,
@@ -16,10 +21,13 @@ export interface EditorCancellationToken {
 }
 
 export interface EditorWorkerPort {
-  addEventListener(type: "error" | "message", listener: (event: any) => void): void;
+  addEventListener(
+    type: "error" | "message" | "messageerror",
+    listener: (event: any) => void,
+  ): void;
   removeEventListener(
-    type: "error" | "message",
-    listener: (event: any) => void
+    type: "error" | "message" | "messageerror",
+    listener: (event: any) => void,
   ): void;
   postMessage(message: EditorWorkerRequest): void;
   terminate(): void;
@@ -27,12 +35,13 @@ export interface EditorWorkerPort {
 
 export interface MermanLanguageWorkerClient {
   initialize(): Promise<EditorLanguageIdentity>;
+  onDidFail(listener: (error: Error) => void): { dispose(): void };
   openDocument(document: EditorDocumentSnapshot): Promise<void>;
   changeDocument(document: EditorDocumentSnapshot): Promise<void>;
   query<Query extends EditorWorkerQuery>(
-    document: EditorDocumentSnapshot,
+    document: EditorDocumentIdentity,
     query: Query,
-    cancellation?: EditorCancellationToken
+    cancellation?: EditorCancellationToken,
   ): Promise<EditorWorkerQueryResult<Query>>;
   dispose(): void;
 }
@@ -42,26 +51,60 @@ export interface MermanLanguageWorkerStartup {
   readonly ready: Promise<EditorLanguageIdentity>;
 }
 
-const DEFAULT_EDITOR_WORKER_INITIALIZATION_TIMEOUT_MS = 30_000;
+export interface EditorWorkerClientOptions {
+  readonly requestTimeoutMs?: number;
+  readonly tombstoneLimit?: number;
+}
+
+const DEFAULT_EDITOR_WORKER_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_EDITOR_WORKER_TOMBSTONE_LIMIT = 256;
 
 export interface EditorLanguageIdentity {
-  readonly legend: EditorSemanticTokenLegend;
+  readonly legend: ReadonlyEditorSemanticTokenLegend;
   readonly legendDigest: string;
   readonly transportApiVersion: number;
 }
 
-interface EditorSnapshotIdentity {
-  readonly uri: string;
-  readonly version: number;
+export interface ReadonlyEditorSemanticTokenLegend {
+  readonly tokenTypes: readonly string[];
+  readonly tokenModifiers: readonly string[];
+}
+
+interface EditorSnapshotIdentity extends EditorDocumentIdentity {
   readonly legendDigest: string;
 }
 
+type PendingExpected = "queryResult" | "ready" | "result";
+
 interface PendingRequest {
   readonly document?: EditorSnapshotIdentity;
-  readonly expected: "queryResult" | "ready" | "result";
+  readonly expected: PendingExpected;
+  readonly label: string;
+  readonly query?: EditorWorkerQuery;
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: Error) => void;
   cancellation?: { dispose(): void };
+  deadline?: ReturnType<typeof setTimeout>;
+  sent: boolean;
+}
+
+interface RequestTombstone {
+  readonly document?: EditorSnapshotIdentity;
+  readonly expected: PendingExpected;
+  readonly query?: EditorWorkerQuery;
+  readonly reason: "cancelled" | "completed";
+}
+
+interface Deferred<Value> {
+  readonly promise: Promise<Value>;
+  readonly resolve: (value: Value) => void;
+  readonly reject: (error: Error) => void;
+}
+
+interface SynchronizationEntry extends Deferred<void> {
+  snapshot: EditorDocumentSnapshot | null;
+  superseded: boolean;
+  readonly type: "didChange" | "didOpen";
 }
 
 export class StaleLanguageSnapshotError extends Error {
@@ -70,7 +113,7 @@ export class StaleLanguageSnapshotError extends Error {
 
   constructor(
     message = "The editor result belongs to an obsolete document or legend.",
-    detail: string | null = null
+    detail: string | null = null,
   ) {
     super(message);
     this.name = "StaleLanguageSnapshotError";
@@ -87,7 +130,7 @@ export class EditorWorkerProtocolError extends Error {
     message: string,
     code: EditorWorkerErrorCode | "CLIENT_PROTOCOL" = "CLIENT_PROTOCOL",
     detail: string | null = null,
-    nativeCode: string | null = null
+    nativeCode: string | null = null,
   ) {
     super(message);
     this.name = "EditorWorkerProtocolError";
@@ -99,174 +142,207 @@ export class EditorWorkerProtocolError extends Error {
 
 export function createMermanLanguageWorkerClient(
   worker: EditorWorkerPort,
-  expectedLegendDigest: string
+  expectedLegendDigest: string,
+  options: EditorWorkerClientOptions = {},
 ): MermanLanguageWorkerClient {
-  return new WorkerClient(worker, expectedLegendDigest);
+  return new WorkerClient(worker, expectedLegendDigest, options);
 }
 
 export function startMermanLanguageWorkerClient(
   worker: EditorWorkerPort,
   expectedLegendDigest: string,
-  timeoutMs = DEFAULT_EDITOR_WORKER_INITIALIZATION_TIMEOUT_MS
+  timeoutMs = DEFAULT_EDITOR_WORKER_REQUEST_TIMEOUT_MS,
 ): MermanLanguageWorkerStartup {
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
-    worker.terminate();
-    throw new EditorWorkerProtocolError(
-      "A positive editor worker initialization timeout is required."
-    );
-  }
   let client: MermanLanguageWorkerClient;
   try {
-    client = createMermanLanguageWorkerClient(worker, expectedLegendDigest);
+    client = createMermanLanguageWorkerClient(worker, expectedLegendDigest, {
+      requestTimeoutMs: timeoutMs,
+    });
   } catch (error) {
     worker.terminate();
     throw error;
   }
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_resolve, reject) => {
-    timeout = setTimeout(
-      () =>
-        reject(
-          new EditorWorkerProtocolError(
-            `Merman editor worker initialization timed out after ${timeoutMs} ms.`
-          )
-        ),
-      timeoutMs
-    );
+  const ready = client.initialize().catch((error: unknown) => {
+    client.dispose();
+    throw error;
   });
-  const ready = Promise.race([client.initialize(), deadline])
-    .finally(() => {
-      if (timeout !== undefined) clearTimeout(timeout);
-    })
-    .catch((error: unknown) => {
-      client.dispose();
-      throw error;
-    });
   return Object.freeze({ client, ready });
 }
 
 class WorkerClient implements MermanLanguageWorkerClient {
+  private readonly failureListeners = new Set<(error: Error) => void>();
   private readonly pending = new Map<number, PendingRequest>();
-  private currentDocument: EditorDocumentSnapshot | null = null;
+  private readonly tombstones: RequestTombstoneLedger;
+  private currentDocument: EditorDocumentIdentity | null = null;
   private disposed = false;
   private failure: Error | null = null;
+  private inFlightSynchronization: SynchronizationEntry | null = null;
   private initialized = false;
   private initializePromise: Promise<EditorLanguageIdentity> | null = null;
   private nextRequestId = 1;
-  private synchronization: Promise<void> = Promise.resolve();
+  private queuedSynchronization: SynchronizationEntry | null = null;
+  private readonly requestTimeoutMs: number;
+  private transportClosed = false;
   private readonly worker: EditorWorkerPort;
   private readonly expectedLegendDigest: string;
 
   private readonly handleError = (event: { message?: unknown }) => {
-    const detail = typeof event.message === "string" ? `: ${event.message}` : "";
+    const detail =
+      typeof event.message === "string" ? `: ${event.message}` : "";
     this.poison(new Error(`Merman editor worker failed${detail}`));
   };
 
+  private readonly handleMessageError = () => {
+    this.poison(
+      new EditorWorkerProtocolError(
+        "The browser could not decode an editor worker response.",
+        "PROTOCOL_MISMATCH",
+      ),
+    );
+  };
+
   private readonly handleMessage = (event: { data?: unknown }) => {
-    const response = parseResponse(event.data);
-    if (!response) {
+    let response: EditorWorkerResponse;
+    try {
+      response = projectEditorWorkerResponse(event.data);
+    } catch (error) {
       this.poison(
-        new EditorWorkerProtocolError("Received a malformed editor worker response.")
+        protocolProjectionError(
+          error,
+          "editor worker response",
+          "PROTOCOL_MISMATCH",
+        ),
       );
       return;
     }
-    const pending = this.pending.get(response.requestId);
-    if (!pending) return;
 
+    const pending = this.pending.get(response.requestId);
+    if (!pending) {
+      this.handleResponseWithoutPending(response);
+      return;
+    }
     if (response.type !== "error" && response.type !== pending.expected) {
       this.poison(
         new EditorWorkerProtocolError(
-          `Editor worker returned ${response.type} while ${pending.expected} was required.`
-        )
+          `Editor worker returned ${response.type} while ${pending.expected} was required.`,
+          "PROTOCOL_MISMATCH",
+        ),
       );
       return;
     }
-
-    this.pending.delete(response.requestId);
-    pending.cancellation?.dispose();
 
     if (response.type === "error") {
       const failure = workerResponseError(
         response.code,
         response.message,
         response.detail,
-        response.nativeCode
+        response.nativeCode,
       );
+      this.completePending(response.requestId, pending);
       pending.reject(failure);
       if (isFatalWorkerError(response.code)) this.poison(failure);
       return;
     }
 
-    if (response.type === "ready") {
-      try {
-        if (
-          !Number.isSafeInteger(response.transportApiVersion) ||
-          response.transportApiVersion < 1
-        ) {
-          throw new EditorWorkerProtocolError(
-            "Merman editor worker returned an invalid Web transport API version."
+    try {
+      switch (response.type) {
+        case "ready":
+          if (response.legendDigest !== this.expectedLegendDigest) {
+            throw new EditorWorkerProtocolError(
+              `Merman editor legend ${response.legendDigest} does not match ${this.expectedLegendDigest}.`,
+            );
+          }
+          this.completePending(response.requestId, pending);
+          pending.resolve(
+            Object.freeze({
+              legend: Object.freeze({
+                tokenTypes: Object.freeze([...response.legend.tokenTypes]),
+                tokenModifiers: Object.freeze([
+                  ...response.legend.tokenModifiers,
+                ]),
+              }),
+              legendDigest: response.legendDigest,
+              transportApiVersion: response.transportApiVersion,
+            }) satisfies EditorLanguageIdentity,
           );
-        }
-        if (response.editorSchema !== EDITOR_SCHEMA_VERSION) {
-          throw new EditorWorkerProtocolError(
-            `Merman editor schema ${response.editorSchema} does not match ${EDITOR_SCHEMA_VERSION}.`
+          return;
+        case "result":
+          this.completePending(response.requestId, pending);
+          pending.resolve(undefined);
+          return;
+        case "queryResult": {
+          if (
+            !pending.document ||
+            !pending.query ||
+            !sameSnapshotIdentity(pending.document, response) ||
+            !this.isCurrentDocument(pending.document)
+          ) {
+            this.completePending(response.requestId, pending);
+            pending.reject(new StaleLanguageSnapshotError());
+            return;
+          }
+          const result = projectEditorWorkerQueryResult(
+            pending.query,
+            response.result,
           );
+          this.completePending(response.requestId, pending);
+          pending.resolve(result);
+          return;
         }
-        if (response.legendDigest !== this.expectedLegendDigest) {
-          throw new EditorWorkerProtocolError(
-            `Merman editor legend ${response.legendDigest} does not match ${this.expectedLegendDigest}.`
-          );
-        }
-        pending.resolve(
-          Object.freeze({
-            legend: validateLegend(response.legend),
-            legendDigest: response.legendDigest,
-            transportApiVersion: response.transportApiVersion,
-          }) satisfies EditorLanguageIdentity
-        );
-      } catch (error) {
-        pending.reject(asError(error));
       }
-      return;
+    } catch (error) {
+      this.poison(
+        protocolProjectionError(
+          error,
+          "editor worker result",
+          "PROTOCOL_MISMATCH",
+        ),
+      );
     }
-
-    if (response.type === "queryResult") {
-      if (
-        !pending.document ||
-        !sameSnapshotIdentity(pending.document, response) ||
-        !this.isCurrentDocument(pending.document)
-      ) {
-        pending.reject(new StaleLanguageSnapshotError());
-        return;
-      }
-      pending.resolve(response.result);
-      return;
-    }
-    pending.resolve(response.result);
   };
 
-  constructor(worker: EditorWorkerPort, expectedLegendDigest: string) {
+  constructor(
+    worker: EditorWorkerPort,
+    expectedLegendDigest: string,
+    options: EditorWorkerClientOptions,
+  ) {
+    if (!expectedLegendDigest) {
+      throw new EditorWorkerProtocolError(
+        "A generated editor legend digest is required.",
+      );
+    }
+    this.requestTimeoutMs = positiveOption(
+      options.requestTimeoutMs ?? DEFAULT_EDITOR_WORKER_REQUEST_TIMEOUT_MS,
+      "editor worker request timeout",
+    );
+    const tombstoneLimit = positiveOption(
+      options.tombstoneLimit ?? DEFAULT_EDITOR_WORKER_TOMBSTONE_LIMIT,
+      "editor worker tombstone limit",
+    );
     this.worker = worker;
     this.expectedLegendDigest = expectedLegendDigest;
-    if (!expectedLegendDigest) {
-      throw new EditorWorkerProtocolError("A generated editor legend digest is required.");
-    }
+    this.tombstones = new RequestTombstoneLedger(tombstoneLimit);
     worker.addEventListener("error", this.handleError);
     worker.addEventListener("message", this.handleMessage);
+    worker.addEventListener("messageerror", this.handleMessageError);
   }
 
   initialize(): Promise<EditorLanguageIdentity> {
     this.assertActive();
     if (this.initializePromise) return this.initializePromise;
 
-    this.initializePromise = this.request<EditorLanguageIdentity>({
-      protocol: EDITOR_WORKER_PROTOCOL,
-      requestId: this.allocateRequestId(),
-      type: "initialize",
-    })
-      .then((legend) => {
+    const requestId = this.allocateRequestId();
+    this.initializePromise = this.request<EditorLanguageIdentity>(
+      {
+        protocol: EDITOR_WORKER_PROTOCOL,
+        requestId,
+        type: "initialize",
+      },
+      { expected: "ready", label: "initialization", requestId },
+    )
+      .then((identity) => {
         this.initialized = true;
-        return legend;
+        return identity;
       })
       .catch((error: unknown) => {
         const failure = asError(error);
@@ -276,175 +352,366 @@ class WorkerClient implements MermanLanguageWorkerClient {
     return this.initializePromise;
   }
 
+  onDidFail(listener: (error: Error) => void): { dispose(): void } {
+    if (this.disposed) return { dispose() {} };
+    if (this.failure) {
+      listener(this.failure);
+      return { dispose() {} };
+    }
+
+    this.failureListeners.add(listener);
+    let subscribed = true;
+    return {
+      dispose: () => {
+        if (!subscribed) return;
+        subscribed = false;
+        this.failureListeners.delete(listener);
+      },
+    };
+  }
+
   openDocument(document: EditorDocumentSnapshot): Promise<void> {
     this.assertReady();
-    validateSnapshot(document);
+    const snapshot = projectSnapshotForClient(document);
     if (this.currentDocument) {
       return Promise.reject(
-        new EditorWorkerProtocolError("The editor worker already owns a document.")
+        new EditorWorkerProtocolError(
+          "The editor worker already owns a document.",
+        ),
       );
     }
-    this.currentDocument = copySnapshot(document);
-    return this.enqueueSynchronization("didOpen", document);
+    this.currentDocument = identityOf(snapshot);
+    const entry = createSynchronizationEntry("didOpen", snapshot);
+    this.startSynchronization(entry);
+    return entry.promise;
   }
 
   changeDocument(document: EditorDocumentSnapshot): Promise<void> {
     this.assertReady();
-    validateSnapshot(document);
+    const snapshot = projectSnapshotForClient(document);
     const current = this.currentDocument;
-    if (!current || current.uri !== document.uri) {
-      return Promise.reject(
-        new EditorWorkerProtocolError("The editor worker does not own this document URI.")
-      );
-    }
-    if (document.version <= current.version) {
+    if (!current || current.uri !== snapshot.uri) {
       return Promise.reject(
         new EditorWorkerProtocolError(
-          `Document version ${document.version} must be newer than ${current.version}.`
-        )
+          "The editor worker does not own this document URI.",
+        ),
       );
     }
-    this.currentDocument = copySnapshot(document);
-    return this.enqueueSynchronization("didChange", document);
+    if (snapshot.version <= current.version) {
+      return Promise.reject(
+        new EditorWorkerProtocolError(
+          `Document version ${snapshot.version} must be newer than ${current.version}.`,
+        ),
+      );
+    }
+
+    this.currentDocument = identityOf(snapshot);
+    const entry = createSynchronizationEntry("didChange", snapshot);
+    if (this.inFlightSynchronization) {
+      if (this.inFlightSynchronization.type === "didChange") {
+        this.inFlightSynchronization.superseded = true;
+      }
+      if (this.queuedSynchronization) {
+        rejectSupersededSynchronization(this.queuedSynchronization);
+      }
+      this.queuedSynchronization = entry;
+    } else {
+      this.startSynchronization(entry);
+    }
+    return entry.promise;
   }
 
   async query<Query extends EditorWorkerQuery>(
-    document: EditorDocumentSnapshot,
+    document: EditorDocumentIdentity,
     query: Query,
-    cancellation?: EditorCancellationToken
+    cancellation?: EditorCancellationToken,
   ): Promise<EditorWorkerQueryResult<Query>> {
     this.assertReady();
-    if (!this.isCurrentDocument(document)) {
+    let identity: EditorDocumentIdentity;
+    try {
+      identity = projectEditorDocumentIdentity(document);
+    } catch (error) {
+      throw protocolProjectionError(error, "editor document identity");
+    }
+    let projectedQuery: Query;
+    try {
+      projectedQuery = projectEditorWorkerQuery(query) as Query;
+    } catch (error) {
+      throw protocolProjectionError(error, "editor query");
+    }
+    if (!this.isCurrentDocument(identity)) {
       throw new StaleLanguageSnapshotError();
     }
-    if (cancellation?.isCancellationRequested) {
-      throw abortError();
-    }
+    if (cancellation?.isCancellationRequested) throw abortError();
 
-    await this.synchronization;
-    if (cancellation?.isCancellationRequested) {
-      throw abortError();
+    const synchronization =
+      this.queuedSynchronization ?? this.inFlightSynchronization;
+    if (synchronization) {
+      await waitForCancellation(synchronization.promise, cancellation);
     }
-    if (!this.isCurrentDocument(document)) {
+    if (cancellation?.isCancellationRequested) throw abortError();
+    if (!this.isCurrentDocument(identity)) {
       throw new StaleLanguageSnapshotError();
     }
 
     const requestId = this.allocateRequestId();
+    const snapshot = snapshotIdentity(identity, this.expectedLegendDigest);
     return this.request<EditorWorkerQueryResult<Query>>(
       {
         protocol: EDITOR_WORKER_PROTOCOL,
         requestId,
         type: "query",
-        uri: document.uri,
-        version: document.version,
+        uri: identity.uri,
+        version: identity.version,
         legendDigest: this.expectedLegendDigest,
-        query,
+        query: projectedQuery,
       },
-      snapshotIdentity(document, this.expectedLegendDigest),
-      cancellation,
-      requestId
+      {
+        cancellation,
+        document: snapshot,
+        expected: "queryResult",
+        label: `${projectedQuery.kind} query`,
+        query: projectedQuery,
+        requestId,
+      },
     );
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.worker.removeEventListener("error", this.handleError);
-    this.worker.removeEventListener("message", this.handleMessage);
-    try {
-      this.worker.postMessage({
-        protocol: EDITOR_WORKER_PROTOCOL,
-        type: "dispose",
-      });
-    } catch {
-      // A failed worker may already reject messages; termination still releases it.
+    this.failureListeners.clear();
+    const failure = new Error("Merman editor worker was disposed.");
+    this.failAll(failure);
+    if (this.queuedSynchronization) {
+      rejectSynchronization(this.queuedSynchronization, failure);
+      this.queuedSynchronization = null;
     }
-    this.worker.terminate();
-    this.failAll(new Error("Merman editor worker was disposed."));
+    this.closeTransport();
     this.currentDocument = null;
   }
 
   private allocateRequestId(): number {
+    if (!Number.isSafeInteger(this.nextRequestId) || this.nextRequestId < 1) {
+      const failure = new EditorWorkerProtocolError(
+        "Editor worker request IDs are exhausted.",
+      );
+      this.poison(failure);
+      throw failure;
+    }
     const requestId = this.nextRequestId;
     this.nextRequestId += 1;
     return requestId;
   }
 
-  private enqueueSynchronization(
-    type: "didChange" | "didOpen",
-    document: EditorDocumentSnapshot
-  ): Promise<void> {
-    const snapshot = copySnapshot(document);
-    const synchronize = this.synchronization.then(() => {
-      const requestId = this.allocateRequestId();
-      return this.request<void>(
+  private startSynchronization(entry: SynchronizationEntry): void {
+    const snapshot = entry.snapshot;
+    if (!snapshot) return;
+    this.inFlightSynchronization = entry;
+    const requestId = this.allocateRequestId();
+    let synchronization: Promise<void>;
+    try {
+      synchronization = this.request<void>(
         {
           protocol: EDITOR_WORKER_PROTOCOL,
           requestId,
-          type,
+          type: entry.type,
           document: snapshot,
         },
-        undefined,
-        undefined,
-        requestId
+        {
+          expected: "result",
+          label: `${entry.type} synchronization`,
+          requestId,
+        },
       );
-    });
-    const guarded = synchronize.catch((error: unknown) => {
-      const failure = asError(error);
-      this.poison(failure);
-      throw failure;
-    });
-    this.synchronization = guarded;
-    return guarded;
+    } catch (error) {
+      this.finishSynchronizationFailure(entry, asError(error));
+      return;
+    }
+
+    void synchronization.then(
+      () => this.finishSynchronizationSuccess(entry),
+      (error: unknown) =>
+        this.finishSynchronizationFailure(entry, asError(error)),
+    );
+  }
+
+  private finishSynchronizationSuccess(entry: SynchronizationEntry): void {
+    if (this.inFlightSynchronization !== entry) return;
+    entry.snapshot = null;
+    this.inFlightSynchronization = null;
+    if (entry.superseded) {
+      entry.reject(new StaleLanguageSnapshotError());
+    } else {
+      entry.resolve(undefined);
+    }
+    const next = this.queuedSynchronization;
+    this.queuedSynchronization = null;
+    if (next) this.startSynchronization(next);
+  }
+
+  private finishSynchronizationFailure(
+    entry: SynchronizationEntry,
+    failure: Error,
+  ): void {
+    if (this.inFlightSynchronization === entry) {
+      entry.snapshot = null;
+      this.inFlightSynchronization = null;
+    }
+    entry.reject(failure);
+    if (this.queuedSynchronization) {
+      rejectSynchronization(this.queuedSynchronization, failure);
+      this.queuedSynchronization = null;
+    }
+    this.poison(failure);
   }
 
   private request<Result>(
     message: EditorWorkerRequest,
-    document?: EditorSnapshotIdentity,
-    cancellation?: EditorCancellationToken,
-    knownRequestId?: number
+    options: {
+      readonly cancellation?: EditorCancellationToken;
+      readonly document?: EditorSnapshotIdentity;
+      readonly expected: PendingExpected;
+      readonly label: string;
+      readonly query?: EditorWorkerQuery;
+      readonly requestId: number;
+    },
   ): Promise<Result> {
     this.assertActive();
-    if (!("requestId" in message)) {
-      return Promise.reject(new EditorWorkerProtocolError("Request ID is required."));
-    }
-    const requestId = knownRequestId ?? message.requestId;
+
     return new Promise<Result>((resolve, reject) => {
       const pending: PendingRequest = {
-        document,
-        expected:
-          message.type === "initialize"
-            ? "ready"
-            : message.type === "query"
-              ? "queryResult"
-              : "result",
+        document: options.document,
+        expected: options.expected,
+        label: options.label,
+        query: options.query,
         resolve: (value) => resolve(value as Result),
         reject,
+        sent: false,
       };
-      if (cancellation) {
-        pending.cancellation = cancellation.onCancellationRequested(() => {
-          if (!this.pending.delete(requestId)) return;
-          pending.cancellation?.dispose();
-          // WASM calls are synchronous. Cancellation only prevents publishing their result.
-          reject(abortError());
-        });
+      this.pending.set(options.requestId, pending);
+
+      if (options.cancellation) {
+        let cancelledWhileSubscribing = false;
+        try {
+          pending.cancellation = options.cancellation.onCancellationRequested(
+            () => {
+              if (!pending.cancellation) {
+                cancelledWhileSubscribing = true;
+                return;
+              }
+              this.cancelRequest(options.requestId, pending);
+            },
+          );
+        } catch (error) {
+          this.pending.delete(options.requestId);
+          reject(asError(error));
+          return;
+        }
+        if (
+          cancelledWhileSubscribing ||
+          options.cancellation.isCancellationRequested
+        ) {
+          this.cancelRequest(options.requestId, pending);
+        }
       }
-      this.pending.set(requestId, pending);
+      if (this.pending.get(options.requestId) !== pending) return;
+
+      pending.sent = true;
+      pending.deadline = setTimeout(() => {
+        if (this.pending.get(options.requestId) !== pending) return;
+        this.pending.delete(options.requestId);
+        disposePending(pending);
+        const failure = new EditorWorkerProtocolError(
+          `Merman editor worker ${pending.label} timed out after ${this.requestTimeoutMs} ms.`,
+        );
+        pending.reject(failure);
+        this.poison(failure);
+      }, this.requestTimeoutMs);
+
       try {
         this.worker.postMessage(message);
       } catch (error) {
-        this.pending.delete(requestId);
-        pending.cancellation?.dispose();
+        this.pending.delete(options.requestId);
+        disposePending(pending);
         const failure = asError(error);
+        pending.reject(failure);
         this.poison(failure);
-        reject(failure);
       }
     });
   }
 
+  private cancelRequest(requestId: number, pending: PendingRequest): void {
+    if (this.pending.get(requestId) !== pending) return;
+    this.pending.delete(requestId);
+    disposePending(pending);
+    if (pending.sent) {
+      this.tombstones.add(
+        requestId,
+        tombstoneFromPending(pending, "cancelled"),
+      );
+    }
+    pending.reject(abortError());
+  }
+
+  private completePending(requestId: number, pending: PendingRequest): void {
+    this.pending.delete(requestId);
+    disposePending(pending);
+    this.tombstones.add(requestId, tombstoneFromPending(pending, "completed"));
+  }
+
+  private handleResponseWithoutPending(response: EditorWorkerResponse): void {
+    const tombstone = this.tombstones.get(response.requestId);
+    if (!tombstone) {
+      this.poison(
+        new EditorWorkerProtocolError(
+          `Editor worker returned an unknown request ID ${response.requestId}.`,
+          "PROTOCOL_MISMATCH",
+        ),
+      );
+      return;
+    }
+    if (tombstone.reason !== "cancelled") {
+      this.poison(
+        new EditorWorkerProtocolError(
+          `Editor worker returned a duplicate response for request ${response.requestId}.`,
+          "PROTOCOL_MISMATCH",
+        ),
+      );
+      return;
+    }
+    if (response.type === "error" && isFatalWorkerError(response.code)) {
+      this.poison(
+        workerResponseError(
+          response.code,
+          response.message,
+          response.detail,
+          response.nativeCode,
+        ),
+      );
+      return;
+    }
+    try {
+      assertTombstoneResponse(tombstone, response);
+    } catch (error) {
+      this.poison(
+        protocolProjectionError(
+          error,
+          "late editor worker response",
+          "PROTOCOL_MISMATCH",
+        ),
+      );
+      return;
+    }
+    this.tombstones.add(response.requestId, {
+      ...tombstone,
+      reason: "completed",
+    });
+  }
+
   private isCurrentDocument(
-    document: Pick<EditorDocumentSnapshot, "uri" | "version"> &
-      Partial<Pick<EditorSnapshotIdentity, "legendDigest">>
+    document: EditorDocumentIdentity &
+      Partial<Pick<EditorSnapshotIdentity, "legendDigest">>,
   ): boolean {
     return (
       this.currentDocument?.uri === document.uri &&
@@ -456,23 +723,21 @@ class WorkerClient implements MermanLanguageWorkerClient {
 
   private assertActive(): void {
     if (this.failure) throw this.failure;
-    if (this.disposed) {
-      throw new Error("Merman editor worker was disposed.");
-    }
+    if (this.disposed) throw new Error("Merman editor worker was disposed.");
   }
 
   private assertReady(): void {
     this.assertActive();
     if (!this.initialized) {
       throw new EditorWorkerProtocolError(
-        "Initialize the Merman editor worker before opening a document."
+        "Initialize the Merman editor worker before opening a document.",
       );
     }
   }
 
   private failAll(error: Error): void {
     for (const pending of this.pending.values()) {
-      pending.cancellation?.dispose();
+      disposePending(pending);
       pending.reject(error);
     }
     this.pending.clear();
@@ -481,35 +746,123 @@ class WorkerClient implements MermanLanguageWorkerClient {
   private poison(error: Error): void {
     if (this.failure || this.disposed) return;
     this.failure = error;
+    const listeners = [...this.failureListeners];
+    this.failureListeners.clear();
     this.failAll(error);
+    if (this.queuedSynchronization) {
+      rejectSynchronization(this.queuedSynchronization, error);
+      this.queuedSynchronization = null;
+    }
+    this.closeTransport();
+    for (const listener of listeners) listener(error);
+  }
+
+  private closeTransport(): void {
+    if (this.transportClosed) return;
+    this.transportClosed = true;
+    this.worker.removeEventListener("error", this.handleError);
+    this.worker.removeEventListener("message", this.handleMessage);
+    this.worker.removeEventListener("messageerror", this.handleMessageError);
+    try {
+      this.worker.postMessage({
+        protocol: EDITOR_WORKER_PROTOCOL,
+        type: "dispose",
+      });
+    } catch {
+      // Termination remains the final ownership boundary.
+    }
     this.worker.terminate();
   }
 }
 
-function validateSnapshot(document: EditorDocumentSnapshot): void {
-  if (!document.uri || !Number.isSafeInteger(document.version) || document.version < 1) {
-    throw new EditorWorkerProtocolError("Document URI and positive version are required.");
+class RequestTombstoneLedger {
+  private readonly entries = new Map<number, RequestTombstone>();
+  private readonly limit: number;
+
+  constructor(limit: number) {
+    this.limit = limit;
+  }
+
+  add(requestId: number, tombstone: RequestTombstone): void {
+    this.entries.delete(requestId);
+    this.entries.set(requestId, tombstone);
+    while (this.entries.size > this.limit) {
+      const oldest = this.entries.keys().next().value as number | undefined;
+      if (oldest === undefined) return;
+      this.entries.delete(oldest);
+    }
+  }
+
+  get(requestId: number): RequestTombstone | undefined {
+    return this.entries.get(requestId);
   }
 }
 
-function copySnapshot(document: EditorDocumentSnapshot): EditorDocumentSnapshot {
+function positiveOption(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new EditorWorkerProtocolError(`A positive ${label} is required.`);
+  }
+  return value;
+}
+
+function createDeferred<Value>(): Deferred<Value> {
+  let resolve!: (value: Value) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<Value>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function createSynchronizationEntry(
+  type: SynchronizationEntry["type"],
+  snapshot: EditorDocumentSnapshot,
+): SynchronizationEntry {
   return {
-    uri: document.uri,
-    version: document.version,
-    source: document.source,
+    ...createDeferred<void>(),
+    snapshot,
+    superseded: false,
+    type,
   };
 }
 
+function rejectSynchronization(
+  entry: SynchronizationEntry,
+  error: Error,
+): void {
+  entry.snapshot = null;
+  entry.reject(error);
+}
+
+function rejectSupersededSynchronization(entry: SynchronizationEntry): void {
+  rejectSynchronization(entry, new StaleLanguageSnapshotError());
+}
+
+function projectSnapshotForClient(
+  document: EditorDocumentSnapshot,
+): EditorDocumentSnapshot {
+  try {
+    return projectEditorDocumentSnapshot(document);
+  } catch (error) {
+    throw protocolProjectionError(error, "editor document snapshot");
+  }
+}
+
+function identityOf(document: EditorDocumentSnapshot): EditorDocumentIdentity {
+  return { uri: document.uri, version: document.version };
+}
+
 function snapshotIdentity(
-  document: Pick<EditorDocumentSnapshot, "uri" | "version">,
-  legendDigest: string
+  document: EditorDocumentIdentity,
+  legendDigest: string,
 ): EditorSnapshotIdentity {
   return { uri: document.uri, version: document.version, legendDigest };
 }
 
 function sameSnapshotIdentity(
   expected: EditorSnapshotIdentity,
-  actual: EditorSnapshotIdentity
+  actual: EditorSnapshotIdentity,
 ): boolean {
   return (
     expected.uri === actual.uri &&
@@ -518,91 +871,71 @@ function sameSnapshotIdentity(
   );
 }
 
-function validateLegend(value: unknown): EditorSemanticTokenLegend {
-  if (!value || typeof value !== "object") {
-    throw new EditorWorkerProtocolError("Merman returned an invalid semantic token legend.");
+function disposePending(pending: PendingRequest): void {
+  if (pending.deadline !== undefined) clearTimeout(pending.deadline);
+  pending.cancellation?.dispose();
+}
+
+function tombstoneFromPending(
+  pending: PendingRequest,
+  reason: RequestTombstone["reason"],
+): RequestTombstone {
+  return {
+    document: pending.document,
+    expected: pending.expected,
+    query: pending.query,
+    reason,
+  };
+}
+
+function assertTombstoneResponse(
+  tombstone: RequestTombstone,
+  response: EditorWorkerResponse,
+): void {
+  if (response.type === "error") return;
+  if (response.type !== tombstone.expected) {
+    throw new EditorWorkerProtocolError(
+      `Late editor worker response ${response.type} does not match ${tombstone.expected}.`,
+      "PROTOCOL_MISMATCH",
+    );
   }
-  const candidate = value as Partial<EditorSemanticTokenLegend>;
-  const tokenTypes = validateLegendNames(candidate.tokenTypes, "token types");
-  const tokenModifiers = validateLegendNames(candidate.tokenModifiers, "token modifiers");
-  if (tokenTypes.length === 0 || tokenModifiers.length > 31) {
-    throw new EditorWorkerProtocolError("Merman returned an unsupported semantic token legend.");
+  if (response.type !== "queryResult") return;
+  if (
+    !tombstone.document ||
+    !tombstone.query ||
+    !sameSnapshotIdentity(tombstone.document, response)
+  ) {
+    throw new EditorWorkerProtocolError(
+      "Late editor worker query result has the wrong snapshot identity.",
+      "PROTOCOL_MISMATCH",
+    );
   }
-  return Object.freeze({
-    tokenTypes: Object.freeze(tokenTypes) as unknown as string[],
-    tokenModifiers: Object.freeze(tokenModifiers) as unknown as string[],
+  projectEditorWorkerQueryResult(tombstone.query, response.result);
+}
+
+async function waitForCancellation<Value>(
+  promise: Promise<Value>,
+  cancellation?: EditorCancellationToken,
+): Promise<Value> {
+  if (!cancellation) return promise;
+  if (cancellation.isCancellationRequested) throw abortError();
+  const cancellationResult = createDeferred<Value>();
+  const subscription = cancellation.onCancellationRequested(() => {
+    cancellationResult.reject(abortError());
   });
-}
-
-function validateLegendNames(value: unknown, label: string): string[] {
-  if (
-    !Array.isArray(value) ||
-    value.some((name) => typeof name !== "string" || name.length === 0) ||
-    new Set(value).size !== value.length
-  ) {
-    throw new EditorWorkerProtocolError(`Merman returned invalid semantic ${label}.`);
+  try {
+    if (cancellation.isCancellationRequested) throw abortError();
+    return await Promise.race([promise, cancellationResult.promise]);
+  } finally {
+    subscription.dispose();
   }
-  return [...value];
-}
-
-function parseResponse(value: unknown): EditorWorkerResponse | null {
-  if (!value || typeof value !== "object") return null;
-  const candidate = value as Partial<EditorWorkerResponse>;
-  if (
-    candidate.protocol !== EDITOR_WORKER_PROTOCOL ||
-    !Number.isSafeInteger(candidate.requestId) ||
-    (candidate.type !== "error" &&
-      candidate.type !== "queryResult" &&
-      candidate.type !== "ready" &&
-      candidate.type !== "result")
-  ) {
-    return null;
-  }
-  if (candidate.type === "error") {
-    const error = candidate as Record<string, unknown>;
-    return (
-      isWorkerErrorCode(error.code) &&
-      typeof error.message === "string" &&
-      (error.detail === null || typeof error.detail === "string") &&
-      (error.nativeCode === null || typeof error.nativeCode === "string")
-    )
-      ? (candidate as EditorWorkerResponse)
-      : null;
-  }
-  if (candidate.type === "ready") {
-    const ready = candidate as Record<string, unknown>;
-    return (
-      typeof ready.transportApiVersion === "number" &&
-      Number.isSafeInteger(ready.transportApiVersion) &&
-      ready.transportApiVersion > 0 &&
-      Number.isSafeInteger(ready.editorSchema) &&
-      typeof ready.legendDigest === "string" &&
-      ready.legendDigest.length > 0 &&
-      ready.legend !== null &&
-      typeof ready.legend === "object"
-    )
-      ? (candidate as EditorWorkerResponse)
-      : null;
-  }
-  if (candidate.type === "queryResult") {
-    const result = candidate as Record<string, unknown>;
-    return (
-      typeof result.uri === "string" &&
-      Number.isSafeInteger(result.version) &&
-      typeof result.legendDigest === "string" &&
-      result.legendDigest.length > 0
-    )
-      ? (candidate as EditorWorkerResponse)
-      : null;
-  }
-  return candidate as EditorWorkerResponse;
 }
 
 function workerResponseError(
   code: EditorWorkerErrorCode,
   message: string,
   detail: string | null,
-  nativeCode: string | null
+  nativeCode: string | null,
 ): Error {
   if (code === "STALE_DOCUMENT") {
     return new StaleLanguageSnapshotError(message, detail);
@@ -610,23 +943,37 @@ function workerResponseError(
   return new EditorWorkerProtocolError(message, code, detail, nativeCode);
 }
 
-function isWorkerErrorCode(value: unknown): value is EditorWorkerErrorCode {
-  return (
-    value === "INITIALIZATION_FAILED" ||
-    value === "INVALID_STATE" ||
-    value === "OPERATION_REJECTED" ||
-    value === "PROTOCOL_MISMATCH" ||
-    value === "QUERY_FAILED" ||
-    value === "STALE_DOCUMENT"
-  );
-}
-
-function isFatalWorkerError(code: string): boolean {
+function isFatalWorkerError(code: EditorWorkerErrorCode): boolean {
   return (
     code === "INITIALIZATION_FAILED" ||
     code === "INVALID_STATE" ||
     code === "PROTOCOL_MISMATCH"
   );
+}
+
+function protocolProjectionError(
+  error: unknown,
+  label: string,
+  code: EditorWorkerErrorCode | "CLIENT_PROTOCOL" = "CLIENT_PROTOCOL",
+): Error {
+  if (error instanceof EditorWorkerProtocolError) {
+    if (code === "CLIENT_PROTOCOL" || error.code !== "CLIENT_PROTOCOL") {
+      return error;
+    }
+    return new EditorWorkerProtocolError(
+      error.message,
+      code,
+      error.detail,
+      error.nativeCode,
+    );
+  }
+  if (error instanceof EditorWorkerProtocolProjectionError) {
+    return new EditorWorkerProtocolError(
+      `Invalid ${label}: ${error.message}`,
+      code,
+    );
+  }
+  return asError(error);
 }
 
 function abortError(message = "The editor request was canceled."): Error {

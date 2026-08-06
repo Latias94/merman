@@ -16,6 +16,7 @@ import {
   type RealmEngineArtifactIdentity,
   type RealmIdentity,
 } from "./channel-protocol.ts";
+import { REALM_ENGINE_MODULE_EXPORTS } from "./generated/opaque-realm-plan.generated.ts";
 import {
   verifyAndCreateRealmEngineModuleLoader,
 } from "./engine-artifact-loader.ts";
@@ -267,8 +268,10 @@ interface CompareEngineModule {
 function validateCompareEngineModule(
   module: Record<string, unknown>
 ): CompareEngineModule {
+  const expectedExports = REALM_ENGINE_MODULE_EXPORTS.mermaid;
   if (
-    Object.keys(module).length !== 2 ||
+    Object.keys(module).length !== expectedExports.length ||
+    !expectedExports.every((name) => Object.hasOwn(module, name)) ||
     typeof module.renderWithMermaid !== "function" ||
     typeof module.benchmarkEngineAdapter !== "object" ||
     module.benchmarkEngineAdapter === null
