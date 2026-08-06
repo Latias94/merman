@@ -1103,9 +1103,19 @@ class CompareSelfContractsTest(unittest.TestCase):
             "bootstrap_resamples": 100,
         }
 
-        ratio_only = compare_self._comparison_row(
+        relative_only = compare_self._comparison_row(
             common.pop("contract"),
             pairs=self._pairs(100.0, 112.0),
+            **common,
+        )
+        absolute_only = compare_self._comparison_row(
+            self._contract(),
+            pairs=self._pairs(1_000_000.0, 1_080_000.0),
+            **common,
+        )
+        both_bounds = compare_self._comparison_row(
+            self._contract(),
+            pairs=self._pairs(1_000_000.0, 1_040_000.0),
             **common,
         )
         regression = compare_self._comparison_row(
@@ -1114,7 +1124,9 @@ class CompareSelfContractsTest(unittest.TestCase):
             **common,
         )
 
-        self.assertEqual(ratio_only["outcome"], "confirmed_non_regression")
+        self.assertEqual(relative_only["outcome"], "inconclusive")
+        self.assertEqual(absolute_only["outcome"], "inconclusive")
+        self.assertEqual(both_bounds["outcome"], "confirmed_non_regression")
         self.assertEqual(regression["outcome"], "confirmed_regression")
         self.assertEqual(regression["pair_count"], 8)
         self.assertGreater(regression["bounds"]["relative_percent"]["lower"], 10.0)
@@ -2371,7 +2383,10 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     "source_executable": source_executable,
                     "frozen_executable": frozen_description,
                 },
-                "discovery_command": compare_self.criterion_list_command(executable),
+                "discovery_command": compare_self.criterion_list_command(
+                    executable,
+                    exact_benchmark="end_to_end/flowchart_medium",
+                ),
                 "discovery": discovery,
                 "post_sampling_verification": {
                     "status": "verified",
@@ -3643,7 +3658,21 @@ class CompareSelfStatisticsContractsTest(unittest.TestCase):
                 "confirmed_non_regression",
                 self._bounds(
                     relative=(0.08, 0.07, 0.09),
+                    absolute=(35_000.0, 25_000.0, 45_000.0),
+                ),
+            ),
+            (
+                "inconclusive",
+                self._bounds(
+                    relative=(0.08, 0.07, 0.09),
                     absolute=(65_000.0, 55_000.0, 75_000.0),
+                ),
+            ),
+            (
+                "inconclusive",
+                self._bounds(
+                    relative=(0.12, 0.11, 0.13),
+                    absolute=(35_000.0, 25_000.0, 45_000.0),
                 ),
             ),
             (
@@ -3687,6 +3716,45 @@ class CompareSelfStatisticsContractsTest(unittest.TestCase):
             ),
             "confirmed_improvement",
         )
+
+        threshold = math.log1p(0.10)
+        cases = [
+            (
+                "confirmed_non_improvement",
+                self._bounds(
+                    relative=(-0.08, -0.09, -0.07),
+                    absolute=(-35_000.0, -45_000.0, -25_000.0),
+                ),
+            ),
+            (
+                "inconclusive",
+                self._bounds(
+                    relative=(-0.08, -0.09, -0.07),
+                    absolute=(-65_000.0, -75_000.0, -55_000.0),
+                ),
+            ),
+            (
+                "inconclusive",
+                self._bounds(
+                    relative=(-0.12, -0.13, -0.11),
+                    absolute=(-35_000.0, -45_000.0, -25_000.0),
+                ),
+            ),
+        ]
+        for expected, case_bounds in cases:
+            with self.subTest(expected=expected, bounds=case_bounds):
+                self.assertEqual(
+                    compare_self.classify_confirmation(
+                        case_bounds,
+                        relative_threshold=threshold,
+                        absolute_threshold_ns=50_000.0,
+                        direction="improvement",
+                        evidence_mode="confirmation",
+                        pair_count=8,
+                        required_pairs=8,
+                    ),
+                    expected,
+                )
 
     def test_power_derived_pair_count_has_floor_even_rounding_and_cap_signal(self) -> None:
         floor = compare_self.required_pair_count(

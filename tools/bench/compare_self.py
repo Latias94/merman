@@ -383,13 +383,13 @@ def classify_confirmation(
     if direction == "regression":
         if relative["lower"] > relative_threshold and absolute["lower"] > absolute_threshold_ns:
             return "confirmed_regression"
-        if relative["upper"] <= relative_threshold or absolute["upper"] <= absolute_threshold_ns:
+        if relative["upper"] <= relative_threshold and absolute["upper"] <= absolute_threshold_ns:
             return "confirmed_non_regression"
         return "inconclusive"
     if direction == "improvement":
         if relative["upper"] < -relative_threshold and absolute["upper"] < -absolute_threshold_ns:
             return "confirmed_improvement"
-        if relative["lower"] >= -relative_threshold or absolute["lower"] >= -absolute_threshold_ns:
+        if relative["lower"] >= -relative_threshold and absolute["lower"] >= -absolute_threshold_ns:
             return "confirmed_non_improvement"
         return "inconclusive"
     raise ValueError(f"unknown confirmation direction: {direction}")
