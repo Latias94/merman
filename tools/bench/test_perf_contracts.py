@@ -2131,6 +2131,43 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 " ".join(compare_self._discovery_reuse_verification_errors(method)),
             )
 
+    def test_reusable_discovery_ignores_unselected_output_drift(self) -> None:
+        selected = "end_to_end/flowchart_medium"
+        unselected = "end_to_end/state_medium"
+        origin = {
+            "bench_count": 2,
+            "benches": [selected, unselected],
+            "skipped": {},
+            "preflight_receipts": {
+                selected: CompareSelfContractsTest._preflight_receipt(selected),
+                unselected: CompareSelfContractsTest._preflight_receipt(
+                    unselected, output_sha256="b" * 64
+                ),
+            },
+            "output_sha256": "c" * 64,
+        }
+        current = copy.deepcopy(origin)
+        current["preflight_receipts"][unselected]["output_sha256"] = "d" * 64
+        current["output_sha256"] = "e" * 64
+
+        compare_self._require_reusable_discovery_match(
+            label="base",
+            current=current,
+            origin=origin,
+            required_benchmarks=frozenset({selected}),
+        )
+
+        current["preflight_receipts"][selected]["output_sha256"] = "f" * 64
+        with self.assertRaisesRegex(
+            compare_self.ContractViolation, "selected preflight receipt"
+        ):
+            compare_self._require_reusable_discovery_match(
+                label="base",
+                current=current,
+                origin=origin,
+                required_benchmarks=frozenset({selected}),
+            )
+
     def test_reusable_discovery_requires_successful_post_verified_frozen_evidence(
         self,
     ) -> None:
@@ -2384,6 +2421,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     recipe,
                     origin=origin,
                     source_report={"path": "/tmp/discovery.json", "sha256": "c" * 64},
+                    required_benchmarks=frozenset(
+                        {"end_to_end/flowchart_medium"}
+                    ),
                     timeout_seconds=1,
                 )
 
@@ -2446,6 +2486,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                                 "path": "/tmp/discovery.json",
                                 "sha256": "c" * 64,
                             },
+                            required_benchmarks=frozenset(
+                                {"end_to_end/flowchart_medium"}
+                            ),
                             timeout_seconds=1,
                         )
                     )
@@ -2476,7 +2519,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 "origin verification": lambda value: value[
                     "post_sampling_verification"
                 ]["files"].__setitem__("lockfile", "0" * 64),
-                "Criterion discovery": lambda value: value["discovery"].__setitem__(
+                "selected preflight receipt": lambda value: value["discovery"][
+                    "preflight_receipts"
+                ]["end_to_end/flowchart_medium"].__setitem__(
                     "output_sha256", "0" * 64
                 ),
             }
@@ -2508,6 +2553,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                                 "path": "/tmp/discovery.json",
                                 "sha256": "c" * 64,
                             },
+                            required_benchmarks=frozenset(
+                                {"end_to_end/flowchart_medium"}
+                            ),
                             timeout_seconds=1,
                         )
                     )
@@ -2556,6 +2604,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                             "path": "/tmp/discovery.json",
                             "sha256": "c" * 64,
                         },
+                        required_benchmarks=frozenset(
+                            {"end_to_end/flowchart_medium"}
+                        ),
                         timeout_seconds=1,
                     )
                 )

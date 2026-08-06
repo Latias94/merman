@@ -1540,6 +1540,35 @@ def _fixture_reuse_identity(contract: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _require_reusable_discovery_match(
+    *,
+    label: str,
+    current: dict[str, Any],
+    origin: dict[str, Any],
+    required_benchmarks: frozenset[str],
+) -> None:
+    for field in ("bench_count", "benches", "skipped"):
+        _require_equal_reuse_value(
+            f"{label} Criterion discovery {field}",
+            current.get(field),
+            origin.get(field),
+        )
+    if not required_benchmarks:
+        raise ContractViolation(f"reusable discovery {label} has no selected benchmarks")
+    current_receipts = current.get("preflight_receipts")
+    origin_receipts = origin.get("preflight_receipts")
+    if not isinstance(current_receipts, dict) or not isinstance(origin_receipts, dict):
+        raise ContractViolation(
+            f"reusable discovery {label} preflight receipts are missing"
+        )
+    for benchmark in sorted(required_benchmarks):
+        _require_equal_reuse_value(
+            f"{label} selected preflight receipt for {benchmark}",
+            current_receipts.get(benchmark),
+            origin_receipts.get(benchmark),
+        )
+
+
 def _validate_reuse_comparison_contract(
     *,
     source: dict[str, Any],
@@ -1571,6 +1600,7 @@ def _prepare_reused_runner(
     *,
     origin: dict[str, Any],
     source_report: dict[str, Any],
+    required_benchmarks: frozenset[str],
     timeout_seconds: int,
 ) -> tuple[PreparedRunner | None, dict[str, Any], list[str]]:
     provenance = copy.deepcopy(origin)
@@ -1866,10 +1896,16 @@ def _prepare_reused_runner(
             "preflight_receipts": preflight_receipts,
             "output_sha256": hashlib.sha256(combined.encode("utf-8")).hexdigest(),
         }
-        _require_equal_reuse_value(
-            f"{recipe.label} Criterion discovery",
-            current_discovery,
-            origin.get("discovery"),
+        origin_discovery = origin.get("discovery")
+        if not isinstance(origin_discovery, dict):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} Criterion discovery is missing"
+            )
+        _require_reusable_discovery_match(
+            label=recipe.label,
+            current=current_discovery,
+            origin=origin_discovery,
+            required_benchmarks=required_benchmarks,
         )
         provenance["reuse_discovery_command"] = list_command
         provenance["reuse_discovery"] = current_discovery
@@ -3509,6 +3545,9 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
                 recipe,
                 origin=reuse_source["runners"][recipe.label],
                 source_report=reuse_source_report,
+                required_benchmarks=frozenset(
+                    contract[f"{recipe.label}_benchmark"] for contract in contracts
+                ),
                 timeout_seconds=args.timeout_seconds,
             )
         else:
