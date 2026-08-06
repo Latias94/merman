@@ -634,41 +634,53 @@ pub(super) fn render_state_node_svg(
             let mut link_open = String::new();
             let mut link_close = String::new();
             let mut node_title_attr = String::new();
-            if let Some(link) = ctx.links.get(node_id) {
-                let url = link.url.as_str();
-                let title_attr = if link.tooltip.is_empty() {
-                    String::new()
-                } else {
-                    let tooltip = if ctx.security_level_loose {
-                        link.tooltip.as_str()
+            if let Some(links) = ctx.links.get(node_id) {
+                let mut push_link = |link: &StateSvgLink| {
+                    let title_attr = if link.tooltip.is_empty() {
+                        String::new()
                     } else {
-                        normalize_mermaid_tooltip_attribute(&link.tooltip)
+                        let tooltip = if ctx.security_level_loose {
+                            link.tooltip.as_str()
+                        } else {
+                            normalize_mermaid_tooltip_attribute(&link.tooltip)
+                        };
+                        format!(r#" title="{}""#, escape_attr(tooltip))
                     };
-                    format!(r#" title="{}""#, escape_attr(tooltip))
-                };
-                if !title_attr.is_empty() {
-                    node_title_attr = title_attr.clone();
-                }
+                    if !title_attr.is_empty() {
+                        node_title_attr = title_attr.clone();
+                    }
 
-                if let Some(href) = prepare_mermaid_navigation_href(
-                    url,
-                    MermaidNavigationSecurity::from_security_level_loose(ctx.security_level_loose),
-                ) {
-                    let target_attr = if ctx.security_level_loose {
-                        r#" target="_blank""#
+                    if let Some(href) = prepare_mermaid_navigation_href(
+                        &link.url,
+                        MermaidNavigationSecurity::from_security_level_loose(
+                            ctx.security_level_loose,
+                        ),
+                    ) {
+                        let target_attr = if ctx.security_level_loose {
+                            r#" target="_blank""#
+                        } else {
+                            ""
+                        };
+                        link_open.push_str(&format!(
+                            r#"<a xlink:href="{}"{}{}>"#,
+                            href.as_serialized_str(),
+                            target_attr,
+                            title_attr
+                        ));
                     } else {
-                        ""
-                    };
-                    link_open.push_str(&format!(
-                        r#"<a xlink:href="{}"{}{}>"#,
-                        href.as_serialized_str(),
-                        target_attr,
-                        title_attr
-                    ));
-                } else {
-                    link_open.push_str(&format!(r#"<a{}>"#, title_attr));
+                        link_open.push_str(&format!(r#"<a{}>"#, title_attr));
+                    }
+                    link_close.push_str("</a>");
+                };
+
+                match links {
+                    StateSvgLinks::One(link) => push_link(link),
+                    StateSvgLinks::Many(links) => {
+                        for link in links {
+                            push_link(link);
+                        }
+                    }
                 }
-                link_close.push_str("</a>");
             }
 
             let fill_attr = fill_override.unwrap_or(ctx.theme_defaults.state_bkg.as_str());

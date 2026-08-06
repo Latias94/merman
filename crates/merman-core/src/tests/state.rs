@@ -466,7 +466,7 @@ click S3 href "jav&#x61;script:alert(1)""#,
 }
 
 #[test]
-fn parse_diagram_state_v2_repeated_clicks_keep_the_last_link() {
+fn parse_diagram_state_v2_repeated_clicks_preserve_declaration_order() {
     let engine = Engine::new();
 
     let res = block_on(engine.parse_diagram(
@@ -480,14 +480,22 @@ click S1 "https://example.com/last" "Last""#,
     .unwrap();
 
     assert_eq!(
-        res.model["links"]["S1"]["url"],
-        json!("https://example.com/last")
+        res.model["links"]["S1"],
+        json!([
+            {
+                "url": "https://example.com/first",
+                "tooltip": "First"
+            },
+            {
+                "url": "https://example.com/last",
+                "tooltip": "Last"
+            }
+        ])
     );
-    assert_eq!(res.model["links"]["S1"]["tooltip"], json!("Last"));
 }
 
 #[test]
-fn typed_state_links_preserve_upstream_tooltips_and_last_wins() {
+fn typed_state_links_preserve_declaration_order_and_empty_tooltips() {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(
             r#"stateDiagram-v2
@@ -505,11 +513,22 @@ click S2 href "https://example.com/omitted"
         panic!("expected typed state render model");
     };
 
-    let explicit_empty = model.links.get("S1").expect("S1 link");
-    assert_eq!(explicit_empty.url, "https://example.com/last");
-    assert_eq!(explicit_empty.tooltip, "");
+    let crate::diagrams::state::StateDiagramRenderLinks::Many(repeated) =
+        model.links.get("S1").expect("S1 links")
+    else {
+        panic!("expected repeated S1 links");
+    };
+    assert_eq!(repeated.len(), 2);
+    assert_eq!(repeated[0].url, "https://example.com/first");
+    assert_eq!(repeated[0].tooltip, "First");
+    assert_eq!(repeated[1].url, "https://example.com/last");
+    assert_eq!(repeated[1].tooltip, "");
 
-    let omitted = model.links.get("S2").expect("S2 link");
+    let crate::diagrams::state::StateDiagramRenderLinks::One(omitted) =
+        model.links.get("S2").expect("S2 link")
+    else {
+        panic!("expected one S2 link");
+    };
     assert_eq!(omitted.url, "https://example.com/omitted");
     assert_eq!(omitted.tooltip, "");
 }

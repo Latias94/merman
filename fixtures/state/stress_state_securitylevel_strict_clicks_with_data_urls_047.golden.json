@@ -132,10 +132,16 @@
     ],
     "other": {},
     "links": {
-      "Bad": {
-        "url": "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==;x=y",
-        "tooltip": "data tooltip"
-      },
+      "Bad": [
+        {
+          "url": "javascript:alert(1)",
+          "tooltip": "js tooltip"
+        },
+        {
+          "url": "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==;x=y",
+          "tooltip": "data tooltip"
+        }
+      ],
       "Safe": {
         "url": "https://example.com/path;params?x=1#frag",
         "tooltip": "safe tooltip"

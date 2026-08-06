@@ -12,9 +12,9 @@ mod render_model;
 
 pub(crate) use render_model::render_model_to_compat_json;
 pub use render_model::{
-    StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderModel,
-    StateDiagramRenderNode, StateDiagramRenderNote, StateDiagramRenderRelation,
-    StateDiagramRenderState, StateDiagramRenderStyleClass,
+    StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
+    StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
+    StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass,
 };
 
 pub(crate) use parse::{parse_state, parse_state_model_for_render};

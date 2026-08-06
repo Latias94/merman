@@ -605,8 +605,50 @@ click S2 href "https://example.test/two"
 }
 
 #[test]
-fn state_svg_repeated_clicks_render_only_the_last_link() {
+fn state_svg_strict_repeated_unsafe_clicks_preserve_nested_wrappers() {
     let svg = render_state_svg_from_text(
+        r#"%%{init: {"securityLevel": "strict"}}%%
+stateDiagram-v2
+S1
+click S1 "javascript:alert(1)" "JavaScript"
+click S1 "data:text/html,unsafe" "Data"
+"#,
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG XML");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("-state-S1-"))
+        })
+        .expect("S1 node");
+    let inner = node.parent().expect("inner link wrapper");
+    let outer = inner.parent().expect("outer link wrapper");
+
+    assert!(inner.has_tag_name("a"), "{svg}");
+    assert!(outer.has_tag_name("a"), "{svg}");
+    assert_eq!(outer.attribute("title"), Some("JavaScript"));
+    assert_eq!(inner.attribute("title"), Some("Data"));
+    assert_eq!(node.attribute("title"), Some("Data"));
+    for anchor in [outer, inner] {
+        assert_eq!(
+            anchor.attribute(("http://www.w3.org/1999/xlink", "href")),
+            None,
+            "{svg}"
+        );
+        assert_eq!(anchor.attribute("target"), None, "{svg}");
+    }
+}
+
+#[test]
+fn state_svg_loose_repeated_clicks_preserve_each_href_and_target() {
+    let svg = render_state_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }))),
         r#"stateDiagram-v2
 S1
 click S1 "https://example.test/first" "First"
@@ -614,12 +656,60 @@ click S1 "https://example.test/last" "Last"
 "#,
     );
 
-    assert!(
-        svg.contains(r#"xlink:href="https://example.test/last" title="Last""#),
-        "{svg}"
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG XML");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("-state-S1-"))
+        })
+        .expect("S1 node");
+    let inner = node.parent().expect("inner link wrapper");
+    let outer = inner.parent().expect("outer link wrapper");
+
+    assert_eq!(outer.attribute("title"), Some("First"));
+    assert_eq!(inner.attribute("title"), Some("Last"));
+    assert_eq!(node.attribute("title"), Some("Last"));
+    assert_eq!(
+        outer.attribute(("http://www.w3.org/1999/xlink", "href")),
+        Some("https://example.test/first")
     );
-    assert!(!svg.contains("https://example.test/first"), "{svg}");
-    assert!(!svg.contains("title=\"First\""), "{svg}");
+    assert_eq!(
+        inner.attribute(("http://www.w3.org/1999/xlink", "href")),
+        Some("https://example.test/last")
+    );
+    assert_eq!(outer.attribute("target"), Some("_blank"));
+    assert_eq!(inner.attribute("target"), Some("_blank"));
+}
+
+#[test]
+fn state_svg_empty_later_tooltip_does_not_clear_existing_node_title() {
+    let svg = render_state_svg_from_text(
+        r#"stateDiagram-v2
+S1
+click S1 "https://example.test/first" "First"
+click S1 "https://example.test/last" ""
+"#,
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG XML");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("-state-S1-"))
+        })
+        .expect("S1 node");
+    let inner = node.parent().expect("inner link wrapper");
+    let outer = inner.parent().expect("outer link wrapper");
+
+    assert_eq!(outer.attribute("title"), Some("First"));
+    assert_eq!(inner.attribute("title"), None);
+    assert_eq!(node.attribute("title"), Some("First"));
 }
 
 #[test]

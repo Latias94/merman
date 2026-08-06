@@ -31,6 +31,7 @@ use viewport::*;
 type StateSvgModel = merman_core::diagrams::state::StateDiagramRenderModel;
 type StateSvgState = merman_core::diagrams::state::StateDiagramRenderState;
 type StateSvgLink = merman_core::diagrams::state::StateDiagramRenderLink;
+type StateSvgLinks = merman_core::diagrams::state::StateDiagramRenderLinks;
 type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
 type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
 type StateRoughPathPair = (Arc<String>, Arc<String>);
@@ -52,7 +53,7 @@ struct StateRenderCtx<'a> {
     nested_roots: std::collections::BTreeSet<String>,
     hidden_prefixes: Vec<String>,
     security_level_loose: bool,
-    links: &'a std::collections::HashMap<String, StateSvgLink>,
+    links: &'a std::collections::HashMap<String, StateSvgLinks>,
     states: &'a std::collections::HashMap<String, StateSvgState>,
     edges: &'a [StateSvgEdge],
     include_edges: bool,

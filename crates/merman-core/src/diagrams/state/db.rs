@@ -6,9 +6,10 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
 use super::{
-    Note, StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderModel,
-    StateDiagramRenderNode, StateDiagramRenderNote, StateDiagramRenderRelation,
-    StateDiagramRenderState, StateDiagramRenderStyleClass, StateStmt, Stmt,
+    Note, StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
+    StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
+    StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass, StateStmt,
+    Stmt,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -48,7 +49,7 @@ pub(super) struct StateDb {
     acc_title: Option<String>,
     acc_descr: Option<String>,
     generated_id_cnt: usize,
-    links: HashMap<String, Link>,
+    links: HashMap<String, Vec<Link>>,
 }
 
 impl StateDb {
@@ -213,13 +214,15 @@ impl StateDb {
     }
 
     fn add_link(&mut self, state_id: &str, url: &str, tooltip: &str) {
-        self.links.insert(
-            state_id.to_string(),
-            Link {
+        // Mermaid's Jison parser creates a fresh idStatement object for every click directive.
+        // Group by the normalized state id, but retain declaration order for wrapper replay.
+        self.links
+            .entry(state_id.to_string())
+            .or_default()
+            .push(Link {
                 url: url.to_string(),
                 tooltip: tooltip.to_string(),
-            },
-        );
+            });
     }
 
     fn ensure_state(&mut self, id: &str) -> &mut StateRecord {
@@ -448,17 +451,28 @@ impl StateDb {
             })
             .collect();
 
-        let links: HashMap<String, StateDiagramRenderLink> = self
+        let links: HashMap<String, StateDiagramRenderLinks> = self
             .links
             .iter()
-            .map(|(key, link)| {
-                (
-                    key.clone(),
-                    StateDiagramRenderLink {
+            .map(|(key, links)| {
+                let links = if links.len() == 1 {
+                    let link = &links[0];
+                    StateDiagramRenderLinks::One(StateDiagramRenderLink {
                         url: link.url.clone(),
                         tooltip: link.tooltip.clone(),
-                    },
-                )
+                    })
+                } else {
+                    StateDiagramRenderLinks::Many(
+                        links
+                            .iter()
+                            .map(|link| StateDiagramRenderLink {
+                                url: link.url.clone(),
+                                tooltip: link.tooltip.clone(),
+                            })
+                            .collect(),
+                    )
+                };
+                (key.clone(), links)
             })
             .collect();
 
