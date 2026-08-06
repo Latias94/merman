@@ -977,13 +977,13 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   analysisFacts?: (source: string, optionsJson?: string | null) => AnalysisFactsResult;
   analyzeDocument?: (
     source: string,
-    optionsJson?: string | null,
-    uri?: string | null
+    uri: string,
+    optionsJson?: string | null
   ) => AnalysisResult;
   analyzeDocumentFacts?: (
     source: string,
-    optionsJson?: string | null,
-    uri?: string | null
+    uri: string,
+    optionsJson?: string | null
   ) => AnalysisFactsResult;
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   editorDiagnostics?: (

@@ -503,8 +503,8 @@ if (hasCapability("analysis")) {
 
   const markdownAnalysis = api.analyzeDocument(
     "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
-    deterministicTime,
-    "file:///tmp/example.md"
+    "file:///tmp/example.md",
+    deterministicTime
   );
   assert.equal(markdownAnalysis.valid, false);
   assert.equal(markdownAnalysis.source.kind, "markdown");
@@ -609,8 +609,8 @@ if (hasCapability("analysis")) {
 
   const markdownFacts = api.analyzeDocumentFacts(
     "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
-    deterministicTime,
-    "file:///tmp/example.md"
+    "file:///tmp/example.md",
+    deterministicTime
   );
   assert.equal(markdownFacts.valid, false);
   assert.equal(markdownFacts.source.kind, "markdown");
@@ -625,8 +625,8 @@ if (hasCapability("analysis")) {
 
   const mdxAnalysis = api.analyzeDocument(
     "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
-    deterministicTime,
-    "file:///tmp/example.mdx?rev=1#fence"
+    "file:///tmp/example.mdx?rev=1#fence",
+    deterministicTime
   );
   assert.equal(mdxAnalysis.valid, false);
   assert.equal(mdxAnalysis.source.kind, "mdx");
@@ -636,11 +636,11 @@ if (hasCapability("analysis")) {
 
   const markdownFixAnalysis = api.analyzeDocument(
     '```mermaid\n%%{ initialize: {"theme":"dark"} }%%\nflowchart TD\nA-->B\n```\n',
+    "file:///tmp/example.md",
     {
       ...deterministicTime,
       lint: { profile: "recommended" },
-    },
-    "file:///tmp/example.md"
+    }
   );
   const configFixDiagnostic = markdownFixAnalysis.diagnostics.find(
     (diagnostic) =>

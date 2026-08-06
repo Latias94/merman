@@ -221,10 +221,9 @@ pub fn analysis_facts(source: &str, options_json: Option<String>) -> Result<JsVa
 #[wasm_bindgen(js_name = analyzeDocument)]
 pub fn analyze_document(
     source: &str,
+    uri: String,
     options_json: Option<String>,
-    uri: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let uri = document_uri(uri);
     json_value_result(execute_wasm_operation(
         "document-analysis-json",
         source.as_bytes(),
@@ -236,10 +235,9 @@ pub fn analyze_document(
 #[wasm_bindgen(js_name = analyzeDocumentFacts)]
 pub fn analyze_document_facts(
     source: &str,
+    uri: String,
     options_json: Option<String>,
-    uri: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let uri = document_uri(uri);
     json_value_result(execute_wasm_operation(
         "document-analysis-facts-json",
         source.as_bytes(),
@@ -329,11 +327,6 @@ fn execute_wasm_operation(
                 .with_options_json(options_json),
         )
         .map(merman_bindings_core::BindingOperationResult::into_data)
-}
-
-pub(crate) fn document_uri(uri: Option<String>) -> String {
-    uri.filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "file:///merman/document.mmd".to_string())
 }
 
 fn string_result(result: Result<Vec<u8>, BindingError>) -> Result<String, JsValue> {
@@ -847,8 +840,8 @@ mod tests {
         let value: Value = serde_wasm_bindgen::from_value(
             analyze_document(
                 "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+                "file:///tmp/example.md".to_string(),
                 None,
-                Some("file:///tmp/example.md".to_string()),
             )
             .unwrap(),
         )
@@ -891,8 +884,8 @@ mod tests {
         let value: Value = serde_wasm_bindgen::from_value(
             analyze_document_facts(
                 "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
+                "file:///tmp/example.md".to_string(),
                 None,
-                Some("file:///tmp/example.md".to_string()),
             )
             .unwrap(),
         )
