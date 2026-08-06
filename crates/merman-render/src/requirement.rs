@@ -1,3 +1,4 @@
+use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
 };
@@ -75,11 +76,43 @@ pub(crate) struct RequirementLabelMetrics {
     pub(crate) max_width_px: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RequirementLabelMeasurementBinding {
+    font_family: String,
+    font_size_bits: u64,
+    calculation_font_family: String,
+    calculation_font_size_bits: u64,
+    dimensions_carrier: BuiltinTextMeasurementOperationCarrier,
+    wrapped_carrier: BuiltinTextMeasurementOperationCarrier,
+}
+
+impl RequirementLabelMeasurementBinding {
+    fn for_measurer(
+        settings: &config::RequirementLayoutSettings,
+        measurer: &dyn TextMeasurer,
+    ) -> Option<Self> {
+        // Only the operation-owned built-in route can prove that suppressing the SVG-stage
+        // request is unobservable. Host and custom measurers deliberately return no carrier.
+        Some(Self {
+            font_family: settings.font_family.clone(),
+            font_size_bits: settings.font_size.to_bits(),
+            calculation_font_family: settings.calculation_font_family.clone(),
+            calculation_font_size_bits: settings.calculation_font_size.to_bits(),
+            dimensions_carrier: measurer.builtin_operation_carrier(
+                TextMeasurementOperation::MermaidCalculateTextDimensions,
+            )?,
+            wrapped_carrier: measurer
+                .builtin_operation_carrier(TextMeasurementOperation::Wrapped)?,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct RequirementPreparedArtifact {
     layout: RequirementDiagramLayout,
     nodes: HashMap<String, RequirementNodeRenderPlan>,
     edges: HashMap<EdgeKey, RequirementEdgeLabelPlan>,
+    measurement_binding: Option<RequirementLabelMeasurementBinding>,
 }
 
 impl RequirementPreparedArtifact {
@@ -95,6 +128,27 @@ impl RequirementPreparedArtifact {
         &HashMap<EdgeKey, RequirementEdgeLabelPlan>,
     ) {
         (&self.layout, &self.nodes, &self.edges)
+    }
+
+    pub(crate) fn label_measurements_for_render<'a>(
+        &self,
+        effective_config: &Value,
+        measurer: &'a dyn TextMeasurer,
+    ) -> RequirementRenderLabelMeasurements<'a> {
+        let settings = RequirementConfigView::new(effective_config).layout_settings();
+        let requested_binding =
+            RequirementLabelMeasurementBinding::for_measurer(&settings, measurer);
+        let reuse_prepared = self
+            .measurement_binding
+            .as_ref()
+            .zip(requested_binding.as_ref())
+            .is_some_and(|(prepared, requested)| prepared == requested);
+
+        RequirementRenderLabelMeasurements {
+            measurer,
+            styles: requirement_measurement_styles(&settings),
+            reuse_prepared,
+        }
     }
 }
 
@@ -115,6 +169,7 @@ pub(crate) struct RequirementNodeLabelLine {
     pub(crate) display_text: String,
     pub(crate) metrics: RequirementLabelMetrics,
     pub(crate) y_offset: f64,
+    pub(crate) measurement_bold: bool,
     pub(crate) bold: bool,
     pub(crate) keep_centered: bool,
 }
@@ -127,6 +182,65 @@ pub(crate) struct RequirementEdgeLabelPlan {
     pub(crate) has_label: bool,
     pub(crate) marker_start: bool,
     pub(crate) marker_end: bool,
+}
+
+pub(crate) struct RequirementRenderLabelMeasurements<'a> {
+    measurer: &'a dyn TextMeasurer,
+    styles: RequirementMeasurementStyles,
+    reuse_prepared: bool,
+}
+
+impl RequirementRenderLabelMeasurements<'_> {
+    fn resolve(
+        &self,
+        display_text: &str,
+        measurement_bold: bool,
+        prepared: RequirementLabelMetrics,
+    ) -> Option<RequirementLabelMetrics> {
+        if self.reuse_prepared {
+            return Some(prepared);
+        }
+
+        // Mermaid 11.16's `requirementBox.addText` performs `calculateTextWidth`/`createText`
+        // during SVG emission. Replaying that request keeps host callback order and provenance
+        // observable whenever the private built-in binding cannot prove safe reuse.
+        measure_requirement_label_metrics(
+            self.measurer,
+            &self.styles.html_regular,
+            &self.styles.html_bold,
+            &self.styles.calculation,
+            display_text,
+            display_text,
+            measurement_bold,
+        )
+    }
+
+    pub(crate) fn node_line_metrics(
+        &self,
+        line: &RequirementNodeLabelLine,
+    ) -> Option<RequirementLabelMetrics> {
+        self.resolve(&line.display_text, line.measurement_bold, line.metrics)
+    }
+
+    pub(crate) fn measure_edge_label_for_render(
+        &self,
+        edge: &RequirementEdgeLabelPlan,
+    ) -> Option<()> {
+        if self.reuse_prepared {
+            return Some(());
+        }
+
+        measure_requirement_label_metrics(
+            self.measurer,
+            &self.styles.html_regular,
+            &self.styles.html_bold,
+            &self.styles.calculation,
+            &edge.display_text,
+            &edge.display_text,
+            false,
+        )
+        .map(drop)
+    }
 }
 
 #[derive(Debug)]
@@ -292,6 +406,7 @@ fn requirement_box_layout(
             display_text: line.display_text,
             metrics,
             y_offset: line_y_offset,
+            measurement_bold: line.measurement_bold,
             bold: line.render_bold,
             keep_centered: line.keep_centered,
         });
@@ -493,6 +608,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
     };
 
     let cfg = RequirementConfigView::new(effective_config).layout_settings();
+    let measurement_binding = RequirementLabelMeasurementBinding::for_measurer(&cfg, text_measurer);
     let styles = requirement_measurement_styles(&cfg);
 
     let padding = 20.0;
@@ -857,6 +973,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
         layout,
         nodes: prepared_node_labels,
         edges: prepared_edge_labels,
+        measurement_binding,
     })
 }
 

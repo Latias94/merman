@@ -90,6 +90,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
 ) -> Result<root_svg::RootedSvg> {
     let (layout, prepared_nodes, prepared_edges) = prepared.render_parts();
     let effective_config = sanitize_config.as_value();
+    let label_measurements = prepared.label_measurements_for_render(effective_config, measurer);
 
     fn requirement_marker_id(diagram_id: &str, suffix: &str) -> String {
         format!("{diagram_id}_requirement-{suffix}")
@@ -631,6 +632,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let rel_type = prepared_label.relationship_type.as_str();
         debug_assert!(!rel_type.trim().is_empty());
         let label_text = prepared_label.display_text.as_str();
+        if prepared_label.has_label {
+            label_measurements
+                .measure_edge_label_for_render(prepared_label)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!(
+                        "missing Requirement edge label measurement for {} -> {} ({})",
+                        e.from, e.to, e.id
+                    ),
+                })?;
+        }
 
         let (w, h) = e
             .label
@@ -824,12 +835,18 @@ pub(crate) fn render_requirement_diagram_svg_model(
         // Labels.
         let padding = 20.0;
         for line in &prepared_node.lines {
+            let metrics =
+                label_measurements
+                    .node_line_metrics(line)
+                    .ok_or_else(|| Error::InvalidModel {
+                        message: format!("missing Requirement node label measurement for {}", n.id),
+                    })?;
             let label_x = if line.keep_centered {
-                -line.metrics.width / 2.0
+                -metrics.width / 2.0
             } else {
                 x + padding / 2.0
             };
-            let label_y = y + line.y_offset - line.metrics.height / 2.0 + padding;
+            let label_y = y + line.y_offset - metrics.height / 2.0 + padding;
             let style = if line.bold {
                 format!("{label_styles}; font-weight: bold;")
             } else {
@@ -863,13 +880,13 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 &mut out,
                 LabelForeignObject {
                     html: &display_html,
-                    width: line.metrics.width,
-                    height: line.metrics.height,
+                    width: metrics.width,
+                    height: metrics.height,
                     span_class: "nodeLabel markdown-node-label",
                     span_style,
                     div_class: None,
                     div_style_prefix,
-                    max_width_px: line.metrics.max_width_px,
+                    max_width_px: metrics.max_width_px,
                 },
             );
             out.push_str("</g>");
@@ -962,6 +979,7 @@ fn push_requirement_shadow_defs(
 #[cfg(test)]
 mod tests {
     use super::super::*;
+    use crate::environment::{RenderEnvironment, TextMeasurementPhase};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use crate::text::{
         TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
@@ -972,6 +990,15 @@ mod tests {
     };
     use std::cell::Cell;
     use std::collections::BTreeMap;
+
+    fn report_call_count(session: &crate::environment::RenderSession) -> u64 {
+        session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .map(crate::environment::TextMeasurementSummary::count)
+            .sum()
+    }
 
     #[derive(Default)]
     struct CountingRequirementMeasurer {
@@ -1237,7 +1264,7 @@ mod tests {
     }
 
     #[test]
-    fn requirement_svg_uses_prepared_label_measurements_without_remeasuring() {
+    fn requirement_opaque_measurer_preserves_render_stage_label_measurements() {
         let model = prepared_requirement_model();
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
         let measurer = CountingRequirementMeasurer::default();
@@ -1264,8 +1291,84 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(measurer.mermaid_dimensions.get(), dimensions_after_prepare);
-        assert_eq!(measurer.wrapped.get(), wrapped_after_prepare);
+        assert_eq!(
+            measurer.mermaid_dimensions.get() - dimensions_after_prepare,
+            dimensions_after_prepare
+        );
+        assert_eq!(
+            measurer.wrapped.get() - wrapped_after_prepare,
+            wrapped_after_prepare
+        );
+    }
+
+    #[test]
+    fn requirement_routed_builtin_measurements_are_reused_during_svg_emission() {
+        let model = prepared_requirement_model();
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let environment = RenderEnvironment::deterministic().with_resource_policy(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let session = environment.begin_session().expect("deterministic session");
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+            &model,
+            config.as_value(),
+            &measurer,
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+        let calls_after_prepare = report_call_count(&session);
+
+        assert!(calls_after_prepare > 0);
+
+        render_prepared_requirement_for_test(
+            &prepared,
+            &model,
+            &config,
+            None,
+            &measurer,
+            &SvgRenderOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(report_call_count(&session), calls_after_prepare);
+    }
+
+    #[test]
+    fn requirement_prepared_measurements_are_not_reused_across_style_changes() {
+        let model = prepared_requirement_model();
+        let prepare_config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let render_config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {
+                "fontFamily": "Courier New",
+                "fontSize": "24px"
+            }
+        }));
+        let environment = RenderEnvironment::deterministic().with_resource_policy(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let session = environment.begin_session().expect("deterministic session");
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+            &model,
+            prepare_config.as_value(),
+            &measurer,
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+        let calls_after_prepare = report_call_count(&session);
+
+        render_prepared_requirement_for_test(
+            &prepared,
+            &model,
+            &render_config,
+            None,
+            &measurer,
+            &SvgRenderOptions::default(),
+        )
+        .unwrap();
+
+        assert!(report_call_count(&session) > calls_after_prepare);
     }
 
     #[test]
