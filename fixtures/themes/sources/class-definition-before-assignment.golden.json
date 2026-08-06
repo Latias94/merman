@@ -1,0 +1,65 @@
+{
+  "diagramType": "class",
+  "model": {
+    "type": "class",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "User": {
+        "id": "User",
+        "type": "",
+        "label": "User",
+        "text": "User",
+        "cssClasses": "default accent",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [
+          "fill:#fff",
+          "stroke:#111"
+        ],
+        "domId": "classId-User-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {
+      "accent": {
+        "id": "accent",
+        "styles": [
+          "fill:#dbeafe",
+          "stroke:#2563eb",
+          "color:#1e3a8a",
+          "font-size:18px"
+        ],
+        "textStyles": [
+          "color:#1e3a8a"
+        ]
+      }
+    },
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-token-baseline",
+  "tokens": {
+    "background": "#ffffff",
+    "surface": "#f8fafc",
+    "primary": "#2563eb",
+    "text": "#0f172a"
+  },
+  "typography": {
+    "fontStack": {
+      "binding": "vendored-default",
+      "families": [
+        "Inter",
+        "Noto Sans SC",
+        "sans-serif"
+      ],
+      "assetIds": []
+    },
+    "letterSpacingMilliEm": null,
+    "textTransform": null
+  },
+  "canvas": [],
+  "blendMode": null,
+  "nodeStyle": {
+    "border": {
+      "color": "#2563eb",
+      "widthPx": 1
+    },
+    "dashPattern": [],
+    "cornerRadiusPx": 8,
+    "shadow": {
+      "offsetXPx": 0,
+      "offsetYPx": 2,
+      "blurPx": 8,
+      "spreadPx": 0,
+      "color": "#0f172a33"
+    }
+  },
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

@@ -1,0 +1,26 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-mixed-script-typography",
+  "tokens": null,
+  "typography": {
+    "fontStack": {
+      "binding": "fixture-assets",
+      "families": [
+        "Excalifont",
+        "Xiaolai"
+      ],
+      "assetIds": [
+        "font-excalifont-latin",
+        "font-xiaolai-cjk-test"
+      ]
+    },
+    "letterSpacingMilliEm": null,
+    "textTransform": null
+  },
+  "canvas": [],
+  "blendMode": null,
+  "nodeStyle": null,
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

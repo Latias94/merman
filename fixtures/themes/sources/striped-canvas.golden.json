@@ -1,0 +1,118 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "keyword": "flowchart",
+    "accDescr": null,
+    "accTitle": null,
+    "classDefs": {},
+    "direction": "LR",
+    "edgeDefaults": {
+      "interpolate": null,
+      "style": []
+    },
+    "vertexCalls": [
+      "Source",
+      "Stripe",
+      "Stripe",
+      "Output"
+    ],
+    "nodes": [
+      {
+        "id": "Source",
+        "label": "Source",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": "square",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Stripe",
+        "label": "Repeating stripe",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": "square",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Output",
+        "label": "Portable output",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": "square",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "id": "L_Source_Stripe_0",
+        "from": "Source",
+        "to": "Stripe",
+        "label": null,
+        "labelType": "text",
+        "type": "arrow_point",
+        "arrow": "-->",
+        "isUserDefinedId": false,
+        "stroke": "normal",
+        "interpolate": null,
+        "classes": [],
+        "style": [],
+        "animate": null,
+        "animation": null,
+        "length": 1
+      },
+      {
+        "id": "L_Stripe_Output_0",
+        "from": "Stripe",
+        "to": "Output",
+        "label": null,
+        "labelType": "text",
+        "type": "arrow_point",
+        "arrow": "-->",
+        "isUserDefinedId": false,
+        "stroke": "normal",
+        "interpolate": null,
+        "classes": [],
+        "style": [],
+        "animate": null,
+        "animation": null,
+        "length": 1
+      }
+    ],
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2"
+  }
+}

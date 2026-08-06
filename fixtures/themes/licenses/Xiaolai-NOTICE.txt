@@ -1,0 +1,14 @@
+Xiaolai SC Regular
+
+Copyright © 2020 LXGW.
+Designer: Nozomi Seto 瀬戸のぞみ.
+Version: 3.11, December 4, 2020
+PostScript name: XiaolaiSC
+
+The Excalidraw snapshot modifies the original font by removing non-CJK codepoints, reducing
+Hangul side bearings, and centering improperly centered CJK codepoints. The fixture registers the
+face under the runtime alias "Xiaolai" used by Excalidraw and modern_mermaid.
+
+Licensed under the SIL Open Font License, Version 1.1.
+Source snapshot: Excalidraw e4ab626739f5f163c5eca56190f615643218b61c
+Source path: packages/excalidraw/fonts/Xiaolai/Xiaolai-Regular-79d494361ae093b69e74ee9dbe65bfd4.woff2

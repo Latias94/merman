@@ -2479,6 +2479,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-theme-fixtures"
+version = "0.8.0-alpha.4"
+dependencies = [
+ "cssparser",
+ "json5",
+ "lol_html",
+ "merman-core",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "merman-typst-plugin"
 version = "0.8.0-alpha.4"
 dependencies = [

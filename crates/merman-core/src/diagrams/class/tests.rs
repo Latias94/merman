@@ -21,7 +21,9 @@ C1 <|-- C2 : inherits
 "#;
     let meta = meta();
     let compat = parse::parse_class(code, &meta).expect("compat parse");
-    let typed = parse::parse_class_typed(code, &meta).expect("typed parse");
+    let typed = parse::parse_class_typed_with_render_context(code, &meta)
+        .expect("typed parse")
+        .0;
     assert_eq!(compat, render_model_to_compat_json(&typed, &meta).unwrap());
 }
 
@@ -41,7 +43,9 @@ Platform.FFI.DartBinding --> Platform.Core.Renderer : calls
 Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls
 "#;
 
-    let model = parse::parse_class_typed(code, &meta()).expect("class diagram should parse");
+    let model = parse::parse_class_typed_with_render_context(code, &meta())
+        .expect("class diagram should parse")
+        .0;
 
     assert_eq!(
         model.classes.keys().cloned().collect::<Vec<_>>(),

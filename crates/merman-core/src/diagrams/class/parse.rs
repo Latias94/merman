@@ -218,13 +218,16 @@ pub(crate) fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
     Ok(parse_class_semantic_source(code, meta)?.db.into_model(meta))
 }
 
-pub(crate) fn parse_class_typed(
+pub(crate) fn parse_class_typed_with_render_context(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<class_typed::ClassDiagram> {
+) -> Result<(
+    class_typed::ClassDiagram,
+    class_typed::ClassStylePrecedenceFacts,
+)> {
     Ok(parse_class_semantic_source(code, meta)?
         .db
-        .into_typed_model(meta))
+        .into_typed_model_with_style_facts(meta))
 }
 
 pub(crate) fn parse_class_json_and_editor_facts(

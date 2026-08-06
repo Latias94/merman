@@ -1,0 +1,99 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accTitle": null,
+    "accDescr": null,
+    "direction": "TB",
+    "classes": {
+      "assigned": {
+        "id": "assigned",
+        "styles": [
+          "fill:#d1fae5",
+          "stroke:#047857",
+          "color:#064e3b",
+          "font-size:16px"
+        ],
+        "textStyles": [
+          "color:#064e3b"
+        ]
+      },
+      "default": {
+        "id": "default",
+        "styles": [
+          "fill:#f8fafc",
+          "stroke:#64748b",
+          "color:#0f172a",
+          "font-size:12px"
+        ],
+        "textStyles": [
+          "color:#0f172a"
+        ]
+      }
+    },
+    "entities": {
+      "ACCOUNT": {
+        "id": "entity-ACCOUNT-0",
+        "label": "ACCOUNT",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "name",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default assigned",
+        "cssStyles": [
+          "fill:#fee2e2",
+          "stroke:#dc2626",
+          "color:#7f1d1d",
+          "font-size:20px"
+        ]
+      },
+      "CUSTOMER": {
+        "id": "entity-CUSTOMER-1",
+        "label": "CUSTOMER",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "id",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-ACCOUNT-0",
+        "roleA": "owns",
+        "entityB": "entity-CUSTOMER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "type": "er",
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

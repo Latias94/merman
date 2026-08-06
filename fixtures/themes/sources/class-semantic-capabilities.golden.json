@@ -1,0 +1,103 @@
+{
+  "diagramType": "class",
+  "model": {
+    "type": "class",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Account": {
+        "id": "Account",
+        "type": "",
+        "label": "Account",
+        "text": "Account",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "activate",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+activate()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String name",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String name",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Account-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "GenericAccount": {
+        "id": "GenericAccount",
+        "type": "T",
+        "label": "GenericAccount",
+        "text": "GenericAccount&lt;T&gt;",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "T value",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+T value",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [
+          "service"
+        ],
+        "styles": [],
+        "domId": "classId-GenericAccount-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

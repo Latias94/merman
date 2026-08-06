@@ -1,0 +1,7 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-class-assignment-before-definition",
+  "evidenceKind": "source-compatibility",
+  "intent": "Prove that a later classDef copies styles into nodes that already carry the class.",
+  "styleEvidenceIds": ["class-assignment-before-definition-copy"]
+}

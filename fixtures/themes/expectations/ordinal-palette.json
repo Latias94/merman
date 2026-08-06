@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-ordinal-palette",
+  "evidenceKind": "typed-capability",
+  "intent": "Exercise stable ordinal color assignment independent of SVG encounter order."
+}

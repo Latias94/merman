@@ -1,0 +1,11 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-class-definition-before-assignment",
+  "evidenceKind": "source-compatibility",
+  "intent": "Prove that a later class assignment does not replay an earlier classDef into node styles.",
+  "styleEvidenceIds": [
+    "class-definition-before-assignment-no-backfill",
+    "class-node-inline",
+    "class-typography-classdef-residual"
+  ]
+}

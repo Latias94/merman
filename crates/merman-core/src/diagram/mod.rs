@@ -358,6 +358,7 @@ pub enum RenderSemanticModel {
 #[derive(Debug, Clone, Default)]
 pub struct RenderSemanticContext {
     flowchart_label_sources: Option<crate::diagrams::flowchart::FlowchartRenderLabelSources>,
+    class_style_precedence_facts: Option<crate::models::class_diagram::ClassStylePrecedenceFacts>,
 }
 
 impl RenderSemanticContext {
@@ -366,6 +367,16 @@ impl RenderSemanticContext {
     ) -> Self {
         Self {
             flowchart_label_sources: Some(label_sources),
+            class_style_precedence_facts: None,
+        }
+    }
+
+    fn for_class(
+        style_precedence_facts: crate::models::class_diagram::ClassStylePrecedenceFacts,
+    ) -> Self {
+        Self {
+            flowchart_label_sources: None,
+            class_style_precedence_facts: Some(style_precedence_facts),
         }
     }
 
@@ -385,10 +396,23 @@ impl RenderSemanticContext {
         self.flowchart_label_sources.as_ref()
     }
 
+    /// Borrows ClassDiagram encounter-order style evidence owned by this parse operation.
+    #[doc(hidden)]
+    pub fn class_style_precedence_facts(
+        &self,
+    ) -> Option<&crate::models::class_diagram::ClassStylePrecedenceFacts> {
+        self.class_style_precedence_facts.as_ref()
+    }
+
     pub(crate) fn retained_text_bytes(&self) -> usize {
         self.flowchart_label_sources
             .as_ref()
             .map_or(0, |sources| sources.retained_bytes())
+            .saturating_add(
+                self.class_style_precedence_facts
+                    .as_ref()
+                    .map_or(0, |facts| facts.retained_bytes()),
+            )
     }
 }
 
@@ -413,6 +437,16 @@ impl RenderSemanticParseOutput {
         Self {
             model: RenderSemanticModel::Flowchart(model),
             context: RenderSemanticContext::for_flowchart(label_sources),
+        }
+    }
+
+    pub(crate) fn class(
+        model: crate::models::class_diagram::ClassDiagram,
+        style_precedence_facts: crate::models::class_diagram::ClassStylePrecedenceFacts,
+    ) -> Self {
+        Self {
+            model: RenderSemanticModel::Class(model),
+            context: RenderSemanticContext::for_class(style_precedence_facts),
         }
     }
 
@@ -923,6 +957,14 @@ impl ParsedDiagramRender {
         &self,
     ) -> Option<&crate::diagrams::flowchart::FlowchartRenderLabelSources> {
         self.context.flowchart_label_sources()
+    }
+
+    /// Borrows parser-owned ClassDiagram encounter-order style evidence.
+    #[doc(hidden)]
+    pub fn class_style_precedence_facts(
+        &self,
+    ) -> Option<&crate::models::class_diagram::ClassStylePrecedenceFacts> {
+        self.context.class_style_precedence_facts()
     }
 }
 

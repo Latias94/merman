@@ -1,0 +1,433 @@
+{
+  "snapshotVersion": 1,
+  "sourceId": "source-mermaid",
+  "revision": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+  "evidenceFiles": [
+    {
+      "path": "packages/mermaid/src/config.ts",
+      "sha256": "2804104c8c9fb9a59781258cc995b497b847a1013eacf19597bd3121df1e4eb3"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/class/classDb.ts",
+      "sha256": "09d09f0b5f0bac34e8a640a8e7e9657b3ef57cfc6f6411fae0b7b90f690fc95e"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/class/classRenderer-v3-unified.ts",
+      "sha256": "db93bb9728f91e0546c9a273167e95c313d05ced253b2effb14220f724677cc7"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/class/shapeUtil.ts",
+      "sha256": "c06007902cf3b72c6a96603984ae47d4c63bd421b2c5a7681e7857a0fffaf9a9"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/er/erDb.ts",
+      "sha256": "46c0f437890f74436e0b5e511969b57c1c115df9a200c14b90f7fc38b95f516d"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/er/parser/erDiagram.jison",
+      "sha256": "a0cc3baeb25cefa0f64663cd1c1868107e6da1506318592c35c45b099a8598bb"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/er/styles.ts",
+      "sha256": "a24bbbf64e744267413a4f3a490a61c0af79bf28786a423a0269e6d8e958a8e8"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/flowchart/flowDb.ts",
+      "sha256": "d32d6cff636c62e2b7678db5920295ce30c3dd5198acdb11d0ff3f2bd073c79c"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/flowchart/parser/flow.jison",
+      "sha256": "b95d5a12271ece39b9be35fdc082801ed73c179e54f2903b472452394991e384"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/state/dataFetcher.ts",
+      "sha256": "f25f08c34c418015a80f1cf4b5238af6d95e71d12375106a65e26c70d67d8be9"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/state/parser/stateDiagram.jison",
+      "sha256": "94d4715707c3b35192b8586fa271e843f2c084e9ff70dd8db07c510c1a23e231"
+    },
+    {
+      "path": "packages/mermaid/src/diagrams/state/stateDb.ts",
+      "sha256": "8ff26e886a4a607f8507b818fdf2b512eea0f5baa863bb3152295dba485c7924"
+    },
+    {
+      "path": "packages/mermaid/src/mermaidAPI.ts",
+      "sha256": "1dc2827d74550cc1d699ff05639e9767c5665134da61410c6070d93f62702cbc"
+    },
+    {
+      "path": "packages/mermaid/src/preprocess.ts",
+      "sha256": "62389f115e99bff90bf758453a06ae7638264530ff8ad96544541dd04dffdc77"
+    },
+    {
+      "path": "packages/mermaid/src/rendering-util/rendering-elements/edges.js",
+      "sha256": "fbc35af88cac2b247a58a560be2abb9f951417b328f248f137ff962b6372ffed"
+    },
+    {
+      "path": "packages/mermaid/src/rendering-util/rendering-elements/shapes/classBox.ts",
+      "sha256": "800a1f14ae0123d9aae0675903eaff065ba3aa8f0843bfc9394067f8625a40ee"
+    },
+    {
+      "path": "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts",
+      "sha256": "661b2d73c63686bd3c2f1407c1319f11d47481bb8f9a5b96874db7eaf29b0520"
+    },
+    {
+      "path": "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts",
+      "sha256": "404f88cb90b70c7d38d79b726aaf9b1e6a415eaecf675861de43d9cd7fd84cc4"
+    },
+    {
+      "path": "packages/mermaid/src/styles.ts",
+      "sha256": "358518cb61118bae71c784c296eb07fd64046416980825c7b460da8c153db9d1"
+    }
+  ],
+  "entries": [
+    {
+      "id": "global-config-frontmatter",
+      "family": "global",
+      "origin": "frontmatter",
+      "property": "effective-config",
+      "plane": "config",
+      "admission": "typed",
+      "rank": 0,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/preprocess.ts:19-63"],
+      "note": "Source frontmatter overlays site configuration."
+    },
+    {
+      "id": "global-config-init",
+      "family": "global",
+      "origin": "init-directive",
+      "property": "effective-config",
+      "plane": "config",
+      "admission": "typed",
+      "rank": 1,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/config.ts:29-47",
+        "packages/mermaid/src/mermaidAPI.ts:439-443"
+      ],
+      "note": "Init directives overlay prior configuration in source encounter order."
+    },
+    {
+      "id": "global-css-family",
+      "family": "global",
+      "origin": "family-theme-css",
+      "property": "stylesheet-paint",
+      "plane": "css-cascade",
+      "admission": "paint-only",
+      "rank": 0,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/styles.ts:34-46,115-163"],
+      "note": "Generated family theme CSS is emitted before request themeCSS."
+    },
+    {
+      "id": "global-css-theme",
+      "family": "global",
+      "origin": "theme-css",
+      "property": "stylesheet-paint",
+      "plane": "css-cascade",
+      "admission": "source-compatibility",
+      "rank": 1,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/mermaidAPI.ts:104-199,535-551"],
+      "note": "Raw themeCSS is a compatibility origin whose selector cascade is not portable."
+    },
+    {
+      "id": "global-css-classdef",
+      "family": "global",
+      "origin": "generated-class-css",
+      "property": "stylesheet-paint",
+      "plane": "css-cascade",
+      "admission": "paint-only",
+      "rank": 2,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/mermaidAPI.ts:535-551"],
+      "note": "Generated classDef rules are emitted after resolved themeCSS."
+    },
+    {
+      "id": "flow-node-theme",
+      "family": "flowchart",
+      "origin": "theme-variables",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": 0,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/diagrams/flowchart/flowDb.ts:1026-1053"],
+      "note": "Theme variables provide Flowchart node defaults."
+    },
+    {
+      "id": "flow-node-default",
+      "family": "flowchart",
+      "origin": "class-def-default",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": 1,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/diagrams/flowchart/flowDb.ts:1026-1053"],
+      "note": "The default classDef overlays theme node defaults."
+    },
+    {
+      "id": "flow-node-named",
+      "family": "flowchart",
+      "origin": "class-def-named",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": 2,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/diagrams/flowchart/flowDb.ts:1026-1053,1082-1093"],
+      "note": "Named class definitions are compiled before assigned class order is applied."
+    },
+    {
+      "id": "flow-node-assigned",
+      "family": "flowchart",
+      "origin": "assigned-class",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": 3,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/diagrams/flowchart/parser/flow.jison:533-570",
+        "packages/mermaid/src/diagrams/flowchart/flowDb.ts:1082-1093"
+      ],
+      "note": "Assigned classes overlay prior node styles in assignment order."
+    },
+    {
+      "id": "flow-node-inline",
+      "family": "flowchart",
+      "origin": "inline-style",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": 4,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/diagrams/flowchart/flowDb.ts:1026-1053"],
+      "note": "Inline Flowchart node style is appended after compiled class styles."
+    },
+    {
+      "id": "flow-edge-default",
+      "family": "flowchart",
+      "origin": "link-style-default",
+      "property": "edge-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": 0,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/diagrams/flowchart/flowDb.ts:1141-1178"],
+      "note": "Default linkStyle is copied before edge-specific style."
+    },
+    {
+      "id": "flow-edge-specific",
+      "family": "flowchart",
+      "origin": "link-style-specific",
+      "property": "edge-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": 1,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/diagrams/flowchart/flowDb.ts:1141-1178",
+        "packages/mermaid/src/rendering-util/rendering-elements/edges.js:751-807"
+      ],
+      "note": "Edge-specific linkStyle overlays copied default linkStyle."
+    },
+    {
+      "id": "class-assignment-before-definition-copy",
+      "family": "class-diagram",
+      "origin": "class-def-named",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": null,
+      "encounterOrder": true,
+      "evidence": ["packages/mermaid/src/diagrams/class/classDb.ts:331-367"],
+      "note": "A classDef copies styles only into nodes already carrying the class."
+    },
+    {
+      "id": "class-definition-before-assignment-no-backfill",
+      "family": "class-diagram",
+      "origin": "assigned-class",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": null,
+      "encounterOrder": true,
+      "evidence": ["packages/mermaid/src/diagrams/class/classDb.ts:331-342,345-367"],
+      "note": "A later class assignment records the class name without replaying an earlier classDef."
+    },
+    {
+      "id": "class-node-inline",
+      "family": "class-diagram",
+      "origin": "inline-style",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": null,
+      "encounterOrder": true,
+      "evidence": ["packages/mermaid/src/diagrams/class/classDb.ts:684-695"],
+      "note": "ClassDiagram style statements append directly to the encountered node style list."
+    },
+    {
+      "id": "class-typography-classdef-residual",
+      "family": "class-diagram",
+      "origin": "class-def-named",
+      "property": "node-typography",
+      "plane": "pre-layout",
+      "admission": "unverified-residual",
+      "rank": null,
+      "encounterOrder": true,
+      "evidence": [
+        "packages/mermaid/src/diagrams/class/classRenderer-v3-unified.ts:34-39",
+        "packages/mermaid/src/diagrams/class/shapeUtil.ts:13-26",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/classBox.ts:236-267"
+      ],
+      "note": "Class style typography is not reliably available before ClassDiagram text measurement."
+    },
+    {
+      "id": "state-node-theme",
+      "family": "state-diagram",
+      "origin": "theme-variables",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": 0,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/diagrams/state/dataFetcher.ts:145-166"],
+      "note": "Theme variables provide StateDiagram node defaults."
+    },
+    {
+      "id": "state-node-assigned",
+      "family": "state-diagram",
+      "origin": "assigned-class",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": 1,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/diagrams/state/parser/stateDiagram.jison:291-345",
+        "packages/mermaid/src/diagrams/state/dataFetcher.ts:181-227,284-301",
+        "packages/mermaid/src/diagrams/state/stateDb.ts:625-645"
+      ],
+      "note": "Assigned StateDiagram classes overlay theme defaults in stored class order."
+    },
+    {
+      "id": "state-node-inline",
+      "family": "state-diagram",
+      "origin": "inline-style",
+      "property": "node-paint",
+      "plane": "pre-layout",
+      "admission": "typed",
+      "rank": 2,
+      "encounterOrder": false,
+      "evidence": ["packages/mermaid/src/diagrams/state/stateDb.ts:686-695"],
+      "note": "Inline StateDiagram style replaces the stored node style list after class resolution."
+    },
+    {
+      "id": "er-node-default",
+      "family": "er-diagram",
+      "origin": "class-def-default",
+      "property": "node-paint",
+      "plane": "paint-only",
+      "admission": "paint-only",
+      "rank": 0,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/diagrams/er/styles.ts:42-49,79-96",
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:202-204",
+        "packages/mermaid/src/diagrams/er/erDb.ts:54-65,143-187,207-218",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:25-27,48-50,320-333",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-38,61-89"
+      ],
+      "note": "Within the admitted paint subset, every ER entity starts with the implicit default class and compiles that class before entity-specific declarations."
+    },
+    {
+      "id": "er-node-assigned",
+      "family": "er-diagram",
+      "origin": "assigned-class",
+      "property": "node-paint",
+      "plane": "paint-only",
+      "admission": "paint-only",
+      "rank": 1,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/diagrams/er/erDb.ts:143-187,189-198,207-218",
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:121-180,202-215",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:48-50,320-333",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-38,61-89"
+      ],
+      "note": "Within the admitted paint subset, named ER classes compile in entity cssClasses order and overlay the implicit default class."
+    },
+    {
+      "id": "er-node-inline",
+      "family": "er-diagram",
+      "origin": "inline-style",
+      "property": "node-paint",
+      "plane": "paint-only",
+      "admission": "paint-only",
+      "rank": 2,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/diagrams/er/erDb.ts:157-167,207-218",
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:217-224",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:48-50,320-333",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-38,61-89"
+      ],
+      "note": "Within the admitted paint subset, ER inline declarations append after compiled class styles, so later duplicate properties win."
+    },
+    {
+      "id": "er-typography-default-residual",
+      "family": "er-diagram",
+      "origin": "class-def-default",
+      "property": "node-typography",
+      "plane": "pre-layout",
+      "admission": "unverified-residual",
+      "rank": 0,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:202-204",
+        "packages/mermaid/src/diagrams/er/erDb.ts:54-65,143-187,207-218",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-58",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:48-50,92-127,343-398"
+      ],
+      "note": "Default-class typography reaches ER labelStyles before text measurement, but no portable family adapter currently resolves it before layout."
+    },
+    {
+      "id": "er-typography-assigned-residual",
+      "family": "er-diagram",
+      "origin": "assigned-class",
+      "property": "node-typography",
+      "plane": "pre-layout",
+      "admission": "unverified-residual",
+      "rank": 1,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:202-215",
+        "packages/mermaid/src/diagrams/er/erDb.ts:143-198,207-218",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-58",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:48-50,92-127,343-398"
+      ],
+      "note": "Assigned-class typography overlays default typography before ER text measurement and remains an explicit portability residual."
+    },
+    {
+      "id": "er-typography-inline-residual",
+      "family": "er-diagram",
+      "origin": "inline-style",
+      "property": "node-typography",
+      "plane": "pre-layout",
+      "admission": "unverified-residual",
+      "rank": 2,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:217-224",
+        "packages/mermaid/src/diagrams/er/erDb.ts:157-167,207-218",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-58",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:48-50,92-127,343-398"
+      ],
+      "note": "Inline typography wins after compiled ER classes and affects measurement, but the typed adapter has not yet admitted it."
+    }
+  ]
+}

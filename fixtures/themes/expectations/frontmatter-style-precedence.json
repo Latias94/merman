@@ -1,0 +1,12 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-frontmatter-style-precedence",
+  "evidenceKind": "source-compatibility",
+  "intent": "Preserve source frontmatter as a visual configuration origin before typed node styles.",
+  "referenceMechanisms": ["theme-variables"],
+  "styleEvidenceIds": [
+    "flow-node-theme",
+    "global-config-frontmatter",
+    "global-css-family"
+  ]
+}

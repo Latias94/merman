@@ -5,6 +5,7 @@ members = [
     "crates/merman-analysis",
     "crates/merman-editor-core",
     "crates/merman-fixture-render-context",
+    "crates/merman-theme-fixtures",
     "crates/merman-core",
     "crates/merman-ascii",
     "crates/merman-bindings-core",

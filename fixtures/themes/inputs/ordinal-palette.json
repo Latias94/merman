@@ -1,0 +1,26 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-ordinal-palette",
+  "tokens": null,
+  "typography": null,
+  "canvas": [],
+  "blendMode": null,
+  "nodeStyle": null,
+  "semanticRules": [
+    {
+      "kind": "ordinal-palette",
+      "family": "flowchart",
+      "target": "node",
+      "colors": [
+        "#2563eb",
+        "#16a34a",
+        "#dc2626",
+        "#7c3aed",
+        "#ea580c",
+        "#0891b2"
+      ]
+    }
+  ],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

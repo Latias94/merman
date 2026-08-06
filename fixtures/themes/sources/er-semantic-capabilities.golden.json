@@ -1,0 +1,48 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accTitle": null,
+    "accDescr": null,
+    "direction": "TB",
+    "classes": {},
+    "entities": {
+      "ACCOUNT": {
+        "id": "entity-ACCOUNT-0",
+        "label": "ACCOUNT",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "name",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "boolean",
+            "name": "active",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "客户账户",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [],
+    "type": "er",
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-semantic-style-capabilities",
+  "evidenceKind": "typed-capability",
+  "intent": "Exercise state-family semantic predicates with non-empty typed style effects."
+}

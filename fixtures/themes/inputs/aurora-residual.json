@@ -1,0 +1,69 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-aurora-residual",
+  "tokens": null,
+  "typography": null,
+  "canvas": [
+    {
+      "kind": "solid",
+      "color": "#07111f"
+    },
+    {
+      "kind": "linear-gradient",
+      "angleDegrees": 120,
+      "repetition": "none",
+      "tileWidthPx": null,
+      "tileHeightPx": null,
+      "stops": [
+        {
+          "offsetPercent": 0,
+          "color": "#0f766e"
+        },
+        {
+          "offsetPercent": 50,
+          "color": "#2563eb"
+        },
+        {
+          "offsetPercent": 100,
+          "color": "#7c3aed"
+        }
+      ]
+    },
+    {
+      "kind": "radial-gradient",
+      "centerXPercent": 50,
+      "centerYPercent": 50,
+      "repetition": "none",
+      "tileWidthPx": null,
+      "tileHeightPx": null,
+      "stops": [
+        {
+          "offsetPercent": 0,
+          "color": "#22d3ee33"
+        },
+        {
+          "offsetPercent": 100,
+          "color": "#22d3ee00"
+        }
+      ]
+    }
+  ],
+  "blendMode": null,
+  "nodeStyle": {
+    "border": null,
+    "dashPattern": [],
+    "cornerRadiusPx": null,
+    "shadow": {
+      "offsetXPx": 0,
+      "offsetYPx": 8,
+      "blurPx": 24,
+      "spreadPx": 0,
+      "color": "#22d3ee55"
+    }
+  },
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": [
+    "backdrop-filter"
+  ]
+}

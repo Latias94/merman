@@ -526,11 +526,14 @@ fn render_flowchart(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticPa
         crate::diagrams::flowchart::parse_flowchart_model_with_render_context(code, meta)?;
     Ok(RenderSemanticParseOutput::flowchart(model, label_sources))
 }
-render_parser!(
-    render_class,
-    crate::diagrams::class::parse_class_typed,
-    RenderSemanticModel::Class
-);
+fn render_class(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput> {
+    let (model, style_precedence_facts) =
+        crate::diagrams::class::parse_class_typed_with_render_context(code, meta)?;
+    Ok(RenderSemanticParseOutput::class(
+        model,
+        style_precedence_facts,
+    ))
+}
 render_parser!(
     render_c4,
     crate::diagrams::c4::parse_c4_model_for_render,

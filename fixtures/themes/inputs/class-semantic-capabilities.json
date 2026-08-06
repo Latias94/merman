@@ -1,0 +1,33 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-class-semantic-capabilities",
+  "tokens": null,
+  "typography": null,
+  "canvas": [],
+  "blendMode": null,
+  "nodeStyle": null,
+  "semanticRules": [
+    {
+      "kind": "has-descendant",
+      "family": "class-diagram",
+      "target": "node",
+      "descendant": "attribute",
+      "apply": {
+        "fill": null,
+        "border": null,
+        "cornerRadiusPx": null,
+        "shadow": {
+          "offsetXPx": 0,
+          "offsetYPx": 3,
+          "blurPx": 8,
+          "spreadPx": 0,
+          "color": "#0f172a33"
+        },
+        "textColor": null,
+        "fontWeight": null
+      }
+    }
+  ],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

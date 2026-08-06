@@ -5,6 +5,7 @@ use crate::utils::format_url;
 use crate::{MermaidConfig, ParseMetadata};
 use indexmap::IndexMap;
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 use super::ast::{Action, RelationData};
 use super::{
@@ -336,6 +337,18 @@ impl StyleClass {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ExplicitCssAssignment {
+    target: String,
+    style_event_ordinal: usize,
+}
+
+#[derive(Debug, Clone)]
+struct PaintClassDefinition {
+    styles: Vec<String>,
+    style_event_ordinal: usize,
+}
+
 #[derive(Debug)]
 pub(super) struct ClassDb<'a> {
     direction: String,
@@ -346,6 +359,10 @@ pub(super) struct ClassDb<'a> {
     namespaces: IndexMap<String, Namespace>,
     namespace_stack: Vec<String>,
     style_classes: IndexMap<String, StyleClass>,
+    style_precedence_facts: class_typed::ClassStylePrecedenceFacts,
+    explicit_css_assignments: BTreeMap<String, ExplicitCssAssignment>,
+    paint_class_definitions: BTreeMap<String, PaintClassDefinition>,
+    next_style_event_ordinal: usize,
     class_counter: usize,
     namespace_counter: usize,
     acc_title: Option<String>,
@@ -365,6 +382,10 @@ impl<'a> ClassDb<'a> {
             namespaces: IndexMap::new(),
             namespace_stack: Vec::new(),
             style_classes: IndexMap::new(),
+            style_precedence_facts: class_typed::ClassStylePrecedenceFacts::default(),
+            explicit_css_assignments: BTreeMap::new(),
+            paint_class_definitions: BTreeMap::new(),
+            next_style_event_ordinal: 0,
             class_counter: 0,
             namespace_counter: 0,
             acc_title: None,
@@ -502,7 +523,15 @@ impl<'a> ClassDb<'a> {
         }
     }
 
-    pub(super) fn set_css_class(&mut self, ids: &str, css_class: &str) {
+    pub(super) fn set_css_class(
+        &mut self,
+        ids: &str,
+        css_class: &str,
+        style_event_ordinal: Option<usize>,
+    ) {
+        let prior_definition = style_event_ordinal
+            .and_then(|_| self.paint_class_definitions.get(css_class))
+            .cloned();
         for raw in ids.split(',') {
             let id = raw.trim();
             if id.is_empty() {
@@ -510,6 +539,34 @@ impl<'a> ClassDb<'a> {
             }
             let (class_name, _) = self.split_class_name_and_type(id);
             if let Some(c) = self.classes.get_mut(&class_name) {
+                let is_first_explicit_assignment = style_event_ordinal.is_some()
+                    && !class_list_contains(&c.css_classes, css_class);
+                if let Some(style_event_ordinal) =
+                    style_event_ordinal.filter(|_| is_first_explicit_assignment)
+                {
+                    if let Some(definition) = prior_definition.as_ref()
+                        && self
+                            .style_precedence_facts
+                            .definition_before_assignment_no_backfill_witness()
+                            .is_none()
+                    {
+                        self.style_precedence_facts
+                            .definition_before_assignment_no_backfill =
+                            Some(class_typed::ClassStylePrecedenceWitness {
+                                class_name: css_class.to_string(),
+                                target: class_name.clone(),
+                                styles: definition.styles.clone(),
+                                earlier_style_event_ordinal: definition.style_event_ordinal,
+                                later_style_event_ordinal: style_event_ordinal,
+                            });
+                    }
+                    self.explicit_css_assignments
+                        .entry(css_class.to_string())
+                        .or_insert_with(|| ExplicitCssAssignment {
+                            target: class_name.clone(),
+                            style_event_ordinal,
+                        });
+                }
                 c.css_classes.push(' ');
                 c.css_classes.push_str(css_class);
             }
@@ -537,7 +594,7 @@ impl<'a> ClassDb<'a> {
             };
             c.link_target = Some(final_target);
         }
-        self.set_css_class(&class_name, "clickable");
+        self.set_css_class(&class_name, "clickable", None);
     }
 
     fn set_click_event(&mut self, id: &str, function: &str, args: Option<String>) {
@@ -556,7 +613,7 @@ impl<'a> ClassDb<'a> {
             c.callback = Some(map);
             c.callback_effective = self.security_level == Some("loose");
         }
-        self.set_css_class(&class_name, "clickable");
+        self.set_css_class(&class_name, "clickable", None);
     }
 
     fn parse_styles(raw: &str) -> Vec<String> {
@@ -567,7 +624,29 @@ impl<'a> ClassDb<'a> {
             .collect()
     }
 
-    fn set_css_style(&mut self, id: &str, styles: Vec<String>) {
+    fn take_style_event_ordinal(&mut self) -> usize {
+        let ordinal = self.next_style_event_ordinal;
+        self.next_style_event_ordinal = self.next_style_event_ordinal.saturating_add(1);
+        ordinal
+    }
+
+    fn set_css_style(&mut self, id: &str, styles: Vec<String>, style_event_ordinal: usize) {
+        let paint_styles = styles
+            .iter()
+            .filter(|style| crate::style::is_safe_paint_declaration(style))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !paint_styles.is_empty()
+            && self.style_precedence_facts.inline_paint_witness().is_none()
+            && self.classes.contains_key(id)
+        {
+            self.style_precedence_facts.inline_paint =
+                Some(class_typed::ClassStyleDeclarationWitness {
+                    target: id.to_string(),
+                    styles: paint_styles,
+                    style_event_ordinal,
+                });
+        }
         let Some(c) = self.classes.get_mut(id) else {
             return;
         };
@@ -581,7 +660,56 @@ impl<'a> ClassDb<'a> {
         }
     }
 
-    fn define_class(&mut self, id: &str, styles: Vec<String>) {
+    fn define_class(&mut self, id: &str, styles: Vec<String>, style_event_ordinal: usize) {
+        let paint_styles = styles
+            .iter()
+            .filter(|style| crate::style::is_safe_paint_declaration(style))
+            .cloned()
+            .collect::<Vec<_>>();
+        let typography_styles = styles
+            .iter()
+            .filter(|style| crate::style::is_safe_typography_declaration(style))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !typography_styles.is_empty()
+            && self
+                .style_precedence_facts
+                .classdef_typography_witness()
+                .is_none()
+        {
+            self.style_precedence_facts.classdef_typography =
+                Some(class_typed::ClassStyleDeclarationWitness {
+                    target: id.to_string(),
+                    styles: typography_styles,
+                    style_event_ordinal,
+                });
+        }
+        if !paint_styles.is_empty()
+            && self
+                .style_precedence_facts
+                .assignment_before_definition_copy_witness()
+                .is_none()
+            && let Some(assignment) = self.explicit_css_assignments.get(id)
+        {
+            self.style_precedence_facts
+                .assignment_before_definition_copy =
+                Some(class_typed::ClassStylePrecedenceWitness {
+                    class_name: id.to_string(),
+                    target: assignment.target.clone(),
+                    styles: paint_styles.clone(),
+                    earlier_style_event_ordinal: assignment.style_event_ordinal,
+                    later_style_event_ordinal: style_event_ordinal,
+                });
+        }
+        if !paint_styles.is_empty() {
+            self.paint_class_definitions.insert(
+                id.to_string(),
+                PaintClassDefinition {
+                    styles: paint_styles,
+                    style_event_ordinal,
+                },
+            );
+        }
         let entry = self
             .style_classes
             .entry(id.to_string())
@@ -851,17 +979,20 @@ impl<'a> ClassDb<'a> {
                 Ok(())
             }
             Action::SetCssClass { ids, css_class } => {
-                self.set_css_class(&ids, &css_class);
+                let style_event_ordinal = self.take_style_event_ordinal();
+                self.set_css_class(&ids, &css_class, Some(style_event_ordinal));
                 Ok(())
             }
             Action::SetCssStyle { id, raw } => {
                 let styles = Self::parse_styles(&raw);
-                self.set_css_style(&id, styles);
+                let style_event_ordinal = self.take_style_event_ordinal();
+                self.set_css_style(&id, styles, style_event_ordinal);
                 Ok(())
             }
             Action::DefineClass { id, raw } => {
                 let styles = Self::parse_styles(&raw);
-                self.define_class(&id, styles);
+                let style_event_ordinal = self.take_style_event_ordinal();
+                self.define_class(&id, styles, style_event_ordinal);
                 Ok(())
             }
             Action::SetLink { id, url, target } => {
@@ -1011,8 +1142,19 @@ impl<'a> ClassDb<'a> {
             .expect("Class typed model must remain JSON-serializable")
     }
 
-    pub(super) fn into_typed_model(mut self, meta: &ParseMetadata) -> class_typed::ClassDiagram {
+    pub(super) fn into_typed_model(self, meta: &ParseMetadata) -> class_typed::ClassDiagram {
+        self.into_typed_model_with_style_facts(meta).0
+    }
+
+    pub(super) fn into_typed_model_with_style_facts(
+        mut self,
+        meta: &ParseMetadata,
+    ) -> (
+        class_typed::ClassDiagram,
+        class_typed::ClassStylePrecedenceFacts,
+    ) {
         self.apply_namespace_render_config();
+        let style_precedence_facts = std::mem::take(&mut self.style_precedence_facts);
 
         let classes = self
             .classes
@@ -1056,7 +1198,7 @@ impl<'a> ClassDb<'a> {
             .map(|(k, sc)| (k, sc.into_typed()))
             .collect();
 
-        class_typed::ClassDiagram {
+        let model = class_typed::ClassDiagram {
             diagram_type: meta.diagram_type.clone(),
             direction: self.direction,
             acc_title: self.acc_title,
@@ -1081,6 +1223,13 @@ impl<'a> ClassDb<'a> {
                     lollipop: REL_LOLLIPOP,
                 },
             },
-        }
+        };
+        (model, style_precedence_facts)
     }
+}
+
+fn class_list_contains(classes: &str, expected: &str) -> bool {
+    classes
+        .split(|ch: char| ch.is_ascii_whitespace() || ch == ',')
+        .any(|class_name| class_name == expected)
 }

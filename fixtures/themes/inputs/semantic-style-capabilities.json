@@ -1,0 +1,54 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-semantic-style-capabilities",
+  "tokens": null,
+  "typography": {
+    "fontStack": null,
+    "letterSpacingMilliEm": 40,
+    "textTransform": "uppercase"
+  },
+  "canvas": [],
+  "blendMode": null,
+  "nodeStyle": null,
+  "semanticRules": [
+    {
+      "kind": "has-descendant",
+      "family": "state-diagram",
+      "target": "node",
+      "descendant": "label",
+      "apply": {
+        "fill": null,
+        "border": null,
+        "cornerRadiusPx": null,
+        "shadow": {
+          "offsetXPx": 0,
+          "offsetYPx": 4,
+          "blurPx": 10,
+          "spreadPx": 0,
+          "color": "#0f172a33"
+        },
+        "textColor": null,
+        "fontWeight": null
+      }
+    },
+    {
+      "kind": "not-class",
+      "family": "state-diagram",
+      "target": "node",
+      "className": "disabled",
+      "apply": {
+        "fill": "#e0f2fe",
+        "border": {
+          "color": "#0284c7",
+          "widthPx": 1
+        },
+        "cornerRadiusPx": 6,
+        "shadow": null,
+        "textColor": "#0c4a6e",
+        "fontWeight": 600
+      }
+    }
+  ],
+  "svgEffects": [],
+  "residualMechanisms": []
+}
