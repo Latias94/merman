@@ -960,8 +960,64 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
 
             self.assertEqual(result, 0)
             self.assertFalse(output.exists())
+            self.assertIn("$ cargo clean --locked --profile bench", stdout.getvalue())
             self.assertIn("--locked", stdout.getvalue())
             self.assertIn("planned fresh subprocesses: 60", stdout.getvalue())
+
+    def test_discover_executable_resets_shared_bench_profile_before_build(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "Cargo.lock").write_text("# lock\n", encoding="utf-8")
+            target_dir = root / "target"
+            executable = target_dir / "release" / "deps" / "native_memory-test"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"probe")
+            executable.chmod(0o755)
+            recipe = run_native_memory.memory_recipe(
+                root,
+                target_dir=target_dir,
+                toolchain=None,
+            )
+            reset_command = run_native_memory.cargo_clean_bench_profile_command(recipe)
+            build_command = run_native_memory.cargo_prebuild_command(recipe)
+            reset = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="removed", stderr=""
+            )
+            artifact = json.dumps(
+                {
+                    "reason": "compiler-artifact",
+                    "target": {"name": recipe.bench, "kind": ["bench"]},
+                    "executable": str(executable),
+                }
+            )
+            build = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=artifact, stderr=""
+            )
+
+            with mock.patch.object(
+                run_native_memory.subprocess,
+                "run",
+                side_effect=[reset, build],
+            ) as run:
+                discovered, provenance = run_native_memory.discover_executable(
+                    recipe,
+                    timeout_seconds=30,
+                )
+
+        self.assertEqual(discovered, executable)
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(
+            run.call_args_list[0].args[0],
+            reset_command,
+        )
+        self.assertEqual(
+            run.call_args_list[1].args[0],
+            build_command,
+        )
+        self.assertEqual(
+            provenance["profile_reset"]["command"],
+            reset_command,
+        )
 
     def test_dry_run_rejects_an_unexecutable_sampling_contract(self) -> None:
         cases = (

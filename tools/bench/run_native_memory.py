@@ -17,7 +17,12 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from compare_self import RunnerRecipe, cargo_prebuild_command, parse_bench_executable
+from compare_self import (
+    RunnerRecipe,
+    cargo_clean_bench_profile_command,
+    cargo_prebuild_command,
+    parse_bench_executable,
+)
 from compare_mermaid_renderers import best_effort_cpu_model
 from corpus_utils import LaneMetadata, load_corpus, resolve_lane_selector
 from native_memory import (
@@ -86,6 +91,11 @@ class DriverContractError(ValueError):
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def requested_repo_root(args: argparse.Namespace) -> Path:
+    value = getattr(args, "repo_root", "")
+    return Path(value).resolve() if value else repo_root()
 
 
 def _sha256_path(path: Path) -> str:
@@ -433,9 +443,28 @@ def discover_executable(
     *,
     timeout_seconds: int,
 ) -> tuple[Path, dict[str, object]]:
+    reset_command = cargo_clean_bench_profile_command(recipe)
     command = cargo_prebuild_command(recipe)
     environment = os.environ.copy()
     environment.update(_BUILD_ENVIRONMENT_OVERRIDES)
+    try:
+        reset = subprocess.run(
+            reset_command,
+            cwd=recipe.checkout,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise DriverContractError(
+            "native-memory bench profile reset timed out"
+        ) from error
+    if reset.returncode != 0:
+        raise DriverContractError(
+            "native-memory bench profile reset failed: " + reset.stderr[-2_000:]
+        )
     try:
         result = subprocess.run(
             command,
@@ -462,6 +491,11 @@ def discover_executable(
         raise DriverContractError(f"Cargo reported an unusable executable: {executable}")
     return executable, {
         "command": command,
+        "profile_reset": {
+            "command": reset_command,
+            "stdout_sha256": hashlib.sha256(reset.stdout.encode("utf-8")).hexdigest(),
+            "stderr_sha256": hashlib.sha256(reset.stderr.encode("utf-8")).hexdigest(),
+        },
         "stdout_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
         "stderr_sha256": hashlib.sha256(result.stderr.encode("utf-8")).hexdigest(),
     }
@@ -771,12 +805,14 @@ def _base_report(args: argparse.Namespace, *, output: Path) -> dict[str, object]
 
 
 def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
-    root = repo_root()
+    root = requested_repo_root(args)
     output = Path(args.json_out)
     if not output.is_absolute():
         output = root / output
     report = _base_report(args, output=output)
     try:
+        if not root.is_dir():
+            raise DriverContractError(f"repository root is not a directory: {root}")
         _validate_driver_parameters(args)
         source = _git_provenance(root)
         report["source"] = source
@@ -899,6 +935,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             report_inputs["probe_inputs"] = probe_inputs
         report["inputs"] = report_inputs
         build_command = cargo_prebuild_command(recipe)
+        profile_reset_command = cargo_clean_bench_profile_command(recipe)
         report["recipe"] = {
             "package": recipe.package,
             "bench": recipe.bench,
@@ -906,6 +943,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             "default_features": recipe.default_features,
             "locked": recipe.locked,
             "target_dir": str(recipe.target_dir),
+            "profile_reset_command": profile_reset_command,
             "build_command": build_command,
             "build_environment": _build_environment(),
             "requested_toolchain": args.toolchain,
@@ -1025,6 +1063,11 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--lane", default=DEFAULT_LANE)
     parser.add_argument("--contract", default="")
     parser.add_argument("--executable", default="")
+    parser.add_argument(
+        "--repo-root",
+        default="",
+        help="Repository checkout to build and attribute; defaults to the driver checkout.",
+    )
     parser.add_argument("--target-dir", default="target")
     parser.add_argument("--toolchain", default=None)
     parser.add_argument("--repeats", type=int, default=DEFAULT_REPEATS)
@@ -1052,7 +1095,12 @@ def main(argv: list[str]) -> int:
     report, exit_code = execute(args)
     if args.dry_run:
         recipe = report.get("recipe", {})
+        reset_command = (
+            recipe.get("profile_reset_command", []) if isinstance(recipe, dict) else []
+        )
         command = recipe.get("build_command", []) if isinstance(recipe, dict) else []
+        if reset_command:
+            print("$ " + " ".join(str(part) for part in reset_command))
         if command:
             print("$ " + " ".join(str(part) for part in command))
         print(f"planned fresh subprocesses: {report.get('planned_subprocesses', 0)}")
@@ -1063,7 +1111,7 @@ def main(argv: list[str]) -> int:
 
     output = Path(args.json_out)
     if not output.is_absolute():
-        output = repo_root() / output
+        output = requested_repo_root(args) / output
     try:
         _atomic_json(output, report)
     except (OSError, TypeError, ValueError) as error:
