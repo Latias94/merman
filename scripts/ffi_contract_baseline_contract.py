@@ -210,8 +210,10 @@ def validate_rust_toolchain(value: Any) -> dict[str, Any]:
     return toolchain
 
 
-def rust_toolchain_compatibility_projection(value: Mapping[str, Any]) -> dict[str, Any]:
-    """Compare exact tool bytes and versions while allowing installation-path moves."""
+def rust_toolchain_native_compatibility_projection(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Compare exact native tool bytes and versions across installation-path moves."""
 
     return {
         "cargo_sha256": value["cargo"]["sha256"],
@@ -219,6 +221,22 @@ def rust_toolchain_compatibility_projection(value: Mapping[str, Any]) -> dict[st
         "cargo_version": value["cargo_version"],
         "rustc_verbose": value["rustc_verbose"],
         "host_target": value["host_target"],
+    }
+
+
+def rust_toolchain_dependency_compatibility_projection(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Compare dependency-resolution semantics without binding evidence to one host."""
+
+    rustc_semantics = "\n".join(
+        line
+        for line in value["rustc_verbose"].splitlines()
+        if not line.startswith("host: ")
+    )
+    return {
+        "cargo_version": value["cargo_version"],
+        "rustc_semantics": rustc_semantics,
     }
 
 

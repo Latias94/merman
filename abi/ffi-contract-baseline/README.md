@@ -3,7 +3,9 @@
 This directory contains reviewed evidence anchored to commit
 `5117c0ae12da2c0346b47061642286174cea3f5f`:
 
-- `dependency-closures.json` freezes ten public-native and private-Node dependency probes.
+- `dependency-closures.json` freezes ten public-native and private-Node dependency probes. Its
+  schema stores deduplicated runtime and attribution package-record tables plus per-probe integer
+  references; the verifier expands those references before applying the original closure rules.
 - `native-artifact-sizes.json` freezes full and semantic C ABI artifacts on the recorded Apple
   toolchain.
 - `docs/release/evidence/ffi-contract-native-build-timing.json` records a separate matched
@@ -23,8 +25,9 @@ python3 scripts/capture_ffi_contract_baseline.py \
 
 Review both reports and the proposed lock together, verify them with the current loaders, then
 promote all three files in one commit. Native size comparison requires the exact recorded Rust and
-Apple toolchain identity; dependency comparison permits installation-path changes but not tool
-byte or version drift.
+Apple toolchain identity. Dependency comparison records the complete tool provenance but compares
+Cargo and rustc release/commit semantics across hosts, so an equivalent Linux verifier is not
+rejected solely because its executable bytes or host triple differ from the Apple capture host.
 
 Capture timing only after the candidate implementation is committed:
 

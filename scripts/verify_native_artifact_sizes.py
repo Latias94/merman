@@ -31,7 +31,7 @@ from ffi_contract_baseline_contract import (
     file_sha256,
     input_records,
     load_baseline_lock,
-    rust_toolchain_compatibility_projection,
+    rust_toolchain_native_compatibility_projection,
     source_revision_projection,
     validate_input_records,
     validate_finalized_sha256,
@@ -1617,9 +1617,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except FfiContractReproducibilityError as error:
             raise NativeArtifactSizeError(str(error)) from error
-        if rust_toolchain_compatibility_projection(
+        if rust_toolchain_native_compatibility_projection(
             current_toolchain
-        ) != rust_toolchain_compatibility_projection(baseline["toolchain"]):
+        ) != rust_toolchain_native_compatibility_projection(baseline["toolchain"]):
             raise NativeArtifactSizeError(
                 "native artifact toolchain differs from baseline: "
                 f"baseline={baseline['toolchain']!r} current={current_toolchain!r}"

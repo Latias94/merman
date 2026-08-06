@@ -24,7 +24,7 @@ from typing import Any
 from artifact_profile_recipe import REPO_ROOT
 from ffi_contract_baseline_contract import (
     FfiBaselineContractError,
-    rust_toolchain_compatibility_projection,
+    rust_toolchain_native_compatibility_projection,
     validate_rust_toolchain,
 )
 from ffi_contract_dependency_probes import BASELINE_COMMIT, BASELINE_TREE
@@ -548,9 +548,9 @@ def _validate_repository_contract(
         )
     except NativeArtifactSizeError as error:
         raise NativeBuildTimingError(str(error)) from error
-    if rust_toolchain_compatibility_projection(
+    if rust_toolchain_native_compatibility_projection(
         toolchain
-    ) != rust_toolchain_compatibility_projection(baseline["toolchain"]):
+    ) != rust_toolchain_native_compatibility_projection(baseline["toolchain"]):
         raise NativeBuildTimingError(
             "native timing toolchain differs from the immutable artifact baseline"
         )

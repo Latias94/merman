@@ -1618,9 +1618,8 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         verify = workflow_step(job, name="Verify native FFI artifact sizes")
         self.assertEqual(
             verify["run"],
-            "unset CARGO_INCREMENTAL\n"
             "python3 scripts/verify_native_artifact_sizes.py --baseline "
-            "abi/ffi-contract-baseline/native-artifact-sizes.json\n",
+            "abi/ffi-contract-baseline/native-artifact-sizes.json",
         )
         for step in (host, toolchain, prefetch, verify):
             self.assertNotIn("continue-on-error", step)

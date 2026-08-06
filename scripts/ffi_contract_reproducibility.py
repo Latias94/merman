@@ -112,6 +112,12 @@ PASSTHROUGH_ENVIRONMENT = (
     "TMPDIR",
 )
 
+CANONICAL_REPRODUCIBILITY_ENVIRONMENT = {
+    "CARGO_INCREMENTAL": "0",
+    "SOURCE_DATE_EPOCH": "0",
+    "ZERO_AR_DATE": "1",
+}
+
 
 class FfiContractReproducibilityError(RuntimeError):
     """The local process environment cannot produce attributable evidence."""
@@ -153,9 +159,18 @@ def reject_ffi_contract_environment(
     values = os.environ if environment is None else environment
     overrides = sorted(
         key
-        for key in values
-        if key in EXACT_ENVIRONMENT_OVERRIDES
-        or key.startswith(ENVIRONMENT_OVERRIDE_PREFIXES)
+        for key, value in values.items()
+        if (
+            key in CANONICAL_REPRODUCIBILITY_ENVIRONMENT
+            and value != CANONICAL_REPRODUCIBILITY_ENVIRONMENT[key]
+        )
+        or (
+            key not in CANONICAL_REPRODUCIBILITY_ENVIRONMENT
+            and (
+                key in EXACT_ENVIRONMENT_OVERRIDES
+                or key.startswith(ENVIRONMENT_OVERRIDE_PREFIXES)
+            )
+        )
     )
     if overrides:
         raise FfiContractReproducibilityError(
@@ -212,18 +227,16 @@ def ffi_contract_subprocess_environment(
         for key in PASSTHROUGH_ENVIRONMENT
         if key in values and values[key]
     }
+    result.update(CANONICAL_REPRODUCIBILITY_ENVIRONMENT)
     result.update(
         {
-            "CARGO_INCREMENTAL": "0",
             "CARGO_NET_OFFLINE": "true",
             "CARGO_TERM_COLOR": "never",
             "LANG": "C",
             "LC_ALL": "C",
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-            "SOURCE_DATE_EPOCH": "0",
             "TERM": "dumb",
             "TZ": "UTC",
-            "ZERO_AR_DATE": "1",
         }
     )
     return result
@@ -232,9 +245,9 @@ def ffi_contract_subprocess_environment(
 def resolve_rust_toolchain(runner: CommandRunner) -> RustToolchainIdentity:
     rustup = shutil.which("rustup")
     if rustup is not None:
-        rustup_path = _canonical_executable(Path(rustup), "rustup")
-        cargo_path = _rustup_tool_path(rustup_path, "cargo", runner)
-        rustc_path = _rustup_tool_path(rustup_path, "rustc", runner)
+        rustup_path = _invocable_executable(Path(rustup), "rustup")
+        cargo_path = _rustup_tool_path(str(rustup_path), "cargo", runner)
+        rustc_path = _rustup_tool_path(str(rustup_path), "rustc", runner)
     else:
         cargo_path = _path_tool("cargo")
         rustc_path = _path_tool("rustc")
@@ -267,11 +280,11 @@ def rust_toolchain_provenance(runner: CommandRunner) -> dict[str, Any]:
 
 
 def _rustup_tool_path(
-    rustup: Path,
+    rustup: str,
     tool: str,
     runner: CommandRunner,
 ) -> Path:
-    value = _checked_output((str(rustup), "which", tool), runner)
+    value = _checked_output((rustup, "which", tool), runner)
     return _canonical_executable(Path(value), tool)
 
 
@@ -280,6 +293,16 @@ def _path_tool(tool: str) -> Path:
     if value is None:
         raise FfiContractReproducibilityError(f"could not resolve {tool} from PATH")
     return _canonical_executable(Path(value), tool)
+
+
+def _invocable_executable(path: Path, label: str) -> Path:
+    expanded = path.expanduser()
+    absolute = expanded if expanded.is_absolute() else Path.cwd() / expanded
+    if not absolute.is_file() or not os.access(absolute, os.X_OK):
+        raise FfiContractReproducibilityError(
+            f"resolved {label} is not an executable: {path}"
+        )
+    return absolute
 
 
 def _canonical_executable(path: Path, label: str) -> Path:

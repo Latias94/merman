@@ -14,8 +14,8 @@
     "rust-toolchain.toml": "sha256:12dc5d64dbd96c1b07be2943241d52d9f6127a79ba47a820455ba7b873fc896a"
   },
   "baseline_tree": "4ebfe46d8f48508ac6489d0bfea09ed469d97746",
-  "dependency_report_file_sha256": "sha256:ef0ad59c70e79d2fb41da4a8a96b42e464b3574ffd7f38c300f2556d385f9365",
-  "dependency_report_schema_version": 3,
+  "dependency_report_file_sha256": "sha256:be8fb9ac22803b0d733dbacbb8479ed32e99c9187a7cf353ba5c5acf006a7162",
+  "dependency_report_schema_version": 4,
   "native_artifact_report_file_sha256": "sha256:ab442c8e7e43ee122269d9c76bd1177af73a55afc8575ae0173d15ad8eef2ba5",
   "native_artifact_report_schema_version": 3,
   "probe_registry_sha256": "sha256:d0fbe54389c0d61c8908f66319974921fea0e9b2405004c22645d964299a5fb1",

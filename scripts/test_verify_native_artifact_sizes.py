@@ -49,6 +49,9 @@ from verify_native_artifact_sizes import (  # noqa: E402
 )
 import capture_ffi_contract_baseline as baseline_capture  # noqa: E402
 import verify_native_artifact_sizes as artifact_verifier  # noqa: E402
+from verify_artifact_dependency_closures import (  # noqa: E402
+    BASELINE_SCHEMA_VERSION as DEPENDENCY_BASELINE_SCHEMA_VERSION,
+)
 
 
 class NativeArtifactRecipeTests(unittest.TestCase):
@@ -708,7 +711,9 @@ class NativeArtifactCaptureTests(unittest.TestCase):
                         },
                         "source_snapshot_sha256": self._snapshot_sha256(),
                         "baseline_tree": BASELINE_TREE,
-                        "dependency_report_schema_version": 3,
+                        "dependency_report_schema_version": (
+                            DEPENDENCY_BASELINE_SCHEMA_VERSION
+                        ),
                         "dependency_report_file_sha256": "sha256:" + "5" * 64,
                         "native_artifact_report_schema_version": 3,
                         "native_artifact_report_file_sha256": digest,
@@ -779,7 +784,9 @@ class NativeArtifactCaptureTests(unittest.TestCase):
                         },
                         "source_snapshot_sha256": self._snapshot_sha256(),
                         "baseline_tree": BASELINE_TREE,
-                        "dependency_report_schema_version": 3,
+                        "dependency_report_schema_version": (
+                            DEPENDENCY_BASELINE_SCHEMA_VERSION
+                        ),
                         "dependency_report_file_sha256": "sha256:" + "0" * 64,
                         "native_artifact_report_schema_version": 3,
                         "native_artifact_report_file_sha256": (

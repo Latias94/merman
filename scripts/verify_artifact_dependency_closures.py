@@ -35,7 +35,7 @@ from ffi_contract_baseline_contract import (
     file_sha256,
     input_records,
     load_baseline_lock,
-    rust_toolchain_compatibility_projection,
+    rust_toolchain_dependency_compatibility_projection,
     source_revision_projection,
     validate_input_records,
     validate_rust_toolchain,
@@ -64,7 +64,7 @@ PACKAGE_ID_RE = re.compile(
 FINGERPRINT_DOMAIN = b"merman-artifact-dependency-closure-v2\0"
 ATTRIBUTION_FINGERPRINT_DOMAIN = b"merman-ffi-attribution-closure-v1\0"
 BASELINE_REPORT_ID = "merman-ffi-contract-dependency-baseline"
-BASELINE_SCHEMA_VERSION = 3
+BASELINE_SCHEMA_VERSION = 4
 REJECTED_BASELINE_FILE_SHA256 = frozenset(
     {"sha256:0b1ac1c061439158375bc64de03c9fdbd68c46eeead8a18f7d6f27331fd1aeca"}
 )
@@ -1039,6 +1039,12 @@ def dependency_baseline_report(
         raise ClosureVerificationError(
             "captured dependency observations do not match the fixed probe registry"
         )
+    runtime_records, runtime_record_indexes = _package_record_table(
+        observation.runtime.projection() for observation in observations
+    )
+    attribution_records, attribution_record_indexes = _package_record_table(
+        observation.attribution.projection() for observation in observations
+    )
     report: dict[str, Any] = {
         "schema_version": BASELINE_SCHEMA_VERSION,
         "report_id": BASELINE_REPORT_ID,
@@ -1056,8 +1062,17 @@ def dependency_baseline_report(
             },
         },
         "probe_registry_sha256": probe_registry_sha256(expected),
+        "package_records": {
+            "runtime_legal": runtime_records,
+            "attribution": attribution_records,
+        },
         "probes": [
-            _probe_observation_projection(observation) for observation in observations
+            _compact_probe_observation_projection(
+                observation,
+                runtime_record_indexes=runtime_record_indexes,
+                attribution_record_indexes=attribution_record_indexes,
+            )
+            for observation in observations
         ],
     }
     report["report_sha256"] = _embedded_report_sha256(report)
@@ -1116,6 +1131,73 @@ def _probe_observation_projection(
     return value
 
 
+def _compact_probe_observation_projection(
+    observation: ProbeClosureObservation,
+    *,
+    runtime_record_indexes: Mapping[str, int],
+    attribution_record_indexes: Mapping[str, int],
+) -> dict[str, Any]:
+    runtime_packages = observation.runtime.projection()
+    attribution_packages = observation.attribution.projection()
+    value: dict[str, Any] = {
+        "probe": observation.probe.projection(),
+        "runtime_legal": {
+            "package_count": len(runtime_packages),
+            "sha256": closure_fingerprint(observation.runtime),
+            "package_refs": [
+                runtime_record_indexes[_package_record_key(package)]
+                for package in runtime_packages
+            ],
+        },
+        "attribution": {
+            "package_count": len(attribution_packages),
+            "sha256": attribution_fingerprint(observation.attribution),
+            "package_refs": [
+                attribution_record_indexes[_package_record_key(package)]
+                for package in attribution_packages
+            ],
+        },
+    }
+    value["probe_sha256"] = f"sha256:{canonical_sha256(value)}"
+    return value
+
+
+def _package_record_table(
+    package_groups: Iterable[Sequence[Mapping[str, Any]]],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    records_by_key: dict[str, dict[str, Any]] = {}
+    for packages in package_groups:
+        for package in packages:
+            key = _package_record_key(package)
+            records_by_key.setdefault(key, dict(package))
+    keys = sorted(
+        records_by_key,
+        key=lambda key: _package_record_sort_key(records_by_key[key]),
+    )
+    return (
+        [records_by_key[key] for key in keys],
+        {key: index for index, key in enumerate(keys)},
+    )
+
+
+def _package_record_key(package: Mapping[str, Any]) -> str:
+    return json.dumps(
+        package,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def _package_record_sort_key(package: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(package["package"]),
+        str(package["version"]),
+        str(package["source"]),
+        _package_record_key(package),
+    )
+
+
 def _embedded_report_sha256(report: Mapping[str, Any]) -> str:
     unsigned = dict(report)
     unsigned.pop("report_sha256", None)
@@ -1138,7 +1220,7 @@ def load_dependency_baseline(
         parsed,
         "FFI dependency baseline",
     )
-    _validate_dependency_report(report, repo_root=repo_root)
+    expanded_report = _validate_dependency_report(report, repo_root=repo_root)
     try:
         lock = load_baseline_lock(lock_path)
     except FfiBaselineContractError as error:
@@ -1169,12 +1251,14 @@ def load_dependency_baseline(
         raise ClosureVerificationError(
             "FFI dependency baseline inputs do not match the checked-in source lock"
         )
-    return report
+    return expanded_report
+
+
 def _validate_dependency_report(
     report: dict[str, Any],
     *,
     repo_root: Path,
-) -> None:
+) -> dict[str, Any]:
     STRICT_BASELINE_JSON.exact_fields(
         report,
         {
@@ -1186,6 +1270,7 @@ def _validate_dependency_report(
             "toolchain",
             "closure_model",
             "probe_registry_sha256",
+            "package_records",
             "probes",
             "report_sha256",
         },
@@ -1218,11 +1303,54 @@ def _validate_dependency_report(
     except FfiBaselineContractError as error:
         raise ClosureVerificationError(str(error)) from error
     _validate_closure_model(report.get("closure_model"))
+    package_records = STRICT_BASELINE_JSON.object(
+        report.get("package_records"),
+        "baseline package records",
+    )
+    STRICT_BASELINE_JSON.exact_fields(
+        package_records,
+        {"runtime_legal", "attribution"},
+        "baseline package records",
+    )
+    runtime_records = STRICT_BASELINE_JSON.array(
+        package_records.get("runtime_legal"),
+        "baseline runtime package records",
+    )
+    attribution_records = STRICT_BASELINE_JSON.array(
+        package_records.get("attribution"),
+        "baseline attribution package records",
+    )
     raw_probes = STRICT_BASELINE_JSON.array(report.get("probes"), "baseline probes")
     if len(raw_probes) != len(expected_probes):
         raise ClosureVerificationError("FFI dependency baseline probe count drifted")
+    runtime_references: set[int] = set()
+    attribution_references: set[int] = set()
+    expanded_probes: list[dict[str, Any]] = []
     for raw, expected in zip(raw_probes, expected_probes, strict=True):
-        _validate_probe_record(raw, expected)
+        expanded, references = _expand_compact_probe_record(
+            raw,
+            expected,
+            runtime_records=runtime_records,
+            attribution_records=attribution_records,
+        )
+        expanded_probes.append(expanded)
+        runtime_references.update(references["runtime_legal"])
+        attribution_references.update(references["attribution"])
+    _validate_package_record_table(
+        runtime_records,
+        runtime_references,
+        "runtime",
+    )
+    _validate_package_record_table(
+        attribution_records,
+        attribution_references,
+        "attribution",
+    )
+    expanded_report = dict(report)
+    expanded_report["probes"] = expanded_probes
+    return expanded_report
+
+
 def _validate_closure_model(value: Any) -> None:
     model = STRICT_BASELINE_JSON.object(value, "baseline closure model")
     expected = {
@@ -1238,7 +1366,64 @@ def _validate_closure_model(value: Any) -> None:
         raise ClosureVerificationError("FFI dependency baseline closure model drifted")
 
 
-def _validate_probe_record(value: Any, expected: DependencyProbe) -> None:
+def _validate_package_record_table(
+    records: Sequence[Mapping[str, Any]],
+    references: set[int],
+    kind: str,
+) -> None:
+    if references != set(range(len(records))):
+        raise ClosureVerificationError(
+            f"baseline {kind} package records must all be referenced"
+        )
+    sort_keys = [_package_record_sort_key(record) for record in records]
+    if sort_keys != sorted(set(sort_keys)):
+        raise ClosureVerificationError(
+            f"baseline {kind} package records must be sorted and unique"
+        )
+
+
+def _expand_compact_probe_record(
+    value: Any,
+    expected: DependencyProbe,
+    *,
+    runtime_records: Sequence[Mapping[str, Any]],
+    attribution_records: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, Any], dict[str, list[int]]]:
+    record = _validate_probe_envelope(value, expected)
+    expanded = dict(record)
+    references: dict[str, list[int]] = {}
+    for section_name, records, kind in (
+        ("runtime_legal", runtime_records, "runtime"),
+        ("attribution", attribution_records, "attribution"),
+    ):
+        section = STRICT_BASELINE_JSON.object(
+            record.get(section_name),
+            f"{expected.probe_id} {kind} closure",
+        )
+        STRICT_BASELINE_JSON.exact_fields(
+            section,
+            {"package_count", "sha256", "package_refs"},
+            f"{expected.probe_id} {kind} closure",
+        )
+        refs = _validate_package_references(
+            section.get("package_refs"),
+            len(records),
+            f"{expected.probe_id} {kind}",
+        )
+        expanded_section = dict(section)
+        expanded_section.pop("package_refs")
+        expanded_section["packages"] = [dict(records[index]) for index in refs]
+        expanded[section_name] = expanded_section
+        references[section_name] = refs
+    _validate_runtime_section(expanded["runtime_legal"], expected.probe_id)
+    _validate_attribution_section(expanded["attribution"], expected.probe_id)
+    return expanded, references
+
+
+def _validate_probe_envelope(
+    value: Any,
+    expected: DependencyProbe,
+) -> dict[str, Any]:
     record = STRICT_BASELINE_JSON.object(value, f"probe {expected.probe_id}")
     STRICT_BASELINE_JSON.exact_fields(
         record,
@@ -1255,11 +1440,13 @@ def _validate_probe_record(value: Any, expected: DependencyProbe) -> None:
         raise ClosureVerificationError(
             f"dependency baseline probe digest is stale: {expected.probe_id}"
         )
-    _validate_runtime_section(record.get("runtime_legal"), expected.probe_id)
-    _validate_attribution_section(record.get("attribution"), expected.probe_id)
+    return record
 
 
-def _validate_runtime_section(value: Any, probe_id: str) -> None:
+def _validate_runtime_section(
+    value: Any,
+    probe_id: str,
+) -> None:
     section = STRICT_BASELINE_JSON.object(value, f"{probe_id} runtime closure")
     STRICT_BASELINE_JSON.exact_fields(
         section,
@@ -1298,7 +1485,10 @@ def _validate_runtime_packages(value: Any, probe_id: str) -> list[dict[str, Any]
     return packages
 
 
-def _validate_attribution_section(value: Any, probe_id: str) -> None:
+def _validate_attribution_section(
+    value: Any,
+    probe_id: str,
+) -> None:
     section = STRICT_BASELINE_JSON.object(value, f"{probe_id} attribution closure")
     STRICT_BASELINE_JSON.exact_fields(
         section,
@@ -1349,7 +1539,9 @@ def _validate_attribution_section(value: Any, probe_id: str) -> None:
             for role_values in parsed_role_features.values()
             for feature in role_values
         }:
-            raise ClosureVerificationError(f"{probe_id} attribution feature union drifted")
+            raise ClosureVerificationError(
+                f"{probe_id} attribution feature union drifted"
+            )
         packages.append(
             AttributionPackage(
                 identity[0],
@@ -1370,6 +1562,28 @@ def _validate_attribution_section(value: Any, probe_id: str) -> None:
         raise ClosureVerificationError(f"{probe_id} attribution package count is stale")
     if section.get("sha256") != attribution_fingerprint(closure):
         raise ClosureVerificationError(f"{probe_id} attribution closure digest is stale")
+
+
+def _validate_package_references(
+    value: Any,
+    record_count: int,
+    context: str,
+) -> list[int]:
+    raw_refs = STRICT_BASELINE_JSON.array(value, f"{context} package refs")
+    refs: list[int] = []
+    for raw in raw_refs:
+        if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
+            raise ClosureVerificationError(
+                f"{context} package refs must contain non-negative integers"
+            )
+        refs.append(raw)
+    if refs != sorted(set(refs)):
+        raise ClosureVerificationError(
+            f"{context} package refs must be sorted and unique"
+        )
+    if refs and refs[-1] >= record_count:
+        raise ClosureVerificationError(f"{context} package ref is out of range")
+    return refs
 
 
 def _validate_package_row(
@@ -1417,9 +1631,9 @@ def verify_dependency_baseline(
         repo_root=repo_root,
     )
     probes = load_dependency_probes(repo_root)
-    if rust_toolchain_compatibility_projection(
+    if rust_toolchain_dependency_compatibility_projection(
         current_toolchain
-    ) != rust_toolchain_compatibility_projection(baseline["toolchain"]):
+    ) != rust_toolchain_dependency_compatibility_projection(baseline["toolchain"]):
         raise ClosureVerificationError(
             _format_probe_matrix_failures(
                 "fixed FFI dependency baseline toolchain differs from the current "

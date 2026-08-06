@@ -27,6 +27,7 @@ from artifact_profile_recipe import (  # noqa: E402
 from verify_artifact_dependency_closures import (  # noqa: E402
     AttributionClosure,
     AttributionPackage,
+    BASELINE_SCHEMA_VERSION,
     FEATURE_MARKER,
     HOST_CLOSURE_REFERENCE_TARGET,
     LINUX_REFERENCE_SCOPE,
@@ -485,6 +486,34 @@ class FixedFfiBaselineTests(unittest.TestCase):
             report,
         )
 
+    def test_fixed_report_deduplicates_package_records_across_probes(self) -> None:
+        probes = load_dependency_probes()
+        report = dependency_baseline_report(
+            tuple(self._observation(probe) for probe in probes),
+            repo_root=SCRIPT_DIR.parent,
+            toolchain=self._toolchain(),
+            source_snapshot_sha256=self._snapshot_sha256(),
+        )
+
+        self.assertEqual(BASELINE_SCHEMA_VERSION, 4)
+        runtime_records = report["package_records"]["runtime_legal"]
+        attribution_records = report["package_records"]["attribution"]
+        runtime_refs = [
+            reference
+            for probe in report["probes"]
+            for reference in probe["runtime_legal"]["package_refs"]
+        ]
+        attribution_refs = [
+            reference
+            for probe in report["probes"]
+            for reference in probe["attribution"]["package_refs"]
+        ]
+
+        self.assertLess(len(runtime_records), len(runtime_refs))
+        self.assertLess(len(attribution_records), len(attribution_refs))
+        self.assertNotIn("packages", report["probes"][0]["runtime_legal"])
+        self.assertNotIn("packages", report["probes"][0]["attribution"])
+
     def test_fixed_baseline_allows_dependency_removal_and_role_feature_narrowing(
         self,
     ) -> None:
@@ -710,7 +739,7 @@ class FixedFfiBaselineTests(unittest.TestCase):
                         },
                         "source_snapshot_sha256": self._snapshot_sha256(),
                         "baseline_tree": BASELINE_TREE,
-                        "dependency_report_schema_version": 3,
+                        "dependency_report_schema_version": BASELINE_SCHEMA_VERSION,
                         "dependency_report_file_sha256": digest,
                         "native_artifact_report_schema_version": 3,
                         "native_artifact_report_file_sha256": "sha256:" + "4" * 64,
@@ -775,7 +804,7 @@ class FixedFfiBaselineTests(unittest.TestCase):
                         },
                         "source_snapshot_sha256": self._snapshot_sha256(),
                         "baseline_tree": BASELINE_TREE,
-                        "dependency_report_schema_version": 3,
+                        "dependency_report_schema_version": BASELINE_SCHEMA_VERSION,
                         "dependency_report_file_sha256": "pending",
                         "native_artifact_report_schema_version": 3,
                         "native_artifact_report_file_sha256": "pending",
@@ -815,7 +844,7 @@ class FixedFfiBaselineTests(unittest.TestCase):
                         },
                         "source_snapshot_sha256": self._snapshot_sha256(),
                         "baseline_tree": BASELINE_TREE,
-                        "dependency_report_schema_version": 3,
+                        "dependency_report_schema_version": BASELINE_SCHEMA_VERSION,
                         "dependency_report_file_sha256": (
                             "sha256:" + hashlib.sha256(baseline.read_bytes()).hexdigest()
                         ),
