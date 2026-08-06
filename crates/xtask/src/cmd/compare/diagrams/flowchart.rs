@@ -332,8 +332,7 @@ fn run_flowchart_compare_with_math_renderer(
                 sanitize_svg_id(input.stem)
             };
 
-            let fixture_engine = match crate::cmd::fixture_site_config_for_path(input.fixture_path)
-            {
+            let fixture_engine = match input.site_config.clone() {
                 Some(site_config) => engine.clone().with_site_config(site_config),
                 None => engine.clone(),
             };

@@ -779,12 +779,13 @@ impl<'a> CompareHarnessOptions<'a> {
 
 pub(crate) type CompareRunPaths = super::CompareDiagramPaths;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct CompareFixtureInput<'a> {
     pub(crate) stem: &'a str,
     pub(crate) fixture_path: &'a Path,
     pub(crate) upstream_svg: &'a str,
     pub(crate) text: &'a str,
+    pub(crate) site_config: Option<merman::MermaidConfig>,
 }
 
 #[derive(Debug)]
@@ -982,11 +983,10 @@ pub(crate) fn run_canonical_svg_compare(
             }
         },
         |state, input| {
-            let fixture_renderer =
-                match crate::cmd::fixture_site_config_for_path(input.fixture_path) {
-                    Some(site_config) => renderer.clone().with_site_config(site_config),
-                    None => renderer.clone(),
-                };
+            let fixture_renderer = match input.site_config.clone() {
+                Some(site_config) => renderer.clone().with_site_config(site_config),
+                None => renderer.clone(),
+            };
             let semantic = fixture_renderer
                 .prepare_semantic_sync(input.text)
                 .map_err(|error| {
@@ -1411,12 +1411,24 @@ where
             }
         };
 
+        let site_config = match &provenance {
+            Some(provenance) => match provenance.fixture_site_config(&mmd_path) {
+                Ok(site_config) => site_config,
+                Err(error) => {
+                    failures.push(error);
+                    continue;
+                }
+            },
+            None => crate::cmd::fixture_site_config_for_path(&mmd_path),
+        };
+
         let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
         let input = CompareFixtureInput {
             stem,
             fixture_path: &mmd_path,
             upstream_svg: &upstream_svg,
             text: &text,
+            site_config,
         };
 
         let outcome = match render_fixture(state, &input) {

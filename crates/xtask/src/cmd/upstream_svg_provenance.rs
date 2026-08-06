@@ -40,7 +40,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 #[cfg(test)]
 use transaction::{write_manifest, write_manifest_batch_with_installer};
-use transaction::{write_manifest_batch, write_manifest_with_post_install_validator};
+use transaction::{
+    write_manifest_batch_with_post_install_validator, write_manifest_with_post_install_validator,
+};
 
 const MANIFEST_FILE_NAME: &str = "_baseline-manifest.json";
 const MANIFEST_SCHEMA_VERSION: u32 = 3;
@@ -452,6 +454,7 @@ fn validate_mermaid_1116_svg(diagram: &str, stem: &str, svg_path: &Path) -> Resu
     Ok(())
 }
 
+#[cfg(test)]
 fn build_complete_manifest_with_source(
     diagram: &str,
     fixtures_dir: &Path,
@@ -712,6 +715,25 @@ impl UpstreamSvgProvenanceValidator {
         validate_hash(svg_path, &entry.svg_sha256, "SVG", &self.diagram, stem)
     }
 
+    pub(crate) fn fixture_site_config(
+        &self,
+        fixture_path: &Path,
+    ) -> Result<Option<merman::MermaidConfig>, String> {
+        self.render_contexts
+            .context_for_fixture(fixture_path)
+            .map_err(|error| {
+                format!(
+                    "failed to resolve fixture render context for {}/{}: {error}",
+                    self.diagram,
+                    fixture_path.display()
+                )
+            })
+            .map(|context| {
+                context
+                    .map(|context| merman::MermaidConfig::from_value(context.site_config_value()))
+            })
+    }
+
     pub(crate) fn validate_excluded_fixture(
         &self,
         fixture_path: &Path,
@@ -895,6 +917,21 @@ where
 {
     render_contexts.validate_live_hash()?;
     write_manifest_with_post_install_validator(out_dir, manifest, || {
+        validate_after_install()?;
+        render_contexts.validate_live_hash()
+    })
+}
+
+fn write_manifest_batch_from_render_context_snapshot<V>(
+    manifests: &[(&Path, &UpstreamSvgManifest)],
+    render_contexts: &UpstreamSvgRenderContextSnapshot,
+    validate_after_install: V,
+) -> Result<(), XtaskError>
+where
+    V: FnOnce() -> Result<(), XtaskError>,
+{
+    render_contexts.validate_live_hash()?;
+    write_manifest_batch_with_post_install_validator(manifests, || {
         validate_after_install()?;
         render_contexts.validate_live_hash()
     })
@@ -1166,6 +1203,7 @@ fn adopt_existing_manifests_with_source_and_lock_timeout<S: AsRef<str>>(
         .map(|(_, upstream_dir)| upstream_dir.clone())
         .collect();
     let _family_locks = acquire_upstream_svg_family_locks_with_timeout(&lock_dirs, lock_timeout)?;
+    let render_contexts = UpstreamSvgRenderContextSnapshot::capture(fixtures_root)?;
 
     let mut validated = Vec::with_capacity(families.len());
     for (diagram, upstream_dir) in families {
@@ -1180,12 +1218,13 @@ fn adopt_existing_manifests_with_source_and_lock_timeout<S: AsRef<str>>(
                 "refusing to replace generated upstream SVG provenance for {diagram} with adopted-existing; rerun with --allow-downgrade only when the loss of render attestation is intentional"
             )));
         }
-        let manifest = build_complete_manifest_with_source(
+        let manifest = build_complete_manifest_with_source_and_render_contexts(
             &diagram,
             &fixtures_dir,
             &upstream_dir,
             source.clone(),
             UpstreamSvgAttestation::adopted_existing(),
+            render_contexts.catalog(),
         )?;
         validated.push((upstream_dir, manifest));
     }
@@ -1194,7 +1233,7 @@ fn adopt_existing_manifests_with_source_and_lock_timeout<S: AsRef<str>>(
         .iter()
         .map(|(upstream_dir, manifest)| (upstream_dir.as_path(), manifest))
         .collect();
-    write_manifest_batch(&writes)
+    write_manifest_batch_from_render_context_snapshot(&writes, &render_contexts, || Ok(()))
 }
 
 fn validate_existing_manifests_with_source<S: AsRef<str>>(

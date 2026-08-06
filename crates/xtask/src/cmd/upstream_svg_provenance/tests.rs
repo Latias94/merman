@@ -86,19 +86,26 @@ fn test_attestation(mode: UpstreamSvgAttestationMode) -> UpstreamSvgAttestation 
     }
 }
 
+fn write_empty_render_context_catalog(fixtures_root: &Path) {
+    fs::create_dir_all(fixtures_root).expect("create fixtures root");
+    let context_path = fixtures_root.join(merman_fixture_render_context::MANIFEST_RELATIVE_PATH);
+    if context_path.exists() {
+        return;
+    }
+    fs::create_dir_all(context_path.parent().expect("context directory"))
+        .expect("create render-context directory");
+    let catalog =
+        RenderContextCatalog::rebuild(fixtures_root).expect("create empty render contexts");
+    fs::write(
+        &context_path,
+        catalog.to_json().expect("serialize empty render contexts"),
+    )
+    .expect("write empty render contexts");
+}
+
 fn write_fixture(dir: &Path, stem: &str) -> PathBuf {
     fs::create_dir_all(dir).expect("create fixture directory");
-    let context_path = dir.join(merman_fixture_render_context::MANIFEST_RELATIVE_PATH);
-    if !context_path.exists() {
-        fs::create_dir_all(context_path.parent().expect("context directory"))
-            .expect("create render-context directory");
-        let catalog = RenderContextCatalog::rebuild(dir).expect("create empty render contexts");
-        fs::write(
-            &context_path,
-            catalog.to_json().expect("serialize empty render contexts"),
-        )
-        .expect("write empty render contexts");
-    }
+    write_empty_render_context_catalog(dir);
     let path = dir.join(format!("{stem}.mmd"));
     fs::write(&path, "flowchart TD\n  A --> B\n").expect("write fixture");
     path
@@ -310,6 +317,73 @@ fn generated_manifest_profile_uses_the_captured_render_context_snapshot() {
             .expect("resolve replacement renderer profile"),
         "mmdc-default"
     );
+}
+
+#[test]
+fn loaded_provenance_uses_one_render_context_snapshot_for_validation_and_site_config() {
+    let root = TestDir::new("provenance-render-context-snapshot");
+    let fixtures_root = root.path().join("fixtures");
+    let fixtures_dir = fixtures_root.join("flowchart");
+    let upstream_dir = root.path().join("upstream");
+    fs::create_dir_all(&fixtures_dir).expect("create fixture family");
+    let source = b"---\nconfig:\n  securityLevel: loose\n---\nflowchart TD\nA-->B\n";
+    let fixture_path = fixtures_dir.join("loose.mmd");
+    fs::write(&fixture_path, source).expect("write loose fixture");
+
+    let mut catalog =
+        RenderContextCatalog::rebuild(&fixtures_root).expect("create render contexts");
+    assert!(
+        catalog
+            .upsert_from_source("flowchart/loose.mmd", source)
+            .expect("record loose render context")
+    );
+    let context_path = fixtures_root.join(merman_fixture_render_context::MANIFEST_RELATIVE_PATH);
+    fs::create_dir_all(context_path.parent().expect("context directory"))
+        .expect("create context directory");
+    fs::write(
+        &context_path,
+        catalog.to_json().expect("serialize render contexts"),
+    )
+    .expect("write render contexts");
+    let svg_path = write_svg(&upstream_dir, "loose", &upstream_svg_id("loose"), true);
+    let manifest = build_complete_manifest_with_source_and_render_contexts(
+        "flowchart",
+        &fixtures_dir,
+        &upstream_dir,
+        test_source(),
+        test_attestation(UpstreamSvgAttestationMode::AdoptedExisting),
+        &catalog,
+    )
+    .expect("build loose manifest");
+    write_manifest(&upstream_dir, &manifest).expect("write loose manifest");
+
+    let validator = load_upstream_svg_provenance_with_source(
+        "flowchart",
+        &fixtures_dir,
+        &upstream_dir,
+        true,
+        test_source(),
+    )
+    .expect("load provenance with loose render contexts");
+    validator
+        .validate_fixture(&fixture_path, &svg_path)
+        .expect("validate fixture with loaded render contexts");
+
+    let empty_catalog =
+        RenderContextCatalog::rebuild(&fixtures_root).expect("create replacement contexts");
+    fs::write(
+        &context_path,
+        empty_catalog
+            .to_json()
+            .expect("serialize replacement contexts"),
+    )
+    .expect("replace live render contexts");
+
+    let site_config = validator
+        .fixture_site_config(&fixture_path)
+        .expect("resolve site config from loaded render contexts")
+        .expect("loose fixture keeps a site config");
+    assert_eq!(site_config.get_str("securityLevel"), Some("loose"));
 }
 
 #[test]
@@ -1030,6 +1104,72 @@ fn post_install_render_context_drift_restores_the_previous_manifest() {
 }
 
 #[test]
+fn post_install_render_context_drift_restores_every_manifest_in_a_batch() {
+    let root = TestDir::new("post-install-render-context-batch-drift");
+    let fixtures_root = root.path().join("fixtures");
+    fs::create_dir_all(&fixtures_root).expect("create fixtures root");
+    let catalog = RenderContextCatalog::rebuild(&fixtures_root).expect("create render contexts");
+    let context_path = fixtures_root.join(merman_fixture_render_context::MANIFEST_RELATIVE_PATH);
+    fs::create_dir_all(context_path.parent().expect("context directory"))
+        .expect("create context directory");
+    fs::write(
+        &context_path,
+        catalog.to_json().expect("serialize render contexts"),
+    )
+    .expect("write render contexts");
+    let render_contexts = capture_render_context_snapshot(&fixtures_root);
+
+    let first_dir = root.path().join("first");
+    let second_dir = root.path().join("second");
+    fs::create_dir_all(&first_dir).expect("create first family");
+    fs::create_dir_all(&second_dir).expect("create second family");
+    let first_path = first_dir.join(MANIFEST_FILE_NAME);
+    let second_path = second_dir.join(MANIFEST_FILE_NAME);
+    fs::write(&first_path, b"first-old\n").expect("write first old manifest");
+    fs::write(&second_path, b"second-old\n").expect("write second old manifest");
+
+    let first_manifest =
+        UpstreamSvgManifest::empty(test_source(), UpstreamSvgAttestation::adopted_existing());
+    let second_manifest =
+        UpstreamSvgManifest::empty(test_source(), UpstreamSvgAttestation::adopted_existing());
+    let writes = [
+        (first_dir.as_path(), &first_manifest),
+        (second_dir.as_path(), &second_manifest),
+    ];
+    let error =
+        write_manifest_batch_from_render_context_snapshot(&writes, &render_contexts, || {
+            let mut changed = fs::read(&context_path).expect("read render contexts");
+            changed.push(b'\n');
+            fs::write(&context_path, changed).expect("mutate render contexts after install");
+            Ok(())
+        })
+        .expect_err("render-context drift must roll back the complete manifest batch");
+
+    assert!(error.to_string().contains("post-install validation failed"));
+    assert!(
+        error
+            .to_string()
+            .contains("render-context catalog changed after snapshot capture")
+    );
+    assert_eq!(
+        fs::read(&first_path).expect("read restored first manifest"),
+        b"first-old\n"
+    );
+    assert_eq!(
+        fs::read(&second_path).expect("read restored second manifest"),
+        b"second-old\n"
+    );
+    for dir in [&first_dir, &second_dir] {
+        let transaction_residue = fs::read_dir(dir)
+            .expect("read output directory")
+            .map(|entry| entry.expect("read output entry").file_name())
+            .filter_map(|name| name.into_string().ok())
+            .any(|name| name.ends_with(".tmp") || name.ends_with(".backup"));
+        assert!(!transaction_residue);
+    }
+}
+
+#[test]
 fn excluded_fixture_validation_checks_hash_reason_and_svg_absence() {
     let root = TestDir::new("excluded-validation");
     let fixture_path = write_fixture(root.path(), TEST_EXCLUDED_STEM);
@@ -1412,6 +1552,7 @@ fn all_adoption_validates_every_family_before_writing_any_manifest() {
     let root = TestDir::new("all-atomic-validation");
     let fixtures_root = root.path().join("fixtures");
     let upstream_root = root.path().join("upstream");
+    write_empty_render_context_catalog(&fixtures_root);
 
     for family in ["good", "bad"] {
         write_fixture(&fixtures_root.join(family), "basic");
@@ -1492,6 +1633,7 @@ fn adoption_uses_the_same_family_lock_as_generation() {
     let root = TestDir::new("adoption-family-lock");
     let fixtures_root = root.path().join("fixtures");
     let upstream_root = root.path().join("upstream");
+    write_empty_render_context_catalog(&fixtures_root);
     let fixtures_dir = fixtures_root.join("probe");
     let upstream_dir = upstream_root.join("probe");
     write_fixture(&fixtures_dir, "basic");
@@ -1599,6 +1741,7 @@ fn adoption_requires_explicit_generated_attestation_downgrade() {
     let root = TestDir::new("generated-downgrade");
     let fixtures_root = root.path().join("fixtures");
     let upstream_root = root.path().join("upstream");
+    write_empty_render_context_catalog(&fixtures_root);
     let fixtures_dir = fixtures_root.join("probe");
     let upstream_dir = upstream_root.join("probe");
     write_fixture(&fixtures_dir, "basic");
@@ -1654,6 +1797,7 @@ fn explicit_adoption_migrates_a_legacy_manifest_without_attestation() {
     let root = TestDir::new("legacy-migration");
     let fixtures_root = root.path().join("fixtures");
     let upstream_root = root.path().join("upstream");
+    write_empty_render_context_catalog(&fixtures_root);
     let fixtures_dir = fixtures_root.join("probe");
     let upstream_dir = upstream_root.join("probe");
     write_fixture(&fixtures_dir, "basic");

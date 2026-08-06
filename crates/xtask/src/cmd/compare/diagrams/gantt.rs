@@ -121,11 +121,10 @@ pub(super) fn compare_gantt_request(
             crate::cmd::upstream_svg_baseline_skip_reason(fact.diagram, stem).map(str::to_string)
         },
         |state, input| {
-            let fixture_renderer =
-                match crate::cmd::fixture_site_config_for_path(input.fixture_path) {
-                    Some(site_config) => probe_renderer.clone().with_site_config(site_config),
-                    None => probe_renderer.clone(),
-                };
+            let fixture_renderer = match input.site_config.clone() {
+                Some(site_config) => probe_renderer.clone().with_site_config(site_config),
+                None => probe_renderer.clone(),
+            };
             let semantic = match fixture_renderer.prepare_semantic_sync(input.text) {
                 Ok(Some(v)) => v,
                 Ok(None) => {
