@@ -8,68 +8,40 @@ use super::viewbox::{
 };
 use super::*;
 
-pub(in crate::svg::parity) fn render_flowchart_svg_model_with_config(
-    layout: &FlowchartLayout,
-    model: &crate::flowchart::FlowchartModel,
-    render_label_sources: &crate::flowchart::FlowchartRenderLabelSources,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_type: &str,
-    diagram_title: Option<&str>,
-    presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
+pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
+    artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
+    metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     render_flowchart_svg_model(
         FlowchartSvgModelRequest {
-            layout,
+            layout: artifact.pair().layout(),
             swimlane_layout: None,
-            model,
-            render_label_sources,
-            effective_config,
-            diagram_type,
-            diagram_title,
-            presentation_policy,
+            model: artifact.pair().semantic(),
+            render_label_sources: artifact.label_sources(),
+            effective_config: &metadata.effective_config,
+            diagram_type: metadata.diagram_type.as_str(),
+            diagram_title: metadata.title.as_deref(),
+            presentation_policy: artifact.policy(),
+            svg_label_sidecar: artifact.svg_label_sidecar(),
         },
         options,
     )
 }
 
-pub(in crate::svg::parity::flowchart) fn render_flowchart_svg_model_with_swimlane(
-    layout: &FlowchartLayout,
-    swimlane_layout: &crate::model::SwimlaneLayout,
-    model: &crate::flowchart::FlowchartModel,
-    render_label_sources: &crate::flowchart::FlowchartRenderLabelSources,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_type: &str,
-    diagram_title: Option<&str>,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    render_flowchart_svg_model(
-        FlowchartSvgModelRequest {
-            layout,
-            swimlane_layout: Some(swimlane_layout),
-            model,
-            render_label_sources,
-            effective_config,
-            diagram_type,
-            diagram_title,
-            presentation_policy: None,
-        },
-        options,
-    )
+pub(super) struct FlowchartSvgModelRequest<'a> {
+    pub(super) layout: &'a FlowchartLayout,
+    pub(super) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
+    pub(super) model: &'a crate::flowchart::FlowchartModel,
+    pub(super) render_label_sources: &'a crate::flowchart::FlowchartRenderLabelSources,
+    pub(super) effective_config: &'a merman_core::MermaidConfig,
+    pub(super) diagram_type: &'a str,
+    pub(super) diagram_title: Option<&'a str>,
+    pub(super) presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
+    pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
 }
 
-struct FlowchartSvgModelRequest<'a> {
-    layout: &'a FlowchartLayout,
-    swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
-    model: &'a crate::flowchart::FlowchartModel,
-    render_label_sources: &'a crate::flowchart::FlowchartRenderLabelSources,
-    effective_config: &'a merman_core::MermaidConfig,
-    diagram_type: &'a str,
-    diagram_title: Option<&'a str>,
-    presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
-}
-
-fn render_flowchart_svg_model(
+pub(super) fn render_flowchart_svg_model(
     request: FlowchartSvgModelRequest<'_>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -82,6 +54,7 @@ fn render_flowchart_svg_model(
         diagram_type,
         diagram_title,
         presentation_policy,
+        svg_label_sidecar,
     } = request;
     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
@@ -263,6 +236,7 @@ fn render_flowchart_svg_model(
         hand_drawn_seed,
         work_meter: options.work_meter(),
         math_renderer: options.math_renderer(),
+        svg_label_sidecar: Some(svg_label_sidecar),
         icon_registry: options.icon_registry(),
         node_html_labels,
         edge_html_labels,

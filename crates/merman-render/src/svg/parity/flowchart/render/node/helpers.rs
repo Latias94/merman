@@ -374,6 +374,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
         node_classes,
         node_styles,
     );
+    let prepared_metrics =
+        || prepared_node_label_metrics(ctx, layout_node?.id.as_str(), label_text, &node_text_style);
     let mut metrics = if let Some(layout_node) = layout_node {
         if let (Some(width), Some(height)) = (layout_node.label_width, layout_node.label_height) {
             crate::text::TextMetrics {
@@ -381,6 +383,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                 height,
                 line_count: 0,
             }
+        } else if let Some(metrics) = prepared_metrics() {
+            metrics
         } else {
             crate::flowchart::flowchart_label_metrics_for_layout(
                 crate::flowchart::FlowchartLabelMetricsRequest {
@@ -395,6 +399,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                 },
             )
         }
+    } else if let Some(metrics) = prepared_metrics() {
+        metrics
     } else {
         crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
@@ -423,4 +429,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
     }
 
     metrics
+}
+
+pub(in crate::svg::parity::flowchart::render::node) fn prepared_node_label_metrics(
+    ctx: &FlowchartRenderCtx<'_>,
+    node_id: &str,
+    label_text: &str,
+    style: &crate::text::TextStyle,
+) -> Option<crate::text::TextMetrics> {
+    let sidecar = ctx.svg_label_sidecar?;
+    let owner = sidecar.node_owner(node_id, ctx.swimlane_direction.is_some())?;
+    sidecar.prepared_metrics(
+        owner,
+        label_text,
+        ctx.measurer,
+        style,
+        Some(ctx.wrapping_width),
+        true,
+        crate::flowchart::FlowchartSvgWidthMode::Bbox,
+    )
 }

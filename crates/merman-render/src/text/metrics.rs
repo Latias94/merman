@@ -2157,8 +2157,7 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
                 .trim_start_matches('/')
                 .trim_end_matches('/')
                 .split(is_html_collapsible_ascii_whitespace)
-                .filter(|part| !part.is_empty())
-                .next()
+                .find(|part| !part.is_empty())
                 .unwrap_or("");
 
             let fontawesome_icon_width = if name == "i" && !is_closing {

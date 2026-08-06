@@ -153,6 +153,59 @@ pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
     )
 }
 
+/// Mermaid first compiles edge classes and then applies the concatenated `linkStyle default`
+/// and per-edge declarations. The resulting style is applied after SVG line wrapping, but it owns
+/// the final text bbox used by the layout graph.
+pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
+    base: &'a TextStyle,
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &'a [String],
+    default_edge_styles: &[String],
+    edge_styles: &[String],
+) -> std::borrow::Cow<'a, TextStyle> {
+    if classes.is_empty() && default_edge_styles.is_empty() && edge_styles.is_empty() {
+        return std::borrow::Cow::Borrowed(base);
+    }
+
+    let mut style = flowchart_effective_text_style_for_class_names(
+        base,
+        class_defs,
+        classes.iter().map(|class| class.as_str()),
+        &[],
+    );
+    for declaration in default_edge_styles.iter().chain(edge_styles) {
+        for declaration in flowchart_split_mermaid_style_decls(declaration) {
+            let Some((key, value)) = parse_style_decl(declaration) else {
+                continue;
+            };
+            apply_text_style_decl(&mut style, key, value);
+        }
+    }
+    style
+}
+
+/// Mermaid's Swimlane adapter moves an edge label onto a fresh `labelRect` node and copies only
+/// the first entry from the already-concatenated default/edge `labelStyle` array. Classes and later
+/// style entries remain on the original edge and must not affect the label node's measurement.
+pub(crate) fn flowchart_swimlane_label_rect_text_style<'a>(
+    base: &'a TextStyle,
+    default_edge_styles: &[String],
+    edge_styles: &[String],
+) -> std::borrow::Cow<'a, TextStyle> {
+    let Some(first_style) = default_edge_styles.first().or_else(|| edge_styles.first()) else {
+        return std::borrow::Cow::Borrowed(base);
+    };
+
+    let mut style = std::borrow::Cow::Borrowed(base);
+    for declaration in flowchart_split_mermaid_style_decls(first_style) {
+        let Some((key, value)) = parse_style_decl(declaration) else {
+            continue;
+        };
+        apply_text_style_decl(&mut style, key, value);
+    }
+    style
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 struct CssBoxEdges {
     top: f64,
@@ -545,5 +598,68 @@ pub(crate) fn flowchart_apply_html_node_class_box_metrics(
             metrics.height = (metrics.height + vertical).max(0.0);
         }
         HtmlSpanDisplay::Other => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn swimlane_label_rect_uses_only_the_first_concatenated_edge_style() {
+        let base = TextStyle::default();
+        let default_styles = vec![
+            "font-size:24px".to_string(),
+            "font-weight:bold".to_string(),
+            "font-size:20px".to_string(),
+        ];
+        let edge_styles = vec![
+            "font-size:12px".to_string(),
+            "font-style:italic".to_string(),
+        ];
+
+        let style = flowchart_swimlane_label_rect_text_style(&base, &default_styles, &edge_styles);
+
+        assert_eq!(style.font_size, 24.0);
+        assert_eq!(style.font_weight, None);
+        assert_eq!(style.font_style, None);
+    }
+
+    #[test]
+    fn swimlane_label_rect_falls_back_to_the_first_edge_style() {
+        let base = TextStyle::default();
+        let edge_styles = vec![
+            "font-size:18px,font-style:italic".to_string(),
+            "font-size:30px".to_string(),
+        ];
+
+        let style = flowchart_swimlane_label_rect_text_style(&base, &[], &edge_styles);
+
+        assert_eq!(style.font_size, 18.0);
+        assert_eq!(style.font_style.as_deref(), Some("italic"));
+    }
+
+    #[test]
+    fn edge_label_text_style_applies_class_then_default_then_edge_declarations() {
+        let base = TextStyle::default();
+        let class_defs = IndexMap::from([(
+            "accent".to_string(),
+            vec!["font-size:18px,font-style:italic".to_string()],
+        )]);
+        let classes = vec!["accent".to_string()];
+        let default_styles = vec!["font-size:24px,font-weight:bold".to_string()];
+        let edge_styles = vec!["font-size:12px,font-style:normal".to_string()];
+
+        let style = flowchart_effective_edge_label_text_style(
+            &base,
+            &class_defs,
+            &classes,
+            &default_styles,
+            &edge_styles,
+        );
+
+        assert_eq!(style.font_size, 12.0);
+        assert_eq!(style.font_weight.as_deref(), Some("bold"));
+        assert_eq!(style.font_style.as_deref(), Some("normal"));
     }
 }

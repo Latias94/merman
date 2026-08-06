@@ -60,7 +60,6 @@ pub(crate) use whitespace::{
     trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
     trim_start_ecmascript_whitespace,
 };
-pub(crate) use wrap::wrap_svg_text_lines_by_measurement;
 pub use wrap::{
     ceil_to_1_64_px, round_to_1_64_px, round_to_1_64_px_ties_to_even, split_html_br_lines,
     wrap_label_like_mermaid_lines, wrap_text_lines_measurer,

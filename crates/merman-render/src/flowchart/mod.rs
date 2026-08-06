@@ -7,6 +7,7 @@ mod node;
 mod self_loop;
 mod shapes;
 mod style;
+mod svg_label_artifact;
 
 pub(crate) use merman_core::diagrams::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
@@ -68,16 +69,18 @@ impl Deref for FlowchartRenderModelRef<'_> {
     }
 }
 
-pub(crate) use layout::layout_flowchart_typed_with_render_labels_and_work_meter;
+pub(crate) use layout::layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_label_sidecar;
 
 pub(crate) use config::{FlowchartConfigView, FlowchartLayoutSettings};
 pub(crate) use label::{
-    FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, PreparedFlowchartSvgLabel,
-    flowchart_label_is_empty_for_render, flowchart_label_metrics_for_layout,
-    flowchart_label_plain_text_for_layout, flowchart_label_text_is_empty_for_mode,
-    flowchart_non_markdown_label_for_html, flowchart_non_markdown_svg_source_word_lines,
-    flowchart_svg_source_word_lines_plain_text, flowchart_trim_html_collapsible_whitespace,
-    flowchart_wrap_svg_source_word_lines,
+    FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, flowchart_label_is_empty_for_render,
+    flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
+    flowchart_label_text_is_empty_for_mode, flowchart_node_svg_width_mode,
+    flowchart_non_markdown_label_for_html, flowchart_trim_html_collapsible_whitespace,
+};
+#[cfg(test)]
+pub(crate) use label::{
+    flowchart_non_markdown_svg_source_word_lines, flowchart_wrap_svg_source_word_lines,
 };
 pub(crate) use node::{
     NodeLayoutDimensionsRequest, flowchart_node_render_dimensions, node_layout_dimensions,
@@ -88,7 +91,13 @@ pub(crate) use shapes::{
     is_flowchart_process_shape, validate_flowchart_model_shapes,
 };
 pub(crate) use style::{
-    flowchart_apply_html_node_class_box_metrics, flowchart_effective_node_class_names,
-    flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
-    flowchart_split_mermaid_style_decls,
+    flowchart_apply_html_node_class_box_metrics, flowchart_effective_edge_label_text_style,
+    flowchart_effective_node_class_names, flowchart_effective_text_style_for_classes,
+    flowchart_effective_text_style_for_node_classes, flowchart_split_mermaid_style_decls,
+    flowchart_swimlane_label_rect_text_style,
+};
+pub(crate) use svg_label_artifact::{
+    FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar,
+    FlowchartSvgLabelSidecarBuilder, measure_flowchart_svg_label_for_layout,
+    measure_flowchart_svg_label_for_layout_with_metrics_style,
 };

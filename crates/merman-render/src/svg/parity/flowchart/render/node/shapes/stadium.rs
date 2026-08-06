@@ -52,18 +52,26 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
         common.node_classes,
         &[],
     );
-    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
-            measurer: ctx.measurer,
-            raw_label: label.text,
-            label_type: label.label_type,
-            style: &node_text_style,
-            max_width_px: Some(ctx.wrapping_width),
-            wrap_mode: ctx.node_wrap_mode,
-            config: ctx.config,
-            math_renderer: ctx.math_renderer,
-        },
-    );
+    let metrics = super::super::helpers::prepared_node_label_metrics(
+        ctx,
+        common.node_id,
+        label.text,
+        &node_text_style,
+    )
+    .unwrap_or_else(|| {
+        crate::flowchart::flowchart_label_metrics_for_layout(
+            crate::flowchart::FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: label.text,
+                label_type: label.label_type,
+                style: &node_text_style,
+                max_width_px: Some(ctx.wrapping_width),
+                wrap_mode: ctx.node_wrap_mode,
+                config: ctx.config,
+                math_renderer: ctx.math_renderer,
+            },
+        )
+    });
     let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
         Some("stadium"),
         metrics,

@@ -223,8 +223,26 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         if label_type == "markdown" {
             write_flowchart_svg_text_markdown(out, render_title, true);
         } else {
-            let source_lines =
-                crate::flowchart::flowchart_non_markdown_svg_source_word_lines(render_title);
+            let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                ctx.class_defs,
+                &sg.classes,
+                &sg.styles,
+            );
+            let owner = ctx
+                .svg_label_sidecar
+                .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
+            let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+                ctx.svg_label_sidecar,
+                owner,
+                render_title,
+                ctx.measurer,
+                title_text_style.as_ref(),
+                None,
+                true,
+                crate::flowchart::FlowchartSvgWidthMode::Bbox,
+            );
+            let source_lines = prepared.wrapped_lines();
             write_flowchart_svg_source_word_lines(out, &source_lines, true);
         }
         out.push_str("</g></g></g>");

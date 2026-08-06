@@ -2,6 +2,7 @@
 
 use super::super::*;
 use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
+use std::borrow::Cow;
 
 fn padded_html_edge_label_background(padding: f64, width: f64, height: f64) -> String {
     if padding <= 0.0 || width <= 0.0 || height <= 0.0 {
@@ -94,17 +95,50 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
 ) {
     let label_text = ctx.model.edge_label_for_render(edge).unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
-    let prepared_svg_label = (!ctx.edge_html_labels && label_type != "markdown")
-        .then(|| crate::flowchart::PreparedFlowchartSvgLabel::new(label_text));
-    let label_text_plain = prepared_svg_label.as_ref().map_or_else(
-        || flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels),
-        |prepared| prepared.plain_text().to_string(),
-    );
     let compiled_label_styles = flowchart_compile_styles(
         ctx.class_defs,
         &edge.classes,
         &ctx.default_edge_style,
         &edge.style,
+    );
+    let edge_metrics_style = crate::flowchart::flowchart_effective_edge_label_text_style(
+        &ctx.text_style,
+        ctx.class_defs,
+        &edge.classes,
+        &ctx.default_edge_style,
+        &edge.style,
+    );
+    let svg_edge_label_text_style: Cow<'_, str> =
+        if compiled_label_styles.label_style.contains("color:") {
+            Cow::Owned(compiled_label_styles.label_style.replace("color:", "fill:"))
+        } else {
+            Cow::Borrowed(compiled_label_styles.label_style.as_str())
+        };
+    let prepared_svg_label = (!ctx.edge_html_labels && label_type != "markdown").then(|| {
+        let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
+            sidecar.edge_owner(edge.id.as_str(), ctx.swimlane_direction.is_some())
+        });
+        crate::flowchart::FlowchartSvgLabelRenderPlan::new_with_metrics_style(
+            ctx.svg_label_sidecar,
+            owner,
+            label_text,
+            ctx.measurer,
+            &ctx.text_style,
+            edge_metrics_style.as_ref(),
+            Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
+            true,
+            crate::flowchart::FlowchartSvgWidthMode::Bbox,
+        )
+    });
+    let label_text_plain: Cow<'_, str> = prepared_svg_label.as_ref().map_or_else(
+        || {
+            Cow::Owned(flowchart_label_plain_text(
+                label_text,
+                label_type,
+                ctx.edge_html_labels,
+            ))
+        },
+        |prepared| Cow::Borrowed(prepared.plain_text()),
     );
     let span_style_attr = OptionalStyleXmlAttr(compiled_label_styles.label_style.as_str());
     let div_style_prefix = crate::svg::parity::flowchart::style::flowchart_label_div_style_prefix(
@@ -169,13 +203,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             let wrapped = prepared_svg_label
                                 .as_ref()
                                 .expect("non-Markdown SVG edge labels are prepared before emission")
-                                .wrapped_lines(
-                                    ctx.measurer,
-                                    &ctx.text_style,
-                                    Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
-                                    true,
-                                );
-                            write_flowchart_svg_source_word_lines_centered(out, &wrapped, true);
+                                .wrapped_lines();
+                            write_flowchart_svg_source_word_lines_centered_with_style(
+                                out,
+                                &wrapped,
+                                svg_edge_label_text_style.as_ref(),
+                            );
                         }
                         out.push_str("</g></g></g>");
                         return;
@@ -188,8 +221,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     } else {
                         (0.0, 0.0)
                     };
-                    let background_y =
-                        crate::text::flowchart_svg_edge_label_background_y_px(&ctx.text_style);
+                    let background_y = crate::text::flowchart_svg_edge_label_background_y_px(
+                        edge_metrics_style.as_ref(),
+                    );
                     let _ = write!(
                         out,
                         r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="{}" width="{}" height="{}"/>"#,
@@ -215,13 +249,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         let wrapped = prepared_svg_label
                             .as_ref()
                             .expect("non-Markdown SVG edge labels are prepared before emission")
-                            .wrapped_lines(
-                                ctx.measurer,
-                                &ctx.text_style,
-                                Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
-                                true,
-                            );
-                        write_flowchart_svg_source_word_lines_centered(out, &wrapped, true);
+                            .wrapped_lines();
+                        write_flowchart_svg_source_word_lines_centered_with_style(
+                            out,
+                            &wrapped,
+                            svg_edge_label_text_style.as_ref(),
+                        );
                     }
                     out.push_str("</g></g></g>");
                     return;
@@ -238,8 +271,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 );
                 let w = (metrics.width + 4.0).max(1.0);
                 let h = (metrics.height + 4.0).max(1.0);
-                let background_y =
-                    crate::text::flowchart_svg_edge_label_background_y_px(&ctx.text_style);
+                let background_y = crate::text::flowchart_svg_edge_label_background_y_px(
+                    edge_metrics_style.as_ref(),
+                );
                 let _ = write!(
                     out,
                     r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="{}" width="{}" height="{}"/>"#,
@@ -265,13 +299,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     let wrapped = prepared_svg_label
                         .as_ref()
                         .expect("non-Markdown SVG edge labels are prepared before emission")
-                        .wrapped_lines(
-                            ctx.measurer,
-                            &ctx.text_style,
-                            Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
-                            true,
-                        );
-                    write_flowchart_svg_source_word_lines_centered(out, &wrapped, true);
+                        .wrapped_lines();
+                    write_flowchart_svg_source_word_lines_centered_with_style(
+                        out,
+                        &wrapped,
+                        svg_edge_label_text_style.as_ref(),
+                    );
                 }
                 out.push_str("</g></g></g>");
                 return;
@@ -438,9 +471,13 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     // Mermaid's Swimlane adapter creates a fresh `labelRect` without copying `edge.labelType`.
     // The node renderer therefore follows ordinary non-Markdown createText semantics.
     let label_type = "text";
-    let compiled = flowchart_compile_styles(
-        ctx.class_defs,
-        &edge.classes,
+    let first_label_style = ctx
+        .default_edge_style
+        .first()
+        .or_else(|| edge.style.first())
+        .map_or("", String::as_str);
+    let label_text_style = crate::flowchart::flowchart_swimlane_label_rect_text_style(
+        &ctx.text_style,
         &ctx.default_edge_style,
         &edge.style,
     );
@@ -466,7 +503,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         escape_xml_display(node_id),
         fmt_display(x),
         fmt_display(y),
-        OptionalStyleXmlAttr(&compiled.label_style),
+        OptionalStyleXmlAttr(first_label_style),
         fmt_display(-width / 2.0),
         fmt_display(-height / 2.0),
     );
@@ -474,8 +511,15 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     if ctx.node_html_labels {
         let label_html =
             flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer);
-        let mut div_style =
-            crate::svg::parity::flowchart::style::flowchart_label_div_style_prefix(&compiled, true);
+        // `createText` maps only the first literal `fill:` occurrence to `color:` before applying
+        // the copied label style to the HTML span and div. Later fixed declarations override the
+        // corresponding inline properties exactly as Mermaid's chained D3 `.style()` calls do.
+        let html_label_style = first_label_style.replacen("fill:", "color:", 1);
+        let mut div_style = String::new();
+        if !html_label_style.trim().is_empty() {
+            div_style.push_str(html_label_style.trim());
+            div_style.push(';');
+        }
         let _ = write!(
             &mut div_style,
             "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
@@ -487,31 +531,28 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             fmt_display(width),
             fmt_display(height),
             escape_xml_display(&div_style),
-            OptionalStyleXmlAttr(&compiled.label_style),
+            OptionalStyleXmlAttr(&html_label_style),
             label_html,
         );
         return;
     }
 
     out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-    if label_type == "markdown" {
-        write_flowchart_svg_text_markdown_wrapped(
-            out,
-            label_text,
-            true,
-            ctx.measurer,
-            &ctx.text_style,
-            Some(ctx.wrapping_width),
-        );
-    } else {
-        let wrapped = crate::flowchart::PreparedFlowchartSvgLabel::new(label_text).wrapped_lines(
-            ctx.measurer,
-            &ctx.text_style,
-            Some(ctx.wrapping_width),
-            true,
-        );
-        write_flowchart_svg_source_word_lines(out, &wrapped, true);
-    }
+    let owner = ctx
+        .svg_label_sidecar
+        .and_then(|sidecar| sidecar.edge_owner(edge.id.as_str(), true));
+    let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+        ctx.svg_label_sidecar,
+        owner,
+        label_text,
+        ctx.measurer,
+        label_text_style.as_ref(),
+        Some(ctx.wrapping_width),
+        true,
+        crate::flowchart::FlowchartSvgWidthMode::Bbox,
+    );
+    let wrapped = prepared.wrapped_lines();
+    write_flowchart_svg_source_word_lines(out, &wrapped, true);
     out.push_str("</g></g></g>");
 }
 

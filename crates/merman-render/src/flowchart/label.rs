@@ -123,25 +123,42 @@ pub(crate) fn flowchart_svg_source_word_lines_plain_text(lines: &[Vec<String>]) 
     out
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum FlowchartSvgWidthMode {
     Bbox,
     ComputedLength,
 }
 
-/// One operation-local preparation of Mermaid's non-Markdown SVG createText payload.
+pub(crate) fn flowchart_node_svg_width_mode(
+    raw_label: &str,
+    label_type: &str,
+    wrap_mode: WrapMode,
+    layout_shape: &str,
+) -> FlowchartSvgWidthMode {
+    if wrap_mode == WrapMode::SvgLike
+        && label_type != "markdown"
+        && !raw_label.contains('<')
+        && !raw_label.contains('>')
+        && super::is_flowchart_process_shape(layout_shape)
+    {
+        FlowchartSvgWidthMode::ComputedLength
+    } else {
+        FlowchartSvgWidthMode::Bbox
+    }
+}
+
+/// Pure source projection of Mermaid's non-Markdown SVG createText payload.
 ///
 /// The source rows retain authored entity/tag boundaries while `plain_text` is the exact visible
-/// projection used for emptiness and metrics. Owners may reuse the same preparation for layout,
-/// render-time emptiness checks, wrapping, and SVG emission instead of reparsing the label at each
-/// stage.
+/// projection used for emptiness and metrics. This state is independent of style, width, and text
+/// measurement routing; measured preparation lives in the private Flowchart family sidecar.
 #[derive(Debug, Clone)]
-pub(crate) struct PreparedFlowchartSvgLabel {
+pub(crate) struct FlowchartSvgLabelSource {
     source_lines: Vec<Vec<String>>,
     plain_text: String,
 }
 
-impl PreparedFlowchartSvgLabel {
+impl FlowchartSvgLabelSource {
     pub(crate) fn new(source: &str) -> Self {
         let source_lines = flowchart_non_markdown_svg_source_word_lines(source);
         let plain_text = flowchart_svg_source_word_lines_plain_text(&source_lines);
@@ -149,10 +166,6 @@ impl PreparedFlowchartSvgLabel {
             source_lines,
             plain_text,
         }
-    }
-
-    pub(crate) fn source_lines(&self) -> &[Vec<String>] {
-        &self.source_lines
     }
 
     pub(crate) fn plain_text(&self) -> &str {
@@ -182,6 +195,17 @@ impl PreparedFlowchartSvgLabel {
         max_width_px: Option<f64>,
         width_mode: FlowchartSvgWidthMode,
     ) -> crate::text::TextMetrics {
+        let wrapped = self.wrapped_lines(measurer, style, max_width_px, true);
+        self.metrics_from_wrapped(measurer, style, &wrapped, width_mode)
+    }
+
+    pub(crate) fn metrics_from_wrapped(
+        &self,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        wrapped: &[Vec<String>],
+        width_mode: FlowchartSvgWidthMode,
+    ) -> crate::text::TextMetrics {
         if flowchart_label_text_is_empty_for_mode(&self.plain_text, false) {
             return crate::text::TextMetrics {
                 width: 0.0,
@@ -190,8 +214,7 @@ impl PreparedFlowchartSvgLabel {
             };
         }
 
-        let wrapped = self.wrapped_lines(measurer, style, max_width_px, true);
-        let visible = flowchart_svg_source_word_lines_plain_text(&wrapped);
+        let visible = flowchart_svg_source_word_lines_plain_text(wrapped);
         let mut metrics = measurer.measure_wrapped(&visible, style, None, WrapMode::SvgLike);
         if width_mode == FlowchartSvgWidthMode::ComputedLength {
             metrics.width = wrapped.iter().fold(0.0_f64, |width, line| {
@@ -314,8 +337,7 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
                 probe.reset();
                 let mut split_index = start_index + 1;
                 let mut previous_end = boundaries[start_index];
-                for end_index in start_index + 1..boundaries.len() {
-                    let end = boundaries[end_index];
+                for (end_index, &end) in boundaries.iter().enumerate().skip(start_index + 1) {
                     probe.push_visible(&word[previous_end..end]);
                     if probe.width_px() <= max_width_px {
                         split_index = end_index;
@@ -346,8 +368,7 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
             first_tail_already_measured = false;
 
             let mut split_index = start_index + 1;
-            for end_index in start_index + 1..boundaries.len() {
-                let end = boundaries[end_index];
+            for (end_index, &end) in boundaries.iter().enumerate().skip(start_index + 1) {
                 if probe.measure_source(&word[start..end]) <= max_width_px {
                     split_index = end_index;
                 } else {
@@ -427,12 +448,8 @@ pub(crate) fn flowchart_trim_html_collapsible_whitespace(input: &str) -> &str {
     trim_html_collapsible_ascii_whitespace(input)
 }
 
-pub(crate) fn flowchart_label_text_is_empty_for_mode(text: &str, html_labels: bool) -> bool {
-    if html_labels {
-        flowchart_trim_html_collapsible_whitespace(text).is_empty()
-    } else {
-        flowchart_trim_html_collapsible_whitespace(text).is_empty()
-    }
+pub(crate) fn flowchart_label_text_is_empty_for_mode(text: &str, _html_labels: bool) -> bool {
+    flowchart_trim_html_collapsible_whitespace(text).is_empty()
 }
 
 pub(crate) fn flowchart_label_is_empty_for_render(label: &str) -> bool {
@@ -778,7 +795,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                 }
             }
         } else {
-            PreparedFlowchartSvgLabel::new(raw_label).metrics(
+            FlowchartSvgLabelSource::new(raw_label).metrics(
                 measurer,
                 style,
                 max_width_px,
@@ -868,6 +885,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
             out: &mut String,
             last_space: &mut bool,
             last_nl: &mut bool,
+            trailing_newline_is_block_end: &mut bool,
         ) {
             if run.is_empty() {
                 return;
@@ -881,18 +899,21 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                         out.push(ch);
                         *last_space = false;
                         *last_nl = false;
+                        *trailing_newline_is_block_end = false;
                         continue;
                     }
                     if is_html_collapsible_ascii_whitespace(ch) {
                         if !*last_space && !*last_nl {
                             out.push(' ');
                             *last_space = true;
+                            *trailing_newline_is_block_end = false;
                         }
                         continue;
                     }
                     out.push(ch);
                     *last_space = false;
                     *last_nl = false;
+                    *trailing_newline_is_block_end = false;
                 }
             }
             run.clear();
@@ -908,17 +929,29 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
             }
         }
 
-        fn push_br(out: &mut String, last_space: &mut bool, last_nl: &mut bool) {
+        fn push_br(
+            out: &mut String,
+            last_space: &mut bool,
+            last_nl: &mut bool,
+            trailing_newline_is_block_end: &mut bool,
+        ) {
             trim_trailing_inline_collapsible_space(out);
             out.push('\n');
             *last_space = false;
             *last_nl = true;
+            *trailing_newline_is_block_end = false;
         }
 
-        fn push_block_end(out: &mut String, last_space: &mut bool, last_nl: &mut bool) {
+        fn push_block_end(
+            out: &mut String,
+            last_space: &mut bool,
+            last_nl: &mut bool,
+            trailing_newline_is_block_end: &mut bool,
+        ) {
             trim_trailing_inline_collapsible_space(out);
             if !out.is_empty() && !*last_nl {
                 out.push('\n');
+                *trailing_newline_is_block_end = true;
             }
             *last_space = false;
             *last_nl = true;
@@ -928,6 +961,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
         let mut text_run = String::new();
         let mut last_space = false;
         let mut last_nl = false;
+        let mut trailing_newline_is_block_end = false;
         let mut it = input.chars().peekable();
         fn is_html_tag_start(ch: Option<char>) -> bool {
             ch.is_some_and(|ch| ch.is_ascii_alphabetic() || matches!(ch, '/' | '!' | '?'))
@@ -940,7 +974,13 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                     continue;
                 }
 
-                append_text_run(&mut text_run, &mut out, &mut last_space, &mut last_nl);
+                append_text_run(
+                    &mut text_run,
+                    &mut out,
+                    &mut last_space,
+                    &mut last_nl,
+                    &mut trailing_newline_is_block_end,
+                );
 
                 let mut tag = String::new();
                 for c in it.by_ref() {
@@ -960,20 +1000,38 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                     .trim_start_matches('/')
                     .trim_end_matches('/')
                     .split(is_html_collapsible_ascii_whitespace)
-                    .filter(|part| !part.is_empty())
-                    .next()
+                    .find(|part| !part.is_empty())
                     .unwrap_or("");
                 if name == "br" {
-                    push_br(&mut out, &mut last_space, &mut last_nl);
+                    push_br(
+                        &mut out,
+                        &mut last_space,
+                        &mut last_nl,
+                        &mut trailing_newline_is_block_end,
+                    );
                 } else if is_closing && matches!(name, "p" | "div" | "li" | "tr" | "ul" | "ol") {
-                    push_block_end(&mut out, &mut last_space, &mut last_nl);
+                    push_block_end(
+                        &mut out,
+                        &mut last_space,
+                        &mut last_nl,
+                        &mut trailing_newline_is_block_end,
+                    );
                 }
                 continue;
             }
 
             text_run.push(ch);
         }
-        append_text_run(&mut text_run, &mut out, &mut last_space, &mut last_nl);
+        append_text_run(
+            &mut text_run,
+            &mut out,
+            &mut last_space,
+            &mut last_nl,
+            &mut trailing_newline_is_block_end,
+        );
+        if trailing_newline_is_block_end {
+            out.pop();
+        }
         out
     }
 
@@ -1149,6 +1207,26 @@ mod tests {
                 line_count: 1,
             }
         }
+    }
+
+    #[test]
+    fn html_plain_text_discards_only_synthetic_terminal_block_breaks() {
+        assert_eq!(
+            flowchart_label_plain_text_for_layout("<p>approval</p>", "html", true),
+            "approval"
+        );
+        assert_eq!(
+            flowchart_label_plain_text_for_layout("<p>&nbsp;Edge&nbsp;</p>", "html", true,),
+            "\u{00A0}Edge\u{00A0}"
+        );
+        assert_eq!(
+            flowchart_label_plain_text_for_layout("<p>A<br>&nbsp;</p>", "html", true),
+            "A\n\u{00A0}"
+        );
+        assert_eq!(
+            flowchart_label_plain_text_for_layout("<p>A<br></p>", "html", true),
+            "A\n"
+        );
     }
 
     #[test]

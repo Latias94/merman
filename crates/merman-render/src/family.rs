@@ -207,6 +207,7 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
     label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     policy: Option<FlowchartPresentationPolicy>,
 }
 
@@ -217,6 +218,10 @@ impl<L> FlowchartFamilyArtifact<L> {
 
     pub(crate) fn label_sources(&self) -> &diagrams::flowchart::FlowchartRenderLabelSources {
         &self.label_sources
+    }
+
+    pub(crate) fn svg_label_sidecar(&self) -> &crate::flowchart::FlowchartSvgLabelSidecar {
+        &self.svg_label_sidecar
     }
 
     pub(crate) const fn policy(&self) -> Option<FlowchartPresentationPolicy> {
@@ -875,19 +880,42 @@ fn prepare_pair<S, L>(
     Ok(Box::new(FamilyPair::new(semantic, layout)))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FlowchartSvgLabelPreparation(bool);
+
+impl FlowchartSvgLabelPreparation {
+    const DISABLED: Self = Self(false);
+
+    const fn enabled(self) -> bool {
+        self.0
+    }
+}
+
+const DEFAULT_FLOWCHART_SVG_LABEL_PREPARATION: FlowchartSvgLabelPreparation =
+    FlowchartSvgLabelPreparation::DISABLED;
+
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
     label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
     policy: Option<FlowchartPresentationPolicy>,
+    svg_label_preparation: FlowchartSvgLabelPreparation,
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
         &diagrams::flowchart::FlowchartRenderLabelSources,
+        Option<&crate::flowchart::FlowchartSvgLabelSidecarBuilder>,
     ) -> Result<L>,
 ) -> Result<Box<FlowchartFamilyArtifact<L>>> {
-    let layout = layout(&semantic, &label_sources)?;
+    let svg_label_sidecar = svg_label_preparation
+        .enabled()
+        .then(crate::flowchart::FlowchartSvgLabelSidecarBuilder::default);
+    let layout = layout(&semantic, &label_sources, svg_label_sidecar.as_ref())?;
+    let svg_label_sidecar = svg_label_sidecar
+        .map(crate::flowchart::FlowchartSvgLabelSidecarBuilder::finish)
+        .unwrap_or_default();
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
         label_sources,
+        svg_label_sidecar,
         policy,
     }))
 }
@@ -1126,13 +1154,35 @@ pub fn prepare_with_render_policy(
     session: RenderSession,
     render_policy: PresentationRenderPolicy,
 ) -> Result<FamilyRenderArtifact> {
+    prepare_with_render_policy_impl(
+        parsed,
+        options,
+        session,
+        render_policy,
+        DEFAULT_FLOWCHART_SVG_LABEL_PREPARATION,
+    )
+}
+
+fn prepare_with_render_policy_impl(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: RenderSession,
+    render_policy: PresentationRenderPolicy,
+    flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
+) -> Result<FamilyRenderArtifact> {
     plan_render_with_policy(&parsed, &session, render_policy)?.ensure_available()?;
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
     if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
         return prepare_class_render(parsed, options, session);
     }
-    prepare_non_class_render(parsed, options, session, render_policy)
+    prepare_non_class_render(
+        parsed,
+        options,
+        session,
+        render_policy,
+        flowchart_svg_label_preparation,
+    )
 }
 
 #[inline(never)]
@@ -1141,6 +1191,7 @@ fn prepare_non_class_render(
     options: &LayoutOptions,
     session: RenderSession,
     render_policy: PresentationRenderPolicy,
+    flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model, render_context) = parsed.into_render_parts();
     let flowchart_label_sources = render_context.into_flowchart_label_sources();
@@ -1201,13 +1252,15 @@ fn prepare_non_class_render(
                 model,
                 flowchart_label_sources,
                 None,
-                |model, label_sources| {
-                    crate::swimlane::layout_swimlane_typed_with_work_meter(
+                flowchart_svg_label_preparation,
+                |model, label_sources, svg_label_sidecar| {
+                    crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                         model,
                         label_sources,
                         &meta.effective_config,
                         execution.text_measurer(),
                         execution.math_renderer(),
+                        svg_label_sidecar,
                         execution.work_meter(),
                     )
                 },
@@ -1218,13 +1271,15 @@ fn prepare_non_class_render(
                 model,
                 flowchart_label_sources,
                 render_policy.flowchart(),
-                |model, label_sources| {
+                flowchart_svg_label_preparation,
+                |model, label_sources, svg_label_sidecar| {
                     crate::layout_flowchart_typed_with_render_labels_by_engine(
                         diagram_type,
                         model,
                         label_sources,
                         &meta.effective_config,
                         &execution,
+                        svg_label_sidecar,
                     )
                 },
             )?)
@@ -1512,6 +1567,15 @@ fn prepare_non_class_render(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+
+    use crate::environment::{
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        MeasurementProfileId, TextMeasurementOperation, TextMeasurementPhase,
+        TextMeasurementPolicy, TextMeasurementProfileIdentity, TextMeasurementReport,
+        TextMeasurementResultKind,
+    };
+    use crate::text::{TextMetrics, WrapMode};
     use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, Engine, ParseOptions};
     use serde_json::{Value, json};
 
@@ -1540,6 +1604,517 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    fn text_measurement_call_count(session: &RenderSession) -> u64 {
+        session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .map(crate::environment::TextMeasurementSummary::count)
+            .sum()
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum SidecarHostOutcome {
+        Success,
+        Missing,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct SidecarHostRequest {
+        ordinal: usize,
+        phase: TextMeasurementPhase,
+        operation: TextMeasurementOperation,
+        result_kind: TextMeasurementResultKind,
+        text: String,
+        font_size_bits: u64,
+        max_width_bits: Option<u64>,
+        wrap_mode: WrapMode,
+    }
+
+    struct SidecarRecordingHost {
+        outcome: SidecarHostOutcome,
+        requests: Mutex<Vec<SidecarHostRequest>>,
+    }
+
+    impl SidecarRecordingHost {
+        fn new(outcome: SidecarHostOutcome) -> Self {
+            Self {
+                outcome,
+                requests: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn snapshot(&self) -> Vec<SidecarHostRequest> {
+            self.requests.lock().expect("host request trace").clone()
+        }
+    }
+
+    impl HostTextMeasurer for SidecarRecordingHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            let ordinal = {
+                let mut requests = self.requests.lock().expect("host request trace");
+                let ordinal = requests.len();
+                requests.push(SidecarHostRequest {
+                    ordinal,
+                    phase: request.phase,
+                    operation: request.operation,
+                    result_kind: request.operation.required_result_kind(),
+                    text: request.text.to_string(),
+                    font_size_bits: request.style.font_size.to_bits(),
+                    max_width_bits: request.max_width.map(f64::to_bits),
+                    wrap_mode: request.wrap_mode,
+                });
+                ordinal
+            };
+
+            match self.outcome {
+                SidecarHostOutcome::Success => Ok(Some(sidecar_host_measurement(request, ordinal))),
+                SidecarHostOutcome::Missing => Ok(None),
+            }
+        }
+    }
+
+    fn sidecar_host_measurement(
+        request: HostTextMeasurementRequest<'_>,
+        ordinal: usize,
+    ) -> HostTextMeasurement {
+        let state_delta = (ordinal % 7) as f64 / 32.0;
+        let raw_width = request
+            .text
+            .lines()
+            .map(|line| line.chars().count() as f64 * 8.0)
+            .fold(0.0_f64, f64::max)
+            + state_delta;
+        let max_width = request
+            .max_width
+            .filter(|width| width.is_finite() && *width > 0.0);
+        let line_count = max_width
+            .map(|width| (raw_width / width).ceil() as usize)
+            .unwrap_or(1)
+            .max(request.text.lines().count())
+            .max(1)
+            .min(request.text.len().saturating_add(1));
+        let metrics = TextMetrics {
+            width: max_width.map_or(raw_width, |width| raw_width.min(width)),
+            height: line_count as f64 * 20.0 + state_delta,
+            line_count,
+        };
+
+        match request.operation.required_result_kind() {
+            TextMeasurementResultKind::Metrics => HostTextMeasurement::Metrics(metrics),
+            TextMeasurementResultKind::Length => {
+                let length = match request.operation {
+                    TextMeasurementOperation::RawBBoxHeight
+                    | TextMeasurementOperation::SimpleBBoxHeight
+                    | TextMeasurementOperation::TspanBBoxHeight => metrics.height,
+                    TextMeasurementOperation::CreateTextBBoxYOffset
+                    | TextMeasurementOperation::CreateTextMiddleBBoxYOffset => 0.0,
+                    _ => raw_width,
+                };
+                HostTextMeasurement::Length(length)
+            }
+            TextMeasurementResultKind::HorizontalExtents => {
+                HostTextMeasurement::HorizontalExtents {
+                    left: raw_width / 2.0,
+                    right: raw_width / 2.0,
+                }
+            }
+            TextMeasurementResultKind::WrappedWithRawWidth => {
+                HostTextMeasurement::WrappedWithRawWidth {
+                    metrics,
+                    raw_width: Some(raw_width),
+                }
+            }
+        }
+    }
+
+    fn render_with_sidecar_host_control(
+        preparation: FlowchartSvgLabelPreparation,
+        outcome: SidecarHostOutcome,
+    ) -> (bool, Vec<SidecarHostRequest>, TextMeasurementReport, String) {
+        let source = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 96
+---
+flowchart LR
+subgraph S["service words"]
+  A["alpha beta<br/>gamma"]
+end
+A traced-edge@-->|edge label words| B["delta epsilon"]
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.flowchart-sidecar-control").expect("profile id"),
+            "1",
+        )
+        .expect("profile identity");
+        let host = Arc::new(SidecarRecordingHost::new(outcome));
+        let environment = crate::environment::RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                host.clone(),
+                TextMeasurementPhase::ALL,
+            ));
+        let session = environment.begin_session().expect("render session");
+        let artifact = prepare_with_render_policy_impl(
+            parsed,
+            &LayoutOptions::default(),
+            session,
+            PresentationRenderPolicy::default(),
+            preparation,
+        )
+        .expect("prepare flowchart artifact");
+        let indexed_sidecar = match &artifact.family {
+            BuiltinFamilyArtifact::Flowchart(flowchart) => {
+                flowchart
+                    .svg_label_sidecar()
+                    .node_owner("A", false)
+                    .is_some()
+                    && flowchart
+                        .svg_label_sidecar()
+                        .edge_owner("traced-edge", false)
+                        .is_some()
+            }
+            _ => panic!("expected Flowchart family artifact"),
+        };
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render Flowchart SVG");
+        let trace = host.snapshot();
+        let (svg, _, _, session) = rendered.into_parts();
+        (
+            indexed_sidecar,
+            trace,
+            session.text_measurement_report(),
+            svg,
+        )
+    }
+
+    #[test]
+    fn public_flowchart_preparation_uses_the_disabled_sidecar_control() {
+        let source = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A -->|control label| B
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        let artifact = prepare_with_render_policy(
+            parsed,
+            &LayoutOptions::default(),
+            session(),
+            PresentationRenderPolicy::default(),
+        )
+        .expect("prepare public flowchart artifact");
+        let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+            panic!("expected Flowchart family artifact");
+        };
+
+        assert!(
+            flowchart
+                .svg_label_sidecar()
+                .node_owner("A", false)
+                .is_none(),
+            "the committed control must keep runtime sidecar reuse disabled"
+        );
+    }
+
+    #[test]
+    fn routed_host_and_fallback_traces_match_a_no_sidecar_family_control() {
+        for outcome in [SidecarHostOutcome::Success, SidecarHostOutcome::Missing] {
+            let (control_indexed, control_trace, control_report, control_svg) =
+                render_with_sidecar_host_control(FlowchartSvgLabelPreparation::DISABLED, outcome);
+            let (sidecar_indexed, sidecar_trace, sidecar_report, sidecar_svg) =
+                render_with_sidecar_host_control(FlowchartSvgLabelPreparation(true), outcome);
+
+            assert!(
+                !control_indexed,
+                "the control must bypass sidecar preparation"
+            );
+            assert!(
+                sidecar_indexed,
+                "the candidate must prepare semantic owners"
+            );
+            assert!(!control_trace.is_empty());
+            assert_eq!(sidecar_trace, control_trace);
+            assert_eq!(sidecar_report, control_report);
+            assert_eq!(sidecar_svg, control_svg);
+        }
+    }
+
+    #[test]
+    fn prepared_self_loop_edge_label_keeps_its_semantic_owner_through_family_dispatch() {
+        let source = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A ordinary-edge@-->|ordinary owner sentinel| B
+A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through the logical render id alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron| A
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        let artifact = prepare_with_render_policy_impl(
+            parsed,
+            &LayoutOptions::default(),
+            session(),
+            PresentationRenderPolicy::default(),
+            FlowchartSvgLabelPreparation(true),
+        )
+        .expect("prepare flowchart family artifact");
+
+        let rendered_svg = {
+            let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+                panic!("expected Flowchart family artifact");
+            };
+            let model = crate::flowchart::FlowchartRenderModelRef::new(
+                flowchart.pair().semantic(),
+                flowchart.label_sources(),
+            );
+            let edge = model.edges.get(1).expect("self-loop edge");
+            assert_eq!(edge.id, "self-loop-edge");
+            let label = model
+                .edge_label_for_render(edge)
+                .expect("self-loop edge label");
+            let owner = flowchart
+                .svg_label_sidecar()
+                .edge_owner(edge.id.as_str(), false)
+                .expect("semantic self-loop owner");
+            assert_eq!(owner, crate::flowchart::FlowchartSvgLabelOwner::Edge(1));
+            assert_eq!(
+                flowchart
+                    .svg_label_sidecar()
+                    .edge_owner("A-cyclic-special-mid", false),
+                None
+            );
+            assert!(
+                flowchart
+                    .pair()
+                    .layout()
+                    .edges
+                    .iter()
+                    .any(|edge| edge.id == "self-loop-edge")
+            );
+
+            let config = crate::flowchart::FlowchartConfigView::new(
+                artifact.metadata.effective_config.as_value(),
+            );
+            let font_family = config.font_family();
+            let render_style = config.render_text_style(&font_family, config.render_font_size());
+            let edge_width = config.layout_settings().edge_label_wrapping_width;
+            let render_measurer = artifact
+                .session
+                .text_measurer(crate::environment::TextMeasurementPhase::SvgBBox);
+            let calls_before = text_measurement_call_count(&artifact.session);
+            let plan = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+                Some(flowchart.svg_label_sidecar()),
+                Some(owner),
+                label,
+                &render_measurer,
+                &render_style,
+                Some(edge_width),
+                true,
+                crate::flowchart::FlowchartSvgWidthMode::Bbox,
+            );
+            assert!(matches!(
+                &plan,
+                crate::flowchart::FlowchartSvgLabelRenderPlan::Prepared { .. }
+            ));
+            let wrapped = plan.wrapped_lines();
+            assert!(matches!(&wrapped, std::borrow::Cow::Borrowed(_)));
+            assert!(wrapped.len() >= 2, "{wrapped:?}");
+            assert_eq!(
+                text_measurement_call_count(&artifact.session),
+                calls_before,
+                "a prepared self-loop label must not invoke the SVG measurer again"
+            );
+            drop(wrapped);
+            drop(plan);
+
+            let hits_before_render = flowchart.svg_label_sidecar().prepared_hit_count(owner);
+            let svg = render_family_artifact_svg(
+                &artifact,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+            )
+            .expect("render self-loop SVG");
+            assert!(
+                flowchart.svg_label_sidecar().prepared_hit_count(owner) > hits_before_render,
+                "the real Flowchart SVG renderer must consume the prepared self-loop label"
+            );
+            svg
+        };
+
+        assert!(!rendered_svg.contains("cyclic-special"), "{}", rendered_svg);
+        let document = roxmltree::Document::parse(&rendered_svg).expect("valid self-loop SVG");
+        let logical_path = document.descendants().any(|node| {
+            node.has_tag_name("path") && node.attribute("data-id") == Some("self-loop-edge")
+        });
+        assert!(logical_path, "{rendered_svg}");
+        let label_group = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g") && node.attribute("data-id") == Some("self-loop-edge")
+            })
+            .expect("logical self-loop label group");
+        let text = label_group
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .collect::<String>();
+        assert!(text.contains("self loop semantic owner"), "{text:?}");
+        let row_count = label_group
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("tspan")
+                    && node.attribute("class").is_some_and(|class| {
+                        class
+                            .split_ascii_whitespace()
+                            .any(|part| part == "text-outer-tspan")
+                    })
+            })
+            .count();
+        assert!(row_count >= 2, "rows={row_count}: {rendered_svg}");
+    }
+
+    #[test]
+    fn prepared_swimlane_edge_label_is_consumed_by_the_real_svg_renderer() {
+        let source = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 96
+---
+swimlane-beta LR
+A styled@-->|swimlane semantic owner keeps wrapped label rows through the generated labelRect| B
+linkStyle default font-size:24px,font-weight:bold
+linkStyle 0 font-size:12px,font-style:italic
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse Swimlane")
+            .expect("detect Swimlane");
+        let artifact = prepare_with_render_policy_impl(
+            parsed,
+            &LayoutOptions::default(),
+            session(),
+            PresentationRenderPolicy::default(),
+            FlowchartSvgLabelPreparation(true),
+        )
+        .expect("prepare Swimlane family artifact");
+
+        let rendered_svg = {
+            let BuiltinFamilyArtifact::Swimlane(swimlane) = &artifact.family else {
+                panic!("expected Swimlane family artifact");
+            };
+            let model = crate::flowchart::FlowchartRenderModelRef::new(
+                swimlane.pair().semantic(),
+                swimlane.label_sources(),
+            );
+            let edge = model.edges.first().expect("styled Swimlane edge");
+            assert_eq!(edge.id, "styled");
+            let label = model
+                .edge_label_for_render(edge)
+                .expect("Swimlane edge label");
+            let owner = swimlane
+                .svg_label_sidecar()
+                .edge_owner(edge.id.as_str(), true)
+                .expect("semantic Swimlane edge owner");
+            assert_eq!(
+                owner,
+                crate::flowchart::FlowchartSvgLabelOwner::SwimlaneEdgeLabel(0)
+            );
+            assert_eq!(
+                swimlane.pair().layout().edges[0].label_node_id.as_deref(),
+                Some("edge-label-A-B-styled")
+            );
+
+            let config = crate::flowchart::FlowchartConfigView::new(
+                artifact.metadata.effective_config.as_value(),
+            );
+            let font_family = config.font_family();
+            let base_style = config.render_text_style(&font_family, config.render_font_size());
+            let default_edge_styles = model
+                .edge_defaults
+                .as_ref()
+                .map_or(&[][..], |defaults| defaults.style.as_slice());
+            let label_style = crate::flowchart::flowchart_swimlane_label_rect_text_style(
+                &base_style,
+                default_edge_styles,
+                &edge.style,
+            );
+            let render_measurer = artifact
+                .session
+                .text_measurer(crate::environment::TextMeasurementPhase::SvgBBox);
+            let plan = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+                Some(swimlane.svg_label_sidecar()),
+                Some(owner),
+                label,
+                &render_measurer,
+                label_style.as_ref(),
+                Some(config.render_wrapping_width()),
+                true,
+                crate::flowchart::FlowchartSvgWidthMode::Bbox,
+            );
+            assert!(matches!(
+                &plan,
+                crate::flowchart::FlowchartSvgLabelRenderPlan::Prepared { .. }
+            ));
+            let wrapped = plan.wrapped_lines();
+            assert!(matches!(&wrapped, std::borrow::Cow::Borrowed(_)));
+            assert!(wrapped.len() >= 2, "{wrapped:?}");
+            drop(wrapped);
+            drop(plan);
+
+            let hits_before_render = swimlane.svg_label_sidecar().prepared_hit_count(owner);
+            let svg = render_family_artifact_svg(
+                &artifact,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+            )
+            .expect("render Swimlane SVG");
+            assert!(
+                swimlane.svg_label_sidecar().prepared_hit_count(owner) > hits_before_render,
+                "the real Swimlane SVG renderer must consume the prepared labelRect"
+            );
+            svg
+        };
+
+        let document = roxmltree::Document::parse(&rendered_svg).expect("valid Swimlane SVG");
+        let label_group = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g") && node.attribute("id") == Some("edge-label-A-B-styled")
+            })
+            .expect("generated labelRect group");
+        let visible = label_group
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .flat_map(str::chars)
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>();
+        assert_eq!(
+            visible,
+            "swimlanesemanticownerkeepswrappedlabelrowsthroughthegeneratedlabelRect"
+        );
     }
 
     fn prepare_with_model_item_limit(

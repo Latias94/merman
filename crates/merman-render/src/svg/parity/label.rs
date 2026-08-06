@@ -59,7 +59,25 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
     include_style: bool,
     center_text: bool,
 ) {
-    open_svg_text(out, include_style, center_text);
+    write_svg_text_source_word_lines_impl(out, lines, include_style.then_some(""), center_text);
+}
+
+pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
+    out: &mut String,
+    lines: &[Vec<String>],
+    style: &str,
+    center_text: bool,
+) {
+    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text);
+}
+
+fn write_svg_text_source_word_lines_impl(
+    out: &mut String,
+    lines: &[Vec<String>],
+    style: Option<&str>,
+    center_text: bool,
+) {
+    open_svg_text(out, style, center_text);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, true);
@@ -78,12 +96,24 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
     out.push_str("</text>");
 }
 
-fn open_svg_text(out: &mut String, include_style: bool, center_text: bool) {
-    match (include_style, center_text) {
-        (true, true) => out.push_str(r#"<text y="-10.1" style="" text-anchor="middle">"#),
-        (true, false) => out.push_str(r#"<text y="-10.1" style="">"#),
-        (false, true) => out.push_str(r#"<text y="-10.1" text-anchor="middle">"#),
-        (false, false) => out.push_str(r#"<text y="-10.1">"#),
+fn open_svg_text(out: &mut String, style: Option<&str>, center_text: bool) {
+    match (style, center_text) {
+        (Some(style), true) => {
+            let _ = write!(
+                out,
+                r#"<text y="-10.1" style="{}" text-anchor="middle">"#,
+                escape_xml_display(style)
+            );
+        }
+        (Some(style), false) => {
+            let _ = write!(
+                out,
+                r#"<text y="-10.1" style="{}">"#,
+                escape_xml_display(style)
+            );
+        }
+        (None, true) => out.push_str(r#"<text y="-10.1" text-anchor="middle">"#),
+        (None, false) => out.push_str(r#"<text y="-10.1">"#),
     }
 }
 
@@ -147,7 +177,7 @@ fn write_svg_text_impl(
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
 ) {
-    open_svg_text(out, include_style, center_text);
+    open_svg_text(out, include_style.then_some(""), center_text);
 
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines_for_wrap_mode(
         text,
@@ -236,7 +266,7 @@ fn write_svg_text_markdown_lines(
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
 ) {
-    open_svg_text(out, include_style, center_text);
+    open_svg_text(out, include_style.then_some(""), center_text);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class);

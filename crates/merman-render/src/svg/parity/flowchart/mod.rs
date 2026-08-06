@@ -64,5 +64,5 @@ pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(
 // Entry points (split from parity.rs).
 
 mod svg_emit;
-pub(super) use svg_emit::render_flowchart_svg_model_with_config;
-pub(super) use swimlane::render_swimlane_svg_model_with_config;
+pub(super) use svg_emit::render_flowchart_svg_artifact;
+pub(super) use swimlane::render_swimlane_svg_artifact;

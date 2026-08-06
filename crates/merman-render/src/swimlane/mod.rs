@@ -71,13 +71,13 @@ fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
     Bounds::from_points(points)
 }
 
-/// Lays out a Swimlane model under the resource policy owned by the render operation.
-pub(crate) fn layout_swimlane_typed_with_work_meter(
+pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderLabelSources,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    svg_label_sidecar: Option<&crate::flowchart::FlowchartSvgLabelSidecarBuilder>,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SwimlaneLayout> {
     let source_nodes = model.nodes.len().saturating_add(model.subgraphs.len());
@@ -94,6 +94,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter(
         effective_config,
         measurer,
         math_renderer,
+        svg_label_sidecar,
     );
     let reversed = sugiyama::run(&mut working, config);
     for edge in &mut working.original_edges {

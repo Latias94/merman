@@ -33,22 +33,31 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
     let width = icon_size;
     let x = -width / 2.0;
     let y = -height / 2.0;
-    let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
-            measurer: ctx.measurer,
-            raw_label: label.text,
-            label_type: label.label_type,
-            style: if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-                &ctx.html_label_text_style
-            } else {
-                &ctx.text_style
+    let label_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+        &ctx.html_label_text_style
+    } else {
+        &ctx.text_style
+    };
+    let mut metrics = super::super::helpers::prepared_node_label_metrics(
+        ctx,
+        common.node_id,
+        label.text,
+        label_style,
+    )
+    .unwrap_or_else(|| {
+        crate::flowchart::flowchart_label_metrics_for_layout(
+            crate::flowchart::FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: label.text,
+                label_type: label.label_type,
+                style: label_style,
+                max_width_px: Some(ctx.wrapping_width),
+                wrap_mode: ctx.node_wrap_mode,
+                config: ctx.config,
+                math_renderer: ctx.math_renderer,
             },
-            max_width_px: Some(ctx.wrapping_width),
-            wrap_mode: ctx.node_wrap_mode,
-            config: ctx.config,
-            math_renderer: ctx.math_renderer,
-        },
-    );
+        )
+    });
     if !has_label {
         metrics.width = 0.0;
         metrics.height = 0.0;

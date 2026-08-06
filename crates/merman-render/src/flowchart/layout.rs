@@ -23,9 +23,12 @@ use super::{
     FlowEdge, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources, FlowchartRenderModelRef,
 };
 use super::{
-    FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, PreparedFlowchartSvgLabel,
-    flowchart_apply_html_node_class_box_metrics, flowchart_effective_text_style_for_classes,
+    FlowchartLabelMetricsRequest, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
+    FlowchartSvgWidthMode, flowchart_apply_html_node_class_box_metrics,
+    flowchart_effective_edge_label_text_style, flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
+    flowchart_node_svg_width_mode, measure_flowchart_svg_label_for_layout,
+    measure_flowchart_svg_label_for_layout_with_metrics_style,
 };
 
 type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
@@ -1483,22 +1486,24 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
-    layout_flowchart_typed_with_render_labels_and_work_meter(
+    layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_label_sidecar(
         model,
         &FlowchartRenderLabelSources::default(),
         effective_config,
         measurer,
         math_renderer,
+        None,
         work_meter,
     )
 }
 
-pub(crate) fn layout_flowchart_typed_with_render_labels_and_work_meter(
+pub(crate) fn layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_label_sidecar(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderLabelSources,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
     let mut work_control = DagreOperationWorkControl::new(work_meter);
@@ -1508,6 +1513,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_work_meter(
         effective_config,
         measurer,
         math_renderer,
+        svg_label_sidecar,
         &mut work_control,
     )
 }
@@ -1518,6 +1524,7 @@ fn layout_flowchart_with_model(
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     work_control: &mut DagreOperationWorkControl,
 ) -> Result<FlowchartLayout> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
@@ -1543,13 +1550,15 @@ fn layout_flowchart_with_model(
         Vec::with_capacity(derived_render_edges);
     let mut render_edge_self_loop_meta: Vec<Option<FlowchartSelfLoopSegmentMeta>> =
         Vec::with_capacity(derived_render_edges);
+    let mut render_edge_owner_indices = Vec::with_capacity(derived_render_edges);
     let mut self_loop_label_node_ids: Vec<String> = Vec::new();
     let mut self_loop_label_node_id_set: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-    for e in &model.edges {
+    for (edge_index, e) in model.edges.iter().enumerate() {
         if e.from != e.to {
             render_edges.push(std::borrow::Cow::Borrowed(e));
             render_edge_self_loop_meta.push(None);
+            render_edge_owner_indices.push(edge_index);
             continue;
         }
 
@@ -1565,18 +1574,21 @@ fn layout_flowchart_with_model(
         // Mermaid clears the label text on the end segments, but keeps the label (if any) on the
         // mid edge (`edgeMid` is a structuredClone of the original edge without label changes).
         render_edges.push(std::borrow::Cow::Owned(helper_edges.edge1));
+        render_edge_owner_indices.push(edge_index);
         render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
             logical_edge_id: e.id.clone(),
             node_id: e.from.clone(),
             order: 0,
         }));
         render_edges.push(std::borrow::Cow::Owned(helper_edges.edge_mid));
+        render_edge_owner_indices.push(edge_index);
         render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
             logical_edge_id: e.id.clone(),
             node_id: e.from.clone(),
             order: 1,
         }));
         render_edges.push(std::borrow::Cow::Owned(helper_edges.edge2));
+        render_edge_owner_indices.push(edge_index);
         render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
             logical_edge_id: e.id.clone(),
             node_id: e.from.clone(),
@@ -1674,7 +1686,7 @@ fn layout_flowchart_with_model(
     work_control.charge_adapter(leaf_label_capacity)?;
     leaf_label_metrics_by_id.reserve(leaf_label_capacity);
     work_control.charge_adapter(model.nodes.len())?;
-    for n in &model.nodes {
+    for (node_index, n) in model.nodes.iter().enumerate() {
         // Mermaid treats the subgraph id as the "group node" id (a cluster can be referenced in
         // edges). Avoid introducing a separate leaf node that would collide with the cluster node
         // of the same id.
@@ -1689,20 +1701,17 @@ fn layout_flowchart_with_model(
             &n.classes,
             &n.styles,
         );
-        let use_computed_svg_width = node_wrap_mode == WrapMode::SvgLike
-            && label_type != "markdown"
-            && !raw_label.contains('<')
-            && !raw_label.contains('>')
-            && super::is_flowchart_process_shape(n.layout_shape.as_deref().unwrap_or("squareRect"));
-        let mut metrics = if use_computed_svg_width {
-            PreparedFlowchartSvgLabel::new(raw_label).metrics(
-                measurer,
-                node_text_style.as_ref(),
-                Some(wrapping_width),
-                FlowchartSvgWidthMode::ComputedLength,
-            )
-        } else {
-            flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+        let svg_width_mode = flowchart_node_svg_width_mode(
+            raw_label,
+            label_type,
+            node_wrap_mode,
+            n.layout_shape.as_deref().unwrap_or("squareRect"),
+        );
+        let mut metrics = measure_flowchart_svg_label_for_layout(
+            svg_label_sidecar,
+            Some(FlowchartSvgLabelOwner::Node(node_index)),
+            Some(n.id.as_str()),
+            FlowchartLabelMetricsRequest {
                 measurer,
                 raw_label,
                 label_type,
@@ -1711,8 +1720,9 @@ fn layout_flowchart_with_model(
                 wrap_mode: node_wrap_mode,
                 config: effective_config,
                 math_renderer,
-            })
-        };
+            },
+            svg_width_mode,
+        );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
             flowchart_apply_html_node_class_box_metrics(
                 &mut metrics,
@@ -1747,7 +1757,7 @@ fn layout_flowchart_with_model(
         );
     }
     work_control.charge_adapter(model.subgraphs.len())?;
-    for sg in &model.subgraphs {
+    for (subgraph_index, sg) in model.subgraphs.iter().enumerate() {
         if !sg.nodes.is_empty() {
             continue;
         }
@@ -1759,16 +1769,24 @@ fn layout_flowchart_with_model(
             &sg.styles,
         );
         let title = model.subgraph_title_for_render(sg);
-        let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-            measurer,
-            raw_label: title,
-            label_type,
-            style: sg_text_style.as_ref(),
-            max_width_px: Some(cluster_title_wrapping_width),
-            wrap_mode: node_wrap_mode,
-            config: effective_config,
-            math_renderer,
-        });
+        let svg_width_mode =
+            flowchart_node_svg_width_mode(title, label_type, node_wrap_mode, "squareRect");
+        let mut metrics = measure_flowchart_svg_label_for_layout(
+            svg_label_sidecar,
+            Some(FlowchartSvgLabelOwner::EmptySubgraphNode(subgraph_index)),
+            Some(sg.id.as_str()),
+            FlowchartLabelMetricsRequest {
+                measurer,
+                raw_label: title,
+                label_type,
+                style: sg_text_style.as_ref(),
+                max_width_px: Some(wrapping_width),
+                wrap_mode: node_wrap_mode,
+                config: effective_config,
+                math_renderer,
+            },
+            svg_width_mode,
+        );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
             flowchart_apply_html_node_class_box_metrics(
                 &mut metrics,
@@ -2004,8 +2022,16 @@ fn layout_flowchart_with_model(
     let mut edge_key_by_id: HashMap<String, String> = HashMap::new();
     let mut edge_id_by_key: HashMap<String, String> = HashMap::new();
 
+    let default_edge_styles = model
+        .edge_defaults
+        .as_ref()
+        .map_or(&[][..], |defaults| defaults.style.as_slice());
     work_control.charge_adapter(render_edges.len())?;
-    for (e, self_loop_meta) in render_edges.iter().zip(&render_edge_self_loop_meta) {
+    for ((e, self_loop_meta), edge_owner_index) in render_edges
+        .iter()
+        .zip(&render_edge_self_loop_meta)
+        .zip(&render_edge_owner_indices)
+    {
         // Mermaid 11.16 stores helper identity as edge metadata. The graph key is intentionally
         // node-scoped, so a later parallel self-loop overwrites the earlier triple in Graphlib.
         let edge_key = flowchart_layout_edge_key(e, self_loop_meta.as_ref());
@@ -2018,10 +2044,11 @@ fn layout_flowchart_with_model(
         if edge_label_is_non_empty(model, e) {
             let label_text = model.edge_label_for_render(e).unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
-            let edge_text_style = flowchart_effective_text_style_for_classes(
+            let edge_text_style = flowchart_effective_edge_label_text_style(
                 edge_label_base_style,
                 &model.class_defs,
                 &e.classes,
+                default_edge_styles,
                 &e.style,
             );
             let metrics = if label_type == "markdown" && edge_wrap_mode != WrapMode::HtmlLike {
@@ -2032,17 +2059,45 @@ fn layout_flowchart_with_model(
                     Some(edge_label_wrapping_width),
                     edge_wrap_mode,
                 )
+            } else if edge_wrap_mode == WrapMode::SvgLike {
+                let render_id = self_loop_meta
+                    .as_ref()
+                    .map_or(e.id.as_str(), |meta| meta.logical_edge_id.as_str());
+                measure_flowchart_svg_label_for_layout_with_metrics_style(
+                    svg_label_sidecar,
+                    Some(FlowchartSvgLabelOwner::Edge(*edge_owner_index)),
+                    Some(render_id),
+                    FlowchartLabelMetricsRequest {
+                        measurer,
+                        raw_label: label_text,
+                        label_type,
+                        // Mermaid wraps the temporary SVG text before applying `labelStyle`.
+                        style: edge_label_base_style,
+                        max_width_px: Some(edge_label_wrapping_width),
+                        wrap_mode: edge_wrap_mode,
+                        config: effective_config,
+                        math_renderer,
+                    },
+                    edge_text_style.as_ref(),
+                    FlowchartSvgWidthMode::Bbox,
+                )
             } else {
-                flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-                    measurer,
-                    raw_label: label_text,
-                    label_type,
-                    style: edge_text_style.as_ref(),
-                    max_width_px: Some(edge_label_wrapping_width),
-                    wrap_mode: edge_wrap_mode,
-                    config: effective_config,
-                    math_renderer,
-                })
+                measure_flowchart_svg_label_for_layout(
+                    svg_label_sidecar,
+                    Some(FlowchartSvgLabelOwner::Edge(*edge_owner_index)),
+                    Some(e.id.as_str()),
+                    FlowchartLabelMetricsRequest {
+                        measurer,
+                        raw_label: label_text,
+                        label_type,
+                        style: edge_text_style.as_ref(),
+                        max_width_px: Some(edge_label_wrapping_width),
+                        wrap_mode: edge_wrap_mode,
+                        config: effective_config,
+                        math_renderer,
+                    },
+                    FlowchartSvgWidthMode::Bbox,
+                )
             };
             let (label_width, label_height) = if edge_html_labels {
                 (metrics.width.max(1.0), metrics.height.max(1.0))
@@ -3453,7 +3508,7 @@ fn layout_flowchart_with_model(
         cluster_padding,
     };
 
-    for sg in &model.subgraphs {
+    for (subgraph_index, sg) in model.subgraphs.iter().enumerate() {
         if sg.nodes.is_empty() {
             continue;
         }
@@ -3513,16 +3568,22 @@ fn layout_flowchart_with_model(
             &sg.classes,
             &sg.styles,
         );
-        let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-            measurer,
-            raw_label: title,
-            label_type,
-            style: title_text_style.as_ref(),
-            max_width_px: title_width_limit,
-            wrap_mode: cluster_wrap_mode,
-            config: effective_config,
-            math_renderer,
-        });
+        let title_metrics = measure_flowchart_svg_label_for_layout(
+            svg_label_sidecar,
+            Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index)),
+            Some(sg.id.as_str()),
+            FlowchartLabelMetricsRequest {
+                measurer,
+                raw_label: title,
+                label_type,
+                style: title_text_style.as_ref(),
+                max_width_px: title_width_limit,
+                wrap_mode: cluster_wrap_mode,
+                config: effective_config,
+                math_renderer,
+            },
+            FlowchartSvgWidthMode::Bbox,
+        );
         let title_label = LayoutLabel {
             x: cx,
             y: cy - rect.height() / 2.0 + title_margin_top + title_metrics.height / 2.0,
