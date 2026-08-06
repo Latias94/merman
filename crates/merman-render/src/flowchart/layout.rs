@@ -1769,8 +1769,10 @@ fn layout_flowchart_with_model(
             &sg.styles,
         );
         let title = model.subgraph_title_for_render(sg);
-        let svg_width_mode =
-            flowchart_node_svg_width_mode(title, label_type, node_wrap_mode, "squareRect");
+        // Mermaid renders an empty subgraph through the ordinary node `labelHelper`: wrapping
+        // probes use `flowchart.wrappingWidth` and `getComputedTextLength()`, while the final label
+        // dimensions come from `getBBox()`. Selecting `ComputedLength` here would add a post-wrap
+        // per-line measurement pass that is absent upstream.
         let mut metrics = measure_flowchart_svg_label_for_layout(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::EmptySubgraphNode(subgraph_index)),
@@ -1785,7 +1787,7 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
-            svg_width_mode,
+            FlowchartSvgWidthMode::Bbox,
         );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
             flowchart_apply_html_node_class_box_metrics(

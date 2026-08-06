@@ -263,6 +263,56 @@ flowchart LR
 "#;
 
 #[test]
+fn empty_subgraph_node_keeps_mermaid_bbox_measurement_after_svg_wrapping() {
+    let source = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 96
+---
+flowchart LR
+subgraph Empty["alpha beta gamma delta epsilon zeta eta theta"]
+end
+"#;
+
+    for outcome in [HostOutcome::Success, HostOutcome::Missing] {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse empty subgraph")
+            .expect("detect flowchart");
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new(format!("test.flowchart-empty-subgraph-{}", outcome.name()))
+                .expect("profile id"),
+            "1",
+        )
+        .expect("profile identity");
+        let host = Arc::new(RecordingFlowchartHost::new(outcome));
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
+        );
+        let session = environment.begin_session().expect("render session");
+        let _artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare empty subgraph");
+        let requests = host.snapshot();
+        let final_title_request = requests
+            .iter()
+            .rfind(|request| request.text.contains("alpha"))
+            .expect("empty subgraph title measurement");
+
+        assert_eq!(
+            final_title_request.operation,
+            TextMeasurementOperation::Wrapped,
+            "Mermaid wraps the empty-subgraph node with flowchart.wrappingWidth, then sizes the final SVG text through getBBox(): {requests:#?}"
+        );
+        assert!(
+            final_title_request.text.contains('\n'),
+            "the configured width must wrap the title before the final bbox measurement: {requests:#?}"
+        );
+    }
+}
+
+#[test]
 fn host_and_fallback_callback_traces_survive_flowchart_prepare_and_render() {
     for outcome in [
         HostOutcome::Success,
