@@ -729,6 +729,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
         else {
             unreachable!("edge label anchors return before semantic rendering");
         };
+        let rendered_node = label_measurements
+            .node_plan_for_render(prepared_node)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing Requirement node label measurement for {}", n.id),
+            })?;
 
         let mut node_classes: Vec<&str> = Vec::new();
         let mut css_styles: &[String] = &[];
@@ -834,13 +839,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
         // Labels.
         let padding = 20.0;
-        for line in &prepared_node.lines {
-            let metrics =
-                label_measurements
-                    .node_line_metrics(line)
-                    .ok_or_else(|| Error::InvalidModel {
-                        message: format!("missing Requirement node label measurement for {}", n.id),
-                    })?;
+        for line in &rendered_node.lines {
+            let metrics = line.metrics;
             let label_x = if line.keep_centered {
                 -metrics.width / 2.0
             } else {
@@ -892,7 +892,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             out.push_str("</g>");
         }
 
-        if let Some(divider_y_offset) = prepared_node.divider_y_offset {
+        if let Some(divider_y_offset) = rendered_node.divider_y_offset {
             let divider_y = y + divider_y_offset;
             let divider_d = if let Some(stroke) = roughjs_parse_hex_color_to_srgba(stroke_color) {
                 if let Ok(mut opts) = roughr::core::OptionsBuilder::default()

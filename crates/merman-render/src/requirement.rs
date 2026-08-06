@@ -13,6 +13,7 @@ use merman_core::diagrams::requirement::{
     RequirementDiagramRenderModel, RequirementRenderElement, RequirementRenderNode,
 };
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 mod config;
@@ -105,6 +106,22 @@ impl RequirementLabelMeasurementBinding {
                 .builtin_operation_carrier(TextMeasurementOperation::Wrapped)?,
         })
     }
+
+    fn matches(
+        &self,
+        settings: &config::RequirementLayoutSettings,
+        measurer: &dyn TextMeasurer,
+    ) -> bool {
+        self.font_family == settings.font_family
+            && self.font_size_bits == settings.font_size.to_bits()
+            && self.calculation_font_family == settings.calculation_font_family
+            && self.calculation_font_size_bits == settings.calculation_font_size.to_bits()
+            && measurer
+                .builtin_operation_carrier(TextMeasurementOperation::MermaidCalculateTextDimensions)
+                == Some(self.dimensions_carrier)
+            && measurer.builtin_operation_carrier(TextMeasurementOperation::Wrapped)
+                == Some(self.wrapped_carrier)
+    }
 }
 
 #[derive(Debug)]
@@ -136,17 +153,14 @@ impl RequirementPreparedArtifact {
         measurer: &'a dyn TextMeasurer,
     ) -> RequirementRenderLabelMeasurements<'a> {
         let settings = RequirementConfigView::new(effective_config).layout_settings();
-        let requested_binding =
-            RequirementLabelMeasurementBinding::for_measurer(&settings, measurer);
         let reuse_prepared = self
             .measurement_binding
             .as_ref()
-            .zip(requested_binding.as_ref())
-            .is_some_and(|(prepared, requested)| prepared == requested);
+            .is_some_and(|binding| binding.matches(&settings, measurer));
 
         RequirementRenderLabelMeasurements {
             measurer,
-            styles: requirement_measurement_styles(&settings),
+            styles: (!reuse_prepared).then(|| requirement_measurement_styles(&settings)),
             reuse_prepared,
         }
     }
@@ -169,6 +183,7 @@ pub(crate) struct RequirementNodeLabelLine {
     pub(crate) display_text: String,
     pub(crate) metrics: RequirementLabelMetrics,
     pub(crate) y_offset: f64,
+    pub(crate) source_index: usize,
     pub(crate) measurement_bold: bool,
     pub(crate) bold: bool,
     pub(crate) keep_centered: bool,
@@ -186,7 +201,7 @@ pub(crate) struct RequirementEdgeLabelPlan {
 
 pub(crate) struct RequirementRenderLabelMeasurements<'a> {
     measurer: &'a dyn TextMeasurer,
-    styles: RequirementMeasurementStyles,
+    styles: Option<RequirementMeasurementStyles>,
     reuse_prepared: bool,
 }
 
@@ -200,26 +215,54 @@ impl RequirementRenderLabelMeasurements<'_> {
         if self.reuse_prepared {
             return Some(prepared);
         }
+        let styles = self
+            .styles
+            .as_ref()
+            .expect("opaque Requirement measurements retain their styles");
 
         // Mermaid 11.16's `requirementBox.addText` performs `calculateTextWidth`/`createText`
         // during SVG emission. Replaying that request keeps host callback order and provenance
         // observable whenever the private built-in binding cannot prove safe reuse.
         measure_requirement_label_metrics(
             self.measurer,
-            &self.styles.html_regular,
-            &self.styles.html_bold,
-            &self.styles.calculation,
+            &styles.html_regular,
+            &styles.html_bold,
+            &styles.calculation,
             display_text,
             display_text,
             measurement_bold,
         )
     }
 
-    pub(crate) fn node_line_metrics(
+    pub(crate) fn node_plan_for_render<'a>(
         &self,
-        line: &RequirementNodeLabelLine,
-    ) -> Option<RequirementLabelMetrics> {
-        self.resolve(&line.display_text, line.measurement_bold, line.metrics)
+        prepared: &'a RequirementNodeLabelPlan,
+    ) -> Option<Cow<'a, RequirementNodeLabelPlan>> {
+        if self.reuse_prepared {
+            return Some(Cow::Borrowed(prepared));
+        }
+
+        let lines = prepared
+            .lines
+            .iter()
+            .map(|line| {
+                let metrics =
+                    self.resolve(&line.display_text, line.measurement_bold, line.metrics)?;
+                Some((
+                    line.source_index,
+                    RequirementLabelSpec {
+                        display_text: line.display_text.clone(),
+                        measurement_bold: line.measurement_bold,
+                        render_bold: line.bold,
+                        keep_centered: line.keep_centered,
+                    },
+                    metrics,
+                ))
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let (_, _, plan) =
+            requirement_box_layout_from_measured_lines(lines, 20.0, 20.0).into_node_plan();
+        Some(Cow::Owned(plan))
     }
 
     pub(crate) fn measure_edge_label_for_render(
@@ -229,12 +272,16 @@ impl RequirementRenderLabelMeasurements<'_> {
         if self.reuse_prepared {
             return Some(());
         }
+        let styles = self
+            .styles
+            .as_ref()
+            .expect("opaque Requirement measurements retain their styles");
 
         measure_requirement_label_metrics(
             self.measurer,
-            &self.styles.html_regular,
-            &self.styles.html_bold,
-            &self.styles.calculation,
+            &styles.html_regular,
+            &styles.html_bold,
+            &styles.calculation,
             &edge.display_text,
             &edge.display_text,
             false,
@@ -353,6 +400,30 @@ fn requirement_box_layout(
     padding: f64,
 ) -> RequirementBoxLayout {
     // Mirrors Mermaid `requirementBox.ts` label stacking and bbox-based sizing.
+    let measured_lines = lines
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, line)| {
+            let metrics = measure_requirement_label_metrics(
+                measurer,
+                html_style_regular,
+                html_style_bold,
+                calculation_style,
+                &line.display_text,
+                &line.display_text,
+                line.measurement_bold,
+            )?;
+            Some((idx, line, metrics))
+        })
+        .collect();
+    requirement_box_layout_from_measured_lines(measured_lines, gap, padding)
+}
+
+fn requirement_box_layout_from_measured_lines(
+    lines: Vec<(usize, RequirementLabelSpec, RequirementLabelMetrics)>,
+    gap: f64,
+    padding: f64,
+) -> RequirementBoxLayout {
     let mut max_w: f64 = 0.0;
     let mut min_y = 0.0;
     let mut max_y = 0.0;
@@ -362,18 +433,7 @@ fn requirement_box_layout(
     let mut name_height = 0.0;
     let mut has_body = false;
 
-    for (idx, line) in lines.into_iter().enumerate() {
-        let Some(metrics) = measure_requirement_label_metrics(
-            measurer,
-            html_style_regular,
-            html_style_bold,
-            calculation_style,
-            &line.display_text,
-            &line.display_text,
-            line.measurement_bold,
-        ) else {
-            continue;
-        };
+    for (idx, line, metrics) in lines {
         max_w = max_w.max(metrics.width);
 
         if idx == 0 {
@@ -406,6 +466,7 @@ fn requirement_box_layout(
             display_text: line.display_text,
             metrics,
             y_offset: line_y_offset,
+            source_index: idx,
             measurement_bold: line.measurement_bold,
             bold: line.render_bold,
             keep_centered: line.keep_centered,
@@ -981,6 +1042,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter(
 mod tests {
     use super::*;
     use crate::text::{TextMetrics, VendoredFontMetricsTextMeasurer};
+    use std::cell::Cell;
 
     struct FamilySelectionMeasurer;
 
@@ -1003,6 +1065,43 @@ mod tests {
 
         fn measure_svg_simple_text_bbox_height_px(&self, _text: &str, _style: &TextStyle) -> f64 {
             10.0
+        }
+    }
+
+    #[derive(Default)]
+    struct PhaseHeightMeasurer {
+        inner: VendoredFontMetricsTextMeasurer,
+        render_phase: Cell<bool>,
+    }
+
+    impl TextMeasurer for PhaseHeightMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.inner.measure(text, style)
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            text: &str,
+            style: &TextStyle,
+        ) -> TextMetrics {
+            self.inner
+                .measure_mermaid_calculate_text_dimensions(text, style)
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            max_width: Option<f64>,
+            wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            let mut metrics = self
+                .inner
+                .measure_wrapped(text, style, max_width, wrap_mode);
+            if self.render_phase.get() {
+                metrics.height += 12.0;
+            }
+            metrics
         }
     }
 
@@ -1100,5 +1199,58 @@ mod tests {
         assert_eq!(layout.lines[0].y_offset, 0.0);
         assert_eq!(layout.lines[1].y_offset, layout.lines[0].metrics.height);
         assert_eq!(layout.divider_y_offset, Some(layout.lines[2].y_offset));
+    }
+
+    #[test]
+    fn opaque_render_measurements_rebuild_node_stacking_offsets() {
+        let measurer = PhaseHeightMeasurer::default();
+        let styles = RequirementMeasurementStyles {
+            html_regular: TextStyle::default(),
+            html_bold: TextStyle {
+                font_weight: Some("bold".to_string()),
+                ..TextStyle::default()
+            },
+            calculation: TextStyle::default(),
+        };
+        let prepared = requirement_box_layout(
+            &measurer,
+            &styles.html_regular,
+            &styles.html_bold,
+            &styles.calculation,
+            vec![
+                node_label_spec(
+                    "&lt;&lt;Requirement&gt;&gt;".to_string(),
+                    false,
+                    false,
+                    true,
+                ),
+                node_label_spec("requirement-a".to_string(), true, true, true),
+                node_label_spec("ID: REQ-1".to_string(), false, false, false),
+            ],
+            20.0,
+            20.0,
+        )
+        .into_node_plan()
+        .2;
+        let prepared_second_offset = prepared.lines[1].y_offset;
+
+        measurer.render_phase.set(true);
+        let measurements = RequirementRenderLabelMeasurements {
+            measurer: &measurer,
+            styles: Some(styles),
+            reuse_prepared: false,
+        };
+        let rendered = measurements
+            .node_plan_for_render(&prepared)
+            .expect("opaque labels remain measurable");
+
+        assert!(matches!(rendered, Cow::Owned(_)));
+        assert!(rendered.lines[0].metrics.height > prepared.lines[0].metrics.height);
+        assert_eq!(rendered.lines[1].y_offset, rendered.lines[0].metrics.height);
+        assert_ne!(rendered.lines[1].y_offset, prepared_second_offset);
+        assert_eq!(
+            rendered.divider_y_offset,
+            Some(rendered.lines[0].metrics.height + rendered.lines[1].metrics.height + 20.0)
+        );
     }
 }
