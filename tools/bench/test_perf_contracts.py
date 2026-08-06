@@ -2619,7 +2619,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 ["cargo", "+1.95.0", "metadata"],
             )
 
-    def test_reuse_comparison_contract_rejects_every_sampling_identity_drift(
+    def test_reuse_comparison_contract_allows_new_selection_but_rejects_runner_drift(
         self,
     ) -> None:
         root = Path("/tmp/reuse-contract")
@@ -2700,8 +2700,15 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             source=source,
             report=report,
             recipes=recipes,
-            selection=selection,
-            contracts=contracts,
+        )
+
+        changed_selection = copy.deepcopy(source)
+        changed_selection["selection"]["groups"]["head"] = "render"
+        changed_selection["fixtures"][0]["bytes"]["head"]["sha256"] = "b" * 64
+        compare_self._validate_reuse_comparison_contract(
+            source=changed_selection,
+            report=report,
+            recipes=recipes,
         )
 
         mutations = {
@@ -2715,12 +2722,6 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             "recipes": lambda value: value["recipes"]["head"].__setitem__(
                 "bench", "other"
             ),
-            "selection": lambda value: value["selection"]["groups"].__setitem__(
-                "head", "other"
-            ),
-            "fixture": lambda value: value["fixtures"][0]["bytes"]["head"].__setitem__(
-                "sha256", "b" * 64
-            ),
         }
         for label, mutate in mutations.items():
             changed = copy.deepcopy(source)
@@ -2732,8 +2733,6 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     source=changed,
                     report=report,
                     recipes=recipes,
-                    selection=selection,
-                    contracts=contracts,
                 )
 
     def test_runner_recipes_build_each_side_with_its_own_cargo_contract(self) -> None:

@@ -1525,21 +1525,6 @@ def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
             )
 
 
-def _fixture_reuse_identity(contract: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: contract.get(key)
-        for key in (
-            "name",
-            "family",
-            "base_benchmark",
-            "head_benchmark",
-            "selected",
-            "metadata",
-            "bytes",
-        )
-    }
-
-
 def _require_reusable_discovery_match(
     *,
     label: str,
@@ -1574,8 +1559,6 @@ def _validate_reuse_comparison_contract(
     source: dict[str, Any],
     report: dict[str, Any],
     recipes: dict[str, RunnerRecipe],
-    selection: dict[str, Any],
-    contracts: Sequence[dict[str, Any]],
 ) -> None:
     _require_equal_reuse_value("comparison labels", report["comparison"], source.get("comparison"))
     _require_equal_reuse_value("environment", report["environment"], source.get("environment"))
@@ -1586,13 +1569,6 @@ def _validate_reuse_comparison_contract(
         )
     expected_recipes = {side: _recipe_report(recipe) for side, recipe in recipes.items()}
     _require_equal_reuse_value("recipes", expected_recipes, source.get("recipes"))
-    _require_equal_reuse_value("selection", selection, source.get("selection"))
-    current_fixtures = [_fixture_reuse_identity(item) for item in contracts]
-    origin_fixtures = [
-        _fixture_reuse_identity(item)
-        for item in source["fixtures"]
-    ]
-    _require_equal_reuse_value("fixture identities", current_fixtures, origin_fixtures)
 
 
 def _prepare_reused_runner(
@@ -3512,8 +3488,6 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
             source=reuse_source,
             report=report,
             recipes={"base": base_recipe, "head": head_recipe},
-            selection=selection,
-            contracts=contracts,
         )
     if not contracts:
         raise ContractViolation("no benchmark fixtures were selected")
@@ -3602,11 +3576,6 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         "components": "two metrics per comparable benchmark",
     }
     if reuse_source is not None:
-        _require_equal_reuse_value(
-            "method.confidence_contract",
-            report["method"]["confidence_contract"],
-            reuse_source["method"].get("confidence_contract"),
-        )
         report["method"]["discovery_reuse"]["status"] = "verified"
     if not comparable:
         _append_contract_error(report, "coverage", "no comparable benchmark rows")
