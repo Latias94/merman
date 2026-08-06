@@ -298,8 +298,12 @@ function operationRequestJson(value) {
   const expectation = OPERATION_EXPECTATION_BY_ID.get(operationId);
   if (typeof source !== "string") throw new TypeError("source must be a string.");
   if (uri !== null && typeof uri !== "string") throw new TypeError("uri must be a string or null.");
-  if (expectation.requires_uri && (uri === null || uri.length === 0)) {
+  const normalizedUri = uri === "" ? null : uri;
+  if (expectation.requires_uri && normalizedUri === null) {
     throw new TypeError(`operation \`${operationId}\` requires a non-empty uri.`);
+  }
+  if (!expectation.requires_uri && normalizedUri !== null) {
+    throw new TypeError(`operation \`${operationId}\` does not accept a uri.`);
   }
   assertUtf8Field(
     operationId,
@@ -311,13 +315,17 @@ function operationRequestJson(value) {
     "operation request source",
     NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes,
   );
-  if (uri !== null) {
-    assertUtf8Field(uri, "operation request uri", NODE_TRANSPORT_FIELD_LIMITS.uri_utf8_bytes);
+  if (normalizedUri !== null) {
+    assertUtf8Field(
+      normalizedUri,
+      "operation request uri",
+      NODE_TRANSPORT_FIELD_LIMITS.uri_utf8_bytes,
+    );
   }
   const request = {
     operation_id: operationId,
     source,
-    uri,
+    uri: normalizedUri,
   };
   if (optionsJson !== undefined) {
     if (typeof optionsJson !== "string") {

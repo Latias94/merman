@@ -567,6 +567,35 @@ test("generic operations preserve request-local options JSON", async () => {
   await engine.dispose();
 });
 
+test("operation URI policy normalizes empty values and rejects forbidden identifiers", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+
+  await engine.executeOperation({
+    operationId: "svg",
+    source: "flowchart TD\nA --> B",
+    uri: "",
+  });
+  assert.deepEqual(factory.calls, [
+    {
+      operation_id: "svg",
+      source: "flowchart TD\nA --> B",
+      uri: null,
+    },
+  ]);
+
+  assert.throws(
+    () => engine.executeOperation({
+      operationId: "svg",
+      source: "flowchart TD\nA --> B",
+      uri: "file:///diagram.mmd",
+    }),
+    /does not accept a uri/i,
+  );
+  assert.equal(factory.calls.length, 1);
+  await engine.dispose();
+});
+
 test("operation request fields accept exact UTF-8 ceilings and reject plus one", async () => {
   const factory = transportFactory({
     async execute(requestJson) {
