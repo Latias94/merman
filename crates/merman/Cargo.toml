@@ -210,3 +210,7 @@ required-features = ["svg"]
 [[example]]
 name = "icon_registry_calibration"
 required-features = ["svg"]
+
+[[example]]
+name = "layout_work_calibration"
+required-features = ["complete-svg"]
