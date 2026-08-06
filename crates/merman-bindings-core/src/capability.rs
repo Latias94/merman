@@ -102,3 +102,19 @@ impl TransportCompiledExtensionKey {
         }
     }
 }
+
+#[cfg(all(
+    test,
+    feature = "svg",
+    feature = "layout-cytoscape",
+    feature = "layout-elk",
+    feature = "math"
+))]
+mod feature_unification_probe_tests {
+    #[test]
+    fn ambient_render_backends_are_really_compiled() {
+        assert!(merman::svg::layout_cytoscape_available());
+        assert!(merman::svg::layout_elk_available());
+        assert!(merman::svg::math_available());
+    }
+}

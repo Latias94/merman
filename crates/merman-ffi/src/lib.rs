@@ -5104,12 +5104,13 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         );
     }
 
-    #[cfg(all(
-        feature = "svg",
-        not(any(feature = "layout-cytoscape", feature = "layout-elk", feature = "math"))
-    ))]
+    #[cfg(feature = "svg")]
     #[test]
     fn optional_render_capabilities_follow_the_native_c_owner_contract() {
+        assert!(!cfg!(feature = "layout-cytoscape"));
+        assert!(!cfg!(feature = "layout-elk"));
+        assert!(!cfg!(feature = "math"));
+
         let api = api_table();
 
         let mut catalog_result = native_result();

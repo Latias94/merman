@@ -1242,7 +1242,7 @@ impl RenderSession {
     }
 
     /// Reports effective operation availability after policy and backend/service resolution.
-    pub fn supports_capability(&self, capability: RenderCapability) -> bool {
+    pub(crate) fn supports_capability(&self, capability: RenderCapability) -> bool {
         if !self.capability_policy.allows(capability) {
             return false;
         }

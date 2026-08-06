@@ -452,16 +452,30 @@ jobs:
             --lib --cargo-quiet \
             -E 'package(merman-wasm) & test(runtime_catalog_follows_the_wasm_feature_surface_and_local_relations)'
           ambient_render_features="merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-elk,merman-bindings-core/math"
-          cargo nextest run --locked \
-            -p merman-ffi -p merman-uniffi -p merman-wasm \
+          cargo nextest run --locked -p merman-bindings-core \
             --no-default-features \
-            --features "$ambient_render_features,merman-ffi/svg,merman-uniffi/svg,merman-wasm/svg" \
-            --lib --cargo-quiet \
-            -E 'test(optional_render_capabilities_follow_the_native_c_owner_contract) | test(optional_render_capabilities_follow_the_uniffi_owner_contract) | test(optional_render_capabilities_follow_the_wasm_owner_contract)'
+            --features "$ambient_render_features" \
+            --lib --cargo-quiet --no-tests=fail \
+            -E 'test(ambient_render_backends_are_really_compiled)'
+          cargo nextest run --locked -p merman-ffi \
+            --no-default-features \
+            --features "$ambient_render_features,merman-ffi/svg" \
+            --lib --cargo-quiet --no-tests=fail \
+            -E 'test(optional_render_capabilities_follow_the_native_c_owner_contract)'
+          cargo nextest run --locked -p merman-uniffi \
+            --no-default-features \
+            --features "$ambient_render_features,merman-uniffi/svg" \
+            --lib --cargo-quiet --no-tests=fail \
+            -E 'test(optional_render_capabilities_follow_the_uniffi_owner_contract)'
+          cargo nextest run --locked -p merman-wasm \
+            --no-default-features \
+            --features "$ambient_render_features,merman-wasm/svg" \
+            --lib --cargo-quiet --no-tests=fail \
+            -E 'test(optional_render_capabilities_follow_the_wasm_owner_contract)'
           cargo nextest run --locked -p merman-android-jni \
             --no-default-features \
             --features "$ambient_render_features,merman-android-jni/svg" \
-            --test owner_capability_contract --cargo-quiet
+            --test owner_capability_contract --cargo-quiet --no-tests=fail
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
             --features merman-bindings-core/svg,merman/layout-cytoscape,merman/layout-elk,merman/math,merman/system-timing \
             --lib --cargo-quiet

@@ -2121,12 +2121,13 @@ mod tests {
         assert_eq!(reusable, plan);
     }
 
-    #[cfg(all(
-        feature = "svg",
-        not(any(feature = "layout-cytoscape", feature = "layout-elk", feature = "math"))
-    ))]
+    #[cfg(feature = "svg")]
     #[test]
     fn optional_render_capabilities_follow_the_uniffi_owner_contract() {
+        assert!(!cfg!(feature = "layout-cytoscape"));
+        assert!(!cfg!(feature = "layout-elk"));
+        assert!(!cfg!(feature = "math"));
+
         let facade = engine();
         let catalog: Value = serde_json::from_str(&facade.runtime_catalog_json().unwrap()).unwrap();
         let capability_ids = catalog["capabilities"]["capability_ids"]

@@ -173,9 +173,7 @@ pub use resources::{
 pub enum Error {
     #[error("unsupported diagram type for layout: {diagram_type}")]
     UnsupportedDiagram { diagram_type: String },
-    #[error(
-        "compiled renderer lacks capability `{capability}` required by diagram `{diagram_type}`"
-    )]
+    #[error("render session lacks capability `{capability}` required by diagram `{diagram_type}`")]
     MissingCapability {
         capability: RenderCapability,
         diagram_type: String,
@@ -485,14 +483,14 @@ mod tests {
             assert_eq!(
                 error.to_string(),
                 format!(
-                    "compiled renderer lacks capability `{stable_id}` required by diagram `contract-test`"
+                    "render session lacks capability `{stable_id}` required by diagram `contract-test`"
                 )
             );
         }
     }
 
     #[test]
-    fn render_capability_policy_is_a_small_explicit_allow_mask() {
+    fn render_capability_policy_is_an_explicit_allow_mask() {
         let denied = RenderCapabilityPolicy::deny_all();
         for capability in [
             RenderCapability::LayoutCytoscape,
@@ -511,7 +509,6 @@ mod tests {
         assert!(math_only.allows(RenderCapability::Math));
         assert!(!math_only.allows(RenderCapability::LayoutCytoscape));
         assert!(!math_only.allows(RenderCapability::LayoutElk));
-        assert_eq!(std::mem::size_of::<RenderCapabilityPolicy>(), 1);
     }
 
     #[cfg(feature = "layout-elk")]

@@ -658,12 +658,13 @@ mod tests {
         assert_eq!(plan["ready"], true);
     }
 
-    #[cfg(all(
-        feature = "svg",
-        not(any(feature = "layout-cytoscape", feature = "layout-elk", feature = "math"))
-    ))]
+    #[cfg(feature = "svg")]
     #[test]
     fn optional_render_capabilities_follow_the_wasm_owner_contract() {
+        assert!(!cfg!(feature = "layout-cytoscape"));
+        assert!(!cfg!(feature = "layout-elk"));
+        assert!(!cfg!(feature = "math"));
+
         let capabilities = wasm_artifact_contract().runtime_capabilities();
         assert!(capabilities.has_capability("svg"));
 
