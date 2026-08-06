@@ -189,6 +189,10 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
             include_str!("fixtures/flowchart_long_edge_labels.mmd"),
         ),
         (
+            "flowchart_svg_label_reuse",
+            include_str!("fixtures/flowchart_svg_label_reuse.mmd"),
+        ),
+        (
             "flowchart_selfloop_bidi",
             include_str!("fixtures/flowchart_selfloop_bidi.mmd"),
         ),
