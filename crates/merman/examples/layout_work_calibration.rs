@@ -15,6 +15,13 @@ use std::process::Command;
 const LAYOUT_WORK_LIMIT_ID: &str = "max_layout_work_units";
 const DEFAULT_BOUNDARY_MAX_ITERATIONS: usize = 65_536;
 const ARCHITECTURE_BOUNDARY_NODES: usize = 32;
+const EXPECTED_CALIBRATION_FEATURES: [&str; 5] = [
+    "svg",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "complete-svg",
+];
 
 #[derive(Debug)]
 struct Arguments {
@@ -193,6 +200,7 @@ struct FixtureInput {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = parse_arguments()?;
+    validate_calibration_features()?;
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()?;
@@ -854,8 +862,29 @@ fn provenance(
 
 fn enabled_features() -> Vec<&'static str> {
     let mut features = Vec::new();
+    if cfg!(feature = "system-clock") {
+        features.push("system-clock");
+    }
+    if cfg!(feature = "system-timezone") {
+        features.push("system-timezone");
+    }
+    if cfg!(feature = "system-random") {
+        features.push("system-random");
+    }
+    if cfg!(feature = "system-timing") {
+        features.push("system-timing");
+    }
     if cfg!(feature = "svg") {
         features.push("svg");
+    }
+    if cfg!(feature = "analysis") {
+        features.push("analysis");
+    }
+    if cfg!(feature = "editor") {
+        features.push("editor");
+    }
+    if cfg!(feature = "ascii") {
+        features.push("ascii");
     }
     if cfg!(feature = "layout-cytoscape") {
         features.push("layout-cytoscape");
@@ -866,7 +895,30 @@ fn enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "math") {
         features.push("math");
     }
+    if cfg!(feature = "png") {
+        features.push("png");
+    }
+    if cfg!(feature = "jpeg") {
+        features.push("jpeg");
+    }
+    if cfg!(feature = "pdf") {
+        features.push("pdf");
+    }
+    if cfg!(feature = "complete-svg") {
+        features.push("complete-svg");
+    }
     features
+}
+
+fn validate_calibration_features() -> Result<(), Box<dyn Error>> {
+    let enabled = enabled_features();
+    if enabled != EXPECTED_CALIBRATION_FEATURES {
+        return Err(format!(
+            "layout calibration requires exactly the complete-svg feature closure; enabled={enabled:?}"
+        )
+        .into());
+    }
+    Ok(())
 }
 
 fn command_required(cwd: &Path, command: &str, args: &[&str]) -> Result<String, Box<dyn Error>> {
