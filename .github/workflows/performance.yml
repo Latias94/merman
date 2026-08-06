@@ -17,6 +17,7 @@ on:
       - "tools/bench/**"
       - "tools/mermaid-cli/**"
       - "crates/merman/**"
+      - "crates/merman-bindings-core/**"
       - "crates/merman-core/**"
       - "crates/merman-render/**"
       - "crates/roughr/**"

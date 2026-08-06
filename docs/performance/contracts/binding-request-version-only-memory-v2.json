@@ -14,7 +14,7 @@
     "inputs": [
       {
         "path": "crates/merman-bindings-core/benches/request_overlay_memory.rs",
-        "sha256": "190cc268ae0fd3d57b9996ed399366a750fbb005841efec86ec44a83281d4293"
+        "sha256": "b7bdf6d5d4b67698c7987da472575c92414a284112ee9ea8e423fa00dacc5d1c"
       },
       {
         "path": "crates/merman-bindings-core/benches/request_overlay_memory/allocator.rs",

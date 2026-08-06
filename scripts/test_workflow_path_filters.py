@@ -136,6 +136,22 @@ class WorkflowPathFilterTests(unittest.TestCase):
                     required_paths,
                 )
 
+    def test_performance_paths_cover_native_memory_inputs(self) -> None:
+        required_paths = {
+            ".github/workflows/performance.yml",
+            "Cargo.lock",
+            "Cargo.toml",
+            "crates/merman-bindings-core/**",
+            "docs/performance/**",
+            "tools/bench/**",
+        }
+
+        self.assert_event_paths_include(
+            ".github/workflows/performance.yml",
+            "pull_request",
+            required_paths,
+        )
+
     def assert_event_paths_include(
         self,
         workflow_path: str,
