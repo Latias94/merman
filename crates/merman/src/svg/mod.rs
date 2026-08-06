@@ -1119,6 +1119,38 @@ mod svg_pipeline_tests {
     }
 
     #[test]
+    fn render_svg_sync_scopes_root_qualified_theme_css_to_the_root_svg() {
+        let renderer = HeadlessRenderer::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "theme": "base",
+                "themeCSS": "svg[aria-roledescription=\"class\"] g.classGroup rect { stroke-width: 3px; }"
+            })))
+            .with_diagram_id("modern-theme-css");
+        let source = r#"classDiagram
+  class User
+"#;
+
+        let svg = renderer.render_svg_sync(source).unwrap().unwrap();
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+        let root = document.root_element();
+
+        assert_eq!(root.attribute("id"), Some("modern-theme-css"));
+        assert_eq!(root.attribute("aria-roledescription"), Some("class"));
+        assert!(
+            svg.contains(
+                "#modern-theme-css[aria-roledescription=\"class\"] g.classGroup rect { stroke-width: 3px; }"
+            ),
+            "{svg}"
+        );
+        assert!(
+            !svg.contains(
+                "#modern-theme-css svg[aria-roledescription=\"class\"] g.classGroup rect"
+            ),
+            "{svg}"
+        );
+    }
+
+    #[test]
     fn render_svg_sync_filters_diagram_level_theme_css() {
         let renderer = HeadlessRenderer::new().with_diagram_id("theme-css-filter");
         let source = r##"%%{init: {"themeCSS": ".node rect { outline: 13px solid rgb(1, 2, 3); }"}}%%
