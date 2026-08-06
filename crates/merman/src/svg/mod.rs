@@ -1673,17 +1673,9 @@ impl HeadlessRenderer {
         text: &str,
         site_config: merman_core::MermaidConfig,
     ) -> Result<Option<String>> {
-        let engine = self
-            .materialized_engine()
-            .clone()
-            .with_site_config(site_config);
-        let Some(prepared) = self
-            .operation_with_engine(&engine, text)?
-            .prepare_render()?
-        else {
-            return Ok(None);
-        };
-        Ok(Some(self.render_prepared_svg(prepared)?.into_svg()))
+        self.clone()
+            .with_site_config(site_config)
+            .render_svg_sync(text)
     }
 
     pub fn render_svg_with_pipeline_sync(
