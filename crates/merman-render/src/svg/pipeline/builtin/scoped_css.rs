@@ -487,6 +487,7 @@ mod tests {
         assert_eq!(
             scope_selector(
                 r#"svg[aria-roledescription="classDiagram"] g.classGroup rect, svg > g, :root, svg-icon"#,
+                "color: red;",
                 "#diagram",
             ),
             r#"#diagram[aria-roledescription="classDiagram"] g.classGroup rect, #diagram svg > g, #diagram, #diagram svg-icon"#
@@ -498,6 +499,7 @@ mod tests {
         assert_eq!(
             scope_selector(
                 "svg + .outside, svg ~ .outside, svg:has(+ .outside), #diagram-other .node",
+                "color: red;",
                 "#diagram",
             ),
             "#diagram svg + .outside, #diagram svg ~ .outside, #diagram svg:has(+ .outside), #diagram #diagram-other .node"
@@ -509,6 +511,7 @@ mod tests {
         assert_eq!(
             scope_selector(
                 r#"svg[data-label="a]b"][data-path="a\"b"] .node"#,
+                "color: red;",
                 "#diagram",
             ),
             r#"#diagram[data-label="a]b"][data-path="a\"b"] .node"#
@@ -520,6 +523,7 @@ mod tests {
         assert_eq!(
             scope_selector(
                 "svg[data-x] + .outside, svg[data-x]~.outside, svg[data-x] /* guard */ + .outside, svg[data-x",
+                "color: red;",
                 "#diagram",
             ),
             "#diagram svg[data-x] + .outside, #diagram svg[data-x]~.outside, #diagram svg[data-x] /* guard */ + .outside, #diagram svg[data-x"
@@ -531,6 +535,7 @@ mod tests {
         assert_eq!(
             scope_selector(
                 "svg[data-x/* ] */] + .outside, svg[data-x]/*guard*/+.outside, svg[a][b] + .outside, svg[a][b] ~ .outside",
+                "color: red;",
                 "#diagram",
             ),
             "#diagram svg[data-x/* ] */] + .outside, #diagram svg[data-x]/*guard*/+.outside, #diagram svg[a][b] + .outside, #diagram svg[a][b] ~ .outside"
