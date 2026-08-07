@@ -2504,6 +2504,65 @@ mod tests {
         (nodes, edges)
     }
 
+    fn mixed_size_tree_nodes_and_edges() -> (Vec<IndexedNode>, Vec<IndexedEdge>) {
+        // Mirrors the range of rectangular and circular label boxes exercised by complex
+        // Mindmap fixtures. The work-controlled entry point must remain bit-identical even when
+        // node sizes change the radial seed positions and grid occupancy.
+        let nodes = vec![
+            IndexedNode {
+                width: 240.0,
+                height: 92.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 67.203,
+                height: 67.203,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 169.922,
+                height: 44.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 107.203,
+                height: 44.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 67.203,
+                height: 67.203,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 81.125,
+                height: 81.125,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 167.844,
+                height: 44.0,
+                x: 0.0,
+                y: 0.0,
+            },
+        ];
+        let edges = vec![
+            IndexedEdge { a: 0, b: 1 },
+            IndexedEdge { a: 1, b: 2 },
+            IndexedEdge { a: 1, b: 3 },
+            IndexedEdge { a: 0, b: 4 },
+            IndexedEdge { a: 4, b: 5 },
+            IndexedEdge { a: 4, b: 6 },
+        ];
+        (nodes, edges)
+    }
+
     fn assert_points_identical(actual: &[crate::Point], expected: &[crate::Point]) {
         assert_eq!(actual.len(), expected.len());
         for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
@@ -2548,7 +2607,7 @@ mod tests {
 
     #[test]
     fn controlled_layout_preserves_output_and_has_an_exact_budget_boundary() {
-        let (nodes, edges) = basic_nodes_and_edges();
+        let (nodes, edges) = mixed_size_tree_nodes_and_edges();
         let compatibility = layout_indexed(&nodes, &edges).expect("compatibility layout");
 
         let mut recording = RecordingWorkControl::unbounded();
