@@ -204,9 +204,9 @@ fn scope_selector(selector: &str, body: &str, scope: &str) -> String {
                 scope.to_string()
             } else {
                 let expanded = trimmed.replace('&', scope);
-                if expanded == scope && safe_root_declarations {
-                    expanded
-                } else if is_already_namespaced(&expanded, scope) {
+                if (expanded == scope && safe_root_declarations)
+                    || is_already_namespaced(&expanded, scope)
+                {
                     expanded
                 } else {
                     format!("{scope} {expanded}")
