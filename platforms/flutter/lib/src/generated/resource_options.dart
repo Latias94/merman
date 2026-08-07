@@ -59,126 +59,6 @@ final class MermanResourceLimitId {
     true,
     1,
   );
-  static const maxThemeEncodedBytes = MermanResourceLimitId._known(
-    'max_theme_encoded_bytes',
-    'theme_input',
-    true,
-    0,
-  );
-  static const maxThemeBase64Bytes = MermanResourceLimitId._known(
-    'max_theme_base64_bytes',
-    'theme_input',
-    true,
-    0,
-  );
-  static const maxFontAssetCompressedBytes = MermanResourceLimitId._known(
-    'max_font_asset_compressed_bytes',
-    'font_decode',
-    true,
-    0,
-  );
-  static const maxFontAssetDecodedBytes = MermanResourceLimitId._known(
-    'max_font_asset_decoded_bytes',
-    'font_decode',
-    true,
-    0,
-  );
-  static const maxFontCatalogDecodedBytes = MermanResourceLimitId._known(
-    'max_font_catalog_decoded_bytes',
-    'font_catalog',
-    true,
-    0,
-  );
-  static const maxFontAssets = MermanResourceLimitId._known(
-    'max_font_assets',
-    'font_catalog',
-    true,
-    0,
-  );
-  static const maxFontFaces = MermanResourceLimitId._known(
-    'max_font_faces',
-    'font_catalog',
-    true,
-    0,
-  );
-  static const maxFontTables = MermanResourceLimitId._known(
-    'max_font_tables',
-    'font_catalog',
-    true,
-    0,
-  );
-  static const maxFontAliases = MermanResourceLimitId._known(
-    'max_font_aliases',
-    'font_catalog',
-    true,
-    0,
-  );
-  static const maxFontDecodedExpansionRatio = MermanResourceLimitId._known(
-    'max_font_decoded_expansion_ratio',
-    'font_decode',
-    true,
-    1,
-  );
-  static const themeEncodedBytesHardCap = MermanResourceLimitId._known(
-    'theme_encoded_bytes_hard_cap',
-    'theme_input',
-    false,
-    1,
-  );
-  static const themeBase64BytesHardCap = MermanResourceLimitId._known(
-    'theme_base64_bytes_hard_cap',
-    'theme_input',
-    false,
-    1,
-  );
-  static const fontAssetCompressedBytesHardCap = MermanResourceLimitId._known(
-    'font_asset_compressed_bytes_hard_cap',
-    'font_decode',
-    false,
-    1,
-  );
-  static const fontAssetDecodedBytesHardCap = MermanResourceLimitId._known(
-    'font_asset_decoded_bytes_hard_cap',
-    'font_decode',
-    false,
-    1,
-  );
-  static const fontCatalogDecodedBytesHardCap = MermanResourceLimitId._known(
-    'font_catalog_decoded_bytes_hard_cap',
-    'font_catalog',
-    false,
-    1,
-  );
-  static const fontAssetsHardCap = MermanResourceLimitId._known(
-    'font_assets_hard_cap',
-    'font_catalog',
-    false,
-    1,
-  );
-  static const fontFacesHardCap = MermanResourceLimitId._known(
-    'font_faces_hard_cap',
-    'font_catalog',
-    false,
-    1,
-  );
-  static const fontTablesHardCap = MermanResourceLimitId._known(
-    'font_tables_hard_cap',
-    'font_catalog',
-    false,
-    1,
-  );
-  static const fontAliasesHardCap = MermanResourceLimitId._known(
-    'font_aliases_hard_cap',
-    'font_catalog',
-    false,
-    1,
-  );
-  static const fontDecodedExpansionRatioHardCap = MermanResourceLimitId._known(
-    'font_decoded_expansion_ratio_hard_cap',
-    'font_decode',
-    false,
-    1,
-  );
   static const maxDocumentDiagrams = MermanResourceLimitId._known(
     'max_document_diagrams',
     'document_scan',
@@ -287,26 +167,6 @@ final class MermanResourceLimitId {
     maxLayoutWorkUnits,
     maxSvgBytes,
     maxSvgElements,
-    maxThemeEncodedBytes,
-    maxThemeBase64Bytes,
-    maxFontAssetCompressedBytes,
-    maxFontAssetDecodedBytes,
-    maxFontCatalogDecodedBytes,
-    maxFontAssets,
-    maxFontFaces,
-    maxFontTables,
-    maxFontAliases,
-    maxFontDecodedExpansionRatio,
-    themeEncodedBytesHardCap,
-    themeBase64BytesHardCap,
-    fontAssetCompressedBytesHardCap,
-    fontAssetDecodedBytesHardCap,
-    fontCatalogDecodedBytesHardCap,
-    fontAssetsHardCap,
-    fontFacesHardCap,
-    fontTablesHardCap,
-    fontAliasesHardCap,
-    fontDecodedExpansionRatioHardCap,
     maxDocumentDiagrams,
     maxAsciiGridCells,
     maxRasterWidth,
@@ -379,16 +239,6 @@ enum MermanResourceOverrideId {
   maxLayoutWorkUnits('max_layout_work_units', 1),
   maxSvgBytes('max_svg_bytes', 1),
   maxSvgElements('max_svg_elements', 1),
-  maxThemeEncodedBytes('max_theme_encoded_bytes', 0),
-  maxThemeBase64Bytes('max_theme_base64_bytes', 0),
-  maxFontAssetCompressedBytes('max_font_asset_compressed_bytes', 0),
-  maxFontAssetDecodedBytes('max_font_asset_decoded_bytes', 0),
-  maxFontCatalogDecodedBytes('max_font_catalog_decoded_bytes', 0),
-  maxFontAssets('max_font_assets', 0),
-  maxFontFaces('max_font_faces', 0),
-  maxFontTables('max_font_tables', 0),
-  maxFontAliases('max_font_aliases', 0),
-  maxFontDecodedExpansionRatio('max_font_decoded_expansion_ratio', 1),
   maxDocumentDiagrams('max_document_diagrams', 0),
   maxAsciiGridCells('max_ascii_grid_cells', 1),
   maxRasterWidth('max_raster_width', 1),

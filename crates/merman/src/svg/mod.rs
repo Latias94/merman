@@ -48,6 +48,11 @@ use std::sync::{Arc, OnceLock};
 pub use merman_core::runtime::{
     OperationContext, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
 };
+pub use merman_render::diagram_theme::{
+    ThemeResourceLimitDescriptor, ThemeResourceLimitExceeded, ThemeResourceLimitId,
+    ThemeResourceLimitOverride, ThemeResourceLimitOverrideError, ThemeResourceLimitPhase,
+    ThemeResourcePolicy, ThemeResourcePolicyRestrictionError, theme_resource_limit_descriptors,
+};
 pub use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
@@ -72,10 +77,9 @@ pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
-    ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
-    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
-    ResourcePolicyRestrictionError, ThemeResourceLimitId, resource_limit_descriptors,
-    resource_profile_descriptors,
+    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
+    ResourceLimitOverrideError, ResourceLimitPhase, ResourcePolicyRestrictionError,
+    resource_limit_descriptors, resource_profile_descriptors,
 };
 pub use merman_render::svg::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor, IconPack,

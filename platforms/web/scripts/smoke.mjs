@@ -1217,7 +1217,6 @@ function assertEditorLanguageSurface(enabled) {
     capability_id: null,
     details: {
       resource: {
-        cause: "arithmetic_overflow",
         limit_id: "max_layout_work_units",
         phase: "layout_model",
         actual: Number.MAX_SAFE_INTEGER,
@@ -1229,21 +1228,20 @@ function assertEditorLanguageSurface(enabled) {
   };
   assert.ok(
     api.isBindingErrorPayload(resourceError),
-    "expected structured resource cause to satisfy the binding error contract"
+    "expected structured resource details to satisfy the binding error contract"
   );
-  assert.equal(resourceError.details.resource.cause, "arithmetic_overflow");
   assert.equal(
     api.isBindingErrorPayload({
       ...resourceError,
       details: {
         resource: {
           ...resourceError.details.resource,
-          cause: undefined,
+          limit_id: undefined,
         },
       },
     }),
     false,
-    "resource details without a cause must not satisfy the binding error contract"
+    "resource details without a limit id must not satisfy the binding error contract"
   );
 
   assert.deepEqual(

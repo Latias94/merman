@@ -83,13 +83,7 @@ fn binding_resource_limit_descriptors() -> Vec<BindingResourceLimitDescriptor> {
     limits.extend(
         merman::svg::resource_limit_descriptors()
             .iter()
-            .filter(|descriptor| {
-                matches!(
-                    descriptor.id,
-                    merman::svg::ResourceLimitId::Render(_)
-                        | merman::svg::ResourceLimitId::Theme(_)
-                )
-            })
+            .filter(|descriptor| matches!(descriptor.id, merman::svg::ResourceLimitId::Render(_)))
             .map(|descriptor| BindingResourceLimitDescriptor {
                 stable_id: descriptor.stable_id,
                 phase: descriptor.phase.as_str(),
@@ -160,13 +154,10 @@ pub(crate) fn resource_profile_value(
     }
 
     #[cfg(feature = "svg")]
-    if let Some(id) = merman::svg::ResourceLimitId::from_stable_id(stable_id) {
-        if matches!(
-            id,
-            merman::svg::ResourceLimitId::Render(_) | merman::svg::ResourceLimitId::Theme(_)
-        ) {
-            return Some(merman::svg::RenderResourcePolicy::for_profile(profile).value(id));
-        }
+    if let Some(id @ merman::svg::ResourceLimitId::Render(_)) =
+        merman::svg::ResourceLimitId::from_stable_id(stable_id)
+    {
+        return Some(merman::svg::RenderResourcePolicy::for_profile(profile).value(id));
     }
 
     #[cfg(feature = "analysis")]
@@ -216,7 +207,7 @@ pub(crate) fn resource_limit_owner(stable_id: &str) -> BindingResourceOwner {
     #[cfg(feature = "svg")]
     if matches!(
         merman::svg::ResourceLimitId::from_stable_id(stable_id),
-        Some(merman::svg::ResourceLimitId::Render(_) | merman::svg::ResourceLimitId::Theme(_))
+        Some(merman::svg::ResourceLimitId::Render(_))
     ) {
         return BindingResourceOwner::Capability("svg");
     }
@@ -248,7 +239,6 @@ impl BindingResourceScope {
         let analysis_document = is_analysis_document_limit(stable_id);
         let ascii = is_ascii_limit(stable_id);
         let render = is_render_limit(stable_id);
-        let theme = is_theme_limit(stable_id);
         let export_outputs = export_limit_output_ids(stable_id);
 
         match self {
@@ -261,24 +251,21 @@ impl BindingResourceScope {
             }
             Self::Model => input.is_some(),
             Self::Ascii => input.is_some() || ascii,
-            Self::Layout => input.is_some() || theme || stable_id == "max_layout_work_units",
-            Self::Svg => input.is_some() || render || theme,
+            Self::Layout => input.is_some() || stable_id == "max_layout_work_units",
+            Self::Svg => input.is_some() || render,
             Self::Png => {
                 input.is_some()
                     || render
-                    || theme
                     || export_outputs.is_some_and(|outputs| outputs.contains(&"png"))
             }
             Self::Jpeg => {
                 input.is_some()
                     || render
-                    || theme
                     || export_outputs.is_some_and(|outputs| outputs.contains(&"jpeg"))
             }
             Self::Pdf => {
                 input.is_some()
                     || render
-                    || theme
                     || export_outputs.is_some_and(|outputs| outputs.contains(&"pdf"))
             }
         }
@@ -338,21 +325,6 @@ fn is_render_limit(stable_id: &str) -> bool {
     }
 }
 
-fn is_theme_limit(stable_id: &str) -> bool {
-    #[cfg(feature = "svg")]
-    {
-        matches!(
-            merman::svg::ResourceLimitId::from_stable_id(stable_id),
-            Some(merman::svg::ResourceLimitId::Theme(_))
-        )
-    }
-    #[cfg(not(feature = "svg"))]
-    {
-        let _ = stable_id;
-        false
-    }
-}
-
 fn export_limit_output_ids(stable_id: &str) -> Option<&'static [&'static str]> {
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     {
@@ -370,59 +342,44 @@ mod theme_tests {
     use super::*;
 
     #[test]
-    fn theme_limits_are_discoverable_and_scoped_to_visual_operations() {
+    fn generic_render_contract_excludes_theme_resource_limits() {
         let contract = binding_resource_contract();
-        let encoded = contract
-            .limits
-            .iter()
-            .find(|limit| limit.stable_id == "max_theme_encoded_bytes")
-            .expect("theme input policy limit");
-        let hard_cap = contract
-            .limits
-            .iter()
-            .find(|limit| limit.stable_id == "theme_encoded_bytes_hard_cap")
-            .expect("theme input hard cap");
+        let forbidden = [
+            "max_theme_encoded_bytes",
+            "max_theme_base64_bytes",
+            "max_font_asset_compressed_bytes",
+            "max_font_asset_decoded_bytes",
+            "max_font_catalog_decoded_bytes",
+            "max_font_assets",
+            "max_font_faces",
+            "max_font_tables",
+            "max_font_aliases",
+            "max_font_decoded_expansion_ratio",
+            "theme_encoded_bytes_hard_cap",
+            "theme_base64_bytes_hard_cap",
+            "font_asset_compressed_bytes_hard_cap",
+            "font_asset_decoded_bytes_hard_cap",
+            "font_catalog_decoded_bytes_hard_cap",
+            "font_assets_hard_cap",
+            "font_faces_hard_cap",
+            "font_tables_hard_cap",
+            "font_aliases_hard_cap",
+            "font_decoded_expansion_ratio_hard_cap",
+        ];
 
-        assert!(encoded.overridable);
-        assert!(!encoded.hard_cap);
-        assert!(!hard_cap.overridable);
-        assert!(hard_cap.hard_cap);
-        assert!(matches!(
-            resource_limit_owner(encoded.stable_id),
-            BindingResourceOwner::Capability("svg")
-        ));
-
-        for scope in [
-            BindingResourceScope::Layout,
-            BindingResourceScope::Svg,
-            BindingResourceScope::Png,
-            BindingResourceScope::Jpeg,
-            BindingResourceScope::Pdf,
-        ] {
-            assert!(scope.accepts(encoded.stable_id), "{}", scope.description());
-            assert!(scope.accepts(hard_cap.stable_id), "{}", scope.description());
-        }
-        for scope in [
-            BindingResourceScope::AnalysisDiagram,
-            BindingResourceScope::DocumentAnalysis,
-            BindingResourceScope::Model,
-            BindingResourceScope::Ascii,
-        ] {
-            assert!(!scope.accepts(encoded.stable_id), "{}", scope.description());
+        for id in forbidden {
             assert!(
-                !scope.accepts(hard_cap.stable_id),
-                "{}",
-                scope.description()
+                contract.limits.iter().all(|limit| limit.stable_id != id),
+                "generic binding resource contract must not project theme-owned limit `{id}`"
+            );
+            assert!(
+                contract
+                    .profiles
+                    .iter()
+                    .all(|profile| !profile.limits.contains_key(id)),
+                "generic binding resource profiles must not project theme-owned limit `{id}`"
             );
         }
-
-        let unbounded = contract
-            .profiles
-            .iter()
-            .find(|profile| profile.id == "unbounded-for-trusted-input")
-            .unwrap();
-        assert_eq!(unbounded.limits[encoded.stable_id], None);
-        assert!(unbounded.limits[hard_cap.stable_id].is_some());
     }
 }
 

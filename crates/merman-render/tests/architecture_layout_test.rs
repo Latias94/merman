@@ -6,9 +6,7 @@ use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
-use merman_render::resources::{
-    RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
-};
+use merman_render::resources::{RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase};
 
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
     let engine = Engine::new();
@@ -207,7 +205,6 @@ architecture-beta
     let Error::ResourceLimitExceeded(limit) = error else {
         panic!("expected a layout work resource error");
     };
-    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
     assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
     assert_eq!(limit.limit, "max_layout_work_units");
     assert_eq!(limit.actual, 55);

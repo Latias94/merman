@@ -42,26 +42,6 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
     public static let maxLayoutWorkUnits = MermanResourceLimitId("max_layout_work_units")
     public static let maxSvgBytes = MermanResourceLimitId("max_svg_bytes")
     public static let maxSvgElements = MermanResourceLimitId("max_svg_elements")
-    public static let maxThemeEncodedBytes = MermanResourceLimitId("max_theme_encoded_bytes")
-    public static let maxThemeBase64Bytes = MermanResourceLimitId("max_theme_base64_bytes")
-    public static let maxFontAssetCompressedBytes = MermanResourceLimitId("max_font_asset_compressed_bytes")
-    public static let maxFontAssetDecodedBytes = MermanResourceLimitId("max_font_asset_decoded_bytes")
-    public static let maxFontCatalogDecodedBytes = MermanResourceLimitId("max_font_catalog_decoded_bytes")
-    public static let maxFontAssets = MermanResourceLimitId("max_font_assets")
-    public static let maxFontFaces = MermanResourceLimitId("max_font_faces")
-    public static let maxFontTables = MermanResourceLimitId("max_font_tables")
-    public static let maxFontAliases = MermanResourceLimitId("max_font_aliases")
-    public static let maxFontDecodedExpansionRatio = MermanResourceLimitId("max_font_decoded_expansion_ratio")
-    public static let themeEncodedBytesHardCap = MermanResourceLimitId("theme_encoded_bytes_hard_cap")
-    public static let themeBase64BytesHardCap = MermanResourceLimitId("theme_base64_bytes_hard_cap")
-    public static let fontAssetCompressedBytesHardCap = MermanResourceLimitId("font_asset_compressed_bytes_hard_cap")
-    public static let fontAssetDecodedBytesHardCap = MermanResourceLimitId("font_asset_decoded_bytes_hard_cap")
-    public static let fontCatalogDecodedBytesHardCap = MermanResourceLimitId("font_catalog_decoded_bytes_hard_cap")
-    public static let fontAssetsHardCap = MermanResourceLimitId("font_assets_hard_cap")
-    public static let fontFacesHardCap = MermanResourceLimitId("font_faces_hard_cap")
-    public static let fontTablesHardCap = MermanResourceLimitId("font_tables_hard_cap")
-    public static let fontAliasesHardCap = MermanResourceLimitId("font_aliases_hard_cap")
-    public static let fontDecodedExpansionRatioHardCap = MermanResourceLimitId("font_decoded_expansion_ratio_hard_cap")
     public static let maxDocumentDiagrams = MermanResourceLimitId("max_document_diagrams")
     public static let maxAsciiGridCells = MermanResourceLimitId("max_ascii_grid_cells")
     public static let maxRasterWidth = MermanResourceLimitId("max_raster_width")
@@ -87,26 +67,6 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         .maxLayoutWorkUnits,
         .maxSvgBytes,
         .maxSvgElements,
-        .maxThemeEncodedBytes,
-        .maxThemeBase64Bytes,
-        .maxFontAssetCompressedBytes,
-        .maxFontAssetDecodedBytes,
-        .maxFontCatalogDecodedBytes,
-        .maxFontAssets,
-        .maxFontFaces,
-        .maxFontTables,
-        .maxFontAliases,
-        .maxFontDecodedExpansionRatio,
-        .themeEncodedBytesHardCap,
-        .themeBase64BytesHardCap,
-        .fontAssetCompressedBytesHardCap,
-        .fontAssetDecodedBytesHardCap,
-        .fontCatalogDecodedBytesHardCap,
-        .fontAssetsHardCap,
-        .fontFacesHardCap,
-        .fontTablesHardCap,
-        .fontAliasesHardCap,
-        .fontDecodedExpansionRatioHardCap,
         .maxDocumentDiagrams,
         .maxAsciiGridCells,
         .maxRasterWidth,
@@ -136,26 +96,6 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         "max_layout_work_units": MermanResourceLimitMetadata(id: "max_layout_work_units", phase: "layout_model", overridable: true, minimumValue: 1),
         "max_svg_bytes": MermanResourceLimitMetadata(id: "max_svg_bytes", phase: "svg_output", overridable: true, minimumValue: 1),
         "max_svg_elements": MermanResourceLimitMetadata(id: "max_svg_elements", phase: "svg_postprocess", overridable: true, minimumValue: 1),
-        "max_theme_encoded_bytes": MermanResourceLimitMetadata(id: "max_theme_encoded_bytes", phase: "theme_input", overridable: true, minimumValue: 0),
-        "max_theme_base64_bytes": MermanResourceLimitMetadata(id: "max_theme_base64_bytes", phase: "theme_input", overridable: true, minimumValue: 0),
-        "max_font_asset_compressed_bytes": MermanResourceLimitMetadata(id: "max_font_asset_compressed_bytes", phase: "font_decode", overridable: true, minimumValue: 0),
-        "max_font_asset_decoded_bytes": MermanResourceLimitMetadata(id: "max_font_asset_decoded_bytes", phase: "font_decode", overridable: true, minimumValue: 0),
-        "max_font_catalog_decoded_bytes": MermanResourceLimitMetadata(id: "max_font_catalog_decoded_bytes", phase: "font_catalog", overridable: true, minimumValue: 0),
-        "max_font_assets": MermanResourceLimitMetadata(id: "max_font_assets", phase: "font_catalog", overridable: true, minimumValue: 0),
-        "max_font_faces": MermanResourceLimitMetadata(id: "max_font_faces", phase: "font_catalog", overridable: true, minimumValue: 0),
-        "max_font_tables": MermanResourceLimitMetadata(id: "max_font_tables", phase: "font_catalog", overridable: true, minimumValue: 0),
-        "max_font_aliases": MermanResourceLimitMetadata(id: "max_font_aliases", phase: "font_catalog", overridable: true, minimumValue: 0),
-        "max_font_decoded_expansion_ratio": MermanResourceLimitMetadata(id: "max_font_decoded_expansion_ratio", phase: "font_decode", overridable: true, minimumValue: 1),
-        "theme_encoded_bytes_hard_cap": MermanResourceLimitMetadata(id: "theme_encoded_bytes_hard_cap", phase: "theme_input", overridable: false, minimumValue: 1),
-        "theme_base64_bytes_hard_cap": MermanResourceLimitMetadata(id: "theme_base64_bytes_hard_cap", phase: "theme_input", overridable: false, minimumValue: 1),
-        "font_asset_compressed_bytes_hard_cap": MermanResourceLimitMetadata(id: "font_asset_compressed_bytes_hard_cap", phase: "font_decode", overridable: false, minimumValue: 1),
-        "font_asset_decoded_bytes_hard_cap": MermanResourceLimitMetadata(id: "font_asset_decoded_bytes_hard_cap", phase: "font_decode", overridable: false, minimumValue: 1),
-        "font_catalog_decoded_bytes_hard_cap": MermanResourceLimitMetadata(id: "font_catalog_decoded_bytes_hard_cap", phase: "font_catalog", overridable: false, minimumValue: 1),
-        "font_assets_hard_cap": MermanResourceLimitMetadata(id: "font_assets_hard_cap", phase: "font_catalog", overridable: false, minimumValue: 1),
-        "font_faces_hard_cap": MermanResourceLimitMetadata(id: "font_faces_hard_cap", phase: "font_catalog", overridable: false, minimumValue: 1),
-        "font_tables_hard_cap": MermanResourceLimitMetadata(id: "font_tables_hard_cap", phase: "font_catalog", overridable: false, minimumValue: 1),
-        "font_aliases_hard_cap": MermanResourceLimitMetadata(id: "font_aliases_hard_cap", phase: "font_catalog", overridable: false, minimumValue: 1),
-        "font_decoded_expansion_ratio_hard_cap": MermanResourceLimitMetadata(id: "font_decoded_expansion_ratio_hard_cap", phase: "font_decode", overridable: false, minimumValue: 1),
         "max_document_diagrams": MermanResourceLimitMetadata(id: "max_document_diagrams", phase: "document_scan", overridable: true, minimumValue: 0),
         "max_ascii_grid_cells": MermanResourceLimitMetadata(id: "max_ascii_grid_cells", phase: "ascii_layout", overridable: true, minimumValue: 1),
         "max_raster_width": MermanResourceLimitMetadata(id: "max_raster_width", phase: "raster_allocation", overridable: true, minimumValue: 1),

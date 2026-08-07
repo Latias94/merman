@@ -28,7 +28,7 @@ The practical upgrade rule is:
 | `@mermanjs/web/<subpath>` or `@mermanjs/web/pkg/**` | Replace the import with one standalone browser package. Subpaths and raw WASM files are no longer public API. |
 | Native C or Flutter bindings | Rebuild or upgrade the complete host package and migrate from ABI 2 to ABI 3. Reject an ABI mismatch during initialization. |
 | Android JNI/Kotlin | Upgrade the complete AAR and Kotlin sources together. The alpha.4 surface is direct `JNI_OnLoad`/`RegisterNatives` transport API 1, not the C ABI; do not link the old `libmerman_ffi.so` JNI path. |
-| Python or Apple bindings | Upgrade the generated UniFFI API 3 wrapper and matching native artifact together; resource errors now include a required `cause` field. Do not mix alpha.3 and alpha.4 components. |
+| Python or Apple bindings | Upgrade the generated UniFFI API 3 wrapper and matching native artifact together. Do not mix alpha.3 and alpha.4 components. |
 | Analysis, editor, or LSP APIs | Follow the [Rust and embedding API migration](#rust-and-embedding-api-migration) section for exact type, method, ownership, and capability replacements. |
 | `render_svg_resvg_safe{,_sync}` or `svg_resvg_safe()` | Migrate to the typed `ResvgCompatibleSvg` boundaries described under [Rendering and option contracts](#rendering-and-option-contracts). No string-returning compatibility alias is retained. |
 | `assertSafeSvgForDom()` | Choose an explicit self-contained or navigable browser capability and retain its opaque admission until the real mount document is known. |
@@ -173,9 +173,9 @@ owner document before replacement. Manual hosts must replace `assertSafeSvgForDo
 ## Native ABI migration
 
 Alpha.4 C and Flutter hosts use ABI 3. Android uses direct JNI transport API 1; Python and Apple
-use UniFFI API 3 from the matching native artifact. Structured resource failures include the
-required `cause` discriminator (`ceiling` or `arithmetic_overflow`). Upgrade each language package
-and native artifact together; do not mix an alpha.3 generated wrapper with an alpha.4 library.
+use UniFFI API 3 from the matching native artifact. Structured resource failures carry typed limit
+ID, phase, actual value, effective maximum, and selected profile fields. Upgrade each language
+package and native artifact together; do not mix an alpha.3 generated wrapper with an alpha.4 library.
 C/Flutter hosts validate ABI 3 and the generated runtime catalog, while Android validates its
 transport catalog handshake before requesting optional outputs, resources, or host text
 measurement.

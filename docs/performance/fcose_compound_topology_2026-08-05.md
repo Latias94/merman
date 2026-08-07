@@ -106,7 +106,7 @@ The single-node Architecture fixture with `numIter = 5` and `randomize = false` 
 55 layout work units after topology setup is included:
 
 - `max_layout_work_units = 55` succeeds; and
-- `max_layout_work_units = 54` fails in `LayoutModel` with `actual = 55`, `cause = ceiling`, before
+- `max_layout_work_units = 54` fails in `LayoutModel` with `actual = 55` before
   the FCoSE topology is allocated or mutated.
 
 No resource profile ceiling was raised to admit the candidate.

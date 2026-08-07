@@ -81,7 +81,6 @@ enum MermanErrorKind {
 /// Stable resource metadata attached to a native resource-limit failure.
 class MermanResourceErrorDetails {
   const MermanResourceErrorDetails({
-    required this.cause,
     required this.limitId,
     required this.phase,
     required this.actual,
@@ -89,7 +88,6 @@ class MermanResourceErrorDetails {
     required this.profile,
   });
 
-  final String cause;
   final MermanResourceLimitId limitId;
   final String phase;
   final int actual;
@@ -173,15 +171,12 @@ class MermanException implements Exception {
         if (details is Map) {
           final resource = details['resource'];
           if (resource is Map) {
-            final cause = resource['cause'];
             final limitId = resource['limit_id'];
             final phase = resource['phase'];
             final actual = resource['actual'];
             final max = resource['max'];
             final profile = resource['profile'];
-            if (cause is String &&
-                cause.isNotEmpty &&
-                limitId is String &&
+            if (limitId is String &&
                 limitId.isNotEmpty &&
                 phase is String &&
                 phase.isNotEmpty &&
@@ -192,7 +187,6 @@ class MermanException implements Exception {
                 profile is String &&
                 profile.isNotEmpty) {
               resourceDetails = MermanResourceErrorDetails(
-                cause: cause,
                 limitId: MermanResourceLimitId.fromId(limitId),
                 phase: phase,
                 actual: actual,
@@ -3967,7 +3961,6 @@ Never _throwIconRegistryResourceLimit(
     codeName: 'resource-limit-exceeded',
     message: message,
     resourceDetails: MermanResourceErrorDetails(
-      cause: 'ceiling',
       limitId: MermanResourceLimitId.fromId(limit.id),
       phase: limit.phase,
       actual: actual,

@@ -125,8 +125,8 @@ Errors are exposed through the generated `MermanError` type. `MermanError.Bindin
 underlying status code/name, `MermanErrorKind`, optional `capability_id`, optional
 `MermanResourceErrorDetails`, and message from `merman-bindings-core`. `UNKNOWN_OPERATION` has no
 capability ID; `MISSING_CAPABILITY` preserves the exact descriptor ID. Resource failures expose the
-stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile. Consumers should not
-parse the message to distinguish these cases.
+limit ID, phase, actual value, effective maximum, and selected profile. Consumers should use those
+typed fields instead of parsing the message.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 `ResourceOptionsBuilder` emits Options JSON schema `2`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.

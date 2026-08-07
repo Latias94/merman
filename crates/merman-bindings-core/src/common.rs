@@ -72,30 +72,6 @@ impl BindingErrorKind {
     }
 }
 
-/// Stable machine-readable reason for a resource-limit failure.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-#[non_exhaustive]
-pub enum BindingResourceLimitCause {
-    #[default]
-    Ceiling,
-    ArithmeticOverflow,
-    /// A cause added by a newer engine that this binding layer does not yet classify.
-    Unknown,
-}
-
-impl BindingResourceLimitCause {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Ceiling => "ceiling",
-            Self::ArithmeticOverflow => "arithmetic_overflow",
-            Self::Unknown => "unknown",
-        }
-    }
-}
-
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingStatus {
@@ -150,8 +126,6 @@ pub struct BindingError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct BindingResourceErrorDetails {
-    /// Stable reason for the failure: `ceiling` or `arithmetic_overflow`.
-    pub cause: BindingResourceLimitCause,
     pub limit_id: &'static str,
     pub phase: &'static str,
     pub actual: u64,
@@ -253,33 +227,11 @@ impl BindingError {
         profile: &'static str,
         message: impl Into<String>,
     ) -> Self {
-        Self::resource_limit_with_cause(
-            BindingResourceLimitCause::Ceiling,
-            phase,
-            limit_id,
-            actual,
-            max,
-            profile,
-            message,
-        )
-    }
-
-    /// Constructs a resource-limit error with an explicit stable failure cause.
-    pub fn resource_limit_with_cause(
-        cause: BindingResourceLimitCause,
-        phase: &'static str,
-        limit_id: &'static str,
-        actual: u64,
-        max: u64,
-        profile: &'static str,
-        message: impl Into<String>,
-    ) -> Self {
         Self {
             status: BindingStatus::ResourceLimitExceeded,
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource: Some(BindingResourceErrorDetails {
-                cause,
                 limit_id,
                 phase,
                 actual,
@@ -315,7 +267,6 @@ impl BindingError {
             merman::svg::IconRegistryBuildErrorKind::ResourceLimitExceeded,
             pack_index,
             Some(BindingResourceErrorDetails {
-                cause: BindingResourceLimitCause::Ceiling,
                 limit_id: descriptor.stable_id,
                 phase: descriptor.phase,
                 actual,
@@ -403,7 +354,6 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
             (Some(limit), Some(actual), Some(max)) => {
                 let descriptor = limit.descriptor();
                 Some(BindingResourceErrorDetails {
-                    cause: BindingResourceLimitCause::Ceiling,
                     limit_id: descriptor.stable_id,
                     phase: descriptor.phase,
                     actual,
@@ -2226,20 +2176,7 @@ mod tests {
         assert_eq!(json["details"]["resource"]["actual"], 5);
         assert_eq!(json["details"]["resource"]["max"], 4);
         assert_eq!(json["details"]["resource"]["profile"], "constrained");
-        assert_eq!(json["details"]["resource"]["cause"], "ceiling");
-
-        let error = BindingError::resource_limit_with_cause(
-            BindingResourceLimitCause::ArithmeticOverflow,
-            "layout_model",
-            "max_layout_work_units",
-            u64::MAX,
-            800_000,
-            "interactive",
-            "layout work accounting overflowed",
-        );
-        let payload = binding_error_payload_json_bytes(&error);
-        let json: Value = serde_json::from_slice(&payload).unwrap();
-        assert_eq!(json["details"]["resource"]["cause"], "arithmetic_overflow");
+        assert!(json["details"]["resource"].get("cause").is_none());
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]

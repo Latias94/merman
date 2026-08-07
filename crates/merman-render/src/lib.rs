@@ -164,10 +164,9 @@ pub use resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
-    ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
-    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
-    ResourcePolicyRestrictionError, ThemeResourceLimitId, ZenumlComplexity,
-    resource_limit_descriptors, resource_profile_descriptors,
+    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
+    ResourceLimitOverrideError, ResourceLimitPhase, ResourcePolicyRestrictionError,
+    ZenumlComplexity, resource_limit_descriptors, resource_profile_descriptors,
 };
 
 #[derive(Debug, thiserror::Error)]

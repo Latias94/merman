@@ -1515,23 +1515,6 @@ mod tests {
             payload["error"]["details"]["resource"]["profile"],
             "constrained"
         );
-        assert_eq!(payload["error"]["details"]["resource"]["cause"], "ceiling");
-
-        let error = merman_bindings_core::BindingError::resource_limit_with_cause(
-            merman_bindings_core::BindingResourceLimitCause::ArithmeticOverflow,
-            "layout_model",
-            "max_layout_work_units",
-            u64::MAX,
-            800_000,
-            "interactive",
-            "layout work accounting overflowed",
-        );
-        let payload: serde_json::Value =
-            serde_json::from_str(&error_envelope(&error)).expect("Node error envelope");
-        assert_eq!(
-            payload["error"]["details"]["resource"]["cause"],
-            "arithmetic_overflow"
-        );
     }
 
     #[test]

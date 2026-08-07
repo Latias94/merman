@@ -44,10 +44,10 @@ pub use catalog_contract::{
 };
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError, BindingErrorKind,
-    BindingIconRegistryErrorDetails, BindingResourceErrorDetails, BindingResourceLimitCause,
-    BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
-    binding_error_payload_json_bytes, error_payload_json_bytes, render_payload_json_bytes,
-    render_resource_options_unavailable, resource_options_json,
+    BindingIconRegistryErrorDetails, BindingResourceErrorDetails, BindingRuntimePolicy,
+    BindingStatus, apply_resource_ceiling_json, binding_error_payload_json_bytes,
+    error_payload_json_bytes, render_payload_json_bytes, render_resource_options_unavailable,
+    resource_options_json,
 };
 pub use engine::BindingEngine;
 pub use lifecycle::{

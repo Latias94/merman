@@ -82,9 +82,8 @@ runtime policy.
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
 and optional `MermanResourceErrorDetails`. `.unknownOperation` has no capability ID;
 `.missingCapability` preserves the exact descriptor capability required by the valid request.
-Resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase,
-actual value, effective maximum, and selected profile. Do not distinguish these cases by matching
-the human-readable message.
+Resource failures preserve the limit ID, phase, actual value, effective maximum, and selected
+profile. Use those typed fields for diagnostics instead of parsing the human-readable message.
 
 ## Capabilities And Limits
 

@@ -36,26 +36,6 @@ public class MermanResourceLimitId private constructor(
         public val MAX_LAYOUT_WORK_UNITS: MermanResourceLimitId = MermanResourceLimitId("max_layout_work_units", "layout_model", true, 1)
         public val MAX_SVG_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_svg_bytes", "svg_output", true, 1)
         public val MAX_SVG_ELEMENTS: MermanResourceLimitId = MermanResourceLimitId("max_svg_elements", "svg_postprocess", true, 1)
-        public val MAX_THEME_ENCODED_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_theme_encoded_bytes", "theme_input", true, 0)
-        public val MAX_THEME_BASE64_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_theme_base64_bytes", "theme_input", true, 0)
-        public val MAX_FONT_ASSET_COMPRESSED_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_font_asset_compressed_bytes", "font_decode", true, 0)
-        public val MAX_FONT_ASSET_DECODED_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_font_asset_decoded_bytes", "font_decode", true, 0)
-        public val MAX_FONT_CATALOG_DECODED_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_font_catalog_decoded_bytes", "font_catalog", true, 0)
-        public val MAX_FONT_ASSETS: MermanResourceLimitId = MermanResourceLimitId("max_font_assets", "font_catalog", true, 0)
-        public val MAX_FONT_FACES: MermanResourceLimitId = MermanResourceLimitId("max_font_faces", "font_catalog", true, 0)
-        public val MAX_FONT_TABLES: MermanResourceLimitId = MermanResourceLimitId("max_font_tables", "font_catalog", true, 0)
-        public val MAX_FONT_ALIASES: MermanResourceLimitId = MermanResourceLimitId("max_font_aliases", "font_catalog", true, 0)
-        public val MAX_FONT_DECODED_EXPANSION_RATIO: MermanResourceLimitId = MermanResourceLimitId("max_font_decoded_expansion_ratio", "font_decode", true, 1)
-        public val THEME_ENCODED_BYTES_HARD_CAP: MermanResourceLimitId = MermanResourceLimitId("theme_encoded_bytes_hard_cap", "theme_input", false, 1)
-        public val THEME_BASE64_BYTES_HARD_CAP: MermanResourceLimitId = MermanResourceLimitId("theme_base64_bytes_hard_cap", "theme_input", false, 1)
-        public val FONT_ASSET_COMPRESSED_BYTES_HARD_CAP: MermanResourceLimitId = MermanResourceLimitId("font_asset_compressed_bytes_hard_cap", "font_decode", false, 1)
-        public val FONT_ASSET_DECODED_BYTES_HARD_CAP: MermanResourceLimitId = MermanResourceLimitId("font_asset_decoded_bytes_hard_cap", "font_decode", false, 1)
-        public val FONT_CATALOG_DECODED_BYTES_HARD_CAP: MermanResourceLimitId = MermanResourceLimitId("font_catalog_decoded_bytes_hard_cap", "font_catalog", false, 1)
-        public val FONT_ASSETS_HARD_CAP: MermanResourceLimitId = MermanResourceLimitId("font_assets_hard_cap", "font_catalog", false, 1)
-        public val FONT_FACES_HARD_CAP: MermanResourceLimitId = MermanResourceLimitId("font_faces_hard_cap", "font_catalog", false, 1)
-        public val FONT_TABLES_HARD_CAP: MermanResourceLimitId = MermanResourceLimitId("font_tables_hard_cap", "font_catalog", false, 1)
-        public val FONT_ALIASES_HARD_CAP: MermanResourceLimitId = MermanResourceLimitId("font_aliases_hard_cap", "font_catalog", false, 1)
-        public val FONT_DECODED_EXPANSION_RATIO_HARD_CAP: MermanResourceLimitId = MermanResourceLimitId("font_decoded_expansion_ratio_hard_cap", "font_decode", false, 1)
         public val MAX_DOCUMENT_DIAGRAMS: MermanResourceLimitId = MermanResourceLimitId("max_document_diagrams", "document_scan", true, 0)
         public val MAX_ASCII_GRID_CELLS: MermanResourceLimitId = MermanResourceLimitId("max_ascii_grid_cells", "ascii_layout", true, 1)
         public val MAX_RASTER_WIDTH: MermanResourceLimitId = MermanResourceLimitId("max_raster_width", "raster_allocation", true, 1)
@@ -82,26 +62,6 @@ public class MermanResourceLimitId private constructor(
             MAX_LAYOUT_WORK_UNITS,
             MAX_SVG_BYTES,
             MAX_SVG_ELEMENTS,
-            MAX_THEME_ENCODED_BYTES,
-            MAX_THEME_BASE64_BYTES,
-            MAX_FONT_ASSET_COMPRESSED_BYTES,
-            MAX_FONT_ASSET_DECODED_BYTES,
-            MAX_FONT_CATALOG_DECODED_BYTES,
-            MAX_FONT_ASSETS,
-            MAX_FONT_FACES,
-            MAX_FONT_TABLES,
-            MAX_FONT_ALIASES,
-            MAX_FONT_DECODED_EXPANSION_RATIO,
-            THEME_ENCODED_BYTES_HARD_CAP,
-            THEME_BASE64_BYTES_HARD_CAP,
-            FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
-            FONT_ASSET_DECODED_BYTES_HARD_CAP,
-            FONT_CATALOG_DECODED_BYTES_HARD_CAP,
-            FONT_ASSETS_HARD_CAP,
-            FONT_FACES_HARD_CAP,
-            FONT_TABLES_HARD_CAP,
-            FONT_ALIASES_HARD_CAP,
-            FONT_DECODED_EXPANSION_RATIO_HARD_CAP,
             MAX_DOCUMENT_DIAGRAMS,
             MAX_ASCII_GRID_CELLS,
             MAX_RASTER_WIDTH,
@@ -139,16 +99,6 @@ public enum class MermanResourceOverrideId(public val id: String, public val min
     MAX_LAYOUT_WORK_UNITS("max_layout_work_units", 1),
     MAX_SVG_BYTES("max_svg_bytes", 1),
     MAX_SVG_ELEMENTS("max_svg_elements", 1),
-    MAX_THEME_ENCODED_BYTES("max_theme_encoded_bytes", 0),
-    MAX_THEME_BASE64_BYTES("max_theme_base64_bytes", 0),
-    MAX_FONT_ASSET_COMPRESSED_BYTES("max_font_asset_compressed_bytes", 0),
-    MAX_FONT_ASSET_DECODED_BYTES("max_font_asset_decoded_bytes", 0),
-    MAX_FONT_CATALOG_DECODED_BYTES("max_font_catalog_decoded_bytes", 0),
-    MAX_FONT_ASSETS("max_font_assets", 0),
-    MAX_FONT_FACES("max_font_faces", 0),
-    MAX_FONT_TABLES("max_font_tables", 0),
-    MAX_FONT_ALIASES("max_font_aliases", 0),
-    MAX_FONT_DECODED_EXPANSION_RATIO("max_font_decoded_expansion_ratio", 1),
     MAX_DOCUMENT_DIAGRAMS("max_document_diagrams", 0),
     MAX_ASCII_GRID_CELLS("max_ascii_grid_cells", 1),
     MAX_RASTER_WIDTH("max_raster_width", 1),

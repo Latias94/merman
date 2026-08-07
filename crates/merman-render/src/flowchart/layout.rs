@@ -4064,10 +4064,6 @@ mod tests {
         let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected ResourceLimitExceeded");
         };
-        assert_eq!(
-            limit.cause,
-            crate::resources::ResourceLimitCause::ArithmeticOverflow
-        );
         assert_eq!(limit.limit, "max_layout_work_units");
         let Error::ResourceLimitExceeded(sticky) = work_control
             .charge_adapter(1)
@@ -4149,10 +4145,6 @@ mod tests {
         let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected ResourceLimitExceeded");
         };
-        assert_eq!(
-            limit.cause,
-            crate::resources::ResourceLimitCause::ArithmeticOverflow
-        );
         assert_eq!(limit.limit, "max_layout_work_units");
     }
 

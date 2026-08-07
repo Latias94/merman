@@ -35,7 +35,6 @@ def main() -> None:
         require(
             error.code_name == "MERMAN_RESOURCE_LIMIT_EXCEEDED"
             and error.resource is not None
-            and error.resource.cause == "ceiling"
             and error.resource.limit_id == "max_source_bytes"
             and error.resource.phase == "source"
             and error.resource.actual > error.resource.max

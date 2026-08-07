@@ -14,7 +14,7 @@ use ttf_parser::{Face, Permissions, PlatformId, Style, name_id};
 use super::admission::{
     FontCatalogKind, FontEmbeddingRequirement, FontSource, ThemeAdmissionError,
 };
-use crate::resources::{RenderResourcePolicy, ResourceLimitExceeded};
+use super::resources::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
 
 const FONT_CATALOG_FINGERPRINT_DOMAIN: &[u8] = b"merman-font-catalog-v1";
 const FONT_ASSET_FINGERPRINT_DOMAIN: &[u8] = b"merman-font-asset-v1";
@@ -204,10 +204,7 @@ impl FontCatalogSpec {
     ///
     /// Later theme compilers use the same operation; constructing a spec never grants a larger
     /// budget than the policy selected by the host.
-    pub fn compile(
-        self,
-        resources: &RenderResourcePolicy,
-    ) -> Result<FontCatalog, FontCatalogError> {
+    pub fn compile(self, resources: &ThemeResourcePolicy) -> Result<FontCatalog, FontCatalogError> {
         compile_font_catalog(self, resources)
     }
 }
@@ -441,7 +438,7 @@ impl FontCatalog {
 
 fn compile_font_catalog(
     mut spec: FontCatalogSpec,
-    resources: &RenderResourcePolicy,
+    resources: &ThemeResourcePolicy,
 ) -> Result<FontCatalog, FontCatalogError> {
     resources.check_font_asset_count(spec.assets.len())?;
     let total_input_bytes = spec
@@ -567,7 +564,7 @@ fn compile_font_catalog(
 fn canonicalize_font_asset(
     asset_index: usize,
     bytes: &[u8],
-    resources: &RenderResourcePolicy,
+    resources: &ThemeResourcePolicy,
 ) -> Result<(FontContainer, FontContainer, Vec<u8>), FontCatalogError> {
     let input_container = detect_font_container(bytes)
         .ok_or(FontCatalogError::UnsupportedFontContainer { asset_index })?;
@@ -643,7 +640,7 @@ fn parse_font_faces(
     bytes: &[u8],
     container: FontContainer,
     embedding: FontEmbeddingRequirement,
-    resources: &RenderResourcePolicy,
+    resources: &ThemeResourcePolicy,
     existing_face_count: usize,
 ) -> Result<Vec<FontFaceMetadata>, FontCatalogError> {
     let face_count = if container == FontContainer::Collection {
@@ -1060,7 +1057,7 @@ fn woff2_table_kind(tag_index: u8, custom_tag: Option<&[u8]>) -> Woff2TableKind 
 
 fn preflight_woff2(
     bytes: &[u8],
-    resources: &RenderResourcePolicy,
+    resources: &ThemeResourcePolicy,
     asset_index: usize,
 ) -> Result<Woff2Preflight, FontCatalogError> {
     let malformed = || FontCatalogError::MalformedWoff2 { asset_index };
@@ -1237,7 +1234,7 @@ fn preflight_woff2(
 fn validate_woff2_reconstruction(
     decompressed: &[u8],
     plan: &Woff2Preflight,
-    resources: &RenderResourcePolicy,
+    resources: &ThemeResourcePolicy,
 ) -> Result<(), FontCatalogError> {
     if decompressed.len() != plan.uncompressed_size
         || plan.table_references < plan.tables.len()
@@ -1332,7 +1329,7 @@ fn validate_woff2_reconstruction(
 
 fn validate_transformed_glyf_table(
     bytes: &[u8],
-    resources: &RenderResourcePolicy,
+    resources: &ThemeResourcePolicy,
     asset_index: usize,
 ) -> Result<(usize, usize), FontCatalogError> {
     const GLYF_SUBSTREAM_COUNT: usize = 7;
@@ -1706,7 +1703,7 @@ pub enum FontAssetIdError {
 #[non_exhaustive]
 pub enum FontCatalogError {
     #[error(transparent)]
-    ResourceLimit(#[from] ResourceLimitExceeded),
+    ResourceLimit(#[from] ThemeResourceLimitExceeded),
     #[error(transparent)]
     Admission(#[from] ThemeAdmissionError),
     #[error("font catalog must contain at least one custom asset")]
@@ -1777,8 +1774,8 @@ pub enum FontCatalogError {
 
 #[cfg(test)]
 mod tests {
+    use super::super::resources::{ThemeResourceLimitId, ThemeResourcePolicy};
     use super::*;
-    use crate::resources::RenderResourcePolicy;
 
     const EXCALIFONT_WOFF2: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -1796,11 +1793,20 @@ mod tests {
     }
 
     fn canonical_excalifont_ttf() -> Vec<u8> {
-        compile_font_catalog(excalifont_spec(), &RenderResourcePolicy::interactive())
+        compile_font_catalog(excalifont_spec(), &ThemeResourcePolicy::interactive())
             .unwrap()
             .assets()[0]
             .canonical_bytes()
             .to_vec()
+    }
+
+    #[test]
+    fn catalog_compile_uses_the_owner_local_theme_resource_policy() {
+        let compile: fn(
+            FontCatalogSpec,
+            &ThemeResourcePolicy,
+        ) -> Result<FontCatalog, FontCatalogError> = FontCatalogSpec::compile;
+        let _ = compile;
     }
 
     fn read_u16(bytes: &[u8], offset: usize) -> u16 {
@@ -1871,7 +1877,7 @@ mod tests {
     #[test]
     fn woff2_is_canonicalized_once_into_an_immutable_sfnt_catalog() {
         let catalog =
-            compile_font_catalog(excalifont_spec(), &RenderResourcePolicy::interactive()).unwrap();
+            compile_font_catalog(excalifont_spec(), &ThemeResourcePolicy::interactive()).unwrap();
 
         assert_eq!(catalog.kind(), FontCatalogKind::Custom);
         assert_eq!(catalog.assets().len(), 1);
@@ -1902,7 +1908,7 @@ mod tests {
             FontAssetSpec::new("fontawesome.otf", FONT_AWESOME_OTF),
         ]);
 
-        let catalog = compile_font_catalog(spec, &RenderResourcePolicy::interactive()).unwrap();
+        let catalog = compile_font_catalog(spec, &ThemeResourcePolicy::interactive()).unwrap();
         let ttf_asset = catalog
             .assets()
             .iter()
@@ -1938,7 +1944,7 @@ mod tests {
         let ttc = ttc_from_sfnts(&[&ttf, &ttf]);
         let spec = FontCatalogSpec::new([FontAssetSpec::new("excalifont.ttc", &ttc)]);
 
-        let catalog = compile_font_catalog(spec, &RenderResourcePolicy::interactive()).unwrap();
+        let catalog = compile_font_catalog(spec, &ThemeResourcePolicy::interactive()).unwrap();
 
         assert_eq!(
             catalog.assets()[0].input_container(),
@@ -1957,7 +1963,7 @@ mod tests {
     fn malformed_font_containers_and_collection_offsets_fail_closed() {
         let unsupported = FontCatalogSpec::new([FontAssetSpec::new("garbage", b"not a font")]);
         assert!(matches!(
-            compile_font_catalog(unsupported, &RenderResourcePolicy::interactive()),
+            compile_font_catalog(unsupported, &ThemeResourcePolicy::interactive()),
             Err(FontCatalogError::UnsupportedFontContainer { .. })
         ));
 
@@ -1966,7 +1972,7 @@ mod tests {
         write_u32(&mut empty_collection, 4, 0x0001_0000);
         let empty = FontCatalogSpec::new([FontAssetSpec::new("empty.ttc", empty_collection)]);
         assert!(matches!(
-            compile_font_catalog(empty, &RenderResourcePolicy::interactive()),
+            compile_font_catalog(empty, &ThemeResourcePolicy::interactive()),
             Err(FontCatalogError::MalformedCollection { .. })
         ));
 
@@ -1977,11 +1983,13 @@ mod tests {
         let oversized =
             FontCatalogSpec::new([FontAssetSpec::new("oversized.ttc", oversized_collection)]);
         assert!(matches!(
-            compile_font_catalog(oversized, &RenderResourcePolicy::interactive()),
-            Err(FontCatalogError::ResourceLimit(ResourceLimitExceeded {
-                limit: "max_font_faces" | "font_faces_hard_cap",
-                ..
-            }))
+            compile_font_catalog(oversized, &ThemeResourcePolicy::interactive()),
+            Err(FontCatalogError::ResourceLimit(
+                ThemeResourceLimitExceeded {
+                    limit: "max_font_faces" | "font_faces_hard_cap",
+                    ..
+                }
+            ))
         ));
 
         let ttf = canonical_excalifont_ttf();
@@ -1989,7 +1997,7 @@ mod tests {
         write_u32(&mut invalid_offset, 16, u32::MAX);
         let invalid = FontCatalogSpec::new([FontAssetSpec::new("invalid.ttc", invalid_offset)]);
         assert!(matches!(
-            compile_font_catalog(invalid, &RenderResourcePolicy::interactive()),
+            compile_font_catalog(invalid, &ThemeResourcePolicy::interactive()),
             Err(FontCatalogError::MalformedFace { face_index: 1, .. })
         ));
     }
@@ -1999,7 +2007,7 @@ mod tests {
         let restricted = with_embedding_flags(canonical_excalifont_ttf(), 0x0002);
         let inspect_only = FontCatalogSpec::new([FontAssetSpec::new("restricted", &restricted)]);
         let catalog =
-            compile_font_catalog(inspect_only, &RenderResourcePolicy::interactive()).unwrap();
+            compile_font_catalog(inspect_only, &ThemeResourcePolicy::interactive()).unwrap();
         assert_eq!(
             catalog.faces()[0].permissions(),
             FontEmbeddingPermissions::Restricted
@@ -2008,7 +2016,7 @@ mod tests {
         let embedded = FontCatalogSpec::new([FontAssetSpec::new("restricted", &restricted)])
             .with_embedding_requirement(FontEmbeddingRequirement::FullFont);
         assert!(matches!(
-            compile_font_catalog(embedded, &RenderResourcePolicy::interactive()),
+            compile_font_catalog(embedded, &ThemeResourcePolicy::interactive()),
             Err(FontCatalogError::EmbeddingDenied {
                 requirement: FontEmbeddingRequirement::FullFont,
                 permissions: FontEmbeddingPermissions::Restricted,
@@ -2019,58 +2027,49 @@ mod tests {
 
     #[test]
     fn staged_resource_checks_reject_font_payloads_before_catalog_retention() {
-        let compressed = RenderResourcePolicy::interactive()
-            .with_limit(
-                crate::resources::ResourceLimitId::MaxFontAssetCompressedBytes,
-                1,
-            )
+        let compressed = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxFontAssetCompressedBytes, 1)
             .unwrap();
         let error = compile_font_catalog(excalifont_spec(), &compressed).unwrap_err();
         assert!(matches!(
             error,
-            FontCatalogError::ResourceLimit(ResourceLimitExceeded {
+            FontCatalogError::ResourceLimit(ThemeResourceLimitExceeded {
                 limit: "max_font_asset_compressed_bytes",
                 ..
             })
         ));
 
-        let decoded = RenderResourcePolicy::interactive()
-            .with_limit(
-                crate::resources::ResourceLimitId::MaxFontAssetDecodedBytes,
-                1,
-            )
+        let decoded = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxFontAssetDecodedBytes, 1)
             .unwrap();
         let error = compile_font_catalog(excalifont_spec(), &decoded).unwrap_err();
         assert!(matches!(
             error,
-            FontCatalogError::ResourceLimit(ResourceLimitExceeded {
+            FontCatalogError::ResourceLimit(ThemeResourceLimitExceeded {
                 limit: "max_font_asset_decoded_bytes",
                 ..
             })
         ));
 
-        let ratio = RenderResourcePolicy::interactive()
-            .with_limit(
-                crate::resources::ResourceLimitId::MaxFontDecodedExpansionRatio,
-                1,
-            )
+        let ratio = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxFontDecodedExpansionRatio, 1)
             .unwrap();
         let error = compile_font_catalog(excalifont_spec(), &ratio).unwrap_err();
         assert!(matches!(
             error,
-            FontCatalogError::ResourceLimit(ResourceLimitExceeded {
+            FontCatalogError::ResourceLimit(ThemeResourceLimitExceeded {
                 limit: "max_font_decoded_expansion_ratio",
                 ..
             })
         ));
 
-        let disabled = RenderResourcePolicy::interactive()
-            .with_limit(crate::resources::ResourceLimitId::MaxFontAssets, 0)
+        let disabled = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxFontAssets, 0)
             .unwrap();
         let error = compile_font_catalog(excalifont_spec(), &disabled).unwrap_err();
         assert!(matches!(
             error,
-            FontCatalogError::ResourceLimit(ResourceLimitExceeded {
+            FontCatalogError::ResourceLimit(ThemeResourceLimitExceeded {
                 limit: "max_font_assets",
                 ..
             })
@@ -2096,7 +2095,7 @@ mod tests {
         .with_generic_family(GenericFontFamily::Cursive, "Excalifont")
         .with_alias("Sketch", "Excalifont");
 
-        let policy = RenderResourcePolicy::interactive();
+        let policy = ThemeResourcePolicy::interactive();
         let left = compile_font_catalog(left, &policy).unwrap();
         let right = compile_font_catalog(right, &policy).unwrap();
 
@@ -2113,7 +2112,7 @@ mod tests {
             FontAssetSpec::new("first", EXCALIFONT_WOFF2),
             FontAssetSpec::new("second", EXCALIFONT_WOFF2),
         ]);
-        let catalog = compile_font_catalog(spec, &RenderResourcePolicy::interactive()).unwrap();
+        let catalog = compile_font_catalog(spec, &ThemeResourcePolicy::interactive()).unwrap();
 
         assert_eq!(
             catalog.assets()[0].fingerprint(),
@@ -2130,7 +2129,7 @@ mod tests {
         let spec = excalifont_spec()
             .with_alias("Sketch", "Excalifont")
             .with_generic_family(GenericFontFamily::Cursive, "Sketch");
-        let catalog = compile_font_catalog(spec, &RenderResourcePolicy::interactive()).unwrap();
+        let catalog = compile_font_catalog(spec, &ThemeResourcePolicy::interactive()).unwrap();
 
         assert_eq!(catalog.aliases()[0].alias(), "Sketch");
         assert_eq!(catalog.aliases()[0].target(), "Excalifont");
@@ -2141,7 +2140,7 @@ mod tests {
 
         let unknown_alias = excalifont_spec().with_alias("Sketch", "Missing");
         assert!(matches!(
-            compile_font_catalog(unknown_alias, &RenderResourcePolicy::interactive()),
+            compile_font_catalog(unknown_alias, &ThemeResourcePolicy::interactive()),
             Err(FontCatalogError::UnknownAliasTarget { .. })
         ));
 
@@ -2149,7 +2148,7 @@ mod tests {
             .with_generic_family(GenericFontFamily::Cursive, "Excalifont")
             .with_generic_family(GenericFontFamily::Cursive, "Excalifont");
         assert!(matches!(
-            compile_font_catalog(duplicate_generic, &RenderResourcePolicy::interactive()),
+            compile_font_catalog(duplicate_generic, &ThemeResourcePolicy::interactive()),
             Err(FontCatalogError::DuplicateGenericFamily {
                 family: GenericFontFamily::Cursive
             })
@@ -2163,7 +2162,7 @@ mod tests {
             FontAssetSpec::new("same", EXCALIFONT_WOFF2),
         ]);
         assert!(matches!(
-            compile_font_catalog(duplicate, &RenderResourcePolicy::interactive()),
+            compile_font_catalog(duplicate, &ThemeResourcePolicy::interactive()),
             Err(FontCatalogError::DuplicateAssetId { .. })
         ));
 
@@ -2171,7 +2170,7 @@ mod tests {
             .with_alias("Excalifont", "Excalifont")
             .with_alias("excalifont", "Excalifont");
         assert!(matches!(
-            compile_font_catalog(alias_collision, &RenderResourcePolicy::interactive()),
+            compile_font_catalog(alias_collision, &ThemeResourcePolicy::interactive()),
             Err(FontCatalogError::AliasCollision { .. })
         ));
     }

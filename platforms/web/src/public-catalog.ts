@@ -103,7 +103,6 @@ export type BindingErrorKind =
   | "missing-capability";
 
 export interface BindingResourceErrorDetails {
-  cause: string;
   limit_id: string;
   phase: string;
   actual: number;
@@ -276,7 +275,6 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
     payload.details === undefined ||
     (!!resource &&
       typeof resource === "object" &&
-      typeof (resource as Record<string, unknown>).cause === "string" &&
       typeof (resource as Record<string, unknown>).limit_id === "string" &&
       typeof (resource as Record<string, unknown>).phase === "string" &&
       typeof (resource as Record<string, unknown>).actual === "number" &&

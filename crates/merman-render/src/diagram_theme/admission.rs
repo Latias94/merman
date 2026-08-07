@@ -690,7 +690,7 @@ mod tests {
                 super::super::assets::FontCatalogSpec::new([
                     super::super::assets::FontAssetSpec::new("excalifont", bytes),
                 ])
-                .compile(&crate::resources::RenderResourcePolicy::interactive())
+                .compile(&super::super::ThemeResourcePolicy::interactive())
                 .unwrap()
             }
         }
