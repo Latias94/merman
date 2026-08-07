@@ -235,12 +235,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
     State(Box<FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>>),
     Sequence(
-        Box<
-            FamilyPair<
-                diagrams::sequence::SequenceDiagramRenderModel,
-                crate::sequence::SequencePreparedArtifact,
-            >,
-        >,
+        Box<FamilyPair<diagrams::sequence::SequenceDiagramRenderModel, SequenceDiagramLayout>>,
     ),
     Zenuml(
         Box<
@@ -508,7 +503,7 @@ impl BuiltinFamilyArtifact {
             Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
             Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
             Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
-            Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout().layout()),
+            Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout()),
             Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
             Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
             Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
@@ -1231,7 +1226,7 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Sequence(model) => {
             BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
-                crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
+                crate::sequence::layout_sequence_diagram_typed_with_title_and_work_meter(
                     model,
                     title,
                     effective_config,

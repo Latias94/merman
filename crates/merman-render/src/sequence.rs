@@ -19,7 +19,6 @@ mod actors;
 mod block_steps;
 pub(crate) mod config;
 mod constants;
-mod message_metrics;
 mod messages;
 mod metrics;
 mod notes;
@@ -41,26 +40,9 @@ pub(crate) use notes::sequence_note_final_wrapped_lines;
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
 use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
 use config::SequenceLayoutSettings;
-use message_metrics::SequenceMessageMetricSidecar;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
 use rect::sequence_rect_stack_x_bounds;
 use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
-
-/// Private Sequence render artifact that keeps operation-owned measurements attached to layout.
-///
-/// Do not expose or detach this from the paired semantic model: the metric sidecar is valid only
-/// for that immutable model, text style, and built-in measurement route.
-#[derive(Debug)]
-pub(crate) struct SequencePreparedArtifact {
-    layout: SequenceDiagramLayout,
-    message_metrics: SequenceMessageMetricSidecar,
-}
-
-impl SequencePreparedArtifact {
-    pub(crate) fn layout(&self) -> &SequenceDiagramLayout {
-        &self.layout
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SequenceLayoutWorkShape {
@@ -121,19 +103,12 @@ pub(crate) fn sequence_block_label_wrap_width(block_width: f64, wrap_padding: f6
 
 pub(crate) fn sequence_block_widths_for_render(
     model: &SequenceDiagramRenderModel,
-    prepared: &SequencePreparedArtifact,
+    layout: &SequenceDiagramLayout,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> FxHashMap<String, f64> {
-    let layout = prepared.layout();
     let settings = SequenceLayoutSettings::from_effective_config(effective_config.as_value());
-    // SVG frame emission reconstructs Mermaid's `calculateLoopBounds` after Rust layout has
-    // already completed. Only the built-in operation route may carry its earlier message bounds
-    // across this private split; host and custom routes deliberately replay every callback.
-    let message_metrics = prepared
-        .message_metrics
-        .view(model, &settings.msg_text_style, measurer);
     let nodes_by_id: HashMap<&str, _> = layout
         .nodes
         .iter()
@@ -176,21 +151,20 @@ pub(crate) fn sequence_block_widths_for_render(
         note_text_style: &settings.note_text_style,
         math_config: effective_config,
         math_renderer,
-        message_metrics,
     })
     .into_iter()
     .collect()
 }
 
-/// Prepares a Sequence model under the cumulative work meter owned by the render operation.
-pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
+/// Lays out a Sequence model under the cumulative work meter owned by the render operation.
+pub(crate) fn layout_sequence_diagram_typed_with_title_and_work_meter(
     model: &SequenceDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: &OperationWorkMeter,
-) -> Result<SequencePreparedArtifact> {
+) -> Result<SequenceDiagramLayout> {
     work_meter.policy().check_sequence_complexity(model)?;
     let work_units =
         sequence_layout_work_units(model).ok_or_else(|| work_meter.arithmetic_overflow())?;
@@ -210,7 +184,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_top_offset_y,
         max_actor_layout_height,
         has_boxes,
-        message_metrics,
     } = plan_sequence_actors(SequenceActorLayoutPlanContext {
         model,
         measurer,
@@ -228,7 +201,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         wrap_padding: settings.wrap_padding,
         message_font_size: settings.msg_text_style.font_size,
     })?;
-    let message_metric_view = message_metrics.view(model, &settings.msg_text_style, measurer);
 
     let clusters: Vec<LayoutCluster> = Vec::new();
 
@@ -265,7 +237,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         note_text_style: &settings.note_text_style,
         math_config: &math_config,
         math_renderer,
-        message_metrics: message_metric_view,
     });
 
     let rect_x_bounds = sequence_rect_stack_x_bounds(
@@ -316,18 +287,14 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         msg_text_style: &settings.msg_text_style,
         math_config: &math_config,
         math_renderer,
-        message_metrics: message_metric_view,
     }));
 
-    Ok(SequencePreparedArtifact {
-        layout: SequenceDiagramLayout {
-            nodes,
-            edges,
-            clusters,
-            bounds,
-            block_layouts_by_id,
-        },
-        message_metrics,
+    Ok(SequenceDiagramLayout {
+        nodes,
+        edges,
+        clusters,
+        bounds,
+        block_layouts_by_id,
     })
 }
 
@@ -347,7 +314,7 @@ pub(crate) fn sequence_render_title<'a>(
 mod resource_tests {
     use super::{
         SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS, SequenceLayoutWorkShape,
-        prepare_sequence_diagram_typed_with_title_and_work_meter, sequence_layout_work_units,
+        layout_sequence_diagram_typed_with_title_and_work_meter, sequence_layout_work_units,
     };
     use crate::Error;
     use crate::resources::{
@@ -408,7 +375,7 @@ mod resource_tests {
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work - 1)
             .unwrap();
         let narrow_meter = OperationWorkMeter::new(narrow_policy);
-        let error = prepare_sequence_diagram_typed_with_title_and_work_meter(
+        let error = layout_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
             &json!({}),
@@ -429,7 +396,7 @@ mod resource_tests {
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work)
             .unwrap();
         let exact_meter = OperationWorkMeter::new(exact_policy);
-        prepare_sequence_diagram_typed_with_title_and_work_meter(
+        layout_sequence_diagram_typed_with_title_and_work_meter(
             &model,
             None,
             &json!({}),

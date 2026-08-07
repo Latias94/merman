@@ -45,7 +45,7 @@ fn scoped_sequence_base_defs(diagram_id: &str) -> String {
 }
 
 pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
-    prepared: &crate::sequence::SequencePreparedArtifact,
+    layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
@@ -53,7 +53,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     render_sequence_diagram_svg_inner(
-        prepared,
+        layout,
         model,
         effective_config.as_value(),
         effective_config,
@@ -64,7 +64,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
 }
 
 fn render_sequence_diagram_svg_inner(
-    prepared: &crate::sequence::SequencePreparedArtifact,
+    layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
     effective_config: &serde_json::Value,
     sanitize_config: &merman_core::MermaidConfig,
@@ -72,7 +72,6 @@ fn render_sequence_diagram_svg_inner(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let layout = prepared.layout();
     let effective_title =
         crate::sequence::sequence_render_title(model.title.as_deref(), diagram_title);
 
@@ -143,7 +142,7 @@ fn render_sequence_diagram_svg_inner(
 
     let block_widths_by_id = crate::sequence::sequence_block_widths_for_render(
         model,
-        prepared,
+        layout,
         sanitize_config,
         measurer,
         options.math_renderer(),
