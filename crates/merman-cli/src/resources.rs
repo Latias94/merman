@@ -622,6 +622,14 @@ fn map_render_override_error(
         RenderResourceLimitOverrideError::NonPositive(id) => {
             ResourcePolicyOverrideError::NonPositive(id)
         }
+        RenderResourceLimitOverrideError::BelowMinimum { id, minimum } => {
+            ResourcePolicyOverrideError::BelowMinimum {
+                limit: id,
+                requested,
+                minimum: u64::try_from(minimum)
+                    .expect("resource limit minimum must fit the public CLI integer contract"),
+            }
+        }
     }
 }
 
@@ -633,6 +641,12 @@ pub(crate) enum ResourcePolicyOverrideError {
     NonPositive(&'static str),
     #[error("resource limit `{limit}` value {requested} does not fit this target")]
     ValueOutOfRange { limit: &'static str, requested: u64 },
+    #[error("resource limit `{limit}` value {requested} must be at least {minimum}")]
+    BelowMinimum {
+        limit: &'static str,
+        requested: u64,
+        minimum: u64,
+    },
     #[error("resource limit `{limit}` value {requested} exceeds its hard capability of {max}")]
     HardCap {
         limit: &'static str,
