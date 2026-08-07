@@ -1,5 +1,5 @@
 use super::constants::sequence_actor_popup_panel_height;
-use super::messages::SequenceMessageBoundMetrics;
+use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
 use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
@@ -34,7 +34,7 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    pub(super) message_bound_metrics: &'a [Option<SequenceMessageBoundMetrics>],
+    pub(super) message_metrics: SequenceMessageMetricView<'a>,
 }
 
 pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds {
@@ -187,11 +187,8 @@ fn include_self_message_bounds(
         let center_x = ctx.actor_centers_x[i] + 1.0;
         let text = msg.message_text();
         let premeasured_bound = ctx
-            .message_bound_metrics
-            .get(message_index)
-            .copied()
-            .flatten()
-            .and_then(|metrics| metrics.validated_for(ctx.measurer));
+            .message_metrics
+            .get(SequenceMessageOwner::from_model_index(message_index), msg);
         let (text_w, _text_h) = if text.is_empty() {
             (1.0, 1.0)
         } else if let Some(metrics) = premeasured_bound {
