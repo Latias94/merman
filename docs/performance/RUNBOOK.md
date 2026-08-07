@@ -234,6 +234,33 @@ error precedence, resource-limit, security, host-callback, deterministic-output,
 contracts. Native allocation count/bytes and peak live growth use the separate instrumented memory
 harness; do not place allocator instrumentation in the latency executable.
 
+### Calibrate a layout-work ceiling
+
+Any change to a public layout-work ceiling requires a clean release build and the fail-closed
+calibration wrapper:
+
+```bash
+CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
+  --example layout_work_calibration --features complete-svg
+
+python3 tools/bench/run_layout_work_calibration.py \
+  --authoritative-date YYYY-MM-DD \
+  --out-dir target/bench/layout-work-calibration-YYYY-MM-DD \
+  --timeout-seconds 300 \
+  --full-repeats 5
+```
+
+The source probe owns the closed corpus and registered headroom rule. The wrapper must bind five
+byte-identical full reports, isolated semantic/layout/SVG/end-to-end paths, the exact corpus
+maximum at `W` and `W-1`, an adjacent deterministic node/edge cardinality boundary, typed failure
+payloads, timeout, peak RSS, and output hashes. Commit a compact evidence manifest under
+`docs/performance/evidence/` that binds the ignored raw summary by byte length and SHA-256, then
+link a dated decision receipt from `PERF_PLAN.md`. Record the result as `accepted-structural` only;
+stage elapsed and RSS observations do not create latency, memory, or host-SLO claims.
+
+The current accepted policy example is
+[`interactive_layout_work_calibration_2026-08-07.md`](interactive_layout_work_calibration_2026-08-07.md).
+
 Run the native memory harness only when the owner unit registers that gate:
 
 ```bash

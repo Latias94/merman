@@ -288,6 +288,31 @@ Prefer existing correctness suites plus one combined adversarial scale test over
 fixture-specific benchmark. Delete candidate-only counters, lanes, contracts, and generators after
 rejection; retain infrastructure only when it serves a stable recurring contract.
 
+### Layout-work policy calibration
+
+A public layout-work ceiling is a host-safety policy, not a latency benchmark and not a Mermaid
+semantic constant. Calibrate it from a closed, hashed corpus plus a rule registered before the
+decision. The rule must state its absolute headroom, relative headroom, and rounding quantum so the
+selected ceiling is reproducible rather than chosen after observing the maximum fixture.
+
+The release probe and wrapper must establish all of the following:
+
+- a clean source revision, exact release feature closure, toolchain, executable hash, corpus
+  manifest hash, and aggregate member hash;
+- multiple fresh full-process runs with byte-identical reports;
+- the maximum corpus member, its source/output hashes, and the calculated headroom;
+- exact adjacent `W/W-1` admission behavior with a structured rejection payload;
+- a preregistered monotonic model-cardinality curve with the last success, first rejection, and
+  next rejection, scoped only to that curve;
+- isolated semantic, layout, SVG, end-to-end, and failure probes, each in a fresh timeout-bound
+  process with exit status and peak RSS;
+- a committed evidence manifest that binds ignored raw reports and timing output by byte length and
+  SHA-256.
+
+These observations can admit an `accepted-structural` resource-policy decision. They do not admit a
+speedup, memory improvement, portable memory limit, or host SLO without a separate candidate-local
+A/B or memory contract.
+
 ### Report schema
 
 Self-comparison reports use schema version `2`. The JSON is the audit artifact; Markdown and PR

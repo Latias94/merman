@@ -507,13 +507,19 @@ the closed public fixture manifest and an adjacent typed rejection boundary:
 ```sh
 CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
   --example layout_work_calibration --features complete-svg
-target/release/examples/layout_work_calibration \
+
+python3 tools/bench/run_layout_work_calibration.py \
   --authoritative-date YYYY-MM-DD \
-  --corpus tools/bench/corpus.json \
-  --json-out target/bench/layout-work-calibration.json \
-  --expected-max-fixture flowchart_large \
-  --boundary-max-iterations 65536
+  --out-dir target/bench/layout-work-calibration-YYYY-MM-DD \
+  --timeout-seconds 300 \
+  --full-repeats 5
 ```
+
+The wrapper runs the closed corpus five times in fresh processes, verifies byte-identical reports,
+then launches isolated semantic, layout, SVG, end-to-end, exact `W-1`, and adjacent node/edge
+cardinality probes. It records the executable, source, manifest, runner, host, timeout, exit status,
+peak RSS, output, and raw-report hashes in one summary. Darwin uses `/usr/bin/time -l`; Linux uses
+GNU `time -v`. Unsupported timing formats fail closed rather than silently omitting RSS.
 
 The current `interactive` calibration is recorded in
 [`interactive_layout_work_calibration_2026-08-07.md`](../performance/interactive_layout_work_calibration_2026-08-07.md).

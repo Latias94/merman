@@ -1,0 +1,285 @@
+{
+  "schema_version": 1,
+  "evidence_class": "resource-policy-calibration",
+  "claim_scope": "interactive-layout-work-ceiling-800000",
+  "decision": "accepted-structural",
+  "authoritative_date": "2026-08-07",
+  "source_revision": {
+    "commit": "b32dae9521af2900f14fb267498d712d20f70eba",
+    "tree": "80e0c746b58784d9e49f882344845da8e23fb077",
+    "tracked_worktree_clean": true
+  },
+  "source_disposition": {
+    "excluded_pre_existing_untracked_paths": [
+      "fixtures/flowchart/probe_flowchart_edge_markdown_html_false_982.svg",
+      "fixtures/mindmap/stress_multiline_nodes_006.svg",
+      "in95p",
+      "ireframep",
+      "rust_out",
+      "test-results/"
+    ],
+    "chronology_rule": "The authoritative date and Git ancestry establish chronology; future-skewed host filesystem or commit timestamps are not evidence."
+  },
+  "inputs": {
+    "build_profile": "release",
+    "feature_closure": [
+      "svg",
+      "layout-cytoscape",
+      "layout-elk",
+      "math",
+      "complete-svg"
+    ],
+    "cargo_lock_sha256": "4eb38cee29796405570fa3172fffd049429fdef5692f868fd6be02e45ee93a71",
+    "cargo_manifest_sha256": "0b7687ad2a989792fcbe78eab7bf95d7d63018b460ba85c097e8235718cb2959",
+    "corpus_manifest_sha256": "cb7cca600d3980e77180832bff599f7f79608c4a41ff1116a2d4f4fd8cf52e02",
+    "fixture_members_sha256": "54a5e69af77e60fd545018db53336b1dd1f9c3d6a229aa7a47e4090e6060180c",
+    "calibration_source_sha256": "880b3fc558e6ace59f5174e48af203893dbcd343a6e473106a7719db867d7678",
+    "runner_sha256": "e9c660141ddf554da0f1d64d22faf18b4882d6a3c5dd9d8bff08025995684321",
+    "executable_sha256": "3f772fb806cbc9908491dcce1d63e710c5fa392ff61027d368ae7de3ce95816d",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
+  },
+  "host": {
+    "model": "Mac16,7",
+    "processor": "Apple M4 Pro",
+    "memory_bytes": 51539607552,
+    "system": "Darwin 25.5.0 arm64",
+    "platform": "macOS 26.5.1",
+    "timeout_seconds_per_process": 300
+  },
+  "runner": {
+    "command": "python3 tools/bench/run_layout_work_calibration.py --authoritative-date 2026-08-07 --out-dir target/bench/layout-work-calibration-2026-08-07-final --timeout-seconds 300 --full-repeats 5",
+    "raw_root": "target/bench/layout-work-calibration-2026-08-07-final",
+    "raw_committed": false,
+    "raw_summary_bytes": 18319,
+    "raw_summary_sha256": "9b9d9d988bec4c337d12aa5fe167d0c925f89467b388bceab0009178edb16478",
+    "stderr_bundle_sha256": "4ca69d28a23f03f9190c1cecf2b91dc9ce9b2779848fb1434e000d471142742c",
+    "full_reports_byte_identical": true,
+    "full_report_bytes": 38275,
+    "full_report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf"
+  },
+  "processes": [
+    {
+      "name": "full-1",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 2.1379917496815324,
+      "peak_rss_bytes": 139100160,
+      "report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf",
+      "stderr_sha256": "6f232f0944b1bdfe4205f7a2fb49a7849779deccdbd6acdeff125f8b43aa0155"
+    },
+    {
+      "name": "full-2",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 2.192070625256747,
+      "peak_rss_bytes": 144031744,
+      "report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf",
+      "stderr_sha256": "79ffeec0d1e5a0c38ab6fdcdca95c5be0d5c1eb8dab095a93bda9bdd6ef93dfd"
+    },
+    {
+      "name": "full-3",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 2.1642924998886883,
+      "peak_rss_bytes": 146145280,
+      "report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf",
+      "stderr_sha256": "fa504e7208dd12f182454132b9fb2abefa8577a84248f1a51120a3bc5f30684c"
+    },
+    {
+      "name": "full-4",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 2.12465391587466,
+      "peak_rss_bytes": 139755520,
+      "report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf",
+      "stderr_sha256": "606b361b8bc7f2636c66c7979059952b3320c70bb87da3e6922d16f8d83bf3bd"
+    },
+    {
+      "name": "full-5",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 2.1147404578514397,
+      "peak_rss_bytes": 136871936,
+      "report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf",
+      "stderr_sha256": "2cc588fa9c674ec4681980ae6075e394c0fa657c3e94c8b888b997fd45f055d0"
+    },
+    {
+      "name": "max-semantic",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.7544934577308595,
+      "peak_rss_bytes": 45498368,
+      "report_sha256": "6f8c3d6eb53160f40731c6fbcdd9f3eacb254a00b76dbc0f10291629b0a76d6b",
+      "stderr_sha256": "a31a9c80710f8b1526968b116bbf01a23d585f470645fc8e06f8348cdfb04e6b"
+    },
+    {
+      "name": "max-layout",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.7413205001503229,
+      "peak_rss_bytes": 56836096,
+      "report_sha256": "f73f63a1a5f1f0152b8a24f12f0e9aa347836d7955a0a28ac1477523f77c6e8a",
+      "stderr_sha256": "cc8d5aa67b4ee2f0042f639c038af2be7b4329d4c1eb31f74e914bdb83b7aff7"
+    },
+    {
+      "name": "max-svg",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.7537191659212112,
+      "peak_rss_bytes": 54329344,
+      "report_sha256": "455a6c1bd514878004a83e4f5f329bcb9072e27c815707306c805a78e3804c20",
+      "stderr_sha256": "68b78a955d4f8e73865389e2c33df8403e3945a438f0fc3f9b4492b31588c0dc"
+    },
+    {
+      "name": "max-end-to-end",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.7178017091937363,
+      "peak_rss_bytes": 54362112,
+      "report_sha256": "b25e74aafe410983cbea7456fd17fb82f47741eaa167b3bcd785234be908c433",
+      "stderr_sha256": "c92086d9806dc4792376dcae5eb2fe355225f536dee906fb929ff6643dd320a5"
+    },
+    {
+      "name": "cardinality-1643",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.7568936669267714,
+      "peak_rss_bytes": 87932928,
+      "report_sha256": "7f63d86903f141efdc3f9ef1bbf90fba9a02569657f3e92c1e0fc2891812595a",
+      "stderr_sha256": "b7629fbf0fba7a47d5241bbe2a4cbf993dc82e91f11746760b7d9770140232e2"
+    },
+    {
+      "name": "cardinality-1644",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.7457996248267591,
+      "peak_rss_bytes": 78528512,
+      "report_sha256": "9df92a0c01ea92d135073899982f36042340ceae86e3c9b4122ed3a401d6b4e3",
+      "stderr_sha256": "46b18b3f74e0c7b0757e134b89447c89a43bf9a7e454266c90718c826dfcb08a"
+    },
+    {
+      "name": "max-w-minus-one",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.7654388337396085,
+      "peak_rss_bytes": 53542912,
+      "report_sha256": "381c332ec83c75c4a852439724745bc43171578dff75657439d4883d6b43179f",
+      "stderr_sha256": "5fead2406f69c5c884ce3f700a8e11100dc8db59ebd78d771108bbd31409fddf"
+    }
+  ],
+  "policy": {
+    "profile": "interactive",
+    "max_layout_work_units": 800000,
+    "headroom_rule": {
+      "minimum_absolute_units": 100000,
+      "minimum_percent_over_corpus_max": 10.0,
+      "rounding_quantum": 100000,
+      "calculated_minimum_ceiling": 800000
+    }
+  },
+  "corpus_result": {
+    "manifest_member_count": 68,
+    "maximum_fixture": "flowchart_large",
+    "source_path": "crates/merman/benches/fixtures/flowchart_large.mmd",
+    "source_bytes": 6419,
+    "source_sha256": "edba73dc4c0a12417e052ec3c98ada82b5d773c4346b5c735df5dfa354f5b161",
+    "layout_work_units": 697752,
+    "headroom_units": 102248,
+    "headroom_percent_over_corpus_max": 14.653917151079467,
+    "svg_bytes": 307649,
+    "svg_elements": 2902,
+    "svg_sha256": "1a43732507bd36e0c26776bc7a768cb5400a70bb429acfeb47d1077f57a315fe"
+  },
+  "exact_threshold": {
+    "accepted_limit": 697752,
+    "accepted_work_units": 697752,
+    "accepted_svg_sha256": "1a43732507bd36e0c26776bc7a768cb5400a70bb429acfeb47d1077f57a315fe",
+    "rejected_limit": 697751,
+    "rejection": {
+      "cause": "ceiling",
+      "phase": "layout_model",
+      "limit": "max_layout_work_units",
+      "actual": 697752,
+      "max": 697751,
+      "profile": "interactive"
+    }
+  },
+  "cardinality_boundary": {
+    "curve": "flowchart-linear-chain-v1",
+    "scope": "This adjacent result applies only to the registered deterministic linear chain, not every Flowchart topology.",
+    "accepted": {
+      "nodes": 1643,
+      "edges": 1642,
+      "source_sha256": "6f99bafbcd37fec43852f59ee0bc448b8998248b257f4374458e49f09ffe60b9",
+      "layout_work_units": 799995,
+      "svg_sha256": "ee77bc6284e187bb3c8b1f410c1843bdc22fb7fc88bf75501bc3b8b5ee9a6242"
+    },
+    "rejected": {
+      "nodes": 1644,
+      "edges": 1643,
+      "source_sha256": "797b423414a134ef4917e58814f0b5328ff8888bd0360917c71f6fb5a2ffed2c",
+      "actual_work_units": 800002
+    },
+    "next_rejected": {
+      "nodes": 1645,
+      "edges": 1644,
+      "source_sha256": "7f52983bdfd8ccd5cbcc03e5665e1b25c171bcb0b6cd5eae721fc35fbf61d609",
+      "actual_work_units": 800001
+    }
+  },
+  "configuration_boundary": {
+    "curve": "architecture-num-iter-v1",
+    "fixed_nodes": 32,
+    "fixed_edges": 31,
+    "accepted_iterations": 3140,
+    "accepted_consumed_work_units": 48589,
+    "first_rejected_iterations": 3141,
+    "first_rejected_actual_work_units": 800131,
+    "next_rejected_iterations": 3142,
+    "next_rejected_actual_work_units": 800385
+  },
+  "isolated_stage_results": [
+    {
+      "stage": "semantic",
+      "internal_elapsed_ns": 846000,
+      "outcome": "accepted_semantic",
+      "output": "flowchart-v2"
+    },
+    {
+      "stage": "layout",
+      "internal_elapsed_ns": 9314750,
+      "outcome": "accepted_layout",
+      "output_sha256": "1080294a3c2c7169a17c62b9df55870f0eace63f130a098af05d1301614b55cc"
+    },
+    {
+      "stage": "svg",
+      "internal_elapsed_ns": 1697792,
+      "outcome": "accepted_svg",
+      "output_sha256": "1a43732507bd36e0c26776bc7a768cb5400a70bb429acfeb47d1077f57a315fe"
+    },
+    {
+      "stage": "end_to_end",
+      "internal_elapsed_ns": 9776375,
+      "outcome": "accepted_svg",
+      "output_sha256": "1a43732507bd36e0c26776bc7a768cb5400a70bb429acfeb47d1077f57a315fe"
+    },
+    {
+      "stage": "cardinality_rejection",
+      "internal_elapsed_ns": 35824250,
+      "outcome": "typed_ceiling_rejection"
+    },
+    {
+      "stage": "exact_w_minus_one_rejection",
+      "internal_elapsed_ns": 8408834,
+      "outcome": "typed_ceiling_rejection"
+    }
+  ],
+  "claim_limits": {
+    "latency_claim": false,
+    "memory_claim": false,
+    "host_slo_claim": false,
+    "mermaid_semantic_constant": false,
+    "accepted_statement": "The 800000-unit interactive ceiling satisfies the registered headroom rule for the closed 68-member corpus and produces deterministic typed rejection at the exact fixture and registered cardinality boundaries on the recorded host."
+  }
+}
