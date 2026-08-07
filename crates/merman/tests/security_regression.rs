@@ -408,14 +408,14 @@ fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
     let mut high = baseline.len();
     assert!(
         renderer(Some(high))
-            .render_svg_resvg_safe_sync(source)
+            .render_resvg_compatible_svg_sync(source)
             .is_ok(),
         "the serialized baseline length must be a passing upper bound"
     );
     while low < high {
         let middle = low + (high - low) / 2;
         if renderer(Some(middle))
-            .render_svg_resvg_safe_sync(source)
+            .render_resvg_compatible_svg_sync(source)
             .is_ok()
         {
             high = middle;
@@ -428,7 +428,7 @@ fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
 
     let exact = renderer(Some(exact_budget));
     exact
-        .render_svg_resvg_safe_sync(source)
+        .render_resvg_compatible_svg_sync(source)
         .expect("exact SVG budget")
         .expect("flowchart detected");
     let raster_options = merman::svg::export::RasterOptions::default();
@@ -456,7 +456,7 @@ fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
 
     let one_less = renderer(Some(exact_budget - 1));
     let svg_error = one_less
-        .render_svg_resvg_safe_sync(source)
+        .render_resvg_compatible_svg_sync(source)
         .expect_err("SVG budget plus one must fail");
     assert!(
         svg_error.to_string().contains("max_svg_bytes"),
