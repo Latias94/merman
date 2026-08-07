@@ -27,6 +27,8 @@ measurement behavior.
 - Correctness hardening:
   - `e92bb2338f8c8c7395a99122a75eea8a617c2f82`
   - `00bfebcb8d37896f3a896e26a06910a08d41bbe4`
+- Post-decision profile-provenance correction:
+  `59cd7da08f4293fa0d618472648f7051dd769f70`
 - Pinned Mermaid behavior reference: Mermaid 11.16.1 at
   `repo-ref/mermaid` commit `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`
 - Reference release range: Merman `v0.8.0-alpha.3` to this performance branch
@@ -35,6 +37,32 @@ measurement behavior.
 - Profile: Cargo `bench`, `CARGO_BUILD_JOBS=1`
 - `Cargo.lock` SHA-256:
   `4eb38cee29796405570fa3172fffd049429fdef5692f868fd6be02e45ee93a71`
+
+Fixture identities:
+
+| Fixture | SHA-256 |
+|---|---|
+| `sequence_actor_only_control` | `9a7c195658700b87b7322a6daed0b261a3154293c98a7913b0eaddeb8f33fb5c` |
+| `sequence_block_repeat_low` | `3764b745b70d8627e46a1faf93598fa00527fb1c3ef1fc9f99bb5c2f5f5ec663` |
+| `sequence_block_repeat_medium` | `ae69403e2dd2cfac5a65a81909f52571f8e64f54229384fd7ba06256b23ed530` |
+| `sequence_block_repeat_high` | `39f25cbf86cc63d81ce121673a2e4d925f133cfad705dd65271b21877983d4ac` |
+| `sequence_block_unique_high` | `9154ba1feb6afde183e04e6806f6253f544b13586aa3f1c8042ac5411e41e068` |
+| `state_medium` | `f578b7b8f8a16734ce2ffa9d6a5781e5d6ad1a8cae024d966240fa5c8774e6ca` |
+
+## Evidence time and registration boundary
+
+The authoritative current date for this receipt is **2026-08-07**. The local machine clock moved
+ahead while the evidence was being generated, so several ignored reports and later Git commits
+contain automatic `2026-08-08` timestamps. Those future timestamps are invalid as chronology and
+are excluded from the decision. Git ancestry, source trees, executable SHA-256 values, fixture
+digests, command lines, and report digests are the ordering and identity authorities.
+
+Commit `92042047` was an exploratory implementation used to establish the owner boundary before
+the experiment ledger existed. It is not the admitted causal candidate. The ledger was registered
+on 2026-08-07 before the candidate-neutral harness `H`, explicit no-reuse control `A`, restored
+candidate `B`, frozen executables, or samples existed; that ledger froze the thresholds and gates.
+The accepted result is therefore bound to the registered adjacent `A -> B` comparison, but it is
+not represented as a prototype-blind design preregistration.
 
 The pinned Mermaid source performs message measurement in three semantically distinct contexts:
 
@@ -170,9 +198,22 @@ The focused contracts prove:
 - Stateful host success preserves the full callback trace and can still alter geometry;
 - host error preserves trace, fallback behavior, SVG, phase, operation, source, and profile
   provenance;
-- wrapped messages, notes, math, and direct-text probes do not reuse ordinary-message metrics;
+- wrapped messages, notes, and math do not reuse ordinary-message metrics;
 - concurrently alive prepared artifacts do not share measurement state;
 - layout and SVG identities remain exact across `A` and `B`.
+
+The fixed control-block corpus records exactly 36 built-in
+`MermaidCalculateTextDimensions` calls on the qualified route. The Stateful host route also makes
+exactly 36 candidate-relevant host calls and records all 36 as host measurement-report events;
+the Missing, Stateful, and Error paths preserve the same full request ordering. Source inspection
+and unchanged SVG identity confirm that final direct-text bounding-box operations remain separate,
+but the focused callback-count test does not claim to count those non-dimension operations.
+
+The profile-provenance correction in `59cd7da08` changes only the observable built-in identity from
+`mermaid@11.16.0` to the pinned `mermaid@11.16.1`. A dedicated unit test locks that identity, and
+the Sequence integration suite is rerun on the corrected final tree. The 11.16.0-to-11.16.1
+upstream diff contains no Sequence renderer change, so the correction does not broaden or alter
+the measured candidate algorithm.
 
 The tests deliberately do not treat fewer host calls as an optimization. Opaque host observability
 remains part of the public behavior contract.
@@ -189,8 +230,11 @@ Two protocol failures are retained for auditability and excluded from the decisi
 
 ## Claim boundary
 
-The accepted latency claim applies only to ordinary, unwrapped, non-math Sequence messages rendered
-through the exact built-in operation carrier. The accepted memory claim applies to the recorded
-operation-local sidecar and the registered message-count range. No claim is made for opaque hosts,
-custom measurers, notes, wrapped labels, math labels, browser measurement, process-wide caches, or
-other diagram families.
+The accepted latency claim applies only to the registered
+`sequence_block_repeat_high` and `sequence_block_unique_high` public operations on this host and
+protocol. It must not be generalized from the low/medium diagnostic lanes to every ordinary
+Sequence diagram. The accepted memory claim applies to the recorded repeated/unique operation-local
+sidecar curves for message counts `1, 2, 4, 10, 32, 100`. The implementation remains semantically
+limited to ordinary, unwrapped, non-math messages on the exact built-in carrier, but no latency
+claim is made for other shapes, opaque hosts, custom measurers, notes, wrapped labels, math labels,
+browser measurement, process-wide caches, or other diagram families.
