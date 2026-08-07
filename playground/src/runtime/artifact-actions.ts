@@ -249,11 +249,10 @@ function currentPublication(
 }
 
 function currentAscii(publication: CompletedRenderBatch): string {
-  const merman = successfulMermanArtifact(publication);
-  if (merman.ascii === null) {
+  if (publication.ascii.status !== "success") {
     throw actionError("artifact-unavailable", "ASCII artifact is unavailable.");
   }
-  return merman.ascii;
+  return publication.ascii.artifact;
 }
 
 function currentSvg(
