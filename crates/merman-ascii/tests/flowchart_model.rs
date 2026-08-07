@@ -671,6 +671,120 @@ fn flowchart_parser_top_down_branch_merge_uses_connected_unicode_bend_corner() {
 }
 
 #[test]
+fn flowchart_parser_top_down_same_rank_reverse_edge_routes_instead_of_failing() {
+    let rendered = render_flowchart(
+        concat!(
+            "flowchart TD\n",
+            "  A --> C\n",
+            "  A --> B\n",
+            "  B --> C\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("same-rank top-down skip edge should route");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---+          \n",
+            "|   |          \n",
+            "| A |-------+  \n",
+            "|   |       |  \n",
+            "+---+       |  \n",
+            "  |         |  \n",
+            "  |         |  \n",
+            "  |         |  \n",
+            "  |         |  \n",
+            "  v         v  \n",
+            "+---+     +---+\n",
+            "|   |     |   |\n",
+            "| C |     | B |\n",
+            "|   |     |   |\n",
+            "+---+     +---+\n",
+            "  ^         |  \n",
+            "  +---------+  \n",
+        ),
+        "same-rank right-to-left top-down edge should route through the bottom lane"
+    );
+    assert_rectangular_char_grid(&rendered);
+}
+
+#[test]
+fn flowchart_parser_top_down_skip_edge_routes_for_every_declaration_order() {
+    // Declaring `A --> C` before the `A --> B --> C` chain places B and C on the same
+    // rank with B to the right of C. That layout previously had no top-down route
+    // family and failed with `unroutable graph edges`.
+    for input in [
+        "flowchart TD\n  A --> B\n  B --> C\n  A --> C\n",
+        "flowchart TD\n  A --> C\n  A --> B\n  B --> C\n",
+        "flowchart TD\n  B --> C\n  A --> C\n  A --> B\n",
+    ] {
+        let rendered = render_flowchart(input, &AsciiRenderOptions::ascii())
+            .unwrap_or_else(|err| panic!("top-down skip edge should route for {input:?}: {err}"));
+
+        for node in ["A", "B", "C"] {
+            assert!(
+                rendered.contains(node),
+                "node {node} should stay visible for {input:?}:\n{rendered}"
+            );
+        }
+        assert_rectangular_char_grid(&rendered);
+    }
+}
+
+#[test]
+fn flowchart_parser_bt_same_rank_reverse_edge_routes_through_flipped_lane() {
+    let rendered = render_flowchart(
+        "flowchart BT\n  A --> C\n  A --> B\n  B --> C\n",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("same-rank bottom-up skip edge should route");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "  +---------+  \n",
+            "  v         |  \n",
+            "+---+     +---+\n",
+            "|   |     |   |\n",
+            "| C |     | B |\n",
+            "|   |     |   |\n",
+            "+---+     +---+\n",
+            "  ^         ^  \n",
+            "  |         |  \n",
+            "  |         |  \n",
+            "  |         |  \n",
+            "  |         |  \n",
+            "+---+       |  \n",
+            "|   |       |  \n",
+            "| A |-------+  \n",
+            "|   |          \n",
+            "+---+          \n",
+        ),
+        "BT same-rank edge should render as a vertical flip of the TD lane"
+    );
+    assert_rectangular_char_grid(&rendered);
+}
+
+#[test]
+fn flowchart_parser_top_down_same_rank_reverse_edge_connects_unicode_lane() {
+    let rendered = render_flowchart(
+        "flowchart TD\n  A --> C\n  A --> B\n  B --> C\n",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("same-rank top-down skip edge should route in unicode");
+
+    assert!(
+        rendered.contains("└─────────┘"),
+        "unicode same-rank lane should use connected box-drawing corners:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("  ▲         │  "),
+        "unicode same-rank lane should point the arrow back into the target:\n{rendered}"
+    );
+}
+
+#[test]
 fn flowchart_parser_simple_subgraph_renders_group_box() {
     let rendered = render_flowchart(
         "flowchart TB\nsubgraph one\nA --> B\nend",

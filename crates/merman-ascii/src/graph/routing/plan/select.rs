@@ -187,11 +187,20 @@ fn plan_top_down_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
         return plan_top_down_back_route(from, to, edge, charset);
     }
 
-    if from.center_y() == to.center_y()
-        && let Some(plan) =
+    if from.center_y() == to.center_y() {
+        if let Some(plan) =
             plan_left_right_direct_route(&request.graph_layout.nodes, from, to, edge, charset)
-    {
-        return Some(plan);
+        {
+            return Some(plan);
+        }
+
+        // `plan_left_right_direct_route` only handles a target to the right of the source.
+        // Same-rank edges pointing back to the left (for example a skip edge whose target was
+        // ranked first) reuse the shared bottom lane that `plan_left_right_route` already uses
+        // for the same topology, instead of reporting the edge as unroutable.
+        if from.center_x() != to.center_x() {
+            return plan_left_right_bottom_lane_route(from, to, edge, charset);
+        }
     }
 
     if from.center_x() != to.center_x() {
