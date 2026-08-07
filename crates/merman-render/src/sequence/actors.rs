@@ -2,6 +2,9 @@ use super::constants::{
     sequence_actor_lifeline_start_y, sequence_actor_visual_height,
     sequence_text_dimensions_height_px,
 };
+use super::message_metrics::{
+    SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner,
+};
 use super::metrics::{
     SequenceMathHeightMode, measure_sequence_label_for_layout, measure_sequence_math_label,
 };
@@ -16,7 +19,6 @@ use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use std::collections::{BTreeMap, HashMap};
 
 use super::metrics::measure_svg_like_with_html_br;
-
 pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) model: &'a SequenceDiagramRenderModel,
     pub(super) measurer: &'a dyn TextMeasurer,
@@ -46,6 +48,7 @@ pub(super) struct SequenceActorLayoutPlan<'a> {
     pub(super) actor_top_offset_y: f64,
     pub(super) max_actor_layout_height: f64,
     pub(super) has_boxes: bool,
+    pub(super) message_metrics: SequenceMessageMetricSidecar,
 }
 
 pub(super) struct SequenceActorLifecycleContext<'a> {
@@ -75,7 +78,7 @@ pub(super) fn plan_sequence_actors<'a>(
     let max_box_title_height = max_box_title_height(&ctx, has_box_titles);
     let (actor_widths, actor_base_heights) = measure_actor_boxes(&ctx)?;
     let actor_index = actor_index(ctx.model);
-    let actor_to_message_width = actor_message_widths(&ctx, &actor_index);
+    let (actor_to_message_width, message_metrics) = actor_message_widths(&ctx, &actor_index);
     let actor_margins = actor_margins(&actor_widths, &actor_to_message_width, ctx.actor_margin);
     let box_margins = box_margins(
         &ctx,
@@ -112,6 +115,7 @@ pub(super) fn plan_sequence_actors<'a>(
         actor_top_offset_y,
         max_actor_layout_height,
         has_boxes,
+        message_metrics,
     })
 }
 
@@ -202,9 +206,11 @@ fn actor_index(model: &SequenceDiagramRenderModel) -> HashMap<&str, usize> {
 fn actor_message_widths(
     ctx: &SequenceActorLayoutPlanContext<'_>,
     actor_index: &HashMap<&str, usize>,
-) -> Vec<f64> {
+) -> (Vec<f64>, SequenceMessageMetricSidecar) {
     let mut actor_to_message_width: Vec<f64> = vec![0.0; ctx.model.actor_order.len()];
-    for msg in &ctx.model.messages {
+    let mut message_metrics =
+        SequenceMessageMetricSidecar::new(ctx.model, ctx.msg_text_style, ctx.measurer);
+    for (message_index, msg) in ctx.model.messages.iter().enumerate() {
         let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
             continue;
         };
@@ -237,7 +243,8 @@ fn actor_message_widths(
             continue;
         }
 
-        let (w0, _h0) = if text.contains("$$") {
+        let is_math = text.contains("$$");
+        let (w0, h0) = if is_math {
             measure_sequence_label_for_layout(
                 ctx.measurer,
                 text,
@@ -259,6 +266,14 @@ fn actor_message_widths(
             };
             measure_svg_like_with_html_br(ctx.measurer, &measured_text, style)
         };
+        if is_message && !msg.wrap && !is_math {
+            // Final direct `<text>` drawing is a distinct DOM probe and deliberately does not use
+            // this bound-metric sidecar.
+            message_metrics.record(
+                SequenceMessageOwner::from_model_index(message_index),
+                SequenceMessageBoundMetrics::new(w0.max(0.0), h0.max(0.0)),
+            );
+        }
         let message_w = (w0 + 2.0 * ctx.wrap_padding).max(0.0);
 
         let prev_idx = if to_idx > 0 { Some(to_idx - 1) } else { None };
@@ -295,7 +310,7 @@ fn actor_message_widths(
             }
         }
     }
-    actor_to_message_width
+    (actor_to_message_width, message_metrics)
 }
 
 fn actor_margins(

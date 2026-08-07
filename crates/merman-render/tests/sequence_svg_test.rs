@@ -3,13 +3,80 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::text::{TextMetrics, WrapMode};
 use std::path::PathBuf;
-#[cfg(feature = "math")]
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+
+type RecordedSequenceMeasurement = (
+    String,
+    TextMeasurementOperation,
+    TextMeasurementPhase,
+    Option<String>,
+    Option<f64>,
+    WrapMode,
+);
+
+#[derive(Debug, Clone, Copy, Default)]
+enum SequenceHostResponse {
+    #[default]
+    Missing,
+    StatefulMetrics,
+}
+
+#[derive(Default)]
+struct RecordingSequenceHost {
+    requests: Mutex<Vec<RecordedSequenceMeasurement>>,
+    response: SequenceHostResponse,
+    response_index: AtomicUsize,
+}
+
+impl RecordingSequenceHost {
+    fn stateful_metrics() -> Self {
+        Self {
+            response: SequenceHostResponse::StatefulMetrics,
+            ..Self::default()
+        }
+    }
+}
+
+impl HostTextMeasurer for RecordingSequenceHost {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        self.requests
+            .lock()
+            .expect("Sequence host requests lock")
+            .push((
+                request.text.to_string(),
+                request.operation,
+                request.phase,
+                request.style.font_family.clone(),
+                request.max_width,
+                request.wrap_mode,
+            ));
+        match (self.response, request.operation) {
+            (
+                SequenceHostResponse::StatefulMetrics,
+                TextMeasurementOperation::MermaidCalculateTextDimensions,
+            ) => {
+                let response_index = self.response_index.fetch_add(1, Ordering::Relaxed);
+                Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                    width: 40.0 + response_index as f64,
+                    height: 16.0,
+                    line_count: 1,
+                })))
+            }
+            _ => Ok(None),
+        }
+    }
+}
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -264,6 +331,343 @@ fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
     layout_sequence_from_environment(text, &environment)
+}
+
+#[test]
+fn sequence_builtin_route_reuses_message_bound_metrics_within_one_operation() {
+    for message_count in [0usize, 1, 16, 64] {
+        for repeated_text in [false, true] {
+            let mut source = String::from("sequenceDiagram\nparticipant A\nparticipant B\n");
+            for message_index in 0..message_count {
+                let label = if repeated_text {
+                    "operation-scoped-message-bound-metrics".to_string()
+                } else {
+                    format!("operation-scoped-message-bound-metrics-{message_index}")
+                };
+                source.push_str(&format!("A->>B: {label}\n"));
+            }
+
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let parsed = parse_sequence_for_render(&Engine::new(), &source);
+            let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+                .expect("prepare Sequence artifact");
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("render Sequence artifact");
+            let (_, _, _, session) = rendered.into_parts();
+
+            let dimension_calls: u64 = session
+                .text_measurement_report()
+                .entries()
+                .iter()
+                .filter(|entry| {
+                    entry.provenance().operation
+                        == TextMeasurementOperation::MermaidCalculateTextDimensions
+                })
+                .map(|entry| entry.count())
+                .sum();
+
+            assert_eq!(
+                dimension_calls,
+                4 + 2 * message_count as u64,
+                "two configured/sans-serif actor probes and one probe pair per message should remain for message_count={message_count}, repeated_text={repeated_text}; later horizontal and vertical probes must reuse the operation-owned result"
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_builtin_route_reuses_self_and_multiline_message_bounds() {
+    let dimension_calls = |source: &str| {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let parsed = parse_sequence_for_render(&Engine::new(), source);
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare Sequence artifact");
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render Sequence artifact");
+        let (_, _, _, session) = rendered.into_parts();
+
+        session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .filter(|entry| {
+                entry.provenance().operation
+                    == TextMeasurementOperation::MermaidCalculateTextDimensions
+            })
+            .map(|entry| entry.count())
+            .sum::<u64>()
+    };
+
+    assert_eq!(
+        dimension_calls("sequenceDiagram\nparticipant A\nparticipant B\nA->>A: self-message\n"),
+        6,
+        "self-message horizontal, vertical, and root-bound consumers must reuse one probe pair"
+    );
+    assert_eq!(
+        dimension_calls(
+            "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: first-line<br/>second-line\n"
+        ),
+        8,
+        "each explicit line keeps one configured/sans-serif pair while later consumers reuse the combined bounds"
+    );
+}
+
+const SEQUENCE_BLOCK_MESSAGE_TRACE_SOURCE: &str = r#"sequenceDiagram
+participant A
+participant B
+loop loop-control
+  A->>B: probe-loop-message
+end
+alt alt-control
+  A->>B: probe-alt-message
+else alt-empty
+end
+opt opt-control
+  A->>B: probe-opt-message
+end
+rect rgb(240,240,240)
+  A->>B: probe-rect-message
+end
+"#;
+
+#[test]
+fn sequence_builtin_route_reuses_control_block_message_metrics_through_svg_emission() {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let parsed = parse_sequence_for_render(&Engine::new(), SEQUENCE_BLOCK_MESSAGE_TRACE_SOURCE);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact");
+    let (_, _, _, session) = rendered.into_parts();
+
+    let dimension_calls = session
+        .text_measurement_report()
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry.provenance().operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+        })
+        .map(|entry| entry.count())
+        .sum::<u64>();
+
+    assert_eq!(
+        dimension_calls, 36,
+        "the fixed Mermaid control-block corpus should retain title probes while reusing the four messages' built-in bounds; dropping the sidecar adds six duplicate message probes"
+    );
+}
+
+#[test]
+fn sequence_host_route_preserves_message_measurement_callback_sequence() {
+    const LABEL: &str = "operation-scoped-message-bound-metrics";
+    let host = Arc::new(RecordingSequenceHost::default());
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.sequence-host-observability").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid profile identity");
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
+    );
+    let source = format!("sequenceDiagram\nparticipant A\nparticipant B\nA->>B: {LABEL}\n");
+    let session = environment.begin_session().unwrap();
+    let parsed = parse_sequence_for_render(&Engine::new(), &source);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact");
+    let host_svg = rendered.svg().to_string();
+
+    let requests = host.requests.lock().expect("Sequence host requests lock");
+    let message_requests = requests
+        .iter()
+        .filter(|(text, operation, _, _, _, _)| {
+            text == LABEL && *operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        message_requests.len(),
+        6,
+        "host/fallback routes must retain actor-spacing, horizontal, and vertical configured/sans-serif probes"
+    );
+    assert!(
+        message_requests
+            .iter()
+            .all(|(_, _, phase, _, max_width, wrap_mode)| {
+                *phase == TextMeasurementPhase::SvgBBox
+                    && max_width.is_none()
+                    && *wrap_mode == WrapMode::SvgLike
+            })
+    );
+    let configured_family = message_requests[1].3.as_deref();
+    assert_ne!(configured_family, Some("sans-serif"));
+    for pair in message_requests.chunks_exact(2) {
+        assert_eq!(pair[0].3.as_deref(), Some("sans-serif"));
+        assert_eq!(pair[1].3.as_deref(), configured_family);
+    }
+    drop(requests);
+
+    let parity_session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let parity_parsed = parse_sequence_for_render(&Engine::new(), &source);
+    let parity_artifact = family::prepare(parity_parsed, &LayoutOptions::default(), parity_session)
+        .expect("prepare parity Sequence artifact");
+    let parity_svg = parity_artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render parity Sequence artifact")
+        .svg()
+        .to_string();
+    assert_eq!(host_svg, parity_svg);
+}
+
+#[test]
+fn sequence_stateful_host_route_preserves_message_callback_cardinality() {
+    const LABEL: &str = "stateful-host-message";
+    let host = Arc::new(RecordingSequenceHost::stateful_metrics());
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.sequence-stateful-host").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid profile identity");
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
+    );
+    let source = format!("sequenceDiagram\nparticipant A\nparticipant B\nA->>B: {LABEL}\n");
+    let session = environment.begin_session().unwrap();
+    let parsed = parse_sequence_for_render(&Engine::new(), &source);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact");
+
+    let requests = host.requests.lock().expect("Sequence host requests lock");
+    let message_requests = requests
+        .iter()
+        .filter(|(text, operation, _, _, _, _)| {
+            text == LABEL && *operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        message_requests.len(),
+        6,
+        "successful stateful hosts must retain actor-spacing, horizontal, and vertical probe pairs"
+    );
+    let configured_family = message_requests[1].3.as_deref();
+    for pair in message_requests.chunks_exact(2) {
+        assert_eq!(pair[0].2, TextMeasurementPhase::SvgBBox);
+        assert_eq!(pair[1].2, TextMeasurementPhase::SvgBBox);
+        assert_eq!(pair[0].3.as_deref(), Some("sans-serif"));
+        assert_eq!(pair[1].3.as_deref(), configured_family);
+        assert_eq!(pair[0].4, None);
+        assert_eq!(pair[1].4, None);
+        assert_eq!(pair[0].5, WrapMode::SvgLike);
+        assert_eq!(pair[1].5, WrapMode::SvgLike);
+    }
+}
+
+#[test]
+fn sequence_host_route_preserves_control_block_message_callback_trace() {
+    let host = Arc::new(RecordingSequenceHost::default());
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.sequence-block-host-observability")
+            .expect("valid profile id"),
+        "1",
+    )
+    .expect("valid profile identity");
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
+    );
+    let session = environment.begin_session().unwrap();
+    let parsed = parse_sequence_for_render(&Engine::new(), SEQUENCE_BLOCK_MESSAGE_TRACE_SOURCE);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact");
+    let host_svg = rendered.svg().to_string();
+
+    let requests = host.requests.lock().expect("Sequence host requests lock");
+    let is_probe_message = |text: &str| {
+        matches!(
+            text,
+            "probe-loop-message" | "probe-alt-message" | "probe-opt-message" | "probe-rect-message"
+        )
+    };
+    let message_requests = requests
+        .iter()
+        .filter(|(text, operation, _, _, _, _)| {
+            is_probe_message(text)
+                && *operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+        })
+        .collect::<Vec<_>>();
+
+    let expected_probe_pairs = [
+        // Actor-spacing scan.
+        "probe-loop-message",
+        "probe-alt-message",
+        "probe-opt-message",
+        "probe-rect-message",
+        // Layout-time control-block bounds.
+        "probe-loop-message",
+        "probe-alt-message",
+        "probe-opt-message",
+        // Main message horizontal and vertical geometry.
+        "probe-loop-message",
+        "probe-loop-message",
+        "probe-alt-message",
+        "probe-alt-message",
+        "probe-opt-message",
+        "probe-opt-message",
+        "probe-rect-message",
+        "probe-rect-message",
+        // SVG control-block width reconstruction.
+        "probe-loop-message",
+        "probe-alt-message",
+        "probe-opt-message",
+    ];
+    assert_eq!(
+        message_requests.len(),
+        expected_probe_pairs.len() * 2,
+        "host routes must retain every actor-spacing, block-bound, geometry, and SVG reconstruction callback"
+    );
+    let configured_family = message_requests[1].3.as_deref();
+    assert_ne!(configured_family, Some("sans-serif"));
+    for (pair, expected_text) in message_requests.chunks_exact(2).zip(expected_probe_pairs) {
+        assert_eq!(pair[0].0, expected_text);
+        assert_eq!(pair[1].0, expected_text);
+        assert_eq!(
+            pair[0].1,
+            TextMeasurementOperation::MermaidCalculateTextDimensions
+        );
+        assert_eq!(
+            pair[1].1,
+            TextMeasurementOperation::MermaidCalculateTextDimensions
+        );
+        assert_eq!(pair[0].2, TextMeasurementPhase::SvgBBox);
+        assert_eq!(pair[1].2, TextMeasurementPhase::SvgBBox);
+        assert_eq!(pair[0].3.as_deref(), Some("sans-serif"));
+        assert_eq!(pair[1].3.as_deref(), configured_family);
+        assert_eq!(pair[0].4, None);
+        assert_eq!(pair[1].4, None);
+        assert_eq!(pair[0].5, WrapMode::SvgLike);
+        assert_eq!(pair[1].5, WrapMode::SvgLike);
+    }
+    drop(requests);
+
+    let parity_session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let parity_parsed =
+        parse_sequence_for_render(&Engine::new(), SEQUENCE_BLOCK_MESSAGE_TRACE_SOURCE);
+    let parity_artifact = family::prepare(parity_parsed, &LayoutOptions::default(), parity_session)
+        .expect("prepare parity Sequence artifact");
+    let parity_svg = parity_artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render parity Sequence artifact")
+        .svg()
+        .to_string();
+    assert_eq!(host_svg, parity_svg);
 }
 
 #[test]
