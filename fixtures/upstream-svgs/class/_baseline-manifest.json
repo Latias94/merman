@@ -1074,13 +1074,13 @@
     },
     "upstream_interactivity_security_level_loose_spec": {
       "input_sha256": "2c745b1c95beee97098865df4b829575029c4ff5b7918662ca94f8d9dc9c5883",
-      "svg_sha256": "a576093697b89229ab6fb95a40041f24ae29c1263b39d1d0c351bf3cbe89d597",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "afea85a184bc86c809e8d917b42e47cd598979fb2bb9f748cc7b0223029995cf",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_interactivity_security_level_sandbox_target_top_spec": {
       "input_sha256": "5afda0e9e5d4408438f87c43d38080fa23307c74625a2fb3efd9609f237664dd",
       "svg_sha256": "6e96228697bc2132a0d36f4d7891dc3be02e0bc5e831024e9364be45a5091253",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "mmdc-default-host-security-sandbox-to-strict-v1"
     },
     "upstream_names_backticks_dash_underscore_spec": {
       "input_sha256": "965668b2ce89d4985c37b06ba1d174f6d303d8998357dde03d32aeaee9ec59db",

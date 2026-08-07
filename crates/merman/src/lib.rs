@@ -20,7 +20,7 @@
 //! | Analyze diagnostics or Markdown fences | `analysis` | [`analysis::Analyzer`] |
 //! | Build parser-backed editor snapshots | `editor` | [`editor::DocumentWorkspace`] |
 //! | Render Mermaid-like SVG | `svg` | [`render_svg`] |
-//! | Prepare SVG for export | `svg` | `HeadlessRenderer::render_resvg_compatible_svg_with_pipeline_sync` |
+//! | Prepare SVG for export | `svg` | `HeadlessRenderer::render_resvg_compatible_svg_sync` |
 //! | Render terminal-friendly text | `ascii` | `merman::ascii::HeadlessAsciiRenderer` |
 //! | Render PNG from Rust | `png` | `HeadlessRenderer::render_png_sync` and `svg::export::RasterOptions` |
 //! | Render JPEG from Rust | `jpeg` | `HeadlessRenderer::render_jpeg_sync` and `svg::export::RasterOptions` |
@@ -75,8 +75,20 @@
 //! independently with `HeadlessRenderer::with_presentation`. Use
 //! `HeadlessRenderer::render_svg_readable_sync` when browser
 //! `<foreignObject>` labels may need readable `<text>` fallbacks, and
-//! `HeadlessRenderer::render_svg_resvg_safe_sync` when the output will
-//! be consumed by `merman-export` or another validated SVG consumer.
+//! `HeadlessRenderer::render_resvg_compatible_svg_sync` when the output will be
+//! consumed by `merman-export` or another validated SVG consumer. Use the
+//! `*_with_pipeline_sync` variant only when the host also owns custom draft passes.
+//!
+//! These output choices do not make one universal "safe SVG" promise. The
+//! [`MermaidConfig`] `securityLevel` key controls source, label, and navigation
+//! URL sanitization. Parity and readable SVG preserve Mermaid navigation metadata;
+//! the resvg-safe pipeline closes automatic rendering-resource capabilities for
+//! raster and PDF consumers but is not a browser DOM sanitizer. A browser host
+//! must separately validate the SVG for its intended policy, such as a closed
+//! self-contained preview or an authoring surface with user-activated links.
+//! Likewise, Mermaid's `sandbox` security level cannot create an iframe, origin,
+//! process, or CSP boundary in this headless Rust library; isolation remains a
+//! host responsibility.
 //!
 //! # ASCII quickstart
 //!

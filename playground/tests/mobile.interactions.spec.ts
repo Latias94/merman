@@ -4,6 +4,7 @@ import {
   expectNoDocumentOverflow,
   monitorBrowserErrors,
   openPlayground,
+  replaceEditorSource,
   waitForPreviewSvg,
 } from "./helpers/playground";
 
@@ -192,6 +193,214 @@ test("landscape touch gestures and preview modes remain operable", async ({
   errors.assertNone();
 });
 
+test("Kanban ticket links remain tappable without starting a viewport gesture", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  const source = [
+    "---",
+    "config:",
+    "  kanban:",
+    "    ticketBaseUrl: 'https://example.test/browse/#TICKET#'",
+    "---",
+    "kanban",
+    "  Todo",
+    "    task[Task]@{ ticket: MC-1 }",
+  ].join("\n");
+  await replaceEditorSource(page, source);
+  await page.getByRole("tab", { name: "Preview", exact: true }).tap();
+
+  const viewport = primaryViewport(page);
+  const anchor = viewport.locator("a.kanban-ticket-link");
+  await expect(anchor).toHaveCount(1);
+  await anchor.evaluate((element) => {
+    const root = element.getRootNode();
+    if (!(root instanceof ShadowRoot)) {
+      throw new Error("Expected the ticket link inside a shadow root.");
+    }
+    const viewport = root.host.closest<HTMLDivElement>(
+      '[data-merman-svg-viewport="true"]',
+    );
+    if (!viewport) throw new Error("Expected the owning SVG viewport.");
+
+    element.setAttribute("data-test-click-count", "0");
+    window.addEventListener("pointerdown", (event) => {
+      if (!event.composedPath().includes(element)) return;
+      element.setAttribute(
+        "data-test-pointerdown-default-prevented",
+        String(event.defaultPrevented),
+      );
+      element.setAttribute(
+        "data-test-pointer-captured",
+        String(viewport.hasPointerCapture(event.pointerId)),
+      );
+    });
+    element.addEventListener("click", (event) => {
+      event.preventDefault();
+      element.setAttribute(
+        "data-test-click-count",
+        String(Number(element.getAttribute("data-test-click-count")) + 1),
+      );
+    });
+  });
+
+  await anchor.tap();
+  await expect(anchor).toHaveAttribute("data-test-click-count", "1");
+  await expect(anchor).toHaveAttribute(
+    "data-test-pointerdown-default-prevented",
+    "false",
+  );
+  await expect(anchor).toHaveAttribute("data-test-pointer-captured", "false");
+  await expect(viewport).toHaveAttribute("data-dragging", "false");
+  errors.assertNone();
+});
+
+test("a link-originated pinch zooms without activating the link", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(
+    page,
+    [
+      "---",
+      "config:",
+      "  kanban:",
+      "    ticketBaseUrl: 'https://example.test/browse/#TICKET#'",
+      "---",
+      "kanban",
+      "  Todo",
+      "    task[Task]@{ ticket: MC-3 }",
+    ].join("\n"),
+  );
+  await page.getByRole("tab", { name: "Preview", exact: true }).tap();
+
+  const viewport = primaryViewport(page);
+  const anchor = viewport.locator("a.kanban-ticket-link");
+  await expect(anchor).toHaveCount(1);
+  await anchor.evaluate((element) => {
+    element.setAttribute("data-test-click-count", "0");
+    element.addEventListener("click", (event) => {
+      event.preventDefault();
+      element.setAttribute(
+        "data-test-click-count",
+        String(Number(element.getAttribute("data-test-click-count")) + 1),
+      );
+    });
+  });
+  const box = await anchor.boundingBox();
+  expect(box).not.toBeNull();
+  const centerX = box!.x + box!.width / 2;
+  const centerY = box!.y + box!.height / 2;
+  const initialZoom = await viewportZoom(viewport);
+
+  await dispatchTouch(anchor, "pointerdown", 81, centerX, centerY, true);
+  await dispatchTouch(
+    viewport,
+    "pointerdown",
+    82,
+    centerX + 80,
+    centerY,
+    false,
+  );
+  await dispatchTouch(anchor, "pointermove", 81, centerX - 30, centerY, true);
+  await dispatchTouch(
+    viewport,
+    "pointermove",
+    82,
+    centerX + 110,
+    centerY,
+    false,
+  );
+  await dispatchTouch(anchor, "pointerup", 81, centerX - 30, centerY, true);
+
+  // Browsers may synthesize the anchor click as soon as its pointer ends,
+  // while another touch participating in the promoted gesture is still down.
+  await anchor.dispatchEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    detail: 1,
+  });
+  await expect(anchor).toHaveAttribute("data-test-click-count", "0");
+
+  await dispatchTouch(
+    viewport,
+    "pointerup",
+    82,
+    centerX + 110,
+    centerY,
+    false,
+  );
+  await expect.poll(() => viewportZoom(viewport)).toBeGreaterThan(initialZoom);
+  await anchor.tap();
+  await expect(anchor).toHaveAttribute("data-test-click-count", "1");
+  errors.assertNone();
+});
+
+test("XHTML label links remain tappable without starting a viewport gesture", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(
+    page,
+    [
+      "stateDiagram-v2",
+      "A",
+      "note right of A",
+      "  <a href='https://example.test/docs' target='_self'><code>Docs</code></a>",
+      "end note",
+    ].join("\n"),
+  );
+  await page.getByRole("tab", { name: "Preview", exact: true }).tap();
+
+  const viewport = primaryViewport(page);
+  const anchor = viewport.locator("foreignObject a");
+  await expect(anchor).toHaveCount(1);
+  await anchor.evaluate((element) => {
+    const root = element.getRootNode();
+    if (!(root instanceof ShadowRoot)) {
+      throw new Error("Expected the XHTML link inside a shadow root.");
+    }
+    const viewport = root.host.closest<HTMLDivElement>(
+      '[data-merman-svg-viewport="true"]',
+    );
+    if (!viewport) throw new Error("Expected the owning SVG viewport.");
+
+    element.setAttribute("data-test-click-count", "0");
+    window.addEventListener("pointerdown", (event) => {
+      if (!event.composedPath().includes(element)) return;
+      element.setAttribute(
+        "data-test-pointerdown-default-prevented",
+        String(event.defaultPrevented),
+      );
+      element.setAttribute(
+        "data-test-pointer-captured",
+        String(viewport.hasPointerCapture(event.pointerId)),
+      );
+    });
+    element.addEventListener("click", (event) => {
+      event.preventDefault();
+      element.setAttribute(
+        "data-test-click-count",
+        String(Number(element.getAttribute("data-test-click-count")) + 1),
+      );
+    });
+  });
+
+  await anchor.tap();
+  await expect(anchor).toHaveAttribute("data-test-click-count", "1");
+  await expect(anchor).toHaveAttribute(
+    "data-test-pointerdown-default-prevented",
+    "false",
+  );
+  await expect(anchor).toHaveAttribute("data-test-pointer-captured", "false");
+  await expect(viewport).toHaveAttribute("data-dragging", "false");
+  errors.assertNone();
+});
+
 function primaryViewport(page: Page): Locator {
   return page.locator('[data-merman-svg-viewport="true"]').first();
 }
@@ -270,19 +479,21 @@ async function waitForAnimationFrames(locator: Locator, count: number): Promise<
 }
 
 async function dispatchTouch(
-  viewport: Locator,
+  target: Locator,
   type: "pointerdown" | "pointermove" | "pointerup",
   pointerId: number,
   clientX: number,
   clientY: number,
+  isPrimary = true,
 ): Promise<void> {
-  await viewport.dispatchEvent(type, {
+  await target.dispatchEvent(type, {
     bubbles: true,
     button: 0,
     buttons: type === "pointerup" ? 0 : 1,
     clientX,
     clientY,
-    isPrimary: true,
+    composed: true,
+    isPrimary,
     pointerId,
     pointerType: "touch",
   });

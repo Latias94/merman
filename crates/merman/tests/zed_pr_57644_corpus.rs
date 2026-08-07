@@ -1,6 +1,6 @@
 #![cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 
-use merman::svg::HeadlessRenderer;
+use merman::svg::{HeadlessRenderer, ResvgCompatibleSvg};
 use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {
@@ -51,8 +51,9 @@ fn zed_pr_57644_corpus_renders_headless_resvg_safe() {
         let svg = HeadlessRenderer::new()
             .with_vendored_text_measurer()
             .with_diagram_id(name)
-            .render_svg_resvg_safe_sync(&source)
+            .render_resvg_compatible_svg_sync(&source)
             .unwrap_or_else(|err| panic!("{name}: headless render failed: {err}"))
+            .map(ResvgCompatibleSvg::into_string)
             .unwrap_or_else(|| panic!("{name}: no diagram detected"));
 
         assert!(svg.starts_with("<svg"), "{name}: expected SVG output");

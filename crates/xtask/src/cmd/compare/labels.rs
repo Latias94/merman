@@ -278,7 +278,7 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "flowchart",
         fixture: FLOWCHART_ELK_PARALLEL_LABEL_FIXTURE,
         input_sha256: "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0",
-        upstream_svg_sha256: "2683169760f6d16a7d06df1e4b8fe14e69fec133c662c5196967ea79e0b0cc58",
+        upstream_svg_sha256: "7db68748e7ce841e29246c546a01e77a92db2bf7e6c43ac65757b8e2304c90e2",
         adapter: SemanticLabelAdapter::FlowchartElk,
     },
     SemanticLabelFixtureContract {
@@ -4667,7 +4667,7 @@ mod tests {
                 "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0".to_string(),
             );
             entry["upstream_svg_sha256"] = serde_json::Value::String(
-                "2683169760f6d16a7d06df1e4b8fe14e69fec133c662c5196967ea79e0b0cc58".to_string(),
+                "7db68748e7ce841e29246c546a01e77a92db2bf7e6c43ac65757b8e2304c90e2".to_string(),
             );
         }
 

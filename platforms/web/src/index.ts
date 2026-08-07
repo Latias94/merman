@@ -51,7 +51,17 @@ export type {
   SemanticTokenModifierIndex,
   SemanticTokenTypeCode,
 } from "./generated/token-descriptor.js";
-export { assertSafeSvgForDom } from "./svg-safety.js";
+export {
+  assertNavigableSvgForDom,
+  assertSelfContainedSvgForDom,
+  prepareNavigableSvgForDomMount,
+  prepareSelfContainedSvgForDomMount,
+} from "./svg-safety.js";
+export type {
+  NavigableSvgDomAdmission,
+  SelfContainedSvgDomAdmission,
+  SvgDomAdmission,
+} from "./svg-safety.js";
 export {
   UNAVAILABLE_DIAGRAM_DETECTION,
   diagramFamilyCapabilities,

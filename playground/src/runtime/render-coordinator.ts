@@ -31,8 +31,8 @@ import type {
 } from "./realm/channel-protocol.ts";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
 import {
-  assertSafeInlineSvgArtifact,
-  type SafeInlineSvg,
+  assertNavigableInlineSvgArtifact,
+  type NavigableInlineSvg,
 } from "./render-artifact.ts";
 
 export interface RenderCoordinatorInput {
@@ -51,7 +51,7 @@ export type RenderPublicationId = number & {
 };
 
 export interface MermanRenderSuccess {
-  readonly artifact: SafeInlineSvg;
+  readonly artifact: NavigableInlineSvg;
   readonly ascii: string | null;
   readonly asciiError: ErrorProjection | null;
   readonly engine: "merman";
@@ -567,7 +567,7 @@ function renderMerman(
     return mermanFailure(result.stage, result.error);
   }
   try {
-    assertSafeInlineSvgArtifact(result.artifact);
+    assertNavigableInlineSvgArtifact(result.artifact);
   } catch (error) {
     return mermanFailure("svg-validation", error);
   }

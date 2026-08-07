@@ -1,7 +1,7 @@
 # Security Threat Model
 
 **Status**: Living document  
-**Last updated**: 2026-07-20
+**Last updated**: 2026-08-06
 **Scope**: `merman-core`, `merman-render`, `merman`, and `merman-cli`
 
 ## Problem
@@ -27,9 +27,9 @@ flowchart LR
     Render --> Parity[Parity SVG]
     Parity --> SvgBudget[SVG byte budget]
     SvgBudget --> Pipeline[Optional SVG pipeline]
-    Pipeline --> SafeSvg[Readable or resvg-safe SVG]
-    SafeSvg --> Raster[PNG/JPG pixmap]
-    SafeSvg --> Pdf[Vector PDF]
+    Pipeline --> ConsumerSvg[Readable or resvg-safe SVG]
+    ConsumerSvg --> Raster[PNG/JPG pixmap]
+    ConsumerSvg --> Pdf[Vector PDF]
     Raster --> RasterBudget[Final pixel budget]
     Pdf --> PdfBudget[Filter and embedded-image budgets]
 ```
@@ -59,6 +59,7 @@ flowchart LR
 | Huge source, layout model, labels, or SVG output | Shared render resource budgets limit source bytes, Flowchart layout cardinality, Venn pairwise expansion, Swimlane line-hop segment-pair work, aggregate label bytes, and SVG bytes before and after SVG postprocessing. | Render, bindings, Typst, and security regression tests. |
 | Huge or malformed PNG/JPG output | `RasterOptions` plans fit, scale, final dimensions, and the default 4096-by-4096 / 16,777,216-pixel limits before pixmap allocation. Embedded image headers are checked before decode. Raster unbounded mode does not disable render or decoded-image budgets, and large SVG generation remains governed by the separate render resource profile. | Raster tests, public API regression tests, and CLI behavior. |
 | Inline browser raster exhaustion or animation | The shared Web/VS Code DOM policy caps base64 and decoded file bytes plus per-image and aggregate canvas pixels before allocation or DOM insertion. Bounded PNG/GIF/JPEG/WebP structure scans reject APNG, multi-frame or application-controlled GIF, animated WebP, inconsistent dimensions, and unsupported frame containers without attempting pixel decode. | Focused VS Code TypeScript safety tests, Web DOM-safety smoke tests, and generated-policy freshness. |
+| Browser navigation is confused with automatic resource loading | The self-contained DOM policy rejects both capabilities. The separate navigable Web policy permits only Mermaid-compatible user-activated navigation on SVG anchors while continuing to reject external image, use, filter, CSS, tracking, script, and event-handler capabilities. | Web DOM-safety matrix plus Playground desktop/mobile link-interaction smoke coverage. |
 | Recursive SVG backend exhaustion | Terminal validation resolves same-document `<use>` references and rejects cycles, expanded node counts, and expanded depth before `usvg`; repeated inline images are charged once per expanded occurrence. The sealed XML tree and resolved `usvg` tree retain non-optional node and depth capabilities. Native preparation and encoding use a bounded 8 MiB worker stack. Raw vector SVG remains available for valid diagrams beyond this export capability. | Terminal SVG validation, expanded-tree and repeated-image adversarial tests, and native PNG/PDF depth smoke tests. |
 | Expensive vector PDF internals | `PdfOptions` is independent of the PNG/JPG pixel limit. Page geometry remains vector, while localized filter bitmaps have an aggregate 33,554,432-pixel default budget and embedded raster images have separate per-image and aggregate budgets. | PDF planning tests, public API regression tests, and CLI behavior. |
 | Parser/layout denial of service | Shared render budgets plus diagram-specific guards such as nesting and Gantt exclude expansion limits. Parser nesting limits remain separate because they protect recursive parse/config surfaces before layout budgets exist. | Core/render unit tests. |
@@ -68,7 +69,7 @@ flowchart LR
 
 | Risk | Impact | Required host action |
 | --- | --- | --- |
-| Inline parity SVG in a browser with untrusted source | Browser SVG/HTML/CSS interpretation may create XSS or UI-redress risk if a future renderer path leaks active content. | Prefer `render_svg_resvg_safe_sync` for untrusted inline previews, enforce CSP, and run a browser-grade SVG sanitizer when the SVG crosses a web trust boundary. |
+| Inline parity SVG in a browser with untrusted source | Browser SVG/HTML/CSS interpretation may create XSS or UI-redress risk if a future renderer path leaks active content. | Apply `assertSelfContainedSvgForDom()` or `assertNavigableSvgForDom()` in the Web host, preserve the opaque admission until the real mount boundary, and enforce CSP/isolation appropriate to the product. `ResvgCompatibleSvg` is not browser admission. |
 | Trusted site CSS is malicious or compromised | Host CSS can affect rendered output and may include browser-sensitive CSS. | Treat site config and host themes as code. Do not accept them from untrusted users. |
 | Custom icon SVG is untrusted | Icon bodies are inserted as SVG fragments. `resvg_safe` strips common active content at the final output boundary, but parity SVG and custom host pipelines may preserve it. | Only load curated icon packs, force a trusted cleanup pipeline, or sanitize icons before registration. |
 | `securityLevel = loose` in site config | Loose mode intentionally preserves more Mermaid behavior, including custom links. | Do not enable loose mode for untrusted diagrams unless the embedding context is already sandboxed. |
@@ -82,7 +83,7 @@ flowchart LR
 | Use case | Recommended path | Extra controls |
 | --- | --- | --- |
 | Golden parity tests | `render_svg_sync` | Only compare or store as artifact; do not expose as trusted browser HTML. |
-| Editor preview for untrusted markdown | `render_svg_resvg_safe_sync` or host pipeline based on it | CSP, no user-controlled site config, stable diagram IDs. |
+| Editor preview for untrusted markdown | Parity/readable SVG followed by `assertSelfContainedSvgForDom()` or `assertNavigableSvgForDom()`; keep the returned capability opaque and use the matching `prepareSelfContainedSvgForDomMount()` or `prepareNavigableSvgForDomMount()` helper on the actual parsed root and owner document; resvg-safe cleanup is optional preprocessing, not DOM admission | `base-uri 'none'` where possible, CSP, no user-controlled site config, stable diagram IDs, and host-owned iframe/origin isolation where required. |
 | Server-side PNG/JPG | Raster APIs, which apply the resvg-safe pipeline and `RasterOptions` pixmap budgets | Keep budgets enabled for untrusted input; use `with_fit_to` for previews and `with_unbounded_size` only for trusted oversized exports. Embedded-image budgets remain independent. |
 | Server-side vector PDF | PDF APIs with `PdfOptions` | Select an explicit page policy. Keep filter-rasterization and embedded-image budgets enabled for untrusted input; do not use PNG/JPG unbounded settings as a PDF policy. |
 | Trusted internal design system diagrams | `render_svg_sync` or host theme pipeline | Keep trusted theme/icon sources reviewable. |

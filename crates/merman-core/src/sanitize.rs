@@ -251,6 +251,59 @@ fn is_dompurify_allowed_uri(value: &str) -> bool {
             .is_some_and(|byte| !is_dompurify_uri_scheme_byte(*byte) && *byte != b':')
 }
 
+/// Normalizes a URI-bearing attribute value that already exists in the DOM.
+///
+/// DOMPurify trims every attribute except `value`, validates URI attributes after removing its
+/// `ATTR_WHITESPACE` set, and writes the trimmed value back to the DOM. This entry point must not
+/// decode character references again: a literal `&colon;` assigned through `setAttribute()` is a
+/// literal DOM value, not an encoded colon.
+#[doc(hidden)]
+pub(crate) fn dompurify_normalize_dom_uri_attribute(value: &str) -> Option<String> {
+    let value = dompurify_normalize_dom_attribute_value("href", value);
+    let value_no_ws = remove_dompurify_attr_whitespace(value);
+    (is_dompurify_allowed_uri(value_no_ws.as_ref()) || value.is_empty()).then(|| value.to_string())
+}
+
+/// Applies DOMPurify's pre-validation attribute-value normalization to an existing DOM value.
+#[doc(hidden)]
+pub(crate) fn dompurify_normalize_dom_attribute_value<'a>(name: &str, value: &'a str) -> &'a str {
+    if name.eq_ignore_ascii_case("value") {
+        value
+    } else {
+        trim_ecmascript_whitespace(value)
+    }
+}
+
+/// Normalizes a URI-bearing attribute read from serialized SVG source.
+///
+/// Serialized source is decoded exactly once before applying the DOM-value contract.
+#[doc(hidden)]
+pub(crate) fn dompurify_normalize_serialized_uri_attribute(value: &str) -> Option<String> {
+    let decoded_value = decode_attr_html_entities(value);
+    dompurify_normalize_dom_uri_attribute(&decoded_value)
+}
+
+fn trim_ecmascript_whitespace(value: &str) -> &str {
+    value.trim_matches(is_ecmascript_trim_whitespace)
+}
+
+fn is_ecmascript_trim_whitespace(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{0009}'..='\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200A}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}'
+            | '\u{FEFF}'
+    )
+}
+
 fn has_dompurify_allowed_uri_scheme(value: &str) -> bool {
     let bytes = value.as_bytes();
     const ALLOWED_URI_SCHEMES: &[&[u8]] = &[
@@ -450,8 +503,7 @@ fn dompurify_is_valid_attribute(
         return true;
     }
 
-    let decoded_value = decode_attr_html_entities(value);
-    let value_no_ws = remove_dompurify_attr_whitespace(&decoded_value);
+    let value_no_ws = remove_dompurify_attr_whitespace(value);
 
     if is_dompurify_allowed_uri(value_no_ws.as_ref()) {
         return true;
@@ -459,7 +511,7 @@ fn dompurify_is_valid_attribute(
 
     if matches!(lc_name, "src" | "xlink:href" | "href")
         && lc_tag != "script"
-        && decoded_value.starts_with("data:")
+        && value.starts_with("data:")
         && cfg.data_uri_tags.contains(lc_tag)
     {
         return true;
@@ -473,42 +525,9 @@ fn dompurify_is_valid_attribute(
 }
 
 fn decode_attr_html_entities(input: &str) -> String {
-    if input.is_empty() {
-        return String::new();
-    }
-
-    // Mermaid's sanitizer normalizes these spellings before DOMPurify sees a parsed attribute.
-    // Preserve that compatibility, then apply the full HTML attribute entity algorithm because
-    // lol_html exposes the raw source value to the rewrite callback.
-    let mut out = replace_ascii_case_insensitive_literal(input, "&colon;", ":");
-    out = replace_ascii_case_insensitive_literal(&out, "&newline;", "\n");
-    out = replace_ascii_case_insensitive_literal(&out, "&tab;", "\t");
-    out = replace_decimal_colon_entity_like_current_regex(&out);
-    out = replace_hex_colon_entity_like_current_regex(&out);
-    htmlize::unescape_attribute(out).into_owned()
-}
-
-fn replace_ascii_case_insensitive_literal(input: &str, needle: &str, replacement: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let needle = needle.as_bytes();
-    let mut cursor = 0usize;
-    let mut probe = 0usize;
-
-    while let Some(rel_start) = input[probe..].find('&') {
-        let start = probe + rel_start;
-        if ascii_case_insensitive_starts_with(bytes, start, needle) {
-            out.push_str(&input[cursor..start]);
-            out.push_str(replacement);
-            cursor = start + needle.len();
-            probe = cursor;
-        } else {
-            probe = start + 1;
-        }
-    }
-
-    out.push_str(&input[cursor..]);
-    out
+    // `lol_html` exposes the serialized source spelling. Decode exactly the one layer that a
+    // browser parser would consume before DOMPurify reads `Attr.value`.
+    htmlize::unescape_attribute(input).into_owned()
 }
 
 fn ascii_case_insensitive_starts_with(haystack: &[u8], start: usize, needle: &[u8]) -> bool {
@@ -520,81 +539,6 @@ fn ascii_case_insensitive_starts_with(haystack: &[u8], start: usize, needle: &[u
                 .zip(needle)
                 .all(|(a, b)| a.eq_ignore_ascii_case(b))
         })
-}
-
-fn replace_decimal_colon_entity_like_current_regex(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut cursor = 0usize;
-    let mut probe = 0usize;
-
-    while let Some(rel_start) = input[probe..].find("&#") {
-        let start = probe + rel_start;
-        let mut end = start + 2;
-        while bytes.get(end) == Some(&b'0') {
-            end += 1;
-        }
-
-        if bytes.get(end..end + 2) == Some(b"58") {
-            end += 2;
-            if bytes.get(end) == Some(&b';') {
-                end += 1;
-            }
-            out.push_str(&input[cursor..start]);
-            out.push(':');
-            cursor = end;
-            probe = end;
-        } else {
-            probe = start + 1;
-        }
-    }
-
-    out.push_str(&input[cursor..]);
-    out
-}
-
-fn replace_hex_colon_entity_like_current_regex(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut cursor = 0usize;
-    let mut probe = 0usize;
-
-    while let Some(rel_start) = input[probe..].find("&#") {
-        let start = probe + rel_start;
-        let mut end = start + 2;
-        if !bytes
-            .get(end)
-            .is_some_and(|b| b.eq_ignore_ascii_case(&b'x'))
-        {
-            probe = start + 1;
-            continue;
-        }
-
-        end += 1;
-        while bytes.get(end) == Some(&b'0') {
-            end += 1;
-        }
-
-        let is_colon_hex = bytes.get(end) == Some(&b'3')
-            && bytes
-                .get(end + 1)
-                .is_some_and(|b| b.eq_ignore_ascii_case(&b'a'));
-        if is_colon_hex {
-            end += 2;
-            if bytes.get(end) == Some(&b';') {
-                end += 1;
-            }
-            out.push_str(&input[cursor..start]);
-            out.push(':');
-            cursor = end;
-            probe = end;
-        } else {
-            probe = start + 1;
-        }
-    }
-
-    out.push_str(&input[cursor..]);
-    out
 }
 
 fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> String {
@@ -692,18 +636,16 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
 
             for (name, value) in attrs {
                 let lc_name = name.to_ascii_lowercase();
-                if !dompurify_is_valid_attribute(cfg, &lc_tag, &lc_name, &value) {
+                let parsed_value = decode_attr_html_entities(&value);
+                let normalized_value =
+                    dompurify_normalize_dom_attribute_value(&lc_name, &parsed_value);
+                if !dompurify_is_valid_attribute(cfg, &lc_tag, &lc_name, normalized_value) {
                     el.remove_attribute(&name);
                     continue;
                 }
 
-                if matches!(lc_name.as_str(), "href" | "src" | "xlink:href") {
-                    // DOMPurify validates URI values on parsed DOM values (entities already decoded).
-                    // `lol_html` gives us raw values, so apply HTML attribute entity semantics here.
-                    let decoded = decode_attr_html_entities(&value);
-                    if decoded != value {
-                        let _ = el.set_attribute(&name, &decoded);
-                    }
+                if normalized_value != value {
+                    let _ = el.set_attribute(&name, normalized_value);
                 }
             }
 
@@ -918,17 +860,20 @@ mod tests {
     #[test]
     fn decode_attr_entities_matches_browser_attribute_semantics_without_regex() {
         assert_eq!(
-            decode_attr_html_entities("javascript&colon;alert&NEWLINE;one&TAB;two"),
+            decode_attr_html_entities("javascript&colon;alert&NewLine;one&Tab;two"),
             "javascript:alert\none\ttwo"
         );
         assert_eq!(
             decode_attr_html_entities("a&#58;b&#00058;c&#058d"),
             "a:b:c:d"
         );
+        let high_code_point = char::from_u32(0x3adef).expect("valid HTML numeric reference");
         assert_eq!(
             decode_attr_html_entities("a&#x3a;b&#X0003A;c&#x03adef"),
-            "a:b:c:def"
+            format!("a:b:c{high_code_point}")
         );
+        assert_eq!(decode_attr_html_entities("&Colon;"), "∷");
+        assert_eq!(decode_attr_html_entities("&COLON;"), "&COLON;");
         assert_eq!(
             decode_attr_html_entities("&colon &newline &tab &#59; &#x3b;"),
             "&colon &newline &tab ; ;"
@@ -1034,6 +979,71 @@ mod tests {
         ] {
             assert!(!is_dompurify_allowed_uri(uri), "{uri}");
         }
+    }
+
+    #[test]
+    fn dompurify_uri_attribute_normalization_preserves_the_representation_layer() {
+        for value in [
+            "https://example.test",
+            "jav&#x61;script:alert(1)",
+            "javascript&#58;alert(1)",
+            "javascript&colon;alert(1)",
+        ] {
+            assert_eq!(
+                dompurify_normalize_dom_uri_attribute(value).as_deref(),
+                Some(value),
+                "DOM: {value}"
+            );
+        }
+        assert_eq!(
+            dompurify_normalize_dom_uri_attribute(""),
+            Some(String::new())
+        );
+        assert_eq!(
+            dompurify_normalize_dom_uri_attribute("  https://example.test  "),
+            Some("https://example.test".into())
+        );
+        assert_eq!(
+            dompurify_normalize_dom_uri_attribute(" \t\n "),
+            Some(String::new())
+        );
+        for value in [
+            "java\nscript:alert(1)",
+            "java\tscript:alert(1)",
+            "\u{FEFF}javascript:alert(1)",
+            "javascript:alert(1)",
+            "data:text/html,alert(1)",
+            "vbscript:alert(1)",
+            "unknown:ticket",
+            "about:blank",
+        ] {
+            assert_eq!(
+                dompurify_normalize_dom_uri_attribute(value),
+                None,
+                "DOM: {value}"
+            );
+        }
+
+        assert_eq!(
+            dompurify_normalize_serialized_uri_attribute("jav&#x61;script:alert(1)"),
+            None
+        );
+        assert_eq!(
+            dompurify_normalize_serialized_uri_attribute("jav&amp;#x61;script:alert(1)"),
+            Some("jav&#x61;script:alert(1)".into())
+        );
+        assert_eq!(
+            dompurify_normalize_serialized_uri_attribute("javascript&amp;colon;ticket"),
+            Some("javascript&colon;ticket".into())
+        );
+        assert_eq!(
+            dompurify_normalize_serialized_uri_attribute("javascript&Colon;ticket"),
+            Some("javascript∷ticket".into())
+        );
+        assert_eq!(
+            dompurify_normalize_serialized_uri_attribute(""),
+            Some(String::new())
+        );
     }
 
     #[test]

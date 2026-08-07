@@ -1,5 +1,23 @@
 use std::borrow::Cow;
 
+/// Reverts only the placeholder spelling introduced by Mermaid's `encodeEntities` preprocessing.
+///
+/// This is the exact representation transition used by Mermaid's final `cleanUpSvgCode` pass. It
+/// deliberately does not parse the resulting HTML character references; callers that operate on
+/// serialized markup must leave that work to the browser parser.
+pub(crate) fn decode_mermaid_entity_placeholders(input: &str) -> Cow<'_, str> {
+    if !input.contains('\u{fb02}') && !input.contains('\u{00b6}') {
+        return Cow::Borrowed(input);
+    }
+
+    Cow::Owned(
+        input
+            .replace("ﬂ°°", "&#")
+            .replace("ﬂ°", "&")
+            .replace("¶ß", ";"),
+    )
+}
+
 /// Decodes Mermaid's `encodeEntities` placeholders and shorthand `#...;` sequences into Unicode.
 ///
 /// Upstream Mermaid runs `encodeEntities(text)` before parsing, and later uses `decodeEntities`
@@ -16,10 +34,7 @@ pub fn decode_mermaid_entities_to_unicode(input: &str) -> Cow<'_, str> {
     }
 
     // Step 1: Mermaid placeholders -> `&...;` / `&#...;`
-    let mut s = input.to_string();
-    if s.contains('ﬂ') || s.contains('¶') {
-        s = s.replace("ﬂ°°", "&#").replace("ﬂ°", "&").replace("¶ß", ";");
-    }
+    let mut s = decode_mermaid_entity_placeholders(input).into_owned();
 
     // Step 2 (shorthand): `#...;` -> `&...;` / `&#...;`
     //
@@ -100,7 +115,10 @@ pub fn decode_html_entities_to_unicode(input: &str) -> Cow<'_, str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_html_entities_to_unicode, decode_mermaid_entities_to_unicode};
+    use super::{
+        decode_html_entities_to_unicode, decode_mermaid_entities_to_unicode,
+        decode_mermaid_entity_placeholders,
+    };
 
     #[test]
     fn html_entity_decode_does_not_apply_mermaid_shorthand() {
@@ -116,5 +134,17 @@ mod tests {
         assert_eq!(decode_mermaid_entities_to_unicode("#quot;"), "\"");
         assert_eq!(decode_mermaid_entities_to_unicode("ﬂ°quot¶ß"), "\"");
         assert_eq!(decode_mermaid_entities_to_unicode("ﬂ°°39¶ß"), "'");
+    }
+
+    #[test]
+    fn placeholder_decode_preserves_the_serialized_entity_layer() {
+        assert_eq!(
+            decode_mermaid_entity_placeholders("javascriptﬂ°colon¶ßalert(1)"),
+            "javascript&colon;alert(1)"
+        );
+        assert_eq!(
+            decode_mermaid_entity_placeholders("ticket&amp;value"),
+            "ticket&amp;value"
+        );
     }
 }

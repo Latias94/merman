@@ -10,6 +10,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartDefs<'a> {
     diagram_type: &'a str,
     extra_marker_colors: Vec<String>,
     hand_drawn: bool,
+    security_level_loose: bool,
 }
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_defs<'a>(
@@ -22,6 +23,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_defs<'a>(
         diagram_type,
         extra_marker_colors: collect_edge_marker_colors(ctx),
         hand_drawn: flowchart_config_look(ctx.config) == "handDrawn",
+        security_level_loose: ctx.security_level_loose,
     }
 }
 
@@ -37,6 +39,7 @@ impl FlowchartDefs<'_> {
             self.diagram_type,
             &self.extra_marker_colors,
             self.hand_drawn,
+            self.security_level_loose,
         );
     }
 }
@@ -189,12 +192,21 @@ fn push_extra_markers(
     diagram_type: &str,
     colors: &[String],
     hand_drawn: bool,
+    security_level_loose: bool,
 ) {
     for c in colors {
         let cid = marker_color_id(c);
         if cid.is_empty() {
             continue;
         }
+        let color = c.trim_end_matches(';');
+        let color = if security_level_loose {
+            color
+        } else {
+            // Mermaid writes the regex capture verbatim, then DOMPurify trims ordinary SVG
+            // attribute values for strict and sandbox output.
+            color.trim()
+        };
 
         if hand_drawn {
             let _ = write!(
@@ -213,8 +225,8 @@ fn push_extra_markers(
                 escape_xml(diagram_type),
                 escape_xml(&cid),
                 escape_xml(diagram_type),
-                escape_xml_display(c.trim()),
-                escape_xml_display(c.trim())
+                escape_xml_display(color),
+                escape_xml_display(color)
             );
         }
     }

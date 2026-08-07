@@ -5782,7 +5782,7 @@ Thirty-fourth slice outcome:
   [crates/merman/tests/resvg_safe_fixture_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/resvg_safe_fixture_smoke.rs).
 - The smoke covers the user-provided Kanban metadata and GitGraph merge samples, plus a compact
   dark-theme Flowchart case that proves visible theme colors survive
-  `HeadlessRenderer::render_svg_resvg_safe_sync(...)`.
+  `HeadlessRenderer::render_resvg_compatible_svg_sync(...)`.
 - It also samples supported fixture families deterministically: each available `basic.mmd`, any
   `zed_pr_57644_*.mmd` fixture, and a small sorted set of representative stress/upstream fixtures
   per family.
@@ -5815,7 +5815,7 @@ Outcome:
 - Extended the resvg-safe smoke with a manual ignored all-supported audit. The audit intentionally
   skips parser-only fixtures, upstream docs placeholders such as `...`, and pinned upstream-invalid
   examples, then renders the supported fixture set through
-  `HeadlessRenderer::render_svg_resvg_safe_sync(...)`.
+  `HeadlessRenderer::render_resvg_compatible_svg_sync(...)`.
 - Fixed an upstream-source-backed Treemap input compatibility gap found by that audit. Mermaid
   `TreeMapDB.addClass(...)` accepts bare label-style tokens such as `color`; local Treemap parsing
   no longer rejects those tokens as parse errors.

@@ -3,6 +3,9 @@ use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionL
 use crate::resources::{ModelComplexity, RenderResourcePolicy};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
+use merman_core::svg_security::{
+    MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
+};
 use std::collections::HashMap;
 
 pub(crate) const KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX: f64 = 25.0;
@@ -58,7 +61,7 @@ pub(crate) use config::{KanbanConfigView, default_use_max_width};
 pub(crate) struct KanbanPreparedArtifact {
     layout: KanbanDiagramLayout,
     sections: Vec<KanbanPreparedMarkdownLabel>,
-    items: Vec<KanbanPreparedItemLabel>,
+    items: Vec<KanbanPreparedItem>,
 }
 
 impl KanbanPreparedArtifact {
@@ -71,7 +74,7 @@ impl KanbanPreparedArtifact {
     ) -> (
         &KanbanDiagramLayout,
         &[KanbanPreparedMarkdownLabel],
-        &[KanbanPreparedItemLabel],
+        &[KanbanPreparedItem],
     ) {
         (&self.layout, &self.sections, &self.items)
     }
@@ -101,8 +104,62 @@ impl KanbanPreparedLabelGeometry {
 }
 
 #[derive(Debug)]
-pub(crate) struct KanbanPreparedItemLabel {
+pub(crate) struct KanbanPreparedItem {
     pub(crate) title: KanbanPreparedMarkdownLabel,
+    pub(crate) ticket_link: Option<KanbanPreparedTicketLink>,
+}
+
+#[derive(Debug)]
+pub(crate) struct KanbanPreparedTicketLink {
+    pub(crate) href: Option<SerializedMermaidNavigationHref>,
+}
+
+fn replace_first_like_javascript(source: &str, search: &str, replacement: &str) -> String {
+    let Some(match_start) = source.find(search) else {
+        return source.to_string();
+    };
+    let match_end = match_start + search.len();
+    let prefix = &source[..match_start];
+    let suffix = &source[match_end..];
+    let mut result = String::with_capacity(source.len() + replacement.len());
+    result.push_str(prefix);
+
+    let mut cursor = 0usize;
+    while let Some(relative_dollar) = replacement[cursor..].find('$') {
+        let dollar = cursor + relative_dollar;
+        result.push_str(&replacement[cursor..dollar]);
+        match replacement.as_bytes().get(dollar + 1).copied() {
+            Some(b'$') => result.push('$'),
+            Some(b'&') => result.push_str(search),
+            Some(b'`') => result.push_str(prefix),
+            Some(b'\'') => result.push_str(suffix),
+            _ => {
+                result.push('$');
+                cursor = dollar + 1;
+                continue;
+            }
+        }
+        cursor = dollar + 2;
+    }
+    result.push_str(&replacement[cursor..]);
+    result.push_str(suffix);
+    result
+}
+
+fn prepare_kanban_ticket_link(
+    ticket_base_url: Option<&str>,
+    ticket: Option<&str>,
+    effective_config: &merman_core::MermaidConfig,
+) -> Option<KanbanPreparedTicketLink> {
+    let ticket = ticket.filter(|ticket| !ticket.is_empty())?;
+    let ticket_url = replace_first_like_javascript(ticket_base_url?, "#TICKET#", ticket);
+    let href = prepare_mermaid_navigation_href(
+        &ticket_url,
+        MermaidNavigationSecurity::from_security_level_loose(
+            effective_config.get_str("securityLevel") == Some("loose"),
+        ),
+    );
+    Some(KanbanPreparedTicketLink { href })
 }
 
 fn prepare_kanban_markdown_label(
@@ -193,7 +250,9 @@ pub(crate) fn prepare_kanban_diagram_typed_with_resource_policy(
 ) -> Result<KanbanPreparedArtifact> {
     resource_limits.check_model_complexity(ModelComplexity::from_kanban(model))?;
     resource_limits.check_layout_work_units(kanban_layout_work_units(model))?;
-    let cfg = KanbanConfigView::new(effective_config.as_value()).layout_settings();
+    let config_view = KanbanConfigView::new(effective_config.as_value());
+    let cfg = config_view.layout_settings();
+    let ticket_base_url = config_view.ticket_base_url();
     let section_width = cfg.section_width;
     let viewbox_padding = cfg.viewbox_padding;
     let padding = KANBAN_SECTION_PADDING_PX;
@@ -308,8 +367,13 @@ pub(crate) fn prepare_kanban_diagram_typed_with_resource_policy(
                 priority: item.priority.clone(),
                 icon: item.icon.clone(),
             });
-            prepared_items.push(KanbanPreparedItemLabel {
+            prepared_items.push(KanbanPreparedItem {
                 title: prepared_title,
+                ticket_link: prepare_kanban_ticket_link(
+                    ticket_base_url.as_deref(),
+                    item.ticket.as_deref(),
+                    effective_config,
+                ),
             });
 
             y = center_y + height / 2.0 + padding / 2.0;
@@ -382,7 +446,9 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
 ) -> KanbanPreparedArtifact {
-    let settings = KanbanConfigView::new(effective_config.as_value()).layout_settings();
+    let config_view = KanbanConfigView::new(effective_config.as_value());
+    let settings = config_view.layout_settings();
+    let ticket_base_url = config_view.ticket_base_url();
     let markdown = KanbanMarkdown::new(effective_config);
     let sections = layout
         .sections
@@ -401,7 +467,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
     let items = layout
         .items
         .iter()
-        .map(|item| KanbanPreparedItemLabel {
+        .map(|item| KanbanPreparedItem {
             title: prepare_kanban_title_label(
                 &markdown,
                 measurer,
@@ -410,6 +476,11 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
                 (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
             )
             .0,
+            ticket_link: prepare_kanban_ticket_link(
+                ticket_base_url.as_deref(),
+                item.ticket.as_deref(),
+                effective_config,
+            ),
         })
         .collect();
 
@@ -422,7 +493,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
 
 #[cfg(test)]
 mod tests {
-    use super::layout_kanban_diagram_typed;
+    use super::{layout_kanban_diagram_typed, replace_first_like_javascript};
     use crate::text::DeterministicTextMeasurer;
     use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
     use serde_json::json;
@@ -446,6 +517,34 @@ mod tests {
         assert_eq!(super::KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, 24.0);
         assert_eq!(super::KANBAN_ITEM_ONE_ROW_HEIGHT_PX, 44.0);
         assert_eq!(super::KANBAN_ITEM_TWO_ROW_HEIGHT_PX, 56.0);
+    }
+
+    #[test]
+    fn kanban_ticket_placeholder_replacement_matches_javascript_string_replace() {
+        assert_eq!(
+            replace_first_like_javascript("pre#TICKET#post#TICKET#", "#TICKET#", "MC-2038"),
+            "preMC-2038post#TICKET#"
+        );
+        assert_eq!(
+            replace_first_like_javascript("left#TICKET#right", "#TICKET#", "$$"),
+            "left$right"
+        );
+        assert_eq!(
+            replace_first_like_javascript("left#TICKET#right", "#TICKET#", "$&"),
+            "left#TICKET#right"
+        );
+        assert_eq!(
+            replace_first_like_javascript("left#TICKET#right", "#TICKET#", "$`"),
+            "leftleftright"
+        );
+        assert_eq!(
+            replace_first_like_javascript("left#TICKET#right", "#TICKET#", "$'"),
+            "leftrightright"
+        );
+        assert_eq!(
+            replace_first_like_javascript("https://example.test/tickets", "#TICKET#", "$&"),
+            "https://example.test/tickets"
+        );
     }
 
     #[test]

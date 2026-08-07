@@ -144,11 +144,13 @@ validation, failure recovery, and a family-owned Rust semantic/headless path. A 
 may not guess a second output format.
 
 Isolation and security claims require machine-recorded browser observations for the mandatory
-desktop evidence project. Bind the probe contract, security-critical source hashes, expected and
-observed values, pass state, and derived counts into the candidate evidence. Static tests or a prose
-matrix are not substitutes. Re-record the evidence after any bound source changes and fail closed
-when an observation or source digest is absent. Mobile interaction emulation remains an on-demand
-product check; it does not duplicate the release evidence matrix.
+desktop evidence project. Bind the probe contract, expected and observed values, pass state,
+derived counts, and canonical evidence artifact into the candidate evidence. Static tests or a
+prose matrix are not substitutes. Do not bind implementation-file hashes to the historical browser
+observation: ordinary source edits belong to unit, integration, and focused browser tests, while a
+new candidate, probe contract, or claimed observation requires an explicit on-demand re-recording.
+Mobile interaction emulation remains an on-demand product check; it does not duplicate the release
+evidence matrix.
 
 A layout module needs typed selection, config propagation, deterministic fallback, shared resource
 enforcement, browser registration, and layout evidence. Removed syntax must update recovery and
