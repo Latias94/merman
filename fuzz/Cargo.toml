@@ -8,9 +8,11 @@ edition = "2024"
 cargo-fuzz = true
 
 [dependencies]
+base64 = "0.22.1"
 libfuzzer-sys = "0.4"
 merman = { path = "../crates/merman", default-features = false, features = ["svg", "layout-cytoscape", "layout-elk", "math"] }
 merman-ffi = { path = "../crates/merman-ffi", default-features = false, features = ["analysis", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random"] }
+merman-render = { path = "../crates/merman-render", default-features = false }
 roxmltree = "0.21.1"
 
 # Use independent workspace for fuzzers.
@@ -41,6 +43,13 @@ bench = false
 [[bin]]
 name = "ffi_api"
 path = "fuzz_targets/ffi_api.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "theme_font_asset"
+path = "fuzz_targets/theme_font_asset.rs"
 test = false
 doc = false
 bench = false

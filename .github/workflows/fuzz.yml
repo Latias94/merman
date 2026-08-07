@@ -34,6 +34,7 @@ on:
           - render_mermaid
           - svg_pipeline
           - ffi_api
+          - theme_font_asset
       preset:
         description: Bounded fuzzing budget
         required: true
@@ -86,7 +87,7 @@ jobs:
               ;;
             workflow_dispatch)
               case "$DISPATCH_TARGET" in
-                all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api)
+                all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api|theme_font_asset)
                   selected_targets="$DISPATCH_TARGET"
                   ;;
                 *)
@@ -111,8 +112,8 @@ jobs:
           esac
 
           case "$selected_targets" in
-            all) targets='parse_mermaid render_mermaid svg_pipeline ffi_api' ;;
-            parse_mermaid|render_mermaid|svg_pipeline|ffi_api) targets="$selected_targets" ;;
+            all) targets='parse_mermaid render_mermaid svg_pipeline ffi_api theme_font_asset' ;;
+            parse_mermaid|render_mermaid|svg_pipeline|ffi_api|theme_font_asset) targets="$selected_targets" ;;
             *)
               echo "unsupported resolved fuzz target" >&2
               exit 1
@@ -134,6 +135,9 @@ jobs:
                 ;;
               ffi_api)
                 entry='{"target":"ffi_api","seed":"fuzz/seeds/ffi","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":16384}'
+                ;;
+              theme_font_asset)
+                entry='{"target":"theme_font_asset","seed":"fuzz/seeds/theme_font_asset","dictionary":"fuzz/dictionaries/font.dict","max_len":262144}'
                 ;;
               *)
                 echo "unsupported resolved matrix target" >&2
