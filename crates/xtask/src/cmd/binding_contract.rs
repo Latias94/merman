@@ -64,11 +64,6 @@ const FULL_NATIVE_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
     ConstructorServiceKey::HostTextMeasurement,
     ConstructorServiceKey::IconRegistry,
 ];
-const FULL_NATIVE_SYSTEM_ADAPTERS: &[CapabilityKey] = &[
-    CapabilityKey::SystemClock,
-    CapabilityKey::SystemRandom,
-    CapabilityKey::SystemTimezone,
-];
 
 #[derive(Serialize)]
 struct MetadataProjection {
@@ -314,8 +309,8 @@ fn android_artifact_profile_projection() -> BindingArtifactProfileProjection {
             .with_supplemental_capabilities(FULL_NATIVE_SUPPLEMENTAL_CAPABILITIES)
             .with_all_available_metadata()
             .with_constructor_services(FULL_NATIVE_CONSTRUCTOR_SERVICES)
-            .with_system_adapters(FULL_NATIVE_SYSTEM_ADAPTERS)
             .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
+            .with_native_runtime()
             .materialize(),
     )
 }

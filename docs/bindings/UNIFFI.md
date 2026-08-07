@@ -53,6 +53,8 @@ exposes `lint_rule_catalog()` and `configurable_lint_rule_catalog()`, but those 
 `MermanTextMeasurer` and `MermanEngineServices`; constructing an engine with either icon or text
 measurement services returns `MissingCapability` with capability ID `svg`. Consumers can therefore
 use one generated projection and handle artifact capability differences as typed runtime errors.
+Create an empty service bundle first, then use the immutable `with_icon_registry` and
+`with_text_measurer` builders; adding a future service does not change the constructor signature.
 
 `MermanEngine::close()` is explicit and idempotent. A busy or re-entrant close preserves the
 complete engine and service graph for retry; a successful close detaches the engine under the
@@ -63,18 +65,22 @@ reference cycle.
 ## Build Profiles
 
 `merman-uniffi` has no default features. The complete native language SDK artifact lists analysis,
-ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, RaTeX math, and native
-clock/timezone/random adapters directly. Timing is not part of the UniFFI artifact contract.
-`bindgen-smoke` is only for foreign-language
+ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, RaTeX math, and the binding-owned
+`native-runtime` aggregate. That aggregate atomically compiles the native clock, time-zone, and
+random adapters. Timing is not part of the UniFFI artifact contract.
+`binding-generation` is only for foreign-language
 generation and does not belong in a distributed runtime artifact.
 
 ```bash
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
+cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
 ```
 
 Small artifacts can select `analysis`, `ascii`, `svg`, `png`, `jpeg`, `pdf`,
-`layout-cytoscape`, `layout-elk`, `math`, and the required system-adapter features explicitly.
+`layout-cytoscape`, `layout-elk`, and `math` independently. Add `native-runtime` only when the
+complete native runtime policy is required; UniFFI does not expose partial adapter feature sets.
 `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, and `math` all imply `svg`.
+Runtime discovery still reports `system-clock`, `system-timezone`, and `system-random` as concrete
+adapter IDs rather than exposing the Cargo aggregate as a capability.
 
 ## Python
 
@@ -82,14 +88,14 @@ The repository ships a Python package layout. Generate it from the exact cdylib 
 packaged:
 
 ```bash
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
-cargo run -p merman-uniffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' \
+cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo run -p merman-uniffi --no-default-features --features binding-generation \
   --example generate_python_package -- \
   --cdylib target/release/libmerman_uniffi.dylib \
   --package-dir platforms/python/merman
 ```
 
-Use `.so` on Linux and `merman_uniffi.dll` on Windows. The generator enables `bindgen-smoke`, but
+Use `.so` on Linux and `merman_uniffi.dll` on Windows. The generator enables `binding-generation`, but
 the copied production library is the separately built release artifact without that tool feature.
 
 See [Python UniFFI](PYTHON_UNIFFI.md) for package and wheel details.
@@ -101,7 +107,7 @@ module inside the matching `Merman.xcframework`; no hand-written C façade remai
 Swift source, header, and module map from the exact static library:
 
 ```bash
-cargo run -p merman-uniffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' \
+cargo run -p merman-uniffi --no-default-features --features binding-generation \
   --example generate_swift_bindings -- \
   --library target/aarch64-apple-darwin/release/libmerman_uniffi.a \
   --output-dir platforms/apple/Sources/Merman/Generated
@@ -135,20 +141,21 @@ contract.
 - Replace one-shot `MermanEngine` values with `Merman`.
 - Replace `MermanReusableEngine` and facade factories such as `reusable_engine(...)` with the
   direct `MermanEngine(options_json, services)` constructor.
-- Put icon registries and text measurement in `MermanEngineServices`; there are no
-  callback-specialized constructors or post-construction service mutators.
+- Put icon registries and text measurement in a zero-argument `MermanEngineServices` value through
+  its persistent `with_*` builders; there are no callback-specialized constructors or
+  post-construction service mutators.
 - Call `close()` deterministically. Do not rely on garbage collection to release foreign callback
   cycles.
 - Use result-returning binary methods when callers need operation metadata or the effective output
-  plan; byte-returning conveniences remain available.
+  plan; byte-returning conveniences remain available. `MermanOutputPlan` is an open record: switch
+  on `kind`, use the optional known payload, and preserve `raw_json` for future kinds.
 - Treat runtime operation, metadata, option-group, constructor-service, and resource-limit IDs as
   open discovery values. Closed request-input vocabularies remain generated enums/value sets.
 
 ## Verification
 
 ```bash
-cargo nextest run -p merman-uniffi --no-default-features \
-  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --test bindgen_smoke
+python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
 The binding smoke builds a library, generates foreign-language source from its embedded UniFFI

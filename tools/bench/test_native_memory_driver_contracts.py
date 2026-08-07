@@ -36,15 +36,13 @@ CONTRACT_PATH = (
     / "flowchart-end-to-end-memory-v1.json"
 )
 BINDING_CORPUS_PATH = ROOT / "tools" / "bench" / "binding_request_corpus.json"
-BINDING_CONTRACT_PATHS = tuple(
+BINDING_CONTRACT_PATH = (
     ROOT
     / "docs"
     / "performance"
     / "contracts"
-    / f"binding-request-version-only-memory-v{version}.json"
-    for version in (2, 3)
+    / "binding-request-version-only-memory-v2.json"
 )
-BINDING_CONTRACT_PATH = BINDING_CONTRACT_PATHS[0]
 EXECUTABLE_SHA256 = "a" * 64
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 BINDING_DATA_SHA256 = "471b942eb8877b2ee7c38b86567b13f79fba101df1e5b4767b3421a200e0ad3f"
@@ -337,9 +335,6 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             lambda value: value["semantic_response"]["operation"].__setitem__(
                 "unexpected", 1
             ),
-            lambda value: value["probe"]["inputs"][0].__setitem__(
-                "sha256", "A" * 64
-            ),
         )
 
         with tempfile.TemporaryDirectory() as raw:
@@ -353,45 +348,23 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
                 ):
                     run_native_memory.load_owner_contract(path, lane=lane)
 
-    def test_binding_dry_run_records_and_verifies_probe_input_provenance(self) -> None:
-        for contract_path in BINDING_CONTRACT_PATHS:
-            with self.subTest(contract=contract_path.name):
-                report, exit_code = run_native_memory.execute(
-                    self.args(
-                        corpus=str(BINDING_CORPUS_PATH),
-                        lane="binding-request-version-only-memory",
-                        contract=str(contract_path),
-                        dry_run=True,
-                    )
-                )
+    def test_binding_dry_run_records_recipe_without_source_hash_approvals(self) -> None:
+        report, exit_code = run_native_memory.execute(
+            self.args(
+                corpus=str(BINDING_CORPUS_PATH),
+                lane="binding-request-version-only-memory",
+                contract=str(BINDING_CONTRACT_PATH),
+                dry_run=True,
+            )
+        )
 
-                self.assertEqual(exit_code, 0, report.get("contract_errors"))
-                self.assertEqual(report["recipe"]["package"], "merman-bindings-core")
-                self.assertEqual(
-                    report["inputs"]["package_manifest"]["path"],
-                    "crates/merman-bindings-core/Cargo.toml",
-                )
-                self.assertEqual(len(report["inputs"]["probe_inputs"]), 3)
-
-                damaged = json.loads(contract_path.read_text(encoding="utf-8"))
-                damaged["probe"]["inputs"][0]["sha256"] = "b" * 64
-                with tempfile.TemporaryDirectory() as raw:
-                    path = Path(raw) / "contract.json"
-                    path.write_text(json.dumps(damaged), encoding="utf-8")
-                    failed, failed_exit = run_native_memory.execute(
-                        self.args(
-                            corpus=str(BINDING_CORPUS_PATH),
-                            lane="binding-request-version-only-memory",
-                            contract=str(path),
-                            dry_run=True,
-                        )
-                    )
-
-                self.assertEqual(failed_exit, 2)
-                self.assertIn(
-                    "probe input digest differs",
-                    failed["contract_errors"][0],
-                )
+        self.assertEqual(exit_code, 0, report.get("contract_errors"))
+        self.assertEqual(report["recipe"]["package"], "merman-bindings-core")
+        self.assertEqual(
+            report["inputs"]["package_manifest"]["path"],
+            "crates/merman-bindings-core/Cargo.toml",
+        )
+        self.assertNotIn("probe_inputs", report["inputs"])
 
     def test_schedule_is_balanced_fixed_seed_and_has_fresh_identities(self) -> None:
         nonces = (f"{index:032x}" for index in range(60))

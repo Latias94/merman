@@ -28,25 +28,30 @@ for current Mermaid parity.
 ## Generate Locally
 
 `scripts/build-python-uniffi-wheel.py` resolves the `python-uniffi-native` artifact profile. It
-builds the release cdylib with the complete direct feature list, then enables `bindgen-smoke` in
-the separate generator process that consumes that production library. The builder rejects hosts
+builds the release cdylib with the complete direct feature list, then runs a separate generator with
+only `binding-generation` against that production library. The builder rejects hosts
 outside the profile's published target set and replaces the package scaffold's release-set legal
 report with the checked-in single-target report before building the wheel.
 
 ```bash
 cargo build -p merman-uniffi --release --no-default-features \
-  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
+  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
 cargo run -p merman-uniffi --no-default-features \
-  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --example generate_python_package -- \
+  --features binding-generation --example generate_python_package -- \
   --cdylib target/release/libmerman_uniffi.dylib \
   --package-dir platforms/python/merman
 ```
 
+`native-runtime` is atomic on UniFFI artifacts and compiles the clock, time-zone, and random
+adapters together. Generated runtime discovery still exposes the concrete `system-clock`,
+`system-timezone`, and `system-random` adapter IDs; the Cargo aggregate is not a Python capability
+name.
+
 On Windows PowerShell, use the same command on one line:
 
 ```powershell
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
-cargo run -p merman-uniffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --example generate_python_package -- --cdylib target/release/merman_uniffi.dll --package-dir platforms/python/merman
+cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- --cdylib target/release/merman_uniffi.dll --package-dir platforms/python/merman
 ```
 
 ## API
@@ -100,7 +105,7 @@ class PreviewMeasurer(merman.MermanTextMeasurer):
         # Merman to use its operation-specific vendored fallback.
         return None
 
-services = merman.MermanEngineServices(None, PreviewMeasurer())
+services = merman.MermanEngineServices().with_text_measurer(PreviewMeasurer())
 engine = merman.MermanEngine(None, services)
 try:
     svg_with_host_metrics = engine.render_svg(
@@ -183,10 +188,13 @@ mutation lifecycle.
 - Delete `MermanReusableEngine`, `reusable_engine(...)`, and
   `reusable_engine_with_text_measurer(...)` usage. Construct `MermanEngine(options_json, services)`
   directly.
-- Put text measurement and immutable icon registries in `MermanEngineServices`.
+- Start with `MermanEngineServices()` and chain `with_text_measurer(...)` or
+  `with_icon_registry(...)`. Each call returns a new immutable bundle; the constructor no longer
+  takes positional optional services.
 - Call `close()` deterministically; busy and re-entrant failures retain the engine for retry.
 - Use the result-returning binary methods when callers need typed operation metadata or the
-  effective output plan.
+  effective output plan. Switch on `output_plan.kind`; read `raster` or `pdf_filter_images` when
+  present, and retain `raw_json` for unknown future kinds.
 - Preserve unknown runtime discovery IDs instead of treating generated known constants as a closed
   enum.
 
@@ -194,23 +202,16 @@ mutation lifecycle.
 
 ```bash
 cargo check -p merman-uniffi --no-default-features \
-  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --examples
-cargo nextest run -p merman-uniffi --no-default-features \
-  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --test bindgen_smoke
+  --features binding-generation --examples
+python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
-The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
-it, and runs the repository's canonical
-[`platforms/python/merman/examples/smoke.py`](../../platforms/python/merman/examples/smoke.py)
-against that fresh package. The executable example calls the `Merman` one-shot, metadata, and
-runtime-catalog methods; constructs `MermanEngine(options_json, services)` directly; exercises
-generic and named operations, binary result metadata, icon registry reuse, callback-backed
-execution, deterministic close, and post-close failure; and checks
-`MermanError.Binding` fields for invalid options JSON.
-The generated-package smoke also asserts direct UniFFI binding API 3, flat runtime catalog schema 1,
-local runtime ID relations, SVG/PNG/JPEG/PDF output signatures, all 19 operation
-variants, a distinct signed
-`CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` callback result, and the `RAW_B_BOX_HEIGHT` variant.
+The wheel command is the sole cross-language Python smoke: it generates the module from the release
+cdylib, builds the final platform wheel, installs it in an isolated environment, and runs the
+repository's canonical
+[`platforms/python/merman/examples/smoke.py`](../../platforms/python/merman/examples/smoke.py).
+Owner-local Rust tests carry exhaustive catalog, error, output-plan, callback-shape, and lifecycle
+contracts.
 
 ## Build A Local Wheel
 
@@ -221,10 +222,12 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 The script builds `merman-uniffi`, copies the checked-in Python package scaffold into a temporary
 staging directory, generates UniFFI Python files only in that staging directory, and builds a
 platform wheel under `target/python-wheels`. With `--run-smoke`, it installs the wheel into a
-temporary venv and exercises SVG, ASCII, parse, layout, validation, metadata, PNG, JPEG, and PDF
-calls through the installed package. The build fails when generated support files differ from
-their checked-in projections or when setuptools emits a universal `py3-none-any` wheel, because
-the package carries a native library.
+temporary venv and runs the checked-in package smoke. That smoke proves import and identity,
+one SVG operation, immutable constructor services, and deterministic close;
+owner-local Rust and generated-binding tests carry the exhaustive operation and protocol
+contracts. The build fails when generated support files differ from their checked-in projections or
+when setuptools emits a universal `py3-none-any` wheel, because the package carries a native
+library.
 
 ## Release
 

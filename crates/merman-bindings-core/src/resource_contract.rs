@@ -328,7 +328,7 @@ fn is_render_limit(stable_id: &str) -> bool {
 fn export_limit_output_ids(stable_id: &str) -> Option<&'static [&'static str]> {
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     {
-        return merman::svg::export::export_resource_limit_output_ids(stable_id);
+        merman::svg::export::export_resource_limit_output_ids(stable_id)
     }
     #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
     {

@@ -26,7 +26,7 @@ pub struct BindingEngine {
 
 pub(crate) enum PreparedRequestOverlay {
     Unchanged,
-    Override(BindingOperationConfigs),
+    Override(Box<BindingOperationConfigs>),
 }
 
 impl ValidatedArtifactContract {
@@ -42,7 +42,7 @@ impl ValidatedArtifactContract {
         services: BindingEngineServices,
     ) -> Result<BindingEngine, BindingError> {
         BindingEngine::from_options_and_services_for_contract(
-            Arc::new(self.clone()),
+            Arc::new(*self),
             options_json,
             services,
         )
@@ -220,7 +220,7 @@ impl BindingEngine {
                     self.runtime_policy.clone(),
                     &self.artifact_contract,
                 )?;
-                Ok(PreparedRequestOverlay::Override(configs))
+                Ok(PreparedRequestOverlay::Override(Box::new(configs)))
             }
         }
     }

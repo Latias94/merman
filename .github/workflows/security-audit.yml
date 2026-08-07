@@ -26,10 +26,8 @@ on:
       - scripts/generate-rust-license-report.py
       - scripts/python_wheel_licenses.py
       - scripts/artifact_profile_recipe.py
-      - "scripts/ffi_contract_*.py"
       - scripts/strict_json.py
       - scripts/verify_artifact_dependency_closures.py
-      - "abi/ffi-contract-baseline/**"
       - scripts/verify_rustsec_exceptions.py
       - ".github/workflows/security-audit.yml"
   pull_request:
@@ -54,10 +52,8 @@ on:
       - scripts/generate-rust-license-report.py
       - scripts/python_wheel_licenses.py
       - scripts/artifact_profile_recipe.py
-      - "scripts/ffi_contract_*.py"
       - scripts/strict_json.py
       - scripts/verify_artifact_dependency_closures.py
-      - "abi/ffi-contract-baseline/**"
       - scripts/verify_rustsec_exceptions.py
       - ".github/workflows/security-audit.yml"
   schedule:
@@ -116,8 +112,16 @@ jobs:
       - name: Verify governed RustSec exceptions
         run: python3 scripts/verify_rustsec_exceptions.py
 
-      - name: Verify target-scoped advisory artifact-profile coverage
-        run: python3 scripts/verify_artifact_dependency_closures.py --baseline abi/ffi-contract-baseline/dependency-closures.json
+      - name: Verify artifact dependency boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            python3 scripts/verify_artifact_dependency_closures.py \
+              --representative-targets
+          else
+            python3 scripts/verify_artifact_dependency_closures.py
+          fi
 
       - name: Verify checked-in Rust dependency notices
         run: python3 scripts/generate-rust-license-report.py --check

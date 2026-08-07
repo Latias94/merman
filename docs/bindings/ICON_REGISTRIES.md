@@ -34,14 +34,14 @@ state.
 
 ## Native C Constructor
 
-Native ABI 3 appends `engine_new_with_services` after the published six-slot prefix. Its
+Native ABI 3 exposes `engine_new_with_services` in the current complete table. Its
 `MermanNativeEngineServicesConfig` embeds the existing `MermanNativeEngineConfig` by value and
 optionally points to a contiguous array of `MermanNativeIconPack` records. Each record carries
 borrowed IconifyJSON plus an optional UTF-8 registration-name override; a zero-length name keeps
 the JSON prefix.
 
 Callers must first confirm that `MermanNativeApi.struct_size` reaches
-`MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE` and that the function pointer is non-null.
+`MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE` and that the function pointer is non-null.
 Initialize `out_engine` to zero. On every failure it remains zero; success returns one engine token
 that owns the validated registry and any configured callback. No callback is invoked during
 construction, and no pack pointer is retained after return.

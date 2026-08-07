@@ -71,17 +71,7 @@ impl NativeFailure {
         resource: Option<BindingResourceErrorDetails>,
         message: impl Into<String>,
     ) -> Self {
-        let kind = match status {
-            MERMAN_NATIVE_STATUS_REENTRANT_CALL => BindingErrorKind::ReentrantCall,
-            MERMAN_NATIVE_STATUS_BUSY => BindingErrorKind::Busy,
-            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION => match requested_kind {
-                BindingErrorKind::UnknownOperation | BindingErrorKind::MissingCapability => {
-                    requested_kind
-                }
-                _ => BindingErrorKind::Generic,
-            },
-            _ => BindingErrorKind::Generic,
-        };
+        let kind = merman_native_normalize_error_kind(status, requested_kind);
         Self {
             status,
             kind,
@@ -304,57 +294,13 @@ fn native_struct_size<T>() -> u32 {
     u32::try_from(size_of::<T>()).expect("native ABI record sizes fit in u32")
 }
 
-fn native_status_name(status: MermanNativeStatus) -> &'static str {
-    match status {
-        MERMAN_NATIVE_STATUS_OK => "ok",
-        MERMAN_NATIVE_STATUS_INVALID_ARGUMENT => "invalid-argument",
-        MERMAN_NATIVE_STATUS_UTF8_ERROR => "utf8-error",
-        MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR => "options-json-error",
-        MERMAN_NATIVE_STATUS_NO_DIAGRAM => "no-diagram",
-        MERMAN_NATIVE_STATUS_PARSE_ERROR => "parse-error",
-        MERMAN_NATIVE_STATUS_RENDER_ERROR => "render-error",
-        MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION => "unsupported-operation",
-        MERMAN_NATIVE_STATUS_PANIC => "panic",
-        MERMAN_NATIVE_STATUS_INTERNAL_ERROR => "internal-error",
-        MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED => "resource-limit-exceeded",
-        MERMAN_NATIVE_STATUS_ABI_MISMATCH => "abi-mismatch",
-        MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH => "abi-layout-mismatch",
-        MERMAN_NATIVE_STATUS_CALLBACK_ERROR => "callback-error",
-        MERMAN_NATIVE_STATUS_REENTRANT_CALL => "reentrant-call",
-        MERMAN_NATIVE_STATUS_INVALID_ENGINE => "invalid-engine",
-        MERMAN_NATIVE_STATUS_BUSY => "busy",
-        _ => "unknown-status",
-    }
-}
-
-fn native_error_kind_name(kind: BindingErrorKind) -> &'static str {
-    match kind {
-        BindingErrorKind::Generic => MERMAN_NATIVE_ERROR_KIND_GENERIC,
-        BindingErrorKind::UnknownOperation => MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION,
-        BindingErrorKind::MissingCapability => MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY,
-        BindingErrorKind::Busy => MERMAN_NATIVE_ERROR_KIND_BUSY,
-        BindingErrorKind::ReentrantCall => MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL,
-    }
-}
-
-fn binding_error_kind_from_native_name(kind: &str) -> BindingErrorKind {
-    match kind {
-        MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION => BindingErrorKind::UnknownOperation,
-        MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY => BindingErrorKind::MissingCapability,
-        MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL => BindingErrorKind::ReentrantCall,
-        MERMAN_NATIVE_ERROR_KIND_BUSY => BindingErrorKind::Busy,
-        MERMAN_NATIVE_ERROR_KIND_GENERIC => BindingErrorKind::Generic,
-        _ => unreachable!("validated native operation failures use a frozen error kind"),
-    }
-}
-
 fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
     let mut payload = serde_json::json!({
         "version": MERMAN_NATIVE_RESULT_SCHEMA_VERSION,
         "ok": false,
         "status": failure.status,
-        "status_name": native_status_name(failure.status),
-        "kind": native_error_kind_name(failure.kind),
+        "status_name": merman_native_status_name(failure.status),
+        "kind": merman_native_error_kind_name(failure.kind),
         "capability_id": failure.capability_id,
         "message": failure.message.as_str(),
     });
@@ -1048,7 +994,8 @@ fn resolve_executable_native_operation(
             .expect("validated non-executable native operations define a failure");
         return Err(NativeFailure::classified(
             failure.status,
-            binding_error_kind_from_native_name(failure.error_kind),
+            merman_binding_error_kind_from_native_name(failure.error_kind)
+                .expect("descriptor-generated operation failures use a known error kind"),
             None,
             None,
             "native operation NONE is a non-executable sentinel",
@@ -1900,6 +1847,14 @@ unsafe fn engine_new_with_services_impl(
             };
         }
 
+        // Keep the safety checks above authoritative, then complete the whole length-only resource
+        // preflight before constructing borrowed byte slices or decoding registration-name UTF-8.
+        if let Err(failure) = preflight_native_icon_pack_resource_limits(&native_packs) {
+            return unsafe {
+                write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+            };
+        }
+
         let mut packs = Vec::with_capacity(native_packs.len());
         for (index, pack) in native_packs.into_iter().enumerate() {
             let pack = pack.expect("validated native icon-pack records are complete");
@@ -1998,6 +1953,68 @@ unsafe fn engine_new_with_services_impl(
             write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
         },
     }
+}
+
+#[cfg(feature = "svg")]
+fn preflight_native_icon_pack_resource_limits(
+    native_packs: &[Option<MermanNativeIconPack>],
+) -> Result<(), NativeFailure> {
+    use IconRegistryResourceLimitId::{MaxInputBytes, MaxPackBytes, MaxPrefixBytes};
+
+    let mut input_bytes = 0usize;
+    for (index, pack) in native_packs.iter().enumerate() {
+        let pack = pack
+            .as_ref()
+            .expect("validated native icon-pack records are complete");
+
+        let pack_bytes = u64::try_from(pack.json.len).unwrap_or(u64::MAX);
+        if pack_bytes > MaxPackBytes.fixed_value() {
+            return Err(native_failure_from_binding(
+                BindingError::icon_registry_resource_limit(
+                    MaxPackBytes,
+                    pack_bytes,
+                    Some(index),
+                    "icon pack bytes exceed the fixed per-pack ceiling",
+                ),
+            ));
+        }
+
+        let next_input_bytes = input_bytes.checked_add(pack.json.len).ok_or_else(|| {
+            native_failure_from_binding(BindingError::icon_registry_resource_limit(
+                MaxInputBytes,
+                u64::MAX,
+                Some(index),
+                "aggregate icon pack byte accounting overflowed",
+            ))
+        })?;
+        let next_input_bytes_u64 = u64::try_from(next_input_bytes).unwrap_or(u64::MAX);
+        if next_input_bytes_u64 > MaxInputBytes.fixed_value() {
+            return Err(native_failure_from_binding(
+                BindingError::icon_registry_resource_limit(
+                    MaxInputBytes,
+                    next_input_bytes_u64,
+                    Some(index),
+                    "aggregate icon pack bytes exceed the fixed registry ceiling",
+                ),
+            ));
+        }
+
+        let prefix_bytes = u64::try_from(pack.registration_name.len).unwrap_or(u64::MAX);
+        if prefix_bytes > MaxPrefixBytes.fixed_value() {
+            return Err(native_failure_from_binding(
+                BindingError::icon_registry_resource_limit(
+                    MaxPrefixBytes,
+                    prefix_bytes,
+                    Some(index),
+                    "icon registry registration name exceeds the fixed byte ceiling",
+                ),
+            ));
+        }
+
+        input_bytes = next_input_bytes;
+    }
+
+    Ok(())
 }
 
 #[cfg(feature = "svg")]
@@ -2292,54 +2309,6 @@ mod tests {
         struct_size: u32,
     }
 
-    /// The ABI 3 table shape before the append-only `metadata_collect` slot.
-    ///
-    /// This deliberately does not use `MermanNativeApi`: a real older consumer owns only this
-    /// prefix and may call discovery more than once with the returned `struct_size`.
-    #[repr(C)]
-    struct Abi3MinimumApi {
-        struct_size: u32,
-        abi_version: u32,
-        minimum_prefix_layout_digest: MermanNativeSlice,
-        full_descriptor_digest: MermanNativeSlice,
-        capability_catalog_digest: MermanNativeSlice,
-        package_version: MermanNativeSlice,
-        runtime_catalog: Option<MermanNativeRuntimeCatalogFn>,
-        engine_new: Option<MermanNativeEngineNewFn>,
-        engine_try_close: Option<MermanNativeEngineTryCloseFn>,
-        execute_collect: Option<MermanNativeExecuteCollectFn>,
-        result_free: Option<MermanNativeResultFreeFn>,
-    }
-
-    /// The exact published six-slot ABI 3 table before any future service append.
-    #[repr(C)]
-    struct Abi3PublishedSixApi {
-        struct_size: u32,
-        abi_version: u32,
-        minimum_prefix_layout_digest: MermanNativeSlice,
-        full_descriptor_digest: MermanNativeSlice,
-        capability_catalog_digest: MermanNativeSlice,
-        package_version: MermanNativeSlice,
-        runtime_catalog: Option<MermanNativeRuntimeCatalogFn>,
-        engine_new: Option<MermanNativeEngineNewFn>,
-        engine_try_close: Option<MermanNativeEngineTryCloseFn>,
-        execute_collect: Option<MermanNativeExecuteCollectFn>,
-        result_free: Option<MermanNativeResultFreeFn>,
-        metadata_collect: Option<MermanNativeMetadataCollectFn>,
-    }
-
-    #[repr(C)]
-    struct Abi3MinimumApiBuffer {
-        api: Abi3MinimumApi,
-        trailing_guard: [u8; 16],
-    }
-
-    #[repr(C)]
-    struct Abi3PublishedSixApiBuffer {
-        api: Abi3PublishedSixApi,
-        trailing_guard: [u8; 16],
-    }
-
     fn empty_api() -> MermanNativeApi {
         MermanNativeApi {
             struct_size: native_struct_size::<MermanNativeApi>(),
@@ -2355,39 +2324,6 @@ mod tests {
             result_free: None,
             metadata_collect: None,
             engine_new_with_services: None,
-        }
-    }
-
-    fn empty_minimum_api() -> Abi3MinimumApi {
-        Abi3MinimumApi {
-            struct_size: MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
-            abi_version: 0,
-            minimum_prefix_layout_digest: static_slice(&[]),
-            full_descriptor_digest: static_slice(&[]),
-            capability_catalog_digest: static_slice(&[]),
-            package_version: static_slice(&[]),
-            runtime_catalog: None,
-            engine_new: None,
-            engine_try_close: None,
-            execute_collect: None,
-            result_free: None,
-        }
-    }
-
-    fn empty_published_six_api() -> Abi3PublishedSixApi {
-        Abi3PublishedSixApi {
-            struct_size: native_struct_size::<Abi3PublishedSixApi>(),
-            abi_version: 0,
-            minimum_prefix_layout_digest: static_slice(&[]),
-            full_descriptor_digest: static_slice(&[]),
-            capability_catalog_digest: static_slice(&[]),
-            package_version: static_slice(&[]),
-            runtime_catalog: None,
-            engine_new: None,
-            engine_try_close: None,
-            execute_collect: None,
-            result_free: None,
-            metadata_collect: None,
         }
     }
 
@@ -2726,7 +2662,7 @@ mod tests {
     }
 
     #[test]
-    fn discovery_reports_only_complete_prefixes_and_preserves_tail_storage() {
+    fn discovery_requires_the_current_table_and_preserves_tail_storage() {
         #[repr(C)]
         struct ExtendedApiBuffer {
             api: MermanNativeApi,
@@ -2754,13 +2690,8 @@ mod tests {
             buffer.api.struct_size,
             native_struct_size::<MermanNativeApi>()
         );
-        assert!(MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE < native_struct_size::<MermanNativeApi>());
-        assert!(
-            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE
-                < MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE
-        );
         assert_eq!(
-            MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE,
+            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
             native_struct_size::<MermanNativeApi>()
         );
         assert!(buffer.api.metadata_collect.is_some());
@@ -2789,92 +2720,37 @@ mod tests {
 
         assert_eq!(
             MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES,
-            &[
-                MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
-                MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
-                MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE,
-            ]
+            &[MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE]
         );
 
+        // The returned table size is itself safe input capacity for rediscovery.
+        buffer.api.struct_size = MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE;
         assert_eq!(
-            size_of::<Abi3MinimumApi>() as u32,
+            unsafe { merman_get_native_api(&request, &mut buffer.api) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            buffer.api.struct_size,
             MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE
         );
-        let mut minimum = Abi3MinimumApiBuffer {
-            api: empty_minimum_api(),
-            trailing_guard: [0xa5; 16],
+        assert_eq!(buffer.suffix, [0xa5; 32]);
+
+        let mut undersized = ExtendedApiBuffer {
+            api: empty_api(),
+            suffix: [0xa5; 32],
         };
-        let minimum_api = ptr::addr_of_mut!(minimum.api).cast::<MermanNativeApi>();
+        undersized.api.struct_size = MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE - 1;
         assert_eq!(
-            unsafe { merman_get_native_api(&request, minimum_api) },
-            MERMAN_NATIVE_STATUS_OK
+            unsafe { merman_get_native_api(&request, &mut undersized.api) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
         );
         assert_eq!(
-            minimum.api.struct_size,
-            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE
+            undersized.api.struct_size,
+            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE - 1
         );
-        assert!(minimum.api.runtime_catalog.is_some());
-        assert!(minimum.api.result_free.is_some());
-        assert_eq!(minimum.trailing_guard, [0xa5; 16]);
-
-        assert_eq!(
-            size_of::<Abi3PublishedSixApi>() as u32,
-            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE
-        );
-        let mut published_six = Abi3PublishedSixApiBuffer {
-            api: empty_published_six_api(),
-            trailing_guard: [0xa5; 16],
-        };
-        let published_six_api = ptr::addr_of_mut!(published_six.api).cast::<MermanNativeApi>();
-        assert_eq!(
-            unsafe { merman_get_native_api(&request, published_six_api) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-        assert_eq!(
-            published_six.api.struct_size,
-            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE
-        );
-        assert!(published_six.api.metadata_collect.is_some());
-        assert_eq!(published_six.trailing_guard, [0xa5; 16]);
-
-        let mut partial_services = empty_api();
-        partial_services.struct_size = MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE + 1;
-        assert_eq!(
-            unsafe { merman_get_native_api(&request, &mut partial_services) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-        assert_eq!(
-            partial_services.struct_size,
-            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE
-        );
-        assert!(partial_services.metadata_collect.is_some());
-        assert!(partial_services.engine_new_with_services.is_none());
-
-        // The returned prefix size is itself safe input capacity. Older consumers do not need to
-        // retain a second hidden copy of their allocation size before rediscovery.
-        assert_eq!(
-            unsafe { merman_get_native_api(&request, minimum_api) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-        assert_eq!(
-            minimum.api.struct_size,
-            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE
-        );
-        assert_eq!(minimum.trailing_guard, [0xa5; 16]);
-
-        // A capacity that ends inside the appended function pointer must not receive a partial
-        // pointer, nor be reported as if that complete slot were available.
-        minimum.api = empty_minimum_api();
-        minimum.api.struct_size = MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE + 1;
-        assert_eq!(
-            unsafe { merman_get_native_api(&request, minimum_api) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-        assert_eq!(
-            minimum.api.struct_size,
-            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE
-        );
-        assert_eq!(minimum.trailing_guard, [0xa5; 16]);
+        assert!(undersized.api.runtime_catalog.is_none());
+        assert!(undersized.api.engine_new_with_services.is_none());
+        assert_eq!(undersized.suffix, [0xa5; 32]);
     }
 
     #[test]
@@ -3525,28 +3401,26 @@ mod tests {
     }
 
     #[test]
-    fn service_constructor_is_strict_without_retroactively_breaking_legacy_engine_new() {
+    fn service_constructor_is_strict_while_basic_construction_remains_service_free() {
         let api = api_table();
         let orphan_user_data = ptr::NonNull::<u8>::dangling().as_ptr().cast();
 
-        let mut legacy_config = native_config();
-        legacy_config.text_measure_user_data = orphan_user_data;
-        let mut legacy_engine = 0;
-        let mut legacy_result = native_result();
+        let mut basic_config = native_config();
+        basic_config.text_measure_user_data = orphan_user_data;
+        let mut basic_engine = 0;
+        let mut basic_result = native_result();
         assert_eq!(
-            unsafe {
-                api.engine_new.unwrap()(&legacy_config, &mut legacy_engine, &mut legacy_result)
-            },
+            unsafe { api.engine_new.unwrap()(&basic_config, &mut basic_engine, &mut basic_result) },
             MERMAN_NATIVE_STATUS_OK
         );
-        assert_ne!(legacy_engine, 0);
-        unsafe { api.result_free.unwrap()(&mut legacy_result) };
+        assert_ne!(basic_engine, 0);
+        unsafe { api.result_free.unwrap()(&mut basic_result) };
         assert_eq!(
-            unsafe { api.engine_try_close.unwrap()(legacy_engine) },
+            unsafe { api.engine_try_close.unwrap()(basic_engine) },
             MERMAN_NATIVE_STATUS_OK
         );
 
-        let services_config = native_services_config(legacy_config, &[]);
+        let services_config = native_services_config(basic_config, &[]);
         let mut services_engine = 0;
         let mut services_result = native_result();
         assert_eq!(
@@ -3851,6 +3725,104 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             "resource_limit_exceeded"
         );
         assert_eq!(error["details"]["icon_registry"]["pack_index"], 0);
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn service_constructor_preflights_raw_icon_pack_limits_before_utf8_decoding() {
+        let max_pack_bytes =
+            usize::try_from(IconRegistryResourceLimitId::MaxPackBytes.fixed_value()).unwrap();
+        let max_input_bytes =
+            usize::try_from(IconRegistryResourceLimitId::MaxInputBytes.fixed_value()).unwrap();
+        let raw_slice = |len| MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: if len == 0 {
+                ptr::null()
+            } else {
+                ptr::NonNull::<u8>::dangling().as_ptr()
+            },
+            len,
+        };
+        let raw_pack = |json_len, registration_name_len| {
+            Some(MermanNativeIconPack {
+                struct_size: native_struct_size::<MermanNativeIconPack>(),
+                json: raw_slice(json_len),
+                registration_name: raw_slice(registration_name_len),
+            })
+        };
+        let assert_preflight_failure = |packs: &[Option<MermanNativeIconPack>],
+                                        limit: IconRegistryResourceLimitId,
+                                        actual: u64,
+                                        pack_index: u64| {
+            let failure = preflight_native_icon_pack_resource_limits(packs)
+                .expect_err("resource preflight must reject the synthetic lengths");
+            assert_eq!(failure.status, MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED);
+            let resource = failure
+                .resource
+                .expect("resource failure must retain resource details");
+            assert_eq!(resource.limit_id, limit.stable_id());
+            assert_eq!(resource.phase, limit.descriptor().phase);
+            assert_eq!(resource.actual, actual);
+            assert_eq!(resource.max, limit.fixed_value());
+            assert_eq!(resource.profile, "constructor-fixed");
+            let details = failure
+                .icon_registry
+                .expect("resource failure must retain icon registry details");
+            assert_eq!(details.kind_id, "resource_limit_exceeded");
+            assert_eq!(details.pack_index, Some(pack_index));
+            assert_eq!(details.registration_name, None);
+        };
+
+        assert_preflight_failure(
+            &[raw_pack(max_pack_bytes + 1, 0)],
+            IconRegistryResourceLimitId::MaxPackBytes,
+            u64::try_from(max_pack_bytes + 1).unwrap(),
+            0,
+        );
+
+        let shared_pack_len = max_input_bytes / 3 + 1;
+        assert!(shared_pack_len <= max_pack_bytes);
+        let aggregate_packs = [
+            raw_pack(shared_pack_len, 1),
+            raw_pack(shared_pack_len, 0),
+            raw_pack(shared_pack_len, 0),
+        ];
+        assert_preflight_failure(
+            &aggregate_packs,
+            IconRegistryResourceLimitId::MaxInputBytes,
+            u64::try_from(shared_pack_len * aggregate_packs.len()).unwrap(),
+            2,
+        );
+
+        let max_prefix_bytes =
+            usize::try_from(IconRegistryResourceLimitId::MaxPrefixBytes.fixed_value()).unwrap();
+        let mut oversized_invalid_utf8_name = vec![b'a'; max_prefix_bytes + 1];
+        oversized_invalid_utf8_name[0] = 0xff;
+        let pack = native_icon_pack(
+            br#"{"prefix":"test","icons":{}}"#,
+            &oversized_invalid_utf8_name,
+        );
+        let api = api_table();
+        let config = native_services_config(native_config(), std::slice::from_ref(&pack));
+        let mut engine = 0;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new_with_services.unwrap()(&config, &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED
+        );
+        assert_eq!(engine, 0);
+        let error = result_json(&result);
+        assert_eq!(
+            error["details"]["resource"]["limit_id"],
+            IconRegistryResourceLimitId::MaxPrefixBytes.stable_id()
+        );
+        assert_eq!(
+            error["details"]["resource"]["actual"],
+            u64::try_from(oversized_invalid_utf8_name.len()).unwrap()
+        );
+        assert_eq!(error["details"]["icon_registry"]["pack_index"], 0);
+        assert!(error["details"]["icon_registry"]["registration_name"].is_null());
         unsafe { api.result_free.unwrap()(&mut result) };
     }
 
@@ -4201,11 +4173,7 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
                 "capability {capability_id} must follow merman-ffi features"
             );
         }
-        let exposes_system_adapters = cfg!(all(
-            feature = "system-clock",
-            feature = "system-random",
-            feature = "system-timezone"
-        ));
+        let exposes_system_adapters = cfg!(feature = "native-runtime");
         let system_adapter_ids = catalog["capabilities"]["system_adapter_ids"]
             .as_array()
             .unwrap();
@@ -5104,13 +5072,14 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         );
     }
 
-    #[cfg(feature = "svg")]
+    #[cfg(all(
+        feature = "svg",
+        not(feature = "layout-cytoscape"),
+        not(feature = "layout-elk"),
+        not(feature = "math")
+    ))]
     #[test]
-    fn optional_render_capabilities_follow_the_native_c_owner_contract() {
-        assert!(!cfg!(feature = "layout-cytoscape"));
-        assert!(!cfg!(feature = "layout-elk"));
-        assert!(!cfg!(feature = "math"));
-
+    fn ambient_render_dependencies_do_not_widen_the_native_c_owner_contract() {
         let api = api_table();
 
         let mut catalog_result = native_result();
@@ -5232,77 +5201,36 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
     }
 
     #[test]
-    fn frozen_five_and_six_slot_prefixes_retry_busy_close_without_losing_the_engine() {
-        // Keep this deterministic at the Rust harness boundary: public C has no operation-phase
-        // hook outside a callback, and close during a callback is correctly reentrant rather than
-        // busy. The table records below are the exact frozen C layouts; the compiled C fixtures
-        // independently prove that both historical headers still discover and call those slots.
-        let request = MermanNativeApiRequest {
-            struct_size: native_struct_size::<MermanNativeApiRequest>(),
-            expected_abi_version: MERMAN_NATIVE_ABI_VERSION,
-            expected_minimum_prefix_layout_digest: borrowed_slice(
-                MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
-            ),
-        };
-        let mut minimum = empty_minimum_api();
+    fn busy_close_does_not_lose_the_engine() {
+        let api = api_table();
+        let mut config_result = native_result();
+        let mut token = 0;
         assert_eq!(
-            unsafe {
-                merman_get_native_api(
-                    &request,
-                    ptr::addr_of_mut!(minimum).cast::<MermanNativeApi>(),
-                )
-            },
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut token, &mut config_result) },
             MERMAN_NATIVE_STATUS_OK
         );
-        let mut published_six = empty_published_six_api();
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        let acquired = acquire_engine(token).expect("live token");
+        let operation = acquired
+            .admission
+            .enter_operation()
+            .expect("active operation");
         assert_eq!(
-            unsafe {
-                merman_get_native_api(
-                    &request,
-                    ptr::addr_of_mut!(published_six).cast::<MermanNativeApi>(),
-                )
-            },
-            MERMAN_NATIVE_STATUS_OK
+            unsafe { api.engine_try_close.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_BUSY
+        );
+        assert!(
+            acquire_engine(token).is_ok(),
+            "busy close must retain the token"
         );
 
-        for (engine_new, engine_try_close, result_free) in [
-            (
-                minimum.engine_new.unwrap(),
-                minimum.engine_try_close.unwrap(),
-                minimum.result_free.unwrap(),
-            ),
-            (
-                published_six.engine_new.unwrap(),
-                published_six.engine_try_close.unwrap(),
-                published_six.result_free.unwrap(),
-            ),
-        ] {
-            let mut config_result = native_result();
-            let mut token = 0;
-            assert_eq!(
-                unsafe { engine_new(&native_config(), &mut token, &mut config_result) },
-                MERMAN_NATIVE_STATUS_OK
-            );
-            unsafe { result_free(&mut config_result) };
-
-            let acquired = acquire_engine(token).expect("live token");
-            let operation = acquired
-                .admission
-                .enter_operation()
-                .expect("active operation");
-            assert_eq!(
-                unsafe { engine_try_close(token) },
-                MERMAN_NATIVE_STATUS_BUSY
-            );
-            assert!(
-                acquire_engine(token).is_ok(),
-                "busy close must retain the token"
-            );
-
-            drop(operation);
-            assert_eq!(unsafe { engine_try_close(token) }, MERMAN_NATIVE_STATUS_OK);
-            assert!(acquire_engine(token).is_err());
-        }
+        drop(operation);
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert!(acquire_engine(token).is_err());
     }
 
     #[test]

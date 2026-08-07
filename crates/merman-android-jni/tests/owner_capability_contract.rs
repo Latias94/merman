@@ -1,4 +1,9 @@
-#![cfg(feature = "svg")]
+#![cfg(all(
+    feature = "svg",
+    not(feature = "layout-cytoscape"),
+    not(feature = "layout-elk"),
+    not(feature = "math")
+))]
 
 #[path = "../src/artifact_contract.rs"]
 mod artifact_contract;
@@ -7,11 +12,7 @@ use artifact_contract::android_artifact_contract;
 use merman_bindings_core::BindingStatus;
 
 #[test]
-fn optional_render_capabilities_follow_the_android_owner_contract() {
-    assert!(!cfg!(feature = "layout-cytoscape"));
-    assert!(!cfg!(feature = "layout-elk"));
-    assert!(!cfg!(feature = "math"));
-
+fn ambient_render_dependencies_do_not_widen_the_android_owner_contract() {
     let artifact_contract = android_artifact_contract();
     let capabilities = artifact_contract.runtime_capabilities();
     assert!(capabilities.has_capability("svg"));

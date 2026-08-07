@@ -922,16 +922,11 @@ mod tests {
     }
 
     fn expected_native_system_adapter_ids() -> Vec<&'static str> {
-        let mut ids = Vec::new();
-        #[cfg(feature = "system-clock")]
-        ids.push("system-clock");
-        #[cfg(feature = "system-random")]
-        ids.push("system-random");
-        #[cfg(feature = "system-timezone")]
-        ids.push("system-timezone");
-        if ids.len() != 3 {
-            ids.clear();
-        }
+        let mut ids = if cfg!(feature = "native-runtime") {
+            vec!["system-clock", "system-random", "system-timezone"]
+        } else {
+            Vec::new()
+        };
         ids.sort_unstable();
         ids
     }

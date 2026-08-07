@@ -74,19 +74,8 @@ int merman_header_smoke(void) {
     if (MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES != 6) {
         return 18;
     }
-    if (
-        MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE <=
-            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ||
-        MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE > sizeof(MermanNativeApi)
-    ) {
+    if (MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE != sizeof(MermanNativeApi)) {
         return 16;
-    }
-    if (
-        MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE <=
-            MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE ||
-        MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE != sizeof(MermanNativeApi)
-    ) {
-        return 19;
     }
     if (
         strcmp(MERMAN_NATIVE_ERROR_KIND_GENERIC, "generic") != 0 ||
@@ -160,21 +149,8 @@ static_assert(
     "unexpected service constructor slot"
 );
 static_assert(
-    MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE > MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
-    "metadata slot must remain outside the frozen prefix"
-);
-static_assert(
-    MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE <= sizeof(MermanNativeApi),
-    "metadata slot boundary must fit the current table"
-);
-static_assert(
-    MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE >
-        MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
-    "service constructor must append after the published six-slot prefix"
-);
-static_assert(
-    MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE == sizeof(MermanNativeApi),
-    "service constructor boundary must be the current complete table"
+    MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE == sizeof(MermanNativeApi),
+    "the current minimum prefix must include the complete release table"
 );
 static_assert(
     MERMAN_RESOURCE_LIMIT_MAX_SOURCE_BYTES_MINIMUM == 1 &&

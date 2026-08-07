@@ -17,18 +17,27 @@ Most applications should use one of the public packages instead:
 - `ascii` enables ASCII/Unicode text rendering.
 - `layout-cytoscape` and `layout-elk` enable their named SVG layout engines.
 - `math` enables the RaTeX math label backend.
+- `native-runtime` enables the complete native clock, time-zone, and random adapter set for
+  transport-owned runtime selection. It is atomic on binding crates; partial native-runtime
+  combinations are not exposed there.
 
 The ABI 3 operation catalog exposes real `png`, `jpeg`, and `pdf` byte outputs when their corresponding capabilities are compiled. A build that omits one returns the same structured missing-capability error as every other unavailable operation; it does not advertise a phantom backend.
 
 ## Runtime Policy
 
-`BindingEngine::new()` is always deterministic. Transport bindings use `BindingEngine::from_options()`, where an omitted `runtime_policy` also selects the deterministic clock, UTC time zone, and fixed random seed even when system adapter features are compiled. Native host state is opt-in:
+`BindingEngine::new()` is always deterministic. Transport bindings use `BindingEngine::from_options()`, where an omitted `runtime_policy` also selects the deterministic clock, UTC time zone, and fixed random seed even when `native-runtime` is compiled. Native host state is opt-in:
 
 ```json
 { "runtime_policy": "native" }
 ```
 
-The native policy requires the `system-clock`, `system-timezone`, and `system-random` capabilities; a missing adapter is reported with the `unsupported-operation` status and `missing-capability` kind. Generic operation metadata records the selected policy as `runtime_policy`, so hosts can attest the environment that produced an output. Custom Rust operation contexts remain constructor-owned and cannot be combined with the JSON selector.
+The native policy is available only when the binding artifact is built with `native-runtime`, which
+compiles the `system-clock`, `system-timezone`, and `system-random` adapters as one transport-owned
+unit. A missing adapter is reported with the `unsupported-operation` status and
+`missing-capability` kind. Runtime catalogs and operation metadata continue to expose the concrete
+adapter IDs (`system-clock`, `system-timezone`, and `system-random`) so hosts can attest the
+environment that produced an output. Custom Rust operation contexts remain constructor-owned and
+cannot be combined with the JSON selector.
 
 ## Requests, Results, and Host Services
 

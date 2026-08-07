@@ -4,9 +4,9 @@
 
 pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
-    "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110";
+    "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:dd141016448b431d74dbdecb09248a62c21d1ee716803db4f930d5c5b7c364bb";
+    "sha256:607f0e32969124e2358bc7f6dbcc81154831a9b9e3c4466ce8a71d760055016a";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -56,6 +56,130 @@ pub const MERMAN_NATIVE_STATUSES: &[MermanNativeStatus] = &[
 
 pub fn merman_native_status_is_known(status: MermanNativeStatus) -> bool {
     MERMAN_NATIVE_STATUSES.contains(&status)
+}
+
+pub(crate) fn merman_native_status_name(status: MermanNativeStatus) -> &'static str {
+    match status {
+        MERMAN_NATIVE_STATUS_OK => "ok",
+        MERMAN_NATIVE_STATUS_INVALID_ARGUMENT => "invalid-argument",
+        MERMAN_NATIVE_STATUS_UTF8_ERROR => "utf8-error",
+        MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR => "options-json-error",
+        MERMAN_NATIVE_STATUS_NO_DIAGRAM => "no-diagram",
+        MERMAN_NATIVE_STATUS_PARSE_ERROR => "parse-error",
+        MERMAN_NATIVE_STATUS_RENDER_ERROR => "render-error",
+        MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION => "unsupported-operation",
+        MERMAN_NATIVE_STATUS_PANIC => "panic",
+        MERMAN_NATIVE_STATUS_INTERNAL_ERROR => "internal-error",
+        MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED => "resource-limit-exceeded",
+        MERMAN_NATIVE_STATUS_ABI_MISMATCH => "abi-mismatch",
+        MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH => "abi-layout-mismatch",
+        MERMAN_NATIVE_STATUS_CALLBACK_ERROR => "callback-error",
+        MERMAN_NATIVE_STATUS_REENTRANT_CALL => "reentrant-call",
+        MERMAN_NATIVE_STATUS_INVALID_ENGINE => "invalid-engine",
+        MERMAN_NATIVE_STATUS_BUSY => "busy",
+        _ => "unknown-status",
+    }
+}
+
+pub(crate) fn merman_native_error_kind_name(
+    kind: merman_bindings_core::BindingErrorKind,
+) -> &'static str {
+    match kind {
+        merman_bindings_core::BindingErrorKind::Busy => MERMAN_NATIVE_ERROR_KIND_BUSY,
+        merman_bindings_core::BindingErrorKind::Generic => MERMAN_NATIVE_ERROR_KIND_GENERIC,
+        merman_bindings_core::BindingErrorKind::MissingCapability => MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY,
+        merman_bindings_core::BindingErrorKind::ReentrantCall => MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL,
+        merman_bindings_core::BindingErrorKind::UnknownOperation => MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION,
+    }
+}
+
+pub(crate) fn merman_binding_error_kind_from_native_name(
+    kind: &str,
+) -> Option<merman_bindings_core::BindingErrorKind> {
+    match kind {
+        MERMAN_NATIVE_ERROR_KIND_BUSY => Some(merman_bindings_core::BindingErrorKind::Busy),
+        MERMAN_NATIVE_ERROR_KIND_GENERIC => Some(merman_bindings_core::BindingErrorKind::Generic),
+        MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY => Some(merman_bindings_core::BindingErrorKind::MissingCapability),
+        MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL => Some(merman_bindings_core::BindingErrorKind::ReentrantCall),
+        MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION => Some(merman_bindings_core::BindingErrorKind::UnknownOperation),
+        _ => None,
+    }
+}
+
+pub(crate) fn merman_native_normalize_error_kind(
+    status: MermanNativeStatus,
+    requested: merman_bindings_core::BindingErrorKind,
+) -> merman_bindings_core::BindingErrorKind {
+    match status {
+        MERMAN_NATIVE_STATUS_OK => merman_bindings_core::BindingErrorKind::Generic,
+        MERMAN_NATIVE_STATUS_INVALID_ARGUMENT => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_UTF8_ERROR => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_NO_DIAGRAM => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_PARSE_ERROR => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_RENDER_ERROR => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            merman_bindings_core::BindingErrorKind::UnknownOperation => requested,
+            merman_bindings_core::BindingErrorKind::MissingCapability => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_PANIC => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_INTERNAL_ERROR => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_ABI_MISMATCH => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_CALLBACK_ERROR => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_REENTRANT_CALL => match requested {
+            merman_bindings_core::BindingErrorKind::ReentrantCall => requested,
+            _ => merman_bindings_core::BindingErrorKind::ReentrantCall,
+        },
+        MERMAN_NATIVE_STATUS_INVALID_ENGINE => match requested {
+            merman_bindings_core::BindingErrorKind::Generic => requested,
+            _ => merman_bindings_core::BindingErrorKind::Generic,
+        },
+        MERMAN_NATIVE_STATUS_BUSY => match requested {
+            merman_bindings_core::BindingErrorKind::Busy => requested,
+            _ => merman_bindings_core::BindingErrorKind::Busy,
+        },
+        _ => merman_bindings_core::BindingErrorKind::Generic,
+    }
 }
 
 pub type MermanNativeOperationCode = i32;
@@ -540,21 +664,11 @@ pub type MermanNativeEngineNewWithServicesFn = unsafe extern "C" fn(
 ) -> MermanNativeStatus;
 
 pub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =
-    (std::mem::offset_of!(MermanNativeApi, result_free)
-        + std::mem::size_of::<Option<MermanNativeResultFreeFn>>()) as u32;
-
-pub const MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE: u32 =
-    (std::mem::offset_of!(MermanNativeApi, metadata_collect)
-        + std::mem::size_of::<Option<MermanNativeMetadataCollectFn>>()) as u32;
-
-pub const MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, engine_new_with_services)
         + std::mem::size_of::<Option<MermanNativeEngineNewWithServicesFn>>()) as u32;
 
 pub const MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES: &[u32] = &[
     MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
-    MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
-    MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE,
 ];
 
 pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[

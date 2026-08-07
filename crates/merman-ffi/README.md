@@ -33,7 +33,7 @@ The committed `c-abi-native` artifact profile owns the complete host C ABI recip
 
 ```sh
 # Canonical native SDK artifact: SVG, analysis, ASCII, PNG, JPEG, PDF, layouts, math, and native adapters.
-cargo build -p merman-ffi --release --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random
+cargo build -p merman-ffi --release --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
 
 # A semantic-only embedding.
 cargo build -p merman-ffi --release --no-default-features
@@ -105,7 +105,7 @@ validated registry; the caller can immediately release all pack records and byte
 constructor never invokes the text-measurement callback. Artifacts without `svg` accept an empty
 service list and return typed `missing-capability` for nonempty icon packs without reading them.
 
-Engine options select runtime state explicitly. Omitting `runtime_policy` uses Merman's deterministic clock, UTC time zone, and fixed random seed, even when native adapters are compiled. Set `{ "runtime_policy": "native" }` only when the operation should consult the compiled system clock, time-zone, and random adapters. If one is unavailable, engine creation returns the typed unsupported-operation status. Successful generic operation metadata includes `"runtime_policy":"deterministic"` or `"runtime_policy":"native"`.
+Engine options select runtime state explicitly. Omitting `runtime_policy` uses Merman's deterministic clock, UTC time zone, and fixed random seed, even when `native-runtime` is compiled. Set `{ "runtime_policy": "native" }` only when the operation should consult the compiled system clock, time-zone, and random adapters. The binding feature is atomic: `native-runtime` compiles all three adapters together, while the runtime catalog still reports the concrete IDs `system-clock`, `system-timezone`, and `system-random`. If the complete set is unavailable, engine creation returns the typed unsupported-operation status. Successful generic operation metadata includes `"runtime_policy":"deterministic"` or `"runtime_policy":"native"`.
 
 `MermanNativeOperationRequest.options_json` accepts the same generic options document for one operation. Request objects recursively override the reusable engine baseline, while omitted nested values remain inherited and the baseline itself is not mutated. `runtime_policy` remains constructor-owned and is rejected in request options.
 
@@ -143,7 +143,9 @@ The public feature names describe callable capabilities:
 - `svg`, `analysis`, and `ascii` enable their corresponding operation families.
 - `png`, `jpeg`, and `pdf` add real binary output operations.
 - `layout-cytoscape`, `layout-elk`, and `math` add their rendering capabilities.
-- `system-clock`, `system-timezone`, and `system-random` install native adapters.
+- `native-runtime` installs the complete system clock, time-zone, and random adapter set. This
+  binding-owned feature is intentionally atomic; the runtime catalog still reports the concrete
+  adapter IDs `system-clock`, `system-timezone`, and `system-random`.
 
 This crate exports only the native C ABI discovery surface. Android JNI transport code lives in the internal `merman-android-jni` crate, so C ABI artifacts cannot acquire JNI exports through a feature combination.
 

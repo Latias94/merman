@@ -21,8 +21,8 @@ extern "C" {
 #endif
 
 #define MERMAN_NATIVE_ABI_VERSION 3u
-#define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110"
-#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:dd141016448b431d74dbdecb09248a62c21d1ee716803db4f930d5c5b7c364bb"
+#define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41"
+#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:607f0e32969124e2358bc7f6dbcc81154831a9b9e3c4466ce8a71d760055016a"
 #define MERMAN_NATIVE_RESULT_SCHEMA_VERSION 1u
 #define MERMAN_NATIVE_ERROR_KIND_BUSY "busy"
 #define MERMAN_NATIVE_ERROR_KIND_GENERIC "generic"
@@ -284,10 +284,8 @@ struct MermanNativeEngineServicesConfig {
     size_t icon_pack_count;
 };
 
-#define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, result_free) + sizeof(((MermanNativeApi *)0)->result_free)))
+#define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, engine_new_with_services) + sizeof(((MermanNativeApi *)0)->engine_new_with_services)))
 
-#define MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, metadata_collect) + sizeof(((MermanNativeApi *)0)->metadata_collect)))
-#define MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, engine_new_with_services) + sizeof(((MermanNativeApi *)0)->engine_new_with_services)))
 
 /*
  * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability
@@ -296,7 +294,7 @@ struct MermanNativeEngineServicesConfig {
  * receives the largest complete producer prefix it can safely read. MermanNativeResult must be
  * fully zero-initialized with MERMAN_NATIVE_RESULT_INIT before every producing call.
  *
- * Frozen ABI 3 semantics from the descriptor:
+ * ABI 3 semantics from the descriptor:
  * - written-results-own-nonzero-allocation-tokens: Any producing call that writes Merman-owned
  *   result bytes writes a process-lifetime monotonic nonzero allocation_token; token exhaustion
  *   returns internal-error and leaves a caller-valid zero-initialized result unchanged.

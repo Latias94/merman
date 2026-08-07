@@ -102,7 +102,6 @@ fn generate(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         metadata_no_deps: false,
     })?;
 
-    require_stable_python_surface(&module_dir)?;
     ensure_init_file(&module_dir)?;
 
     let cdylib_name = cdylib
@@ -114,248 +113,6 @@ fn generate(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     println!("generated Python UniFFI module in {}", module_dir.display());
     println!("copied native library to {}", copied_cdylib.display());
     Ok(())
-}
-
-fn require_stable_python_surface(module_dir: &Path) -> io::Result<()> {
-    let bindings = fs::read_to_string(module_dir.join(PYTHON_BINDINGS_MODULE))?;
-    validate_stable_python_surface(&bindings)?;
-    validate_stable_python_object_model(&bindings)
-}
-
-fn validate_stable_python_surface(bindings: &str) -> io::Result<()> {
-    for required in [
-        "class Merman(",
-        "class MermanEngine(",
-        "class MermanEngineServices(",
-        "class MermanIconPack(",
-        "class MermanIconRegistry(",
-        "class MermanIconRegistryErrorDetails:",
-        "class MermanTextMeasurer(",
-        "class MermanOperationRequest:",
-        "class MermanOperationMetadata:",
-        "class MermanOutputPlan:",
-        "class MermanResourceErrorDetails:",
-        "class MermanResourceOverrideId(",
-        "id:MermanResourceOverrideId",
-        "self.operation_id = operation_id",
-        "self.options_json = options_json",
-        "UNKNOWN_OPERATION",
-        "def execute(self, request: MermanOperationRequest) -> MermanOperationResult:",
-        "def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:",
-        "def render_png_result(",
-        "def analysis_facts_json(",
-        "def analyze_document_json(self, source: str,uri: str,options_json: typing.Optional[str]) -> str:",
-        "def analyze_document_facts_json(self, source: str,uri: str,options_json: typing.Optional[str]) -> str:",
-        "def svg_plan_json(",
-        "def close(self",
-        "def from_packs(",
-        "def json(self",
-        "def registration_name(self",
-        "self.metadata = metadata",
-        "self.icon_registry = icon_registry",
-    ] {
-        if !bindings.contains(required) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("generated Python UniFFI binding is missing stable API `{required}`"),
-            ));
-        }
-    }
-    if !bindings.lines().any(|line| {
-        line.trim()
-            .strip_prefix("def presentation_catalog_json(")
-            .and_then(|signature| signature.strip_suffix(") -> str:"))
-            .is_some_and(|parameters| matches!(parameters.trim(), "self" | "self,"))
-    }) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "generated Python UniFFI binding is missing stable API `presentation_catalog_json(self) -> str`",
-        ));
-    }
-    for removed in [
-        "request: MermanOperationRequest,options_json",
-        "def render_svg(self, source: str) -> str:",
-        "self.output_id = output_id",
-        "UNKNOWN_OUTPUT",
-        "def set_text_measurer(",
-        "def clear_text_measurer(",
-        "def supported_host_theme_presets(",
-        "class MermanResourceLimitId(",
-        "id:MermanResourceLimitId",
-        "class MermanReusableEngine",
-        "def reusable_engine(",
-        "def reusable_engine_with_text_measurer(",
-        "def with_text_measurer(",
-        "self.metadata_json = metadata_json",
-        "self.json = json",
-    ] {
-        if bindings.contains(removed) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("generated Python UniFFI binding retains obsolete API `{removed}`"),
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn validate_stable_python_object_model(bindings: &str) -> io::Result<()> {
-    let merman = python_object_block(bindings, "Merman")?;
-    require_single_python_constructor(merman, "Merman", "def__init__(self,):")?;
-    require_python_methods(
-        merman,
-        "Merman",
-        &[
-            "binding_api_version",
-            "package_version",
-            "runtime_catalog_json",
-            "metadata_json",
-            "execute",
-            "render_svg",
-            "render_png_result",
-            "analysis_facts_json",
-            "svg_plan_json",
-        ],
-    )?;
-    for forbidden in [
-        "close",
-        "reusable_engine",
-        "reusable_engine_with_text_measurer",
-    ] {
-        if python_block_has_method(merman, forbidden) {
-            return Err(invalid_python_object_model(format!(
-                "Merman must not expose `{forbidden}`"
-            )));
-        }
-    }
-
-    let engine = python_object_block(bindings, "MermanEngine")?;
-    require_single_python_constructor(
-        engine,
-        "MermanEngine",
-        "def__init__(self,options_json:typing.Optional[str],services:typing.Optional[MermanEngineServices]):",
-    )?;
-    require_python_methods(
-        engine,
-        "MermanEngine",
-        &[
-            "execute",
-            "render_svg",
-            "render_png_result",
-            "analysis_facts_json",
-            "svg_plan_json",
-            "close",
-        ],
-    )?;
-    for forbidden in ["runtime_catalog_json", "metadata_json"] {
-        if python_block_has_method(engine, forbidden) {
-            return Err(invalid_python_object_model(format!(
-                "MermanEngine must not expose discovery method `{forbidden}`"
-            )));
-        }
-    }
-
-    let services = python_object_block(bindings, "MermanEngineServices")?;
-    require_single_python_constructor(
-        services,
-        "MermanEngineServices",
-        "def__init__(self,icon_registry:typing.Optional[MermanIconRegistry],text_measurer:typing.Optional[MermanTextMeasurer]):",
-    )?;
-
-    let icon_pack = python_object_block(bindings, "MermanIconPack")?;
-    require_single_python_constructor(
-        icon_pack,
-        "MermanIconPack",
-        "def__init__(self,json:str,registration_name:typing.Optional[str]):",
-    )?;
-    require_python_methods(icon_pack, "MermanIconPack", &["json", "registration_name"])?;
-    for mutable_field in ["self.json =", "self.registration_name ="] {
-        if icon_pack.contains(mutable_field) {
-            return Err(invalid_python_object_model(format!(
-                "MermanIconPack retains mutable field assignment `{mutable_field}`"
-            )));
-        }
-    }
-
-    let icon_registry = python_object_block(bindings, "MermanIconRegistry")?;
-    require_python_methods(
-        icon_registry,
-        "MermanIconRegistry",
-        &["from_packs", "len", "is_empty"],
-    )?;
-    if icon_registry.matches("def from_packs(").count() != 1 {
-        return Err(invalid_python_object_model(
-            "MermanIconRegistry must expose exactly one from_packs factory",
-        ));
-    }
-
-    Ok(())
-}
-
-fn python_object_block<'a>(bindings: &'a str, name: &str) -> io::Result<&'a str> {
-    let start = format!("class {name}(");
-    let end = format!("class _UniffiFfiConverterType{name}");
-    let (_, suffix) = bindings
-        .split_once(&start)
-        .ok_or_else(|| invalid_python_object_model(format!("missing {name} class")))?;
-    let (block, _) = suffix
-        .split_once(&end)
-        .ok_or_else(|| invalid_python_object_model(format!("missing {name} converter")))?;
-    Ok(block)
-}
-
-fn require_single_python_constructor(
-    block: &str,
-    name: &str,
-    expected_compact: &str,
-) -> io::Result<()> {
-    let constructors = block
-        .lines()
-        .map(str::trim)
-        .filter(|line| line.starts_with("def __init__("))
-        .collect::<Vec<_>>();
-    if constructors.len() != 1 {
-        return Err(invalid_python_object_model(format!(
-            "{name} must expose exactly one generated constructor"
-        )));
-    }
-    let actual_compact = constructors[0]
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .collect::<String>();
-    if actual_compact != expected_compact {
-        return Err(invalid_python_object_model(format!(
-            "{name} constructor drifted: `{}`",
-            constructors[0]
-        )));
-    }
-    Ok(())
-}
-
-fn require_python_methods(block: &str, owner: &str, methods: &[&str]) -> io::Result<()> {
-    for method in methods {
-        if !python_block_has_method(block, method) {
-            return Err(invalid_python_object_model(format!(
-                "{owner} is missing method `{method}`"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn python_block_has_method(block: &str, method: &str) -> bool {
-    let prefix = format!("def {method}(");
-    block.lines().any(|line| line.trim().starts_with(&prefix))
-}
-
-fn invalid_python_object_model(message: impl Into<String>) -> io::Error {
-    io::Error::new(
-        io::ErrorKind::InvalidData,
-        format!(
-            "generated Python UniFFI object model is invalid: {}",
-            message.into()
-        ),
-    )
 }
 
 fn ensure_init_file(module_dir: &Path) -> io::Result<()> {
@@ -381,7 +138,7 @@ fn ensure_init_file(module_dir: &Path) -> io::Result<()> {
         merman_uniffi::MERMAN_UNIFFI_PYTHON_TEXT_MEASUREMENT_PROTOCOL_MODULE,
     )?;
 
-    let expected_init = python_package_init();
+    let expected_init = PYTHON_PACKAGE_INIT_MODULE;
     let init = module_dir.join("__init__.py");
     if !init.exists() {
         fs::write(init, expected_init)?;
@@ -397,14 +154,13 @@ fn ensure_init_file(module_dir: &Path) -> io::Result<()> {
 }
 
 const PYTHON_PACKAGE_INIT_MARKER: &str = "# Generated by `cargo run -p merman-uniffi --example generate_python_package`; do not edit by hand.";
+const PYTHON_PACKAGE_INIT_MODULE: &str = include_str!("../python/package_init.py");
 const PYTHON_BINDING_CONTRACT_MODULE: &str = include_str!("../python/binding_contract.py");
 const PYTHON_RUNTIME_CATALOG_MODULE: &str = include_str!("../python/runtime_catalog.py");
 const PYTHON_RESOURCE_OPTIONS_MODULE: &str = include_str!("../python/resource_options.py");
 const PYTHON_RESOURCE_OPTIONS_TEMPLATE_MARKER: &str =
     "# This file is @generated by `cargo run -p xtask -- gen-resource-contract`.\n";
 const PYTHON_RESOURCE_OPTIONS_PACKAGE_MARKER: &str = "# This file is @generated by `cargo run -p merman-uniffi --example generate_python_package` from `crates/merman-uniffi/python/resource_options.py`.\n";
-const PYTHON_BINDINGS_MODULE: &str = "merman_uniffi.py";
-
 fn python_resource_options_module() -> io::Result<String> {
     let body = PYTHON_RESOURCE_OPTIONS_MODULE
         .strip_prefix(PYTHON_RESOURCE_OPTIONS_TEMPLATE_MARKER)
@@ -417,145 +173,8 @@ fn python_resource_options_module() -> io::Result<String> {
     Ok(format!("{PYTHON_RESOURCE_OPTIONS_PACKAGE_MARKER}{body}"))
 }
 
-const PYTHON_PACKAGE_INIT_PREFIX: &str = concat!(
-    "\"\"\"Python package shim for generated merman UniFFI bindings.\"\"\"\n",
-    "# Generated by `cargo run -p merman-uniffi --example generate_python_package`; do not edit by hand.",
-    "\n\n"
-);
-
-const PYTHON_PACKAGE_INIT_TEXT_MEASUREMENT_HELPERS: &str = concat!(
-    "from ._text_measurement_protocol import (\n",
-    "    TEXT_MEASUREMENT_PROTOCOL_VERSION,\n",
-    "    TEXT_MEASUREMENT_OPERATIONS,\n",
-    "    TEXT_MEASUREMENT_RESULT_KINDS,\n",
-    "    TextMeasurementProtocolVersionMismatch,\n",
-    "    require_text_measurement_protocol_version,\n",
-    ")\n\n"
-);
-
-const PYTHON_PACKAGE_INIT_BASE_IMPORTS: &str = concat!(
-    "from ._runtime_catalog import (\n",
-    "    MermanRuntimeCatalog,\n",
-    "    MermanRuntimeCatalogError,\n",
-    "    get_runtime_catalog,\n",
-    ")\n\n",
-    "from ._resource_options import (\n",
-    "    ResourceLimitId,\n",
-    "    ResourceOverrideId,\n",
-    "    ResourceOptions,\n",
-    "    ResourceOptionsBuilder,\n",
-    "    ResourceProfile,\n",
-    ")\n\n",
-    "try:\n",
-    "    from .merman_uniffi import (\n",
-    "        MermanAsciiCapability,\n",
-    "        MermanAsciiCapabilityEvidence,\n",
-    "        MermanDiagramFamilyCapability,\n",
-    "        Merman,\n",
-    "        MermanEngine,\n",
-    "        MermanEngineServices,\n",
-    "        MermanError,\n",
-    "        MermanErrorKind,\n",
-    "        MermanIconPack,\n",
-    "        MermanIconRegistry,\n",
-    "        MermanIconRegistryErrorDetails,\n",
-    "        MermanLintRuleCatalogEntry,\n",
-    "        MermanOperationMetadata,\n",
-    "        MermanOperationRequest,\n",
-    "        MermanOperationResult,\n",
-    "        MermanOutputPlan,\n",
-    "        MermanResourceErrorDetails,\n",
-);
-
-const PYTHON_PACKAGE_INIT_TEXT_MEASUREMENT_IMPORTS: &str = concat!(
-    "        MermanTextDirection,\n",
-    "        MermanTextMeasureRequest,\n",
-    "        MermanTextMeasureResult,\n",
-    "        MermanTextMeasurementOperation,\n",
-    "        MermanTextMeasurementPhase,\n",
-    "        MermanTextMeasurementResultKind,\n",
-    "        MermanTextMeasurer,\n",
-    "        MermanTextWhiteSpace,\n",
-    "        MermanTextWrapMode,\n",
-);
-
-const PYTHON_PACKAGE_INIT_IMPORT_SUFFIX: &str = concat!(
-    "        MermanValidationResult,\n",
-    "    )\n",
-    "except ModuleNotFoundError as exc:\n",
-    "    if exc.name == f\"{__name__}.merman_uniffi\":\n",
-    "        raise ImportError(\n",
-    "            \"Generated merman UniFFI bindings are missing. \"\n",
-    "            \"Build an explicit merman-uniffi artifact profile, then run \"\n",
-    "            \"`cargo run -p merman-uniffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --example \"\n",
-    "            \"generate_python_package -- --package-dir platforms/python/merman`.\"\n",
-    "        ) from exc\n",
-    "    raise\n\n",
-    "__all__ = [\n",
-    "    \"MermanAsciiCapability\",\n",
-    "    \"MermanAsciiCapabilityEvidence\",\n",
-    "    \"MermanDiagramFamilyCapability\",\n",
-    "    \"Merman\",\n",
-    "    \"MermanEngine\",\n",
-    "    \"MermanEngineServices\",\n",
-    "    \"MermanError\",\n",
-    "    \"MermanErrorKind\",\n",
-    "    \"MermanIconPack\",\n",
-    "    \"MermanIconRegistry\",\n",
-    "    \"MermanIconRegistryErrorDetails\",\n",
-    "    \"MermanLintRuleCatalogEntry\",\n",
-    "    \"MermanOperationMetadata\",\n",
-    "    \"MermanOperationRequest\",\n",
-    "    \"MermanOperationResult\",\n",
-    "    \"MermanOutputPlan\",\n",
-    "    \"MermanResourceErrorDetails\",\n",
-    "    \"ResourceLimitId\",\n",
-    "    \"ResourceOverrideId\",\n",
-    "    \"ResourceOptions\",\n",
-    "    \"ResourceOptionsBuilder\",\n",
-    "    \"ResourceProfile\",\n",
-    "    \"MermanRuntimeCatalog\",\n",
-    "    \"MermanRuntimeCatalogError\",\n",
-    "    \"MermanValidationResult\",\n",
-    "    \"get_runtime_catalog\",\n",
-);
-
-const PYTHON_PACKAGE_INIT_TEXT_MEASUREMENT_EXPORTS: &str = concat!(
-    "    \"TEXT_MEASUREMENT_PROTOCOL_VERSION\",\n",
-    "    \"TextMeasurementProtocolVersionMismatch\",\n",
-    "    \"TEXT_MEASUREMENT_OPERATIONS\",\n",
-    "    \"TEXT_MEASUREMENT_RESULT_KINDS\",\n",
-    "    \"MermanTextDirection\",\n",
-    "    \"MermanTextMeasureRequest\",\n",
-    "    \"MermanTextMeasureResult\",\n",
-    "    \"MermanTextMeasurementOperation\",\n",
-    "    \"MermanTextMeasurementPhase\",\n",
-    "    \"MermanTextMeasurementResultKind\",\n",
-    "    \"MermanTextMeasurer\",\n",
-    "    \"MermanTextWhiteSpace\",\n",
-    "    \"MermanTextWrapMode\",\n",
-    "    \"require_text_measurement_protocol_version\",\n",
-);
-
-const PYTHON_PACKAGE_INIT_SUFFIX: &str = "]\n";
-
-fn python_package_init() -> String {
-    let mut init = String::from(PYTHON_PACKAGE_INIT_PREFIX);
-    init.push_str(PYTHON_PACKAGE_INIT_TEXT_MEASUREMENT_HELPERS);
-    init.push_str(PYTHON_PACKAGE_INIT_BASE_IMPORTS);
-    init.push_str(PYTHON_PACKAGE_INIT_TEXT_MEASUREMENT_IMPORTS);
-    init.push_str(PYTHON_PACKAGE_INIT_IMPORT_SUFFIX);
-    init.push_str(PYTHON_PACKAGE_INIT_TEXT_MEASUREMENT_EXPORTS);
-    init.push_str(PYTHON_PACKAGE_INIT_SUFFIX);
-    init
-}
-
 fn is_managed_init_file(contents: &str) -> bool {
     contents.contains(PYTHON_PACKAGE_INIT_MARKER)
-        || contents.starts_with("\"\"\"Generated merman UniFFI package shim.\"\"\"\n")
-        || contents.starts_with(
-            "\"\"\"Python package shim for generated merman UniFFI bindings.\"\"\"\n\n",
-        )
 }
 
 fn default_package_dir() -> PathBuf {
@@ -621,7 +240,7 @@ fn utf8_path(path: &Path) -> String {
 
 fn print_usage() {
     eprintln!(
-        "usage: cargo run -p merman-uniffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --example generate_python_package -- [--cdylib PATH] [--package-dir PATH]"
+        "usage: cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- [--cdylib PATH] [--package-dir PATH]"
     );
 }
 
@@ -629,153 +248,23 @@ fn print_usage() {
 mod tests {
     use super::*;
 
-    fn assert_text_measurement_protocol_exports(init: &str) {
-        for name in [
-            "MermanTextDirection",
-            "MermanTextMeasureRequest",
-            "MermanTextMeasureResult",
-            "MermanTextMeasurementOperation",
-            "MermanTextMeasurementPhase",
-            "MermanTextMeasurementResultKind",
-            "MermanTextMeasurer",
-            "MermanTextWhiteSpace",
-            "MermanTextWrapMode",
-        ] {
-            assert!(
-                init.contains(&format!("        {name},\n")),
-                "generated package shim must import {name}"
-            );
-            assert!(
-                init.contains(&format!("    \"{name}\",\n")),
-                "generated package shim must include {name} in __all__"
-            );
-        }
-        for name in [
-            "TEXT_MEASUREMENT_PROTOCOL_VERSION",
-            "TextMeasurementProtocolVersionMismatch",
-            "TEXT_MEASUREMENT_OPERATIONS",
-            "TEXT_MEASUREMENT_RESULT_KINDS",
-            "require_text_measurement_protocol_version",
-        ] {
-            assert!(
-                init.contains(name),
-                "generated SVG package shim must expose {name}"
-            );
-        }
-    }
-
-    fn assert_error_contract_exports(init: &str) {
-        for name in [
-            "MermanError",
-            "MermanErrorKind",
-            "MermanIconRegistryErrorDetails",
-            "MermanResourceErrorDetails",
-        ] {
-            assert!(
-                init.contains(&format!("        {name},\n")),
-                "generated package shim must import {name}"
-            );
-            assert!(
-                init.contains(&format!("    \"{name}\",\n")),
-                "generated package shim must include {name} in __all__"
-            );
-        }
-    }
-
     #[test]
-    fn generated_binding_surface_requires_stable_public_api() {
-        let incomplete = validate_stable_python_surface(
-            "class Merman(MermanProtocol):\n    pass\n\
-             class MermanEngine(MermanEngineProtocol):\n    pass\n\
-             class MermanEngineServices(MermanEngineServicesProtocol):\n    pass\n\
-             class MermanIconPack(MermanIconPackProtocol):\n    pass\n\
-             class MermanIconRegistry(MermanIconRegistryProtocol):\n    pass\n\
-             class MermanIconRegistryErrorDetails:\n    pass\n",
-        )
-        .expect_err("feature-slim bindings must not omit the stable callback API");
-        assert!(incomplete.to_string().contains("MermanTextMeasurer"));
-
-        let stable_surface = "class Merman(MermanProtocol):\n    pass\n\
-             class MermanEngine(MermanEngineProtocol):\n    pass\n\
-             class MermanEngineServices(MermanEngineServicesProtocol):\n    pass\n\
-             class MermanIconPack(MermanIconPackProtocol):\n    pass\n\
-             class MermanIconRegistry(MermanIconRegistryProtocol):\n    pass\n\
-             class MermanIconRegistryErrorDetails:\n    pass\n\
-             class MermanOperationMetadata:\n    pass\n\
-             class MermanOutputPlan:\n    pass\n\
-             class MermanTextMeasurer(abc.ABC):\n\
-             class MermanOperationRequest:\n    pass\n\
-             class MermanResourceErrorDetails:\n    pass\n\
-             class MermanResourceOverrideId(str):\n    pass\n\
-             id:MermanResourceOverrideId\n\
-             self.operation_id = operation_id\n\
-             self.options_json = options_json\n\
-             self.metadata = metadata\n\
-             self.icon_registry = icon_registry\n\
-             UNKNOWN_OPERATION\n\
-             def execute(self, request: MermanOperationRequest) -> MermanOperationResult:\n    pass\n\
-             def presentation_catalog_json(self, ) -> str:\n    pass\n\
-             def render_svg(self, source: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
-             def render_png_result(self):\n    pass\n\
-             def analysis_facts_json(self):\n    pass\n\
-             def analyze_document_json(self, source: str,uri: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
-             def analyze_document_facts_json(self, source: str,uri: str,options_json: typing.Optional[str]) -> str:\n    pass\n\
-             def svg_plan_json(self):\n    pass\n\
-             def close(self):\n    pass\n\
-             def from_packs(cls):\n    pass\n";
-        let stable_surface = stable_surface.replace(
-            "def from_packs(cls):\n    pass\n",
-            "def from_packs(cls):\n    pass\n\
-             def json(self):\n    pass\n\
-             def registration_name(self):\n    pass\n",
-        );
-        validate_stable_python_surface(&stable_surface).expect("stable callback API");
-        validate_stable_python_surface(&stable_surface.replace(
-            "def presentation_catalog_json(self, ) -> str:",
-            "def presentation_catalog_json(self) -> str:",
-        ))
-        .expect("formatted zero-argument presentation API");
-
-        for invalid_signature in [
-            "def presentation_catalog_json(self, options_json: str) -> str:",
-            "def presentation_catalog_json(self, ) -> bytes:",
-        ] {
-            let invalid = stable_surface.replace(
-                "def presentation_catalog_json(self, ) -> str:",
-                invalid_signature,
-            );
-            let error = validate_stable_python_surface(&invalid)
-                .expect_err("presentation catalog signature drift must fail closed");
-            assert!(error.to_string().contains("presentation_catalog_json"));
-        }
-
-        let obsolete_surface = format!(
-            "{stable_surface}def execute(self, request: MermanOperationRequest,options_json: typing.Optional[str]):\n    pass\n"
-        );
-        let obsolete = validate_stable_python_surface(&obsolete_surface)
-            .expect_err("generic options must not remain a parallel execute argument");
-        assert!(obsolete.to_string().contains("obsolete API"));
-    }
-
-    #[test]
-    fn ensure_init_file_creates_stable_managed_shim() {
+    fn ensure_init_file_refreshes_owned_files() {
         let temp = tempfile::tempdir().expect("create tempdir");
         let module_dir = temp.path().join("merman");
         fs::create_dir_all(&module_dir).expect("create module dir");
+        fs::write(
+            module_dir.join("__init__.py"),
+            format!("{PYTHON_PACKAGE_INIT_MARKER}\nSTALE = True\n"),
+        )
+        .expect("write stale package shim");
         fs::write(module_dir.join("_runtime_contract.py"), "legacy helper")
             .expect("write legacy runtime helper");
 
-        ensure_init_file(&module_dir).expect("create init file");
+        ensure_init_file(&module_dir).expect("refresh owned files");
 
         let init = fs::read_to_string(module_dir.join("__init__.py")).expect("read init file");
-        assert!(init.contains(PYTHON_PACKAGE_INIT_MARKER));
-        assert!(init.contains("MermanTextMeasurer"));
-        assert!(init.contains("MermanLintRuleCatalogEntry"));
-        assert!(init.contains("ResourceOptionsBuilder"));
-        assert!(init.contains("get_runtime_catalog"));
-        assert!(!init.contains("get_runtime_contract"));
-        assert!(!init.contains("MermanRuntimeContract,"));
-        assert!(!init.contains("\"MermanTextMeasurementCapabilities\""));
+        assert_eq!(init, PYTHON_PACKAGE_INIT_MODULE);
         assert!(
             !module_dir.join("_runtime_contract.py").exists(),
             "generation must remove the obsolete split runtime helper"
@@ -790,10 +279,6 @@ mod tests {
                 .expect("read runtime catalog helper"),
             PYTHON_RUNTIME_CATALOG_MODULE
         );
-        assert!(
-            !module_dir.join("_runtime_contract.py").exists(),
-            "the checked-in Python package must not retain the split runtime helper"
-        );
         assert_eq!(
             fs::read_to_string(module_dir.join("_resource_options.py"))
                 .expect("read resource options helper"),
@@ -804,67 +289,6 @@ mod tests {
                 .expect("read text measurement helper"),
             merman_uniffi::MERMAN_UNIFFI_PYTHON_TEXT_MEASUREMENT_PROTOCOL_MODULE
         );
-        assert_text_measurement_protocol_exports(&init);
-        assert_error_contract_exports(&init);
-    }
-
-    #[test]
-    fn ensure_init_file_keeps_text_measurement_exports_for_feature_slim_artifacts() {
-        let temp = tempfile::tempdir().expect("create tempdir");
-        let module_dir = temp.path().join("merman");
-        fs::create_dir_all(&module_dir).expect("create module dir");
-        fs::write(
-            module_dir.join("_text_measurement_protocol.py"),
-            "stale feature-conditional helper",
-        )
-        .expect("write stale text measurement helper");
-
-        ensure_init_file(&module_dir).expect("create feature-stable init file");
-
-        let init = fs::read_to_string(module_dir.join("__init__.py")).expect("read package shim");
-        assert!(init.contains("        MermanEngine,\n"));
-        assert!(init.contains("        MermanOperationRequest,\n"));
-        assert!(init.contains("        MermanOperationResult,\n"));
-        assert!(init.contains("    \"ResourceOptionsBuilder\",\n"));
-        assert!(init.contains("    \"ResourceProfile\",\n"));
-        assert!(init.contains("    \"get_runtime_catalog\",\n"));
-        assert_text_measurement_protocol_exports(&init);
-        assert_eq!(
-            fs::read_to_string(module_dir.join("_text_measurement_protocol.py"))
-                .expect("read stable text measurement helper"),
-            merman_uniffi::MERMAN_UNIFFI_PYTHON_TEXT_MEASUREMENT_PROTOCOL_MODULE
-        );
-    }
-
-    #[test]
-    fn ensure_init_file_refreshes_stale_generated_shim() {
-        let temp = tempfile::tempdir().expect("create tempdir");
-        let module_dir = temp.path().join("merman");
-        fs::create_dir_all(&module_dir).expect("create module dir");
-        fs::write(
-            module_dir.join("__init__.py"),
-            concat!(
-                "\"\"\"Generated merman UniFFI package shim.\"\"\"\n",
-                "from .merman_uniffi import (\n",
-                "    MermanEngine,\n",
-                ")\n\n",
-                "__all__ = [\n",
-                "    \"MermanEngine\",\n",
-                "]\n",
-            ),
-        )
-        .expect("write stale init");
-
-        ensure_init_file(&module_dir).expect("refresh init file");
-
-        let init = fs::read_to_string(module_dir.join("__init__.py")).expect("read init file");
-        assert_eq!(init, python_package_init());
-        assert!(init.contains("MermanTextMeasureRequest"));
-        assert!(init.contains("MermanTextMeasureResult"));
-        assert!(init.contains("MermanRuntimeCatalog"));
-        assert!(init.contains("ResourceOptionsBuilder"));
-        assert_text_measurement_protocol_exports(&init);
-        assert_error_contract_exports(&init);
     }
 
     #[test]
@@ -890,7 +314,7 @@ mod tests {
             .join("src")
             .join("merman");
         let init = fs::read_to_string(module_dir.join("__init__.py")).expect("read package shim");
-        assert_eq!(init, python_package_init());
+        assert_eq!(init, PYTHON_PACKAGE_INIT_MODULE);
         assert_eq!(
             fs::read_to_string(module_dir.join("_binding_contract.py"))
                 .expect("read binding contract helper"),
@@ -911,7 +335,5 @@ mod tests {
                 .expect("read text measurement helper"),
             merman_uniffi::MERMAN_UNIFFI_PYTHON_TEXT_MEASUREMENT_PROTOCOL_MODULE
         );
-        assert_text_measurement_protocol_exports(&init);
-        assert_error_contract_exports(&init);
     }
 }

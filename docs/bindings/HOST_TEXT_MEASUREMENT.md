@@ -255,7 +255,7 @@ class PreviewMeasurer(merman.MermanTextMeasurer):
         return None
 
 
-services = merman.MermanEngineServices(None, PreviewMeasurer())
+services = merman.MermanEngineServices().with_text_measurer(PreviewMeasurer())
 engine = merman.MermanEngine(None, services)
 try:
     svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
@@ -352,10 +352,7 @@ final class CoreTextMeasurer: MermanTextMeasurer, @unchecked Sendable {
 }
 
 let measurer = CoreTextMeasurer()
-let services = MermanEngineServices(
-    iconRegistry: nil,
-    textMeasurer: measurer
-)
+let services = MermanEngineServices().withTextMeasurer(textMeasurer: measurer)
 let engine = try MermanEngine(optionsJson: nil, services: services)
 defer { try? engine.close() }
 ```

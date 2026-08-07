@@ -26,7 +26,7 @@ class MermanNativeBindings {
   /// receives the largest complete producer prefix it can safely read. MermanNativeResult must be
   /// fully zero-initialized with MERMAN_NATIVE_RESULT_INIT before every producing call.
   ///
-  /// Frozen ABI 3 semantics from the descriptor:
+  /// ABI 3 semantics from the descriptor:
   /// - written-results-own-nonzero-allocation-tokens: Any producing call that writes Merman-owned
   /// result bytes writes a process-lifetime monotonic nonzero allocation_token; token exhaustion
   /// returns internal-error and leaves a caller-valid zero-initialized result unchanged.
@@ -590,10 +590,10 @@ const int MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION = 1;
 const int MERMAN_NATIVE_ABI_VERSION = 3;
 
 const String MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST =
-    'sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110';
+    'sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41';
 
 const String MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST =
-    'sha256:dd141016448b431d74dbdecb09248a62c21d1ee716803db4f930d5c5b7c364bb';
+    'sha256:607f0e32969124e2358bc7f6dbcc81154831a9b9e3c4466ce8a71d760055016a';
 
 const int MERMAN_NATIVE_RESULT_SCHEMA_VERSION = 1;
 
@@ -758,8 +758,4 @@ const String MERMAN_NATIVE_OPERATION_CAPABILITY_SVG_PLAN_JSON = 'svg';
 const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON =
     'application/json';
 
-const int MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE = 144;
-
-const int MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE = 152;
-
-const int MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE = 160;
+const int MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE = 160;

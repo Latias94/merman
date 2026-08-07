@@ -11,14 +11,14 @@ import 'package:merman/src/generated/native_abi.dart' as native;
 import 'package:merman/src/merman_ffi.dart' as ffi_transport;
 
 void main() {
-  projectsFrozenAbi3MinimumPrefix();
+  projectsCurrentAbi3TableBoundaries();
   decodesTypedMetadataCatalogs();
   acceptsAdditiveTypedMetadataFields();
   matchesThePubPackageVersionProjection();
   acceptsAFlatAbi3Catalog();
-  acceptsLegacyCatalogWithoutAdditiveTransportSections();
   acceptsAdditiveConstructorResourceLimits();
   rejectsMalformedAdditiveTransportSections();
+  acceptsSchemaOneCatalogWithoutAdditiveTransportSections();
   normalizesEmptyIconRegistryToNoService();
   rejectsUnboundedIconRegistryStaging();
   rejectsMalformedIconRegistryUtf16();
@@ -223,15 +223,15 @@ void retainsEveryUnpublishedEngineEntry() {
 }
 
 void normalizesEmptyIconRegistryToNoService() {
-  final registry = MermanIconRegistry.fromPacks(const []);
-  final services = MermanEngineServices(iconRegistry: registry);
+  final packSet = MermanIconPackSet.fromPacks(const []);
+  final services = MermanEngineServices(iconPackSet: packSet);
   _expect(
-    registry.isEmpty && services.isEmpty && !services.hasIconPacks,
-    'an empty icon registry must normalize to an empty constructor service',
+    packSet.isEmpty && services.isEmpty && !services.hasIconPacks,
+    'an empty icon pack set must normalize to an empty constructor service',
   );
 }
 
-void projectsFrozenAbi3MinimumPrefix() {
+void projectsCurrentAbi3TableBoundaries() {
   _expect(
     native.MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.startsWith('sha256:'),
     'ABI discovery must use the generated minimum-prefix digest',
@@ -242,7 +242,7 @@ void projectsFrozenAbi3MinimumPrefix() {
         native.MERMAN_NATIVE_FUNCTION_ENGINE_TRY_CLOSE == 2 &&
         native.MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT == 3 &&
         native.MERMAN_NATIVE_FUNCTION_RESULT_FREE == 4,
-    'ABI 3 consumers must preserve the frozen five-slot function prefix',
+    'ABI 3 base slots must retain their descriptor-owned order',
   );
   _expect(
     native.MERMAN_NATIVE_FUNCTION_METADATA_COLLECT == 5,
@@ -253,37 +253,18 @@ void projectsFrozenAbi3MinimumPrefix() {
     'engine_new_with_services must append after metadata_collect',
   );
   _expect(
-    ffi.sizeOf<native.MermanNativeApi>() >
-        native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
-    'metadata_collect must remain an appended slot outside the frozen prefix',
-  );
-  _expect(
-    !ffi_transport.nativeApiHasMetadataCollectForTesting(
+    !ffi_transport.nativeApiHasCurrentTableForTesting(
+          native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE - 1,
+        ) &&
+        ffi_transport.nativeApiHasCurrentTableForTesting(
           native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
-        ) &&
-        ffi_transport.nativeApiHasMetadataCollectForTesting(
-          native.MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
         ),
-    'consumers must not inspect metadata_collect in a five-slot producer',
+    'consumers must reject a table smaller than the current minimum prefix',
   );
   _expect(
-    native.MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE <=
+    native.MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ==
         ffi.sizeOf<native.MermanNativeApi>(),
-    'metadata_collect availability must depend on its own field boundary',
-  );
-  _expect(
-    !ffi_transport.nativeApiHasEngineServicesConstructorForTesting(
-          native.MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE,
-        ) &&
-        ffi_transport.nativeApiHasEngineServicesConstructorForTesting(
-          native.MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE,
-        ),
-    'consumers must not inspect engine_new_with_services before its complete prefix',
-  );
-  _expect(
-    native.MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_PREFIX_SIZE ==
-        ffi.sizeOf<native.MermanNativeApi>(),
-    'engine_new_with_services must define the current complete table boundary',
+    'the current minimum prefix must include the complete release table',
   );
 
   final request = calloc<native.MermanNativeApiRequest>();
@@ -598,40 +579,6 @@ void acceptsAFlatAbi3Catalog() {
   );
 }
 
-void acceptsLegacyCatalogWithoutAdditiveTransportSections() {
-  final legacy = _catalog()
-    ..remove('option_group_ids')
-    ..remove('constructor_service_ids')
-    ..remove('constructor_service_contracts');
-  final catalog = MermanRuntimeCatalog.fromJson(legacy);
-  _expect(
-    !catalog.hasDeclaredOptionGroups &&
-        !catalog.hasDeclaredConstructorServices &&
-        catalog.optionGroupIds.isEmpty &&
-        catalog.constructorServiceIds.isEmpty &&
-        catalog.constructorServiceContracts.isEmpty,
-    'missing additive transport sections must normalize to legacy-empty',
-  );
-  catalog.requireEngineServices(
-    const MermanEngineServices(),
-    hasServiceConstructor: false,
-  );
-  catalog.requireEngineServices(
-    MermanEngineServices(textMeasurer: (_) => null),
-    hasServiceConstructor: false,
-  );
-  _expectContractFailure(
-    () => catalog.requireEngineServices(
-      MermanEngineServices(
-        iconRegistry: MermanIconRegistry.fromPacks([
-          MermanIconPack(json: '{"prefix":"test","icons":{}}'),
-        ]),
-      ),
-      hasServiceConstructor: false,
-    ),
-  );
-}
-
 void acceptsAdditiveConstructorResourceLimits() {
   final catalog = _catalog();
   final iconRegistry = _constructorServiceContract(catalog, 'icon-registry');
@@ -724,6 +671,19 @@ void rejectsMalformedAdditiveTransportSections() {
   _expectContractFailure(() => MermanRuntimeCatalog.fromJson(noSvg));
 }
 
+void acceptsSchemaOneCatalogWithoutAdditiveTransportSections() {
+  final catalog = _clonedCatalog()
+    ..remove('option_group_ids')
+    ..remove('constructor_service_ids')
+    ..remove('constructor_service_contracts');
+  final parsed = MermanRuntimeCatalog.fromJson(catalog);
+  _expect(
+    parsed.optionGroupIds.isEmpty && parsed.constructorServiceIds.isEmpty,
+    'schema-1 catalogs without additive transport sections must normalize to empty exposure',
+  );
+  _expectContractFailure(parsed.requireCurrentBindingSchemas);
+}
+
 void rejectsUnboundedIconRegistryStaging() {
   var iterated = 0;
   Iterable<MermanIconPack> tooManyPacks() sync* {
@@ -734,7 +694,7 @@ void rejectsUnboundedIconRegistryStaging() {
   }
 
   final countError = _expectMermanException(
-    () => MermanIconRegistry.fromPacks(tooManyPacks()),
+    () => MermanIconPackSet.fromPacks(tooManyPacks()),
   );
   _expect(
     iterated == 17 &&
@@ -747,7 +707,7 @@ void rejectsUnboundedIconRegistryStaging() {
   );
 
   final prefixError = _expectMermanException(
-    () => MermanIconRegistry.fromPacks([
+    () => MermanIconPackSet.fromPacks([
       MermanIconPack(
         json: '{"prefix":"test","icons":{}}',
         registrationName: 'a' * 65,
@@ -758,8 +718,27 @@ void rejectsUnboundedIconRegistryStaging() {
     prefixError.resourceDetails?.limitId.id ==
             'max_icon_registry_prefix_bytes' &&
         prefixError.resourceDetails?.actual == 65 &&
-        prefixError.iconRegistryDetails?.packIndex == 0,
+        prefixError.iconRegistryDetails?.packIndex == 0 &&
+        prefixError.iconRegistryDetails?.registrationName == null,
     'icon registry factory must enforce exact UTF-8 registration-name bytes',
+  );
+
+  final overLimitMalformedPrefix = _expectMermanException(
+    () => MermanIconPackSet.fromPacks([
+      MermanIconPack(
+        json: '{"prefix":"test","icons":{}}',
+        registrationName: '${'a' * 64}${String.fromCharCode(0xd800)}',
+      ),
+    ]),
+  );
+  _expect(
+    overLimitMalformedPrefix.code ==
+            native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED &&
+        overLimitMalformedPrefix.resourceDetails?.limitId.id ==
+            'max_icon_registry_prefix_bytes' &&
+        overLimitMalformedPrefix.resourceDetails?.actual == 67 &&
+        overLimitMalformedPrefix.iconRegistryDetails?.registrationName == null,
+    'registration-name byte limits must win before malformed UTF-16 decoding',
   );
 }
 
@@ -768,7 +747,7 @@ void rejectsMalformedIconRegistryUtf16() {
   final isolatedLowSurrogate = String.fromCharCode(0xdc00);
 
   final jsonError = _expectMermanException(
-    () => MermanIconRegistry.fromPacks([
+    () => MermanIconPackSet.fromPacks([
       MermanIconPack(
         json:
             '{"prefix":"test","icons":{"broken":{"body":"$isolatedHighSurrogate"}}}',
@@ -787,7 +766,7 @@ void rejectsMalformedIconRegistryUtf16() {
   );
 
   final registrationNameError = _expectMermanException(
-    () => MermanIconRegistry.fromPacks([
+    () => MermanIconPackSet.fromPacks([
       MermanIconPack(
         json: '{"prefix":"test","icons":{}}',
         registrationName: 'bad$isolatedLowSurrogate',
@@ -804,14 +783,14 @@ void rejectsMalformedIconRegistryUtf16() {
   );
 
   final validPair = String.fromCharCodes(const [0xd83d, 0xde00]);
-  final registry = MermanIconRegistry.fromPacks([
+  final packSet = MermanIconPackSet.fromPacks([
     MermanIconPack(
       json:
           '{"prefix":"test","icons":{"valid":{"body":"<text>$validPair</text>"}}}',
     ),
   ]);
   _expect(
-    registry.length == 1,
+    packSet.length == 1,
     'valid UTF-16 surrogate pairs must remain admissible UTF-8 input',
   );
 }
@@ -1065,6 +1044,7 @@ void acceptsAdditiveRuntimeResourceIds() {
     'description': 'Future additive resource limit',
     'overridable': false,
     'hard_cap': true,
+    'minimum_value': 0,
     'future_limit_metadata': <String, Object?>{
       'version': 2,
       'tags': <Object?>[
@@ -1112,7 +1092,7 @@ void acceptsAdditiveRuntimeResourceIds() {
     futureLimit.phase == 'future_phase' &&
         futureLimit.hardCap &&
         !futureLimit.overridable &&
-        futureLimit.minimumValue == 1 &&
+        futureLimit.minimumValue == 0 &&
         identical(validated.resourceLimitById('future_limit'), futureLimit) &&
         futureLimitMetadata['version'] == 2 &&
         futureLimitStability['stable'] == true &&

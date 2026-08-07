@@ -82,7 +82,7 @@ val svg = Merman.renderSvg(
 
 `MermanResourceOptionsBuilder` emits Options JSON schema `2`. Its profile is unset by default so reusable request overlays inherit their constructor ceiling; limits accept only `MermanResourceOverrideId`, while `MermanResourceLimitId` describes the full runtime catalog.
 
-An omitted `runtime_policy` is deterministic even though the normal Android artifact compiles native adapters. Add `"runtime_policy":"native"` only when an operation should use Android's clock, time-zone rules, and random source; a custom slim artifact missing an adapter fails with a typed unsupported-operation error.
+An omitted `runtime_policy` is deterministic even though the normal Android artifact is built with the atomic `native-runtime` feature. Add `"runtime_policy":"native"` only when an operation should use Android's clock, time-zone rules, and random source. Runtime discovery continues to report the concrete `system-clock`, `system-timezone`, and `system-random` adapter IDs; a custom artifact without `native-runtime` fails with a typed unsupported-operation error.
 
 Use `Merman.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, full native capability/output/operation/metadata surface, constructor-owned services, and resource-to-operation mappings. Use `Merman.presentationCatalogJson()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog instead of maintaining a Kotlin enum. Hosts should still query the loaded catalogs before exposing optional choices; a capability-focused or slim Android producer is intentionally rejected by the published full-SKU validator.
 
@@ -125,12 +125,12 @@ MermanEngine(services = services).use { engine ->
 
 A callback-free engine permits concurrent calls. An engine with a callback rejects a competing call immediately with `BUSY`, and calls or close attempts from its measurement callback return `REENTRANT_CALL`. Construction never invokes the callback. `close()` is idempotent, including concurrent callers. A `BUSY` or `REENTRANT_CALL` close preserves the complete engine for retry after the active call returns.
 
-## Immutable Iconify Registry Inputs
+## Immutable Iconify Pack Inputs
 
 Snapshot IconifyJSON once, then reuse that immutable input across engine constructors:
 
 ```kotlin
-val registry = MermanIconRegistry.fromPacks(
+val iconPackSet = MermanIconPackSet.fromPacks(
     listOf(
         MermanIconPack(
             json = iconifyJson,
@@ -139,7 +139,7 @@ val registry = MermanIconRegistry.fromPacks(
     ),
 )
 
-val services = MermanEngineServices(iconRegistry = registry)
+val services = MermanEngineServices(iconPackSet = iconPackSet)
 MermanEngine(services = services).use { first ->
     MermanEngine(services = services).use { second ->
         first.renderSvg("flowchart TD\nA@{ icon: \"product:rocket\" }")
@@ -148,7 +148,7 @@ MermanEngine(services = services).use { first ->
 }
 ```
 
-`fromPacks` snapshots complete Iconify collections or host-curated subsets and exposes no mutation or lifecycle API. Each `MermanEngine` constructor borrows fresh string arrays, validates and parses them transactionally within the fixed native constructor limits, and returns only after that engine owns the parsed registry. The same Kotlin snapshot can therefore construct multiple independent engines; no native registry handle is shared between them. Merman performs no filesystem, package, or network acquisition—the host must load and, when necessary, pre-trim packs.
+`MermanIconPackSet.fromPacks` snapshots complete Iconify collections or host-curated subsets and exposes no mutation or lifecycle API. Each `MermanEngine` constructor borrows fresh string arrays, validates and parses them transactionally within the fixed native constructor limits, and returns only after that engine owns the parsed registry. The same Kotlin snapshot can therefore construct multiple independent engines; no native registry handle is shared between them. Merman performs no filesystem, package, or network acquisition—the host must load and, when necessary, pre-trim packs.
 
 Icon bodies are treated as untrusted input and are bounded, XML-validated, deterministically ID-scoped, and sanitized under the effective Mermaid configuration before embedding. This does not make parity/readable SVG safe for direct browser DOM insertion. Use `SafeInlineSvg`, an appropriate CSP, or a sandbox at that boundary, and remember that policy-allowed external references may still cause downstream loaders to perform I/O.
 
@@ -156,7 +156,6 @@ Icon bodies are treated as untrusted input and are bounded, XML-validated, deter
 
 ```sh
 python3 platforms/android/build-android.py --install-missing-ndk --assemble-aar
-python3 scripts/verify-platform-bindings.py --build-android-slices
 ```
 
 The helper uses the checked-in Gradle Wrapper, pinned JDK 17/NDK toolchain, and explicit native SDK capability profile. Before packaging, NDK `llvm-nm` verifies that the JNI library exports `JNI_OnLoad` and does not export `merman_get_native_api`. A connected-device JNI smoke is available through `--only-android-instrumentation-smoke`.

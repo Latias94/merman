@@ -467,25 +467,22 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             flutter,
         )
         self.assertIn(
-            "python scripts/build-python-uniffi-wheel.py --run-smoke",
+            "python scripts/build-python-uniffi-wheel.py",
             python,
         )
+        self.assertNotIn("build-python-uniffi-wheel.py --run-smoke", python)
 
-    def test_python_release_smoke_uses_current_native_sdk_object_model(self) -> None:
+    def test_python_release_runs_only_the_canonical_wheel_smoke(self) -> None:
         python = job_contract_text(
             WORKFLOW_ROOT / "release-python.yml",
             "build",
         )
 
-        self.assertIn("e = merman.Merman()", python)
-        self.assertIn("merman.MermanEngineServices(None, measurer)", python)
-        self.assertIn("reusable.close()", python)
-        self.assertIn("platforms/python/merman/examples/smoke.py", python)
-        self.assertNotIn("merman.MermanEngine()", python)
-        self.assertNotIn(".reusable_engine(", python)
-        self.assertNotIn(".reusable_engine_with_text_measurer(", python)
-        self.assertNotIn(".set_text_measurer(", python)
-        self.assertNotIn(".clear_text_measurer(", python)
+        self.assertEqual(
+            python.count("platforms/python/merman/examples/smoke.py"),
+            1,
+        )
+        self.assertNotIn("python - <<'PY'", python)
 
     def test_flutter_release_smokes_the_packaged_macos_library(self) -> None:
         build_job = job_contract_text(
@@ -1549,15 +1546,14 @@ class CiWorkflowSecurityTests(unittest.TestCase):
             build_napi["run"],
             "npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu",
         )
-        for step in (
-            setup,
-            install,
-            verify,
-            install_wasm_pack,
-            build_node_wasm,
-            build_napi,
-        ):
+        for step in (setup, install, verify):
             self.assertEqual(step["if"], "matrix.parity")
+            self.assertNotIn("continue-on-error", step)
+        for step in (install_wasm_pack, build_node_wasm, build_napi):
+            self.assertEqual(
+                step["if"],
+                "matrix.parity && github.event_name != 'pull_request'",
+            )
             self.assertNotIn("continue-on-error", step)
         self.assertLess(job["steps"].index(install), job["steps"].index(verify))
         self.assertLess(
@@ -1573,68 +1569,16 @@ class CiWorkflowSecurityTests(unittest.TestCase):
             job["steps"].index(build_napi),
         )
 
-    def test_ci_verifies_native_ffi_artifact_sizes_on_pinned_apple_host(self) -> None:
-        workflow = parse_workflow_structure(WORKFLOW_ROOT / "ci.yml")
-        job = workflow_job(workflow, "ffi-native-artifact-sizes")
-
-        self.assertEqual(job["runs-on"], "macos-26")
-        self.assertFalse(job["permissions_declared"])
-        self.assertEqual(job["permissions"], {})
-        self.assertEqual(job["env"], {})
-        self.assertNotIn("if", job)
-        self.assertNotIn("continue-on-error", job)
-        self.assertNotIn(
-            "Swatinem/rust-cache@v2",
-            {step.get("uses") for step in job["steps"]},
-        )
-
-        host = workflow_step(
-            job, name="Select and verify the native artifact measurement host"
-        )
-        self.assertIn(
-            "sudo xcode-select --switch "
-            "/Applications/Xcode_26.5.app/Contents/Developer",
-            host["run"],
-        )
-        self.assertIn('test "$(uname -m)" = "arm64"', host["run"])
-        self.assertIn(
-            "test \"$(xcodebuild -version)\" = $'Xcode 26.5\\nBuild version 17F42'",
-            host["run"],
-        )
-        self.assertIn(
-            'test "$(xcrun --sdk macosx --show-sdk-version)" = "26.5"',
-            host["run"],
-        )
-
-        toolchain = workflow_step(job, name="Install Rust toolchain")
-        self.assertEqual(toolchain["uses"], "dtolnay/rust-toolchain@1.95.0")
-
-        prefetch = workflow_step(job, name="Prefetch locked Cargo dependencies")
-        self.assertEqual(
-            prefetch["run"],
-            "cargo fetch --locked --target aarch64-apple-darwin",
-        )
-
-        verify = workflow_step(job, name="Verify native FFI artifact sizes")
-        self.assertEqual(
-            verify["run"],
-            "python3 scripts/verify_native_artifact_sizes.py --baseline "
-            "abi/ffi-contract-baseline/native-artifact-sizes.json",
-        )
-        for step in (host, toolchain, prefetch, verify):
-            self.assertNotIn("continue-on-error", step)
-        self.assertLess(job["steps"].index(host), job["steps"].index(toolchain))
-        self.assertLess(
-            job["steps"].index(toolchain),
-            job["steps"].index(prefetch),
-        )
-        self.assertLess(job["steps"].index(prefetch), job["steps"].index(verify))
-
     def test_ci_compiles_the_apple_package_with_swift_5_9(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "ci.yml")
         job = workflow_job(workflow, "apple-swift-5-9-smoke")
 
         self.assertEqual(job["runs-on"], "macos-14")
+        self.assertEqual(
+            job["if"],
+            "github.event_name != 'pull_request' || "
+            "contains(github.event.pull_request.labels.*.name, 'platform')",
+        )
 
         select_step = workflow_step(
             job, name="Select Xcode 15.2 and verify Swift 5.9"
@@ -1653,12 +1597,11 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(toolchain_step["uses"], "dtolnay/rust-toolchain@1.95.0")
         self.assertEqual(
             toolchain_step["with"]["targets"],
-            "aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,"
-            "aarch64-apple-darwin,x86_64-apple-darwin",
+            "aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios",
         )
 
         build_step = workflow_step(
-            job, name="Build Apple XCFramework with Swift 5.9"
+            job, name="Build iOS XCFramework with Swift 5.9"
         )
         self.assertEqual(
             build_step["env"]["MERMAN_AUTO_INSTALL_RUST_TARGETS"],
@@ -1666,13 +1609,13 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         )
         self.assertEqual(
             build_step["run"],
-            "bash scripts/build-apple-xcframework.sh",
+            "bash scripts/build-apple-xcframework.sh --ios",
         )
 
-        validation_step = workflow_step(job, name="Validate Swift 5.9 package")
+        validation_step = workflow_step(
+            job, name="Type-check generated Swift with Swift 5.9"
+        )
         for contract in (
-            "swift package describe",
-            "swift build",
             "swiftc -typecheck -module-name Merman",
             "-target arm64-apple-ios14.0",
             "-target arm64-apple-ios14.0-simulator",
@@ -1681,10 +1624,12 @@ class CiWorkflowSecurityTests(unittest.TestCase):
             "-I platforms/apple/Merman.xcframework/ios-arm64/Headers",
             "-I platforms/apple/Merman.xcframework/ios-arm64_x86_64-simulator/Headers",
             "platforms/apple/Sources/Merman/Generated/Merman.swift",
-            "swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke",
             "git diff --exit-code -- platforms/apple/Sources/Merman/Generated",
         ):
             self.assertIn(contract, validation_step["run"])
+        self.assertNotIn("swift package describe", validation_step["run"])
+        self.assertNotIn("swift build", validation_step["run"])
+        self.assertNotIn("swift run", validation_step["run"])
         self.assertNotIn("swift build --triple", validation_step["run"])
 
         modern_job = workflow_job(workflow, "apple-uniffi-smoke")

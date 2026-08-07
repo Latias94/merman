@@ -34,7 +34,7 @@ pub struct ArtifactContractSpec {
     metadata: StaticMetadataSelection,
     transport: BindingTransportKey,
     constructor_services: &'static [ConstructorServiceKey],
-    system_adapters: &'static [CapabilityKey],
+    native_runtime: bool,
     runtime_policy: RuntimePolicyExposure,
     transport_extensions: &'static [TransportCompiledExtensionKey],
     configured_fields: u8,
@@ -46,7 +46,7 @@ const METADATA_CONFIGURED: u8 = 1 << 2;
 const CONSTRUCTOR_SERVICES_CONFIGURED: u8 = 1 << 3;
 const RUNTIME_POLICY_CONFIGURED: u8 = 1 << 4;
 const TRANSPORT_EXTENSIONS_CONFIGURED: u8 = 1 << 5;
-const SYSTEM_ADAPTERS_CONFIGURED: u8 = 1 << 6;
+const NATIVE_RUNTIME_CONFIGURED: u8 = 1 << 6;
 
 /// Materializes Merman's maintained native SDK profile using the calling crate's features.
 ///
@@ -105,23 +105,15 @@ macro_rules! native_sdk_artifact_contract {
             #[cfg(feature = "svg")]
             $crate::ConstructorServiceKey::IconRegistry,
         ];
-        const SYSTEM_ADAPTERS: &[$crate::CapabilityKey] = &[
-            #[cfg(feature = "system-clock")]
-            $crate::CapabilityKey::SystemClock,
-            #[cfg(feature = "system-random")]
-            $crate::CapabilityKey::SystemRandom,
-            #[cfg(feature = "system-timezone")]
-            $crate::CapabilityKey::SystemTimezone,
-        ];
-
-        $crate::ArtifactContractSpec::new($crate::TargetKey::Native, TRANSPORT)
+        let spec = $crate::ArtifactContractSpec::new($crate::TargetKey::Native, TRANSPORT)
             .with_operations(OPERATIONS)
             .with_supplemental_capabilities(SUPPLEMENTAL_CAPABILITIES)
             .with_all_available_metadata()
             .with_constructor_services(CONSTRUCTOR_SERVICES)
-            .with_system_adapters(SYSTEM_ADAPTERS)
-            .with_runtime_policy_exposure($crate::RuntimePolicyExposure::BindingOptions)
-            .materialize()
+            .with_runtime_policy_exposure($crate::RuntimePolicyExposure::BindingOptions);
+        #[cfg(feature = "native-runtime")]
+        let spec = spec.with_native_runtime();
+        spec.materialize()
     }};
 }
 
@@ -138,7 +130,7 @@ impl ArtifactContractSpec {
             metadata: StaticMetadataSelection::Explicit(&[]),
             transport,
             constructor_services: &[],
-            system_adapters: &[],
+            native_runtime: false,
             runtime_policy: RuntimePolicyExposure::DeterministicOnly,
             transport_extensions: &[],
             configured_fields: 0,
@@ -190,14 +182,11 @@ impl ArtifactContractSpec {
         self
     }
 
-    /// Declares the exact native system adapters owned by this transport artifact.
-    ///
-    /// The selection is used for native-policy admission. The public capability catalog exposes
-    /// the native adapter set only when all required adapters are present.
+    /// Declares that this artifact owns the complete native runtime adapter set.
     #[must_use]
-    pub const fn with_system_adapters(mut self, system_adapters: &'static [CapabilityKey]) -> Self {
-        self.configure_once(SYSTEM_ADAPTERS_CONFIGURED);
-        self.system_adapters = system_adapters;
+    pub const fn with_native_runtime(mut self) -> Self {
+        self.configure_once(NATIVE_RUNTIME_CONFIGURED);
+        self.native_runtime = true;
         self
     }
 
@@ -282,15 +271,18 @@ impl ArtifactContractSpec {
         {
             panic!("binding-options runtime policy requires the native target");
         }
-        let selected_system_adapters = capability_slice_bits(self.system_adapters);
-        validate_system_adapter_bits(
-            selected_system_adapters,
+        validate_native_runtime_selection(
+            self.native_runtime,
             self.target,
             self.runtime_policy,
             compiled_capabilities,
         );
-        let exposed_system_adapters = exposed_system_adapter_bits(selected_system_adapters);
-        capabilities |= exposed_system_adapters;
+        let system_adapters = if self.native_runtime {
+            NATIVE_SYSTEM_ADAPTER_BITS
+        } else {
+            0
+        };
+        capabilities |= system_adapters;
 
         let outputs = output_bits_for_operations(operations);
         let compiled_metadata = compiled_metadata_bits(compiled_capabilities);
@@ -331,8 +323,7 @@ impl ArtifactContractSpec {
                 constructor_services,
             )),
             constructor_services: KeySet::from_bits(constructor_services),
-            selected_system_adapters: KeySet::from_bits(selected_system_adapters),
-            system_adapters: KeySet::from_bits(exposed_system_adapters),
+            system_adapters: KeySet::from_bits(system_adapters),
             runtime_policy: self.runtime_policy,
         }
     }
@@ -440,10 +431,10 @@ const fn validate_operation_bits(operations: u64, target: TargetKey, compiled_ca
 
 const fn operation_is_compiled(operation: OperationKey, compiled_capabilities: u64) -> bool {
     let spec = operation.spec();
-    if let Some(capability) = spec.capability {
-        if compiled_capabilities & capability.compact_bit() == 0 {
-            return false;
-        }
+    if let Some(capability) = spec.capability
+        && compiled_capabilities & capability.compact_bit() == 0
+    {
+        return false;
     }
     let prerequisites = capability_slice_bits(spec.compiled_prerequisites);
     compiled_capabilities & prerequisites == prerequisites
@@ -545,29 +536,23 @@ const fn validate_capability_bits(
     }
 }
 
-const fn validate_system_adapter_bits(
-    system_adapters: u64,
+const fn validate_native_runtime_selection(
+    native_runtime: bool,
     target: TargetKey,
     runtime_policy: RuntimePolicyExposure,
     compiled_capabilities: u64,
 ) {
-    if system_adapters == 0 {
+    if !native_runtime {
         return;
     }
     if !matches!(target, TargetKey::Native) {
-        panic!("system adapters require the native target");
+        panic!("native runtime requires the native target");
     }
     if !matches!(runtime_policy, RuntimePolicyExposure::BindingOptions) {
-        panic!("system adapters require binding-options runtime policy exposure");
+        panic!("native runtime requires binding-options runtime policy exposure");
     }
-    let allowed = CapabilityKey::SystemClock.compact_bit()
-        | CapabilityKey::SystemRandom.compact_bit()
-        | CapabilityKey::SystemTimezone.compact_bit();
-    if system_adapters & !allowed != 0 {
-        panic!("artifact system adapter selection contains a non-policy adapter");
-    }
-    if system_adapters & !compiled_capabilities != 0 {
-        panic!("artifact system adapter is not compiled");
+    if compiled_capabilities & NATIVE_SYSTEM_ADAPTER_BITS != NATIVE_SYSTEM_ADAPTER_BITS {
+        panic!("native runtime adapters are not compiled");
     }
 }
 
@@ -575,23 +560,15 @@ const NATIVE_SYSTEM_ADAPTER_BITS: u64 = CapabilityKey::SystemClock.compact_bit()
     | CapabilityKey::SystemRandom.compact_bit()
     | CapabilityKey::SystemTimezone.compact_bit();
 
-const fn exposed_system_adapter_bits(selected_system_adapters: u64) -> u64 {
-    if selected_system_adapters == NATIVE_SYSTEM_ADAPTER_BITS {
-        NATIVE_SYSTEM_ADAPTER_BITS
-    } else {
-        0
-    }
-}
-
 const fn output_bits_for_operations(operations: u64) -> u64 {
     let mut outputs = 0;
     let mut index = 0;
     while index < OperationKey::ALL.len() {
         let operation = OperationKey::ALL[index];
-        if operations & operation.compact_bit() != 0 {
-            if let Some(output) = operation.spec().output {
-                outputs |= output.compact_bit();
-            }
+        if operations & operation.compact_bit() != 0
+            && let Some(output) = operation.spec().output
+        {
+            outputs |= output.compact_bit();
         }
         index += 1;
     }
@@ -737,7 +714,6 @@ pub struct ValidatedArtifactContract {
     option_groups: KeySet<BindingOptionGroupKey>,
     text_measurement_providers: KeySet<TextMeasurementProviderKey>,
     constructor_services: KeySet<ConstructorServiceKey>,
-    selected_system_adapters: KeySet<CapabilityKey>,
     system_adapters: KeySet<CapabilityKey>,
     runtime_policy: RuntimePolicyExposure,
 }
@@ -748,49 +724,40 @@ impl ValidatedArtifactContract {
         self.target
     }
 
-    #[must_use]
     pub fn capability_keys(&self) -> impl Iterator<Item = CapabilityKey> + '_ {
         self.capabilities.iter()
     }
 
-    #[must_use]
     pub fn output_keys(&self) -> impl Iterator<Item = OutputKey> + '_ {
         self.outputs.iter()
     }
 
-    #[must_use]
     pub fn operation_keys(&self) -> impl Iterator<Item = OperationKey> + '_ {
         self.operations.iter()
     }
 
-    #[must_use]
     pub fn metadata_keys(&self) -> impl Iterator<Item = MetadataKey> + '_ {
         self.metadata.iter()
     }
 
-    #[must_use]
     pub fn payload_schema_keys(&self) -> impl Iterator<Item = BindingPayloadSchemaKey> + '_ {
         self.payload_schemas.iter()
     }
 
-    #[must_use]
     pub fn option_group_keys(&self) -> impl Iterator<Item = BindingOptionGroupKey> + '_ {
         self.option_groups.iter()
     }
 
-    #[must_use]
     pub fn text_measurement_provider_keys(
         &self,
     ) -> impl Iterator<Item = TextMeasurementProviderKey> + '_ {
         self.text_measurement_providers.iter()
     }
 
-    #[must_use]
     pub fn constructor_service_keys(&self) -> impl Iterator<Item = ConstructorServiceKey> + '_ {
         self.constructor_services.iter()
     }
 
-    #[must_use]
     pub fn system_adapter_keys(&self) -> impl Iterator<Item = CapabilityKey> + '_ {
         self.system_adapters.iter()
     }
@@ -863,11 +830,11 @@ impl ValidatedArtifactContract {
             CapabilityKey::SystemTimezone,
             CapabilityKey::SystemRandom,
         ] {
-            if !self.selected_system_adapters.contains(capability) {
+            if !self.system_adapters.contains(capability) {
                 return Err(BindingError::missing_capability(
                     capability.id(),
                     format!(
-                        "runtime capability `{}` is not compiled into this artifact",
+                        "runtime capability `{}` is not exposed by this artifact",
                         capability.id()
                     ),
                 ));

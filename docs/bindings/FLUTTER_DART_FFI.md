@@ -63,7 +63,10 @@ Discovery sends:
 - `MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST`;
 - the Dart consumer's `MermanNativeApi` capacity.
 
-The frozen ABI 3 prefix has five ordered slots: `runtime_catalog`, `engine_new`, `engine_try_close`, `execute_collect`, and `result_free`. The published six-slot prefix appends `metadata_collect` at code `5`; the current table appends `engine_new_with_services` at code `6`. The caller passes its real table capacity and the producer returns the largest complete prefix safely initialized within that capacity. The Dart consumer accepts a prefix at least as large as `MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE`, verifies the returned ABI version and minimum-prefix digest, then reads each appended slot only when the returned initialized size reaches that field and its pointer is nonzero. It does not require the initialized prefix size to equal the current `ffigen` struct size, so an append-only ABI 3 producer remains discoverable without exposing a partial function pointer.
+The ABI 3 table is size-tagged. The caller passes its real table capacity and the producer returns
+only complete fields safely initialized within that capacity, so a host never reads a partial
+function pointer. Release builds use the matching generated header and current complete table;
+historical five- or six-slot producers are not a supported compatibility target.
 
 The returned digests have separate roles:
 
@@ -74,8 +77,10 @@ The returned digests have separate roles:
 `package_version` is also provenance unless the caller deliberately pins an exact artifact:
 
 - `Merman.open()` loads the package-owned library, requires the exact generated `mermanPackageVersion`, and treats a missing current `metadata_collect` slot as a damaged bundled artifact;
-- `Merman.openPath(...)` requires only compatible ABI 3 discovery and accepts another package version; a five-slot producer remains usable for runtime catalog and operations, while named metadata methods report that the optional slot is unavailable;
-- `Merman.fromDynamicLibrary(...)` is ABI-compatible by default and accepts `expectedPackageVersion:` when an embedding application wants an explicit exact pin.
+- `Merman.openPath(...)` accepts another package version only when it implements the current complete
+  ABI table and runtime schemas;
+- `Merman.fromDynamicLibrary(...)` applies the same current-contract requirement and accepts
+  `expectedPackageVersion:` when an embedding application wants an explicit exact pin.
 
 The exact package version lives in `lib/src/generated/package_version.dart`, is exported as `mermanPackageVersion`, and is updated from the workspace release authority alongside `pubspec.yaml`. The contract test rejects projection drift.
 
@@ -164,9 +169,9 @@ Every current backend materializes its output, so the transport returns one owne
 ## Immutable Icon Registries
 
 `MermanIconPack` accepts one in-memory IconifyJSON collection and an optional registration-name
-override. `MermanIconRegistry.fromPacks(...)` validates fixed byte/count ceilings and snapshots
+override. `MermanIconPackSet.fromPacks(...)` validates fixed byte/count ceilings and snapshots
 immutable UTF-8 buffers. Those buffers are borrowed only during `MermanEngine` construction; the
-engine owns the parsed registry when construction returns. The same Dart registry can therefore be
+engine owns the parsed registry when construction returns. The same Dart pack set can therefore be
 reused for multiple engine constructions without exposing a native mutable handle.
 
 Merman performs no filesystem, package, or network acquisition and does not trim collections.
@@ -210,15 +215,20 @@ See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cach
 Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
 
 ```sh
-cargo build -p merman-ffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
+cargo build -p merman-ffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
 ```
+
+`native-runtime` is the C binding's atomic clock, time-zone, and random adapter feature. The
+loaded runtime catalog still reports those adapters by their concrete `system-clock`,
+`system-timezone`, and `system-random` IDs; Flutter hosts should not treat the Cargo aggregate as a
+runtime capability ID.
 
 Android slices are assembled by `platforms/android/build-android.py --artifact-profile flutter-android-native`; iOS and desktop helpers are `platforms/flutter/build-ios.sh` and `platforms/flutter/build-desktop.sh`. Flutter Web is not supported because this package uses `dart:ffi`; use `@mermanjs/web` in browsers.
 
 ## Local Verification
 
 ```sh
-cargo build -p merman-ffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
+cargo build -p merman-ffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
 cd platforms/flutter
 flutter pub get
 dart run ffigen --config ffigen.yaml
@@ -228,11 +238,16 @@ dart run tool/abi3_contract_test.dart
 dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
 ```
 
-Use `.so` on Linux and `.dll` on Windows. The local contract test statically projects the frozen minimum prefix, optional metadata slot, and allocation token; validates runtime-catalog and typed metadata relations; checks package-version projection; verifies BUSY/REENTRANT decoding; and deterministically fuzzes malformed native error payloads. The real-library smoke loads all six metadata catalogs, repeatedly executes generic operations, exercises result cleanup, verifies exact-version and ABI-compatible loading, uses constructor-owned text measurement, proves a callback-time REENTRANT close retains the engine, and closes successfully afterward.
+Use `.so` on Linux and `.dll` on Windows. The local contract test validates the current complete ABI
+3 table boundary, runtime-catalog and typed metadata relations, package-version projection,
+BUSY/REENTRANT decoding, and malformed native error payloads. The real-library smoke intentionally
+does one service-backed SVG render through icon packs and host text measurement, then closes the
+engine. Owner-local Rust and Dart contract tests carry the exhaustive operation and lifecycle cases.
 
-The repository-wide gate also checks generated declaration freshness and can build Android slices:
+The repository-wide gate checks generated declaration freshness and the desktop smoke. Android
+packaging has its own direct entry point:
 
 ```sh
-python3 scripts/verify-platform-bindings.py --build-android-slices
-python3 scripts/verify-platform-bindings.py --build-android-slices --run-flutter-android-smoke
+python3 scripts/verify-platform-bindings.py
+python3 platforms/flutter/tool/android-smoke.py --targets aarch64-linux-android
 ```

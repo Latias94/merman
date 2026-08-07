@@ -22,7 +22,7 @@ swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 
 Use `--ios` or `--macos` to build a subset of slices. The script builds the release
 library from the descriptor-owned `apple-uniffi-native` profile with its direct feature set, then
-runs the local UniFFI generator with the same features plus `bindgen-smoke`. The generator must produce `Merman.swift`,
+runs the local UniFFI generator with only `binding-generation` against the built native library. The generator must produce `Merman.swift`,
 `MermanFFI.h`, and `MermanFFI.modulemap`; a missing library or generated artifact is a
 hard failure. Each XCFramework slice contains the header and module map required by the
 generated Swift source.
@@ -104,10 +104,8 @@ AppKit, or UIKit geometry can implement the generated `MermanTextMeasurer` proto
 `MermanEngineServices`, and pass that value to the direct engine constructor:
 
 ```swift
-let services = MermanEngineServices(
-    iconRegistry: nil,
-    textMeasurer: CoreTextMeasurer()
-)
+let services = MermanEngineServices()
+    .withTextMeasurer(textMeasurer: CoreTextMeasurer())
 let engine = try MermanEngine(optionsJson: nil, services: services)
 defer { try? engine.close() }
 ```
@@ -131,15 +129,18 @@ contract.
 - Delete `MermanReusableEngine`, `reusableEngine(...)`, and
   `reusableEngineWithTextMeasurer(...)` usage. Construct `MermanEngine(optionsJson:services:)`
   directly.
-- Put icon registries and text measurement in `MermanEngineServices`; no service can be installed
-  after construction.
+- Start with `MermanEngineServices()` and chain `withIconRegistry(...)` or
+  `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
+  an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
 - Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
-  required; byte-returning methods remain available.
+  required; byte-returning methods remain available. Switch on `outputPlan.kind`, inspect the
+  optional `raster` or `pdfFilterImages` payload, and retain `rawJson` for future kinds.
 
 ## Verification
 
-The Apple smoke calls the generated public API against the built XCFramework. It verifies binding
-API `3`, runtime catalog schema `1`, local capability relations, generic operation dispatch, reusable
-operations, and SVG/PNG/JPEG/PDF output. CI also rebuilds the checked-in generated Swift binding,
-so an API drift cannot pass by compiling an older hand-written facade.
+The Apple smoke calls the generated public API against the built XCFramework. It intentionally
+checks only SVG output, immutable icon and text-measurement services, and deterministic close.
+Owner-local Rust tests carry exhaustive catalog, error, output, and lifecycle contracts. CI also
+rebuilds the checked-in generated Swift binding, so API drift cannot pass by compiling an older
+hand-written facade.

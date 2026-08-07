@@ -651,13 +651,14 @@ mod tests {
         assert_eq!(plan["ready"], true);
     }
 
-    #[cfg(feature = "svg")]
+    #[cfg(all(
+        feature = "svg",
+        not(feature = "layout-cytoscape"),
+        not(feature = "layout-elk"),
+        not(feature = "math")
+    ))]
     #[test]
-    fn optional_render_capabilities_follow_the_wasm_owner_contract() {
-        assert!(!cfg!(feature = "layout-cytoscape"));
-        assert!(!cfg!(feature = "layout-elk"));
-        assert!(!cfg!(feature = "math"));
-
+    fn ambient_render_dependencies_do_not_widen_the_wasm_owner_contract() {
         let capabilities = wasm_artifact_contract().runtime_capabilities();
         assert!(capabilities.has_capability("svg"));
 

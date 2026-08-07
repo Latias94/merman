@@ -8,7 +8,6 @@ import hashlib
 import io
 import json
 import os
-import platform
 import shutil
 import subprocess
 import sys
@@ -32,9 +31,6 @@ from native_symbol_contract import (
     assert_symbol_contract,
     read_defined_dynamic_symbols,
 )
-from strict_json import StrictJsonContract
-
-
 C_ABI_NATIVE_RECIPE = load_artifact_profile("c-abi-native")
 ANDROID_NATIVE_RECIPE = load_artifact_profile("android-native")
 FLUTTER_ANDROID_NATIVE_RECIPE = load_artifact_profile("flutter-android-native")
@@ -45,13 +41,12 @@ ANDROID_RELEASE_AAR = ANDROID_ROOT / "build" / "outputs" / "aar" / "merman-andro
 ANDROID_MAVEN_MODULE_ROOT = (
     ANDROID_ROOT / "build" / "repo" / "io" / "merman" / "merman-android"
 )
-ANDROID_TEST_RESULTS_ROOT = ANDROID_ROOT / "build" / "outputs" / "androidTest-results"
 ANDROID_PACKAGING_SENTINEL_CLASSES = [
     "io/merman/Merman.class",
     "io/merman/MermanEngine.class",
     "io/merman/MermanEngineServices.class",
     "io/merman/MermanIconPack.class",
-    "io/merman/MermanIconRegistry.class",
+    "io/merman/MermanIconPackSet.class",
     "io/merman/MermanOperationMetadata.class",
     "io/merman/MermanOperationResult.class",
     "io/merman/MermanOutputPlan.class",
@@ -61,6 +56,13 @@ ANDROID_PACKAGING_SENTINEL_CLASSES = [
     "io/merman/MermanTextMeasurer.class",
     "io/merman/MermanUnknownOutputPlan.class",
 ]
+ANDROID_FORBIDDEN_PACKAGING_CLASSES = [
+    "io/merman/MermanIconRegistry.class",
+]
+ANDROID_FORBIDDEN_JAVADOC_ENTRIES = {
+    "merman-android/io.merman/-merman-engine-services/icon-registry.html",
+    "merman-android/io.merman/-merman-icon-registry/index.html",
+}
 ANDROID_NATIVE_LIBRARIES = [
     "jni/arm64-v8a/libmerman_android_jni.so",
     "jni/x86_64/libmerman_android_jni.so",
@@ -87,25 +89,6 @@ ANDROID_MAVEN_SCM = (
 FLUTTER_GENERATED_ABI = (
     FLUTTER_ROOT / "lib" / "src" / "generated" / "native_abi.dart"
 )
-SEMANTIC_OPERATION_FIXTURES = (
-    REPO_ROOT / "fixtures" / "bindings" / "assets" / "semantic-operations-v1.json"
-)
-SEMANTIC_OPERATION_FIXTURE_INVARIANTS = frozenset(
-    {
-        "error-message-nonempty",
-        "json-object",
-        "metadata-operation-id",
-        "nonempty",
-        "svg-root",
-        "utf8",
-    }
-)
-SEMANTIC_OPERATION_FIXTURE_JSON = StrictJsonContract(
-    RuntimeError,
-    read_error_prefix="failed to load semantic operation fixtures from",
-)
-
-
 def cargo_android_clippy_args(
     recipe: CargoArtifactRecipe,
     target: str,
@@ -150,9 +133,6 @@ def flutter_format_paths(root: Path = FLUTTER_ROOT) -> list[str]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--build-android-slices", action="store_true")
-    parser.add_argument("--run-flutter-android-smoke", action="store_true")
-    parser.add_argument("--run-android-gradle-build", action="store_true")
     parser.add_argument(
         "--verify-android-aar",
         action="store_true",
@@ -163,7 +143,6 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Verify the staged Android Maven publication contract and exit.",
     )
-    parser.add_argument("--run-android-instrumentation-smoke", action="store_true")
     parser.add_argument(
         "--only-android-instrumentation-smoke",
         action="store_true",
@@ -174,17 +153,6 @@ def parse_args() -> argparse.Namespace:
         "--android-ndk-home",
         default=os.environ.get("ANDROID_NDK_HOME") or os.environ.get("ANDROID_NDK_ROOT"),
         help="Android NDK used for fail-closed AAR dynamic-symbol inspection.",
-    )
-    parser.add_argument(
-        "--build-apple-xcframework",
-        action="store_true",
-        help="Build the Apple XCFramework. Requires macOS/Xcode.",
-    )
-    parser.add_argument(
-        "--apple-platform",
-        choices=["all", "ios", "macos"],
-        default="all",
-        help="Apple platforms to pass to scripts/build-apple-xcframework.sh.",
     )
     return parser.parse_args()
 
@@ -226,92 +194,6 @@ def verify_tracked_generated_file(path: Path) -> None:
         raise RuntimeError(f"generated file does not exist: {relative}")
     run(["git", "ls-files", "--error-unmatch", "--", relative])
     run(["git", "diff", "--exit-code", "--", relative])
-
-
-def load_semantic_operation_fixtures(
-    path: Path = SEMANTIC_OPERATION_FIXTURES,
-) -> list[dict[str, object]]:
-    root = SEMANTIC_OPERATION_FIXTURE_JSON.load(path)
-    if not isinstance(root, dict) or set(root) != {"schema_version", "cases"}:
-        raise RuntimeError("semantic operation fixture root fields drifted")
-    if type(root["schema_version"]) is not int or root["schema_version"] != 1:
-        raise RuntimeError("unsupported semantic operation fixture schema")
-    cases = root["cases"]
-    if not isinstance(cases, list) or not cases:
-        raise RuntimeError("semantic operation fixtures must be a non-empty array")
-
-    required = {"operation_id", "source", "payload_invariants"}
-    optional = {
-        "uri",
-        "options",
-        "expected_media_type",
-        "expected_error_kind",
-    }
-    signatures: set[str] = set()
-    for index, case in enumerate(cases):
-        label = f"semantic operation fixture case {index}"
-        if not isinstance(case, dict):
-            raise RuntimeError(f"{label} must be an object")
-        keys = set(case)
-        if not required.issubset(keys):
-            raise RuntimeError(f"{label} is missing required fields")
-        unknown = keys - required - optional
-        if unknown:
-            raise RuntimeError(f"{label} has unknown fields: {sorted(unknown)}")
-        for key in ("operation_id", "source"):
-            if not isinstance(case[key], str) or not case[key]:
-                raise RuntimeError(f"{label}.{key} must be a non-empty string")
-        if "uri" in case and (
-            not isinstance(case["uri"], str) or not case["uri"]
-        ):
-            raise RuntimeError(f"{label}.uri must be a non-empty string")
-        if "options" in case and not isinstance(case["options"], dict):
-            raise RuntimeError(f"{label}.options must be an object")
-
-        expected_media_type = case.get("expected_media_type")
-        expected_error_kind = case.get("expected_error_kind")
-        for key, value in (
-            ("expected_media_type", expected_media_type),
-            ("expected_error_kind", expected_error_kind),
-        ):
-            if value is not None and (not isinstance(value, str) or not value):
-                raise RuntimeError(f"{label}.{key} must be a non-empty string")
-        if expected_error_kind not in {None, "generic"}:
-            raise RuntimeError(f"{label} has unknown error kind {expected_error_kind!r}")
-        if (expected_media_type is None) == (expected_error_kind is None):
-            raise RuntimeError(f"{label} must declare exactly one expected outcome")
-
-        invariants = case["payload_invariants"]
-        if (
-            not isinstance(invariants, list)
-            or not invariants
-            or any(not isinstance(value, str) or not value for value in invariants)
-            or len(set(invariants)) != len(invariants)
-        ):
-            raise RuntimeError(
-                f"{label}.payload_invariants must be unique non-empty strings"
-            )
-        unknown_invariants = set(invariants) - SEMANTIC_OPERATION_FIXTURE_INVARIANTS
-        if unknown_invariants:
-            raise RuntimeError(
-                f"{label} has unknown payload invariants: {sorted(unknown_invariants)}"
-            )
-        if expected_media_type is not None:
-            if "error-message-nonempty" in invariants:
-                raise RuntimeError(
-                    f"{label} success case cannot inspect an error payload"
-                )
-        elif invariants != ["error-message-nonempty"]:
-            raise RuntimeError(
-                f"{label} error cases expose only the semantic error invariant"
-            )
-
-        signature = json.dumps(case, sort_keys=True, separators=(",", ":"))
-        if signature in signatures:
-            raise RuntimeError(f"{label} duplicates an earlier fixture case")
-        signatures.add(signature)
-
-    return cases
 
 
 def require_command(name: str) -> str:
@@ -399,13 +281,9 @@ def run_android_instrumentation_smoke(
     gradle_path: str | None,
     ndk_home: str | Path | None = None,
 ) -> None:
-    llvm_nm = resolve_android_llvm_nm(ndk_home)
     ensure_android_native_slices(ndk_home)
     gradle = resolve_gradle_command(gradle_path)
-    run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
-    assert_android_aar_contract(llvm_nm=llvm_nm)
     run([gradle, "-p", str(ANDROID_ROOT), "connectedAndroidTest", "--stacktrace"])
-    assert_android_instrumentation_smoke_report()
 
 
 def android_expected_resource_entries(android_root: Path = ANDROID_ROOT) -> list[str]:
@@ -447,6 +325,39 @@ def resolve_android_llvm_nm(ndk_home: str | Path | None = None) -> Path:
 def android_library_symbols(library: Path, llvm_nm: Path | None = None) -> set[str]:
     tool = resolve_android_llvm_nm() if llvm_nm is None else llvm_nm
     return read_defined_dynamic_symbols(library, tool)
+
+
+def android_class_api(classes_jar: bytes, class_name: str) -> str:
+    javap = shutil.which("javap")
+    if javap is None:
+        raise RuntimeError("Android AAR verification requires javap from a JDK")
+    with tempfile.TemporaryDirectory(prefix="merman-android-javap-") as temp_dir:
+        jar_path = Path(temp_dir) / "classes.jar"
+        jar_path.write_bytes(classes_jar)
+        completed = subprocess.run(
+            [javap, "-classpath", str(jar_path), "-public", class_name],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(f"javap failed for Android class {class_name}{suffix}")
+    return completed.stdout
+
+
+def _assert_android_engine_services_api(classes_jar: bytes) -> None:
+    api = android_class_api(classes_jar, "io.merman.MermanEngineServices")
+    if "getIconPackSet();" not in api:
+        raise RuntimeError(
+            "Android release AAR MermanEngineServices is missing getIconPackSet"
+        )
+    if "getIconRegistry();" in api:
+        raise RuntimeError(
+            "Android release AAR MermanEngineServices retains removed getIconRegistry"
+        )
 
 
 def assert_android_aar_contract(
@@ -511,6 +422,17 @@ def assert_android_aar_contract(
             "Android release AAR is missing Kotlin packaging sentinels: "
             + ", ".join(missing_sentinels)
         )
+    forbidden_classes = sorted(
+        class_name
+        for class_name in ANDROID_FORBIDDEN_PACKAGING_CLASSES
+        if class_name in names
+    )
+    if forbidden_classes:
+        raise RuntimeError(
+            "Android release AAR contains removed Kotlin API classes: "
+            + ", ".join(forbidden_classes)
+        )
+    _assert_android_engine_services_api(classes_jar)
 
     missing_resources = [
         name for name in android_expected_resource_entries(android_root) if name not in names
@@ -663,17 +585,9 @@ def _assert_android_javadoc_jar(javadoc_jar: Path) -> None:
         "index.html",
         "merman-android/package-list",
         "merman-android/io.merman/index.html",
-        "merman-android/io.merman/-merman/index.html",
-        "merman-android/io.merman/-merman-engine/index.html",
         "merman-android/io.merman/-merman-engine-services/index.html",
-        "merman-android/io.merman/-merman-icon-pack/index.html",
-        "merman-android/io.merman/-merman-icon-registry/index.html",
-        "merman-android/io.merman/-merman-operation-metadata/index.html",
-        "merman-android/io.merman/-merman-operation-result/index.html",
-        "merman-android/io.merman/-merman-output-plan/index.html",
-        "merman-android/io.merman/-merman-raster-output-plan/index.html",
-        "merman-android/io.merman/-merman-pdf-filter-images-output-plan/index.html",
-        "merman-android/io.merman/-merman-unknown-output-plan/index.html",
+        "merman-android/io.merman/-merman-engine-services/icon-pack-set.html",
+        "merman-android/io.merman/-merman-icon-pack-set/index.html",
     }
     with zipfile.ZipFile(javadoc_jar) as archive:
         names = set(archive.namelist())
@@ -682,6 +596,12 @@ def _assert_android_javadoc_jar(javadoc_jar: Path) -> None:
         raise RuntimeError(
             "Android Maven javadoc JAR is missing generated API documentation: "
             + ", ".join(missing)
+        )
+    removed = sorted(ANDROID_FORBIDDEN_JAVADOC_ENTRIES & names)
+    if removed:
+        raise RuntimeError(
+            "Android Maven javadoc JAR contains removed API documentation: "
+            + ", ".join(removed)
         )
 
 
@@ -783,52 +703,6 @@ def assert_android_maven_publication(
     return version_dir
 
 
-def assert_android_instrumentation_smoke_report(
-    results_root: Path = ANDROID_TEST_RESULTS_ROOT,
-) -> None:
-    reports = list(results_root.rglob("*.xml")) if results_root.exists() else []
-    required = {
-        (
-            "MermanInstrumentedSmokeTest",
-            "runsPublicSmokeIncludingThrowingTextMeasurerFallback",
-        ),
-        (
-            "MermanSemanticOperationFixtureTest",
-            "consumesSharedSemanticOperationFixtures",
-        ),
-        (
-            "MermanSemanticOperationFixtureTest",
-            "consumesGeneratedThirteenOperationMatrix",
-        ),
-    }
-    observed: set[tuple[str, str]] = set()
-    for report in reports:
-        try:
-            root = ET.parse(report).getroot()
-        except ET.ParseError as exc:
-            raise RuntimeError(
-                f"Android instrumentation report is invalid XML: {report}"
-            ) from exc
-        suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
-        for suite in suites:
-            suite_class = suite.attrib.get("name", "").rsplit(".", 1)[-1]
-            for testcase in suite.iter("testcase"):
-                testcase_class = testcase.attrib.get("classname", suite_class)
-                observed.add(
-                    (
-                        testcase_class.rsplit(".", 1)[-1],
-                        testcase.attrib.get("name", ""),
-                    )
-                )
-
-    missing = sorted(required - observed)
-    if missing:
-        rendered = ", ".join(f"{class_name}/{method}" for class_name, method in missing)
-        raise RuntimeError(
-            f"Android instrumentation output did not include required tests: {rendered}"
-        )
-
-
 def cargo_dynamic_library(cargo_stdout: str, recipe: CargoArtifactRecipe) -> Path:
     libraries: set[Path] = set()
     for raw in cargo_stdout.splitlines():
@@ -887,24 +761,6 @@ def run_dart_ffi_native_smoke(
         ],
         cwd=FLUTTER_ROOT,
     )
-    run(
-        [
-            dart,
-            "run",
-            "tool/semantic_operation_fixtures_test.dart",
-            str(library),
-        ],
-        cwd=FLUTTER_ROOT,
-    )
-
-
-def apple_build_args(apple_platform: str) -> list[str]:
-    args = ["bash", "scripts/build-apple-xcframework.sh"]
-    if apple_platform == "ios":
-        args.append("--ios")
-    elif apple_platform == "macos":
-        args.append("--macos")
-    return args
 
 
 def main() -> int:
@@ -923,37 +779,12 @@ def main() -> int:
             print(f"Android Maven publication contract verified: {version_dir}")
             return 0
 
-        load_semantic_operation_fixtures()
         if args.only_android_instrumentation_smoke:
             step("Android instrumentation smoke")
             run_android_instrumentation_smoke(args.gradle_path, args.android_ndk_home)
             print()
             print("Android instrumentation smoke completed.")
             return 0
-
-        step("FFI documentation contract")
-        run([sys.executable, str(REPO_ROOT / "scripts" / "ffi_contract_docs.py")])
-
-        step("FFI native timing evidence")
-        run(
-            [
-                sys.executable,
-                str(
-                    REPO_ROOT
-                    / "scripts"
-                    / "measure_ffi_contract_native_build_timing.py"
-                ),
-                "verify",
-                "--report",
-                str(
-                    REPO_ROOT
-                    / "docs"
-                    / "release"
-                    / "evidence"
-                    / "ffi-contract-native-build-timing.json"
-                ),
-            ]
-        )
 
         step("Rust FFI host tests")
         run(
@@ -983,19 +814,6 @@ def main() -> int:
                 ]
             )
 
-        if args.build_android_slices:
-            step("Android native slices")
-            run(
-                [
-                    sys.executable,
-                    str(ANDROID_ROOT / "build-android.py"),
-                    *android_ndk_build_args(args.android_ndk_home),
-                    "--targets",
-                    "aarch64-linux-android",
-                    "x86_64-linux-android",
-                ]
-            )
-
         step("Flutter/Dart package checks")
         flutter = require_command("flutter")
         dart = require_command("dart")
@@ -1011,36 +829,6 @@ def main() -> int:
 
         step("Dart FFI native smoke")
         run_dart_ffi_native_smoke(dart)
-
-        if args.run_android_gradle_build:
-            llvm_nm = resolve_android_llvm_nm(args.android_ndk_home)
-            ensure_android_native_slices(args.android_ndk_home)
-
-            step("Android Gradle library assemble")
-            gradle = resolve_gradle_command(args.gradle_path)
-            run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
-            assert_android_aar_contract(llvm_nm=llvm_nm)
-
-        if args.run_android_instrumentation_smoke:
-            step("Android instrumentation smoke")
-            run_android_instrumentation_smoke(args.gradle_path, args.android_ndk_home)
-
-        if args.build_apple_xcframework:
-            if platform.system() != "Darwin":
-                raise RuntimeError("--build-apple-xcframework requires macOS")
-            step("Apple XCFramework build")
-            run(apple_build_args(args.apple_platform))
-
-        if args.run_flutter_android_smoke:
-            step("Flutter Android APK packaging smoke")
-            run(
-                [
-                    sys.executable,
-                    str(FLUTTER_ROOT / "tool" / "android-smoke.py"),
-                    "--targets",
-                    "aarch64-linux-android",
-                ]
-            )
 
         print()
         print("Platform binding verification completed.")

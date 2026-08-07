@@ -23,8 +23,8 @@ Corresponds to merman workspace release `0.8.0-alpha.4`.
 - Removed split `runtime_contract_json()` and `runtime_capability_vocabulary_json()` discovery. Use the one atomic `runtime_catalog_json()` endpoint and `get_runtime_catalog()` decoder.
 - Moved generic operation options into `MermanOperationRequest.options_json`; call `engine.execute(request)` without a parallel options argument. Reusable operation options now deeply merge over the engine baseline but cannot change its constructor-owned runtime policy.
 - Added `options_json` to reusable convenience methods. Pass `None` to inherit the engine baseline or provide a request-local override for that operation.
-- Replaced raw generic-result metadata JSON with `MermanOperationMetadata`, typed raster/PDF output plans, preserved raw schema-1 JSON, result-returning binary helpers, and named analysis-facts/SVG-plan helpers.
-- Added immutable `MermanIconPack`, transactional reusable `MermanIconRegistry.from_packs()`, and `MermanEngineServices` for constructor-owned icon registries and optional text measurement. Reusable engines now expose retryable, idempotent `close()`.
+- Replaced raw generic-result metadata JSON with `MermanOperationMetadata` and an open `MermanOutputPlan` record. Switch on `kind`, use optional typed raster/PDF payloads, and retain `raw_json` for future plans.
+- Added immutable `MermanIconPack`, transactional reusable `MermanIconRegistry.from_packs()`, and a zero-argument persistent `MermanEngineServices` builder for constructor-owned icon registries and optional text measurement. Reusable engines now expose retryable, idempotent `close()`.
 - Replaced the incompatible prerelease options grammar with Options JSON schema `2`. New resource helpers emit version `2`, omit `resources.profile` when a request should inherit its constructor ceiling, and accept only generated `ResourceOverrideId` values for overridable limits.
 
 ### Added

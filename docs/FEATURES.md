@@ -46,9 +46,17 @@ binary export to `svg`; the corresponding Web and CLI products make the same com
 their public workflow requires them. Those owner-specific compile combinations do not turn into
 global capability implications.
 
-There is one public convenience aggregate name: `complete-svg`, exposed by the `merman` facade and
-the `merman-rustdoc` integration crate. It means `svg + layout-cytoscape + layout-elk + math`. It
-does not include system adapters, analysis, ASCII, or binary exports.
+The repository-wide result aggregate is `complete-svg`, exposed by the `merman` facade and the
+`merman-rustdoc` integration crate. It means `svg + layout-cytoscape + layout-elk + math`. It does
+not include system adapters, analysis, ASCII, or binary exports.
+
+Native binding crates (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and the internal
+`merman-android-jni` transport) additionally expose the owner-local `native-runtime` feature. It
+atomically compiles the system clock, time-zone, and random adapters because the binding
+`runtime_policy: "native"` contract is callable only with the complete set. `native-runtime` is not
+a capability ID or a global Cargo preset: runtime discovery continues to report the concrete
+`system-clock`, `system-timezone`, and `system-random` adapter IDs, and lower-level Rust crates plus
+the CLI retain their granular leaves.
 
 There is deliberately no global `preset-*` feature lattice. Cargo features are additive and
 cannot express “everything except X”; a large preset table would mix application workflows,
@@ -68,7 +76,7 @@ select their own direct leaf set instead.
 | Lean CLI lint | `merman-cli` | `--no-default-features --features analysis` |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
-| C/C++ embedding | `merman-ffi` | Build the source-only ABI 3 crate with its reproducible artifact recipe; no generic binary SDK is published |
+| C/C++ embedding | `merman-ffi` | Build the source-only ABI 3 crate with its reproducible artifact recipe; source builds use `native-runtime` when native runtime policy is required |
 | Flutter/Dart embedding | `merman` on pub.dev | Use the Flutter package, which consumes ABI 3 internally |
 | Android/Kotlin embedding | `merman-android-<tag>.aar` | Use the direct JNI AAR from the matching GitHub Release; no remote Maven coordinate is published |
 | Apple/Swift embedding | `Merman.xcframework` | Use the UniFFI XCFramework release asset or local SwiftPM package |
@@ -151,6 +159,23 @@ Compilation makes an adapter available; it does not select it. Use
 `RenderEnvironment::try_native()` or the binding option
 `{"runtime_policy":"native"}` explicitly. If the required adapter is absent, the request returns
 `missing-capability`.
+
+Binding crates intentionally do not expose those three Cargo leaves separately. Select the atomic
+binding feature instead:
+
+```toml
+[dependencies]
+merman-ffi = {
+    path = "crates/merman-ffi",
+    default-features = false,
+    features = ["svg", "native-runtime"],
+}
+```
+
+The binding remains deterministic until `{"runtime_policy":"native"}` is selected. Its runtime
+catalog reports `system-clock`, `system-timezone`, and `system-random`, not `native-runtime`, because
+those concrete IDs describe callable adapters while the Cargo aggregate describes how the artifact
+is assembled.
 
 ### Independent exports
 

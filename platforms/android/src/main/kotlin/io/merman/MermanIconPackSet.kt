@@ -7,7 +7,7 @@ package io.merman
  * arrays for one transactional native build and returns only after that engine owns the parsed
  * registry. This wrapper therefore has no native handle or lifecycle API.
  */
-class MermanIconRegistry private constructor(
+class MermanIconPackSet private constructor(
     private val packs: List<MermanIconPack>,
 ) {
     /** Borrows fresh arrays for exactly one synchronous engine-construction call. */
@@ -26,14 +26,14 @@ class MermanIconRegistry private constructor(
 
         /** Snapshots the immutable pack values for reuse across engine constructors. */
         @JvmStatic
-        fun fromPacks(packs: List<MermanIconPack>): MermanIconRegistry {
+        fun fromPacks(packs: List<MermanIconPack>): MermanIconPackSet {
             if (packs.size.toLong() > packLimit.value) {
-                throw MermanException.iconRegistryPackCountLimit(
+                throw MermanException.iconPackCountLimit(
                     limit = packLimit,
                     actual = packs.size.toLong(),
                 )
             }
-            return MermanIconRegistry(packs.toList())
+            return MermanIconPackSet(packs.toList())
         }
     }
 }

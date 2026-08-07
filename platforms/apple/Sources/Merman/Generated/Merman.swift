@@ -1503,6 +1503,10 @@ public func FfiConverterTypeMermanEngine_lower(_ value: MermanEngine) -> UInt64 
  */
 public protocol MermanEngineServicesProtocol: AnyObject, Sendable {
 
+    func withIconRegistry(iconRegistry: MermanIconRegistry)  -> MermanEngineServices
+
+    func withTextMeasurer(textMeasurer: MermanTextMeasurer)  -> MermanEngineServices
+
 }
 /**
  * Immutable constructor-owned services for [`MermanEngine`].
@@ -1549,13 +1553,11 @@ open class MermanEngineServices: MermanEngineServicesProtocol, @unchecked Sendab
     public func uniffiCloneHandle() -> UInt64 {
         return try! rustCall { uniffi_merman_uniffi_fn_clone_mermanengineservices(self.handle, $0) }
     }
-public convenience init(iconRegistry: MermanIconRegistry?, textMeasurer: MermanTextMeasurer?) {
+public convenience init() {
     let handle =
         try! rustCall() {
         uniffiCallStatus in
-    uniffi_merman_uniffi_fn_constructor_mermanengineservices_new(
-        FfiConverterOptionTypeMermanIconRegistry.lower(iconRegistry),
-        FfiConverterOptionTypeMermanTextMeasurer.lower(textMeasurer),uniffiCallStatus
+    uniffi_merman_uniffi_fn_constructor_mermanengineservices_new(uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -1572,6 +1574,26 @@ public convenience init(iconRegistry: MermanIconRegistry?, textMeasurer: MermanT
 
 
 
+
+open func withIconRegistry(iconRegistry: MermanIconRegistry) -> MermanEngineServices  {
+    return try!  FfiConverterTypeMermanEngineServices_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_mermanengineservices_with_icon_registry(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeMermanIconRegistry_lower(iconRegistry),uniffiCallStatus
+    )
+})
+}
+
+open func withTextMeasurer(textMeasurer: MermanTextMeasurer) -> MermanEngineServices  {
+    return try!  FfiConverterTypeMermanEngineServices_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_mermanengineservices_with_text_measurer(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeMermanTextMeasurer_lower(textMeasurer),uniffiCallStatus
+    )
+})
+}
 
 
 
@@ -2698,6 +2720,218 @@ public func FfiConverterTypeMermanOperationResult_lower(_ value: MermanOperation
 }
 
 
+/**
+ * Open output-plan projection for foreign languages.
+ *
+ * Consumers switch on `kind`. Known payloads are optional conveniences; future kinds remain
+ * lossless through `raw_json` without adding a closed UniFFI enum variant.
+ */
+public struct MermanOutputPlan: Equatable, Hashable {
+    public var kind: String
+    public var rawJson: String
+    public var raster: MermanRasterOutputPlan?
+    public var pdfFilterImages: MermanPdfFilterImagesOutputPlan?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(kind: String, rawJson: String, raster: MermanRasterOutputPlan?, pdfFilterImages: MermanPdfFilterImagesOutputPlan?) {
+        self.kind = kind
+        self.rawJson = rawJson
+        self.raster = raster
+        self.pdfFilterImages = pdfFilterImages
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension MermanOutputPlan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMermanOutputPlan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanOutputPlan {
+        return
+            try MermanOutputPlan(
+                kind: FfiConverterString.read(from: &buf),
+                rawJson: FfiConverterString.read(from: &buf),
+                raster: FfiConverterOptionTypeMermanRasterOutputPlan.read(from: &buf),
+                pdfFilterImages: FfiConverterOptionTypeMermanPdfFilterImagesOutputPlan.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MermanOutputPlan, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.rawJson, into: &buf)
+        FfiConverterOptionTypeMermanRasterOutputPlan.write(value.raster, into: &buf)
+        FfiConverterOptionTypeMermanPdfFilterImagesOutputPlan.write(value.pdfFilterImages, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanOutputPlan_lift(_ buf: RustBuffer) throws -> MermanOutputPlan {
+    return try FfiConverterTypeMermanOutputPlan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanOutputPlan_lower(_ value: MermanOutputPlan) -> RustBuffer {
+    return FfiConverterTypeMermanOutputPlan.lower(value)
+}
+
+
+public struct MermanPdfFilterImagesOutputPlan: Equatable, Hashable {
+    public var filteredGroups: UInt64
+    public var requestedScale: Double
+    public var effectiveScale: Double
+    public var requestedImagePixels: UInt64
+    public var effectiveImagePixels: UInt64
+    public var limited: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(filteredGroups: UInt64, requestedScale: Double, effectiveScale: Double, requestedImagePixels: UInt64, effectiveImagePixels: UInt64, limited: Bool) {
+        self.filteredGroups = filteredGroups
+        self.requestedScale = requestedScale
+        self.effectiveScale = effectiveScale
+        self.requestedImagePixels = requestedImagePixels
+        self.effectiveImagePixels = effectiveImagePixels
+        self.limited = limited
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension MermanPdfFilterImagesOutputPlan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMermanPdfFilterImagesOutputPlan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanPdfFilterImagesOutputPlan {
+        return
+            try MermanPdfFilterImagesOutputPlan(
+                filteredGroups: FfiConverterUInt64.read(from: &buf),
+                requestedScale: FfiConverterDouble.read(from: &buf),
+                effectiveScale: FfiConverterDouble.read(from: &buf),
+                requestedImagePixels: FfiConverterUInt64.read(from: &buf),
+                effectiveImagePixels: FfiConverterUInt64.read(from: &buf),
+                limited: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MermanPdfFilterImagesOutputPlan, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.filteredGroups, into: &buf)
+        FfiConverterDouble.write(value.requestedScale, into: &buf)
+        FfiConverterDouble.write(value.effectiveScale, into: &buf)
+        FfiConverterUInt64.write(value.requestedImagePixels, into: &buf)
+        FfiConverterUInt64.write(value.effectiveImagePixels, into: &buf)
+        FfiConverterBool.write(value.limited, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanPdfFilterImagesOutputPlan_lift(_ buf: RustBuffer) throws -> MermanPdfFilterImagesOutputPlan {
+    return try FfiConverterTypeMermanPdfFilterImagesOutputPlan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanPdfFilterImagesOutputPlan_lower(_ value: MermanPdfFilterImagesOutputPlan) -> RustBuffer {
+    return FfiConverterTypeMermanPdfFilterImagesOutputPlan.lower(value)
+}
+
+
+public struct MermanRasterOutputPlan: Equatable, Hashable {
+    public var requestedWidthPx: Double
+    public var requestedHeightPx: Double
+    public var widthPx: UInt32
+    public var heightPx: UInt32
+    public var requestedScale: Double
+    public var effectiveScale: Double
+    public var limited: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(requestedWidthPx: Double, requestedHeightPx: Double, widthPx: UInt32, heightPx: UInt32, requestedScale: Double, effectiveScale: Double, limited: Bool) {
+        self.requestedWidthPx = requestedWidthPx
+        self.requestedHeightPx = requestedHeightPx
+        self.widthPx = widthPx
+        self.heightPx = heightPx
+        self.requestedScale = requestedScale
+        self.effectiveScale = effectiveScale
+        self.limited = limited
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension MermanRasterOutputPlan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMermanRasterOutputPlan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanRasterOutputPlan {
+        return
+            try MermanRasterOutputPlan(
+                requestedWidthPx: FfiConverterDouble.read(from: &buf),
+                requestedHeightPx: FfiConverterDouble.read(from: &buf),
+                widthPx: FfiConverterUInt32.read(from: &buf),
+                heightPx: FfiConverterUInt32.read(from: &buf),
+                requestedScale: FfiConverterDouble.read(from: &buf),
+                effectiveScale: FfiConverterDouble.read(from: &buf),
+                limited: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MermanRasterOutputPlan, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.requestedWidthPx, into: &buf)
+        FfiConverterDouble.write(value.requestedHeightPx, into: &buf)
+        FfiConverterUInt32.write(value.widthPx, into: &buf)
+        FfiConverterUInt32.write(value.heightPx, into: &buf)
+        FfiConverterDouble.write(value.requestedScale, into: &buf)
+        FfiConverterDouble.write(value.effectiveScale, into: &buf)
+        FfiConverterBool.write(value.limited, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanRasterOutputPlan_lift(_ buf: RustBuffer) throws -> MermanRasterOutputPlan {
+    return try FfiConverterTypeMermanRasterOutputPlan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanRasterOutputPlan_lower(_ value: MermanRasterOutputPlan) -> RustBuffer {
+    return FfiConverterTypeMermanRasterOutputPlan.lower(value)
+}
+
+
 public struct MermanResourceErrorDetails: Equatable, Hashable {
     public var limitId: String
     public var phase: String
@@ -3230,100 +3464,6 @@ public func FfiConverterTypeMermanErrorKind_lift(_ buf: RustBuffer) throws -> Me
 #endif
 public func FfiConverterTypeMermanErrorKind_lower(_ value: MermanErrorKind) -> RustBuffer {
     return FfiConverterTypeMermanErrorKind.lower(value)
-}
-
-
-
-
-public enum MermanOutputPlan: Equatable, Hashable {
-
-    case raster(requestedWidthPx: Double, requestedHeightPx: Double, widthPx: UInt32, heightPx: UInt32, requestedScale: Double, effectiveScale: Double, limited: Bool
-    )
-    case pdfFilterImages(filteredGroups: UInt64, requestedScale: Double, effectiveScale: Double, requestedImagePixels: UInt64, effectiveImagePixels: UInt64, limited: Bool
-    )
-    case unknown(kind: String, rawJson: String
-    )
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension MermanOutputPlan: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeMermanOutputPlan: FfiConverterRustBuffer {
-    typealias SwiftType = MermanOutputPlan
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanOutputPlan {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-
-        case 1: return .raster(requestedWidthPx: try FfiConverterDouble.read(from: &buf), requestedHeightPx: try FfiConverterDouble.read(from: &buf), widthPx: try FfiConverterUInt32.read(from: &buf), heightPx: try FfiConverterUInt32.read(from: &buf), requestedScale: try FfiConverterDouble.read(from: &buf), effectiveScale: try FfiConverterDouble.read(from: &buf), limited: try FfiConverterBool.read(from: &buf)
-        )
-
-        case 2: return .pdfFilterImages(filteredGroups: try FfiConverterUInt64.read(from: &buf), requestedScale: try FfiConverterDouble.read(from: &buf), effectiveScale: try FfiConverterDouble.read(from: &buf), requestedImagePixels: try FfiConverterUInt64.read(from: &buf), effectiveImagePixels: try FfiConverterUInt64.read(from: &buf), limited: try FfiConverterBool.read(from: &buf)
-        )
-
-        case 3: return .unknown(kind: try FfiConverterString.read(from: &buf), rawJson: try FfiConverterString.read(from: &buf)
-        )
-
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: MermanOutputPlan, into buf: inout [UInt8]) {
-        switch value {
-
-
-        case let .raster(requestedWidthPx,requestedHeightPx,widthPx,heightPx,requestedScale,effectiveScale,limited):
-            writeInt(&buf, Int32(1))
-            FfiConverterDouble.write(requestedWidthPx, into: &buf)
-            FfiConverterDouble.write(requestedHeightPx, into: &buf)
-            FfiConverterUInt32.write(widthPx, into: &buf)
-            FfiConverterUInt32.write(heightPx, into: &buf)
-            FfiConverterDouble.write(requestedScale, into: &buf)
-            FfiConverterDouble.write(effectiveScale, into: &buf)
-            FfiConverterBool.write(limited, into: &buf)
-
-
-        case let .pdfFilterImages(filteredGroups,requestedScale,effectiveScale,requestedImagePixels,effectiveImagePixels,limited):
-            writeInt(&buf, Int32(2))
-            FfiConverterUInt64.write(filteredGroups, into: &buf)
-            FfiConverterDouble.write(requestedScale, into: &buf)
-            FfiConverterDouble.write(effectiveScale, into: &buf)
-            FfiConverterUInt64.write(requestedImagePixels, into: &buf)
-            FfiConverterUInt64.write(effectiveImagePixels, into: &buf)
-            FfiConverterBool.write(limited, into: &buf)
-
-
-        case let .unknown(kind,rawJson):
-            writeInt(&buf, Int32(3))
-            FfiConverterString.write(kind, into: &buf)
-            FfiConverterString.write(rawJson, into: &buf)
-
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeMermanOutputPlan_lift(_ buf: RustBuffer) throws -> MermanOutputPlan {
-    return try FfiConverterTypeMermanOutputPlan.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeMermanOutputPlan_lower(_ value: MermanOutputPlan) -> RustBuffer {
-    return FfiConverterTypeMermanOutputPlan.lower(value)
 }
 
 
@@ -4227,54 +4367,6 @@ fileprivate struct FfiConverterOptionTypeMermanEngineServices: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionTypeMermanIconRegistry: FfiConverterRustBuffer {
-    typealias SwiftType = MermanIconRegistry?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeMermanIconRegistry.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeMermanIconRegistry.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterOptionTypeMermanTextMeasurer: FfiConverterRustBuffer {
-    typealias SwiftType = MermanTextMeasurer?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeMermanTextMeasurer.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeMermanTextMeasurer.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterOptionTypeMermanIconRegistryErrorDetails: FfiConverterRustBuffer {
     typealias SwiftType = MermanIconRegistryErrorDetails?
 
@@ -4291,6 +4383,78 @@ fileprivate struct FfiConverterOptionTypeMermanIconRegistryErrorDetails: FfiConv
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeMermanIconRegistryErrorDetails.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMermanOutputPlan: FfiConverterRustBuffer {
+    typealias SwiftType = MermanOutputPlan?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMermanOutputPlan.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMermanOutputPlan.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMermanPdfFilterImagesOutputPlan: FfiConverterRustBuffer {
+    typealias SwiftType = MermanPdfFilterImagesOutputPlan?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMermanPdfFilterImagesOutputPlan.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMermanPdfFilterImagesOutputPlan.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMermanRasterOutputPlan: FfiConverterRustBuffer {
+    typealias SwiftType = MermanRasterOutputPlan?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMermanRasterOutputPlan.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMermanRasterOutputPlan.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -4339,30 +4503,6 @@ fileprivate struct FfiConverterOptionTypeMermanTextMeasureResult: FfiConverterRu
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeMermanTextMeasureResult.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterOptionTypeMermanOutputPlan: FfiConverterRustBuffer {
-    typealias SwiftType = MermanOutputPlan?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeMermanOutputPlan.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeMermanOutputPlan.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -4732,6 +4872,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_mermanengine_validate() != 61303) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_merman_uniffi_checksum_method_mermanengineservices_with_icon_registry() != 46374) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_merman_uniffi_checksum_method_mermanengineservices_with_text_measurer() != 746) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_merman_uniffi_checksum_method_mermaniconpack_json() != 18722) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4753,7 +4899,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_constructor_mermanengine_new() != 18709) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_constructor_mermanengineservices_new() != 34520) {
+    if (uniffi_merman_uniffi_checksum_constructor_mermanengineservices_new() != 55054) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_constructor_mermaniconpack_new() != 55258) {

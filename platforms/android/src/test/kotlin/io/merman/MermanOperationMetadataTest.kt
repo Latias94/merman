@@ -93,9 +93,54 @@ class MermanOperationMetadataTest {
         assertEquals("png", result.metadata.operationId)
         assertTrue(result.data.contentEquals(data))
 
-        assertRejectedResult("svg", "image/png", data, metadataJson("png", "image/png", 3, "null"))
-        assertRejectedResult("png", "image/jpeg", data, metadataJson("png", "image/png", 3, "null"))
-        assertRejectedResult("png", "image/png", data, metadataJson("png", "image/png", 2, "null"))
+        assertRejectedResult(
+            "svg",
+            "image/png",
+            data,
+            metadataJson("png", "image/png", 3, "null"),
+            "Merman result operation ID does not match its metadata",
+        )
+        assertRejectedResult(
+            "png",
+            "image/jpeg",
+            data,
+            metadataJson("png", "image/png", 3, "null"),
+            "Merman result media type does not match its metadata",
+        )
+        assertRejectedResult(
+            "png",
+            "image/png",
+            data,
+            metadataJson("png", "image/png", 2, "null"),
+            "Merman result byte length does not match its metadata",
+        )
+    }
+
+    @Test
+    fun operationResultDecodesUtf8Strictly() {
+        val validData = "SVG 你好".toByteArray(Charsets.UTF_8)
+        val validResult = MermanOperationResult(
+            "svg",
+            "image/svg+xml",
+            validData,
+            metadataJson("svg", "image/svg+xml", validData.size.toLong(), "null"),
+        )
+        assertEquals("SVG 你好", validResult.utf8Text)
+
+        val invalidData = byteArrayOf(0xC3.toByte(), 0x28)
+        val invalidResult = MermanOperationResult(
+            "svg",
+            "image/svg+xml",
+            invalidData,
+            metadataJson("svg", "image/svg+xml", invalidData.size.toLong(), "null"),
+        )
+        val error = runCatching { invalidResult.utf8Text }.exceptionOrNull()
+        assertTrue(error is MermanException)
+        error as MermanException
+        assertEquals(9, error.code)
+        assertEquals("MERMAN_INTERNAL_ERROR", error.codeName)
+        assertEquals(MermanErrorKind.GENERIC, error.kind)
+        assertEquals("Merman operation result data is not valid UTF-8", error.message)
     }
 
     @Test
@@ -123,11 +168,16 @@ class MermanOperationMetadataTest {
         mediaType: String,
         data: ByteArray,
         metadataJson: String,
+        expectedMessage: String,
     ) {
         try {
             MermanOperationResult(operationId, mediaType, data, metadataJson)
             fail("mismatched result envelope was accepted")
-        } catch (_: MermanException) {
+        } catch (error: MermanException) {
+            assertEquals(9, error.code)
+            assertEquals("MERMAN_INTERNAL_ERROR", error.codeName)
+            assertEquals(MermanErrorKind.GENERIC, error.kind)
+            assertEquals(expectedMessage, error.message)
         }
     }
 

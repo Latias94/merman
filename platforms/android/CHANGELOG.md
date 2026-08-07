@@ -15,6 +15,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Split the Kotlin source model into `Merman` for discovery and one-shot calls and `MermanEngine(optionsJson, services)` for reusable calls. Removed `MermanReusableEngine` without a compatibility alias.
 - Replaced byte-only generic execution with `execute(operationId, source, optionsJson, uri)`, which returns a typed `MermanOperationResult` for both one-shot and reusable engines. Binary byte helpers remain, while `renderPngResult`, `renderJpegResult`, and `renderPdfResult` retain metadata and effective output plans.
 - Replaced mutable callback configuration and callback-specialized constructors with immutable `MermanEngineServices`. Callback-free reusable engines permit concurrent calls; callback-enabled engines return `BUSY` for a competing call and `REENTRANT_CALL` for callback reentry.
+- Renamed the immutable Kotlin pack snapshot from `MermanIconRegistry` to `MermanIconPackSet` and the corresponding `MermanEngineServices` property from `iconRegistry` to `iconPackSet`; no compatibility aliases remain.
 - Replaced blocking/destructive `nativeFree` close with nonblocking `nativeTryClose`. A failed `close()` preserves the Kotlin handle and can be retried after the active call completes.
 - Replaced `runtimeContractJson()` with `runtimeCatalogJson()`. The new direct catalog is a flat
   schema-1 document containing package identity, sorted capability/output/operation IDs, registry
@@ -37,13 +38,13 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Added `presentationCatalogJson()` for artifact-aware theme preset, presentation profile, aspect, and missing-capability discovery.
 - Added generic `metadataJson(id)`, named analysis-facts and SVG-plan helpers, and generated parity checks for the complete 13-operation artifact surface.
 - Added typed schema-1 operation metadata with raster and PDF output plans. Unknown future output-plan kinds and the original metadata JSON are preserved.
-- Added immutable `MermanIconRegistry.fromPacks` snapshots for bounded IconifyJSON packs. Each engine constructor borrows the snapshot, builds its own native registry transactionally, and retains no registry handle outside the engine.
+- Added immutable `MermanIconPackSet.fromPacks` snapshots for bounded IconifyJSON packs. Each engine constructor borrows the snapshot, builds its own native registry transactionally, and retains no registry handle outside the engine.
 
 ### Changed
 
 - Updated the native engine to the Mermaid 11.16 compatibility baseline, including source-backed Swimlane, Cynefin, Railroad, Wardley, and ZenUML behavior plus parser, layout, SVG, theme, Gantt, TreeView, and edge-routing fixes across existing families.
 - JNI text-measurement failures, unsupported operations, and wrong-kind results now fall back per operation instead of invalidating the enclosing render.
-- Reusable engine close is idempotent. Engine service destruction occurs only after native admission locks are released, and constructor conflicts fail without invoking callbacks. Icon registry snapshots have no native lifecycle to close.
+- Reusable engine close is idempotent. Engine service destruction occurs only after native admission locks are released, and constructor conflicts fail without invoking callbacks. Icon pack snapshots have no native lifecycle to close.
 - Runtime-catalog validation now requires both binding payload schemas and strictly validates generated option-group and constructor-service sections whenever they are present, while accepting older schema-1 producers that omit those additive sections.
 - The AAR now carries the project license, source-provenance notice, and exact third-party license texts under `META-INF`.
 - Android source builds now use the checked-in Gradle Wrapper and pinned JDK 17/NDK toolchain; the build helper can install the required NDK, assemble both published ABIs, and verify the completed AAR in one workflow.

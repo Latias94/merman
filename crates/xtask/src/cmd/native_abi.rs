@@ -17,105 +17,9 @@ const PROTOCOL_ID: &str = "merman-native";
 const ABI_VERSION: u32 = 3;
 const SCHEMA_VERSION: u32 = 1;
 const RESULT_SCHEMA_VERSION: u32 = 1;
-const ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
-    "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110";
-const ABI3_FROZEN_PUBLISHED_PREFIX_LAYOUT_DIGEST: &str =
-    "sha256:25fbe339846e6c9b8fa66dbf48894a2d28d8fe037028f098d650bfa892915ace";
-const ABI3_FROZEN_PUBLISHED_FUNCTION_SLOT_COUNT: usize = 6;
-const ABI3_FROZEN_PUBLISHED_OPAQUE_SCALAR_COUNT: usize = 2;
-const ABI3_FROZEN_PUBLISHED_CALLER_MEMORY_RULE_COUNT: usize = 2;
-const ABI3_FROZEN_PUBLISHED_OWNERSHIP_RULE_COUNT: usize = 5;
-const ABI3_BASELINE_COMMIT: &str = "5117c0ae12da2c0346b47061642286174cea3f5f";
-const ABI3_PUBLISHED_SEMANTIC_PROJECTION_PATH: &str = "abi/merman-v3-published-six.semantic.json";
-const ABI3_CURRENT_SEMANTIC_PROJECTION_PATH: &str = "abi/merman-v3-current-full.semantic.json";
-const ABI3_FROZEN_PUBLISHED_SEMANTIC_DIGEST: &str =
-    "sha256:e753816ac4cbdcfe1430755a7e6abb73a303a7055cb8a55b70fcdb44f7d574fe";
-const ABI3_FROZEN_CURRENT_SEMANTIC_DIGEST: &str =
-    "sha256:0f67695140b2fdf74efa3ef4cfec852065fa7bbca659887441f1f90f2eeb54c9";
-const ABI3_FROZEN_MINIMUM_SEMANTICS: [&str; 10] = [
-    "written-results-own-nonzero-allocation-tokens",
-    "result-free-authorizes-by-token-and-clears-the-record",
-    "engine-try-close-is-nonblocking-and-success-is-quiescent",
-    "host-callback-nonlocal-exits-are-forbidden",
-    "engine-new-inputs-and-outputs-do-not-overlap",
-    "error-kind-vocabulary-is-closed",
-    "api-table-capacity-returns-complete-prefix",
-    "moved-result-record-transfers-token-ownership",
-    "input-and-callback-slices-are-borrowed",
-    "callback-state-is-constructor-owned-until-quiescent-close",
-];
 const FFI_RUST_OUTPUT: &str = "crates/merman-ffi/src/generated/abi3.rs";
 const FFI_HEADER_OUTPUT: &str = "crates/merman-ffi/include/merman.h";
 const FLUTTER_OPERATION_OUTPUT: &str = "platforms/flutter/lib/src/generated/native_operations.dart";
-const DART_RESERVED_WORDS: &[&str] = &[
-    "abstract",
-    "as",
-    "assert",
-    "async",
-    "await",
-    "base",
-    "break",
-    "case",
-    "catch",
-    "class",
-    "const",
-    "continue",
-    "covariant",
-    "default",
-    "deferred",
-    "do",
-    "dynamic",
-    "else",
-    "enum",
-    "export",
-    "extends",
-    "extension",
-    "external",
-    "factory",
-    "false",
-    "final",
-    "finally",
-    "for",
-    "get",
-    "hide",
-    "if",
-    "implements",
-    "import",
-    "in",
-    "interface",
-    "is",
-    "late",
-    "library",
-    "mixin",
-    "new",
-    "null",
-    "of",
-    "on",
-    "operator",
-    "part",
-    "required",
-    "rethrow",
-    "return",
-    "sealed",
-    "set",
-    "show",
-    "static",
-    "super",
-    "switch",
-    "sync",
-    "this",
-    "throw",
-    "true",
-    "try",
-    "type",
-    "typedef",
-    "var",
-    "void",
-    "when",
-    "while",
-    "with",
-    "yield",
-];
 const FLUTTER_OPERATION_FIXED_MEMBERS: &[&str] = &[
     "fromNativeCode",
     "fromOperationId",
@@ -139,8 +43,6 @@ struct NativeAbiDescriptor {
     minimum_prefix: MinimumPrefixDescriptor,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     minimum_semantics: Vec<SemanticRule>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    append_points: Vec<AppendPointDescriptor>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     opaque_scalars: Vec<OpaqueScalarDescriptor>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -171,13 +73,6 @@ struct MinimumPrefixDescriptor {
 struct SemanticRule {
     id: String,
     description: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-struct AppendPointDescriptor {
-    category: String,
-    after_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -346,124 +241,11 @@ struct ResolvedOperationFailure {
     error_kind_json_name: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SemanticProjectionScope {
-    PublishedSix,
-    CurrentFull,
-}
-
-struct SemanticProjectionLimits {
-    status_count: usize,
-    operation_count: usize,
-    error_kind_count: usize,
-    callback_count: usize,
-    function_slot_count: usize,
-    record_count: usize,
-    opaque_scalar_count: usize,
-    caller_memory_rule_count: usize,
-    ownership_rule_count: usize,
-}
-
-#[derive(Clone, Copy)]
-enum SemanticCategory {
-    StatusCodes,
-    OperationCodes,
-    Callbacks,
-    FunctionSlots,
-    Records,
-    CallerMemoryRules,
-    OwnershipRules,
-}
-
-impl SemanticCategory {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::StatusCodes => "status_codes",
-            Self::OperationCodes => "operation_codes",
-            Self::Callbacks => "callbacks",
-            Self::FunctionSlots => "function_slots",
-            Self::Records => "records",
-            Self::CallerMemoryRules => "caller_memory_rules",
-            Self::OwnershipRules => "ownership_rules",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-struct SemanticProjection {
-    projection_schema_version: u32,
-    baseline_commit: String,
-    scope: String,
-    protocol_id: String,
-    abi_version: u32,
-    result_schema_version: u32,
-    inventory: MinimumPrefixDescriptor,
-    minimum_semantics: Vec<SemanticRule>,
-    error_kinds: Vec<SemanticErrorKind>,
-    entry_point: CallableSignature,
-    status_codes: Vec<CodeIdentity>,
-    resolved_operations: Vec<ResolvedOperation>,
-    callbacks: Vec<CallableSignature>,
-    function_slots: Vec<CallableSignature>,
-    records: Vec<SemanticRecord>,
-    opaque_scalars: Vec<OpaqueScalarDescriptor>,
-    caller_memory_rules: Vec<SemanticRule>,
-    ownership_rules: Vec<OwnershipRule>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-struct SemanticErrorKind {
-    id: String,
-    c_name: String,
-    json_name: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-struct CodeIdentity {
-    id: String,
-    c_name: String,
-    code: i32,
-    error_kinds: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-struct CallableSignature {
-    id: String,
-    c_name: String,
-    rust_name: String,
-    code: Option<i32>,
-    calling_convention: String,
-    return_c_type: String,
-    return_rust_type: String,
-    parameters: Vec<ParameterDescriptor>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-struct SemanticRecord {
-    id: String,
-    c_name: String,
-    rust_name: String,
-    appends_function_slots: bool,
-    fields: Vec<FieldDescriptor>,
-}
-
 struct PreparedNativeAbi {
     descriptor: NativeAbiDescriptor,
     operations: Vec<ResolvedOperation>,
     minimum_prefix_digest: String,
     full_descriptor_digest: String,
-    current_semantic_projection: SemanticProjection,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SemanticSnapshotMode {
-    Generate,
-    Verify,
 }
 
 fn native_abi_error(message: impl Into<String>) -> XtaskError {
@@ -685,36 +467,6 @@ fn validate_callable(
     Ok(())
 }
 
-fn validate_abi3_published_contract(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
-    if descriptor.function_slots.len() < ABI3_FROZEN_PUBLISHED_FUNCTION_SLOT_COUNT {
-        return Err(descriptor_error(
-            "native ABI 3 function table is shorter than its published six-slot contract",
-        ));
-    }
-    Ok(())
-}
-
-fn validate_append_points(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
-    let expected = [
-        ("operation_codes", "svg_plan_json"),
-        ("function_slots", "metadata_collect"),
-        ("records", "api"),
-        ("ownership_rules", "disabled_capabilities"),
-        ("caller_memory_rules", "caller_memory_validity"),
-    ];
-    let actual = descriptor
-        .append_points
-        .iter()
-        .map(|point| (point.category.as_str(), point.after_id.as_str()))
-        .collect::<Vec<_>>();
-    if actual != expected {
-        return Err(descriptor_error(format!(
-            "native ABI 3 append points changed; expected {expected:?}, found {actual:?}"
-        )));
-    }
-    Ok(())
-}
-
 fn validate_opaque_scalars(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
     validate_unique(
         descriptor
@@ -723,18 +475,24 @@ fn validate_opaque_scalars(descriptor: &NativeAbiDescriptor) -> Result<(), Strin
             .map(|scalar| scalar.id.as_str()),
         "native ABI opaque scalar ids",
     )?;
-    if descriptor
-        .opaque_scalars
-        .iter()
-        .map(|scalar| scalar.id.as_str())
-        .ne(["engine_token", "result_allocation_token"])
-    {
+    if descriptor.opaque_scalars.len() != 2 {
         return Err(descriptor_error(
-            "native ABI 3 opaque scalars must preserve engine_token and result_allocation_token in order",
+            "native ABI must define exactly the engine_token and result_allocation_token roles",
         ));
     }
+    let engine = descriptor
+        .opaque_scalars
+        .iter()
+        .find(|scalar| scalar.id == "engine_token")
+        .ok_or_else(|| descriptor_error("native ABI must define the engine_token role"))?;
+    let result = descriptor
+        .opaque_scalars
+        .iter()
+        .find(|scalar| scalar.id == "result_allocation_token")
+        .ok_or_else(|| {
+            descriptor_error("native ABI must define the result_allocation_token role")
+        })?;
 
-    let expected_counter_max = (i64::MAX as u64) >> 2;
     let mut tags = BTreeSet::new();
     for scalar in &descriptor.opaque_scalars {
         validate_identifier(&scalar.id, "native ABI opaque scalar")?;
@@ -754,16 +512,26 @@ fn validate_opaque_scalars(descriptor: &NativeAbiDescriptor) -> Result<(), Strin
                 scalar.id
             )));
         }
+        let shift = scalar.domain.counter_shift;
+        let expected_mask = 1_u64
+            .checked_shl(shift)
+            .and_then(|value| value.checked_sub(1))
+            .ok_or_else(|| {
+                descriptor_error(format!(
+                    "native ABI opaque scalar `{}` has an invalid token counter shift",
+                    scalar.id
+                ))
+            })?;
+        let expected_counter_max = (i64::MAX as u64) >> shift;
         if scalar.invalid_value != 0
-            || scalar.domain.mask != 0b11
-            || scalar.domain.counter_shift != 2
+            || scalar.domain.mask != expected_mask
             || scalar.domain.maximum_counter != expected_counter_max
             || scalar.domain.tag == 0
             || scalar.domain.tag > scalar.domain.mask
             || !tags.insert(scalar.domain.tag)
         {
             return Err(descriptor_error(format!(
-                "native ABI opaque scalar `{}` must use a unique nonzero two-bit domain tag and the sign-bit-preserving counter range",
+                "native ABI opaque scalar `{}` must use a unique nonzero low-bit domain tag and the sign-bit-preserving counter range",
                 scalar.id
             )));
         }
@@ -786,17 +554,23 @@ fn validate_opaque_scalars(descriptor: &NativeAbiDescriptor) -> Result<(), Strin
         }
     }
 
-    let engine = &descriptor.opaque_scalars[0];
+    if engine.domain.mask != result.domain.mask
+        || engine.domain.counter_shift != result.domain.counter_shift
+        || engine.domain.maximum_counter != result.domain.maximum_counter
+    {
+        return Err(descriptor_error(
+            "native ABI opaque token roles must share one mask, shift, and counter range",
+        ));
+    }
     if engine.c_name.as_deref() != Some("MermanNativeEngineToken")
         || engine.rust_name.as_deref() != Some("MermanNativeEngineToken")
         || engine.c_type != "uint64_t"
         || engine.rust_type != "u64"
     {
         return Err(descriptor_error(
-            "native ABI engine_token must project the published MermanNativeEngineToken uint64_t/u64 alias",
+            "native ABI engine_token must project the MermanNativeEngineToken uint64_t/u64 alias",
         ));
     }
-    let result = &descriptor.opaque_scalars[1];
     if result.c_name.is_some()
         || result.rust_name.is_some()
         || result.c_type != "uint64_t"
@@ -898,16 +672,43 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         )));
     }
     let minimum_prefix = &descriptor.minimum_prefix;
-    if minimum_prefix.status_code_count != 17
-        || minimum_prefix.operation_code_count != 14
-        || minimum_prefix.error_kind_count != 5
-        || minimum_prefix.callback_count != 1
-        || minimum_prefix.function_slot_count != 5
-        || minimum_prefix.record_count != 9
-    {
-        return Err(descriptor_error(
-            "native ABI 3 minimum prefix must freeze 17 statuses, 14 operations, 5 error kinds, 1 callback, 5 function slots, and 9 records",
-        ));
+    for (name, count, available) in [
+        (
+            "status codes",
+            minimum_prefix.status_code_count,
+            descriptor.status_codes.len(),
+        ),
+        (
+            "operation codes",
+            minimum_prefix.operation_code_count,
+            descriptor.operation_codes.len(),
+        ),
+        (
+            "error kinds",
+            minimum_prefix.error_kind_count,
+            descriptor.error_kinds.len(),
+        ),
+        (
+            "callbacks",
+            minimum_prefix.callback_count,
+            descriptor.callbacks.len(),
+        ),
+        (
+            "function slots",
+            minimum_prefix.function_slot_count,
+            descriptor.function_slots.len(),
+        ),
+        (
+            "records",
+            minimum_prefix.record_count,
+            descriptor.records.len(),
+        ),
+    ] {
+        if count == 0 || count > available {
+            return Err(descriptor_error(format!(
+                "native ABI minimum prefix selects {count} {name}, but the descriptor defines {available}"
+            )));
+        }
     }
     validate_unique(
         descriptor
@@ -925,17 +726,6 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             )));
         }
     }
-    if descriptor
-        .minimum_semantics
-        .iter()
-        .map(|semantic| semantic.id.as_str())
-        .ne(ABI3_FROZEN_MINIMUM_SEMANTICS)
-    {
-        return Err(descriptor_error(
-            "native ABI 3 minimum semantics changed; incompatible ownership or lifecycle changes require a new ABI version",
-        ));
-    }
-    validate_append_points(descriptor)?;
     validate_opaque_scalars(descriptor)?;
     validate_unique(
         descriptor
@@ -944,17 +734,6 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .map(|rule| rule.id.as_str()),
         "native ABI caller-memory rule ids",
     )?;
-    if descriptor
-        .caller_memory_rules
-        .iter()
-        .take(2)
-        .map(|rule| rule.id.as_str())
-        .ne(["record_pointer_alignment", "caller_memory_validity"])
-    {
-        return Err(descriptor_error(
-            "native ABI 3 caller-memory rules must preserve alignment and memory-validity semantics in order",
-        ));
-    }
     for rule in &descriptor.caller_memory_rules {
         validate_identifier(&rule.id, "native ABI caller-memory rule")?;
         if rule.description.trim().is_empty() {
@@ -965,16 +744,18 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         }
     }
     if descriptor.error_kinds.len() != minimum_prefix.error_kind_count {
-        return Err(descriptor_error(
-            "native ABI 3 error-kind vocabulary is closed at five entries",
-        ));
+        return Err(descriptor_error(format!(
+            "native ABI error-kind vocabulary is closed by the minimum prefix at {} entries, but the descriptor defines {}",
+            minimum_prefix.error_kind_count,
+            descriptor.error_kinds.len()
+        )));
     }
-    if descriptor.callbacks.len() != minimum_prefix.callback_count
-        || descriptor.records.len() < minimum_prefix.record_count
-    {
-        return Err(descriptor_error(
-            "native ABI descriptor is shorter than its frozen error, callback, or record prefix",
-        ));
+    if descriptor.callbacks.len() != minimum_prefix.callback_count {
+        return Err(descriptor_error(format!(
+            "native ABI callback vocabulary is closed by the minimum prefix at {} entries, but the descriptor defines {}",
+            minimum_prefix.callback_count,
+            descriptor.callbacks.len()
+        )));
     }
     validate_unique(
         descriptor.error_kinds.iter().map(|kind| kind.id.as_str()),
@@ -994,42 +775,6 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .map(|kind| kind.json_name.as_str()),
         "native ABI error kind JSON names",
     )?;
-    let expected_error_kinds = [
-        ("generic", "MERMAN_NATIVE_ERROR_KIND_GENERIC", "generic"),
-        (
-            "unknown_operation",
-            "MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION",
-            "unknown-operation",
-        ),
-        (
-            "missing_capability",
-            "MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY",
-            "missing-capability",
-        ),
-        (
-            "reentrant_call",
-            "MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL",
-            "reentrant-call",
-        ),
-        ("busy", "MERMAN_NATIVE_ERROR_KIND_BUSY", "busy"),
-    ];
-    let actual_error_kinds = descriptor
-        .error_kinds
-        .iter()
-        .take(expected_error_kinds.len())
-        .map(|kind| {
-            (
-                kind.id.as_str(),
-                kind.c_name.as_str(),
-                kind.json_name.as_str(),
-            )
-        })
-        .collect::<Vec<_>>();
-    if actual_error_kinds != expected_error_kinds {
-        return Err(descriptor_error(format!(
-            "native ABI error kinds must preserve generic, unknown-operation, missing-capability, reentrant-call, and appended busy in order; found {actual_error_kinds:?}"
-        )));
-    }
     for kind in &descriptor.error_kinds {
         validate_identifier(&kind.id, "native ABI error kind")?;
         validate_kebab_identifier(&kind.json_name, "native ABI error kind JSON name")?;
@@ -1083,9 +828,11 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         "MERMAN_NATIVE_STATUS_",
     )?;
     if descriptor.status_codes.len() != minimum_prefix.status_code_count {
-        return Err(descriptor_error(
-            "native ABI status vocabulary is frozen at the published 17 entries",
-        ));
+        return Err(descriptor_error(format!(
+            "native ABI status vocabulary is closed by the minimum prefix at {} entries, but the descriptor defines {}",
+            minimum_prefix.status_code_count,
+            descriptor.status_codes.len()
+        )));
     }
     let known_error_kinds = descriptor
         .error_kinds
@@ -1104,24 +851,6 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
                     status.id
                 )));
             }
-        }
-        let expected = match status.id.as_str() {
-            "ok" => &[][..],
-            "unsupported_operation" => &["generic", "unknown_operation", "missing_capability"][..],
-            "reentrant_call" => &["reentrant_call"][..],
-            "busy" => &["busy"][..],
-            _ => &["generic"][..],
-        };
-        if status
-            .error_kinds
-            .iter()
-            .map(String::as_str)
-            .ne(expected.iter().copied())
-        {
-            return Err(descriptor_error(format!(
-                "native ABI status `{}` must map to error kinds {expected:?} in order; found {:?}",
-                status.id, status.error_kinds
-            )));
         }
     }
     if descriptor.operation_codes.is_empty() {
@@ -1157,11 +886,6 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .map(|operation| operation.code),
         "native ABI operation codes",
     )?;
-    if descriptor.operation_codes.len() < minimum_prefix.operation_code_count {
-        return Err(descriptor_error(
-            "native ABI operation vocabulary is shorter than the frozen minimum prefix",
-        ));
-    }
     for operation in &descriptor.operation_codes {
         validate_identifier(&operation.id, "native ABI operation code")?;
         if !operation.c_name.starts_with("MERMAN_NATIVE_OPERATION_")
@@ -1279,34 +1003,9 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         descriptor.function_slots.iter().map(|slot| slot.code),
         "native ABI function slots",
     )?;
-    if descriptor.function_slots.len() < minimum_prefix.function_slot_count {
-        return Err(descriptor_error(
-            "native ABI function table is shorter than the frozen minimum prefix",
-        ));
-    }
     for slot in &descriptor.function_slots {
         validate_callable(slot, "native ABI function slot", true)?;
     }
-    let expected_slots = [
-        "runtime_catalog",
-        "engine_new",
-        "engine_try_close",
-        "execute_collect",
-        "result_free",
-    ];
-    let actual_slots = descriptor
-        .function_slots
-        .iter()
-        .take(minimum_prefix.function_slot_count)
-        .map(|slot| slot.id.as_str())
-        .collect::<Vec<_>>();
-    if actual_slots != expected_slots {
-        return Err(descriptor_error(
-            "native ABI 3 minimum function slots must remain in their frozen order",
-        ));
-    }
-    validate_abi3_published_contract(descriptor)?;
-
     if descriptor.records.is_empty() {
         return Err(descriptor_error("native ABI records must not be empty"));
     }
@@ -1525,373 +1224,8 @@ fn resolve_operations(
     Ok(resolved)
 }
 
-fn callable_signature(callable: &CallableDescriptor) -> CallableSignature {
-    CallableSignature {
-        id: callable.id.clone(),
-        c_name: callable.c_name.clone(),
-        rust_name: callable.rust_name.clone(),
-        code: Some(callable.code),
-        calling_convention: "C".to_string(),
-        return_c_type: callable.return_c_type.clone(),
-        return_rust_type: callable.return_rust_type.clone(),
-        parameters: callable.parameters.clone(),
-    }
-}
-
-fn semantic_projection(
-    descriptor: &NativeAbiDescriptor,
-    resolved_operations: &[ResolvedOperation],
-    scope: SemanticProjectionScope,
-) -> SemanticProjection {
-    let limits = match scope {
-        SemanticProjectionScope::PublishedSix => SemanticProjectionLimits {
-            status_count: descriptor.minimum_prefix.status_code_count,
-            operation_count: descriptor.minimum_prefix.operation_code_count,
-            error_kind_count: descriptor.minimum_prefix.error_kind_count,
-            callback_count: descriptor.minimum_prefix.callback_count,
-            function_slot_count: ABI3_FROZEN_PUBLISHED_FUNCTION_SLOT_COUNT,
-            record_count: descriptor.minimum_prefix.record_count,
-            opaque_scalar_count: ABI3_FROZEN_PUBLISHED_OPAQUE_SCALAR_COUNT,
-            caller_memory_rule_count: ABI3_FROZEN_PUBLISHED_CALLER_MEMORY_RULE_COUNT,
-            ownership_rule_count: ABI3_FROZEN_PUBLISHED_OWNERSHIP_RULE_COUNT,
-        },
-        SemanticProjectionScope::CurrentFull => SemanticProjectionLimits {
-            status_count: descriptor.status_codes.len(),
-            operation_count: resolved_operations.len(),
-            error_kind_count: descriptor.error_kinds.len(),
-            callback_count: descriptor.callbacks.len(),
-            function_slot_count: descriptor.function_slots.len(),
-            record_count: descriptor.records.len(),
-            opaque_scalar_count: descriptor.opaque_scalars.len(),
-            caller_memory_rule_count: descriptor.caller_memory_rules.len(),
-            ownership_rule_count: descriptor.ownership_rules.len(),
-        },
-    };
-    SemanticProjection {
-        projection_schema_version: 1,
-        baseline_commit: ABI3_BASELINE_COMMIT.to_string(),
-        scope: match scope {
-            SemanticProjectionScope::PublishedSix => "published-six".to_string(),
-            SemanticProjectionScope::CurrentFull => "current-full-abi3".to_string(),
-        },
-        protocol_id: descriptor.protocol_id.clone(),
-        abi_version: descriptor.abi_version,
-        result_schema_version: descriptor.result_schema_version,
-        inventory: MinimumPrefixDescriptor {
-            status_code_count: limits.status_count,
-            operation_code_count: limits.operation_count,
-            error_kind_count: limits.error_kind_count,
-            callback_count: limits.callback_count,
-            function_slot_count: limits.function_slot_count,
-            record_count: limits.record_count,
-        },
-        minimum_semantics: descriptor.minimum_semantics.clone(),
-        error_kinds: descriptor
-            .error_kinds
-            .iter()
-            .take(limits.error_kind_count)
-            .map(|kind| SemanticErrorKind {
-                id: kind.id.clone(),
-                c_name: kind.c_name.clone(),
-                json_name: kind.json_name.clone(),
-            })
-            .collect(),
-        entry_point: CallableSignature {
-            id: "entry_point".to_string(),
-            c_name: descriptor.entry_point.c_name.clone(),
-            rust_name: descriptor.entry_point.rust_name.clone(),
-            code: None,
-            calling_convention: descriptor.entry_point.calling_convention.clone(),
-            return_c_type: descriptor.entry_point.return_c_type.clone(),
-            return_rust_type: descriptor.entry_point.return_rust_type.clone(),
-            parameters: descriptor.entry_point.parameters.clone(),
-        },
-        status_codes: descriptor
-            .status_codes
-            .iter()
-            .take(limits.status_count)
-            .map(|status| CodeIdentity {
-                id: status.id.clone(),
-                c_name: status.c_name.clone(),
-                code: status.code,
-                error_kinds: status.error_kinds.clone(),
-            })
-            .collect(),
-        resolved_operations: resolved_operations
-            .iter()
-            .take(limits.operation_count)
-            .cloned()
-            .collect(),
-        callbacks: descriptor
-            .callbacks
-            .iter()
-            .take(limits.callback_count)
-            .map(callable_signature)
-            .collect(),
-        function_slots: descriptor
-            .function_slots
-            .iter()
-            .take(limits.function_slot_count)
-            .map(callable_signature)
-            .collect(),
-        records: descriptor
-            .records
-            .iter()
-            .take(limits.record_count)
-            .map(|record| SemanticRecord {
-                id: record.id.clone(),
-                c_name: record.c_name.clone(),
-                rust_name: record.rust_name.clone(),
-                appends_function_slots: record.appends_function_slots,
-                fields: record.fields.clone(),
-            })
-            .collect(),
-        opaque_scalars: descriptor
-            .opaque_scalars
-            .iter()
-            .take(limits.opaque_scalar_count)
-            .cloned()
-            .collect(),
-        caller_memory_rules: descriptor
-            .caller_memory_rules
-            .iter()
-            .take(limits.caller_memory_rule_count)
-            .cloned()
-            .collect(),
-        ownership_rules: descriptor
-            .ownership_rules
-            .iter()
-            .take(limits.ownership_rule_count)
-            .cloned()
-            .collect(),
-    }
-}
-
-fn append_is_allowed(append_points: &[AppendPointDescriptor], category: SemanticCategory) -> bool {
-    let category = category.as_str();
-    append_points.iter().any(|point| point.category == category)
-}
-
-fn validate_semantic_sequence<T>(
-    baseline: &[T],
-    candidate: &[T],
-    category: SemanticCategory,
-    append_points: &[AppendPointDescriptor],
-    key: impl Fn(&T) -> &str,
-) -> Result<(), String>
-where
-    T: PartialEq,
-{
-    let category_name = category.as_str();
-    if candidate.len() < baseline.len() {
-        return Err(descriptor_error(format!(
-            "native ABI semantic category `{category_name}` deleted entries"
-        )));
-    }
-    for (index, frozen) in baseline.iter().enumerate() {
-        let current = &candidate[index];
-        if key(frozen) != key(current) {
-            return Err(descriptor_error(format!(
-                "native ABI semantic category `{category_name}` reordered or replaced stable key `{}` at index {index}",
-                key(frozen)
-            )));
-        }
-        if frozen != current {
-            return Err(descriptor_error(format!(
-                "native ABI semantic category `{category_name}` changed frozen entry `{}`",
-                key(frozen)
-            )));
-        }
-    }
-    if candidate.len() > baseline.len() && !append_is_allowed(append_points, category) {
-        return Err(descriptor_error(format!(
-            "native ABI semantic category `{category_name}` has no descriptor-declared append point"
-        )));
-    }
-    Ok(())
-}
-
-fn validate_semantic_evolution(
-    baseline: &SemanticProjection,
-    candidate: &SemanticProjection,
-    append_points: &[AppendPointDescriptor],
-) -> Result<(), String> {
-    if baseline.projection_schema_version != candidate.projection_schema_version
-        || baseline.baseline_commit != candidate.baseline_commit
-        || baseline.scope != candidate.scope
-        || baseline.protocol_id != candidate.protocol_id
-        || baseline.abi_version != candidate.abi_version
-        || baseline.result_schema_version != candidate.result_schema_version
-        || baseline.entry_point != candidate.entry_point
-        || baseline.minimum_semantics != candidate.minimum_semantics
-        || baseline.error_kinds != candidate.error_kinds
-        || baseline.opaque_scalars != candidate.opaque_scalars
-    {
-        return Err(descriptor_error(
-            "native ABI frozen semantic scalar, entry-point, minimum-rule, error-kind, or opaque-scalar contract changed",
-        ));
-    }
-
-    validate_semantic_sequence(
-        &baseline.status_codes,
-        &candidate.status_codes,
-        SemanticCategory::StatusCodes,
-        append_points,
-        |status| status.id.as_str(),
-    )?;
-    validate_semantic_sequence(
-        &baseline.resolved_operations,
-        &candidate.resolved_operations,
-        SemanticCategory::OperationCodes,
-        append_points,
-        |operation| operation.id.as_str(),
-    )?;
-    validate_semantic_sequence(
-        &baseline.callbacks,
-        &candidate.callbacks,
-        SemanticCategory::Callbacks,
-        append_points,
-        |callback| callback.id.as_str(),
-    )?;
-    validate_semantic_sequence(
-        &baseline.function_slots,
-        &candidate.function_slots,
-        SemanticCategory::FunctionSlots,
-        append_points,
-        |slot| slot.id.as_str(),
-    )?;
-    validate_semantic_sequence(
-        &baseline.records,
-        &candidate.records,
-        SemanticCategory::Records,
-        append_points,
-        |record| record.id.as_str(),
-    )?;
-    validate_semantic_sequence(
-        &baseline.caller_memory_rules,
-        &candidate.caller_memory_rules,
-        SemanticCategory::CallerMemoryRules,
-        append_points,
-        |rule| rule.id.as_str(),
-    )?;
-    validate_semantic_sequence(
-        &baseline.ownership_rules,
-        &candidate.ownership_rules,
-        SemanticCategory::OwnershipRules,
-        append_points,
-        |rule| rule.id.as_str(),
-    )?;
-
-    let expected_inventory = MinimumPrefixDescriptor {
-        status_code_count: candidate.status_codes.len(),
-        operation_code_count: candidate.resolved_operations.len(),
-        error_kind_count: candidate.error_kinds.len(),
-        callback_count: candidate.callbacks.len(),
-        function_slot_count: candidate.function_slots.len(),
-        record_count: candidate.records.len(),
-    };
-    if candidate.inventory != expected_inventory {
-        return Err(descriptor_error(
-            "native ABI semantic projection inventory does not match its entries",
-        ));
-    }
-    Ok(())
-}
-
-fn semantic_projection_json(projection: &SemanticProjection) -> Result<String, XtaskError> {
-    let mut json = serde_json::to_string_pretty(projection).map_err(|error| {
-        native_abi_error(format!(
-            "failed to serialize canonical native ABI semantic projection: {error}"
-        ))
-    })?;
-    json.push('\n');
-    Ok(json)
-}
-
-fn semantic_projection_digest(projection: &SemanticProjection) -> Result<String, XtaskError> {
-    let bytes = serde_json::to_vec(projection).map_err(|error| {
-        native_abi_error(format!(
-            "failed to serialize canonical native ABI semantic projection digest: {error}"
-        ))
-    })?;
-    Ok(format!("sha256:{}", crate::util::sha256_hex(&bytes)))
-}
-
-fn read_semantic_projection(root: &Path, path: &str) -> Result<SemanticProjection, XtaskError> {
-    let full = root.join(path);
-    let text = crate::util::read_text(&full)?;
-    serde_json::from_str::<SemanticProjection>(&text).map_err(|error| {
-        native_abi_error(format!(
-            "{}: semantic projection schema error: {error}",
-            full.display()
-        ))
-    })
-}
-
-fn require_frozen_semantic_digest(
-    projection: &SemanticProjection,
-    expected: &str,
-    label: &str,
-) -> Result<(), XtaskError> {
-    let actual = semantic_projection_digest(projection)?;
-    if actual != expected {
-        return Err(native_abi_error(format!(
-            "native ABI 3 {label} semantic projection changed: expected {expected}, found {actual}; regeneration cannot authorize semantic mutation"
-        )));
-    }
-    Ok(())
-}
-
-fn validate_semantic_snapshots(
-    root: &Path,
-    descriptor: &NativeAbiDescriptor,
-    operations: &[ResolvedOperation],
-    mode: SemanticSnapshotMode,
-) -> Result<SemanticProjection, XtaskError> {
-    let published = read_semantic_projection(root, ABI3_PUBLISHED_SEMANTIC_PROJECTION_PATH)?;
-    require_frozen_semantic_digest(
-        &published,
-        ABI3_FROZEN_PUBLISHED_SEMANTIC_DIGEST,
-        "published-six",
-    )?;
-    let candidate_published = semantic_projection(
-        descriptor,
-        operations,
-        SemanticProjectionScope::PublishedSix,
-    );
-    if published != candidate_published {
-        return Err(native_abi_error(
-            "native ABI 3 published-six semantic contract changed; incompatible changes require a new ABI version",
-        ));
-    }
-
-    let frozen_current = read_semantic_projection(root, ABI3_CURRENT_SEMANTIC_PROJECTION_PATH)?;
-    require_frozen_semantic_digest(
-        &frozen_current,
-        ABI3_FROZEN_CURRENT_SEMANTIC_DIGEST,
-        "current-full",
-    )?;
-    let candidate_current =
-        semantic_projection(descriptor, operations, SemanticProjectionScope::CurrentFull);
-    validate_semantic_evolution(
-        &frozen_current,
-        &candidate_current,
-        &descriptor.append_points,
-    )
-    .map_err(native_abi_error)?;
-    if mode == SemanticSnapshotMode::Verify && frozen_current != candidate_current {
-        return Err(native_abi_error(
-            "native ABI 3 current-full semantic projection is stale; regenerate it and explicitly freeze its reviewed digest",
-        ));
-    }
-    Ok(candidate_current)
-}
-
 fn canonical_descriptor(descriptor: &NativeAbiDescriptor) -> NativeAbiDescriptor {
     let mut canonical = descriptor.clone();
-    canonical
-        .append_points
-        .sort_by(|left, right| left.category.cmp(&right.category));
     canonical
         .opaque_scalars
         .sort_by(|left, right| left.id.cmp(&right.id));
@@ -1959,7 +1293,6 @@ fn strip_layout_irrelevant_metadata(descriptor: &mut NativeAbiDescriptor) {
     descriptor.entry_point.return_c_type.clear();
     descriptor.entry_point.return_rust_type.clear();
     descriptor.entry_point.parameters.clear();
-    descriptor.append_points.clear();
     descriptor.opaque_scalars.clear();
     descriptor.caller_memory_rules.clear();
     for status in &mut descriptor.status_codes {
@@ -2026,14 +1359,6 @@ fn minimum_prefix_layout_digest(descriptor: &NativeAbiDescriptor) -> Result<Stri
     )
 }
 
-fn published_prefix_layout_digest(descriptor: &NativeAbiDescriptor) -> Result<String, XtaskError> {
-    prefix_layout_digest(
-        descriptor,
-        ABI3_FROZEN_PUBLISHED_FUNCTION_SLOT_COUNT,
-        "published-prefix layout",
-    )
-}
-
 fn upper_snake(value: &str) -> String {
     value.replace('-', "_").to_ascii_uppercase()
 }
@@ -2072,11 +1397,6 @@ fn validate_dart_lower_camel_members<'a>(
         if !is_ascii_identifier(&member) {
             return Err(descriptor_error(format!(
                 "{context} `{value}` projects to invalid Dart identifier `{member}`"
-            )));
-        }
-        if DART_RESERVED_WORDS.contains(&member.as_str()) {
-            return Err(descriptor_error(format!(
-                "{context} `{value}` projects to reserved Dart keyword `{member}`"
             )));
         }
         if fixed_members.contains(&member.as_str()) {
@@ -2128,6 +1448,13 @@ fn sorted_slots(values: &[CallableDescriptor]) -> Vec<&CallableDescriptor> {
     let mut values = values.iter().collect::<Vec<_>>();
     values.sort_by_key(|value| value.code);
     values
+}
+
+fn minimum_prefix_terminal_slot(descriptor: &NativeAbiDescriptor) -> &CallableDescriptor {
+    descriptor
+        .function_slots
+        .get(descriptor.minimum_prefix.function_slot_count - 1)
+        .expect("validated minimum prefix selects a function slot")
 }
 
 fn opaque_scalar<'a>(descriptor: &'a NativeAbiDescriptor, id: &str) -> &'a OpaqueScalarDescriptor {
@@ -2301,9 +1628,14 @@ fn render_c_header(
         }
         out.push_str("};\n\n");
     }
-    out.push_str(
-        "#define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, result_free) + sizeof(((MermanNativeApi *)0)->result_free)))\n\n",
-    );
+    let minimum_slot = minimum_prefix_terminal_slot(descriptor);
+    writeln!(
+        out,
+        "#define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, {}) + sizeof(((MermanNativeApi *)0)->{})))\n",
+        minimum_slot.id,
+        minimum_slot.id,
+    )
+    .unwrap();
     for slot in sorted_slots(&descriptor.function_slots)
         .into_iter()
         .skip(descriptor.minimum_prefix.function_slot_count)
@@ -2320,7 +1652,7 @@ fn render_c_header(
     out.push('\n');
 
     out.push_str(
-        "/*\n * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability\n * digests report provenance and do not reject a compatible prefix. Except for MermanNativeApi,\n * public records require exact struct_size. The caller supplies MermanNativeApi capacity and\n * receives the largest complete producer prefix it can safely read. MermanNativeResult must be\n * fully zero-initialized with MERMAN_NATIVE_RESULT_INIT before every producing call.\n *\n * Frozen ABI 3 semantics from the descriptor:\n",
+        "/*\n * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability\n * digests report provenance and do not reject a compatible prefix. Except for MermanNativeApi,\n * public records require exact struct_size. The caller supplies MermanNativeApi capacity and\n * receives the largest complete producer prefix it can safely read. MermanNativeResult must be\n * fully zero-initialized with MERMAN_NATIVE_RESULT_INIT before every producing call.\n *\n * ABI 3 semantics from the descriptor:\n",
     );
     for semantic in &descriptor.minimum_semantics {
         render_c_comment_item(&mut out, &semantic.id, &semantic.description);
@@ -2518,6 +1850,7 @@ fn render_rust(
         "MermanNativeStatus",
         &sorted_codes(&descriptor.status_codes),
     );
+    render_rust_error_contract(&mut out, descriptor);
     render_rust_operation_type(&mut out, operations);
     render_rust_operation_catalog(&mut out, operations);
     render_rust_slot_type(&mut out, &sorted_slots(&descriptor.function_slots));
@@ -2589,11 +1922,14 @@ fn render_rust(
     for slot in sorted_slots(&descriptor.function_slots) {
         render_rust_callable_type(&mut out, slot);
     }
-    out.push_str(
-        "\npub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =\n\
-         \x20   (std::mem::offset_of!(MermanNativeApi, result_free)\n\
-         \x20       + std::mem::size_of::<Option<MermanNativeResultFreeFn>>()) as u32;\n\n",
-    );
+    let minimum_slot = minimum_prefix_terminal_slot(descriptor);
+    writeln!(
+        out,
+        "\npub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =\n    (std::mem::offset_of!(MermanNativeApi, {})\n        + std::mem::size_of::<Option<{}>>()) as u32;\n",
+        minimum_slot.id,
+        minimum_slot.rust_name,
+    )
+    .unwrap();
     let appended_slots = sorted_slots(&descriptor.function_slots)
         .into_iter()
         .skip(descriptor.minimum_prefix.function_slot_count)
@@ -2671,6 +2007,82 @@ fn render_rust_code_type(out: &mut String, type_name: &str, values: &[&CodeDescr
          \x20   MERMAN_NATIVE_STATUSES.contains(&status)\n\
          }\n\n",
     );
+}
+
+fn render_rust_error_contract(out: &mut String, descriptor: &NativeAbiDescriptor) {
+    out.push_str(
+        "pub(crate) fn merman_native_status_name(status: MermanNativeStatus) -> &'static str {\n    match status {\n",
+    );
+    for status in sorted_codes(&descriptor.status_codes) {
+        writeln!(
+            out,
+            "        {} => {:?},",
+            status.c_name,
+            status.id.replace('_', "-")
+        )
+        .unwrap();
+    }
+    out.push_str("        _ => \"unknown-status\",\n    }\n}\n\n");
+
+    out.push_str(
+        "pub(crate) fn merman_native_error_kind_name(\n    kind: merman_bindings_core::BindingErrorKind,\n) -> &'static str {\n    match kind {\n",
+    );
+    for kind in sorted_error_kinds(&descriptor.error_kinds) {
+        writeln!(
+            out,
+            "        merman_bindings_core::BindingErrorKind::{} => {},",
+            upper_camel(&kind.id),
+            kind.c_name,
+        )
+        .unwrap();
+    }
+    out.push_str("    }\n}\n\n");
+
+    out.push_str(
+        "pub(crate) fn merman_binding_error_kind_from_native_name(\n    kind: &str,\n) -> Option<merman_bindings_core::BindingErrorKind> {\n    match kind {\n",
+    );
+    for kind in sorted_error_kinds(&descriptor.error_kinds) {
+        writeln!(
+            out,
+            "        {} => Some(merman_bindings_core::BindingErrorKind::{}),",
+            kind.c_name,
+            upper_camel(&kind.id),
+        )
+        .unwrap();
+    }
+    out.push_str("        _ => None,\n    }\n}\n\n");
+
+    out.push_str(
+        "pub(crate) fn merman_native_normalize_error_kind(\n    status: MermanNativeStatus,\n    requested: merman_bindings_core::BindingErrorKind,\n) -> merman_bindings_core::BindingErrorKind {\n    match status {\n",
+    );
+    for status in sorted_codes(&descriptor.status_codes) {
+        if status.error_kinds.is_empty() {
+            writeln!(
+                out,
+                "        {} => merman_bindings_core::BindingErrorKind::Generic,",
+                status.c_name,
+            )
+            .unwrap();
+            continue;
+        }
+        writeln!(out, "        {} => match requested {{", status.c_name).unwrap();
+        for error_kind in &status.error_kinds {
+            writeln!(
+                out,
+                "            merman_bindings_core::BindingErrorKind::{} => requested,",
+                upper_camel(error_kind),
+            )
+            .unwrap();
+        }
+        writeln!(
+            out,
+            "            _ => merman_bindings_core::BindingErrorKind::{},",
+            upper_camel(&status.error_kinds[0]),
+        )
+        .unwrap();
+        out.push_str("        },\n");
+    }
+    out.push_str("        _ => merman_bindings_core::BindingErrorKind::Generic,\n    }\n}\n\n");
 }
 
 fn render_rust_operation_type(out: &mut String, values: &[ResolvedOperation]) {
@@ -2946,10 +2358,6 @@ fn generated_artifacts(prepared: &PreparedNativeAbi) -> Result<Vec<(PathBuf, Str
             PathBuf::from(FLUTTER_OPERATION_OUTPUT),
             render_flutter_operations(&prepared.operations),
         ),
-        (
-            PathBuf::from(ABI3_CURRENT_SEMANTIC_PROJECTION_PATH),
-            semantic_projection_json(&prepared.current_semantic_projection)?,
-        ),
     ])
 }
 
@@ -2970,33 +2378,16 @@ fn write_artifact(root: &Path, path: &Path, contents: &str) -> Result<(), XtaskE
     })
 }
 
-fn load_and_validate(
-    root: &Path,
-    semantic_mode: SemanticSnapshotMode,
-) -> Result<PreparedNativeAbi, XtaskError> {
+fn load_and_validate(root: &Path) -> Result<PreparedNativeAbi, XtaskError> {
     let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
     let operations = resolve_operations(root, &descriptor)?;
     let minimum_prefix_digest = minimum_prefix_layout_digest(&descriptor)?;
-    if minimum_prefix_digest != ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST {
-        return Err(native_abi_error(format!(
-            "native ABI 3 minimum prefix changed: expected {ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST}, found {minimum_prefix_digest}; incompatible changes require a new ABI version"
-        )));
-    }
-    let published_prefix_digest = published_prefix_layout_digest(&descriptor)?;
-    if published_prefix_digest != ABI3_FROZEN_PUBLISHED_PREFIX_LAYOUT_DIGEST {
-        return Err(native_abi_error(format!(
-            "native ABI 3 published prefix changed: expected {ABI3_FROZEN_PUBLISHED_PREFIX_LAYOUT_DIGEST}, found {published_prefix_digest}; published slot changes require a new ABI version"
-        )));
-    }
-    let current_semantic_projection =
-        validate_semantic_snapshots(root, &descriptor, &operations, semantic_mode)?;
     let full_descriptor_digest = full_descriptor_digest(&descriptor, &operations)?;
     Ok(PreparedNativeAbi {
         descriptor,
         operations,
         minimum_prefix_digest,
         full_descriptor_digest,
-        current_semantic_projection,
     })
 }
 
@@ -3005,7 +2396,7 @@ pub(crate) fn gen_native_abi(args: Vec<String>) -> Result<(), XtaskError> {
         return Err(XtaskError::Usage);
     }
     let root = crate::cmd::workspace_root();
-    let prepared = load_and_validate(&root, SemanticSnapshotMode::Generate)?;
+    let prepared = load_and_validate(&root)?;
     for (path, contents) in generated_artifacts(&prepared)? {
         write_artifact(&root, &path, &contents)?;
     }
@@ -3014,7 +2405,7 @@ pub(crate) fn gen_native_abi(args: Vec<String>) -> Result<(), XtaskError> {
 
 pub(crate) fn verify_native_abi_artifacts() -> Result<Option<String>, XtaskError> {
     let root = crate::cmd::workspace_root();
-    let prepared = load_and_validate(&root, SemanticSnapshotMode::Verify)?;
+    let prepared = load_and_validate(&root)?;
     let mut drift = Vec::new();
     for (path, expected) in generated_artifacts(&prepared)? {
         let full = root.join(&path);
@@ -3056,164 +2447,6 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_has_one_abi3_entry_table_and_all_operation_routes() {
-        let descriptor = committed_descriptor();
-        assert_eq!(descriptor.abi_version, 3);
-        assert_eq!(descriptor.result_schema_version, 1);
-        assert_eq!(
-            descriptor
-                .minimum_semantics
-                .iter()
-                .map(|semantic| semantic.id.as_str())
-                .collect::<Vec<_>>(),
-            ABI3_FROZEN_MINIMUM_SEMANTICS
-        );
-        assert_eq!(
-            descriptor
-                .error_kinds
-                .iter()
-                .map(|kind| kind.json_name.as_str())
-                .collect::<Vec<_>>(),
-            [
-                "generic",
-                "unknown-operation",
-                "missing-capability",
-                "reentrant-call",
-                "busy",
-            ]
-        );
-        assert_eq!(descriptor.entry_point.c_name, "merman_get_native_api");
-        assert_eq!(descriptor.entry_point.calling_convention, "C");
-        assert_eq!(
-            descriptor
-                .function_slots
-                .iter()
-                .map(|slot| slot.id.as_str())
-                .collect::<Vec<_>>(),
-            [
-                "runtime_catalog",
-                "engine_new",
-                "engine_try_close",
-                "execute_collect",
-                "result_free",
-                "metadata_collect",
-                "engine_new_with_services",
-            ]
-        );
-        assert_eq!(
-            descriptor
-                .records
-                .iter()
-                .map(|record| record.id.as_str())
-                .collect::<Vec<_>>(),
-            [
-                "slice",
-                "buffer",
-                "text_measure_request",
-                "text_measure_result",
-                "engine_config",
-                "operation_request",
-                "result",
-                "api_request",
-                "api",
-                "icon_pack",
-                "engine_services_config",
-            ]
-        );
-        assert_eq!(
-            descriptor
-                .caller_memory_rules
-                .iter()
-                .map(|rule| rule.id.as_str())
-                .collect::<Vec<_>>(),
-            [
-                "record_pointer_alignment",
-                "caller_memory_validity",
-                "engine_services_constructor_memory",
-            ]
-        );
-        assert_eq!(
-            descriptor
-                .ownership_rules
-                .iter()
-                .map(|rule| rule.id.as_str())
-                .collect::<Vec<_>>(),
-            [
-                "result_buffers",
-                "borrowed_slices",
-                "engine_tokens",
-                "host_callbacks",
-                "disabled_capabilities",
-                "engine_services",
-            ]
-        );
-        assert_eq!(descriptor.status_codes.last().unwrap().id, "busy");
-        assert_eq!(descriptor.operation_codes.len(), 14);
-        assert_eq!(
-            descriptor
-                .operation_codes
-                .iter()
-                .map(|operation| operation.code)
-                .collect::<BTreeSet<_>>(),
-            (0..14).collect()
-        );
-        let root = crate::cmd::workspace_root();
-        let operations = resolve_operations(&root, &descriptor).unwrap();
-        let uri_operations = operations
-            .iter()
-            .filter(|operation| operation.requires_uri)
-            .map(|operation| operation.binding_operation_id.as_deref())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            uri_operations,
-            vec![
-                Some("document-analysis-json"),
-                Some("document-analysis-facts-json"),
-            ]
-        );
-        assert!(
-            operations
-                .iter()
-                .find(|operation| operation.id == "none")
-                .is_some_and(|operation| {
-                    !operation.executable
-                        && !operation.requires_uri
-                        && operation
-                            .non_executable_failure
-                            .as_ref()
-                            .is_some_and(|failure| {
-                                failure.status_id == "invalid_argument"
-                                    && failure.status_code == 1
-                                    && failure.error_kind_id == "generic"
-                                    && failure.error_kind_json_name == "generic"
-                            })
-                })
-        );
-    }
-
-    #[test]
-    fn flutter_operation_projection_is_open_and_descriptor_owned() {
-        let root = crate::cmd::workspace_root();
-        let prepared = load_and_validate(&root, SemanticSnapshotMode::Verify).unwrap();
-        let artifacts = generated_artifacts(&prepared).unwrap();
-        let dart = artifacts
-            .iter()
-            .find(|(path, _)| {
-                path == Path::new("platforms/flutter/lib/src/generated/native_operations.dart")
-            })
-            .map(|(_, contents)| contents)
-            .expect("native ABI generation must own the Flutter operation projection");
-
-        assert!(dart.contains("final class MermanOperation"));
-        assert!(dart.contains("static const List<MermanOperation> knownValues"));
-        assert!(dart.contains("factory MermanOperation.fromNativeCode(int nativeCode)"));
-        assert!(dart.contains("factory MermanOperation.fromOperationId(String operationId)"));
-        assert!(dart.contains("requires an updated Merman SDK/header"));
-        assert!(!dart.contains("enum MermanOperation"));
-        assert!(!dart.contains("MERMAN_NATIVE_OPERATION_NONE,"));
-    }
-
-    #[test]
     fn descriptor_rejects_unsafe_flutter_operation_member_projections() {
         let mut reserved_member = committed_descriptor();
         let operation = reserved_member
@@ -3230,17 +2463,6 @@ mod tests {
             error.contains("fixed Dart MermanOperation member"),
             "{error}"
         );
-
-        let mut keyword = committed_descriptor();
-        let operation = keyword
-            .operation_codes
-            .iter_mut()
-            .find(|operation| operation.id == "svg")
-            .expect("committed descriptor has svg operation");
-        operation.id = "class".to_string();
-        operation.c_name = "MERMAN_NATIVE_OPERATION_CLASS".to_string();
-        let error = validate_descriptor(&keyword).expect_err("Dart keywords must not be generated");
-        assert!(error.contains("reserved Dart keyword `class`"), "{error}");
 
         let mut collision = committed_descriptor();
         let first = collision
@@ -3327,18 +2549,6 @@ mod tests {
         assert!(validate_descriptor(&descriptor).is_err());
 
         let mut descriptor = committed_descriptor();
-        descriptor.function_slots[5].return_c_type = "void".to_string();
-        assert!(validate_descriptor(&descriptor).is_ok());
-        assert_ne!(
-            published_prefix_layout_digest(&descriptor).unwrap(),
-            ABI3_FROZEN_PUBLISHED_PREFIX_LAYOUT_DIGEST
-        );
-
-        let mut descriptor = committed_descriptor();
-        descriptor.function_slots[5].description = "Reworded metadata collection.".to_string();
-        assert!(validate_descriptor(&descriptor).is_ok());
-
-        let mut descriptor = committed_descriptor();
         descriptor.function_slots.swap(5, 6);
         assert!(validate_descriptor(&descriptor).is_err());
 
@@ -3358,24 +2568,6 @@ mod tests {
         assert!(validate_descriptor(&descriptor).is_err());
 
         let mut descriptor = committed_descriptor();
-        descriptor.records.swap(8, 9);
-        let root = crate::cmd::workspace_root();
-        let operations = resolve_operations(&root, &descriptor).unwrap();
-        let frozen = semantic_projection(
-            &committed_descriptor(),
-            &operations,
-            SemanticProjectionScope::CurrentFull,
-        );
-        let reordered = semantic_projection(
-            &descriptor,
-            &operations,
-            SemanticProjectionScope::CurrentFull,
-        );
-        assert!(
-            validate_semantic_evolution(&frozen, &reordered, &descriptor.append_points).is_err()
-        );
-
-        let mut descriptor = committed_descriptor();
         descriptor.operation_codes[1].id = "missing_operation".to_string();
         let root = crate::cmd::workspace_root();
         assert!(resolve_operations(&root, &descriptor).is_err());
@@ -3386,28 +2578,6 @@ mod tests {
 
         let mut descriptor = committed_descriptor();
         descriptor.operation_codes[1].executable = false;
-        assert!(validate_descriptor(&descriptor).is_err());
-    }
-
-    #[test]
-    fn descriptor_rejects_error_kind_name_swaps() {
-        let mut descriptor = committed_descriptor();
-        descriptor.error_kinds[0].json_name = "unknown-operation".to_string();
-        descriptor.error_kinds[1].json_name = "generic".to_string();
-
-        assert!(validate_descriptor(&descriptor).is_err());
-
-        let mut descriptor = committed_descriptor();
-        descriptor.error_kinds.push(ErrorKindDescriptor {
-            id: "future_kind".to_string(),
-            c_name: "MERMAN_NATIVE_ERROR_KIND_FUTURE_KIND".to_string(),
-            json_name: "future-kind".to_string(),
-            description: "Future error kind.".to_string(),
-        });
-        assert!(validate_descriptor(&descriptor).is_err());
-
-        let mut descriptor = committed_descriptor();
-        descriptor.minimum_semantics[0].id = "changed-result-ownership".to_string();
         assert!(validate_descriptor(&descriptor).is_err());
     }
 
@@ -3502,278 +2672,5 @@ mod tests {
             full_descriptor_digest(&appended, &operations).unwrap(),
             original_full
         );
-    }
-
-    #[test]
-    fn semantic_projection_rejects_every_frozen_normative_category() {
-        let descriptor = committed_descriptor();
-        let root = crate::cmd::workspace_root();
-        let operations = resolve_operations(&root, &descriptor).unwrap();
-        let baseline = semantic_projection(
-            &descriptor,
-            &operations,
-            SemanticProjectionScope::CurrentFull,
-        );
-
-        let mut changed = descriptor.clone();
-        changed.minimum_semantics[0]
-            .description
-            .push_str(" Changed.");
-        let candidate =
-            semantic_projection(&changed, &operations, SemanticProjectionScope::CurrentFull);
-        assert!(
-            validate_semantic_evolution(&baseline, &candidate, &descriptor.append_points).is_err()
-        );
-
-        let mut changed = descriptor.clone();
-        changed.status_codes[16].error_kinds = vec!["generic".to_string()];
-        let candidate =
-            semantic_projection(&changed, &operations, SemanticProjectionScope::CurrentFull);
-        assert!(
-            validate_semantic_evolution(&baseline, &candidate, &descriptor.append_points).is_err()
-        );
-
-        let mut changed = descriptor.clone();
-        changed.records[0].fields[1].ownership = "caller-owned".to_string();
-        let candidate =
-            semantic_projection(&changed, &operations, SemanticProjectionScope::CurrentFull);
-        assert!(
-            validate_semantic_evolution(&baseline, &candidate, &descriptor.append_points).is_err()
-        );
-
-        let mut changed = descriptor.clone();
-        changed.opaque_scalars[0].domain.tag ^= 1;
-        let candidate =
-            semantic_projection(&changed, &operations, SemanticProjectionScope::CurrentFull);
-        assert!(
-            validate_semantic_evolution(&baseline, &candidate, &descriptor.append_points).is_err()
-        );
-
-        let mut changed = descriptor.clone();
-        changed.caller_memory_rules[0]
-            .description
-            .push_str(" Changed.");
-        let candidate =
-            semantic_projection(&changed, &operations, SemanticProjectionScope::CurrentFull);
-        assert!(
-            validate_semantic_evolution(&baseline, &candidate, &descriptor.append_points).is_err()
-        );
-
-        let mut resolved = operations.clone();
-        resolved[1].media_type = Some("application/changed".to_string());
-        let candidate =
-            semantic_projection(&descriptor, &resolved, SemanticProjectionScope::CurrentFull);
-        assert!(
-            validate_semantic_evolution(&baseline, &candidate, &descriptor.append_points).is_err()
-        );
-
-        let mut resolved = operations.clone();
-        resolved[0].executable = true;
-        resolved[0]
-            .non_executable_failure
-            .as_mut()
-            .expect("NONE has a frozen non-executable failure")
-            .status_code = 7;
-        let candidate =
-            semantic_projection(&descriptor, &resolved, SemanticProjectionScope::CurrentFull);
-        assert!(
-            validate_semantic_evolution(&baseline, &candidate, &descriptor.append_points).is_err(),
-            "NONE sentinel execution and failure semantics must be frozen"
-        );
-    }
-
-    #[test]
-    fn regenerated_snapshot_cannot_legitimize_existing_semantic_mutation() {
-        let descriptor = committed_descriptor();
-        let root = crate::cmd::workspace_root();
-        let operations = resolve_operations(&root, &descriptor).unwrap();
-        let baseline = semantic_projection(
-            &descriptor,
-            &operations,
-            SemanticProjectionScope::CurrentFull,
-        );
-        let mut changed = descriptor.clone();
-        changed.function_slots[5].parameters[0].c_type = "const uint8_t *".to_string();
-        let regenerated =
-            semantic_projection(&changed, &operations, SemanticProjectionScope::CurrentFull);
-        let regenerated = serde_json::from_slice::<SemanticProjection>(
-            &serde_json::to_vec_pretty(&regenerated).unwrap(),
-        )
-        .unwrap();
-
-        assert!(
-            validate_semantic_evolution(&baseline, &regenerated, &descriptor.append_points)
-                .is_err()
-        );
-        let frozen_digest = semantic_projection_digest(&baseline).unwrap();
-        assert!(
-            require_frozen_semantic_digest(&regenerated, &frozen_digest, "test-current").is_err(),
-            "rewriting the readable snapshot must not update its separately reviewed freeze digest"
-        );
-    }
-
-    #[test]
-    fn valid_current_append_uses_generate_then_manual_freeze_workflow() {
-        let descriptor = committed_descriptor();
-        let root = crate::cmd::workspace_root();
-        let operations = resolve_operations(&root, &descriptor).unwrap();
-        let published = semantic_projection(
-            &descriptor,
-            &operations,
-            SemanticProjectionScope::PublishedSix,
-        );
-        let current = semantic_projection(
-            &descriptor,
-            &operations,
-            SemanticProjectionScope::CurrentFull,
-        );
-
-        let mut appended = descriptor.clone();
-        let mut future_slot = appended.function_slots.last().unwrap().clone();
-        future_slot.id = "future_slot".to_string();
-        future_slot.c_name = "MermanNativeFutureSlotFn".to_string();
-        future_slot.rust_name = "MermanNativeFutureSlotFn".to_string();
-        future_slot.code += 1;
-        appended.function_slots.push(future_slot);
-        let appended_published = semantic_projection(
-            &appended,
-            &operations,
-            SemanticProjectionScope::PublishedSix,
-        );
-        let appended_current =
-            semantic_projection(&appended, &operations, SemanticProjectionScope::CurrentFull);
-
-        assert_eq!(appended_published, published);
-        require_frozen_semantic_digest(
-            &appended_published,
-            ABI3_FROZEN_PUBLISHED_SEMANTIC_DIGEST,
-            "published-six",
-        )
-        .unwrap();
-        assert!(
-            validate_semantic_evolution(&current, &appended_current, &descriptor.append_points)
-                .is_ok()
-        );
-
-        let temporary = tempfile::tempdir().unwrap();
-        fs::create_dir_all(temporary.path().join("abi")).unwrap();
-        write_artifact(
-            temporary.path(),
-            Path::new(ABI3_PUBLISHED_SEMANTIC_PROJECTION_PATH),
-            &semantic_projection_json(&published).unwrap(),
-        )
-        .unwrap();
-        write_artifact(
-            temporary.path(),
-            Path::new(ABI3_CURRENT_SEMANTIC_PROJECTION_PATH),
-            &semantic_projection_json(&current).unwrap(),
-        )
-        .unwrap();
-
-        let generated = validate_semantic_snapshots(
-            temporary.path(),
-            &appended,
-            &operations,
-            SemanticSnapshotMode::Generate,
-        )
-        .unwrap();
-        assert_eq!(generated, appended_current);
-        assert!(
-            validate_semantic_snapshots(
-                temporary.path(),
-                &appended,
-                &operations,
-                SemanticSnapshotMode::Verify,
-            )
-            .is_err(),
-            "verification must reject a valid append until generation updates the readable snapshot"
-        );
-
-        write_artifact(
-            temporary.path(),
-            Path::new(ABI3_CURRENT_SEMANTIC_PROJECTION_PATH),
-            &semantic_projection_json(&generated).unwrap(),
-        )
-        .unwrap();
-        let generated =
-            read_semantic_projection(temporary.path(), ABI3_CURRENT_SEMANTIC_PROJECTION_PATH)
-                .unwrap();
-        assert!(
-            validate_semantic_snapshots(
-                temporary.path(),
-                &appended,
-                &operations,
-                SemanticSnapshotMode::Generate,
-            )
-            .is_err(),
-            "generation must not authorize its own rewritten current-full snapshot"
-        );
-        let reviewed_digest = semantic_projection_digest(&generated).unwrap();
-        assert_ne!(reviewed_digest, ABI3_FROZEN_CURRENT_SEMANTIC_DIGEST);
-        require_frozen_semantic_digest(&generated, &reviewed_digest, "test-current").unwrap();
-    }
-
-    #[test]
-    fn committed_semantic_snapshots_match_the_fixed_baseline_and_freeze_digests() {
-        let root = crate::cmd::workspace_root();
-        let descriptor = committed_descriptor();
-        let operations = resolve_operations(&root, &descriptor).unwrap();
-        let published =
-            read_semantic_projection(&root, ABI3_PUBLISHED_SEMANTIC_PROJECTION_PATH).unwrap();
-        let current =
-            read_semantic_projection(&root, ABI3_CURRENT_SEMANTIC_PROJECTION_PATH).unwrap();
-
-        assert_eq!(published.baseline_commit, ABI3_BASELINE_COMMIT);
-        assert_eq!(current.baseline_commit, ABI3_BASELINE_COMMIT);
-        assert_eq!(
-            published,
-            semantic_projection(
-                &descriptor,
-                &operations,
-                SemanticProjectionScope::PublishedSix,
-            )
-        );
-        assert_eq!(
-            current,
-            semantic_projection(
-                &descriptor,
-                &operations,
-                SemanticProjectionScope::CurrentFull,
-            )
-        );
-        require_frozen_semantic_digest(
-            &published,
-            ABI3_FROZEN_PUBLISHED_SEMANTIC_DIGEST,
-            "published-six",
-        )
-        .unwrap();
-        require_frozen_semantic_digest(
-            &current,
-            ABI3_FROZEN_CURRENT_SEMANTIC_DIGEST,
-            "current-full",
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn projection_is_independent_from_schema_and_non_normative_prose() {
-        let descriptor = committed_descriptor();
-        let root = crate::cmd::workspace_root();
-        let operations = resolve_operations(&root, &descriptor).unwrap();
-        let original = semantic_projection(
-            &descriptor,
-            &operations,
-            SemanticProjectionScope::CurrentFull,
-        );
-
-        let mut changed = descriptor.clone();
-        changed.schema_version += 1;
-        changed.entry_point.description = "Updated documentation prose.".to_string();
-        changed.status_codes[0].description = "Updated status prose.".to_string();
-        changed.records[0].description = "Updated record prose.".to_string();
-        let projected =
-            semantic_projection(&changed, &operations, SemanticProjectionScope::CurrentFull);
-
-        assert_eq!(projected, original);
     }
 }

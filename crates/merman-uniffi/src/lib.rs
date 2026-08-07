@@ -1,4 +1,7 @@
 #![forbid(unsafe_code)]
+// UniFFI exports one structured error by value across every generated method. Boxing it would
+// change the foreign-language API without reducing the serialized error payload.
+#![allow(clippy::result_large_err)]
 
 //! UniFFI bindings for `merman`.
 //!
@@ -190,29 +193,37 @@ pub struct MermanOperationRequest {
     pub options_json: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
-pub enum MermanOutputPlan {
-    Raster {
-        requested_width_px: f64,
-        requested_height_px: f64,
-        width_px: u32,
-        height_px: u32,
-        requested_scale: f64,
-        effective_scale: f64,
-        limited: bool,
-    },
-    PdfFilterImages {
-        filtered_groups: u64,
-        requested_scale: f64,
-        effective_scale: f64,
-        requested_image_pixels: u64,
-        effective_image_pixels: u64,
-        limited: bool,
-    },
-    Unknown {
-        kind: String,
-        raw_json: String,
-    },
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MermanRasterOutputPlan {
+    pub requested_width_px: f64,
+    pub requested_height_px: f64,
+    pub width_px: u32,
+    pub height_px: u32,
+    pub requested_scale: f64,
+    pub effective_scale: f64,
+    pub limited: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MermanPdfFilterImagesOutputPlan {
+    pub filtered_groups: u64,
+    pub requested_scale: f64,
+    pub effective_scale: f64,
+    pub requested_image_pixels: u64,
+    pub effective_image_pixels: u64,
+    pub limited: bool,
+}
+
+/// Open output-plan projection for foreign languages.
+///
+/// Consumers switch on `kind`. Known payloads are optional conveniences; future kinds remain
+/// lossless through `raw_json` without adding a closed UniFFI enum variant.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MermanOutputPlan {
+    pub kind: String,
+    pub raw_json: String,
+    pub raster: Option<MermanRasterOutputPlan>,
+    pub pdf_filter_images: Option<MermanPdfFilterImagesOutputPlan>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -358,13 +369,24 @@ impl MermanIconPack {
 #[uniffi::export]
 impl MermanEngineServices {
     #[uniffi::constructor]
-    pub fn new(
-        icon_registry: Option<Arc<MermanIconRegistry>>,
-        text_measurer: Option<Arc<dyn MermanTextMeasurer>>,
-    ) -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            icon_registry,
-            text_measurer,
+            icon_registry: None,
+            text_measurer: None,
+        })
+    }
+
+    pub fn with_icon_registry(&self, icon_registry: Arc<MermanIconRegistry>) -> Arc<Self> {
+        Arc::new(Self {
+            icon_registry: Some(icon_registry),
+            text_measurer: self.text_measurer.clone(),
+        })
+    }
+
+    pub fn with_text_measurer(&self, text_measurer: Arc<dyn MermanTextMeasurer>) -> Arc<Self> {
+        Arc::new(Self {
+            icon_registry: self.icon_registry.clone(),
+            text_measurer: Some(text_measurer),
         })
     }
 }
@@ -1288,31 +1310,45 @@ fn uniffi_operation_metadata(
 }
 
 fn uniffi_output_plan(plan: &BindingOutputPlan) -> Result<MermanOutputPlan, MermanError> {
+    let kind = plan.kind().to_string();
+    let raw_json = serde_json::to_string(plan).map_err(|error| {
+        MermanError::internal(format!(
+            "operation output plan serialization failed: {error}"
+        ))
+    })?;
     Ok(match plan {
-        BindingOutputPlan::Raster(plan) => MermanOutputPlan::Raster {
-            requested_width_px: plan.requested_width_px(),
-            requested_height_px: plan.requested_height_px(),
-            width_px: plan.width_px(),
-            height_px: plan.height_px(),
-            requested_scale: plan.requested_scale(),
-            effective_scale: plan.effective_scale(),
-            limited: plan.limited(),
+        BindingOutputPlan::Raster(plan) => MermanOutputPlan {
+            kind,
+            raw_json,
+            raster: Some(MermanRasterOutputPlan {
+                requested_width_px: plan.requested_width_px(),
+                requested_height_px: plan.requested_height_px(),
+                width_px: plan.width_px(),
+                height_px: plan.height_px(),
+                requested_scale: plan.requested_scale(),
+                effective_scale: plan.effective_scale(),
+                limited: plan.limited(),
+            }),
+            pdf_filter_images: None,
         },
-        BindingOutputPlan::PdfFilterImages(plan) => MermanOutputPlan::PdfFilterImages {
-            filtered_groups: plan.filtered_groups(),
-            requested_scale: f64::from(plan.requested_scale()),
-            effective_scale: f64::from(plan.effective_scale()),
-            requested_image_pixels: plan.requested_image_pixels(),
-            effective_image_pixels: plan.effective_image_pixels(),
-            limited: plan.limited(),
+        BindingOutputPlan::PdfFilterImages(plan) => MermanOutputPlan {
+            kind,
+            raw_json,
+            raster: None,
+            pdf_filter_images: Some(MermanPdfFilterImagesOutputPlan {
+                filtered_groups: plan.filtered_groups(),
+                requested_scale: f64::from(plan.requested_scale()),
+                effective_scale: f64::from(plan.effective_scale()),
+                requested_image_pixels: plan.requested_image_pixels(),
+                effective_image_pixels: plan.effective_image_pixels(),
+                limited: plan.limited(),
+            }),
         },
-        plan => MermanOutputPlan::Unknown {
-            kind: plan.kind().to_string(),
-            raw_json: serde_json::to_string(plan).map_err(|error| {
-                MermanError::internal(format!(
-                    "operation output plan serialization failed: {error}"
-                ))
-            })?,
+        _ => MermanOutputPlan {
+            kind,
+            raw_json,
+            raster: None,
+            pdf_filter_images: None,
         },
     })
 }
@@ -1420,7 +1456,7 @@ mod tests {
         T: MermanTextMeasurer + 'static,
     {
         let measurer: Arc<dyn MermanTextMeasurer> = measurer;
-        let services = MermanEngineServices::new(None, Some(measurer));
+        let services = MermanEngineServices::new().with_text_measurer(measurer);
         MermanEngine::new(options_json, Some(services)).expect("callback engine")
     }
 
@@ -2005,85 +2041,15 @@ mod tests {
         .unwrap();
         let metadata = uniffi_operation_metadata(metadata).unwrap();
 
-        let Some(MermanOutputPlan::Unknown { kind, raw_json }) = metadata.output_plan else {
+        let Some(plan) = metadata.output_plan else {
             panic!("future output plan must remain open and lossless");
         };
-        assert_eq!(kind, "future-plan");
-        let raw: Value = serde_json::from_str(&raw_json).unwrap();
+        assert_eq!(plan.kind, "future-plan");
+        assert_eq!(plan.raster, None);
+        assert_eq!(plan.pdf_filter_images, None);
+        let raw: Value = serde_json::from_str(&plan.raw_json).unwrap();
         assert_eq!(raw["nested"]["value"], 3);
         assert_eq!(metadata.byte_length, 7);
-    }
-
-    #[test]
-    fn generic_transport_preserves_the_shared_operation_expectation_matrix() {
-        let one_shot = engine();
-        let reusable = reusable_engine(None);
-        let expectations = merman_bindings_core::binding_operation_expectations();
-        assert_eq!(expectations.len(), 13);
-
-        for expectation in expectations {
-            let operation_id = expectation.operation_id();
-            let request = MermanOperationRequest {
-                operation_id: operation_id.to_string(),
-                source: "flowchart TD\nA --> B".to_string(),
-                uri: expectation
-                    .requires_uri()
-                    .then(|| "file:///diagram.mmd".to_string()),
-                options_json: None,
-            };
-            let one_shot_result = one_shot.execute(request.clone());
-            let reusable_result = reusable.execute(request);
-
-            if expectation.compiled() {
-                let one_shot_result = one_shot_result
-                    .unwrap_or_else(|error| panic!("one-shot `{operation_id}` failed: {error}"));
-                let reusable_result = reusable_result
-                    .unwrap_or_else(|error| panic!("reusable `{operation_id}` failed: {error}"));
-
-                assert_eq!(one_shot_result, reusable_result, "operation={operation_id}");
-                assert_eq!(one_shot_result.operation_id, operation_id);
-                assert_eq!(one_shot_result.media_type, expectation.media_type());
-                assert_eq!(
-                    one_shot_result.metadata.version,
-                    expectation.metadata_schema_version()
-                );
-                let metadata: Value =
-                    serde_json::from_str(&one_shot_result.metadata.raw_json).unwrap();
-                assert_eq!(metadata["operation_id"], operation_id);
-                assert_eq!(metadata["media_type"], expectation.media_type());
-                assert_eq!(metadata["byte_length"], one_shot_result.data.len());
-                continue;
-            }
-
-            let unavailable = expectation
-                .unavailable()
-                .expect("every unavailable operation has a capability-owned error");
-            for error in [
-                one_shot_result.expect_err("one-shot unavailable operation must fail"),
-                reusable_result.expect_err("reusable unavailable operation must fail"),
-            ] {
-                let MermanError::Binding {
-                    code,
-                    code_name,
-                    kind,
-                    capability_id,
-                    ..
-                } = error;
-                assert_eq!(code, unavailable.status_code(), "operation={operation_id}");
-                assert_eq!(
-                    code_name,
-                    unavailable.status_name(),
-                    "operation={operation_id}"
-                );
-                assert_eq!(unavailable.error_kind(), "missing-capability");
-                assert_eq!(kind, MermanErrorKind::MissingCapability);
-                assert_eq!(
-                    capability_id.as_deref(),
-                    Some(unavailable.capability_id()),
-                    "operation={operation_id}"
-                );
-            }
-        }
     }
 
     #[cfg(feature = "svg")]
@@ -2121,13 +2087,14 @@ mod tests {
         assert_eq!(reusable, plan);
     }
 
-    #[cfg(feature = "svg")]
+    #[cfg(all(
+        feature = "svg",
+        not(feature = "layout-cytoscape"),
+        not(feature = "layout-elk"),
+        not(feature = "math")
+    ))]
     #[test]
-    fn optional_render_capabilities_follow_the_uniffi_owner_contract() {
-        assert!(!cfg!(feature = "layout-cytoscape"));
-        assert!(!cfg!(feature = "layout-elk"));
-        assert!(!cfg!(feature = "math"));
-
+    fn ambient_render_dependencies_do_not_widen_the_uniffi_owner_contract() {
         let facade = engine();
         let catalog: Value = serde_json::from_str(&facade.runtime_catalog_json().unwrap()).unwrap();
         let capability_ids = catalog["capabilities"]["capability_ids"]
@@ -2254,10 +2221,15 @@ mod tests {
         assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
         assert_eq!(result.data, bytes);
         assert_eq!(result.metadata.byte_length, result.data.len() as u64);
-        assert!(matches!(
-            result.metadata.output_plan,
-            Some(MermanOutputPlan::Raster { .. })
-        ));
+        let plan = result
+            .metadata
+            .output_plan
+            .expect("PNG metadata must include a raster plan");
+        assert_eq!(plan.kind, "raster");
+        assert!(plan.raster.is_some());
+        assert_eq!(plan.pdf_filter_images, None);
+        let raw: Value = serde_json::from_str(&plan.raw_json).unwrap();
+        assert_eq!(raw["kind"], "raster");
     }
 
     #[cfg(feature = "jpeg")]
@@ -2272,10 +2244,20 @@ mod tests {
     #[cfg(feature = "pdf")]
     #[test]
     fn engine_exposes_real_pdf_output() {
-        let bytes = engine()
-            .render_pdf("flowchart TD\nA[Hello] --> B[World]".to_string(), None)
-            .unwrap();
+        let source = "flowchart TD\nA[Hello] --> B[World]".to_string();
+        let bytes = engine().render_pdf(source.clone(), None).unwrap();
+        let result = engine().render_pdf_result(source, None).unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
+        assert_eq!(result.data, bytes);
+        let plan = result
+            .metadata
+            .output_plan
+            .expect("PDF metadata must include a filter-images plan");
+        assert_eq!(plan.kind, "pdf-filter-images");
+        assert_eq!(plan.raster, None);
+        assert!(plan.pdf_filter_images.is_some());
+        let raw: Value = serde_json::from_str(&plan.raw_json).unwrap();
+        assert_eq!(raw["kind"], "pdf-filter-images");
     }
 
     #[cfg(feature = "layout-cytoscape")]
@@ -2682,11 +2664,7 @@ mod tests {
                 "capability {capability_id} must follow merman-uniffi features"
             );
         }
-        let exposes_system_adapters = cfg!(all(
-            feature = "system-clock",
-            feature = "system-random",
-            feature = "system-timezone"
-        ));
+        let exposes_system_adapters = cfg!(feature = "native-runtime");
         let system_adapter_ids = runtime_catalog_value["capabilities"]["system_adapter_ids"]
             .as_array()
             .unwrap();
@@ -3011,6 +2989,38 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
+    fn engine_services_builder_is_immutable_and_order_independent() {
+        let registry = MermanIconRegistry::from_packs(Vec::new()).unwrap();
+        let measurer = CountingTextMeasurer::new();
+        let empty = MermanEngineServices::new();
+
+        let icon_only = empty.with_icon_registry(registry.clone());
+        let text_only = empty.with_text_measurer(measurer.clone());
+        assert!(empty.icon_registry.is_none());
+        assert!(empty.text_measurer.is_none());
+        assert!(icon_only.icon_registry.is_some());
+        assert!(icon_only.text_measurer.is_none());
+        assert!(text_only.icon_registry.is_none());
+        assert!(text_only.text_measurer.is_some());
+
+        let icon_then_text = icon_only.with_text_measurer(measurer.clone());
+        let text_then_icon = text_only.with_icon_registry(registry);
+        assert!(icon_then_text.icon_registry.is_some());
+        assert!(icon_then_text.text_measurer.is_some());
+        assert!(text_then_icon.icon_registry.is_some());
+        assert!(text_then_icon.text_measurer.is_some());
+
+        MermanEngine::new(None, Some(icon_then_text)).unwrap();
+        MermanEngine::new(None, Some(text_then_icon)).unwrap();
+        assert_eq!(
+            measurer.calls(),
+            0,
+            "service composition must not call the host"
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
     fn reusable_engine_uses_host_text_measurer() {
         let measurer = CountingTextMeasurer::new();
         let reusable = callback_engine(None, measurer.clone());
@@ -3038,7 +3048,7 @@ mod tests {
     #[test]
     fn constructor_services_reject_explicit_text_measurement_without_calling_the_host() {
         let measurer = CountingTextMeasurer::new();
-        let services = MermanEngineServices::new(None, Some(measurer.clone()));
+        let services = MermanEngineServices::new().with_text_measurer(measurer.clone());
         let error = match MermanEngine::new(
             Some(r#"{"environment":{"text_measurement":"deterministic"}}"#.to_string()),
             Some(services),
@@ -3071,7 +3081,7 @@ mod tests {
         assert_eq!(registry.len(), 1);
         assert!(!registry.is_empty());
 
-        let services = MermanEngineServices::new(Some(registry), None);
+        let services = MermanEngineServices::new().with_icon_registry(registry);
         let first = MermanEngine::new(None, Some(services.clone())).unwrap();
         let second = MermanEngine::new(None, Some(services)).unwrap();
         for engine in [first, second] {
@@ -3093,7 +3103,7 @@ A@{ icon: "test:rocket", label: "A" }"#
         assert_eq!(registry.len(), 0);
         assert!(registry.is_empty());
 
-        let services = MermanEngineServices::new(Some(registry), None);
+        let services = MermanEngineServices::new().with_icon_registry(registry);
         let engine = MermanEngine::new(None, Some(services)).unwrap();
         let semantic = engine
             .parse_json("flowchart TD\nA --> B".to_string(), None)
@@ -3482,7 +3492,8 @@ A@{ icon: "test:rocket", label: "A" }"#
     #[cfg(not(feature = "svg"))]
     #[test]
     fn text_measurer_api_remains_visible_and_reports_missing_svg_capability() {
-        let services = MermanEngineServices::new(None, Some(Arc::new(UnavailableTextMeasurer)));
+        let services =
+            MermanEngineServices::new().with_text_measurer(Arc::new(UnavailableTextMeasurer));
         let constructor_error = match MermanEngine::new(None, Some(services)) {
             Ok(_) => panic!("text-measurer service must require svg"),
             Err(error) => error,

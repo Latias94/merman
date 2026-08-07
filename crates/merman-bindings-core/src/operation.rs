@@ -807,7 +807,7 @@ impl BindingEngine {
                 self.execute_admitted_output(admitted, request.source, request.uri)
             }
             crate::engine::PreparedRequestOverlay::Override(configs) => {
-                self.execute_request_projection(admitted, configs, request.source, request.uri)
+                self.execute_request_projection(admitted, *configs, request.source, request.uri)
             }
         }?;
         Ok(BindingOperationExecution { operation, output })

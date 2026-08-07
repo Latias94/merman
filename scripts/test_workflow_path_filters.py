@@ -82,7 +82,6 @@ class WorkflowPathFilterTests(unittest.TestCase):
             "platforms/python/legal/rust-cargo-dependencies/*.json",
             "rust-toolchain.toml",
             "scripts/artifact_profile_recipe.py",
-            "scripts/ffi_contract_*.py",
             "scripts/generate-rust-license-report.py",
             "scripts/python_wheel_licenses.py",
             "scripts/strict_json.py",

@@ -16,11 +16,11 @@ class MermanEngine(
     private var handle: Long
 
     init {
-        val registry = services?.iconRegistry
-        handle = if (registry == null) {
+        val iconPackSet = services?.iconPackSet
+        handle = if (iconPackSet == null) {
             nativeNew(optionsJson, emptyArray(), emptyArray(), services?.textMeasurer)
         } else {
-            registry.withBorrowedPacks { packJson, registrationNames ->
+            iconPackSet.withBorrowedPacks { packJson, registrationNames ->
                 nativeNew(optionsJson, packJson, registrationNames, services.textMeasurer)
             }
         }

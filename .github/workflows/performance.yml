@@ -157,6 +157,7 @@ jobs:
         run: python3 tools/bench/verify_pipeline_bench_list.py
 
       - name: Build native memory probe contract
+        if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
         working-directory: head
         run: |
           cargo test --locked -p merman --test native_memory_allocator

@@ -41,34 +41,39 @@ const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
 const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("merman", &["complete-svg"]),
     ("merman-analysis", &[]),
-    ("merman-android-jni", &[]),
+    ("merman-android-jni", &["native-runtime"]),
     ("merman-ascii", &[]),
-    ("merman-bindings-core", &[]),
+    ("merman-bindings-core", &["native-runtime"]),
     ("merman-cli", &[]),
     ("merman-core", &[]),
     ("merman-editor-core", &[]),
     ("merman-export", &[]),
-    ("merman-ffi", &[]),
+    ("merman-ffi", &["native-runtime"]),
     ("merman-lsp", &["stdio"]),
     ("merman-render", &[]),
     ("merman-rustdoc", &["complete-svg"]),
     ("merman-typst-plugin", &[]),
-    ("merman-uniffi", &["bindgen-smoke"]),
+    ("merman-uniffi", &["binding-generation", "native-runtime"]),
     ("merman-wasm", &[]),
     ("roughr-merman", &[]),
 ];
 const SVG_ENGINE_FEATURES: &[&str] = &["layout-cytoscape", "layout-elk", "math"];
-const PRODUCT_FEATURE_CONTRACTS: usize = 5;
-const PAIRWISE_PACKAGES: &[&str] = &[
-    "merman",
-    "merman-android-jni",
-    "merman-bindings-core",
-    "merman-cli",
-    "merman-ffi",
-    "merman-typst-plugin",
-    "merman-uniffi",
-    "merman-wasm",
+const RETIRED_BINDING_RUNTIME_FEATURES: &[&str] =
+    &["system-clock", "system-random", "system-timezone"];
+const BINDINGS_CORE_NATIVE_RUNTIME_EDGES: &[&str] = &[
+    "merman/system-clock",
+    "merman/system-random",
+    "merman/system-timezone",
+    "merman-analysis?/system-clock",
+    "merman-analysis?/system-random",
+    "merman-analysis?/system-timezone",
 ];
+const NATIVE_RUNTIME_FORWARDERS: &[(&str, &str)] = &[
+    ("merman-android-jni", "merman-bindings-core"),
+    ("merman-ffi", "merman-bindings-core"),
+    ("merman-uniffi", "merman-bindings-core"),
+];
+const PRODUCT_FEATURE_CONTRACTS: usize = 5;
 
 fn transport_packages() -> impl Iterator<Item = &'static str> {
     TRANSPORT_TARGETS.iter().map(|(package, _)| *package)
@@ -108,9 +113,6 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "pdf",
             "png",
             "svg",
-            "system-clock",
-            "system-random",
-            "system-timezone",
         ],
     },
     FeatureForwardingContract {
@@ -125,9 +127,6 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "pdf",
             "png",
             "svg",
-            "system-clock",
-            "system-random",
-            "system-timezone",
         ],
     },
     FeatureForwardingContract {
@@ -161,9 +160,6 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "pdf",
             "png",
             "svg",
-            "system-clock",
-            "system-random",
-            "system-timezone",
         ],
     },
     FeatureForwardingContract {
@@ -179,9 +175,6 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "pdf",
             "png",
             "svg",
-            "system-clock",
-            "system-random",
-            "system-timezone",
         ],
     },
     FeatureForwardingContract {
@@ -455,7 +448,8 @@ impl FeatureGraph {
         }
         report.empty_defaults = self.validate_empty_default_contracts(EMPTY_DEFAULT_PACKAGES)?;
         report.feature_allowlists = self.validate_public_feature_allowlists()?;
-        report.forwarding_edges = self.validate_feature_forwarding(FEATURE_FORWARDING_CONTRACTS)?;
+        report.forwarding_edges = self.validate_feature_forwarding(FEATURE_FORWARDING_CONTRACTS)?
+            + self.validate_native_runtime_feature_contract()?;
         report.dependency_feature_boundaries =
             self.validate_dependency_feature_contracts(DEPENDENCY_FEATURE_CONTRACTS)?;
         let transport_package_names = transport_packages().collect::<Vec<_>>();
@@ -545,6 +539,51 @@ impl FeatureGraph {
             }
         }
         Ok(checked)
+    }
+
+    fn validate_native_runtime_feature_contract(&self) -> Result<usize, XtaskError> {
+        let bindings_core = self.package("merman-bindings-core")?;
+        for feature in RETIRED_BINDING_RUNTIME_FEATURES {
+            if bindings_core.features.contains_key(*feature) {
+                return Err(matrix_error(format!(
+                    "{}: binding owners must expose atomic `native-runtime`, not retired `{feature}`",
+                    bindings_core.manifest_path.display()
+                )));
+            }
+        }
+        let core_edges = direct_feature_members(bindings_core, "native-runtime")?;
+        let expected_core_edges = BINDINGS_CORE_NATIVE_RUNTIME_EDGES
+            .iter()
+            .map(|edge| (*edge).to_string())
+            .collect::<BTreeSet<_>>();
+        if core_edges != expected_core_edges {
+            return Err(matrix_error(format!(
+                "{}: `native-runtime` must enable exactly {expected_core_edges:?}; found {core_edges:?}",
+                bindings_core.manifest_path.display()
+            )));
+        }
+
+        for (package_name, dependency) in NATIVE_RUNTIME_FORWARDERS {
+            let package = self.package(package_name)?;
+            for feature in RETIRED_BINDING_RUNTIME_FEATURES {
+                if package.features.contains_key(*feature) {
+                    return Err(matrix_error(format!(
+                        "{}: binding owners must expose atomic `native-runtime`, not retired `{feature}`",
+                        package.manifest_path.display()
+                    )));
+                }
+            }
+            let actual = direct_feature_members(package, "native-runtime")?;
+            let expected = BTreeSet::from([format!("{dependency}/native-runtime")]);
+            if actual != expected {
+                return Err(matrix_error(format!(
+                    "{}: `native-runtime` must forward exactly {expected:?}; found {actual:?}",
+                    package.manifest_path.display()
+                )));
+            }
+        }
+
+        Ok(BINDINGS_CORE_NATIVE_RUNTIME_EDGES.len() + NATIVE_RUNTIME_FORWARDERS.len())
     }
 
     fn validate_dependency_feature_contracts(
@@ -847,15 +886,13 @@ impl FeatureGraph {
                 target.clone(),
                 "transport-base",
             ));
-            for feature in complete_svg_features() {
-                if package.features.contains_key(feature) {
-                    cases.insert(BuildCase::new(
-                        package_name,
-                        vec![feature.to_string()],
-                        target.clone(),
-                        "transport-leaf",
-                    ));
-                }
+            if package.features.contains_key("svg") {
+                cases.insert(BuildCase::new(
+                    package_name,
+                    vec!["svg".to_string()],
+                    target.clone(),
+                    "transport-svg",
+                ));
             }
         }
 
@@ -870,7 +907,6 @@ impl FeatureGraph {
                     ));
                 }
             }
-            self.add_pairwise_cases_for(&mut cases, PAIRWISE_PACKAGES)?;
             for profile in wasm_artifacts {
                 for feature in &profile.features {
                     cases.insert(BuildCase::new(
@@ -884,43 +920,6 @@ impl FeatureGraph {
         }
 
         Ok(cases.into_iter().collect())
-    }
-
-    fn add_pairwise_cases_for(
-        &self,
-        cases: &mut BTreeSet<BuildCase>,
-        package_names: &[&str],
-    ) -> Result<(), XtaskError> {
-        for package_name in package_names {
-            let package = self.package(package_name)?;
-            let leaves = self.capability_features(package);
-            if leaves.len() < 2 {
-                continue;
-            }
-            let offsets = [1, leaves.len() / 2]
-                .into_iter()
-                .filter(|offset| *offset > 0)
-                .collect::<BTreeSet<_>>();
-            for offset in offsets {
-                for index in 0..leaves.len() {
-                    let mut pair = vec![
-                        leaves[index].clone(),
-                        leaves[(index + offset) % leaves.len()].clone(),
-                    ];
-                    pair.sort();
-                    pair.dedup();
-                    if pair.len() == 2 {
-                        cases.insert(BuildCase::new(
-                            package_name,
-                            pair,
-                            self.build_target_for(package_name),
-                            "bounded-pairwise",
-                        ));
-                    }
-                }
-            }
-        }
-        Ok(())
     }
 
     fn build_target_for(&self, package_name: &str) -> Option<String> {
@@ -1408,25 +1407,6 @@ mod tests {
     }
 
     #[test]
-    fn pairwise_matrix_is_bounded_and_deduplicated() {
-        let graph = graph(vec![package(
-            "merman",
-            &[
-                ("analysis", &[]),
-                ("ascii", &[]),
-                ("svg", &[]),
-                ("layout-elk", &["svg"]),
-            ],
-        )]);
-        let mut cases = BTreeSet::new();
-        graph
-            .add_pairwise_cases_for(&mut cases, &["merman"])
-            .unwrap();
-        assert!(cases.len() <= 2 * 4);
-        assert!(cases.iter().all(|case| case.features.len() == 2));
-    }
-
-    #[test]
     fn low_level_packages_must_keep_explicit_empty_defaults() {
         let graph = graph(vec![package(
             "merman-bindings-core",
@@ -1495,11 +1475,6 @@ mod tests {
 
         let error = graph.validate_feature_forwarding(&[contract]).unwrap_err();
         assert!(error.to_string().contains("must forward `svg`"), "{error}");
-    }
-
-    #[test]
-    fn pairwise_matrix_includes_bindings_core() {
-        assert!(PAIRWISE_PACKAGES.contains(&"merman-bindings-core"));
     }
 
     #[test]

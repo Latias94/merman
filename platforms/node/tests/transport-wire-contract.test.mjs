@@ -576,4 +576,18 @@ test("binding option normalization rejects non-JSON host values without invoking
     /enumerable data property/i,
   );
   assert.equal(getterCalled, false);
+
+  const accessorArray = [0];
+  Object.defineProperty(accessorArray, "0", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return 1;
+    },
+  });
+  assert.throws(
+    () => normalizeBindingOptions({ accessorArray }),
+    /enumerable data property/i,
+  );
+  assert.equal(getterCalled, false);
 });

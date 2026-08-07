@@ -72,6 +72,11 @@ values and must retain the catalog's sorted-ID rules. Legacy schema-1 producers 
 option-group and constructor-service sections; if either section is present, its known entries are
 validated. Exact package-version equality is intentionally not required.
 
+The internal `merman-android-jni` crate compiles native runtime support through the atomic
+`native-runtime` feature; it does not expose separate clock, time-zone, or random Cargo switches.
+The catalog deliberately retains the concrete adapter IDs because those IDs describe callable
+runtime services rather than the artifact assembly feature.
+
 Read the validated catalog with `Merman.runtimeCatalogJson()`:
 
 ```json
@@ -138,16 +143,16 @@ cannot be answered accurately and Merman falls back per request. Callback except
 the JNI boundary and likewise fall back for that request, but hosts should log them because repeated
 fallback can change geometry.
 
-## Immutable Icon Registry Inputs
+## Immutable Icon Pack Snapshots
 
-`MermanIconRegistry.fromPacks(...)` snapshots complete IconifyJSON collections or host-curated
-subsets as immutable Kotlin values. The snapshot can be shared through `MermanEngineServices`
-across multiple engine constructors and exposes neither mutation nor lifecycle methods. Each
-constructor borrows fresh string arrays for one synchronous native call, validates and parses the
-packs transactionally within the fixed limits reported by the runtime catalog, and returns only
-after that engine owns the parsed registry. JNI therefore publishes no separate registry handle.
-Merman performs no filesystem, package, or network acquisition, so hosts must acquire and pre-trim
-packs themselves.
+`MermanIconPackSet.fromPacks(...)` snapshots complete IconifyJSON collections or host-curated
+subsets as one immutable Kotlin value. Install it as `MermanEngineServices.iconPackSet`; the same
+pack set can be shared across multiple engine constructors and exposes neither mutation nor
+lifecycle methods. Each constructor borrows fresh string arrays for one synchronous native call,
+validates and parses the packs transactionally within the fixed limits reported by the runtime
+catalog, and returns only after that engine owns the parsed registry. JNI therefore publishes no
+separate registry handle. Merman performs no filesystem, package, or network acquisition, so hosts
+must acquire and pre-trim packs themselves.
 
 Pack input is untrusted: parsing, retained data, aliases, XML structure, identifier scoping, and
 per-operation expansion are bounded. Icon fragments are sanitized under the effective Mermaid
@@ -172,7 +177,6 @@ The Android release artifact is built from the descriptor-owned `android-native`
 
 ```bash
 python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
-python3 scripts/verify-platform-bindings.py --build-android-slices
 ```
 
 The platform verifier compiles the Kotlin declarations against an Android SDK `android.jar` and
@@ -186,5 +190,7 @@ and callback-exception cleanup:
 python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke
 ```
 
-`platforms/android/examples/MermanSmoke.kt` covers runtime catalog validation, generic output
-calls, reusable-engine lifecycle, and the text-measurement operation contract.
+`platforms/android/examples/MermanSmoke.kt` is intentionally narrow: it proves that the packaged
+AAR loads, renders SVG, installs immutable icon and text-measurement services, and closes cleanly.
+Owner-local Rust and Kotlin tests carry exhaustive catalog, error, output, protocol, and lifecycle
+contracts.

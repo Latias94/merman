@@ -8,8 +8,8 @@
     "operation_code_count": 14,
     "error_kind_count": 5,
     "callback_count": 1,
-    "function_slot_count": 5,
-    "record_count": 9
+    "function_slot_count": 7,
+    "record_count": 11
   },
   "minimum_semantics": [
     {
@@ -52,13 +52,6 @@
       "id": "callback-state-is-constructor-owned-until-quiescent-close",
       "description": "Callback and user_data are immutable constructor-owned engine state, remain valid until successful quiescent engine_try_close, and may be released only after that close succeeds."
     }
-  ],
-  "append_points": [
-    { "category": "operation_codes", "after_id": "svg_plan_json" },
-    { "category": "function_slots", "after_id": "metadata_collect" },
-    { "category": "records", "after_id": "api" },
-    { "category": "ownership_rules", "after_id": "disabled_capabilities" },
-    { "category": "caller_memory_rules", "after_id": "caller_memory_validity" }
   ],
   "opaque_scalars": [
     {

@@ -14,7 +14,7 @@ used by release examples and Flutter packaging.
 
 ```sh
 # Full native SDK artifact.
-cargo build -p merman-ffi --release --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random
+cargo build -p merman-ffi --release --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
 
 # Smaller explicit artifacts.
 cargo build -p merman-ffi --release --no-default-features --features svg
@@ -22,14 +22,17 @@ cargo build -p merman-ffi --release --no-default-features --features analysis
 ```
 
 `merman-ffi` produces `cdylib`, `staticlib`, and `rlib`. C and C-compatible hosts must ship a
-header and native library from the same Merman release. Cargo features describe a build request;
-the loaded artifact's runtime catalog describes what is actually callable.
+header and native library from the same Merman release. `native-runtime` is an atomic binding
+feature that compiles the system clock, time-zone, and random adapters together; partial native
+runtime feature sets are not exposed by this crate. Cargo features describe a build request, while
+the loaded artifact's runtime catalog describes what is actually callable through the concrete
+`system-clock`, `system-timezone`, and `system-random` adapter IDs.
 
 ## Discovery
 
 `merman_get_native_api` is the sole C ABI entry symbol. It returns the common prefix of a
 size-tagged function table only after the host proves it understands the declared ABI version and
-frozen minimum-prefix layout.
+the descriptor-derived minimum-prefix layout.
 
 ```c
 MermanNativeSlice prefix_digest = {
@@ -52,26 +55,21 @@ if (merman_get_native_api(&request, &api) != MERMAN_NATIVE_STATUS_OK) {
 ```
 
 `api.struct_size` is input capacity and reports the largest complete producer prefix safely
-initialized within that capacity on success. The ABI 3 minimum prefix ends after the five ordered slots `runtime_catalog`, `engine_new`,
-`engine_try_close`, `execute_collect`, and `result_free`. A newer producer may append fields after
-that prefix. An older consumer supplies its own table capacity, consumes only fields that fit in
-that capacity, and verifies every function pointer it calls. Merman never reports or exposes a
-partial appended slot; a host may reuse the returned value as the next discovery capacity. Do not
-reconstruct function names or dynamically look up per-operation exports.
+initialized within that capacity on success. This capacity negotiation is a memory-safety boundary,
+not a promise that historical partial tables remain supported. Release consumers use the complete
+generated table, require every function pointer they call, and never reconstruct function names or
+dynamically look up per-operation exports.
 
-The current table appends `metadata_collect` at function-slot code `5` and
-`engine_new_with_services` at code `6`. Neither is part of the frozen minimum. Before reading or
-calling an appended field, a host must verify that the complete prefix size reported in
-`api.struct_size` reaches the generated field boundary and that the function pointer is non-null.
-A compatible producer exposing only the five-slot minimum or published six-slot prefix remains
-discoverable.
+The current table includes `metadata_collect` at function-slot code `5` and
+`engine_new_with_services` at code `6`. Release consumers require both functions and must not fall
+back to the older constructor or silently discard constructor services.
 
 The returned digests have separate roles:
 
-- `minimum_prefix_layout_digest` is the compatibility key checked by discovery. Its frozen
-  structure includes the ABI 3 minimum records, codes, callback, and five function slots.
+- `minimum_prefix_layout_digest` is the compatibility key checked by discovery. Its structure is
+  derived from the descriptor's ABI 3 minimum records, codes, callback, and function slots.
 - `full_descriptor_digest` identifies the producer's complete descriptor. It can change after
-  append-only additions without making the frozen prefix incompatible.
+  additions without changing the descriptor-selected minimum prefix.
 - `capability_catalog_digest` identifies the loaded artifact's runtime capability catalog. Two
   ABI-compatible artifacts can intentionally have different capability digests.
 
@@ -368,50 +366,42 @@ catch a foreign exception. A language binding must catch callback failures on th
 return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`. In C++17 and newer, the generated callback and
 function-pointer types are declared `noexcept` to make this contract visible to the type system.
 
-## Compatibility Rules
+## Contract Evolution Rules
 
-- Native ABI 3 is the current contract. Rebuild ABI 2 and pre-freeze ABI 3 consumers against this
-  header; see [ABI 3 migration](ABI3_MIGRATION.md).
-- Treat the ABI version and minimum-prefix layout digest as the runtime compatibility check. Treat
+- Native ABI 3 is the current contract. Rebuild ABI 2, prerelease ABI 3, and partial-table consumers
+  against this release-matched header; see [ABI 3 migration](ABI3_MIGRATION.md).
+- Treat the ABI version and descriptor-derived minimum-prefix layout digest as the runtime
+  compatibility check. Treat
   the full descriptor digest, capability catalog digest, package version, and generated
   C-consumer layout fingerprint as provenance evidence, not interchangeable compatibility keys.
-- Function slots and codes may only be appended. The frozen minimum prefix cannot change within
-  ABI 3; changing its layout requires ABI 4.
-- The immutable `abi/merman-v3-published-six.semantic.json` projection freezes the public
-  six-slot surface anchored to commit `5117c0ae12da2c0346b47061642286174cea3f5f`, including the
-  reviewed ABI 3 semantic hardening established with this verifier. The separate six-slot header
-  fixture remains byte-identical to that commit. The generated
-  `abi/merman-v3-current-full.semantic.json` projection freezes every subsequently reviewed ABI 3
-  entry. Both projections have separately compiled digests.
-- Semantic verification compares stable keys and complete entries before generated-file freshness.
-  Existing statuses, error kinds, callbacks, operations, records, fields, opaque scalars,
-  signatures, and ownership/lifecycle rules cannot be deleted, reordered, or changed. Only
-  descriptor-declared operation, record, function-slot, ownership-rule, and caller-memory-rule
-  append points may grow.
-- A valid append is a two-step review operation: `gen-native-abi` writes the candidate current-full
-  snapshot only after the old frozen snapshot passes its digest and monotonic checks; the verifier
-  then remains red until a maintainer reviews the diff and explicitly freezes the new digest.
-  Regenerating snapshots therefore cannot silently legitimize a semantic mutation.
-- Treat appended slots as optional ABI capabilities. Check the returned initialized-prefix size and
-  pointer before calling `metadata_collect`, `engine_new_with_services`, or any future appended
-  function.
+- Function slots and codes may only be appended. Changing an existing wire layout requires a new
+  ABI version.
+- The descriptor and generated Rust/C/Dart projections are the single current ABI authority.
+  Descriptor validation, the derived minimum-prefix layout digest, generated-file freshness, and
+  current-header lifecycle tests cover layout, ownership, token, status, and operation semantics.
+- A breaking semantic change is reviewed directly in `abi/merman-v3.json` and its generated
+  artifacts; no second semantic snapshot or hand-maintained approval digest is required.
+- A future generated header may add slots. Current consumers require the complete table they were
+  generated against instead of maintaining hand-written historical fallbacks.
 - Result ownership, token-domain/free behavior, callback non-local-exit prohibition, nonblocking
   close semantics, both constructors' storage separation and zero-output precondition,
   constructor-service ownership, caller-memory obligations, `NONE` handling, status-kind mappings,
-  and the closed error-kind vocabulary are frozen ABI 3 semantics. The descriptor verifier rejects
-  changes to these semantic projections.
+  and the closed error-kind vocabulary are defined in the descriptor and exercised by generated
+  consumer tests. Pre-release breaking changes update that authority directly instead of changing a
+  parallel freeze file.
 - Except for the API table's capacity negotiation, records require exact generated sizes. The
-  package's C smoke tests compile and run the current header plus frozen five-slot and published
-  six-slot consumers; applications do not need to duplicate a runtime offset probe.
+  package's C smoke test compiles and runs the current generated header; applications do not need
+  to duplicate a runtime offset probe.
 - Treat `MERMAN_NATIVE_RESULT_SCHEMA_VERSION`, error kind strings, and `capability_id` as one
   machine-readable failure contract.
 - Treat diagnostics and analysis-facts payload schema versions as independent contracts.
 - Ignore unknown JSON fields where a payload schema permits it, but never invent unknown native
   status codes, output IDs, capabilities, or record fields.
-- Select an artifact's direct leaf features deliberately (`svg`, `analysis`, `ascii`, `png`,
-  `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, `math`, and the relevant system adapters);
-  smaller artifacts must advertise and enforce their actual output subset. Cross-transport
-  preset names are not part of the native ABI contract.
+- Select an artifact's direct output features deliberately (`svg`, `analysis`, `ascii`, `png`,
+  `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, and `math`) and add `native-runtime` only when
+  the complete native runtime policy is required. Smaller artifacts must advertise and enforce
+  their actual output subset. The binding-owned aggregate is not a native ABI capability ID;
+  runtime discovery continues to expose the concrete system adapter IDs.
 
 See [`crates/merman-ffi/examples`](../../crates/merman-ffi/examples) for compilable C examples and
 [`docs/bindings/HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for platform measurement

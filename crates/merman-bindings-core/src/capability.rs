@@ -56,18 +56,10 @@ const COMPILED_CAPABILITY_BITS: u64 = COMPILED_SVG_CAPABILITY_BITS
     } else {
         0
     }
-    | if cfg!(feature = "system-clock") {
+    | if cfg!(feature = "native-runtime") {
         CapabilityKey::SystemClock.compact_bit()
-    } else {
-        0
-    }
-    | if cfg!(feature = "system-random") {
-        CapabilityKey::SystemRandom.compact_bit()
-    } else {
-        0
-    }
-    | if cfg!(feature = "system-timezone") {
-        CapabilityKey::SystemTimezone.compact_bit()
+            | CapabilityKey::SystemRandom.compact_bit()
+            | CapabilityKey::SystemTimezone.compact_bit()
     } else {
         0
     };

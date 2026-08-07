@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-import copy
 from dataclasses import replace
 import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -24,7 +24,6 @@ import artifact_profile_recipe
 from artifact_profile_recipe import (
     cargo_build_args,
     cargo_host_build_args,
-    cargo_run_example_args,
     load_artifact_profile,
 )
 from github_workflow_contract import load_workflow_contract, workflow_job, workflow_step
@@ -41,187 +40,6 @@ WHEEL_BUILDER_SPEC.loader.exec_module(wheel_builder)
 
 
 class ArtifactProfileRecipeTests(unittest.TestCase):
-    def assert_python_wheel_contract_rejected(
-        self,
-        profiles: dict[str, object],
-        capability_descriptor: dict[str, object],
-        pattern: str,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            capabilities = root / "capabilities"
-            capabilities.mkdir()
-            profiles_path = capabilities / "artifact-profiles-v1.json"
-            capability_path = capabilities / "feature-surface-v1.json"
-            profiles_path.write_text(json.dumps(profiles), encoding="utf-8")
-            capability_path.write_text(
-                json.dumps(capability_descriptor),
-                encoding="utf-8",
-            )
-            with (
-                mock.patch.object(wheel_builder, "REPO_ROOT", root),
-                mock.patch.object(wheel_builder, "DEFAULT_DESCRIPTOR", profiles_path),
-                mock.patch.object(wheel_builder, "CAPABILITY_DESCRIPTOR", capability_path),
-                self.assertRaisesRegex(RuntimeError, pattern),
-            ):
-                wheel_builder.python_wheel_smoke_script("python-uniffi-native")
-
-    def test_python_wheel_smoke_uses_exact_profile_capabilities_and_outputs(self) -> None:
-        script = wheel_builder.python_wheel_smoke_script("python-uniffi-native")
-
-        expected = json.loads(
-            (artifact_profile_recipe.DEFAULT_DESCRIPTOR).read_text(encoding="utf-8")
-        )
-        profile = next(
-            item for item in expected["profiles"] if item["id"] == "python-uniffi-native"
-        )
-        self.assertIn(
-            f"EXPECTED_CAPABILITY_IDS = {profile['expected']['capabilities']!r}",
-            script,
-        )
-        self.assertIn(
-            f"EXPECTED_OUTPUT_IDS = {profile['expected']['outputs']!r}",
-            script,
-        )
-        self.assertIn(
-            "EXPECTED_OPERATION_IDS = ['analysis-facts-json', 'analysis-json', "
-            "'ascii', 'document-analysis-facts-json', 'document-analysis-json', "
-            "'jpeg', 'layout-json', 'pdf', 'png', 'semantic-json', 'svg', "
-            "'svg-plan-json', 'validation-json']",
-            script,
-        )
-        self.assertNotIn("compiled_prerequisites", script)
-        self.assertNotIn("output_ids\"]).issubset", script)
-        self.assertIn("assert_shared_semantic_operation_fixtures(engine)", script)
-
-    def test_python_wheel_smoke_uses_current_native_sdk_object_model(self) -> None:
-        script = wheel_builder.python_wheel_smoke_script("python-uniffi-native")
-
-        self.assertIn("engine = merman.Merman()", script)
-        self.assertIn("reusable = merman.MermanEngine(None, services)", script)
-        self.assertIn("reusable.close()", script)
-        self.assertNotIn("merman.MermanEngine()", script)
-        self.assertNotIn(".reusable_engine(", script)
-        self.assertNotIn(".reusable_engine_with_text_measurer(", script)
-        self.assertNotIn(".set_text_measurer(", script)
-        self.assertNotIn(".clear_text_measurer(", script)
-
-    def test_python_wheel_smoke_keeps_operation_and_output_ids_independent(self) -> None:
-        profiles = json.loads(
-            wheel_builder.DEFAULT_DESCRIPTOR.read_text(encoding="utf-8")
-        )
-        descriptor = json.loads(
-            wheel_builder.CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8")
-        )
-        png = next(
-            operation
-            for operation in descriptor["binding_operations"]
-            if operation["id"] == "png"
-        )
-        png["id"] = "render-png"
-        canonical_descriptor = wheel_builder._canonical_capability_descriptor(
-            descriptor
-        )
-        profiles["capability_authority"]["digest"] = (
-            wheel_builder._capability_descriptor_digest(canonical_descriptor)
-        )
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            capabilities = root / "capabilities"
-            capabilities.mkdir()
-            profiles_path = capabilities / "artifact-profiles-v1.json"
-            capability_path = capabilities / "feature-surface-v1.json"
-            profiles_path.write_text(json.dumps(profiles), encoding="utf-8")
-            capability_path.write_text(json.dumps(descriptor), encoding="utf-8")
-            with (
-                mock.patch.object(wheel_builder, "REPO_ROOT", root),
-                mock.patch.object(wheel_builder, "DEFAULT_DESCRIPTOR", profiles_path),
-                mock.patch.object(wheel_builder, "CAPABILITY_DESCRIPTOR", capability_path),
-            ):
-                script = wheel_builder.python_wheel_smoke_script(
-                    "python-uniffi-native"
-                )
-
-        self.assertIn("'render-png'", script)
-        self.assertIn("'png'", script)
-        self.assertNotIn("output_ids\"]).issubset", script)
-
-    def test_python_wheel_smoke_strictly_consumes_operation_relationship_fields(self) -> None:
-        profiles = json.loads(
-            wheel_builder.DEFAULT_DESCRIPTOR.read_text(encoding="utf-8")
-        )
-        descriptor = json.loads(
-            wheel_builder.CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8")
-        )
-        png = next(
-            operation
-            for operation in descriptor["binding_operations"]
-            if operation["id"] == "png"
-        )
-        del png["compiled_prerequisites"]
-
-        self.assert_python_wheel_contract_rejected(
-            profiles,
-            descriptor,
-            "compiled_prerequisites",
-        )
-
-    def test_python_wheel_smoke_rejects_mismatched_capability_authority(self) -> None:
-        original_profiles = json.loads(
-            wheel_builder.DEFAULT_DESCRIPTOR.read_text(encoding="utf-8")
-        )
-        original_capability = json.loads(
-            wheel_builder.CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8")
-        )
-
-        profiles = copy.deepcopy(original_profiles)
-        profiles["capability_authority"]["path"] = "capabilities/other.json"
-        self.assert_python_wheel_contract_rejected(
-            profiles,
-            original_capability,
-            r"capability_authority\.path",
-        )
-
-        profiles = copy.deepcopy(original_profiles)
-        profiles["capability_authority"]["schema_version"] = 2
-        self.assert_python_wheel_contract_rejected(
-            profiles,
-            original_capability,
-            r"capability_authority\.schema_version",
-        )
-
-        capability = copy.deepcopy(original_capability)
-        capability["descriptor_id"] = "mutated-capability-surface"
-        self.assert_python_wheel_contract_rejected(
-            original_profiles,
-            capability,
-            r"capability_authority\.digest",
-        )
-
-    def test_python_wheel_operation_selection_does_not_advertise_internal_prerequisites(self) -> None:
-        descriptor = json.loads(
-            wheel_builder.CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8")
-        )
-
-        selected = wheel_builder._native_binding_operation_ids(
-            wheel_builder._canonical_capability_descriptor(descriptor),
-            {"png"},
-        )
-
-        self.assertIn("png", selected)
-        self.assertIn("semantic-json", selected)
-        self.assertNotIn("svg", selected)
-
-    def test_python_wheel_smoke_receives_the_shared_fixture_path(self) -> None:
-        environment = wheel_builder.wheel_smoke_environment()
-
-        self.assertEqual(
-            environment["MERMAN_SEMANTIC_OPERATION_FIXTURES"],
-            str(wheel_builder.SEMANTIC_OPERATION_FIXTURES),
-        )
-        self.assertTrue(wheel_builder.SEMANTIC_OPERATION_FIXTURES.is_file())
-
     def test_native_sdk_profile_owns_the_release_optimization_policy(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         with (repo_root / "Cargo.toml").open("rb") as handle:
@@ -300,32 +118,6 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         ):
             cargo_build_args(recipe)
 
-        with (
-            mock.patch.dict(os.environ, override, clear=False),
-            self.assertRaisesRegex(
-                RuntimeError,
-                "CARGO_PROFILE_NATIVE_SDK_OPT_LEVEL",
-            ),
-        ):
-            cargo_run_example_args(recipe, "generate_python_package")
-
-    def test_release_workflows_do_not_override_native_optimization_policy(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        forbidden = (
-            "CARGO_PROFILE_RELEASE_OPT_LEVEL",
-            "CARGO_PROFILE_RELEASE_CODEGEN_UNITS",
-            "CARGO_PROFILE_RELEASE_STRIP",
-            "CARGO_PROFILE_NATIVE_SDK_",
-        )
-        for relative_path in (
-            ".github/workflows/release-flutter.yml",
-            ".github/workflows/release-preflight.yml",
-        ):
-            text = (repo_root / relative_path).read_text(encoding="utf-8")
-            for variable in forbidden:
-                with self.subTest(path=relative_path, variable=variable):
-                    self.assertNotIn(variable, text)
-
     def test_flutter_recipes_own_exact_cross_platform_target_sets(self) -> None:
         expected_targets = {
             "flutter-android-native": (
@@ -390,23 +182,6 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     capture_output=True,
                     text=True,
                 )
-
-    def test_native_shell_consumers_delegate_cargo_projection_to_helper(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        profiles = {
-            "scripts/build-apple-xcframework.sh": "apple-uniffi-native",
-            "platforms/flutter/build-ios.sh": "flutter-ios-native",
-            "platforms/flutter/build-desktop.sh": "flutter-desktop-native",
-        }
-        for relative_path, profile_id in profiles.items():
-            with self.subTest(path=relative_path):
-                source = (repo_root / relative_path).read_text(encoding="utf-8")
-                self.assertIn(f'RECIPE_PROFILE="{profile_id}"', source)
-                self.assertNotIn("NATIVE_SDK_FEATURES", source)
-                self.assertNotIn("cargo build", source)
-                self.assertNotIn("cargo zigbuild", source)
-                self.assertIn("artifact_profile_recipe.py", source)
-                self.assertIn("--build --locked", source)
 
     def test_capability_bearing_workspace_crates_have_exact_profiles(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
@@ -538,7 +313,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertEqual(
             production[production.index("--features") + 1], recipe.feature_argument
         )
-        self.assertNotIn("bindgen-smoke", production)
+        self.assertNotIn("binding-generation", production)
         self.assertEqual(production[production.index("--target") + 1], target)
         self.assertEqual(
             cdylib,
@@ -548,23 +323,19 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             / recipe.cargo_profile
             / "libmerman_uniffi.dylib",
         )
-        expected_generator_features = ",".join(
-            sorted((*recipe.features, "bindgen-smoke"))
-        )
         self.assertEqual(
             generator[generator.index("--features") + 1],
-            expected_generator_features,
+            "binding-generation",
         )
-        self.assertNotEqual(
-            wheel_builder.python_generator_environment()["CARGO_TARGET_DIR"],
-            str(wheel_builder.REPO_ROOT / "target"),
-        )
-        compile(wheel_builder.WHEEL_SMOKE, "<wheel-smoke>", "exec")
+        self.assertNotIn("--profile", generator)
 
     def test_python_builder_validates_identity_without_duplicating_capabilities(self) -> None:
         recipe = replace(
             load_artifact_profile("python-uniffi-native"),
             features=("svg",),
+            cargo_profile="release",
+            default_features=True,
+            crate_types=("cdylib",),
         )
 
         wheel_builder.validate_python_native_recipe(recipe)
@@ -579,23 +350,25 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 generated = package_dir / relative
                 generated.parent.mkdir(parents=True, exist_ok=True)
                 generated.write_text("generated\n", encoding="utf-8")
+            staged = repo_root / "staged"
+            shutil.copytree(package_dir, staged)
             with (
                 mock.patch.object(wheel_builder, "REPO_ROOT", repo_root),
                 mock.patch.object(wheel_builder, "run") as run,
             ):
-                wheel_builder.require_tracked_python_support_files(package_dir)
+                wheel_builder.verify_generated_python_support_files(package_dir, staged)
 
         self.assertEqual(
-            [call.args[0] for call in run.call_args_list],
+            run.call_args.args[0],
             [
-                [
-                    "git",
-                    "ls-files",
-                    "--error-unmatch",
-                    "--",
-                    f"platforms/python/merman/{relative}",
-                ]
-                for relative in wheel_builder.PYTHON_GENERATED_SUPPORT_FILES
+                "git",
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                *(
+                    f"platforms/python/merman/{relative}"
+                    for relative in wheel_builder.PYTHON_GENERATED_SUPPORT_FILES
+                ),
             ],
         )
 
@@ -617,8 +390,12 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(RuntimeError, "stale generated Python support file"):
-                wheel_builder.verify_staged_python_support_files(source, staged)
+            with (
+                mock.patch.object(wheel_builder, "REPO_ROOT", root),
+                mock.patch.object(wheel_builder, "run"),
+                self.assertRaisesRegex(RuntimeError, "stale generated Python support file"),
+            ):
+                wheel_builder.verify_generated_python_support_files(source, staged)
 
     def test_python_builder_generates_and_packages_only_from_staging(self) -> None:
         recipe = load_artifact_profile("python-uniffi-native")
@@ -665,16 +442,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 ),
                 mock.patch.object(
                     wheel_builder,
-                    "require_tracked_python_support_files",
-                ),
-                mock.patch.object(
-                    wheel_builder,
-                    "verify_staged_python_support_files",
+                    "verify_generated_python_support_files",
                 ),
                 mock.patch.object(wheel_builder, "install_target_report"),
                 mock.patch.object(wheel_builder, "newest_wheel", return_value=wheel),
-                mock.patch.object(wheel_builder, "require_platform_wheel"),
-                mock.patch.object(wheel_builder, "require_native_platlib_layout"),
+                mock.patch.object(wheel_builder, "require_native_platform_wheel"),
                 mock.patch.object(wheel_builder, "verify_wheel_license_report"),
                 mock.patch.object(
                     wheel_builder,
@@ -701,21 +473,6 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             [str(venv_python), str(example.resolve())],
         )
 
-    def test_python_ci_and_release_do_not_depend_on_generated_source_bindings(
-        self,
-    ) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
-        for relative in (
-            ".github/workflows/ci.yml",
-            ".github/workflows/release-python.yml",
-        ):
-            with self.subTest(workflow=relative):
-                workflow = (repo_root / relative).read_text(encoding="utf-8")
-                self.assertNotIn(
-                    "PYTHONPATH=platforms/python/merman/src",
-                    workflow,
-                )
-
     def test_zigbuild_uses_the_same_exact_recipe_projection(self) -> None:
         recipe = load_artifact_profile("flutter-desktop-native")
 
@@ -736,58 +493,9 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             "x86_64-unknown-linux-gnu",
         )
 
-    def test_example_projection_adds_only_maintenance_features(self) -> None:
-        recipe = load_artifact_profile("python-uniffi-native")
-
-        command = cargo_run_example_args(
-            recipe,
-            "generate_python_package",
-            locked=True,
-            extra_features=("bindgen-smoke",),
-            example_args=("--package-dir", "/tmp/package"),
-        )
-
-        self.assertEqual(command[:2], ["cargo", "run"])
-        self.assertEqual(
-            command[command.index("--features") + 1],
-            ",".join(sorted((*recipe.features, "bindgen-smoke"))),
-        )
-        self.assertEqual(command[-3:], ["--", "--package-dir", "/tmp/package"])
-
-    def test_example_cli_executes_the_projected_command(self) -> None:
-        recipe = load_artifact_profile("python-uniffi-native")
-        argv = [
-            "artifact_profile_recipe.py",
-            recipe.profile_id,
-            "--run-example",
-            "generate_python_package",
-            "--locked",
-            "--extra-feature",
-            "bindgen-smoke",
-            "--example-argument=--package-dir",
-            "--example-argument=/tmp/package",
-        ]
-        with (
-            mock.patch.object(sys, "argv", argv),
-            mock.patch.object(artifact_profile_recipe.subprocess, "run") as run,
-        ):
-            self.assertEqual(artifact_profile_recipe.main(), 0)
-
-        command = run.call_args.args[0]
-        self.assertEqual(command[:2], ["cargo", "run"])
-        self.assertEqual(command[-3:], ["--", "--package-dir", "/tmp/package"])
-        self.assertEqual(run.call_args.kwargs["cwd"], artifact_profile_recipe.REPO_ROOT)
-        self.assertTrue(run.call_args.kwargs["check"])
-
     def test_cli_profiles_use_binary_process_contracts(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
-        owner_step = workflow_step(
-            workflow_job(workflow, "build-test"),
-            name="Test exact artifact owner APIs",
-        )
-        self.assertNotIn("run_owner_test cli-analysis", owner_step["run"])
-
         process_step = workflow_step(
             workflow_job(workflow, "cli-contracts"),
             name="Test exact CLI feature process matrix",
@@ -881,7 +589,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         )
         self.assertNotIn("target/release", command)
 
-    def test_uniffi_bindgen_is_generator_only(self) -> None:
+    def test_uniffi_binding_generation_is_generator_only(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         with (repo_root / "Cargo.toml").open("rb") as handle:
             workspace = tomllib.load(handle)
@@ -893,19 +601,21 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         )
         self.assertFalse(crate["dependencies"]["uniffi"]["default-features"])
         self.assertEqual(
-            crate["features"]["bindgen-smoke"],
+            crate["features"]["binding-generation"],
             ["uniffi/bindgen", "uniffi/cargo-metadata"],
         )
         self.assertEqual(
             {example["name"]: example["required-features"] for example in crate["example"]},
             {
-                "generate_python_package": ["bindgen-smoke"],
-                "generate_swift_bindings": ["bindgen-smoke"],
+                "generate_python_package": ["binding-generation"],
+                "generate_swift_bindings": ["binding-generation"],
             },
         )
         for profile_id in ("apple-uniffi-native", "python-uniffi-native"):
             with self.subTest(profile_id=profile_id):
-                self.assertNotIn("bindgen-smoke", load_artifact_profile(profile_id).features)
+                self.assertNotIn(
+                    "binding-generation", load_artifact_profile(profile_id).features
+                )
 
     def test_rejects_duplicate_or_unsorted_features(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

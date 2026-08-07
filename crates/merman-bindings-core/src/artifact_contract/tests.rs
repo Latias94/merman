@@ -283,11 +283,7 @@ fn full_default_snapshot_matches_the_feature_owned_declaration() {
             Vec::new()
         }
     );
-    let expected_system_adapters = if cfg!(all(
-        feature = "system-clock",
-        feature = "system-random",
-        feature = "system-timezone"
-    )) {
+    let expected_system_adapters = if cfg!(feature = "native-runtime") {
         vec![
             CapabilityKey::SystemClock,
             CapabilityKey::SystemRandom,
@@ -464,51 +460,35 @@ fn binding_options_runtime_policy_is_native_target_only() {
 }
 
 #[test]
-fn system_adapter_declarations_fail_closed() {
-    let clock = CapabilityKey::SystemClock.compact_bit();
-    let timing = CapabilityKey::SystemTiming.compact_bit();
-
+fn native_runtime_declarations_fail_closed() {
     assert!(panics(|| {
-        validate_system_adapter_bits(
-            clock,
+        validate_native_runtime_selection(
+            true,
             TargetKey::Web,
             RuntimePolicyExposure::BindingOptions,
-            clock,
+            NATIVE_SYSTEM_ADAPTER_BITS,
         );
     }));
     assert!(panics(|| {
-        validate_system_adapter_bits(
-            clock,
+        validate_native_runtime_selection(
+            true,
             TargetKey::Native,
             RuntimePolicyExposure::DeterministicOnly,
-            clock,
+            NATIVE_SYSTEM_ADAPTER_BITS,
         );
     }));
     assert!(panics(|| {
-        validate_system_adapter_bits(
-            timing,
+        validate_native_runtime_selection(
+            true,
             TargetKey::Native,
             RuntimePolicyExposure::BindingOptions,
-            timing,
-        );
-    }));
-    assert!(panics(|| {
-        validate_system_adapter_bits(
-            clock,
-            TargetKey::Native,
-            RuntimePolicyExposure::BindingOptions,
-            0,
+            CapabilityKey::SystemTiming.compact_bit(),
         );
     }));
     assert!(panics(|| {
         let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
-            .with_system_adapters(&[CapabilityKey::SystemClock, CapabilityKey::SystemClock])
-            .materialize();
-    }));
-    assert!(panics(|| {
-        let _ = ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
-            .with_system_adapters(&[])
-            .with_system_adapters(&[]);
+            .with_native_runtime()
+            .with_native_runtime();
     }));
 }
 
@@ -596,15 +576,15 @@ fn native_policy_reports_the_first_missing_transport_adapter() {
     assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
     assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
     assert_eq!(error.capability_id(), Some("system-clock"));
+    assert!(error.message().contains("not exposed by this artifact"));
 }
 
-#[cfg(feature = "system-clock")]
+#[cfg(feature = "native-runtime")]
 #[test]
-fn native_policy_uses_the_exact_transport_selection_after_feature_unification() {
+fn compiled_native_runtime_does_not_widen_an_unselected_transport_contract() {
     const CONTRACT: ValidatedArtifactContract =
         ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_operations(&[OperationKey::SemanticJson])
-            .with_system_adapters(&[CapabilityKey::SystemClock])
             .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
             .materialize();
 
@@ -621,7 +601,37 @@ fn native_policy_uses_the_exact_transport_selection_after_feature_unification() 
     );
     assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
     assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
-    assert_eq!(error.capability_id(), Some("system-timezone"));
+    assert_eq!(error.capability_id(), Some("system-clock"));
+}
+
+#[cfg(feature = "native-runtime")]
+#[test]
+fn native_runtime_selection_is_atomic_and_excludes_system_timing() {
+    const CONTRACT: ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::SemanticJson])
+            .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
+            .with_native_runtime()
+            .materialize();
+
+    assert_eq!(
+        CONTRACT.system_adapter_keys().collect::<Vec<_>>(),
+        [
+            CapabilityKey::SystemClock,
+            CapabilityKey::SystemRandom,
+            CapabilityKey::SystemTimezone,
+        ]
+    );
+    assert!(
+        !CONTRACT
+            .capability_keys()
+            .any(|capability| capability == CapabilityKey::SystemTiming)
+    );
+    assert!(
+        CONTRACT
+            .create_engine(br#"{"runtime_policy":"native"}"#)
+            .is_ok()
+    );
 }
 
 #[cfg(feature = "svg")]

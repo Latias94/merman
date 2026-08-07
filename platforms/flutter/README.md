@@ -4,7 +4,7 @@
 
 Render and analyze Mermaid diagrams in Flutter without a browser or JavaScript runtime. The plugin is a Dart-friendly facade over Merman's native ABI 3 table and ships the native library for its supported Flutter targets.
 
-> `Merman.open()` accepts only the exact native package version bundled with this Dart release and requires the current metadata and payload schemas. `Merman.openPath(...)` accepts any library that passes ABI 3 minimum-prefix discovery. Older producers may omit additive option/service catalog sections; they decode as legacy-empty. Engines with no icon packs still use the legacy constructor when the appended service slot is absent, and a legacy text measurer may use the callback-bearing constructor; non-empty icon-pack services fail explicitly instead of being ignored. ABI 2 symbols and pre-freeze ABI 3 layouts are not fallback paths.
+> `Merman.open()` accepts only the exact native package version bundled with this Dart release. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
 
 ## Install
 
@@ -31,7 +31,7 @@ Run `flutter pub get` after adding the dependency.
 - iOS 13 or newer
 - macOS 11 or newer
 
-The public Dart API can load a host-owned compatible native library with `Merman.openPath(...)`, but this package itself depends on the Flutter SDK and is not distributed as a standalone Dart package. `mermanPackageVersion` is the exact version expected by `Merman.open()`.
+The public Dart API can load a host-owned current-contract native library with `Merman.openPath(...)`, but this package itself depends on the Flutter SDK and is not distributed as a standalone Dart package. `mermanPackageVersion` is the exact version expected by `Merman.open()`.
 
 ## Render A Diagram
 
@@ -73,7 +73,7 @@ final presentation = merman.presentationCatalog();
 final rawCatalog = merman.metadataJson('supported-diagrams');
 ```
 
-All six methods use the appended ABI 3 `metadata_collect` table slot. `Merman.open()` requires that slot because the bundled Dart and native package versions are exact peers. `Merman.openPath(...)` deliberately keeps minimum-prefix compatibility with older ABI 3 producers and reports a contract error only if one of these metadata methods is called without the appended slot.
+All six methods use the ABI 3 `metadata_collect` table slot. Discovery requires the current complete table before any engine or metadata API is exposed, including for `Merman.openPath(...)`.
 
 ## Options And Resource Limits
 
@@ -96,13 +96,13 @@ try {
 }
 ```
 
-Omitting `runtime_policy` keeps the engine deterministic even when the packaged library includes native adapters. Set `"runtime_policy":"native"` only when the operation should consult the host clock, time-zone rules, and random source. Generic operation metadata reports the selected policy, and a custom slim artifact missing a requested adapter raises `MermanUnsupportedOperationException`.
+Omitting `runtime_policy` keeps the engine deterministic even when the packaged library is built with the atomic `native-runtime` feature. Set `"runtime_policy":"native"` only when the operation should consult the host clock, time-zone rules, and random source. Runtime discovery still reports the concrete `system-clock`, `system-timezone`, and `system-random` adapter IDs. A custom artifact without `native-runtime` raises `MermanUnsupportedOperationException` when native policy is requested.
 
 Use `constrained` for untrusted or multi-tenant input, `interactive` for cooperative local editing, and `trusted-native` for local native automation. `MermanResourceOptionsBuilder` produces the shared resource-options fragment. Its profile is optional: omit it for a reusable request that must inherit its constructor ceiling, and use `MermanResourceOverrideId` for limits. The runtime catalog is the source of truth for compiled capabilities, accepted option groups, constructor services, service limits, and enforced operation limits. See the [options contract](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md) for the complete schema.
 
 `MermanResourceLimitId` describes every catalog limit; `MermanResourceOverrideId` is the narrower option-construction ID set. Inspect `runtimeCatalog.resourceLimits` and `runtimeCatalog.resourceProfiles` for the loaded ABI 3 library's complete phase, description, minimum, hard-cap, applicable operation IDs, purpose, trust, recommendation, and nullable budget metadata. Those typed collections preserve additive IDs reported by a host-owned library; a `null` profile limit means unbounded, while hard caps are always finite.
 
-For an older ABI 3 producer opened through `openPath()`, a schema 1 resource descriptor that predates `minimum_value` is interpreted with the historical positive-integer minimum of `1`. Current producers always report the field explicitly; the only zero-minimum limit, `max_document_diagrams`, was introduced together with that field.
+Every current resource descriptor reports `minimum_value`; omitting it is a runtime-catalog contract error.
 
 ## Reusable Engines And Constructor Services
 
@@ -132,17 +132,17 @@ try {
 
 The callback is isolate-local and synchronous. Create, render with, and close the measured engine on the same Dart isolate. Do not call back into that engine from the measurer. Precompute or cache WebView, platform-channel, and font results instead of blocking inside the callback. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) describes result shapes and cache keys.
 
-`MermanIconPack` accepts one in-memory IconifyJSON collection and an optional registration-name override. `MermanIconRegistry.fromPacks` enforces the fixed transport byte/count limits and snapshots packs into immutable UTF-8 buffers, so the source strings need not be retained. Flutter's C ABI has no separate native registry handle: those buffers are borrowed only during each `MermanEngine` constructor call, and the engine owns the parsed registry after construction returns. Native semantic validation is transactional at engine construction; a failure publishes no engine and exposes `MermanException.iconRegistryDetails` when available.
+`MermanIconPack` accepts one in-memory IconifyJSON collection and an optional registration-name override. `MermanIconPackSet.fromPacks` enforces the fixed transport byte/count limits and snapshots packs into immutable UTF-8 buffers, so the source strings need not be retained. Flutter's C ABI has no separate native registry handle: those buffers are borrowed only during each `MermanEngine` constructor call, and the engine owns the parsed registry after construction returns. Native semantic validation is transactional at engine construction; a failure publishes no engine and exposes `MermanException.iconRegistryDetails` when available.
 
 ```dart
-final icons = MermanIconRegistry.fromPacks([
+final iconPackSet = MermanIconPackSet.fromPacks([
   MermanIconPack(
     json: iconifyJson,
     registrationName: 'product',
   ),
 ]);
 final engine = MermanEngine(
-  services: MermanEngineServices(iconRegistry: icons),
+  services: MermanEngineServices(iconPackSet: iconPackSet),
 );
 try {
   final svg = engine.renderSvg(source);
@@ -193,10 +193,13 @@ Android package slices use the `flutter-android-native` C ABI recipe from `merma
 
 ## Local Development
 
-The checked-in low-level binding is generated with `ffigen` from the public C header. It discovers the frozen five-slot ABI 3 prefix with the minimum-prefix digest and performs no JNI, UniFFI, or per-operation symbol lookup. Application code uses `merman.dart` and never needs ABI pointers or record definitions.
+The checked-in low-level binding is generated with `ffigen` from the public C header. It validates
+the size-tagged ABI 3 table and minimum-prefix digest, while release builds require the current
+matching header/table contract. Application code uses `merman.dart` and never needs ABI pointers
+or record definitions.
 
 ```sh
-cargo build -p merman-ffi --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random
+cargo build -p merman-ffi --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
 cd platforms/flutter
 flutter pub get
 dart run ffigen --config ffigen.yaml

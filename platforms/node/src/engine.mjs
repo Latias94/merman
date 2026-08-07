@@ -1211,7 +1211,12 @@ function jsonContainerEntries(value, label, remainingMembers, maxMembers) {
     }
     const entries = new Array(value.length);
     for (let index = 0; index < value.length; index += 1) {
-      entries[index] = [String(index), value[index]];
+      const key = String(index);
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable || !("value" in descriptor)) {
+        throw new TypeError(`${label}.${key} must be an enumerable data property.`);
+      }
+      entries[index] = [key, descriptor.value];
     }
     return entries;
   }

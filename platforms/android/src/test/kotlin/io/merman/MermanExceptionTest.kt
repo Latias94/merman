@@ -9,9 +9,12 @@ class MermanExceptionTest {
     @Test
     fun parsesStructuredIconRegistryFailureDetails() {
         val error = MermanException(
-            """{"version":1,"ok":false,"code":2,"code_name":"MERMAN_INVALID_ARGUMENT","kind":"invalid_argument","capability_id":null,"details":{"icon_registry":{"kind_id":"duplicate-registration-name","pack_index":3,"registration_name":"logos"}},"message":"duplicate icon registry name"}""",
+            """{"version":1,"ok":false,"code":1,"code_name":"MERMAN_INVALID_ARGUMENT","kind":"generic","capability_id":null,"details":{"icon_registry":{"kind_id":"duplicate-registration-name","pack_index":3,"registration_name":"logos"}},"message":"duplicate icon registry name"}""",
         )
 
+        assertEquals(1, error.code)
+        assertEquals("MERMAN_INVALID_ARGUMENT", error.codeName)
+        assertEquals(MermanErrorKind.GENERIC, error.kind)
         assertEquals(
             MermanIconRegistryErrorDetails(
                 kindId = "duplicate-registration-name",
@@ -33,19 +36,19 @@ class MermanExceptionTest {
     }
 
     @Test
-    fun iconRegistryFactoryHasNoNativeLifecycle() {
-        val registry = MermanIconRegistry.fromPacks(
+    fun iconPackSetFactoryHasNoNativeLifecycle() {
+        val iconPackSet = MermanIconPackSet.fromPacks(
             listOf(MermanIconPack("""{"prefix":"test","icons":{}}""")),
         )
 
-        assertTrue(!AutoCloseable::class.java.isAssignableFrom(registry.javaClass))
-        assertTrue("close" !in registry.javaClass.declaredMethods.map { it.name })
+        assertTrue(!AutoCloseable::class.java.isAssignableFrom(iconPackSet.javaClass))
+        assertTrue("close" !in iconPackSet.javaClass.declaredMethods.map { it.name })
     }
 
     @Test
     fun rejectsTooManyIconPacksBeforeCopyingOrLoadingNativeCode() {
         val error = runCatching {
-            MermanIconRegistry.fromPacks(
+            MermanIconPackSet.fromPacks(
                 List(17) { index ->
                     MermanIconPack("""{"prefix":"p$index","icons":{}}""")
                 },
@@ -54,10 +57,15 @@ class MermanExceptionTest {
 
         assertTrue(error is MermanException)
         error as MermanException
-        assertNull(error.code)
-        assertNull(error.codeName)
+        assertEquals(10, error.code)
+        assertEquals("MERMAN_RESOURCE_LIMIT_EXCEEDED", error.codeName)
+        assertEquals(MermanErrorKind.GENERIC, error.kind)
+        assertEquals("icon pack count exceeds the fixed registry ceiling", error.message)
         assertEquals("max_icon_registry_packs", error.resourceDetails?.limitId)
+        assertEquals("icon_registry_input", error.resourceDetails?.phase)
         assertEquals(17L, error.resourceDetails?.actual)
+        assertEquals(16L, error.resourceDetails?.max)
+        assertEquals("constructor-fixed", error.resourceDetails?.profile)
         assertEquals("resource_limit_exceeded", error.iconRegistryDetails?.kindId)
         assertNull(error.iconRegistryDetails?.packIndex)
     }

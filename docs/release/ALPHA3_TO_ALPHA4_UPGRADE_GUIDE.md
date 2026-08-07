@@ -69,7 +69,8 @@ a leaf through Cargo feature unification.
 | `elk-layout` | `layout-elk` |
 | `ratex-math` | `math` |
 | `raster` | Select `png`, `jpeg`, and/or `pdf` independently. |
-| `core-host` | Select `system-clock`, `system-timezone`, `system-random`, and/or `system-timing`. |
+| `core-host` | On lower-level Rust crates and the CLI, select `system-clock`, `system-timezone`, `system-random`, and/or `system-timing`. |
+| Separate `system-clock`, `system-timezone`, or `system-random` features on `merman-bindings-core`, `merman-ffi`, `merman-uniffi`, or `merman-android-jni` | Select the atomic `native-runtime` binding feature. Partial native-runtime combinations are removed. |
 | `core-full` | No direct replacement. Select only the output and host capabilities the product needs. |
 | Historical `full` or `tiny` profiles | Use an exact artifact profile, or disable defaults and select direct leaves. |
 
@@ -100,6 +101,12 @@ merman = { version = "=0.8.0-alpha.4", default-features = false, features = ["sv
 Use [Choosing Merman capabilities](../FEATURES.md) for package-specific examples and the complete
 implication table. `complete-svg` is a facade convenience; lower-level crates and release artifact
 profiles select direct leaves.
+
+Binding artifacts are the exception to granular native adapter selection because their
+`runtime_policy: "native"` API requires the clock, time-zone, and random adapters together. The
+Cargo feature is therefore `native-runtime`, while runtime catalogs and generated language APIs
+continue to report the concrete `system-clock`, `system-timezone`, and `system-random` adapter IDs.
+This is a Cargo/source compatibility break only; do not rename those runtime IDs in host code.
 
 ## CLI migration
 
@@ -170,12 +177,17 @@ different wire boundary:
 - `Merman` is the stateless discovery/one-shot facade. `MermanEngine(options, services)` is the
   reusable, explicitly closeable engine. Delete `MermanReusableEngine`, facade factories,
   callback-specialized constructors, and post-construction service mutators.
-- Put `MermanTextMeasurer` and `MermanIconRegistry` in immutable `MermanEngineServices`. An icon
-  registry is created from immutable `MermanIconPack` values; an empty pack list means no icon
-  service. UniFFI may share its sealed native registry, while Android JNI and Flutter borrow pack
-  buffers only during each engine constructor and return after the engine owns parsed state.
+- Put `MermanTextMeasurer` and the transport's immutable icon service in
+  `MermanEngineServices`. UniFFI calls its sealed native service `MermanIconRegistry`/`iconRegistry`.
+  Android JNI and Flutter use `MermanIconPackSet`/`iconPackSet` because those values store host pack
+  snapshots rather than native registry handles. An empty pack list means no icon service. UniFFI
+  may share its sealed native registry, while Android JNI and Flutter borrow pack buffers only
+  during each engine constructor and return after the engine owns parsed state.
+- UniFFI services now use a zero-argument immutable builder. Replace positional optional service
+  arguments with `MermanEngineServices().with_*` chains. Each builder call returns a new bundle.
 - Use generic `execute` for the complete operation envelope, or the named helpers and `*Result`
-  binary helpers when convenient. Result metadata and output plans are no longer discarded.
+  binary helpers when convenient. UniFFI output plans are open records: switch on `kind`, use the
+  optional known payload, and preserve `raw_json`/`rawJson` for future kinds.
 - Document helpers have one order in every language: `analyze_document_json(source, uri,
   options_json)` / `analyzeDocumentJson(source:uri:optionsJson:)`. The URI is required; options are
   the final optional overlay.

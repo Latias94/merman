@@ -40,7 +40,7 @@ export 'src/merman_ffi.dart'
         MermanErrorKind,
         MermanException,
         MermanIconPack,
-        MermanIconRegistry,
+        MermanIconPackSet,
         MermanIconRegistryErrorDetails,
         MermanLintRuleCatalogEntry,
         MermanMissingCapabilityException,

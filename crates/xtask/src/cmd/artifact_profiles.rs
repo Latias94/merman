@@ -11,6 +11,8 @@ pub(super) const ARTIFACT_PROFILE_DESCRIPTOR_PATH: &str = "capabilities/artifact
 const ARTIFACT_PROFILE_SCHEMA_VERSION: u32 = 1;
 const CAPABILITY_DESCRIPTOR_PATH: &str = "capabilities/feature-surface-v1.json";
 const CARGO_DIST_PROFILE_IDS: [&str; 2] = ["cli-release", "lsp-stdio-release"];
+const NATIVE_RUNTIME_FEATURE: &str = "native-runtime";
+const NATIVE_RUNTIME_CAPABILITIES: [&str; 3] = ["system-clock", "system-random", "system-timezone"];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -452,13 +454,16 @@ fn validate_capability_feature_closure(
             ));
         }
     }
-    let enabled_feature_capabilities = package
+    let mut enabled_feature_capabilities = package
         .features
         .keys()
         .filter(|feature| catalog.capability_targets.contains_key(*feature))
         .filter(|feature| enabled.contains(*feature))
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
+    if enabled.contains(NATIVE_RUNTIME_FEATURE) {
+        enabled_feature_capabilities.extend(NATIVE_RUNTIME_CAPABILITIES);
+    }
     let actual = fixed
         .union(&enabled_feature_capabilities)
         .copied()
@@ -467,7 +472,7 @@ fn validate_capability_feature_closure(
         let missing = declared.difference(&actual).copied().collect::<Vec<_>>();
         let undeclared = actual.difference(&declared).copied().collect::<Vec<_>>();
         return Err(format!(
-            "{path}.expected.capabilities: must equal package fixed capabilities plus enabled same-named Cargo capability features; missing owners {missing:?}, undeclared enabled capabilities {undeclared:?}"
+            "{path}.expected.capabilities: must equal package fixed capabilities plus enabled Cargo capability features; missing owners {missing:?}, undeclared enabled capabilities {undeclared:?}"
         ));
     }
     Ok(())

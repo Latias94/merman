@@ -27,12 +27,10 @@ merman-bindings-core = { workspace = true, features = [
     "layout-cytoscape",
     "layout-elk",
     "math",
+    "native-runtime",
     "pdf",
     "png",
     "svg",
-    "system-clock",
-    "system-random",
-    "system-timezone",
 ] }
 merman-core = { path = "../merman-core", features = ["system-clock", "system-timezone"] }
 merman-editor-core.workspace = true
