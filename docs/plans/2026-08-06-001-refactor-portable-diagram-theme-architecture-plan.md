@@ -18,10 +18,10 @@ supersedes: docs/plans/2026-08-02-001-refactor-presentation-theme-architecture-p
 | Field | Contract |
 | --- | --- |
 | Objective | Replace the provisional presentation/theme split with a compiled diagram-theme module whose typography, semantic styles, canvas, SVG effects, font assets, SVG output, and native exports share one resolved visual contract. |
-| Authority | Mermaid `11.16.0@7c0cafcf` owns Mermaid semantics and default parity. The local `modern_mermaid@a021cbc` clone is a capability corpus for custom-theme expressiveness, not a new parity baseline. ADR-0063 and the existing resource/security contracts remain authoritative unless this plan replaces a named owner. |
+| Authority | Mermaid `11.16.1@7ecca0cd` owns Mermaid semantics and default parity. The local `modern_mermaid@a021cbce` clone and the community work in Merman PR #28 are capability and product-design references for custom-theme expressiveness, not new parity baselines or compatibility authorities. ADR-0063 and the existing resource/security contracts remain authoritative unless this plan replaces a named owner. |
 | Execution profile | Execute in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Preserve unrelated user changes. Split retained correctness fixes from superseded presentation work before the first implementation commit. Use Conventional Commits and run Cargo commands serially. |
 | Stop conditions | Stop and report if a required font asset cannot be redistributed or embedded, if a proposed portable effect cannot survive SVG and native export without an explicit residual, or if implementation would require a general browser CSS cascade, arbitrary XML injection, or network/filesystem I/O inside `merman-render`. |
-| Tail ownership | Complete implementation, focused fixtures, migration, deletion, simplification, review, and local commits. Do not open a PR, publish, tag, merge, or modify the occupied main worktree without a new explicit request. |
+| Tail ownership | Complete implementation, focused fixtures, migration, deletion, simplification, review, and local commits. The requested `origin/main` merge was completed in `531439702`; do not open a PR, push, publish, tag, or modify the occupied main worktree without a new explicit request. |
 
 ## Product Contract
 
@@ -29,7 +29,7 @@ supersedes: docs/plans/2026-08-02-001-refactor-presentation-theme-architecture-p
 
 Merman needs a theme abstraction that describes a complete diagram visual recipe instead of only mapping host colors into Mermaid variables. The compiled recipe must affect layout before geometry is frozen, emit structured SVG resources after bounds are known, retain exact font assets through terminal SVG finalization, and drive PNG, JPEG, and PDF from the same document resources.
 
-The public model will have four core concepts. `DiagramThemeSpec` is the declarative input. `DiagramTheme` is the validated immutable result. `ThemeTokens` is a convenience adapter from a host design system. `RenderProfile` owns non-theme renderer behavior such as the first-party Modern Flowchart policy. Supporting types such as `DiagramThemeCompiler`, host-owned policy axes, resource policy, prepared-layout sessions, and staged reports make those concepts enforceable without becoming additional visual owners. `MermaidConfig` and `SvgPipeline` remain compatibility escape hatches, but they no longer define the portable-theme contract.
+The public model will have three core theme concepts. `DiagramThemeSpec` is the declarative input. `DiagramTheme` is the validated immutable result. `ThemeTokens` is a convenience adapter from a host design system. Renderer selection and layout behavior remain explicit in their existing configuration owners instead of being hidden inside a theme or a one-off `MermanModern` profile. Supporting types such as `DiagramThemeCompiler`, host-owned admission and resource policies, prepared-layout sessions, and staged reports make those concepts enforceable without becoming additional visual owners. `MermaidConfig` and `SvgPipeline` remain compatibility escape hatches, but they no longer define the portable-theme contract.
 
 ### Problem Frame
 
@@ -41,7 +41,9 @@ The August 2 plan assumed exact CSS-heavy themes could be composed from `HostThe
 - root background policy expresses only a solid color. It cannot express gradients, patterns, layered canvas paint, or paint bleed.
 - arbitrary CSS selectors such as `:nth-child`, `:has()`, and complex attribute selectors do not have stable semantics across browser SVG and usvg/simplecss.
 - typed SVG effects and resource IDs do not have a first-class owner. Rust postprocessors can inject strings, but bindings cannot safely declare or validate equivalent structure.
-- the current `PresentationProfile` visual fallback couples product behavior to appearance and obscures precedence.
+- the current `PresentationProfile` visual fallback couples product behavior to appearance and obscures precedence;
+- `PresentationProfile::MermanModern` is too shallow to justify a permanent public owner: it mixes an ELK renderer choice, a Mermaid look, layout-affecting geometry, and Redux/slate paint under one product name;
+- issue #46 demonstrates that a useful design-system bridge must handle dark State and Sequence diagrams, host canvas integration, and typography-driven geometry rather than only replacing a flat palette.
 
 The branch already contains uncommitted work from the superseded plan. Some changes remain valid, including request-scoped site-config materialization and the scoped-CSS root-sibling isolation fix. The conditional Redux/slate profile fallback, provisional direct `HostTheme` surface, and documentation that claims raw composition is sufficient must not become the foundation of the new design.
 
@@ -53,13 +55,13 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 | --- | --- | --- |
 | old R1 | Retained and deepened | new R1, R7, R35-R36 |
 | old R2-R5 | Replaced by the compiled-theme ownership model | new R2-R8, R24, R31, R33-R36 |
-| old R6-R11 | Split into behavior-only profile and visual theme contracts | new R4, R7-R8, R34 plus U0's retained Flowchart correctness audit |
+| old R6-R11 | Split into explicit renderer/layout/family configuration and visual theme contracts | new R4, R7-R8, R34 plus U0's retained Flowchart correctness audit |
 | old R12-R17 | Replaced by immutable compiled values, target-aware reports, and binding contracts | new R2-R4, R24-R37, R42-R49 |
 | old R18 | Retained as migration work | new R34-R37 and U10 |
 | old R19 | Retained as an existing correctness invariant, not reimplemented | U0 must preserve its source-backed Flowchart/ELK fixes |
 | old R20 | Retained as a complexity boundary | new R5-R6, R17-R24 and the no-mini-browser stop condition |
 | old R21 | Still deferred | remains outside this theme refactor |
-| old R22 | Replaced by the final theme/profile/output migration | new R35-R37 and U9-U10 |
+| old R22 | Replaced by the final theme/configuration/output migration | new R35-R37 and U9-U10 |
 
 ### Actors
 
@@ -68,24 +70,26 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 - A3. A Mermaid document author supplies frontmatter, directives, classes, and inline styles that must retain Mermaid-compatible precedence.
 - A4. A renderer maintainer adds a semantic theme target or family adapter without implementing another CSS engine.
 - A5. An export consumer needs evidence that the SVG, font catalog, portability result, and operation report came from the same completed render.
-- A6. A product owner selects a behavior profile independently from visual theme selection.
+- A6. A product owner selects renderer and layout behavior independently from visual theme selection.
+- A7. A web host maps already-resolved DaisyUI or custom design-system values into a reusable theme, switches light and dark themes without renderer-state contamination, and never requires the Rust core to inspect DOM CSS variables.
 
 ### Requirements
 
 #### Ownership and default behavior
 
-- R1. A renderer with no selected `DiagramTheme` or `RenderProfile` must preserve the current Mermaid-parity config, layout, SVG DOM, and output behavior.
+- R1. A renderer with no selected `DiagramTheme` and no explicit renderer/layout override must preserve the current Mermaid-parity config, layout, SVG DOM, and output behavior.
 - R2. `DiagramTheme` must be the only public owner of a complete compiled visual recipe: Mermaid theme inputs, typography, semantic styles, canvas, effects, assets, and declared capability requirements. Enforceable host admission and resource ceilings are separate owners.
-- R3. `ThemeTokens` must be a design-system adapter that can produce a `DiagramThemeSpec`; it must not claim to express every family-specific or structural theme feature.
-- R4. `RenderProfile` must own renderer behavior only. Neo, ELK defaults, and Merman-private Flowchart policy are renderer behavior; Redux/slate colors, fonts, canvas paint, CSS, and SVG resources are theme concerns and must not come from a profile.
+- R3. `ThemeTokens` must be a design-system adapter that can produce a `DiagramThemeSpec`; it must expose a small stable vocabulary for canvas, surfaces, content, borders, brand/accent, statuses, notes, actors, activations, and ordinal series while permitting family-specific semantic extensions in the full spec. It accepts already-resolved host values and must not read DOM CSS variables, depend on DaisyUI, or claim to express every structural theme feature.
+- R3a. Reusing or switching a compiled theme must not leak theme state across renderers or operations. Binding helpers may map plain resolved token records into `ThemeTokens`, but the Rust compiler remains the single semantic expansion owner.
+- R4. Delete the one-off `PresentationProfile::MermanModern` owner. Official Mermaid values such as `look: neo` and ELK/default-renderer selection remain explicit `MermaidConfig`/layout configuration; palette, typography, paint, effects, and layout-affecting theme geometry belong to `DiagramTheme`; genuinely renderer-private routing policy belongs to a typed family configuration. A future named behavior preset is permitted only as a convenience that expands into those explicit non-visual configuration owners.
 - R5. `MermaidConfig` must remain the exact upstream-compatibility owner for official Mermaid values, document frontmatter, directives, class definitions, and raw `themeCSS`.
 - R6. `SvgPipeline` must remain the output transformation and terminal safety owner. It must not own typed theme canvas, typography, semantic styles, or effect graphs.
-- R7. Configuration precedence must be independent of builder call order: base engine config, `RenderProfile` behavior defaults, compiled `DiagramTheme` Mermaid inputs, explicit renderer or request `site_config`, then source frontmatter and directives.
-- R8. First-party editor themes and the Redux/slate visual half of `merman-modern` must become full `DiagramTheme` presets or token adapters. They must not absorb Neo, ELK, or private Flowchart behavior and must not select output policy implicitly.
+- R7. Configuration precedence must be independent of builder call order: base engine config, compiled `DiagramTheme` Mermaid inputs, explicit renderer or request `site_config`, then source frontmatter and directives. Any future behavior-preset convenience must materialize into the same explicit configuration layer before this precedence is evaluated.
+- R8. First-party editor themes and the visual design explored by Merman PR #28 must become full `DiagramTheme` presets, token adapters, or documented examples after the infrastructure is stable. At least one named PR #28-derived composition example must ship with source traceability and contributor attribution; any later derivative preset retains the same provenance. Compatibility shims for the provisional implementation are forbidden, and visual presets must not select ELK or output policy implicitly.
 
 #### Font assets and typography
 
-- R9. A compiled theme must retain an immutable, content-addressed `FontCatalog` containing validated font binaries, face metadata, family aliases, generic-family mapping, the sources the theme can supply or accept, embedding requirements, and a stable fingerprint. Source priority belongs only to the host-owned `FontSourcePolicy`; a theme cannot introduce a competing priority order. Host resource ceilings must be charged during compilation but must not become request-controlled catalog data.
+- R9. A compiled theme must retain an immutable, content-addressed `FontCatalog` containing validated font binaries, face metadata, family aliases, generic-family mapping, the sources the theme can supply or accept, embedding requirements, and a stable fingerprint. Source priority belongs only to the host-owned `FontSourcePolicy`; a theme cannot introduce a competing priority order. Host-owned `ThemeResourcePolicy` ceilings must be charged during compilation but must not become request-controlled catalog data or generic render-operation limits.
 - R10. Theme compilation must accept decoded SFNT inputs and WOFF2 inputs. WOFF2 must be decoded once to canonical SFNT bytes with a pure-Rust, WASM-compatible adapter before measurement, SVG emission, or export.
 - R11. Font compilation must validate face indexes, family names, style, weight, collection structure, OpenType embedding permissions, duplicate IDs, single-asset bytes, total bytes, face count, and decoded expansion before retaining data.
 - R12. Layout, wrapping, SVG bbox, computed text length, and native export must use a prepared text-layout service bound to the exact `FontCatalogFingerprint`.
@@ -99,10 +103,14 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 
 - R17. Theme styling must compile from typed semantic targets and typed paint/geometry properties rather than browser CSS selectors or Mermaid DOM paths. Unknown targets/variants and statically invalid target-family combinations are compile errors.
 - R18. The semantic rule model must support common targets, family-scoped targets, named semantic variants, interaction/state variants that exist in static output, and deterministic ordinal palettes for cases currently expressed with `:nth-child`. A rule scoped to another family is not applicable; a known target missing from a family adapter is an internal capability error, not a user-input fallback.
+- R18a. Typed style patches must classify and support the admitted modern corpus properties, including fill/stroke paint, stroke width/dash/linecap/linejoin, opacity/fill-opacity/stroke-opacity, radius/corner geometry, content padding, typography, and text/effect bindings. Inheritable or clearable values must distinguish unspecified, explicit `none`, and a concrete value. A mechanism is not covered merely because a broader CSS property family has a name.
+- R18b. Portable themes may target semantic variants and stable ordinal positions, but not arbitrary diagram element IDs. Document-level single-element overrides remain Mermaid source semantics or application-owned data and must not force an element-ID selector language into `DiagramTheme`.
 - R19. Layout-affecting style fields from both the compiled theme and Mermaid source-owned styles must resolve before family layout. Paint-only fields may resolve during structured SVG assembly but must reuse the same compiled rule result and source precedence outcome.
-- R20. `CanvasSpec` must support transparency, solid paint, linear gradients, radial gradients, bounded patterns, layered paint, layer opacity, and the blend modes required by the admitted modern theme corpus.
+- R19a. State and Sequence adapters must expose enough semantic targets and typography inputs for a dark host theme to control canvas, states, start/end markers, transitions, actors, messages, notes, activations, loops, labels, and borders without hard-coded light paint. Long labels must be measured and wrapped from the resolved typography before geometry is frozen.
+- R19b. Edge-label content padding is a theme-owned, measurement-affecting style. Route clearance and label-mask clearance are distinct Flowchart layout concerns and, if retained from PR #28, must live in typed Flowchart configuration rather than being folded into the theme padding value.
+- R20. `CanvasSpec` must support transparency, solid paint, linear gradients, radial gradients, bounded patterns, layered paint, per-layer opacity, size, position and offset, mixed absolute/percentage radial centers, repeating periods and length-unit stops, and the blend modes required by the admitted modern theme corpus. It must not accept CSS background strings, Tailwind classes, or application style objects.
 - R21. Canvas and effect assembly must distinguish layout bounds from paint bounds. Insets, filter bleed, stroke bleed, and overflow policy must participate in final viewBox and output-size planning without feeding back into graph layout.
-- R22. `SvgEffectSet` must provide typed, bounded filter primitives and semantic bindings for drop shadow, blur, color matrix, turbulence, and displacement. Unsupported primitive combinations must fail compilation or produce an explicit best-effort residual.
+- R22. `SvgEffectSet` must provide typed, bounded filter primitives and semantic bindings for drop shadow, blur, color matrix, turbulence, and displacement. It must support multiple independently bounded effect graphs in one theme, such as separate Hand Drawn node and line filters. Unsupported primitive combinations must fail compilation or produce an explicit best-effort residual.
 - R23. A shared `SvgResourceNamespace` and collision-checking ID allocator must own gradients, patterns, filters, markers, clip paths, and other defs across all families.
 - R24. Raw `themeCSS`, custom `SvgPostprocessor`, untyped output CSS, and untracked resource mutations must remain available as advanced compatibility lanes, but their use must mark portability as `Unverified`. `SvgOnly` is reserved for recognized, modeled SVG features that lack an admitted native representation.
 
@@ -119,16 +127,16 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 
 #### Public API, bindings, migration, and proof
 
-- R33. The Rust facade must expose `DiagramTheme`, `DiagramThemeSpec`, `DiagramThemeCompiler`, `ThemeTokens`, `ThemePreset`, `RenderProfile`, `FontCatalog`, `RenderedDocument`, the host-owned `ThemeAdmissionPolicy`, `FontSourcePolicy`, `HostMeasurementFallbackPolicy`, and existing `RenderResourcePolicy`, plus compile-, document-, and export-stage capability/portability reports through small immutable interfaces with private fields.
-- R34. `HostTheme`, `HostThemePreset`, `ThemeRole`, `PresentationProfile`, `PresentationAspect*`, `ResolvedPresentation`, the `presentation` Options JSON group, and the conditional profile visual fallback must be removed or renamed in one breaking migration. Do not retain deprecated forwarding wrappers for unreleased alpha.4 APIs.
-- R35. Options JSON must move to a theme-first schema with separate `theme`, `render_profile`, `site_config`, and `svg` owners. `theme` is a closed tagged union of one preset or one complete spec; preset/token/spec patch composition is not a binding contract. Ordinary binding and untrusted Options JSON requests must reject raw `site_config.themeCSS`; only an explicitly enabled trusted Rust/CLI compatibility lane may accept it, and that lane always produces an `Unverified` portability result plus an independent CSS safety result. Unknown fields, invalid resources, raw XML/defs, file paths, network URLs, and unbounded font payloads must be rejected.
+- R33. The Rust facade must expose `DiagramTheme`, `DiagramThemeSpec`, `DiagramThemeCompiler`, `ThemeTokens`, `ThemePreset`, `FontCatalog`, `RenderedDocument`, the host-owned `ThemeAdmissionPolicy`, `ThemeResourcePolicy`, `ThemePortabilityRequirement`, `FontSourcePolicy`, `HostMeasurementFallbackPolicy`, and existing operation-owned `RenderResourcePolicy`, plus compile-, document-, and export-stage capability/portability reports through small immutable interfaces with private fields. Renderer/layout behavior continues through its explicit typed configuration owners.
+- R34. `HostTheme`, `HostThemePreset`, `ThemeRole`, `PresentationProfile`, `PresentationAspect*`, `ResolvedPresentation`, the `presentation` Options JSON group, and the conditional profile visual fallback must be removed in one breaking migration. Do not retain deprecated forwarding wrappers for unreleased alpha.4 APIs or rename `MermanModern` into another special mixed owner.
+- R35. Options JSON must move to a theme-first schema with separate `theme`, `site_config`, layout/family configuration, and `svg` owners. `theme` is a closed tagged union of one preset or one complete spec; preset/token/spec patch composition is not a binding contract. Ordinary binding and untrusted Options JSON requests must reject raw `site_config.themeCSS`; only an explicitly enabled trusted Rust/CLI compatibility lane may accept it, and that lane always produces an `Unverified` portability result plus an independent CSS safety result. Unknown fields, invalid resources, raw XML/defs, file paths, network URLs, and unbounded font payloads must be rejected.
 - R36. A complete Options JSON spec may carry bounded base64 font assets inside that spec. Omitted `theme` inherits the constructor value, explicit `null` clears the selected theme without weakening host policy, an empty object is invalid, and preset/spec are mutually exclusive. Core theme compilation must receive bytes and must not perform I/O; cross-operation reuse comes from reusing the compiled renderer/theme, not a new global asset registry.
-- R37. Runtime discovery must report known theme presets, render profiles, required compiled capabilities, portability support, supported font containers, semantic target catalogs, and output-specific residuals from Rust-owned descriptors.
+- R37. Runtime discovery must report known theme presets, explicit renderer/layout options, required compiled capabilities, portability support, supported font containers, semantic target catalogs, and output-specific residuals from Rust-owned descriptors. It must not advertise a hidden `merman-modern` bundle.
 - R38. `merman-fixture-render-context` must remain a test-only owner of source-bound fixture config and DOM evidence. Theme assets and portability fixtures must use a separate theme fixture catalog.
-- R39. The modern theme capability corpus must prove that the architecture can model the diagram and canvas mechanics of 23 local `modern_mermaid` themes. Aurora backdrop blur must remain an explicit residual unless a source-backed portable implementation is found.
+- R39. The modern theme capability corpus must completely classify the diagram and canvas mechanics of all 24 local `modern_mermaid` themes plus the visual mechanisms contributed through Merman PR #28. Portable mechanisms must map to typed capabilities and fixtures; Aurora backdrop blur remains an explicit residual unless a source-backed portable implementation is found. These references are manually decomposed into typed capabilities and product examples; they are not imported as TypeScript/CSS input languages.
 - R40. Annotation colors and the interactive annotation overlay from `modern_mermaid` must remain application-owned and outside the core diagram-theme contract.
 - R41. `Portable` means the same admitted visual semantics, resources, bounds, and fallback decisions across the enabled outputs. It must not be documented as platform-independent text raster pixels or browser `getBBox()` floats.
-- R42. `ThemeAdmissionPolicy` and `RenderResourcePolicy` must be constructor/host-owned ceilings. Request themes may declare stricter requirements but cannot enable system fonts, `BestEffort` portability admission, host-measurement fallbacks, raw resources, or larger budgets that the host disabled.
+- R42. `ThemeAdmissionPolicy`, `ThemeResourcePolicy`, and `RenderResourcePolicy` must be constructor/host-owned monotonic ceilings with separate ownership. Theme input, font decoding/catalog compilation, and typed effect-graph compilation use `ThemeResourcePolicy`; source/layout/SVG/postprocessing operations use `RenderResourcePolicy`. Request themes may declare stricter requirements but cannot enable system fonts, `BestEffort` portability admission, host-measurement fallbacks, raw resources, or larger budgets that the host disabled.
 - R43. Portability requirement, font-source policy, and host-measurement fallback must be separate typed axes with explicit capability-set resolution. No policy type may mix an acceptance decision such as `RequirePortable` with a font source such as system discovery.
 - R44. Portability must be assessed by stage and output target. A compiled theme reports required capabilities; a finalized document reports source/pipeline residuals; SVG, PNG/JPEG, and PDF exporters make the final target-specific admission decision.
 - R45. Catalog-backed host measurement is `HostDependent` when the backend is under-attested. A backend that attests the versioned shaping/style contract and the actual catalog face/run evidence required by the operation may be `Portable` for a target that admits that contract. Native catalog-backed layout remains the authoritative portable path.
@@ -142,7 +150,7 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 #### F1. Compile and install a portable Rust theme
 
 1. The host builds `ThemeTokens` or a `DiagramThemeSpec`.
-2. The host constructs a compiler from its `ThemeAdmissionPolicy` and `RenderResourcePolicy`.
+2. The host constructs a compiler from its `ThemeAdmissionPolicy` and `ThemeResourcePolicy`; operation-owned `RenderResourcePolicy` remains on the renderer.
 3. The compiler decodes and validates assets, charges budgets, compiles semantic rules, validates canvas/effects, and produces stable fingerprints plus an output-independent capability report.
 4. `HeadlessRenderer::with_theme` stores the immutable compiled theme.
 5. Each render resolves the theme against the detected family and effective Mermaid config before layout.
@@ -182,12 +190,13 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 3. `resvg_safe` tokenizes CSS and rejects imports, external URLs, active declarations, and unsupported resource forms independently from portability grading.
 4. The report marks the result `Unverified`; strict portable export rejects it and best-effort export proceeds only under host policy with the residual recorded.
 
-#### F6. Use `RenderProfile::MermanModern`
+#### F6. Preserve the useful parts of Merman PR #28
 
-1. The profile contributes behavior defaults and private Flowchart render policy only.
-2. The user selects a visual `ThemePreset` independently.
-3. Non-Flowchart operations do not require ELK.
-4. Flowchart capability admission follows the effective renderer after site/source overrides.
+1. The host selects `look: neo` and ELK explicitly through `MermaidConfig`/layout configuration when those behaviors are wanted.
+2. The host selects a visual `ThemePreset` or custom `DiagramTheme` independently.
+3. Theme-owned geometry and family layout options resolve through their typed owners; no conditional Redux/slate visual fallback exists.
+4. Non-Flowchart operations do not require ELK, and Flowchart capability admission follows the effective renderer after site/source overrides.
+5. A future behavior preset may expand renderer/layout/family configuration only. An application may combine it with a theme as a product recipe, but that recipe is not a single Merman public type or discovery entry.
 
 #### F7. Finalize arbitrary SVG
 
@@ -196,16 +205,24 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 3. The resulting `ResvgCompatibleSvg` retains authorized resources and unresolved-resource evidence even though no typed Mermaid operation report exists.
 4. Low-level exporters obey the retained catalog and host admission policy. Every export mode rejects incomplete closure. A resource-closed result remains `Unverified` and can proceed only when the host explicitly admits it through `BestEffort`.
 
+#### F8. Map and switch host design-system themes
+
+1. A web host resolves its DaisyUI or custom CSS variables through its own framework/runtime.
+2. A binding helper maps the resulting plain values into `ThemeTokens`; Merman does not inspect the DOM or framework classes.
+3. The host compiles reusable light and dark `DiagramTheme` values under the same constructor-owned policies.
+4. Each operation selects one immutable theme, resolves State/Sequence semantic styles and typography before layout, and retains no mutable visual state from a prior operation.
+5. Standalone SVG and enabled native exporters consume the same resolved theme, catalog, bounds, and reports.
+
 ### Acceptance Examples
 
-- AE1. Default `info`, Flowchart, Class, Sequence, and Ishikawa fixtures remain unchanged when no theme/profile is selected. Covers R1 and R16.
+- AE1. Default `info`, Flowchart, Class, Sequence, and Ishikawa fixtures remain unchanged when no theme or explicit renderer/layout override is selected. Covers R1 and R16.
 - AE2. A WOFF2-backed Hand Drawn fixture uses the same face fingerprint for wrap, bbox, standalone SVG, PNG, and PDF; missing or restricted font data fails before layout. Covers R9-R16 and R25-R30.
 - AE3. A Geometric Collage fixture assigns deterministic ordinal fills to nodes, actors, states, classes, ER entities, tasks, pie slices, commits, and timeline events without CSS `:nth-child`. Covers R17-R19 and R39.
 - AE4. A Cyberpunk fixture emits a layered gradient/pattern canvas and bounded glow effects into real SVG defs and canvas elements, with no root CSS background image. Covers R20-R23.
 - AE5. A Hand Drawn fixture scopes turbulence/displacement IDs per diagram and expands the final viewport so filter output is not clipped. Covers R21-R23.
 - AE6. An Aurora fixture compiles under `BestEffort` portability admission with a named backdrop-blur residual and fails `RequirePortable`. Covers R22, R24, and R39.
 - AE7. A raw `themeCSS` fixture remains usable for browser SVG through an explicitly trusted lane but is reported as `Unverified`; `RequirePortable` rejects it after the independent CSS/resource safety gate instead of silently claiming parity. Covers R5, R24, and R32.
-- AE8. `RenderProfile::MermanModern` plus a custom theme retains Neo/ELK/private Flowchart behavior without adding Redux/slate colors. Covers R4, R7, and R34.
+- AE8. Explicit `look: neo` plus ELK/layout configuration and a custom theme reproduce the useful behavior of the former `MermanModern` bundle without hidden Redux/slate colors or a profile-specific fallback. Covers R4, R7, R8, and R34.
 - AE9. Two documents with identical SVG text and different catalogs produce different resource fingerprints and cannot have their reports or resources recombined through public constructors. Covers R25-R29 and R41.
 - AE10. The raw-SVG CLI path retains explicit font resources through terminal finalization and export. Covers R25 and R29.
 - AE11. Options JSON rejects external font URLs, file paths, raw SVG defs, duplicate asset IDs, decoded expansion beyond policy, and unknown semantic targets. Covers R11, R22, R35, and R36.
@@ -216,6 +233,11 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 - AE16. The same typography property set by theme defaults, Mermaid class definitions, assigned classes, and inline source style resolves through one source-backed precedence matrix before layout. Covers R5, R19, and R46.
 - AE17. A custom postprocessor that adds an undeclared font or external resource cannot pass the resource-closure gate; a declared bounded resource delta is included in a closed terminal inventory but remains `Unverified` and therefore fails `RequirePortable`. Covers R25, R47, and R48.
 - AE18. Options JSON rejects mixed preset/spec values, empty theme objects, budget-raising overlays, unsafe raw CSS/resource lanes, and unredacted system-font diagnostics. Covers R35-R36, R42-R43, and R48-R49.
+- AE19. A DaisyUI-like resolved token record compiles into two reusable light/dark themes. Switching between them changes State and Sequence canvas, content, borders, notes, actors, activations, transitions, and labels without retaining paint from the previous operation; the same compiled theme can also be reused by two independent renderers without cross-renderer state contamination. Covers R3-R3a, R17-R20, and R37.
+- AE20. A dark State fixture with a long transition label and a dark Sequence fixture with long actor, message, note, activation, and loop labels remain readable and unclipped across standalone SVG and enabled native outputs. Covers R12-R16a, R19a, and R25-R32.
+- AE21. A named `pr28-modern-slate` documented composition example records source and contributor provenance and is expressed as a visual theme plus explicit `look: neo`, ELK/layout, and family configuration, with no `MermanModern` compatibility type. Every retained PR #28 visual mechanism has a typed mapping and fixture witness. Covers R4, R8, R34, and R39.
+- AE22. Hand Drawn binds independently bounded node and line effect graphs, Cyberpunk composes multiple shadows and text glow, Ghibli uses explicit `none` plus opacity, Spotless exercises dash/linecap/linejoin, and edge-label content padding changes measurement without changing Flowchart route/mask clearance. Covers R18a, R19b, R21-R23, and R39.
+- AE23. A portable theme rejects `.node#B` or any other arbitrary element-ID selector while the trusted raw-CSS compatibility lane can retain it only as `Unverified`. Covers R18b, R24, and R35.
 
 ### Success Criteria
 
@@ -224,6 +246,8 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 - Portable custom themes use one font catalog and one resolved style plan across layout and every output.
 - Canvas and effect paint cannot be clipped by a viewport that was planned before their outsets were known.
 - The modern capability corpus has a source-backed expression result for every theme mechanism and a named residual for anything not portable.
+- Dark State and Sequence diagrams can be driven from generic design-system tokens without hard-coded light paint or typography clipping.
+- The useful visual and layout ideas from PR #28 remain traceable even though the provisional mixed profile implementation is deleted.
 - Unreleased provisional APIs and compatibility shims are deleted instead of preserved.
 
 ### Scope Boundaries
@@ -244,11 +268,11 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 - Network font fetching, caller-supplied font paths, and theme-driven file reads inside `merman-render` or `merman-export`. Existing system-font discovery remains available only when the resolved font-source set includes `System`.
 - Arbitrary XML, raw `<defs>`, JavaScript, external resource URLs, or custom postprocessor code inside `DiagramTheme`, Options JSON, or general binding theme schemas. Existing trusted low-level Rust/CLI SVG finalization remains in scope under F7.
 - Forced pixel-perfect normalization for browser `getBBox()`, font rasterization, foreignObject, D3 wrapper noise, RoughJS geometry, or PDF filter rasterization.
-- Changing the pinned Mermaid baseline from 11.16.0.
+- Changing the pinned Mermaid baseline from the already-merged 11.16.1 baseline.
 
 #### Deferred
 
-- Shipping all 24 `modern_mermaid` themes as supported Merman presets. This plan proves expressiveness and may ship selected first-party presets; importing another project's full theme catalog requires a separate product and licensing decision.
+- Shipping all 24 `modern_mermaid` themes as supported Merman presets. This plan proves expressiveness and may ship selected first-party presets or examples; importing another project's full theme catalog requires a separate product and licensing decision.
 - An application annotation-theme extension may consume `DiagramTheme` metadata later without entering core SVG ownership.
 - A global cross-operation fontdb cache may be added only after operation-owned correctness and resource accounting are proven.
 
@@ -271,11 +295,11 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 - KTD6. **Assemble canvas and effects before final viewport completion.** Extend the structured root document path around `RootViewportSpec`, `RootViewportPlan`, `begin_document`, and `finish_document`; do not mutate root viewBox through a late string postprocessor. Covers R20-R23.
 - KTD7. **Use semantic targets plus one source-style admission matrix instead of a CSS selector engine.** Family renderers bind semantic targets while they own typed models and stable encounter order. Theme defaults and Mermaid source styles resolve through one shared origin/property contract before layout; raw CSS remains an unverified compatibility lane. Covers R5, R17-R19, R24, and R46.
 - KTD8. **Assess portability at compile, document, and export stages.** Theme compilation reports required capabilities, document finalization records source/pipeline residuals, and each output target makes its own admission decision. No target-agnostic `DiagramTheme::portability()` may claim facts owned by `merman-export`. Covers R13, R22, R24, R32, R41, and R44-R45.
-- KTD9. **Keep `RenderProfile` behavior-only.** Rename `PresentationProfile`; remove visual fallback; retain profile aspect admission only where it carries real behavior or capability evidence. Rejected: deleting the useful Merman Modern behavior bundle or putting it inside `DiagramTheme`. Covers R4, R7, R8, and R34.
+- KTD9. **Delete the shallow mixed profile and return values to their real owners.** Remove `PresentationProfile::MermanModern`, its aspect catalog, and its visual fallback. Official `look: neo` and ELK selection remain explicit Mermaid/layout configuration; visual paint, typography, effects, and theme geometry compile through `DiagramTheme`; private routing controls become typed family configuration only when they remain independently useful. Preserve PR #28 as capability evidence and contributor provenance, not as a compatibility type. A future behavior preset may expand only renderer/layout/family configuration; an application-layer product recipe may compose that behavior with a theme without becoming a Merman public type or discovery entry. Covers R4, R7, R8, and R34.
 - KTD10. **Use one closed complete theme value at boundaries.** Rust APIs take bytes. Options JSON chooses either a preset or a complete spec whose assets are internal to that spec; it never merges preset, token, spec, and asset patches. CLI and typed bindings may read files or convert `ThemeTokens` before constructing that value. Reusing a compiled renderer/theme provides reuse without a global asset registry. Covers R35-R37 and R42.
 - KTD11. **Keep default Mermaid parity, native portable layout, and host-attested layout as distinct paths.** Default fixtures retain vendored Mermaid metrics and current DOM behavior. A custom catalog opts into native prepared layout for portable output; a host backend is downgraded unless it satisfies the attestation contract. Covers R1, R13, R16, and R45.
 - KTD12. **Use a separate theme fixture catalog.** `merman-fixture-render-context` continues to bind upstream fixture bytes to test context and evidence only. Theme resource manifests own licensed assets, expected fingerprints, portability claims, and output coverage. Covers R38-R40.
-- KTD13. **Keep security ceilings outside theme values.** `ThemeAdmissionPolicy` and the existing `RenderResourcePolicy` belong to the host/renderer and resolve as monotonic ceilings. Typed untrusted inputs are budgeted; raw CSS, arbitrary SVG, and postprocessors remain explicit trusted lanes. Covers R42-R43 and R47-R49.
+- KTD13. **Keep security ceilings outside theme values and with their real owner.** `ThemeAdmissionPolicy` and `ThemeResourcePolicy` belong to the compiler/host; `RenderResourcePolicy` belongs to render operations. Each resolves monotonically within its own stable ID namespace. Theme/font limits must not be added to the generic render-operation enum or generated render override catalog. Typed untrusted inputs are budgeted; raw CSS, arbitrary SVG, and postprocessors remain explicit trusted lanes. Covers R42-R43 and R47-R49.
 
 ### High-Level Technical Design
 
@@ -366,7 +390,7 @@ pub struct ThemeRequirements {
 
 pub struct DiagramThemeCompiler {
     admission: ThemeAdmissionPolicy,
-    resources: RenderResourcePolicy,
+    resources: ThemeResourcePolicy,
 }
 
 impl DiagramThemeCompiler {
@@ -380,6 +404,7 @@ impl DiagramTheme {
 }
 
 pub struct ThemeAdmissionPolicy { /* host-owned monotonic ceilings */ }
+pub struct ThemeResourcePolicy { /* theme/font/effect compile ceilings */ }
 pub enum ThemePortabilityRequirement { RequirePortable, BestEffort }
 pub enum FontSource { Embedded, System }
 pub struct FontSourcePolicy { /* allowed set plus host-owned priority */ }
@@ -390,10 +415,6 @@ pub struct ThemeTokens { /* semantic design-system values */ }
 
 impl ThemeTokens {
     pub fn into_theme_spec(self) -> DiagramThemeSpec;
-}
-
-pub enum RenderProfile {
-    MermanModern,
 }
 
 pub struct RenderedDocument {
@@ -437,7 +458,7 @@ Family renderers attach stable semantic target IDs while they still own typed mo
 ### Font and Text Layout Contract
 
 - `FontAsset` owns canonical SFNT bytes and validated face metadata.
-- `FontCatalog` owns ordered stacks, aliases, generic families, available/required font-source evidence, embedding policy, and fingerprint; `RenderResourcePolicy` owns all allocation ceilings and `FontSourcePolicy` owns priority.
+- `FontCatalog` owns ordered stacks, aliases, generic families, available/required font-source evidence, embedding policy, and fingerprint; `ThemeResourcePolicy` owns theme/font compilation ceilings, `RenderResourcePolicy` owns operation/layout/SVG ceilings, and `FontSourcePolicy` owns priority.
 - `TextLayoutBackend::prepare(PrepareCatalogRequest)` returns `PreparedTextLayout` bound to catalog fingerprint, backend contract version, backend identity, normalized typography capabilities, and a reusable session token.
 - Native `PreparedTextLayout` uses the canonical catalog and `rustybuzz` and is the authoritative portable path.
 - Host-backed layout returns loaded catalog face evidence and, where supported, actual face/run evidence. Without the full attestation contract its highest grade is `HostDependent` even when bytes match. A fully attested catalog-backed host may be `Portable` for a target that explicitly admits the attested backend contract.
@@ -489,11 +510,12 @@ A declared postprocessor resource delta can produce `SvgResourceClosure::Closed`
 
 ```json
 {
-  "render_profile": "merman-modern",
   "theme": {
     "preset": "editor-dark"
   },
-  "site_config": {},
+  "site_config": {
+    "flowchart": { "defaultRenderer": "elk" }
+  },
   "svg": {}
 }
 ```
@@ -502,7 +524,6 @@ or:
 
 ```json
 {
-  "render_profile": "merman-modern",
   "theme": {
     "spec": {
       "typography": {},
@@ -521,18 +542,20 @@ or:
       }
     }
   },
-  "site_config": {},
+  "site_config": {
+    "flowchart": { "defaultRenderer": "elk" }
+  },
   "svg": {}
 }
 ```
 
-The tagged union has no internal merge contract. A request-level preset or spec replaces the inherited theme as one complete compiled value; `null` clears it; omission inherits it; `{}` is invalid. `ThemeTokens` is a typed Rust/host adapter that must be converted to a complete spec before crossing the Options JSON boundary. Constructor-owned `ThemeAdmissionPolicy` and `RenderResourcePolicy` are never part of this replacement.
+The tagged union has no internal merge contract. A request-level preset or spec replaces the inherited theme as one complete compiled value; `null` clears it; omission inherits it; `{}` is invalid. `ThemeTokens` is a typed Rust/host adapter that must be converted to a complete spec before crossing the Options JSON boundary. Constructor-owned `ThemeAdmissionPolicy`, `ThemeResourcePolicy`, and `RenderResourcePolicy` are never part of this replacement.
 
 ### Policy Resolution and Trust Boundaries
 
 Policy resolution is monotonic:
 
-1. The constructor selects `ThemeAdmissionPolicy`, `RenderResourcePolicy`, `FontSourcePolicy`, `HostMeasurementFallbackPolicy`, and `ThemePortabilityRequirement` ceilings.
+1. The constructor selects `ThemeAdmissionPolicy`, `ThemeResourcePolicy`, `RenderResourcePolicy`, `FontSourcePolicy`, `HostMeasurementFallbackPolicy`, and `ThemePortabilityRequirement` ceilings.
 2. A compiled preset/spec can declare stricter requirements or narrower sources.
 3. A request can replace the theme but cannot relax constructor ceilings.
 4. Source config can change Mermaid semantics but cannot enable forbidden resource sources or raise budgets.
@@ -542,7 +565,8 @@ Policy resolution is monotonic:
 
 | Axis | Representation | Resolution rule |
 | --- | --- | --- |
-| Resource ceilings | Stable limit-ID to numeric ceiling | Pointwise minimum; hard caps always win |
+| Theme resource ceilings | Owner-local stable theme limit-ID to numeric ceiling | Pointwise minimum; hard caps always win; never projected into generic render overrides |
+| Render resource ceilings | Existing stable render/input limit-ID to numeric ceiling | Pointwise minimum; hard caps always win |
 | Portability requirement | `BestEffort < RequirePortable` | Choose the stricter requirement |
 | Font sources | Allowed set over `{Embedded, System}` plus host priority | Intersect allowed sets and preserve host priority; empty intersection is an admission error |
 | Host measurement fallback | Ordered allowed set over `{AcceptHostDependent, NativeCatalog, VendoredDefault}` | Intersect allowed sets and preserve host order; `AcceptHostDependent` can only yield `HostDependent`; `VendoredDefault` is ineligible for a custom catalog; empty means fail rather than invent another fallback |
@@ -559,7 +583,7 @@ Themes declare required capabilities and available resources, not a new priority
 | Complete arbitrary SVG | Trusted low-level Rust/CLI input | `resvg_safe`, terminal closure, no Mermaid operation report or Mermaid `Portable` claim, target-specific safety/admission |
 | Browser DOM insertion | Separate consumer boundary | Canonical `platforms/web/src/svg-safety-policy.ts`, generated VS Code copy, freshness check, host CSP/isolation |
 
-Theme resource accounting extends the existing stable `RenderResourcePolicy` descriptors. New stable limit IDs cover encoded theme JSON/base64, compressed font bytes, decoded SFNT bytes, face/table/catalog totals, emitted font CSS bytes, effect primitive count, filter region/pixels, turbulence octaves, blur/displacement, and postprocessor resource deltas. Hard implementation caps remain non-overridable. Preflight order is encoded length, canonical base64 length, declared WOFF2 expansion, bounded decode, font parse/accounting, projected SVG data expansion, then target filter raster planning.
+Theme resource accounting uses an owner-local `ThemeResourcePolicy` and descriptor catalog. Its stable IDs cover encoded theme JSON/base64, compressed font bytes, decoded SFNT bytes, face/table/catalog totals, emitted font CSS bytes, effect-graph primitives, turbulence octaves, and blur/displacement parameters. Existing `RenderResourcePolicy` continues to own source/layout/SVG byte and element limits, postprocessor deltas, and target filter raster region/pixel budgets. Hard implementation caps remain non-overridable. Preflight order is encoded length, canonical base64 length, declared WOFF2 expansion, bounded decode, font parse/accounting, projected SVG data expansion, then target filter raster planning.
 
 Typed embedded `@font-face` support must update the canonical Web policy and generated VS Code policy together. Only compiler-emitted font MIME/container pairs are admitted; canonical base64, signature agreement, per-face and aggregate encoded/decoded limits, and external-URL rejection are mandatory. Portability reports and safety-policy results remain separate concepts.
 
@@ -575,7 +599,7 @@ General binding reports expose catalog-owned asset IDs, requested aliases, finge
 - CLI/WASM/FFI/UniFFI/JNI: project structured resources into core without duplicating theme compilation.
 - Web/VS Code safety policy: admit only compiler-owned bounded font data and preserve generated-policy freshness.
 - security/fuzzing: update rendering threat contracts and add a hostile theme/font resource target to the existing `fuzz/` package.
-- docs/examples/playground: rename concepts and demonstrate theme/profile/output independence.
+- docs/examples/playground: rename concepts and demonstrate theme/layout/output independence.
 - fixture tooling: retain upstream evidence catalog; add a separate theme capability corpus.
 
 ### Risks and Mitigations
@@ -598,8 +622,9 @@ General binding reports expose catalog-owned asset IDs, requested aliases, finge
 
 ### Sources and Research
 
-- Mermaid `11.16.0@7c0cafcf`, especially config/theme injection and family render sources under `repo-ref/mermaid/packages/mermaid/src`.
-- Local `modern_mermaid@a021cbc`, especially `src/utils/themes.ts`, `src/fonts.css`, and `src/components/Preview.tsx`.
+- Mermaid `11.16.1@7ecca0cd`, especially config/theme injection and family render sources under `repo-ref/mermaid/packages/mermaid/src`.
+- Local `modern_mermaid@a021cbce`, especially `src/utils/themes.ts`, `src/fonts.css`, and `src/components/Preview.tsx`.
+- Merman PR #28 as a community-contribution record for modern Flowchart layout and visual mechanisms, and issue #46 as product evidence for DaisyUI/custom design-system themes, dark State/Sequence readability, and font clipping.
 - Existing ADR-0049 for default vendored measurement, ADR-0059 for native export, ADR-0063 for the terminal SVG pipeline, and ADR-0077 as the superseded presentation ownership decision.
 - Current `usvg/resvg 0.47`, `fontdb 0.23.0`, `ttf-parser 0.25.1`, and `rustybuzz 0.20.1` source in the resolved Cargo graph.
 - `wuff 0.2.8` crate source and conformance documentation for pure-Rust WOFF2 decoding.
@@ -610,31 +635,31 @@ General binding reports expose catalog-owned asset IDs, requested aliases, finge
 ### U0. Reconcile the current dirty branch against the superseding plan
 
 - **Covers:** R1-R8, R24, R34.
-- **Approach:** Inventory every uncommitted file. Keep the request-scoped site-config materialization fix, the scoped-CSS root-sibling isolation fix, and any source-backed profile behavior separation that still matches KTD9. Remove or rewrite the conditional visual fallback, provisional direct `HostTheme` documentation, shallow API claims, and tests that encode the superseded model. Commit retained orthogonal fixes separately before theme implementation.
+- **Approach:** Inventory every uncommitted file. Keep the request-scoped site-config materialization fix and the scoped-CSS root-sibling isolation fix. Create a PR #28 keep/move/delete ledger covering its visual mechanisms, forced model order, processor-mutation preflight, geometry correctness, visible-boundary endpoints, routing/corner behavior, and application-only editor features. Decompose every retained item into its explicit theme, Mermaid/layout, typed family configuration, default-correctness, or host-application owner, with a deletion reason and replacement evidence for every removed item. Remove or rewrite the conditional visual fallback, provisional direct `HostTheme` documentation, shallow API claims, and tests that encode the superseded model. Commit retained orthogonal fixes separately before theme implementation.
 - **Files:** Current `git status` set, especially `crates/merman-render/src/presentation/*`, `crates/merman/src/svg/mod.rs`, bindings request code, scoped CSS tests, ADR-0077, presentation docs, examples, and migration guide.
-- **Verification:** Diff audit proves no unrelated user changes were deleted; retained scoped-CSS tests cover attribute-qualified `+`, `~`, comments, quoted `]`, escapes, repeated attributes, and unclosed selectors.
+- **Verification:** Diff audit proves no unrelated user changes were deleted; retained scoped-CSS tests cover attribute-qualified `+`, `~`, comments, quoted `]`, escapes, repeated attributes, and unclosed selectors; the PR #28 ledger links forced model order, processor preflight, retained geometry/routing behavior, and each removed mixed-profile feature to a current owner and regression test or explicit rejection rationale.
 - **Done when:** The branch has a reviewable retained baseline and no test or doc claims the superseded visual fallback is final architecture.
 
 ### U1. Add the licensed theme capability and source-style corpus
 
-- **Covers:** R38-R41, R46 and AE2-AE6, AE16.
-- **Approach:** Create a theme-specific manifest for assets, expected fingerprints, required mechanisms, portability grade, and output coverage. Add representative source diagrams and theme specs for token baseline, mixed-script typography, ordinal palette, layered canvas, Hand Drawn effects, and Aurora residual. Manually decompose the 24 `modern_mermaid` themes into Merman-owned typed mechanisms, facets, and fixture inputs without importing application annotation data or treating its TypeScript/CSS as an input language. Retain the pinned revision, source hashes, declaration-line citations, and an explicit semantic-matrix review digest. Extract a source-backed style-origin/property precedence matrix from Mermaid 11.16.0 for admitted families before U7 changes any adapter.
+- **Covers:** R3-R3a, R17-R24, R38-R41, R46 and AE2-AE6, AE16, AE19, AE21-AE23.
+- **Approach:** Create a theme-specific manifest for assets, expected fingerprints, required mechanisms, portability grade, and output coverage. Add representative source diagrams and theme specs for token baseline, mixed-script typography, ordinal palette, layered canvas, Hand Drawn effects, Aurora residual, dark State/Sequence readability, and design-system token switching. Manually decompose the 24 `modern_mermaid` themes and the visual mechanisms from Merman PR #28 into Merman-owned typed mechanisms, facets, and fixture inputs without importing application annotation data or treating TypeScript/CSS as an input language. Retain pinned revisions, source hashes, declaration-line citations, contribution provenance, and an explicit semantic-matrix review digest. Extract a source-backed style-origin/property precedence matrix from Mermaid 11.16.1 for admitted families before U7 changes any adapter.
 - **Files:** New `fixtures/themes/` tree, focused test helpers under `crates/merman-render/tests/support/` or a small publish-false fixture crate only if multiple packages need the same validated manifest, and alignment docs.
 - **Patterns:** Follow the provenance rigor of `merman-fixture-render-context` without adding theme responsibilities to that crate.
-- **Verification:** Manifest path validation, SHA-256 validation, license presence, duplicate ID rejection, compile-only mechanism coverage for all 24 reference themes, manually reviewed `modern_mermaid` declaration-line citations and semantic-matrix digest, pinned-source citations for class/default-class/assigned-class/inline/directive/themeCSS precedence, exact ID-to-tuple validation, one source-compatibility fixture consumer per admitted precedence entry, and one matrix citation per hashed Mermaid evidence file. Typed capability fixtures must reject source-owned visual evidence. Do not add a TypeScript evaluator or a partial CSS background parser to automate this low-frequency extraction.
+- **Verification:** Manifest path validation, SHA-256 validation, license presence, duplicate ID rejection, complete mechanism classification for all 24 reference themes, compile-only typed coverage for every admitted portable mechanism, one typed mapping and fixture witness for every retained PR #28 visual mechanism, manually reviewed `modern_mermaid` declaration-line citations and semantic-matrix digest, pinned-source citations for class/default-class/assigned-class/inline/directive/themeCSS precedence, exact ID-to-tuple validation, one source-compatibility fixture consumer per admitted precedence entry, and one matrix citation per hashed Mermaid evidence file. Typed capability fixtures must reject source-owned visual evidence and arbitrary element-ID selectors. Do not add a TypeScript evaluator or a partial CSS background parser to automate this low-frequency extraction.
 - **Done when:** Every new low-level feature has a fixture consumer before the public API is finalized.
 
 ### U2. Implement host-owned policy, canonical font assets, and catalog compilation
 
 - **Covers:** R9-R11, R16, R36, R42-R43, R48-R49.
-- **Approach:** Add `ThemeAdmissionPolicy`, capability-set policy resolution, `FontAsset`, `FontFaceMetadata`, `FontCatalogSpec`, `FontCatalog`, embedding/source requirements, generic-family mapping, aliases, fingerprints, and stable resource-limit descriptors. Decode WOFF2 with `wuff` into canonical SFNT and validate with `ttf-parser`. Keep bytes immutable and I/O-free. Add a `theme_font_asset` target to the existing fuzz package.
-- **Files:** New `crates/merman-render/src/diagram_theme/admission.rs` and `assets.rs`, workspace and crate manifests, `crates/merman-render/src/resources.rs`, `fuzz/Cargo.toml`, new `fuzz/fuzz_targets/theme_font_asset.rs`, `.github/workflows/fuzz.yml`, `docs/security/FUZZING.md`, fuzz config tests, bindings error/report types, fixture assets.
-- **Verification:** Complete capability-set intersection/empty-intersection matrices, reachable `AcceptHostDependent`, custom-catalog rejection of `VendoredDefault`, constructor/request monotonic policy, stable limit IDs and hard caps, TTF/OTF/TTC/WOFF2 success, malformed and collection edge cases, decompression amplification, duplicate IDs, restricted embedding, alias collision, deterministic fingerprint, bounded base64/WOFF2/SFNT/catalog fuzz smoke, and no-default-path regression.
+- **Approach:** Add `ThemeAdmissionPolicy`, owner-local `ThemeResourcePolicy`, capability-set policy resolution, `FontAsset`, `FontFaceMetadata`, `FontCatalogSpec`, `FontCatalog`, embedding/source requirements, generic-family mapping, aliases, fingerprints, and stable theme-resource descriptors. Remove theme/font IDs from generic `RenderResourcePolicy` and generated render override contracts. Decode WOFF2 with `wuff` into canonical SFNT and validate with `ttf-parser`. Keep bytes immutable and I/O-free. Add a `theme_font_asset` target to the existing fuzz package.
+- **Files:** New `crates/merman-render/src/diagram_theme/admission.rs`, `assets.rs`, and `resources.rs`, workspace and crate manifests, cleanup in `crates/merman-render/src/resources.rs`, `fuzz/Cargo.toml`, new `fuzz/fuzz_targets/theme_font_asset.rs`, `.github/workflows/fuzz.yml`, `docs/security/FUZZING.md`, fuzz config tests, bindings error/report types, fixture assets.
+- **Verification:** Complete capability-set intersection/empty-intersection matrices, reachable `AcceptHostDependent`, custom-catalog rejection of `VendoredDefault`, constructor/request monotonic policy, stable owner-local limit IDs and hard caps, no theme IDs in generic render override discovery, TTF/OTF/TTC/WOFF2 success, malformed and collection edge cases, decompression amplification, duplicate IDs, restricted embedding, alias collision, deterministic fingerprint, bounded base64/WOFF2/SFNT/catalog fuzz smoke, and no-default-path regression.
 - **Done when:** One compiled catalog can be consumed without reparsing or rediscovering bytes by later adapters, and hostile payloads cannot raise host ceilings or bypass staged accounting.
 
 ### U3. Introduce fingerprint-bound prepared text layout
 
-- **Covers:** R12-R16a, R19, R43, R45, R49 and AE2, AE15.
+- **Covers:** R12-R16a, R19-R19a, R43, R45, R49 and AE2, AE15, AE20.
 - **Approach:** Replace the custom-font path's loose per-request CSS-family measurement with `TextLayoutBackend::prepare` and `PreparedTextLayout`. Extend resolved typography. Implement native shaping and cluster fallback with `rustybuzz`. Define a versioned `prepare_catalog` request/result/session contract covering backend identity, normalized shaping/style capabilities, direction/script/language/features/variations, loaded catalog faces, optional run evidence, timeout/rejection, cache lifetime, and invalidation. Rust and WASM can implement this lifecycle; Native ABI 3 and bindings without it use native layout. Route layout, wrap, SVG bbox, and computed length through the prepared service. Introduce family-local immutable prepared labels, beginning with `PreparedFlowchartSvgLabel`, so source tokens, visible text, wrapping, bbox height, and computed width are calculated once while preserving host request order. Keep default vendored metrics unchanged.
 - **Files:** `crates/merman-render/src/environment.rs`, `crates/merman-render/src/text/*`, new `diagram_theme/typography.rs`, binding host-measurement protocol code and docs, affected family label preparation paths.
 - **Verification:** Mixed Latin/CJK fallback, weight/style/feature/variation selection, direction/script/language, tokenize/wrap/measure reuse, host prepare success/mismatch/timeout/invalidation, under-attested-host downgrade, fully attested host admission, missing glyph, each orthogonal policy transition, unchanged request ordering, existing default measurement snapshots, and bounded text/features/variations `rustybuzz` shaping fuzz smoke.
@@ -650,7 +675,7 @@ General binding reports expose catalog-owned asset IDs, requested aliases, finge
 
 ### U5. Make native exporters consume the document font catalog
 
-- **Covers:** R29-R32, R41, R44 and AE2, AE9, AE10, AE14.
+- **Covers:** R29-R32, R41, R44 and AE2, AE9, AE10, AE14, AE20.
 - **Approach:** Replace unconditional `shared_system_fontdb` use with a catalog adapter. Build embedded-only databases without system scanning. For embedded-then-system, clone the bounded shared system database, load retained faces, record their IDs, and use a custom resolver that queries retained IDs before system candidates. Preserve the cached legacy database only for system-only. Do not add an unbounded global cache keyed by arbitrary catalogs. Use the catalog default and generic families. Before widening output coverage, run a go/no-go vertical tranche with one licensed mixed-script catalog through U3 prepared layout, U4 sealed SVG, PNG, and PDF. Rename raster/PDF compositing options and emit target-specific portability/admission reports.
 - **Files:** `crates/merman-export/src/lib.rs`, facade output methods, CLI/output config, docs and export tests.
 - **Verification:** the vertical tranche proves resource identity and reports before broad exporter expansion; embedded-only never resolves an installed font, embedded priority wins family collisions, system-only preserves current behavior, PNG/JPEG/PDF share fingerprints, SVG/PDF can report different justified target outcomes, PDF filter output reports local rasterization, and matte/page-paint semantics remain separate from canvas.
@@ -658,7 +683,7 @@ General binding reports expose catalog-owned asset IDs, requested aliases, finge
 
 ### U6. Add structured SVG resource IDs, canvas, effects, and paint bounds
 
-- **Covers:** R20-R23, R30, R42, R47-R49 and AE4-AE6, AE13, AE17.
+- **Covers:** R3a, R20-R23, R30, R42, R47-R49 and AE4-AE6, AE13, AE17, AE19, AE22.
 - **Approach:** Introduce the scoped ID allocator and structured defs writer. Refactor root SVG assembly so content bounds, stroke outsets, filter bleed, and canvas insets reach `RootViewportPlan` before root completion. Emit trusted font declarations, defs, canvas, and effect bindings in deterministic order. Extend stable resource limits through filter raster planning. Update the canonical Web SVG safety policy and generated VS Code copy for compiler-owned bounded font data. Keep terminal validation as the final authority.
 - **Files:** `crates/merman-render/src/svg/parity/root_svg.rs`, new `svg/root_document.rs`, `svg/resource_ids.rs`, and `svg/resource_closure.rs` as justified, new `diagram_theme/canvas.rs` and `effects.rs`, pipeline final validation/reference planning, `platforms/web/src/svg-safety-policy.ts`, `tools/vscode-extension/src/preview-svg-safety-policy.ts`, generation/freshness scripts, exporter filter tests.
 - **Verification:** multi-diagram ID isolation, gradient/pattern layering, blend modes, filter graph cycles, primitive/region/pixel caps, bleed/viewBox expansion, deterministic serialization, canonical font base64 plus MIME/signature agreement, SVG font serialization fuzzing and negative resource-reference coverage, Web/VS Code policy freshness, external URL rejection, and no layout feedback loop.
@@ -666,26 +691,26 @@ General binding reports expose catalog-owned asset IDs, requested aliases, finge
 
 ### U7. Compile semantic theme rules before layout
 
-- **Covers:** R5, R17-R19, R21-R24, R39, R46 and AE3, AE7, AE16.
+- **Covers:** R5, R17-R19b, R21-R24, R39, R46 and AE3, AE7, AE16, AE19-AE23.
 - **Approach:** Define semantic targets, the applicability matrix, variants, ordinal selectors, typed style patches, style origins, and property admission classes. Resolve a family-local immutable style plan after parse/effective config and before layout using the U1 source-backed precedence matrix. Update family layout/render code to consume that plan and emit semantic bindings. Source properties not admitted as layout-before-freeze, paint-only, or non-visual produce an explicit `Unverified` residual. Do not infer semantics by reparsing final SVG DOM.
 - **Files:** New `diagram_theme/semantic.rs`, `source_styles.rs`, `compiler.rs`, `resolved.rs`; family layout/render modules for admitted targets; `TextStyle`; theme CSS compatibility integration.
-- **Verification:** ordinal stability under family encounter order, all applicability cases, competing theme/class/default-class/assigned-class/inline/directive values, pre-layout typography effects, paint/layout field separation, unsupported source-property residuals, no selector strings in portable specs, and reference mechanism fixtures across Flowchart, Class, Sequence, State, ER, Gantt, Pie, GitGraph, Timeline, and Ishikawa.
+- **Verification:** ordinal stability under family encounter order, all applicability cases, competing theme/class/default-class/assigned-class/inline/directive values, pre-layout typography effects, paint/layout field separation, explicit-none clearing, unsupported source-property residuals, no selector strings or element IDs in portable specs, dark State/Sequence semantic coverage with unclipped long labels, and reference mechanism fixtures across Flowchart, Class, Sequence, State, ER, Gantt, Pie, GitGraph, Timeline, Ishikawa, XYChart, Journey, and Mindmap.
 - **Done when:** The modern mechanism matrix is expressed through typed semantic owners rather than CSS selector emulation.
 
-### U8. Replace the public theme and profile model
+### U8. Replace the public theme and delete the mixed profile model
 
 - **Covers:** R2-R8, R33-R35, R42-R45.
-- **Approach:** Introduce `DiagramThemeCompiler`, the final immutable public theme types, orthogonal host policy axes, and staged portability reports. Rename `PresentationProfile` to `RenderProfile`; remove visual fallback and shallow resolved presentation types. Replace `HostTheme` with `ThemeTokens` plus full `DiagramTheme`. Remove target-agnostic `DiagramTheme::portability()`. Rename the private renderer theme shim to avoid two meanings. Make `HeadlessRenderer::with_theme` and `with_render_profile` order-independent and invalidate materialized state correctly.
-- **Files:** `crates/merman-render/src/presentation/*` replaced by `diagram_theme/*` and render-profile owner, `crates/merman/src/svg/mod.rs`, examples, tests, public reexports.
-- **Verification:** compile-fail removal tests, constructor/request downgrade rejection, orthogonal policy transitions, staged report ownership, setter order and cache invalidation, default parity, profile/theme independence, explicit site-config precedence, and no Redux visual fallback.
+- **Approach:** Introduce `DiagramThemeCompiler`, the final immutable public theme types, orthogonal host policy axes, and staged portability reports. Delete `PresentationProfile`, its aspect catalog, visual fallback, and shallow resolved presentation types; move independently useful behavior into Mermaid/layout or typed family configuration. Replace `HostTheme` with `ThemeTokens` plus full `DiagramTheme`. Remove target-agnostic `DiagramTheme::portability()`. Rename the private renderer theme shim to avoid two meanings. Make `HeadlessRenderer::with_theme` and explicit configuration setters order-independent and invalidate materialized state correctly.
+- **Files:** `crates/merman-render/src/presentation/*` replaced by `diagram_theme/*` plus explicit layout/family configuration owners, `crates/merman/src/svg/mod.rs`, examples, tests, public reexports.
+- **Verification:** compile-fail removal tests, constructor/request downgrade rejection, orthogonal policy transitions, staged report ownership, setter order and cache invalidation, default parity, theme/layout independence, reuse of one compiled theme across two independent renderers without state leakage, explicit site-config precedence, no Redux visual fallback, and no runtime-discovery entry for `merman-modern`.
 - **Done when:** A new user can explain every public concept by lifecycle and ownership without using the word presentation as a catch-all.
 
 ### U9. Replace Options JSON, discovery, and first-party consumers
 
-- **Covers:** R35-R37, R42-R49 and AE8, AE11, AE13, AE15, AE18.
-- **Approach:** Replace the unreleased presentation group with the closed preset-or-spec schema. Add bounded base64 resource decoding inside a complete spec, explicit omit/null/empty behavior, monotonic constructor/request policy resolution, and bounded redacted diagnostics. Generate discovery from Rust descriptors. Migrate CLI, WASM, FFI, UniFFI, JNI, Typst, examples, and Playground controls. Add a versioned WASM prepare/session API. Keep Native ABI 3 slots unchanged and use native catalog layout plus the existing Options JSON operation path there; typed helpers may accept bytes before constructing the core value.
+- **Covers:** R3-R3a, R35-R37, R42-R49 and AE8, AE11, AE13, AE15, AE18-AE19.
+- **Approach:** Replace the unreleased presentation group with the closed preset-or-spec schema. Add bounded base64 resource decoding inside a complete spec, explicit omit/null/empty behavior, monotonic constructor/request policy resolution, bounded redacted diagnostics, and helpers that map resolved design-system token records without depending on a specific CSS framework. Generate discovery from Rust descriptors. Migrate CLI, WASM, FFI, UniFFI, JNI, Typst, examples, and Playground controls. Add a versioned WASM prepare/session API. Keep Native ABI 3 slots unchanged and use native catalog layout plus the existing Options JSON operation path there; typed helpers may accept bytes before constructing the core value.
 - **Files:** `crates/merman-bindings-core`, `merman-cli`, `merman-wasm`, `merman-ffi`, `merman-uniffi`, `merman-android-jni`, `merman-typst-plugin`, web tools, discovery docs and tests.
-- **Verification:** preset/spec exclusivity, omit/null/empty behavior, array completeness, bounded base64, constructor downgrade rejection, redaction/probing tests, compiled-theme constructor reuse, discovery on slim/full artifacts, unknown newer IDs, CLI config, WASM prepare/session and byte transport, ABI 3 invariance, and cross-language error projection.
+- **Verification:** preset/spec exclusivity, omit/null/empty behavior, array completeness, bounded base64, constructor downgrade rejection, redaction/probing tests, compiled-theme constructor reuse, resolved design-token mapping, light/dark theme switching without state leakage, discovery on slim/full artifacts, unknown newer IDs, CLI config, WASM prepare/session and byte transport, ABI 3 invariance, and cross-language error projection.
 - **Done when:** Every first-party surface exposes the same owners and no surface reconstructs theme semantics independently.
 
 ### U10. Delete obsolete code and rewrite contracts
@@ -781,7 +806,8 @@ The final receipt must name the exact artifact-profile feature sets used for FFI
 - Strict portability rejects host fonts, raw CSS, custom postprocessors, unsupported filters, and Aurora backdrop blur.
 - Best-effort mode records every fallback and approximation.
 - Canvas/effect fixtures have non-clipped SVG bounds and nonblank PNG/JPEG/PDF output.
-- Resource limits cover encoded JSON/base64, compressed and decoded font bytes, faces, tables, catalog totals, CSS font data, filter primitives/regions/pixels, and postprocessor deltas, with request overlays only tightening ceilings.
+- Dark State and Sequence fixtures preserve contrast and unclipped long-label geometry in standalone SVG, PNG, JPEG, and PDF while reusing the same compiled light/dark theme instances across operations and independent renderer instances.
+- Owner-local theme resource limits cover encoded JSON/base64, compressed and decoded font bytes, faces, tables, catalog totals, CSS font data, and typed effect graphs; render resource limits separately cover layout/SVG/filter-raster/postprocessor work. Request overlays can only tighten their own namespace.
 - Options JSON and every binding enforce preset/spec exclusivity, omit/null/empty semantics, external-path/URL rejection, and unknown raw structural-input rejection.
 - Browser SVG font data passes the canonical Web policy, the generated VS Code copy stays current, and raw CSS security outcomes remain independent from portability grades.
 - Public reports are bounded and redact system-font paths, provider IDs, and installed-family inventories.
@@ -809,8 +835,8 @@ The final receipt must name the exact artifact-profile feature sets used for FFI
 
 - `DiagramTheme` is the only complete visual recipe owner.
 - `ThemeTokens` is clearly documented and tested as a convenience adapter, not the full theme model.
-- `RenderProfile` owns behavior only and has no visual fallback.
-- `ThemeAdmissionPolicy` and `RenderResourcePolicy` are host-owned monotonic ceilings; themes and requests cannot weaken them.
+- Renderer and layout behavior remain in explicit configuration owners; no `MermanModern` mixed owner or visual fallback remains.
+- `ThemeAdmissionPolicy`, owner-local `ThemeResourcePolicy`, and operation-owned `RenderResourcePolicy` are host-owned monotonic ceilings; themes and requests cannot weaken or cross-project them.
 - portability requirement, font-source policy, and host-measurement fallback are distinct public concepts.
 - custom font themes use one fingerprinted catalog across measurement, SVG, and native export.
 - native catalog layout is the authoritative portable path; host layout requires versioned attestation or is reported as host-dependent.
@@ -821,7 +847,8 @@ The final receipt must name the exact artifact-profile feature sets used for FFI
 - raw CSS and custom postprocessors cannot silently retain a portable grade.
 - Options JSON is a closed preset-or-complete-spec union, and general binding diagnostics are bounded and redacted.
 - Web/VS Code SVG safety policies, rendering threat docs, and the theme-font fuzz target cover the new resource boundary.
-- the modern capability corpus proves 23 modeled themes and one explicit Aurora residual.
+- the modern capability corpus completely classifies all 24 themes, maps every admitted portable mechanism to typed evidence, records PR #28 contribution provenance, provides one named attributed PR #28-derived composition example, and names the explicit Aurora residual.
+- design-system token fixtures prove reusable light/dark State and Sequence themes with readable, unclipped long labels.
 - provisional presentation APIs, dead code, and obsolete docs are removed.
 - focused nextest, cross-target checks, visual evidence, and multi-agent reviews pass.
 - local commits are reviewable and no PR is opened.
@@ -830,7 +857,7 @@ The final receipt must name the exact artifact-profile feature sets used for FFI
 
 | Unit | Completion evidence |
 | --- | --- |
-| U0 | Dirty-branch keep/supersede audit and retained-fix commit |
+| U0 | Dirty-branch keep/supersede audit, PR #28 keep/move/delete ledger, retained behavior tests, and retained-fix commit |
 | U1 | Licensed theme fixture manifest, 24-theme mechanism matrix, and pinned source-style precedence evidence |
 | U2 | Monotonic host policy, canonical catalog, staged budget, and byte/container/catalog fuzz evidence |
 | U3 | Versioned native/host prepare-session tests plus one-result label reuse, host-request-order evidence, and shaping fuzz evidence |
@@ -838,7 +865,7 @@ The final receipt must name the exact artifact-profile feature sets used for FFI
 | U5 | Catalog-driven target-specific SVG/PNG/JPEG/PDF vertical tranche, admission, and font resolution tests |
 | U6 | Structured canvas/effect/viewBox/ID tests, SVG font serialization fuzzing, and Web/VS Code safety-policy parity |
 | U7 | Semantic applicability, source-origin precedence, ordinal, and portability coverage across representative families |
-| U8 | Final compiler/policy/Rust API and default/profile/theme precedence tests |
+| U8 | Final compiler/policy/Rust API and default/theme/configuration precedence tests |
 | U9 | Tagged-union Options JSON, redacted discovery, WASM session, CLI, and binding parity tests |
 | U10 | Deletion audit, supersession mapping, ADR, security docs, examples, and migration table |
 | U11 | Serial verification receipt and resolved review findings |
