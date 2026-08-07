@@ -21,10 +21,7 @@ pub(crate) use baseline::{
     rollback_imported_fixture_snapshots, should_revalidate_deferred_fixture,
     validate_exact_import_candidate_filter,
 };
-pub(crate) use cypress::{
-    cypress_corpus_source_alignment_failures, import_upstream_cypress,
-    materialize_cypress_fixture_source,
-};
+pub(crate) use cypress::{import_upstream_cypress, materialize_cypress_fixture_source};
 pub(crate) use docs::import_upstream_docs;
 pub(crate) use examples::import_upstream_examples;
 pub(crate) use fixture_files::{

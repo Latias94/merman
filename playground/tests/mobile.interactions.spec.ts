@@ -193,6 +193,53 @@ test("landscape touch gestures and preview modes remain operable", async ({
   errors.assertNone();
 });
 
+test("unsupported ASCII remains tappable and explains itself on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(page, "pie\n  title Mobile\n  \"A\" : 1");
+  await page.getByRole("tab", { name: "Preview", exact: true }).tap();
+
+  const asciiTab = page.getByRole("tab", { name: "ASCII", exact: true });
+  await expect(asciiTab).toBeEnabled();
+  await asciiTab.tap();
+  await expect(asciiTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByText("ASCII not supported for this diagram type", { exact: true }),
+  ).toBeVisible();
+  await expectNoDocumentOverflow(page);
+  errors.assertNone();
+});
+
+test("supported ASCII renders and exposes a usable copy action on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(page, "flowchart LR\n  Alpha --> Beta");
+  await page.getByRole("tab", { name: "Preview", exact: true }).tap();
+
+  const asciiTab = page.getByRole("tab", { name: "ASCII", exact: true });
+  await asciiTab.tap();
+  await expect(asciiTab).toHaveAttribute("aria-selected", "true");
+  const asciiEditor = page.getByTestId("ascii-artifact-editor");
+  await expect(asciiEditor).toBeVisible();
+  await expect
+    .poll(() => asciiEditor.locator(".view-line").allTextContents())
+    .toEqual(expect.arrayContaining([expect.stringContaining("Alpha")]));
+
+  const copyAscii = page.getByTestId("copy-ascii-button");
+  await expect(copyAscii).toBeEnabled();
+  await expect(copyAscii).toHaveAccessibleName("Copy ASCII");
+  await copyAscii.tap();
+  await expect(copyAscii).toHaveAccessibleName("Copied!");
+  await expectNoDocumentOverflow(page);
+  errors.assertNone();
+});
+
 test("Kanban ticket links remain tappable without starting a viewport gesture", async ({
   page,
 }) => {

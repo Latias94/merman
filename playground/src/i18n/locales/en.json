@@ -265,6 +265,7 @@
     "asciiMode": "ASCII Preview",
     "asciiNotSupported": "ASCII not supported for this diagram type",
     "asciiNotAvailable": "ASCII rendering not available",
+    "asciiDetectionUnavailable": "ASCII rendering was not attempted because the diagram type could not be detected",
     "copyAscii": "Copy ASCII",
     "copySvg": "Copy SVG",
     "copied": "Copied!",

@@ -1,7 +1,7 @@
 # Flowchart Admission Contract
 
 This document defines the admitted Flowchart parser, Dagre/ELK layout, and SVG contract against
-Mermaid `11.16.0` at `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
+Mermaid `11.16.1` at `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
 
 ## Supported (current)
 

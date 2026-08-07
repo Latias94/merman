@@ -4,7 +4,7 @@ This folder tracks the **ongoing alignment workstream**: what to align next, how
 a real gap, and how we decide between source-backed changes, generalized measurement facts, and
 accepted browser residuals.
 
-Baseline target (pinned upstream): Mermaid `@11.16.0`.
+Baseline target (pinned upstream): Mermaid `@11.16.1`.
 
 Related documentation:
 

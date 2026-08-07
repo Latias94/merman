@@ -13,7 +13,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const THEME_SNAPSHOT_OUTPUT: &str = "crates/merman-core/src/generated/theme_variables_11_16_0.json";
+const THEME_SNAPSHOT_OUTPUT: &str = "crates/merman-core/src/generated/theme_variables_11_16_1.json";
 const THEME_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 const GENERATOR_COMMAND: &str = "cargo run -p xtask -- gen-theme-snapshot";
 const THEME_NAMES: &[&str] = &[

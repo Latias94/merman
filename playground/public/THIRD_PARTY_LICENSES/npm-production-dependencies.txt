@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-playground
 Generator: generate-license-file 4.2.1
-package-lock.json SHA-256: be82b086bca4db7a5f885f394c1a9f92954ca464885b2621137ebeda2618fd39
+package-lock.json SHA-256: 4cfb2dcd9f90f3cbd496e31bd06ee79662f4735179742f8b1c1b53d0a84c9e69
 
 This file was generated with the generate-license-file npm package!
 https://www.npmjs.com/package/generate-license-file
@@ -4668,7 +4668,7 @@ The following npm packages may be included in this product:
  - @mermaid-js/layout-elk@0.2.2
  - @mermaid-js/layout-tidy-tree@0.2.2
  - @mermaid-js/mermaid-zenuml@0.2.3
- - mermaid@11.16.0
+ - mermaid@11.16.1
 
 These packages each contain the following license:
 

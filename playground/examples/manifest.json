@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "mermaidBaseline": "mermaid@11.16.0",
+  "mermaidBaseline": "mermaid@11.16.1",
   "examples": [
     {
       "diagramType": "architecture",

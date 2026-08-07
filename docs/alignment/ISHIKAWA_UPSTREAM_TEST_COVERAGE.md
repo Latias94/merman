@@ -1,6 +1,6 @@
-# Ishikawa Upstream Test Coverage (Mermaid@11.16.0)
+# Ishikawa Upstream Test Coverage (Mermaid@11.16.1)
 
-Scope: locked Mermaid commit `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
+Scope: locked Mermaid commit `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
 
 Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 

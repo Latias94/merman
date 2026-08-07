@@ -221,6 +221,32 @@ test("preview tabs use manual keyboard activation", async ({ page }) => {
   errors.assertNone();
 });
 
+test("ASCII mode remains selected while an edited diagram is updating", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(page, "flowchart LR\n  Alpha --> Beta");
+  await waitForPreviewSvg(page);
+
+  const asciiTab = page.getByRole("tab", { name: "ASCII", exact: true });
+  await asciiTab.click();
+  await expect(asciiTab).toHaveAttribute("aria-selected", "true");
+
+  await replaceEditorSource(page, "flowchart LR\n  Alpha --> Gamma");
+  await expect(asciiTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("ASCII not supported for this diagram type")).toBeHidden();
+  const asciiEditor = page.getByTestId("ascii-artifact-editor");
+  await expect(asciiEditor).toBeVisible();
+  await expect
+    .poll(() => asciiEditor.locator(".view-line").allTextContents())
+    .toEqual(expect.arrayContaining([expect.stringContaining("Alpha")]));
+  const copyAscii = page.getByRole("button", { name: "Copy ASCII", exact: true });
+  await expect(copyAscii).toBeEnabled();
+  await copyAscii.click();
+  errors.assertNone();
+});
+
 test("system theme follows media changes while explicit themes remain stable", async ({
   page,
 }) => {

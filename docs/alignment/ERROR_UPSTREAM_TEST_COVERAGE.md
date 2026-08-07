@@ -1,6 +1,6 @@
-# Error Upstream Test Coverage (Mermaid@11.16.0)
+# Error Upstream Test Coverage (Mermaid@11.16.1)
 
-Scope: Mermaid tag `@11.16.0`.
+Scope: Mermaid tag `@11.16.1`.
 
 ## Upstream source coverage
 

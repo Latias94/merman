@@ -1,4 +1,4 @@
-# State Diagram Admission Contract (Mermaid 11.16.0)
+# State Diagram Admission Contract (Mermaid 11.16.1)
 
 This document tracks the admitted `stateDiagram` parser, model, Dagre layout, and SVG behavior.
 

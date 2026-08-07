@@ -94,6 +94,23 @@ fn build_default_effective_config(
     Ok(effective_config)
 }
 
+fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: MermaidConfig) {
+    config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
+    let explicit_secure_policy = site_config
+        .as_value()
+        .get("secure")
+        .filter(|value| value.is_array())
+        .map(config::clone_value_nonrecursive);
+    target.deep_merge(site_config.as_value());
+
+    // Merman adds host-level hardening beyond Mermaid's upstream defaults. An explicit site
+    // policy is host authority, so it replaces that added list after the source-compatible array
+    // merge instead of making the hardening impossible to opt out of.
+    if let Some(secure) = explicit_secure_policy {
+        target.set_value("secure", secure);
+    }
+}
+
 fn generated_default_effective_config()
 -> std::result::Result<MermaidConfig, theme_color::ColorError> {
     static DEFAULT_EFFECTIVE_CONFIG: std::sync::OnceLock<
@@ -243,13 +260,12 @@ impl Engine {
     }
 
     /// Applies site-level Mermaid config defaults.
-    pub fn with_site_config(mut self, mut site_config: MermaidConfig) -> Self {
+    pub fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
         if site_config.is_empty_object() {
             return self;
         }
         // Merge overrides onto Mermaid schema defaults so detectors keep working.
-        config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
-        self.site_config.deep_merge(site_config.as_value());
+        merge_site_config_override(&mut self.site_config, site_config);
         self.default_effective_config = build_default_effective_config(&self.site_config);
         self
     }
@@ -260,9 +276,8 @@ impl Engine {
     /// defaults without inheriting values from the engine's previous site config.
     pub fn with_exact_site_config(mut self, site_config: Option<MermaidConfig>) -> Self {
         self.site_config = generated::default_site_config();
-        if let Some(mut site_config) = site_config {
-            config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
-            self.site_config.deep_merge(site_config.as_value());
+        if let Some(site_config) = site_config {
+            merge_site_config_override(&mut self.site_config, site_config);
         }
         self.default_effective_config = build_default_effective_config(&self.site_config);
         self

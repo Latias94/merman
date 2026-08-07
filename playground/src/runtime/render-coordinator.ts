@@ -2,6 +2,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import {
   UNAVAILABLE_DIAGRAM_DETECTION,
   type DiagramDetectionFacts,
+  type DiagramType,
   type SvgPlanResult,
 } from "@mermanjs/web";
 
@@ -17,9 +18,7 @@ import {
 } from "./merman-operation-input.ts";
 import type { WorkspaceSnapshot } from "../lib/workspace-snapshot.ts";
 import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
-import {
-  mermaidExternalRequirementsFor,
-} from "./mermaid-requirements.ts";
+import { mermaidExternalRequirementsFor } from "./mermaid-requirements.ts";
 import type {
   MermaidRealmController,
   MermaidRealmRenderResult,
@@ -30,6 +29,7 @@ import type {
   RealmViewport,
 } from "./realm/channel-protocol.ts";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
+import { isAsciiSupported } from "../lib/ascii-support.ts";
 import {
   assertNavigableInlineSvgArtifact,
   type NavigableInlineSvg,
@@ -52,8 +52,6 @@ export type RenderPublicationId = number & {
 
 export interface MermanRenderSuccess {
   readonly artifact: NavigableInlineSvg;
-  readonly ascii: string | null;
-  readonly asciiError: ErrorProjection | null;
   readonly engine: "merman";
   readonly presentedAt: number | null;
   readonly renderTimeMs: number;
@@ -81,9 +79,7 @@ export interface MermaidRenderFailure {
   readonly status: "failure";
 }
 
-export type EngineRenderFailure =
-  | MermanRenderFailure
-  | MermaidRenderFailure;
+export type EngineRenderFailure = MermanRenderFailure | MermaidRenderFailure;
 
 export interface DiagnosticArtifact {
   readonly elapsedMs: number | null;
@@ -100,7 +96,26 @@ export interface RenderDiagnostics {
 export type MermanBatchResult = MermanRenderSuccess | MermanRenderFailure;
 export type MermaidBatchResult = MermaidRenderSuccess | MermaidRenderFailure;
 
+export type MermanAsciiBatchResult =
+  | {
+      readonly artifact: string;
+      readonly status: "success";
+    }
+  | {
+      readonly error: ErrorProjection;
+      readonly status: "failure";
+    }
+  | {
+      readonly diagramType: DiagramType;
+      readonly status: "unsupported";
+    }
+  | {
+      readonly reason: "diagram-detection-unavailable";
+      readonly status: "unavailable";
+    };
+
 interface CompletedBatchBase {
+  readonly ascii: MermanAsciiBatchResult;
   readonly detection: DiagramDetectionFacts;
   readonly diagnostics: RenderDiagnostics | null;
   readonly publishedAt: number;
@@ -151,9 +166,7 @@ export type RenderFailedState = CompletedBatchBase &
   );
 
 export type CompletedRenderBatch =
-  | RenderSuccessState
-  | RenderPartialState
-  | RenderFailedState;
+  RenderSuccessState | RenderPartialState | RenderFailedState;
 
 export type RenderCoordinatorState =
   | { readonly status: "empty" }
@@ -177,7 +190,7 @@ export interface RenderCoordinator {
   markPresented(
     publicationId: RenderPublicationId,
     engine: "merman" | "mermaid",
-    at: number
+    at: number,
   ): void;
   pause(): Promise<() => void>;
   refresh(): void;
@@ -233,6 +246,7 @@ export function createRenderCoordinator({
   let latest: ScheduledRequest | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let active: Promise<void> | null = null;
+  let activeRequest: ScheduledRequest | null = null;
 
   const replaceState = (state: RenderCoordinatorState) => {
     store.setState(state, true);
@@ -247,11 +261,20 @@ export function createRenderCoordinator({
     if (isCompletedRenderState(state)) return state;
     return state.status === "updating" ? state.previous : null;
   };
+  const cancelActiveCompare = (): boolean => {
+    if (activeRequest?.snapshot.operation.compareEnabled) {
+      activeRequest = null;
+      compare.reset();
+      return true;
+    }
+    return false;
+  };
 
   const scheduleCurrent = (force: boolean, immediate = false) => {
     if (disposed || !currentInput) return;
     const { facade, workspace } = currentInput;
     if (!facade || !workspace.code.trim()) {
+      cancelActiveCompare();
       requestSequence += 1;
       latest = null;
       clearTimer();
@@ -279,6 +302,7 @@ export function createRenderCoordinator({
       return;
     }
 
+    cancelActiveCompare();
     requestSequence += 1;
     const snapshot: FrozenRenderSnapshot = Object.freeze({
       operation,
@@ -297,20 +321,14 @@ export function createRenderCoordinator({
             previous,
             snapshot,
           }
-        : { status: "pending", snapshot }
+        : { status: "pending", snapshot },
     );
     scheduleLatest(immediate);
   };
 
   const scheduleLatest = (immediate: boolean) => {
     clearTimer();
-    if (
-      disposed ||
-      suspended ||
-      pauseCount > 0 ||
-      active ||
-      !latest
-    ) {
+    if (disposed || suspended || pauseCount > 0 || active || !latest) {
       return;
     }
     const remaining = immediate
@@ -320,6 +338,7 @@ export function createRenderCoordinator({
       timer = null;
       const request = latest;
       if (!request || disposed || suspended || pauseCount > 0) return;
+      activeRequest = request;
       const execution = execute(request)
         .then((completed) => {
           if (
@@ -332,7 +351,10 @@ export function createRenderCoordinator({
           }
         })
         .finally(() => {
-          if (active === execution) active = null;
+          if (active === execution) {
+            active = null;
+            activeRequest = null;
+          }
           if (
             latest &&
             latest.snapshot.publicationId !== request.snapshot.publicationId
@@ -345,7 +367,7 @@ export function createRenderCoordinator({
   };
 
   const execute = async (
-    request: ScheduledRequest
+    request: ScheduledRequest,
   ): Promise<CompletedRenderBatch> => {
     const { facade, snapshot } = request;
     const operation = snapshot.operation;
@@ -355,9 +377,10 @@ export function createRenderCoordinator({
     const comparePromise = renderCompare(
       compare,
       operation,
-      externalRequirements
+      externalRequirements,
     );
-    const merman = renderMerman(facade, operation, detection);
+    const merman = renderMerman(facade, operation);
+    const ascii = renderMermanAscii(facade, operation, detection);
     const diagnostics = operation.diagnosticsEnabled
       ? collectDiagnostics(facade, operation, now)
       : null;
@@ -371,8 +394,9 @@ export function createRenderCoordinator({
       diagnostics,
       svgPlan,
       merman,
+      ascii,
       mermaid,
-      now()
+      now(),
     );
   };
 
@@ -394,10 +418,17 @@ export function createRenderCoordinator({
   const refresh = () => {
     scheduleCurrent(true, true);
   };
-  const pause = async (): Promise<(() => void)> => {
+  const pause = async (): Promise<() => void> => {
     pauseCount += 1;
     clearTimer();
-    await active;
+    cancelActiveCompare();
+    try {
+      await active;
+    } catch (error) {
+      pauseCount = Math.max(0, pauseCount - 1);
+      if (pauseCount === 0) scheduleLatest(true);
+      throw error;
+    }
     let released = false;
     return () => {
       if (released) return;
@@ -410,7 +441,7 @@ export function createRenderCoordinator({
     if (disposed || suspended) return;
     suspended = true;
     clearTimer();
-    compare.reset();
+    if (!cancelActiveCompare()) compare.reset();
   };
   const resume = () => {
     if (disposed || !suspended) return;
@@ -429,7 +460,7 @@ export function createRenderCoordinator({
   const markPresented = (
     publicationId: RenderPublicationId,
     engine: "merman" | "mermaid",
-    at: number
+    at: number,
   ) => {
     if (!Number.isFinite(at)) return;
     const state = store.getState();
@@ -453,9 +484,10 @@ export function createRenderCoordinator({
           state.diagnostics,
           state.svgPlan,
           Object.freeze({ ...state.merman, presentedAt: at }),
+          state.ascii,
           state.mermaid,
-          state.publishedAt
-        )
+          state.publishedAt,
+        ),
       );
       return;
     }
@@ -473,9 +505,10 @@ export function createRenderCoordinator({
         state.diagnostics,
         state.svgPlan,
         state.merman,
+        state.ascii,
         Object.freeze({ ...state.mermaid, presentedAt: at }),
-        state.publishedAt
-      )
+        state.publishedAt,
+      ),
     );
   };
 
@@ -494,7 +527,7 @@ export function createRenderCoordinator({
 
 function collectSvgPlan(
   facade: MermanDomainFacade,
-  operation: FrozenRenderOperation
+  operation: FrozenRenderOperation,
 ): SvgPlanResult | null {
   if (!operation.presentationProfileId) {
     return null;
@@ -509,7 +542,7 @@ function collectSvgPlan(
 
 function detectDiagram(
   facade: MermanDomainFacade,
-  operation: FrozenRenderOperation
+  operation: FrozenRenderOperation,
 ): DiagramDetectionFacts {
   try {
     return freezeDetection(facade.detectDiagram(operation));
@@ -521,7 +554,7 @@ function detectDiagram(
 function renderCompare(
   compare: MermaidRealmController,
   operation: FrozenRenderOperation,
-  externalRequirements: ReturnType<typeof mermaidExternalRequirementsFor>
+  externalRequirements: ReturnType<typeof mermaidExternalRequirementsFor>,
 ): Promise<MermaidRealmRenderResult | null> {
   if (!operation.compareEnabled) return Promise.resolve(null);
   if (!operation.viewport) {
@@ -532,30 +565,39 @@ function renderCompare(
       detail: null,
     });
   }
-  return compare
-    .render({
+  let result: Promise<MermaidRealmRenderResult>;
+  try {
+    result = compare.render({
       source: operation.source,
       theme: operation.theme,
       configJson: operation.configJson,
       diagramFont: operation.diagramFont,
       externalRequirements,
       viewport: operation.viewport,
-    })
-    .catch((error) => {
-      const projection = projectError(error);
-      return {
-        status: "failure" as const,
-        stage: "protocol" as const,
-        message: projection.summary,
-        detail: projection.detail,
-      };
     });
+  } catch (error) {
+    const projection = projectError(error);
+    return Promise.resolve({
+      status: "failure",
+      stage: "protocol",
+      message: projection.summary,
+      detail: projection.detail,
+    });
+  }
+  return result.catch((error) => {
+    const projection = projectError(error);
+    return {
+      status: "failure" as const,
+      stage: "protocol" as const,
+      message: projection.summary,
+      detail: projection.detail,
+    };
+  });
 }
 
 function renderMerman(
   facade: MermanDomainFacade,
   operation: FrozenRenderOperation,
-  detection: DiagramDetectionFacts
 ): MermanBatchResult {
   let result;
   try {
@@ -571,44 +613,60 @@ function renderMerman(
   } catch (error) {
     return mermanFailure("svg-validation", error);
   }
-  const diagramType =
-    detection.status === "available" ? detection.diagramType : null;
-  let ascii: string | null = null;
-  let asciiError: ErrorProjection | null = null;
-  try {
-    if (
-      diagramType &&
-      facade
-        .getAsciiSupportedDiagrams()
-        .some((candidate) => candidate === diagramType)
-    ) {
-      const asciiResult = facade.renderAscii(
-        operation
-      );
-      if (asciiResult.status === "success") {
-        ascii = asciiResult.ascii;
-      } else {
-        asciiError = projectError(asciiResult.error);
-      }
-    }
-  } catch (error) {
-    ascii = null;
-    asciiError = projectError(error);
-  }
   return Object.freeze({
     status: "success",
     engine: "merman",
     artifact: result.artifact,
-    ascii,
-    asciiError,
     renderTimeMs: result.renderTime,
     presentedAt: null,
   });
 }
 
+function renderMermanAscii(
+  facade: MermanDomainFacade,
+  operation: FrozenRenderOperation,
+  detection: DiagramDetectionFacts,
+): MermanAsciiBatchResult {
+  if (operation.configurationError) {
+    return Object.freeze({
+      status: "failure",
+      error: operation.configurationError,
+    });
+  }
+  if (detection.status !== "available") {
+    return Object.freeze({
+      status: "unavailable",
+      reason: "diagram-detection-unavailable",
+    });
+  }
+  try {
+    if (
+      !isAsciiSupported(
+        detection.diagramType,
+        facade.getAsciiSupportedDiagrams(),
+      )
+    ) {
+      return Object.freeze({
+        status: "unsupported",
+        diagramType: detection.diagramType,
+      });
+    }
+    const result = facade.renderAscii(operation);
+    if (result.status === "success") {
+      return Object.freeze({ status: "success", artifact: result.ascii });
+    }
+    return Object.freeze({
+      status: "failure",
+      error: projectError(result.error),
+    });
+  } catch (error) {
+    return Object.freeze({ status: "failure", error: projectError(error) });
+  }
+}
+
 function toMermaidBatchResult(
   result: MermaidRealmRenderResult,
-  operation: FrozenRenderOperation
+  operation: FrozenRenderOperation,
 ): MermaidBatchResult {
   if (result.status === "failure") {
     return mermaidFailure(result.stage, result.message, result.detail ?? null);
@@ -617,7 +675,7 @@ function toMermaidBatchResult(
     return mermaidFailure(
       "protocol",
       `Mermaid realm version mismatch: expected ${operation.versions.mermaid}, received ${result.version}.`,
-      null
+      null,
     );
   }
   return Object.freeze({
@@ -630,25 +688,17 @@ function toMermaidBatchResult(
 function collectDiagnostics(
   facade: MermanDomainFacade,
   operation: FrozenRenderOperation,
-  now: () => number
+  now: () => number,
 ): RenderDiagnostics {
   return Object.freeze({
-    parse: collectDiagnostic(
-      () =>
-        facade.parseJson(operation),
-      now
-    ),
-    layout: collectDiagnostic(
-      () =>
-        facade.layoutJson(operation),
-      now
-    ),
+    parse: collectDiagnostic(() => facade.parseJson(operation), now),
+    layout: collectDiagnostic(() => facade.layoutJson(operation), now),
   });
 }
 
 function collectDiagnostic(
   operation: () => string,
-  now: () => number
+  now: () => number,
 ): DiagnosticArtifact {
   const startedAt = now();
   try {
@@ -683,10 +733,12 @@ function classifyBatch(
   diagnostics: RenderDiagnostics | null,
   svgPlan: SvgPlanResult | null,
   merman: MermanBatchResult,
+  ascii: MermanAsciiBatchResult,
   mermaid: MermaidBatchResult | null,
-  publishedAt: number
+  publishedAt: number,
 ): CompletedRenderBatch {
   const base = {
+    ascii,
     detection,
     diagnostics,
     publishedAt,
@@ -715,7 +767,7 @@ function classifyBatch(
 
 function mermanFailure(
   stage: MermanRenderFailure["stage"],
-  error: unknown
+  error: unknown,
 ): MermanRenderFailure {
   const projection = projectError(error);
   return Object.freeze({
@@ -730,7 +782,7 @@ function mermanFailure(
 function mermaidFailure(
   stage: MermaidRenderFailure["stage"],
   message: string,
-  detail: string | null
+  detail: string | null,
 ): MermaidRenderFailure {
   return Object.freeze({
     status: "failure",
@@ -742,14 +794,14 @@ function mermaidFailure(
 }
 
 function freezeDetection(
-  detection: DiagramDetectionFacts
+  detection: DiagramDetectionFacts,
 ): DiagramDetectionFacts {
   return Object.freeze({ ...detection });
 }
 
 function freezeSvgPlan(plan: SvgPlanResult): SvgPlanResult {
   const presentationAspects = plan.presentation_aspects.map((aspect) =>
-    Object.freeze({ ...aspect })
+    Object.freeze({ ...aspect }),
   );
   const requiredCapabilityIds = [...plan.required_capability_ids];
   const missingCapabilityIds = [...plan.missing_capability_ids];
@@ -765,7 +817,7 @@ function freezeSvgPlan(plan: SvgPlanResult): SvgPlanResult {
 }
 
 export function isCompletedRenderState(
-  state: RenderCoordinatorState
+  state: RenderCoordinatorState,
 ): state is CompletedRenderBatch {
   return (
     state.status === "success" ||
