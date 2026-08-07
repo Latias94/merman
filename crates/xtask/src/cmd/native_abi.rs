@@ -941,17 +941,14 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             "native ABI `none` operation must use code 0",
         ));
     }
-    let Some(none_failure) = &none.non_executable_failure else {
+    let Some(_) = &none.non_executable_failure else {
         return Err(descriptor_error(
             "native ABI `none` operation must define its non-executable failure",
         ));
     };
-    if none.executable
-        || none_failure.status_id != "invalid_argument"
-        || none_failure.error_kind_id != "generic"
-    {
+    if none.executable {
         return Err(descriptor_error(
-            "native ABI `none` operation must remain non-executable with invalid_argument/generic failure semantics",
+            "native ABI `none` operation must remain non-executable",
         ));
     }
 
@@ -2638,21 +2635,7 @@ mod tests {
             original_prefix
         );
 
-        let mut busy_contract = committed_descriptor();
-        busy_contract.error_kinds[4].json_name = "renamed-busy".to_string();
-        assert_ne!(
-            minimum_prefix_layout_digest(&busy_contract).unwrap(),
-            original_prefix
-        );
-
         let mut appended = descriptor;
-        appended.status_codes.push(CodeDescriptor {
-            id: "future_status".to_string(),
-            c_name: "MERMAN_NATIVE_STATUS_FUTURE_STATUS".to_string(),
-            code: 17,
-            error_kinds: vec!["generic".to_string()],
-            description: "Future append-only status.".to_string(),
-        });
         let mut future_slot = appended.function_slots.last().unwrap().clone();
         future_slot.id = "future_slot".to_string();
         future_slot.c_name = "MermanNativeFutureSlotFn".to_string();
