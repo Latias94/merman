@@ -15,9 +15,42 @@ resident-memory admission claim.
 |---|---|---|---|
 | base | `a25c8caa42ebf277f5492c2d3f7f2e7e112ec922` | `20f82c78372630b086271676a8070cf2b3d1b6a1` | Direct production parent with recursive suffix-graph preparation. |
 | candidate | `949ad97481ae9f84decbb4d27695f1bb614b0d6f` | `243fad7c1a6cd6068d72ee6f35f7601b958f4acb` | Stable hierarchy ownership, indexed import, explicit compound traversal, and bounded ELK work. |
-| Mermaid source | `7c0cafcf42e76bfaf79d0cbbd12edb986612f014` | — | Local `repo-ref/mermaid` behavior authority, pinned Mermaid 11.16.0 tree. |
+| Mermaid source | `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf` | — | Local `repo-ref/mermaid` behavior authority, pinned Mermaid 11.16.1 tree. |
 
 The candidate is the direct child of the base.
+
+The relevant upstream
+`packages/mermaid-layout-elk/src/render.ts` source is byte-identical between Mermaid 11.16.0 and
+11.16.1, with SHA-256
+`70242b274a16fa5e4580396d9778453bb8a18987a43c86953cd4dbdc67794416`. The current 11.16.1
+checkout is therefore the active behavior authority without changing this decision's ELK adapter
+semantics.
+
+## Normal-path control boundary
+
+The original candidate pair predates registration of a representative public ELK benchmark. A
+candidate-neutral harness commit was therefore added to the original base, then the complete
+original candidate diff was replayed unchanged:
+
+| Role | Commit | Tree | Meaning |
+|---|---|---|---|
+| control base | `b1688e23627de43d16c076bf1b7133c58d98bcf1` | `5b7e9b0ded5fe34417300f733822fa2ffc9aa9a3` | Original base plus one existing pinned-Mermaid fixture registration. |
+| control head | `5ad67a108b104460816b57686ca639cce289ca32` | `3f498b0a13fcc4419e168c8c33e97d4a9f540a5e` | Direct child containing the complete original U6 candidate diff. |
+
+The full-index original and control candidate diffs have the same SHA-256,
+`07a5c69dfa8db1cf0c19e8f3b99354213b67db09ba3d9b233b536249e74df039`, and the same stable
+patch ID, `5bd15cf8e155b2b576f7ccb68c5af8f7cb4e20f2`. The harness-only diff has SHA-256
+`f35131de950dd07a0679db1065c0663440bf08c323a92bbbba71c8fdd60ac54d`; neither candidate side
+changes the two harness files.
+
+The registered public lane is
+`end_to_end/flowchart_elk_nested_directions`, backed by
+`fixtures/flowchart/upstream_cypress_flowchart_elk_spec_2050_elk_handling_of_different_rendering_direction_in_subgraphs_036.mmd`.
+The 303-byte fixture has SHA-256
+`2cb57e51813ecf06fbc53962849a62930dbe50b31977bec5aef7de4897db99cb` and exercises nested
+`flowchart-elk` subgraphs with explicit direction changes and `SEPARATE_CHILDREN` behavior.
+Commit `a110f37a3465dd86f3cda17622a6f504c39f741d` retains the same neutral lane in the active
+performance branch so the decision remains reproducible without checking out the synthetic pair.
 
 ## Variables and claim boundary
 
@@ -198,9 +231,40 @@ The accepted controls include:
   `cargo check -p merman-render --features layout-elk --tests`.
 - `cargo fmt --all`, `git diff --check`, and the staged diff check passed.
 
-No adjacent clean `A/B` latency experiment was registered, so there is no `accepted-latency`
-claim. The native-memory lane added around this change is a non-admission smoke/control surface;
-RSS alone is not used to claim the `Theta(V^2)` transient-copy removal as a measured memory win.
+The 2026-08-07 normal-path control used Rust 1.95.0 on an Apple M4 Pro with one Cargo build job,
+shared-target bench-profile freezing, the `svg,layout-elk` feature closure, eight balanced A/A
+pairs on each revision, and eight fresh balanced AB/BA pairs. The evidence used a 5% relative cap,
+a 50 microsecond absolute cap, 95% simultaneous confidence with two Bonferroni components, 10,000
+bootstrap resamples, and seed `20260807`.
+
+- independently recomputed base A/A noise: `1.180393%`;
+- independently recomputed head A/A noise: `0.637069%`;
+- derived structural relative budget: `5%`, with both noises below the 3% inconclusive boundary;
+- base median estimate: `351,531.25 ns`;
+- candidate median estimate: `346,805 ns`;
+- paired relative estimate: `-1.334814%`, with a 95% simultaneous regression upper bound of
+  `+0.531097%`;
+- paired absolute estimate: `-4,726.25 ns`, with a 95% simultaneous regression upper bound of
+  `+1,746.25 ns`; and
+- matched public output: SVG SHA-256
+  `923c8207682e86c1f7aec4c72252bf59213039b33ad518afa10af87dfb09cb1d`, `18,645` bytes, and
+  `139` elements on both sides before and after sampling.
+
+The runner classified the row as `confirmed_non_regression` and
+`confirmed_non_improvement`. The frozen executables are distinct and immutable: base SHA-256
+`ebb72cf69b2e8538ecbd9efb848030b85cc5e7c65070ed9991ae523622f8ef19` (`21,782,016` bytes) and
+head SHA-256 `47354d4db3a1710a1256529685ceeb361abc28dedfc8b6e0ab918dfdb19a7d62`
+(`21,995,456` bytes). The decision-grade JSON was generated at
+`2026-08-07T23:34:37.885187+00:00`; it is `242,774` bytes with SHA-256
+`a06f5bdb9e66ea87f3fc196cdbac0c096cbf0e3fb6b5c090c07f53c705c2a707`. Its Markdown projection
+is `1,721` bytes with SHA-256
+`c78bbb5254fe373e65d8e970c891fc5004833e61d2c1939344335915e246c9ab`.
+
+The passing normal-path control closes the structural regression requirement only. Because the
+candidate was not preregistered as a latency optimization and the improvement interval crosses
+zero, there is no `accepted-latency` claim. The native-memory lane added around this change is a
+non-admission smoke/control surface; RSS alone is not used to claim the `Theta(V^2)` transient-copy
+removal as a measured memory win.
 
 ## Residual risks and deliberate deferrals
 
@@ -217,5 +281,5 @@ RSS alone is not used to claim the `Theta(V^2)` transient-copy removal as a meas
   hierarchy preparation, orchestration, and the specifically indexed importer/LongEdge paths, not
   every layout phase.
 
-The pre-existing untracked `rust_out` and `test-results/` paths were not read, modified, removed,
-or used as evidence.
+The pre-existing untracked fixture probes, `in95p`, `ireframep`, `rust_out`, and `test-results/`
+paths were not modified, removed, or used as evidence.

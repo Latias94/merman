@@ -114,6 +114,7 @@ runners use the same fixture.
 | Unit | Decision | Durable boundary |
 |---|---|---|
 | U5 Flowchart work accounting | `accepted-structural` | One render-owned meter spans Dagre and ELK through neutral lower-crate controls; public causal controls are recorded in [the U5 receipt](flowchart_layout_work_accounting_2026-08-04.md). |
+| U6 ELK hierarchy preparation | `accepted-structural` | Stable scope ownership and iterative postorder remove suffix cloning and repeated descendant discovery. A source-equivalent synthetic adjacent pair passed eight-pair public ELK A/A and AB/BA controls with exact SVG identity; see [the U6 receipt](elk_hierarchy_preparation_2026-08-03.md). No latency or memory claim is admitted. |
 | Interactive layout-work policy calibration | `accepted-structural` | The 800,000-unit ceiling follows the registered headroom rule for the closed 68-member corpus and has exact `W/W-1`, node/edge cardinality, configuration-amplification, isolated-stage, timeout, RSS, and output evidence; see [the policy receipt](interactive_layout_work_calibration_2026-08-07.md). No latency or memory claim is admitted. |
 | U9 Sequence operation metrics | `accepted-latency`, `accepted-memory` | Reuse is private to the exact built-in carrier and semantic owner; host/custom callbacks remain unchanged. |
 | U9 Requirement Markdown width | `rejected-as-written`, `rejected-upper-bound` | The old shared change reduced opaque callbacks; a compliant owner-local variant could save at most 13.249 us / 7.379%, below admission. |
