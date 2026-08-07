@@ -116,6 +116,10 @@ const options = {
   svg: { pipeline: "readable" },
   environment: { text_measurement: "deterministic" },
 };
+const hostTextMeasurementOptions = {
+  ...deterministicTime,
+  svg: { pipeline: "readable" },
+};
 const presetManifest = JSON.parse(
   await readFile(path.join(browserPackageRoot, "artifacts", "provenance.json"), "utf8")
 );
@@ -698,7 +702,11 @@ User Testing    :c2, after c1, 5d`;
     measurementOperations.add(request.operation);
     return hostTextMeasurementResult(request);
   };
-  const measuredSvg = api.renderSvgWithTextMeasurer(source, hostTextMeasurer, options);
+  const measuredSvg = api.renderSvgWithTextMeasurer(
+    source,
+    hostTextMeasurer,
+    hostTextMeasurementOptions
+  );
   assert.match(measuredSvg, /<svg/);
   assert.match(measuredSvg, /Hello/);
   assert.ok(
@@ -718,7 +726,7 @@ User Testing    :c2, after c1, 5d`;
         architectureOperations.set(request.operation, request.phase);
         return hostTextMeasurementResult(request);
       },
-      options
+      hostTextMeasurementOptions
     );
     assert.match(architectureSvg, /<svg/);
     assert.ok(
@@ -731,7 +739,11 @@ User Testing    :c2, after c1, 5d`;
     );
   }
 
-  const measuredLayout = api.layoutJsonWithTextMeasurer(source, hostTextMeasurer, options);
+  const measuredLayout = api.layoutJsonWithTextMeasurer(
+    source,
+    hostTextMeasurer,
+    hostTextMeasurementOptions
+  );
   assert.equal(typeof JSON.parse(measuredLayout), "object");
   for (const fallbackResult of [
     undefined,
@@ -744,7 +756,7 @@ User Testing    :c2, after c1, 5d`;
         fallbackCallCount += 1;
         return fallbackResult;
       },
-      options
+      hostTextMeasurementOptions
     );
     assert.match(fallbackSvg, /<svg/);
     assert.ok(fallbackCallCount > 0);
@@ -761,7 +773,7 @@ User Testing    :c2, after c1, 5d`;
         fallbackCallCount += 1;
         return invalidResult;
       },
-      options
+      hostTextMeasurementOptions
     );
     assert.match(fallbackSvg, /<svg/);
     assert.match(fallbackSvg, /Hello/);
@@ -774,7 +786,7 @@ User Testing    :c2, after c1, 5d`;
       throwingCallCount += 1;
       throw new Error("host measurer failed");
     },
-    options
+    hostTextMeasurementOptions
   );
   assert.match(throwingFallbackSvg, /<svg/);
   assert.match(throwingFallbackSvg, /Hello/);
