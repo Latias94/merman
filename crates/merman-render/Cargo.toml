@@ -41,6 +41,7 @@ math = [
 
 [dependencies]
 base64.workspace = true
+brotli-decompressor.workspace = true
 cssparser.workspace = true
 data-url.workspace = true
 dugong.workspace = true
@@ -62,16 +63,18 @@ roxmltree.workspace = true
 quick-xml.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 svgtypes.workspace = true
 thiserror.workspace = true
+ttf-parser.workspace = true
 roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true
 unicode-width.workspace = true
 unicode-linebreak.workspace = true
 unicode-segmentation.workspace = true
+wuff.workspace = true
 
 [dev-dependencies]
 futures = { workspace = true, features = ["executor"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 regex.workspace = true
-sha2.workspace = true

@@ -17,6 +17,7 @@ pub mod class;
 mod config;
 pub mod cynefin;
 mod dagre;
+pub mod diagram_theme;
 mod entities;
 pub mod environment;
 pub mod er;
@@ -109,7 +110,8 @@ pub use resources::{
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
     ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
-    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase, ZenumlComplexity,
+    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
+    ResourcePolicyRestrictionError, ThemeResourceLimitId, ZenumlComplexity,
     resource_limit_descriptors, resource_profile_descriptors,
 };
 

@@ -62,7 +62,7 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target",
     "offline": true,
-    "cargo_lock_sha256": "4b5dc24ee4037349abe9995997a85ef9ca7ab59164611452526cb7013a8ade6f",
+    "cargo_lock_sha256": "7ec3ef0b5f2b4841da09d67ec956aef997ed0073282e18053b266127731b8d81",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "9cf1e8d15fbe20c30b96e5174916b972515b7b9c76d87662902f0549f06c5d95"
   },
@@ -70,13 +70,13 @@
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-pc-windows-msvc",
-      "package_count": 243,
-      "packages_sha256": "ad22170bb0addae04372b032638f537e00a6003f71c01615e0c51200b7f1f5f4"
+      "package_count": 247,
+      "packages_sha256": "14eff694377c0aa674f43c0cb77c6a8ae383615ef8b01c3d9508fb13ec75e265"
     }
   ],
   "dependency_closure": {
-    "package_count": 243,
-    "packages_sha256": "ad22170bb0addae04372b032638f537e00a6003f71c01615e0c51200b7f1f5f4"
+    "package_count": 247,
+    "packages_sha256": "14eff694377c0aa674f43c0cb77c6a8ae383615ef8b01c3d9508fb13ec75e265"
   },
   "licenses": [
     {
@@ -1253,6 +1253,17 @@
           "repository": "https://github.com/unicode-rs/unicode-properties"
         },
         {
+          "name": "unicode-segmentation",
+          "version": "1.13.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-segmentation"
+        },
+        {
           "name": "unicode-vo",
           "version": "0.1.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
@@ -1798,6 +1809,35 @@
             "Henri Sivonen <hsivonen@hsivonen.fi>"
           ],
           "repository": "https://github.com/hsivonen/encoding_rs"
+        }
+      ]
+    },
+    {
+      "id": "BSD-3-Clause",
+      "name": "BSD 3-Clause \"New\" or \"Revised\" License",
+      "text_sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
+      "text": "Copyright (c) 2016 Dropbox, Inc.\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.\n\n3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
+      "packages": [
+        {
+          "name": "alloc-no-stdlib",
+          "version": "2.0.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "BSD-3-Clause",
+          "authors": [
+            "Daniel Reiter Horn <danielrh@dropbox.com>"
+          ],
+          "repository": "https://github.com/dropbox/rust-alloc-no-stdlib"
+        },
+        {
+          "name": "brotli-decompressor",
+          "version": "5.0.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "BSD-3-Clause OR MIT",
+          "authors": [
+            "Daniel Reiter Horn <danielrh@dropbox.com>",
+            "The Brotli Authors"
+          ],
+          "repository": "https://github.com/dropbox/rust-brotli-decompressor"
         }
       ]
     },
@@ -2401,6 +2441,16 @@
           "license_expression": "MIT",
           "authors": [],
           "repository": "https://github.com/erweixin/RaTeX"
+        },
+        {
+          "name": "wuff",
+          "version": "0.2.8",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Nico Burns <nico@nicoburns.com>"
+          ],
+          "repository": "https://github.com/nicoburns/wuff"
         }
       ]
     },

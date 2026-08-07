@@ -49,6 +49,7 @@ atomic-write-file = { version = "0.3.0", default-features = false }
 base64 = "0.22.1"
 data-url = "0.3.2"
 brotli = "8.0.3"
+brotli-decompressor = { version = "5.0.3", default-features = false }
 clap_mangen = "0.3.0"
 euclid = "0.22.14"
 flate2 = "1.1.9"
@@ -87,6 +88,7 @@ json5 = "1.3.1"
 kurbo = "0.13.1"
 js-sys = "0.3"
 thiserror = "2.0.11"
+ttf-parser = { version = "0.25.1", default-features = false, features = ["std", "variable-fonts"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", default-features = false, features = ["fmt"] }
 uniffi = { version = "0.32.0", default-features = false }
@@ -125,6 +127,7 @@ web-time = "1.1.0"
 wasm-minimal-protocol = "0.2.0"
 wasmi = { version = "1.0.9", default-features = false, features = ["simd"] }
 windows-sys = { version = "0.61.2", default-features = false }
+wuff = { version = "0.2.8", default-features = false }
 # The crate requires one transport runtime even when consumers only construct its LSP service.
 tower-lsp-server = { version = "0.23.0", default-features = false, features = ["runtime-tokio"] }
 

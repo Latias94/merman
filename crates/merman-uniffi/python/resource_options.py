@@ -25,6 +25,26 @@ class ResourceLimitId(str, Enum):
     MAX_LAYOUT_WORK_UNITS = "max_layout_work_units"
     MAX_SVG_BYTES = "max_svg_bytes"
     MAX_SVG_ELEMENTS = "max_svg_elements"
+    MAX_THEME_ENCODED_BYTES = "max_theme_encoded_bytes"
+    MAX_THEME_BASE64_BYTES = "max_theme_base64_bytes"
+    MAX_FONT_ASSET_COMPRESSED_BYTES = "max_font_asset_compressed_bytes"
+    MAX_FONT_ASSET_DECODED_BYTES = "max_font_asset_decoded_bytes"
+    MAX_FONT_CATALOG_DECODED_BYTES = "max_font_catalog_decoded_bytes"
+    MAX_FONT_ASSETS = "max_font_assets"
+    MAX_FONT_FACES = "max_font_faces"
+    MAX_FONT_TABLES = "max_font_tables"
+    MAX_FONT_ALIASES = "max_font_aliases"
+    MAX_FONT_DECODED_EXPANSION_RATIO = "max_font_decoded_expansion_ratio"
+    THEME_ENCODED_BYTES_HARD_CAP = "theme_encoded_bytes_hard_cap"
+    THEME_BASE64_BYTES_HARD_CAP = "theme_base64_bytes_hard_cap"
+    FONT_ASSET_COMPRESSED_BYTES_HARD_CAP = "font_asset_compressed_bytes_hard_cap"
+    FONT_ASSET_DECODED_BYTES_HARD_CAP = "font_asset_decoded_bytes_hard_cap"
+    FONT_CATALOG_DECODED_BYTES_HARD_CAP = "font_catalog_decoded_bytes_hard_cap"
+    FONT_ASSETS_HARD_CAP = "font_assets_hard_cap"
+    FONT_FACES_HARD_CAP = "font_faces_hard_cap"
+    FONT_TABLES_HARD_CAP = "font_tables_hard_cap"
+    FONT_ALIASES_HARD_CAP = "font_aliases_hard_cap"
+    FONT_DECODED_EXPANSION_RATIO_HARD_CAP = "font_decoded_expansion_ratio_hard_cap"
     MAX_DOCUMENT_DIAGRAMS = "max_document_diagrams"
     MAX_ASCII_GRID_CELLS = "max_ascii_grid_cells"
     MAX_RASTER_WIDTH = "max_raster_width"
@@ -50,6 +70,16 @@ class ResourceOverrideId(str, Enum):
     MAX_LAYOUT_WORK_UNITS = "max_layout_work_units"
     MAX_SVG_BYTES = "max_svg_bytes"
     MAX_SVG_ELEMENTS = "max_svg_elements"
+    MAX_THEME_ENCODED_BYTES = "max_theme_encoded_bytes"
+    MAX_THEME_BASE64_BYTES = "max_theme_base64_bytes"
+    MAX_FONT_ASSET_COMPRESSED_BYTES = "max_font_asset_compressed_bytes"
+    MAX_FONT_ASSET_DECODED_BYTES = "max_font_asset_decoded_bytes"
+    MAX_FONT_CATALOG_DECODED_BYTES = "max_font_catalog_decoded_bytes"
+    MAX_FONT_ASSETS = "max_font_assets"
+    MAX_FONT_FACES = "max_font_faces"
+    MAX_FONT_TABLES = "max_font_tables"
+    MAX_FONT_ALIASES = "max_font_aliases"
+    MAX_FONT_DECODED_EXPANSION_RATIO = "max_font_decoded_expansion_ratio"
     MAX_DOCUMENT_DIAGRAMS = "max_document_diagrams"
     MAX_ASCII_GRID_CELLS = "max_ascii_grid_cells"
     MAX_RASTER_WIDTH = "max_raster_width"
@@ -69,6 +99,16 @@ _MINIMUM_LIMIT_VALUES = {
     ResourceOverrideId.MAX_LAYOUT_WORK_UNITS: 1,
     ResourceOverrideId.MAX_SVG_BYTES: 1,
     ResourceOverrideId.MAX_SVG_ELEMENTS: 1,
+    ResourceOverrideId.MAX_THEME_ENCODED_BYTES: 0,
+    ResourceOverrideId.MAX_THEME_BASE64_BYTES: 0,
+    ResourceOverrideId.MAX_FONT_ASSET_COMPRESSED_BYTES: 0,
+    ResourceOverrideId.MAX_FONT_ASSET_DECODED_BYTES: 0,
+    ResourceOverrideId.MAX_FONT_CATALOG_DECODED_BYTES: 0,
+    ResourceOverrideId.MAX_FONT_ASSETS: 0,
+    ResourceOverrideId.MAX_FONT_FACES: 0,
+    ResourceOverrideId.MAX_FONT_TABLES: 0,
+    ResourceOverrideId.MAX_FONT_ALIASES: 0,
+    ResourceOverrideId.MAX_FONT_DECODED_EXPANSION_RATIO: 1,
     ResourceOverrideId.MAX_DOCUMENT_DIAGRAMS: 0,
     ResourceOverrideId.MAX_ASCII_GRID_CELLS: 1,
     ResourceOverrideId.MAX_RASTER_WIDTH: 1,

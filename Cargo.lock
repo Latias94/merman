@@ -2432,6 +2432,7 @@ name = "merman-render"
 version = "0.8.0-alpha.4"
 dependencies = [
  "base64 0.22.1",
+ "brotli-decompressor",
  "cssparser",
  "data-url",
  "dugong",
@@ -2461,9 +2462,11 @@ dependencies = [
  "sha2 0.10.9",
  "svgtypes",
  "thiserror 2.0.19",
+ "ttf-parser",
  "unicode-linebreak",
  "unicode-segmentation",
  "unicode-width",
+ "wuff",
 ]
 
 [[package]]
@@ -5302,6 +5305,15 @@ name = "writeable"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
+
+[[package]]
+name = "wuff"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f625c6894838ab68e8c1c6e0f728e67363c9d4391cfa82333e58e6e30bc3a627"
+dependencies = [
+ "bytes",
+]
 
 [[package]]
 name = "xmlwriter"

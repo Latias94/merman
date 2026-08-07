@@ -71,7 +71,8 @@ impl BindingOperationKind {
             OperationKey::DocumentAnalysisJson | OperationKey::DocumentAnalysisFactsJson => {
                 BindingResourceScope::DocumentAnalysis
             }
-            OperationKey::SemanticJson | OperationKey::SvgPlanJson => BindingResourceScope::Model,
+            OperationKey::SemanticJson => BindingResourceScope::Model,
+            OperationKey::SvgPlanJson => BindingResourceScope::Svg,
             OperationKey::Ascii => BindingResourceScope::Ascii,
             OperationKey::LayoutJson => BindingResourceScope::Layout,
             OperationKey::Svg => BindingResourceScope::Svg,
@@ -367,6 +368,7 @@ mod tests {
         assert_eq!(operation.required_capability_id(), Some("svg"));
         assert_eq!(operation.media_type(), "application/json");
         assert!(!operation.requires_uri());
+        assert_eq!(operation.resource_scope(), BindingResourceScope::Svg);
     }
 
     #[test]

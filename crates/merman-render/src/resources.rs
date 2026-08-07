@@ -10,6 +10,7 @@ pub use merman_core::resources::{
 };
 use merman_core::resources::{
     InputResourceLimitExceeded, InputResourceLimitId, InputResourceLimitPhase, InputResourcePolicy,
+    InputResourcePolicyRestrictionError,
 };
 use merman_core::{ParsedDiagramRender, RenderSemanticModel};
 
@@ -39,13 +40,18 @@ const MAX_RECURSIVE_MODEL_TREE_DEPTH: usize = 64;
 
 pub const RESOURCE_PROFILE_COUNT: usize = merman_core::resources::RESOURCE_PROFILE_COUNT;
 const RENDER_RESOURCE_LIMIT_COUNT: usize = 3;
-pub const RESOURCE_LIMIT_COUNT: usize =
-    merman_core::resources::INPUT_RESOURCE_LIMIT_COUNT + RENDER_RESOURCE_LIMIT_COUNT;
+const THEME_RESOURCE_LIMIT_COUNT: usize = 20;
+pub const RESOURCE_LIMIT_COUNT: usize = merman_core::resources::INPUT_RESOURCE_LIMIT_COUNT
+    + RENDER_RESOURCE_LIMIT_COUNT
+    + THEME_RESOURCE_LIMIT_COUNT;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ResourceLimitPhase {
     Source,
     LayoutModel,
+    ThemeInput,
+    FontDecode,
+    FontCatalog,
     SvgOutput,
     SvgPostprocess,
 }
@@ -80,6 +86,9 @@ impl ResourceLimitPhase {
         match self {
             Self::Source => "source",
             Self::LayoutModel => "layout_model",
+            Self::ThemeInput => "theme_input",
+            Self::FontDecode => "font_decode",
+            Self::FontCatalog => "font_catalog",
             Self::SvgOutput => "svg_output",
             Self::SvgPostprocess => "svg_postprocess",
         }
@@ -112,10 +121,65 @@ impl RenderResourceLimitId {
     }
 }
 
+#[repr(usize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ThemeResourceLimitId {
+    MaxThemeEncodedBytes,
+    MaxThemeBase64Bytes,
+    MaxFontAssetCompressedBytes,
+    MaxFontAssetDecodedBytes,
+    MaxFontCatalogDecodedBytes,
+    MaxFontAssets,
+    MaxFontFaces,
+    MaxFontTables,
+    MaxFontAliases,
+    MaxFontDecodedExpansionRatio,
+    ThemeEncodedBytesHardCap,
+    ThemeBase64BytesHardCap,
+    FontAssetCompressedBytesHardCap,
+    FontAssetDecodedBytesHardCap,
+    FontCatalogDecodedBytesHardCap,
+    FontAssetsHardCap,
+    FontFacesHardCap,
+    FontTablesHardCap,
+    FontAliasesHardCap,
+    FontDecodedExpansionRatioHardCap,
+}
+
+impl ThemeResourceLimitId {
+    pub const ALL: [Self; THEME_RESOURCE_LIMIT_COUNT] = [
+        Self::MaxThemeEncodedBytes,
+        Self::MaxThemeBase64Bytes,
+        Self::MaxFontAssetCompressedBytes,
+        Self::MaxFontAssetDecodedBytes,
+        Self::MaxFontCatalogDecodedBytes,
+        Self::MaxFontAssets,
+        Self::MaxFontFaces,
+        Self::MaxFontTables,
+        Self::MaxFontAliases,
+        Self::MaxFontDecodedExpansionRatio,
+        Self::ThemeEncodedBytesHardCap,
+        Self::ThemeBase64BytesHardCap,
+        Self::FontAssetCompressedBytesHardCap,
+        Self::FontAssetDecodedBytesHardCap,
+        Self::FontCatalogDecodedBytesHardCap,
+        Self::FontAssetsHardCap,
+        Self::FontFacesHardCap,
+        Self::FontTablesHardCap,
+        Self::FontAliasesHardCap,
+        Self::FontDecodedExpansionRatioHardCap,
+    ];
+
+    const fn index(self) -> usize {
+        self as usize
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ResourceLimitId {
     Input(InputResourceLimitId),
     Render(RenderResourceLimitId),
+    Theme(ThemeResourceLimitId),
 }
 
 #[allow(non_upper_case_globals)]
@@ -127,6 +191,36 @@ impl ResourceLimitId {
     pub const MaxSvgBytes: Self = Self::Render(RenderResourceLimitId::MaxSvgBytes);
     pub const MaxSvgElements: Self = Self::Render(RenderResourceLimitId::MaxSvgElements);
     pub const MaxLayoutWorkUnits: Self = Self::Render(RenderResourceLimitId::MaxLayoutWorkUnits);
+    pub const MaxThemeEncodedBytes: Self = Self::Theme(ThemeResourceLimitId::MaxThemeEncodedBytes);
+    pub const MaxThemeBase64Bytes: Self = Self::Theme(ThemeResourceLimitId::MaxThemeBase64Bytes);
+    pub const MaxFontAssetCompressedBytes: Self =
+        Self::Theme(ThemeResourceLimitId::MaxFontAssetCompressedBytes);
+    pub const MaxFontAssetDecodedBytes: Self =
+        Self::Theme(ThemeResourceLimitId::MaxFontAssetDecodedBytes);
+    pub const MaxFontCatalogDecodedBytes: Self =
+        Self::Theme(ThemeResourceLimitId::MaxFontCatalogDecodedBytes);
+    pub const MaxFontAssets: Self = Self::Theme(ThemeResourceLimitId::MaxFontAssets);
+    pub const MaxFontFaces: Self = Self::Theme(ThemeResourceLimitId::MaxFontFaces);
+    pub const MaxFontTables: Self = Self::Theme(ThemeResourceLimitId::MaxFontTables);
+    pub const MaxFontAliases: Self = Self::Theme(ThemeResourceLimitId::MaxFontAliases);
+    pub const MaxFontDecodedExpansionRatio: Self =
+        Self::Theme(ThemeResourceLimitId::MaxFontDecodedExpansionRatio);
+    pub const ThemeEncodedBytesHardCap: Self =
+        Self::Theme(ThemeResourceLimitId::ThemeEncodedBytesHardCap);
+    pub const ThemeBase64BytesHardCap: Self =
+        Self::Theme(ThemeResourceLimitId::ThemeBase64BytesHardCap);
+    pub const FontAssetCompressedBytesHardCap: Self =
+        Self::Theme(ThemeResourceLimitId::FontAssetCompressedBytesHardCap);
+    pub const FontAssetDecodedBytesHardCap: Self =
+        Self::Theme(ThemeResourceLimitId::FontAssetDecodedBytesHardCap);
+    pub const FontCatalogDecodedBytesHardCap: Self =
+        Self::Theme(ThemeResourceLimitId::FontCatalogDecodedBytesHardCap);
+    pub const FontAssetsHardCap: Self = Self::Theme(ThemeResourceLimitId::FontAssetsHardCap);
+    pub const FontFacesHardCap: Self = Self::Theme(ThemeResourceLimitId::FontFacesHardCap);
+    pub const FontTablesHardCap: Self = Self::Theme(ThemeResourceLimitId::FontTablesHardCap);
+    pub const FontAliasesHardCap: Self = Self::Theme(ThemeResourceLimitId::FontAliasesHardCap);
+    pub const FontDecodedExpansionRatioHardCap: Self =
+        Self::Theme(ThemeResourceLimitId::FontDecodedExpansionRatioHardCap);
 
     pub const ALL: [Self; RESOURCE_LIMIT_COUNT] = [
         Self::MaxSourceBytes,
@@ -136,6 +230,26 @@ impl ResourceLimitId {
         Self::MaxLayoutWorkUnits,
         Self::MaxSvgBytes,
         Self::MaxSvgElements,
+        Self::MaxThemeEncodedBytes,
+        Self::MaxThemeBase64Bytes,
+        Self::MaxFontAssetCompressedBytes,
+        Self::MaxFontAssetDecodedBytes,
+        Self::MaxFontCatalogDecodedBytes,
+        Self::MaxFontAssets,
+        Self::MaxFontFaces,
+        Self::MaxFontTables,
+        Self::MaxFontAliases,
+        Self::MaxFontDecodedExpansionRatio,
+        Self::ThemeEncodedBytesHardCap,
+        Self::ThemeBase64BytesHardCap,
+        Self::FontAssetCompressedBytesHardCap,
+        Self::FontAssetDecodedBytesHardCap,
+        Self::FontCatalogDecodedBytesHardCap,
+        Self::FontAssetsHardCap,
+        Self::FontFacesHardCap,
+        Self::FontTablesHardCap,
+        Self::FontAliasesHardCap,
+        Self::FontDecodedExpansionRatioHardCap,
     ];
 
     pub fn from_stable_id(id: &str) -> Option<Self> {
@@ -147,12 +261,19 @@ impl ResourceLimitId {
                     .find(|descriptor| descriptor.stable_id == id)
                     .map(|descriptor| descriptor.id)
             })
+            .or_else(|| {
+                THEME_RESOURCE_LIMIT_DESCRIPTORS
+                    .iter()
+                    .find(|descriptor| descriptor.stable_id == id)
+                    .map(|descriptor| descriptor.id)
+            })
     }
 
     pub const fn descriptor(self) -> ResourceLimitDescriptor {
         match self {
             Self::Input(id) => input_descriptor(id),
             Self::Render(id) => RENDER_RESOURCE_LIMIT_DESCRIPTORS[id.index()],
+            Self::Theme(id) => THEME_RESOURCE_LIMIT_DESCRIPTORS[id.index()],
         }
     }
 
@@ -219,6 +340,200 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
     },
 ];
 
+pub const MAX_THEME_ENCODED_BYTES_HARD_CAP: usize = 64 * MIB;
+pub const MAX_THEME_BASE64_BYTES_HARD_CAP: usize = 64 * MIB;
+pub const MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP: usize = 16 * MIB;
+pub const MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP: usize = 64 * MIB;
+pub const MAX_FONT_CATALOG_DECODED_BYTES_HARD_CAP: usize = 128 * MIB;
+pub const MAX_FONT_ASSETS_HARD_CAP: usize = 64;
+pub const MAX_FONT_FACES_HARD_CAP: usize = 256;
+pub const MAX_FONT_TABLES_HARD_CAP: usize = 8_192;
+pub const MAX_FONT_ALIASES_HARD_CAP: usize = 1_024;
+pub const MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP: usize = 100;
+
+const THEME_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; THEME_RESOURCE_LIMIT_COUNT] = [
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxThemeEncodedBytes,
+        stable_id: "max_theme_encoded_bytes",
+        phase: ResourceLimitPhase::ThemeInput,
+        description: "Maximum encoded theme JSON bytes before typed decoding",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxThemeBase64Bytes,
+        stable_id: "max_theme_base64_bytes",
+        phase: ResourceLimitPhase::ThemeInput,
+        description: "Maximum aggregate canonical base64 font payload bytes",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxFontAssetCompressedBytes,
+        stable_id: "max_font_asset_compressed_bytes",
+        phase: ResourceLimitPhase::FontDecode,
+        description: "Maximum compressed bytes for one font asset",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxFontAssetDecodedBytes,
+        stable_id: "max_font_asset_decoded_bytes",
+        phase: ResourceLimitPhase::FontDecode,
+        description: "Maximum canonical SFNT bytes for one font asset",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxFontCatalogDecodedBytes,
+        stable_id: "max_font_catalog_decoded_bytes",
+        phase: ResourceLimitPhase::FontCatalog,
+        description: "Maximum aggregate canonical SFNT bytes retained by one font catalog",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxFontAssets,
+        stable_id: "max_font_assets",
+        phase: ResourceLimitPhase::FontCatalog,
+        description: "Maximum font assets retained by one font catalog",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxFontFaces,
+        stable_id: "max_font_faces",
+        phase: ResourceLimitPhase::FontCatalog,
+        description: "Maximum faces retained by one font catalog",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxFontTables,
+        stable_id: "max_font_tables",
+        phase: ResourceLimitPhase::FontCatalog,
+        description: "Maximum aggregate SFNT table records retained by one font catalog",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxFontAliases,
+        stable_id: "max_font_aliases",
+        phase: ResourceLimitPhase::FontCatalog,
+        description: "Maximum family aliases and generic-family mappings in one font catalog",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 0,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::MaxFontDecodedExpansionRatio,
+        stable_id: "max_font_decoded_expansion_ratio",
+        phase: ResourceLimitPhase::FontDecode,
+        description: "Maximum decoded-to-compressed font byte ratio",
+        overridable: true,
+        hard_cap: false,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::ThemeEncodedBytesHardCap,
+        stable_id: "theme_encoded_bytes_hard_cap",
+        phase: ResourceLimitPhase::ThemeInput,
+        description: "Non-overridable implementation cap for encoded theme input bytes",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::ThemeBase64BytesHardCap,
+        stable_id: "theme_base64_bytes_hard_cap",
+        phase: ResourceLimitPhase::ThemeInput,
+        description: "Non-overridable implementation cap for aggregate base64 font payload bytes",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::FontAssetCompressedBytesHardCap,
+        stable_id: "font_asset_compressed_bytes_hard_cap",
+        phase: ResourceLimitPhase::FontDecode,
+        description: "Non-overridable implementation cap for one compressed font asset",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::FontAssetDecodedBytesHardCap,
+        stable_id: "font_asset_decoded_bytes_hard_cap",
+        phase: ResourceLimitPhase::FontDecode,
+        description: "Non-overridable implementation cap for one canonical SFNT asset",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::FontCatalogDecodedBytesHardCap,
+        stable_id: "font_catalog_decoded_bytes_hard_cap",
+        phase: ResourceLimitPhase::FontCatalog,
+        description: "Non-overridable implementation cap for retained catalog font bytes",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::FontAssetsHardCap,
+        stable_id: "font_assets_hard_cap",
+        phase: ResourceLimitPhase::FontCatalog,
+        description: "Non-overridable implementation cap for catalog asset count",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::FontFacesHardCap,
+        stable_id: "font_faces_hard_cap",
+        phase: ResourceLimitPhase::FontCatalog,
+        description: "Non-overridable implementation cap for catalog face count",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::FontTablesHardCap,
+        stable_id: "font_tables_hard_cap",
+        phase: ResourceLimitPhase::FontCatalog,
+        description: "Non-overridable implementation cap for catalog table records",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::FontAliasesHardCap,
+        stable_id: "font_aliases_hard_cap",
+        phase: ResourceLimitPhase::FontCatalog,
+        description: "Non-overridable implementation cap for aliases and generic mappings",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+    ResourceLimitDescriptor {
+        id: ResourceLimitId::FontDecodedExpansionRatioHardCap,
+        stable_id: "font_decoded_expansion_ratio_hard_cap",
+        phase: ResourceLimitPhase::FontDecode,
+        description: "Non-overridable implementation cap for font decode expansion ratio",
+        overridable: false,
+        hard_cap: true,
+        minimum_value: 1,
+    },
+];
+
 pub static RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RESOURCE_LIMIT_COUNT] = [
     input_descriptor(InputResourceLimitId::MaxSourceBytes),
     input_descriptor(InputResourceLimitId::MaxModelItems),
@@ -227,6 +542,26 @@ pub static RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RESOURCE_LIMIT_
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[2],
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[0],
     RENDER_RESOURCE_LIMIT_DESCRIPTORS[1],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[0],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[1],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[2],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[3],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[4],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[5],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[6],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[7],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[8],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[9],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[10],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[11],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[12],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[13],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[14],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[15],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[16],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[17],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[18],
+    THEME_RESOURCE_LIMIT_DESCRIPTORS[19],
 ];
 
 const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
@@ -238,6 +573,29 @@ const RENDER_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT];
     // ceiling admits the repository's normal large public fixtures with calibration
     // headroom while the constrained profile remains the untrusted-input boundary.
     [Some(800_000), Some(125_000), Some(1_000_000), None],
+];
+
+const THEME_PROFILE_VALUES: [[Option<usize>; RESOURCE_PROFILE_COUNT]; THEME_RESOURCE_LIMIT_COUNT] = [
+    [Some(2 * MIB), Some(512 * KIB), Some(8 * MIB), None],
+    [Some(2 * MIB), Some(512 * KIB), Some(8 * MIB), None],
+    [Some(4 * MIB), Some(MIB), Some(8 * MIB), None],
+    [Some(16 * MIB), Some(4 * MIB), Some(32 * MIB), None],
+    [Some(32 * MIB), Some(8 * MIB), Some(64 * MIB), None],
+    [Some(16), Some(8), Some(32), None],
+    [Some(32), Some(16), Some(128), None],
+    [Some(2_048), Some(512), Some(4_096), None],
+    [Some(128), Some(64), Some(256), None],
+    [Some(32), Some(16), Some(64), None],
+    [Some(MAX_THEME_ENCODED_BYTES_HARD_CAP); RESOURCE_PROFILE_COUNT],
+    [Some(MAX_THEME_BASE64_BYTES_HARD_CAP); RESOURCE_PROFILE_COUNT],
+    [Some(MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP); RESOURCE_PROFILE_COUNT],
+    [Some(MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP); RESOURCE_PROFILE_COUNT],
+    [Some(MAX_FONT_CATALOG_DECODED_BYTES_HARD_CAP); RESOURCE_PROFILE_COUNT],
+    [Some(MAX_FONT_ASSETS_HARD_CAP); RESOURCE_PROFILE_COUNT],
+    [Some(MAX_FONT_FACES_HARD_CAP); RESOURCE_PROFILE_COUNT],
+    [Some(MAX_FONT_TABLES_HARD_CAP); RESOURCE_PROFILE_COUNT],
+    [Some(MAX_FONT_ALIASES_HARD_CAP); RESOURCE_PROFILE_COUNT],
+    [Some(MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP); RESOURCE_PROFILE_COUNT],
 ];
 
 pub const GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE: RenderResourceProfile =
@@ -261,6 +619,21 @@ pub enum ResourceLimitOverrideError {
     HardCap(&'static str),
     #[error("resource limit `{0}` must be a positive integer")]
     NonPositive(&'static str),
+    #[error("resource limit `{id}` must be at least {minimum}")]
+    BelowMinimum { id: &'static str, minimum: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "resource policy would loosen `{}`: requested {:?}, ceiling {:?}",
+    .id.as_str(),
+    .requested,
+    .ceiling
+)]
+pub struct ResourcePolicyRestrictionError {
+    pub id: ResourceLimitId,
+    pub requested: Option<usize>,
+    pub ceiling: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -269,6 +642,9 @@ pub struct RenderResourcePolicy {
     render_base_values: [Option<usize>; RENDER_RESOURCE_LIMIT_COUNT],
     render_effective_values: [Option<usize>; RENDER_RESOURCE_LIMIT_COUNT],
     render_explicit_overrides: [Option<usize>; RENDER_RESOURCE_LIMIT_COUNT],
+    theme_base_values: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT],
+    theme_effective_values: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT],
+    theme_explicit_overrides: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT],
 }
 
 impl Default for RenderResourcePolicy {
@@ -305,11 +681,20 @@ impl RenderResourcePolicy {
             render_values[index] = RENDER_PROFILE_VALUES[index][profile as usize];
             index += 1;
         }
+        let mut theme_values = [None; THEME_RESOURCE_LIMIT_COUNT];
+        let mut index = 0;
+        while index < THEME_RESOURCE_LIMIT_COUNT {
+            theme_values[index] = THEME_PROFILE_VALUES[index][profile as usize];
+            index += 1;
+        }
         Self {
             input: InputResourcePolicy::for_profile(profile),
             render_base_values: render_values,
             render_effective_values: render_values,
             render_explicit_overrides: [None; RENDER_RESOURCE_LIMIT_COUNT],
+            theme_base_values: theme_values,
+            theme_effective_values: theme_values,
+            theme_explicit_overrides: [None; THEME_RESOURCE_LIMIT_COUNT],
         }
     }
 
@@ -321,6 +706,7 @@ impl RenderResourcePolicy {
         match id {
             ResourceLimitId::Input(id) => self.input.value(id),
             ResourceLimitId::Render(id) => self.render_effective_values[id.index()],
+            ResourceLimitId::Theme(id) => self.theme_effective_values[id.index()],
         }
     }
 
@@ -328,6 +714,7 @@ impl RenderResourcePolicy {
         match id {
             ResourceLimitId::Input(id) => self.input.base_value(id),
             ResourceLimitId::Render(id) => self.render_base_values[id.index()],
+            ResourceLimitId::Theme(id) => self.theme_base_values[id.index()],
         }
     }
 
@@ -335,6 +722,7 @@ impl RenderResourcePolicy {
         match id {
             ResourceLimitId::Input(id) => self.input.explicit_override(id),
             ResourceLimitId::Render(id) => self.render_explicit_overrides[id.index()],
+            ResourceLimitId::Theme(id) => self.theme_explicit_overrides[id.index()],
         }
     }
 
@@ -386,6 +774,103 @@ impl RenderResourcePolicy {
                 self.render_explicit_overrides[id.index()] = Some(value);
                 Ok(())
             }
+            ResourceLimitId::Theme(id) => {
+                let descriptor = THEME_RESOURCE_LIMIT_DESCRIPTORS[id.index()];
+                if descriptor.hard_cap || !descriptor.overridable {
+                    return Err(ResourceLimitOverrideError::HardCap(descriptor.stable_id));
+                }
+                if value < descriptor.minimum_value {
+                    return Err(ResourceLimitOverrideError::BelowMinimum {
+                        id: descriptor.stable_id,
+                        minimum: descriptor.minimum_value,
+                    });
+                }
+                self.theme_effective_values[id.index()] = Some(value);
+                self.theme_explicit_overrides[id.index()] = Some(value);
+                Ok(())
+            }
+        }
+    }
+
+    /// Returns the pointwise minimum of two policies while preserving this policy's host profile.
+    pub fn meet(&self, restriction: &Self) -> Self {
+        let input = self.input.meet(&restriction.input);
+        let mut render_effective_values = [None; RENDER_RESOURCE_LIMIT_COUNT];
+        let mut index = 0;
+        while index < RENDER_RESOURCE_LIMIT_COUNT {
+            render_effective_values[index] = minimum_ceiling(
+                self.render_effective_values[index],
+                restriction.render_effective_values[index],
+            );
+            index += 1;
+        }
+        let mut theme_effective_values = [None; THEME_RESOURCE_LIMIT_COUNT];
+        let mut index = 0;
+        while index < THEME_RESOURCE_LIMIT_COUNT {
+            theme_effective_values[index] = minimum_ceiling(
+                self.theme_effective_values[index],
+                restriction.theme_effective_values[index],
+            );
+            index += 1;
+        }
+        self.with_effective_values(input, render_effective_values, theme_effective_values)
+    }
+
+    /// Applies a request policy only when every requested ceiling is at least as strict.
+    pub fn restrict_with(
+        &self,
+        restriction: &Self,
+    ) -> Result<Self, ResourcePolicyRestrictionError> {
+        self.input
+            .restrict_with(&restriction.input)
+            .map_err(map_input_restriction_error)?;
+        for id in ResourceLimitId::ALL {
+            if matches!(id, ResourceLimitId::Input(_)) {
+                continue;
+            }
+            let ceiling = self.value(id);
+            let requested = restriction.value(id);
+            if loosens_ceiling(ceiling, requested) {
+                return Err(ResourcePolicyRestrictionError {
+                    id,
+                    requested,
+                    ceiling,
+                });
+            }
+        }
+        Ok(self.meet(restriction))
+    }
+
+    fn with_effective_values(
+        &self,
+        input: InputResourcePolicy,
+        render_effective_values: [Option<usize>; RENDER_RESOURCE_LIMIT_COUNT],
+        theme_effective_values: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT],
+    ) -> Self {
+        let mut render_explicit_overrides = [None; RENDER_RESOURCE_LIMIT_COUNT];
+        let mut index = 0;
+        while index < RENDER_RESOURCE_LIMIT_COUNT {
+            if render_effective_values[index] != self.render_base_values[index] {
+                render_explicit_overrides[index] = render_effective_values[index];
+            }
+            index += 1;
+        }
+        let mut theme_explicit_overrides = [None; THEME_RESOURCE_LIMIT_COUNT];
+        let mut index = 0;
+        while index < THEME_RESOURCE_LIMIT_COUNT {
+            if theme_effective_values[index] != self.theme_base_values[index] {
+                theme_explicit_overrides[index] = theme_effective_values[index];
+            }
+            index += 1;
+        }
+        Self {
+            input,
+            render_base_values: self.render_base_values,
+            render_effective_values,
+            render_explicit_overrides,
+            theme_base_values: self.theme_base_values,
+            theme_effective_values,
+            theme_explicit_overrides,
         }
     }
 
@@ -432,6 +917,154 @@ impl RenderResourcePolicy {
                 .map(|(id, value)| ResourceLimitOverride { id, value })
                 .collect(),
         })
+    }
+
+    fn check_theme_limit(
+        &self,
+        id: ThemeResourceLimitId,
+        actual: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        let descriptor = THEME_RESOURCE_LIMIT_DESCRIPTORS[id.index()];
+        let Some(max) = self.theme_effective_values[id.index()] else {
+            return Ok(());
+        };
+        if actual <= max {
+            return Ok(());
+        }
+        Err(ResourceLimitExceeded {
+            cause: ResourceLimitCause::Ceiling,
+            phase: descriptor.phase,
+            limit: descriptor.stable_id,
+            actual,
+            max,
+            profile: self.profile(),
+            explicit_overrides: self
+                .explicit_overrides()
+                .map(|(id, value)| ResourceLimitOverride { id, value })
+                .collect(),
+        })
+    }
+
+    fn check_theme_limit_with_hard_cap(
+        &self,
+        policy: ThemeResourceLimitId,
+        hard_cap: ThemeResourceLimitId,
+        actual: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_theme_limit(hard_cap, actual)?;
+        self.check_theme_limit(policy, actual)
+    }
+
+    pub fn check_theme_encoded_bytes(&self, actual: usize) -> Result<(), ResourceLimitExceeded> {
+        self.check_theme_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxThemeEncodedBytes,
+            ThemeResourceLimitId::ThemeEncodedBytesHardCap,
+            actual,
+        )
+    }
+
+    pub fn check_theme_base64_bytes(&self, actual: usize) -> Result<(), ResourceLimitExceeded> {
+        self.check_theme_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxThemeBase64Bytes,
+            ThemeResourceLimitId::ThemeBase64BytesHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_font_asset_compressed_bytes(
+        &self,
+        actual: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_theme_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxFontAssetCompressedBytes,
+            ThemeResourceLimitId::FontAssetCompressedBytesHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_font_asset_decoded_bytes(
+        &self,
+        actual: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_theme_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxFontAssetDecodedBytes,
+            ThemeResourceLimitId::FontAssetDecodedBytesHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_font_catalog_decoded_bytes(
+        &self,
+        actual: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_theme_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxFontCatalogDecodedBytes,
+            ThemeResourceLimitId::FontCatalogDecodedBytesHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_font_asset_count(
+        &self,
+        actual: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_theme_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxFontAssets,
+            ThemeResourceLimitId::FontAssetsHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_font_face_count(&self, actual: usize) -> Result<(), ResourceLimitExceeded> {
+        self.check_theme_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxFontFaces,
+            ThemeResourceLimitId::FontFacesHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_font_table_count(
+        &self,
+        actual: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_theme_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxFontTables,
+            ThemeResourceLimitId::FontTablesHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_font_alias_count(
+        &self,
+        actual: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_theme_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxFontAliases,
+            ThemeResourceLimitId::FontAliasesHardCap,
+            actual,
+        )
+    }
+
+    pub(crate) fn check_font_decoded_expansion(
+        &self,
+        compressed: usize,
+        decoded: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        let actual = if decoded == 0 {
+            0
+        } else if compressed == 0 {
+            usize::MAX
+        } else {
+            decoded
+                .saturating_add(compressed.saturating_sub(1))
+                .checked_div(compressed)
+                .unwrap_or(usize::MAX)
+        };
+        self.check_theme_limit_with_hard_cap(
+            ThemeResourceLimitId::MaxFontDecodedExpansionRatio,
+            ThemeResourceLimitId::FontDecodedExpansionRatioHardCap,
+            actual,
+        )
     }
 
     pub fn check_source_bytes(&self, source: &str) -> Result<(), ResourceLimitExceeded> {
@@ -597,6 +1230,32 @@ impl RenderResourcePolicy {
             RenderResourceLimitId::MaxLayoutWorkUnits,
             work_units,
         )
+    }
+}
+
+const fn minimum_ceiling(left: Option<usize>, right: Option<usize>) -> Option<usize> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(if left < right { left } else { right }),
+        (Some(value), None) | (None, Some(value)) => Some(value),
+        (None, None) => None,
+    }
+}
+
+const fn loosens_ceiling(ceiling: Option<usize>, requested: Option<usize>) -> bool {
+    match (ceiling, requested) {
+        (Some(_), None) => true,
+        (Some(ceiling), Some(requested)) => requested > ceiling,
+        (None, _) => false,
+    }
+}
+
+fn map_input_restriction_error(
+    error: InputResourcePolicyRestrictionError,
+) -> ResourcePolicyRestrictionError {
+    ResourcePolicyRestrictionError {
+        id: ResourceLimitId::Input(error.id),
+        requested: error.requested,
+        ceiling: error.ceiling,
     }
 }
 
@@ -805,6 +1464,157 @@ mod tests {
         );
         limits.apply_override("max_svg_elements", 7).unwrap();
         assert_eq!(limits.value(ResourceLimitId::MaxSvgElements), Some(7));
+    }
+
+    #[test]
+    fn theme_resource_overrides_follow_descriptor_minimums_and_preserve_hard_caps() {
+        let mut policy = RenderResourcePolicy::interactive();
+        for id in ThemeResourceLimitId::ALL {
+            let descriptor = ResourceLimitId::Theme(id).descriptor();
+            if descriptor.hard_cap {
+                assert_eq!(
+                    policy.apply_limit(descriptor.id, descriptor.minimum_value),
+                    Err(ResourceLimitOverrideError::HardCap(descriptor.stable_id))
+                );
+            } else if descriptor.minimum_value == 0 {
+                policy.apply_limit(descriptor.id, 0).unwrap();
+                assert_eq!(policy.value(descriptor.id), Some(0));
+            } else {
+                assert_eq!(
+                    policy.apply_limit(descriptor.id, 0),
+                    Err(ResourceLimitOverrideError::BelowMinimum {
+                        id: descriptor.stable_id,
+                        minimum: descriptor.minimum_value,
+                    })
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resource_policy_meet_and_restriction_are_pointwise_monotonic_for_every_public_limit() {
+        for descriptor in RESOURCE_LIMIT_DESCRIPTORS
+            .iter()
+            .copied()
+            .filter(|descriptor| descriptor.overridable)
+        {
+            let host = RenderResourcePolicy::interactive();
+            let ceiling = host
+                .value(descriptor.id)
+                .expect("interactive profile must bound every overridable limit");
+            let stricter_value = descriptor.minimum_value.max(ceiling / 2);
+            let stricter = host.with_limit(descriptor.id, stricter_value).unwrap();
+
+            let met = host.meet(&stricter);
+            assert_eq!(met.profile(), host.profile());
+            assert_eq!(met.value(descriptor.id), Some(stricter_value));
+            let restricted = host.restrict_with(&stricter).unwrap();
+            assert_eq!(restricted.value(descriptor.id), Some(stricter_value));
+
+            let looser_value = ceiling.checked_add(1).unwrap();
+            let looser = host.with_limit(descriptor.id, looser_value).unwrap();
+            assert_eq!(
+                host.restrict_with(&looser),
+                Err(ResourcePolicyRestrictionError {
+                    id: descriptor.id,
+                    requested: Some(looser_value),
+                    ceiling: Some(ceiling),
+                })
+            );
+        }
+
+        let host = RenderResourcePolicy::unbounded_for_trusted_input();
+        let restricted = host
+            .restrict_with(&RenderResourcePolicy::constrained())
+            .unwrap();
+        assert_eq!(restricted.profile(), host.profile());
+        for descriptor in RESOURCE_LIMIT_DESCRIPTORS {
+            assert_eq!(
+                restricted.value(descriptor.id),
+                minimum_ceiling(
+                    host.value(descriptor.id),
+                    RenderResourcePolicy::constrained().value(descriptor.id)
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn unbounded_policy_retains_every_theme_and_font_hard_cap() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        let checks = [
+            policy
+                .check_theme_encoded_bytes(MAX_THEME_ENCODED_BYTES_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_theme_base64_bytes(MAX_THEME_BASE64_BYTES_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_font_asset_compressed_bytes(MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_font_asset_decoded_bytes(MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_font_catalog_decoded_bytes(MAX_FONT_CATALOG_DECODED_BYTES_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_font_asset_count(MAX_FONT_ASSETS_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_font_face_count(MAX_FONT_FACES_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_font_table_count(MAX_FONT_TABLES_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_font_alias_count(MAX_FONT_ALIASES_HARD_CAP + 1)
+                .unwrap_err(),
+            policy
+                .check_font_decoded_expansion(1, MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP + 1)
+                .unwrap_err(),
+        ];
+        let expected = [
+            "theme_encoded_bytes_hard_cap",
+            "theme_base64_bytes_hard_cap",
+            "font_asset_compressed_bytes_hard_cap",
+            "font_asset_decoded_bytes_hard_cap",
+            "font_catalog_decoded_bytes_hard_cap",
+            "font_assets_hard_cap",
+            "font_faces_hard_cap",
+            "font_tables_hard_cap",
+            "font_aliases_hard_cap",
+            "font_decoded_expansion_ratio_hard_cap",
+        ];
+
+        assert_eq!(
+            checks.map(|error| error.limit),
+            expected,
+            "unbounded profiles may disable policy ceilings but not implementation capabilities"
+        );
+    }
+
+    #[test]
+    fn zero_theme_limits_can_disable_custom_font_ingestion() {
+        let policy = RenderResourcePolicy::interactive()
+            .with_limit(ResourceLimitId::MaxFontAssets, 0)
+            .unwrap()
+            .with_limit(ResourceLimitId::MaxFontCatalogDecodedBytes, 0)
+            .unwrap();
+
+        policy.check_font_asset_count(0).unwrap();
+        policy.check_font_catalog_decoded_bytes(0).unwrap();
+        assert_eq!(
+            policy.check_font_asset_count(1).unwrap_err().limit,
+            "max_font_assets"
+        );
+        assert_eq!(
+            policy
+                .check_font_catalog_decoded_bytes(1)
+                .unwrap_err()
+                .limit,
+            "max_font_catalog_decoded_bytes"
+        );
     }
 
     #[test]
