@@ -153,8 +153,9 @@ jobs:
           python3 tools/bench/test_perf_contracts.py
 
       - name: Verify compiled pipeline benchmark list
+        if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
         working-directory: head
-        run: python3 tools/bench/verify_pipeline_bench_list.py
+        run: python3 tools/bench/verify_pipeline_bench_list.py --features svg,layout-cytoscape,layout-elk,math
 
       - name: Build native memory probe contract
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')

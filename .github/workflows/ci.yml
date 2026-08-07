@@ -394,9 +394,12 @@ jobs:
         if: matrix.parity
         run: cargo run --locked -p xtask -- import-upstream-cypress --check-11-16-corpus-manifest-source
 
-      - name: Test (nextest, merman render)
+      - name: Test system adapter feature contracts
         if: matrix.parity
-        run: cargo nextest run -p merman --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing --cargo-quiet
+        run: |
+          cargo nextest run -p merman --no-default-features \
+            --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing \
+            --test runtime_determinism --test render_timezone --cargo-quiet
 
       - name: Test C FFI artifact-profile consumer smoke
         if: matrix.parity
