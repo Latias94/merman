@@ -72,6 +72,11 @@ impl RenderOperationReport {
     pub const fn layout_work_units(&self) -> usize {
         self.session.layout_work_units()
     }
+
+    /// Returns the catalog identity retained by the completed render operation.
+    pub const fn font_catalog_fingerprint(&self) -> super::FontCatalogFingerprint {
+        self.session.font_catalog_fingerprint()
+    }
 }
 
 struct CompletedTypedHeadlessSvg {
@@ -164,6 +169,47 @@ pub struct PreparedRender {
 pub struct RenderedSvg {
     svg: String,
     report: RenderOperationReport,
+}
+
+/// Canonical completed Mermaid document for SVG and native export.
+///
+/// Construction is private to the consuming typed render operation, so callers cannot combine a
+/// sealed SVG with a report or font catalog from another operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedDocument {
+    svg: ResvgCompatibleSvg,
+    report: RenderOperationReport,
+}
+
+impl RenderedDocument {
+    pub const fn svg(&self) -> &ResvgCompatibleSvg {
+        &self.svg
+    }
+
+    pub fn svg_text(&self) -> &str {
+        self.svg.as_str()
+    }
+
+    pub const fn report(&self) -> &RenderOperationReport {
+        &self.report
+    }
+
+    pub const fn resource_closure(&self) -> &super::SvgResourceClosure {
+        self.svg.resource_closure()
+    }
+
+    pub const fn resource_fingerprint(&self) -> super::SvgResourceFingerprint {
+        self.svg.resource_fingerprint()
+    }
+
+    pub const fn font_catalog(&self) -> &super::FontCatalog {
+        self.svg.font_catalog()
+    }
+
+    /// Discards completed-operation evidence while retaining the low-level sealed SVG artifact.
+    pub fn into_svg(self) -> ResvgCompatibleSvg {
+        self.svg
+    }
 }
 
 impl RenderedSvg {
@@ -287,23 +333,28 @@ impl PreparedRender {
         svg_options: &SvgRenderOptions,
         pipeline: &SvgPipeline,
     ) -> Result<ResvgCompatibleSvg> {
-        self.render_resvg_compatible_svg_with_debug(
-            svg_options,
-            &SvgDebugOptions::default(),
-            pipeline,
-        )
-        .map(|(svg, _)| svg)
+        self.render_document_with_debug(svg_options, &SvgDebugOptions::default(), pipeline)
+            .map(RenderedDocument::into_svg)
     }
 
-    pub fn render_resvg_compatible_svg_with_debug(
+    /// Renders and terminally seals one canonical document for all export projections.
+    pub fn render_document(
+        self,
+        svg_options: &SvgRenderOptions,
+        pipeline: &SvgPipeline,
+    ) -> Result<RenderedDocument> {
+        self.render_document_with_debug(svg_options, &SvgDebugOptions::default(), pipeline)
+    }
+
+    pub fn render_document_with_debug(
         self,
         svg_options: &SvgRenderOptions,
         debug_options: &SvgDebugOptions,
         pipeline: &SvgPipeline,
-    ) -> Result<(ResvgCompatibleSvg, RenderOperationReport)> {
+    ) -> Result<RenderedDocument> {
         let pipeline = pipeline.clone().into_resvg_safe();
         self.render_svg_parts(svg_options, debug_options)?
-            .into_resvg_compatible(&pipeline)
+            .into_document(&pipeline)
     }
 
     fn render_svg_parts(
@@ -446,14 +497,16 @@ impl RenderedSvgParts {
         Ok(RenderedSvg { svg, report })
     }
 
-    fn into_resvg_compatible(
-        self,
-        pipeline: &SvgPipeline,
-    ) -> Result<(ResvgCompatibleSvg, RenderOperationReport)> {
+    fn into_document(self, pipeline: &SvgPipeline) -> Result<RenderedDocument> {
         let rendered = self.rendered.finalize_resvg(pipeline)?;
         let (svg, _, _, session) = rendered.into_parts();
         let report = CompletedTypedHeadlessSvg::new(session).into_report();
-        Ok((svg, report))
+        debug_assert_eq!(
+            svg.font_catalog().fingerprint(),
+            report.font_catalog_fingerprint(),
+            "sealed SVG and operation report must retain the same catalog"
+        );
+        Ok(RenderedDocument { svg, report })
     }
 }
 

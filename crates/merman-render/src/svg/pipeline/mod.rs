@@ -3,6 +3,7 @@ mod context;
 mod final_validation;
 mod policy;
 mod preset;
+mod resource_closure;
 
 pub(crate) use builtin::GitGraphBranchLabelBaselinePostprocessor;
 pub use builtin::{
@@ -14,6 +15,7 @@ pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
 pub(crate) use final_validation::validate_well_formed_svg;
 pub use policy::SvgOutputPolicy;
 pub use preset::SvgPipelinePreset;
+pub use resource_closure::{SvgResourceClosure, SvgResourceFingerprint};
 
 use crate::environment::RenderSession;
 use crate::resources::ResourceLimitPhase;
@@ -44,10 +46,13 @@ pub trait SvgPostprocessor: Send + Sync {
 ///
 /// let forged = ResvgCompatibleSvg { svg: "<svg/>".to_string() };
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct ResvgCompatibleSvg {
     svg: String,
     reference_plan: SvgReferencePlan,
+    resource_closure: SvgResourceClosure,
+    font_catalog: crate::diagram_theme::FontCatalog,
+    resource_fingerprint: SvgResourceFingerprint,
 }
 
 /// Reference-expansion work retained by a sealed resvg-compatible SVG.
@@ -80,10 +85,23 @@ impl SvgReferencePlan {
 }
 
 impl ResvgCompatibleSvg {
-    fn finalized(svg: String, reference_plan: SvgReferencePlan) -> Self {
+    fn finalized(
+        svg: String,
+        reference_plan: SvgReferencePlan,
+        resource_closure: SvgResourceClosure,
+        session: &RenderSession,
+    ) -> Self {
+        let font_catalog = session.font_catalog().clone();
+        let resource_fingerprint = resource_closure::fingerprint_svg_resources(
+            &svg,
+            font_catalog.fingerprint().as_bytes(),
+        );
         Self {
             svg,
             reference_plan,
+            resource_closure,
+            font_catalog,
+            resource_fingerprint,
         }
     }
 
@@ -91,6 +109,7 @@ impl ResvgCompatibleSvg {
         &self.svg
     }
 
+    /// Projects the sealed artifact to SVG text and discards its export resources and proofs.
     pub fn into_string(self) -> String {
         self.svg
     }
@@ -99,7 +118,46 @@ impl ResvgCompatibleSvg {
     pub const fn reference_plan(&self) -> &SvgReferencePlan {
         &self.reference_plan
     }
+
+    /// Returns the terminal same-document and inline-resource inventory.
+    pub const fn resource_closure(&self) -> &SvgResourceClosure {
+        &self.resource_closure
+    }
+
+    /// Returns the exact font catalog authorized by the render session.
+    pub const fn font_catalog(&self) -> &crate::diagram_theme::FontCatalog {
+        &self.font_catalog
+    }
+
+    /// Returns a stable identity for the finalized SVG plus its retained font catalog.
+    pub const fn resource_fingerprint(&self) -> SvgResourceFingerprint {
+        self.resource_fingerprint
+    }
 }
+
+impl fmt::Debug for ResvgCompatibleSvg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ResvgCompatibleSvg")
+            .field("svg", &self.svg)
+            .field("reference_plan", &self.reference_plan)
+            .field("resource_closure", &self.resource_closure)
+            .field("font_catalog", &self.font_catalog.fingerprint())
+            .field("resource_fingerprint", &self.resource_fingerprint)
+            .finish()
+    }
+}
+
+impl PartialEq for ResvgCompatibleSvg {
+    fn eq(&self, other: &Self) -> bool {
+        self.svg == other.svg
+            && self.reference_plan == other.reference_plan
+            && self.resource_closure == other.resource_closure
+            && self.font_catalog.fingerprint() == other.font_catalog.fingerprint()
+            && self.resource_fingerprint == other.resource_fingerprint
+    }
+}
+
+impl Eq for ResvgCompatibleSvg {}
 
 impl AsRef<str> for ResvgCompatibleSvg {
     fn as_ref(&self) -> &str {
@@ -229,7 +287,10 @@ impl SvgPipeline {
         svg: Cow<'a, str>,
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
-    ) -> Result<(Cow<'a, str>, Option<SvgReferencePlan>)> {
+    ) -> Result<(
+        Cow<'a, str>,
+        Option<final_validation::TerminalSvgValidation>,
+    )> {
         let mut current = svg;
         session
             .resource_policy()
@@ -262,7 +323,7 @@ impl SvgPipeline {
         session
             .resource_policy()
             .check_svg_bytes(finalized.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
-        let reference_plan = if self.preset == SvgPipelinePreset::ResvgSafe {
+        let terminal = if self.preset == SvgPipelinePreset::ResvgSafe {
             Some(final_validation::validate_resvg_compatible_svg(
                 finalized.as_ref(),
                 session.resource_policy(),
@@ -274,7 +335,7 @@ impl SvgPipeline {
             )?;
             None
         };
-        Ok((finalized, reference_plan))
+        Ok((finalized, terminal))
     }
 
     pub fn process_to_string(&self, svg: &str, session: &RenderSession) -> Result<String> {
@@ -324,11 +385,14 @@ impl SvgPipeline {
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
-        let (svg, reference_plan) =
+        let (svg, terminal) =
             self.process_cow_with_reference_plan(Cow::Borrowed(svg), metadata, session)?;
+        let terminal = terminal.expect("resvg-safe processing always produces terminal evidence");
         Ok(ResvgCompatibleSvg::finalized(
             svg.into_owned(),
-            reference_plan.expect("resvg-safe processing always produces a reference plan"),
+            terminal.reference_plan,
+            terminal.resource_closure,
+            session,
         ))
     }
 
@@ -339,11 +403,14 @@ impl SvgPipeline {
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
-        let (svg, reference_plan) =
+        let (svg, terminal) =
             self.process_cow_with_reference_plan(Cow::Owned(svg), metadata, session)?;
+        let terminal = terminal.expect("resvg-safe processing always produces terminal evidence");
         Ok(ResvgCompatibleSvg::finalized(
             svg.into_owned(),
-            reference_plan.expect("resvg-safe processing always produces a reference plan"),
+            terminal.reference_plan,
+            terminal.resource_closure,
+            session,
         ))
     }
 
@@ -371,6 +438,41 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn sealed_svg_retains_and_fingerprints_the_authorized_font_catalog() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text>Alpha</text></svg>"#;
+        let default_session = render_session();
+        let font_bytes = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+        ));
+        let custom_catalog =
+            crate::diagram_theme::FontCatalogSpec::new([crate::diagram_theme::FontAssetSpec::new(
+                "excalifont",
+                font_bytes,
+            )])
+            .compile(&crate::diagram_theme::ThemeResourcePolicy::interactive())
+            .unwrap();
+        let custom_session = crate::environment::RenderEnvironment::deterministic()
+            .with_font_catalog(custom_catalog.clone())
+            .begin_session()
+            .unwrap();
+
+        let default_svg = finalize_resvg_svg(svg, &default_session).unwrap();
+        let custom_svg = finalize_resvg_svg(svg, &custom_session).unwrap();
+
+        assert_eq!(default_svg.as_str(), custom_svg.as_str());
+        assert_ne!(
+            default_svg.resource_fingerprint(),
+            custom_svg.resource_fingerprint()
+        );
+        assert_eq!(
+            custom_svg.font_catalog().fingerprint(),
+            custom_catalog.fingerprint()
+        );
+        assert!(custom_svg.resource_closure().is_closed());
     }
 
     #[test]

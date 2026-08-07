@@ -49,9 +49,10 @@ pub use merman_core::runtime::{
     OperationContext, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
 };
 pub use merman_render::diagram_theme::{
-    ThemeResourceLimitDescriptor, ThemeResourceLimitExceeded, ThemeResourceLimitId,
-    ThemeResourceLimitOverride, ThemeResourceLimitOverrideError, ThemeResourceLimitPhase,
-    ThemeResourcePolicy, ThemeResourcePolicyRestrictionError, theme_resource_limit_descriptors,
+    FontCatalog, FontCatalogFingerprint, ThemeResourceLimitDescriptor, ThemeResourceLimitExceeded,
+    ThemeResourceLimitId, ThemeResourceLimitOverride, ThemeResourceLimitOverrideError,
+    ThemeResourceLimitPhase, ThemeResourcePolicy, ThemeResourcePolicyRestrictionError,
+    theme_resource_limit_descriptors,
 };
 pub use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
@@ -88,7 +89,8 @@ pub use merman_render::svg::{
     RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
     ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgDebugOptions, SvgOutputPolicy,
     SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgRenderOptions, finalize_resvg_svg, foreign_object_label_fallback_svg_text,
+    SvgPostprocessor, SvgRenderOptions, SvgResourceClosure, SvgResourceFingerprint,
+    finalize_resvg_svg, foreign_object_label_fallback_svg_text,
     icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{
@@ -102,7 +104,8 @@ pub use merman_render::{
 
 mod operation;
 pub use operation::{
-    PreparedRender, PreparedSemantic, RenderExecutionPath, RenderOperationReport, RenderedSvg,
+    PreparedRender, PreparedSemantic, RenderExecutionPath, RenderOperationReport, RenderedDocument,
+    RenderedSvg,
 };
 
 /// Binary export APIs are isolated from Mermaid parsing and layout. They accept only terminally
@@ -365,6 +368,20 @@ pub fn render_resvg_compatible_svg_sync(
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
 ) -> Result<Option<ResvgCompatibleSvg>> {
+    Ok(
+        render_document_sync(engine, text, parse_options, layout_options, svg_options)?
+            .map(RenderedDocument::into_svg),
+    )
+}
+
+/// Synchronously renders one canonical document for SVG and native export.
+pub fn render_document_sync(
+    engine: &merman_core::Engine,
+    text: &str,
+    parse_options: merman_core::ParseOptions,
+    layout_options: &LayoutOptions,
+    svg_options: &SvgRenderOptions,
+) -> Result<Option<RenderedDocument>> {
     let environment = default_render_environment();
     let Some(prepared) = operation::HeadlessOperation::new(
         engine,
@@ -377,7 +394,7 @@ pub fn render_resvg_compatible_svg_sync(
     else {
         return Ok(None);
     };
-    Ok(Some(prepared.render_resvg_compatible_svg(
+    Ok(Some(prepared.render_document(
         svg_options,
         &SvgPipeline::resvg_safe(),
     )?))
@@ -459,6 +476,18 @@ pub async fn render_resvg_compatible_svg(
     // This async API is runtime-agnostic: rendering is CPU-bound and does not perform I/O.
     // It executes synchronously and does not yield.
     render_resvg_compatible_svg_sync(engine, text, parse_options, layout_options, svg_options)
+}
+
+pub async fn render_document(
+    engine: &merman_core::Engine,
+    text: &str,
+    parse_options: merman_core::ParseOptions,
+    layout_options: &LayoutOptions,
+    svg_options: &SvgRenderOptions,
+) -> Result<Option<RenderedDocument>> {
+    // This async API is runtime-agnostic: rendering is CPU-bound and does not perform I/O.
+    // It executes synchronously and does not yield.
+    render_document_sync(engine, text, parse_options, layout_options, svg_options)
 }
 
 #[cfg(test)]
@@ -1802,14 +1831,25 @@ impl HeadlessRenderer {
         text: &str,
         pipeline: &SvgPipeline,
     ) -> Result<Option<ResvgCompatibleSvg>> {
+        Ok(self
+            .render_document_with_pipeline_sync(text, pipeline)?
+            .map(RenderedDocument::into_svg))
+    }
+
+    /// Renders one canonical document whose SVG, resources, and report share one operation.
+    pub fn render_document_with_pipeline_sync(
+        &self,
+        text: &str,
+        pipeline: &SvgPipeline,
+    ) -> Result<Option<RenderedDocument>> {
         let Some(prepared) = self.prepare_render_sync(text)? else {
             return Ok(None);
         };
-        Ok(Some(
-            prepared
-                .render_resvg_compatible_svg_with_debug(&self.svg, &self.svg_debug, pipeline)?
-                .0,
-        ))
+        Ok(Some(prepared.render_document_with_debug(
+            &self.svg,
+            &self.svg_debug,
+            pipeline,
+        )?))
     }
 
     /// Renders SVG and applies a best-effort readability fallback for `<foreignObject>` labels.
@@ -1829,6 +1869,11 @@ impl HeadlessRenderer {
         self.render_resvg_compatible_svg_with_pipeline_sync(text, &SvgPipeline::resvg_safe())
     }
 
+    /// Renders and terminally seals one canonical document for all output projections.
+    pub fn render_document_sync(&self, text: &str) -> Result<Option<RenderedDocument>> {
+        self.render_document_with_pipeline_sync(text, &SvgPipeline::resvg_safe())
+    }
+
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn export_pipeline(&self) -> SvgPipeline {
         self.svg_pipeline()
@@ -1837,9 +1882,9 @@ impl HeadlessRenderer {
     }
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    fn render_export_svg_sync(&self, text: &str) -> Result<Option<ResvgCompatibleSvg>> {
+    fn render_export_document_sync(&self, text: &str) -> Result<Option<RenderedDocument>> {
         let pipeline = self.export_pipeline();
-        self.render_resvg_compatible_svg_with_pipeline_sync(text, &pipeline)
+        self.render_document_with_pipeline_sync(text, &pipeline)
     }
 
     #[cfg(feature = "png")]
@@ -1860,10 +1905,10 @@ impl HeadlessRenderer {
         text: &str,
         options: &merman_export::RasterOptions,
     ) -> OutputResult<Option<(Vec<u8>, merman_export::RasterPlan)>> {
-        let Some(svg) = self.render_export_svg_sync(text)? else {
+        let Some(document) = self.render_export_document_sync(text)? else {
             return Ok(None);
         };
-        let prepared = merman_export::prepare_raster(&svg, options)?;
+        let prepared = merman_export::prepare_raster(document.svg(), options)?;
         let plan = prepared.plan();
         Ok(Some((prepared.encode_png()?, plan)))
     }
@@ -1886,10 +1931,10 @@ impl HeadlessRenderer {
         text: &str,
         options: &merman_export::RasterOptions,
     ) -> OutputResult<Option<(Vec<u8>, merman_export::RasterPlan)>> {
-        let Some(svg) = self.render_export_svg_sync(text)? else {
+        let Some(document) = self.render_export_document_sync(text)? else {
             return Ok(None);
         };
-        let prepared = merman_export::prepare_raster(&svg, options)?;
+        let prepared = merman_export::prepare_raster(document.svg(), options)?;
         let plan = prepared.plan();
         Ok(Some((prepared.encode_jpeg()?, plan)))
     }
@@ -1918,10 +1963,10 @@ impl HeadlessRenderer {
         text: &str,
         options: &merman_export::PdfOptions,
     ) -> OutputResult<Option<(Vec<u8>, merman_export::PdfFilterImagePlan)>> {
-        let Some(svg) = self.render_export_svg_sync(text)? else {
+        let Some(document) = self.render_export_document_sync(text)? else {
             return Ok(None);
         };
-        let prepared = merman_export::prepare_pdf(&svg, options)?;
+        let prepared = merman_export::prepare_pdf(document.svg(), options)?;
         let plan = prepared.filter_plan();
         Ok(Some((prepared.encode()?, plan)))
     }

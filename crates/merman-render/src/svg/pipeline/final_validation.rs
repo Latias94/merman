@@ -16,6 +16,7 @@ use super::builtin::attr_sanitize::{
 use super::builtin::css_sanitize::{
     validate_resvg_css_declaration_list, validate_resvg_css_stylesheet,
 };
+use super::resource_closure::{SvgResourceClosure, SvgResourceClosureBuilder};
 
 const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE: &str = "http://www.w3.org/1999/xlink";
@@ -343,7 +344,7 @@ fn is_xml_name_char(ch: char) -> bool {
 pub(crate) fn validate_resvg_compatible_svg(
     svg: &str,
     limits: RenderResourcePolicy,
-) -> Result<SvgReferencePlan> {
+) -> Result<TerminalSvgValidation> {
     validate_well_formed_svg(svg, limits)?;
     let mut reader = NsReader::from_str(svg);
     let mut depth = 0usize;
@@ -352,6 +353,7 @@ pub(crate) fn validate_resvg_compatible_svg(
     let mut style_text = None::<String>;
     let mut reference_nodes = Vec::new();
     let mut reference_stack = Vec::new();
+    let mut resource_closure = SvgResourceClosureBuilder::default();
 
     loop {
         let event = reader
@@ -366,7 +368,8 @@ pub(crate) fn validate_resvg_compatible_svg(
                 }
                 let is_root = depth == 0;
                 reject_additional_root(is_root, root_seen, root_closed)?;
-                let validated = validate_element(&element, reader.resolver(), is_root)?;
+                let validated =
+                    validate_element(&element, reader.resolver(), is_root, &mut resource_closure)?;
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -389,7 +392,8 @@ pub(crate) fn validate_resvg_compatible_svg(
                 }
                 let is_root = depth == 0;
                 reject_additional_root(is_root, root_seen, root_closed)?;
-                let validated = validate_element(&element, reader.resolver(), is_root)?;
+                let validated =
+                    validate_element(&element, reader.resolver(), is_root, &mut resource_closure)?;
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -415,6 +419,9 @@ pub(crate) fn validate_resvg_compatible_svg(
                         ));
                     }
                     validate_style_text(&css)?;
+                    resource_closure
+                        .observe_stylesheet_urls(&css)
+                        .map_err(validation_error)?;
                 }
                 reference_stack
                     .pop()
@@ -486,7 +493,25 @@ pub(crate) fn validate_resvg_compatible_svg(
         reference_plan.expanded_elements(),
         reference_plan.max_tree_depth(),
     )?;
-    Ok(reference_plan)
+    let resource_closure = resource_closure.finish().map_err(validation_error)?;
+    Ok(TerminalSvgValidation {
+        reference_plan,
+        resource_closure,
+    })
+}
+
+#[derive(Debug)]
+pub(crate) struct TerminalSvgValidation {
+    pub(super) reference_plan: SvgReferencePlan,
+    pub(super) resource_closure: SvgResourceClosure,
+}
+
+impl std::ops::Deref for TerminalSvgValidation {
+    type Target = SvgReferencePlan;
+
+    fn deref(&self) -> &Self::Target {
+        &self.reference_plan
+    }
 }
 
 fn reject_additional_root(is_root: bool, root_seen: bool, root_closed: bool) -> Result<()> {
@@ -561,6 +586,7 @@ fn validate_element(
     element: &BytesStart<'_>,
     resolver: &NamespaceResolver,
     is_root: bool,
+    resource_closure: &mut SvgResourceClosureBuilder,
 ) -> Result<ValidatedElement> {
     let (namespace, local_name) = resolver.resolve_element(element.name());
     let is_svg_element = is_svg_element_namespace(&namespace);
@@ -635,6 +661,13 @@ fn validate_element(
                     "invalid style attribute on <{element_name}>: {error}"
                 ))
             })?;
+            resource_closure
+                .observe_inline_css_urls(&value)
+                .map_err(validation_error)?;
+        } else if is_url_function_attribute(semantic_name) {
+            resource_closure
+                .observe_inline_css_urls(&value)
+                .map_err(validation_error)?;
         }
         if is_svg_element
             && !geometry_source_seen
@@ -647,6 +680,7 @@ fn validate_element(
         if is_svg_element && semantic_name == "id" && !parsed_id_seen {
             parsed_id_seen = true;
             parsed_id = Some(value.to_string());
+            resource_closure.observe_fragment_id(&value);
         }
         if is_svg_element && is_unbound_attribute && semantic_name == "id" {
             use_id = Some(value.to_string());
@@ -661,6 +695,11 @@ fn validate_element(
         if is_fe_image && semantic_name == "href" && !fe_image_href_seen {
             fe_image_href_seen = true;
             fe_image_href = Some(value.to_string());
+        }
+        if semantic_name == "href" && !element_name.eq_ignore_ascii_case("a") {
+            observe_terminal_resource_url(resource_closure, &value);
+        } else if semantic_name == "src" {
+            observe_terminal_resource_url(resource_closure, &value);
         }
         let marker_slot = if semantic_name == "marker-start" && !marker_start_seen {
             marker_start_seen = true;
@@ -735,6 +774,38 @@ fn validate_element(
         parsed_id,
         references,
     })
+}
+
+fn is_url_function_attribute(name: &str) -> bool {
+    matches!(
+        name,
+        "fill"
+            | "stroke"
+            | "filter"
+            | "clip-path"
+            | "mask"
+            | "marker-start"
+            | "marker-mid"
+            | "marker-end"
+            | "cursor"
+            | "background"
+            | "background-image"
+    )
+}
+
+fn observe_terminal_resource_url(resources: &mut SvgResourceClosureBuilder, value: &str) {
+    let value = value.trim();
+    if let Some(fragment) = value
+        .strip_prefix('#')
+        .filter(|fragment| !fragment.is_empty())
+    {
+        resources.observe_fragment_reference(fragment);
+    } else if value
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:"))
+    {
+        resources.observe_inline_data_resource();
+    }
 }
 
 fn validate_positive_root_dimension(name: &str, value: &str) -> Result<()> {
@@ -1115,9 +1186,15 @@ mod tests {
 
     #[test]
     fn accepts_structural_fragments_and_raster_data_images() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="paint"/><rect id="filter-source"/></defs><circle fill="url(#paint)" style="clip-path:url(#clip);content:&quot;45deg&quot;"/><image href="data:image/png;base64,AAAA"/><filter><feImage href="#filter-source"/><feImage href="data:image/png;base64,BBBB"/></filter></svg>"##;
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="paint"/><clipPath id="clip"><rect width="1" height="1"/></clipPath><rect id="filter-source"/></defs><circle fill="url(#paint)" style="clip-path:url(#clip);content:&quot;45deg&quot;"/><image href="data:image/png;base64,AAAA"/><filter><feImage href="#filter-source"/><feImage href="data:image/png;base64,BBBB"/></filter></svg>"##;
 
-        validate(svg).unwrap();
+        let validated =
+            validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).unwrap();
+        assert_eq!(
+            validated.resource_closure.referenced_fragment_ids(),
+            &["clip", "filter-source", "paint"]
+        );
+        assert_eq!(validated.resource_closure.inline_data_resource_count(), 2);
     }
 
     #[test]

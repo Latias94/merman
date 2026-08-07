@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn resvg_safe_finalization_is_idempotent_after_resource_closure() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com"><text>docs</text></a><image href="../secret.png"/><use href="#shape"/><defs><path id="shape" d="M0 0H1V1H0z"/></defs><style>.safe{fill:url(#paint)}.external{background:url(/tmp/image.png)}</style></svg>"##;
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com"><text>docs</text></a><image href="../secret.png"/><use href="#shape"/><defs><path id="shape" d="M0 0H1V1H0z"/><linearGradient id="paint"/></defs><style>.safe{fill:url(#paint)}.external{background:url(/tmp/image.png)}</style></svg>"##;
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
