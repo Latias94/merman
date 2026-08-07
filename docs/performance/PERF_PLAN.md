@@ -269,6 +269,20 @@ The one-worker PNG candidate saved only 0.78%; the single-reader XML candidate r
 Both latency candidates and their one-fixture benchmark lanes were removed. See [the U8
 receipt](resvg_pipeline_candidates_2026-07-29.md).
 
+### P1.8: Linearize rich inline HTML planning
+
+Keep inline HTML segmentation source-backed and owner-local. A candidate may remove repeated
+fragment/style discovery and scratch-payload copies, but opaque host measurer calls, request text,
+order, and failure behavior remain observable and must not be reduced without a separate contract.
+Use fixed-byte `R`, `K`, and orthogonal `R x K` structural controls; do not turn a structural
+result into a latency claim without an adjacent public A/B.
+
+Completed on 2026-08-07 with an accepted structural result. One indexed logical source and one
+opaque style-group side index reduce Rust planning to `O(B + R + K)` plus explicitly observed
+backend work, remove the growing `B * K` scratch-copy term, and preserve host/built-in semantics.
+The side index adds `O(R + K)` logical `usize` slots; no peak-memory or latency improvement is
+claimed. See [the decision receipt](rich_inline_html_planning_2026-08-07.md).
+
 ## Guardrails
 
 - Correctness and Mermaid parity take precedence over a timing ratio.
