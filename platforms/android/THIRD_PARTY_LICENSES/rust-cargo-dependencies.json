@@ -18,12 +18,10 @@
             "layout-cytoscape",
             "layout-elk",
             "math",
+            "native-runtime",
             "pdf",
             "png",
-            "svg",
-            "system-clock",
-            "system-random",
-            "system-timezone"
+            "svg"
           ],
           "target": {
             "name": "merman_android_jni",
@@ -61,9 +59,9 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "7902a22f07030a913d4df6ca6ce8f877b2c4cd1dfe231447fe461465e13785fb",
+    "cargo_lock_sha256": "a26ff38860d27888969b7cc33a51254e150e5f1daa080da64718a84e858bfae8",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "083a7c72a7d192306ec8b54a5d37367018cfe146e58cced7b9b38a2314bf2718"
+    "artifact_bundle_sha256": "170b46acd9d96f720d13d68da2fd62f871345ee902e3f3399f6299cd1c07edee"
   },
   "target_dependency_closures": [
     {

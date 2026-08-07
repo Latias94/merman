@@ -43,7 +43,6 @@ android {
     sourceSets {
         getByName("androidTest") {
             kotlin.directories += "examples"
-            assets.directories += "../../fixtures/bindings/assets"
         }
     }
 

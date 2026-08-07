@@ -445,6 +445,29 @@ def fmt_time(value: float | None) -> str:
 
 
 _BENCH_LIST_LINE = re.compile(r"^(?P<bench>[A-Za-z0-9_.:/-]+):\s*benchmark\s*$")
+_PREFLIGHT_PREFIX = "[bench][preflight]"
+_POSTFLIGHT_PREFIX = "[bench][postflight]"
+_NATIVE_CRITERION_PREFLIGHT_CONTRACT = (
+    "docs/performance/contracts/native-criterion-preflight-v1.json"
+)
+_PREFLIGHT_FIELD_ORDER = (
+    "schema_version",
+    "benchmark",
+    "output_kind",
+    "output_bytes",
+    "output_sha256",
+    "svg_elements",
+)
+_PREFLIGHT_FIELDS = frozenset(_PREFLIGHT_FIELD_ORDER)
+_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
+    "parse": "typed_render_model",
+    "compatibility_json_parse": "compatibility_json",
+    "parse_cold_engine": "typed_render_model",
+    "frontmatter_preprocess": "preprocessed_diagram",
+    "layout": "prepared_layout",
+    "render": "svg",
+    "end_to_end": "svg",
+}
 
 
 class ContractViolation(RuntimeError):
@@ -462,6 +485,171 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def _reject_nonfinite_json_constant(value: str) -> None:
     raise ContractViolation(f"non-finite JSON number: {value}")
+
+
+def parse_preflight_receipts(text: str) -> dict[str, dict[str, Any]]:
+    receipts: dict[str, dict[str, Any]] = {}
+    for raw in text.splitlines():
+        line = strip_ansi(raw.rstrip("\r\n"))
+        if not line.startswith(_PREFLIGHT_PREFIX):
+            continue
+        payload = line[len(_PREFLIGHT_PREFIX) :].strip()
+        if not payload:
+            raise ContractViolation("benchmark preflight receipt payload is missing")
+        try:
+            value = json.loads(
+                payload,
+                object_pairs_hook=_reject_duplicate_json_keys,
+                parse_constant=_reject_nonfinite_json_constant,
+            )
+        except (json.JSONDecodeError, ContractViolation) as error:
+            raise ContractViolation(f"invalid benchmark preflight JSON: {error}") from error
+        if not isinstance(value, dict):
+            raise ContractViolation("benchmark preflight receipt must be an object")
+        fields = frozenset(value)
+        if fields != _PREFLIGHT_FIELDS:
+            missing = sorted(_PREFLIGHT_FIELDS - fields)
+            unknown = sorted(fields - _PREFLIGHT_FIELDS)
+            raise ContractViolation(
+                f"benchmark preflight receipt fields differ: missing={missing}, unknown={unknown}"
+            )
+        if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+            raise ContractViolation("benchmark preflight schema_version must be 1")
+        benchmark = value["benchmark"]
+        if not isinstance(benchmark, str) or re.fullmatch(
+            r"[A-Za-z0-9_.:/-]+", benchmark
+        ) is None:
+            raise ContractViolation("benchmark preflight benchmark is invalid")
+        if "/" not in benchmark:
+            raise ContractViolation("benchmark preflight benchmark has no group boundary")
+        group = benchmark.rsplit("/", 1)[0]
+        expected_kind = _PREFLIGHT_OUTPUT_KIND_BY_GROUP.get(group)
+        output_kind = value["output_kind"]
+        if not isinstance(output_kind, str) or output_kind != expected_kind:
+            raise ContractViolation(
+                f"benchmark preflight output_kind for {benchmark} must be {expected_kind!r}"
+            )
+        output_bytes = value["output_bytes"]
+        if type(output_bytes) is not int or output_bytes <= 0:
+            raise ContractViolation("benchmark preflight output_bytes must be positive")
+        output_sha256 = value["output_sha256"]
+        if not isinstance(output_sha256, str) or re.fullmatch(
+            r"[0-9a-f]{64}", output_sha256
+        ) is None:
+            raise ContractViolation("benchmark preflight output_sha256 is invalid")
+        svg_elements = value["svg_elements"]
+        if output_kind == "svg":
+            if type(svg_elements) is not int or svg_elements <= 0:
+                raise ContractViolation(
+                    "benchmark preflight svg_elements must be positive for SVG output"
+                )
+        elif svg_elements is not None:
+            raise ContractViolation(
+                "benchmark preflight svg_elements must be null for non-SVG output"
+            )
+        if benchmark in receipts:
+            raise ContractViolation(
+                f"duplicate benchmark preflight receipt for {benchmark}"
+            )
+        receipts[benchmark] = value
+    return receipts
+
+
+def parse_postflight_receipts(text: str) -> set[str]:
+    receipts: set[str] = set()
+    for raw in text.splitlines():
+        line = strip_ansi(raw.rstrip("\r\n"))
+        if not line.startswith(_POSTFLIGHT_PREFIX):
+            continue
+        benchmark = line[len(_POSTFLIGHT_PREFIX) :].strip()
+        if re.fullmatch(r"[A-Za-z0-9_.:/-]+", benchmark) is None or "/" not in benchmark:
+            raise ContractViolation("benchmark postflight receipt is invalid")
+        if benchmark in receipts:
+            raise ContractViolation(
+                f"duplicate benchmark postflight receipt for {benchmark}"
+            )
+        receipts.add(benchmark)
+    return receipts
+
+
+def _pipeline_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str | None:
+    if recipe.package != "merman" or recipe.bench != "pipeline":
+        return None
+    native_lanes = {
+        lane_selector_group(lane.selector): lane
+        for lane in corpus.lanes
+        if lane.transport == "native-criterion"
+    }
+    expected_groups = frozenset(_PREFLIGHT_OUTPUT_KIND_BY_GROUP)
+    if not native_lanes:
+        return None
+    if frozenset(native_lanes) != expected_groups:
+        raise ContractViolation(
+            "pipeline native Criterion lane groups differ from the preflight contract: "
+            f"expected={sorted(expected_groups)}, actual={sorted(native_lanes)}"
+        )
+    declared = {lane.evidence_contract for lane in native_lanes.values()}
+    if declared == {None}:
+        return None
+    if declared != {_NATIVE_CRITERION_PREFLIGHT_CONTRACT}:
+        raise ContractViolation(
+            "pipeline native Criterion lanes must uniformly declare "
+            f"{_NATIVE_CRITERION_PREFLIGHT_CONTRACT!r}"
+        )
+    return _NATIVE_CRITERION_PREFLIGHT_CONTRACT
+
+
+def _describe_preflight_contract(path: Path) -> dict[str, Any]:
+    raw = path.read_bytes()
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_reject_nonfinite_json_constant,
+        )
+    except (json.JSONDecodeError, ContractViolation) as error:
+        raise ContractViolation(f"invalid native Criterion preflight contract: {error}") from error
+    expected = {
+        "schema_version": 1,
+        "id": "native-criterion-preflight-v1",
+        "line_prefix": f"{_PREFLIGHT_PREFIX} ",
+        "postflight_line_prefix": f"{_POSTFLIGHT_PREFIX} ",
+        "required_fields": list(_PREFLIGHT_FIELD_ORDER),
+        "output_kinds": _PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+        "comparison": {
+            "ignore_fields": ["benchmark"],
+            "required_equal_fields": [
+                field for field in _PREFLIGHT_FIELD_ORDER if field != "benchmark"
+            ],
+        },
+    }
+    if value != expected:
+        raise ContractViolation(
+            "native Criterion preflight contract content differs from the harness"
+        )
+    return {
+        "path": str(path),
+        "bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "id": expected["id"],
+        "schema_version": expected["schema_version"],
+    }
+
+
+def _describe_corpus(path: Path, *, recipe: RunnerRecipe) -> dict[str, Any]:
+    corpus = load_corpus(path)
+    preflight_contract = _pipeline_preflight_contract(corpus, recipe=recipe)
+    contract_description = None
+    if preflight_contract is not None:
+        contract_description = _describe_preflight_contract(
+            recipe.checkout / preflight_contract
+        )
+    return {
+        **_describe_required_file(path),
+        "schema_version": corpus.schema_version,
+        "preflight_receipts_required": preflight_contract is not None,
+        "preflight_contract": contract_description,
+    }
 
 
 def _load_reusable_discovery_report(
@@ -919,7 +1107,7 @@ def _prepare_runner(
         provenance["manifest"] = _describe_required_file(manifest)
         provenance["workspace_manifest"] = _describe_required_file(workspace_manifest)
         provenance["lockfile"] = _describe_required_file(lockfile)
-        provenance["corpus"] = _describe_required_file(corpus_path)
+        provenance["corpus"] = _describe_corpus(corpus_path, recipe=recipe)
         bench_source = manifest.parent / "benches" / f"{recipe.bench}.rs"
         provenance["bench_source"] = _describe_required_file(bench_source)
         provenance["toolchain"] = {
@@ -1037,10 +1225,20 @@ def _prepare_runner(
                 f"Criterion discovery returned no benchmarks for {recipe.label}"
             )
         skipped = parse_skip_lines(combined)
+        preflight_receipts = parse_preflight_receipts(combined)
+        if provenance["corpus"]["preflight_receipts_required"]:
+            missing_receipts = sorted(benches - set(preflight_receipts))
+            unexpected_receipts = sorted(set(preflight_receipts) - benches)
+            if missing_receipts or unexpected_receipts:
+                raise ContractViolation(
+                    "Criterion discovery preflight receipts differ from registered benchmarks: "
+                    f"missing={missing_receipts}, unexpected={unexpected_receipts}"
+                )
         provenance["discovery"] = {
             "bench_count": len(benches),
             "benches": sorted(benches),
             "skipped": skipped,
+            "preflight_receipts": preflight_receipts,
             "output_sha256": hashlib.sha256(combined.encode("utf-8")).hexdigest(),
         }
         if _path_sha256(lockfile) != provenance["lockfile"]["sha256"]:
@@ -1205,14 +1403,43 @@ def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
     ]
     if len(fixture_benchmarks) != len(fixtures) or fixture_benchmarks != row_benchmarks:
         raise ContractViolation("reusable discovery fixture and row identities differ")
-    if any(
-        item.get("coverage_status") != "comparable"
-        or item.get("post_sampling_verification", {}).get("status") != "verified"
-        for item in fixtures
-    ):
-        raise ContractViolation(
-            "reusable discovery fixtures must be comparable and post-verified"
-        )
+    for item in fixtures:
+        if not isinstance(item, dict):
+            raise ContractViolation("reusable discovery fixture must be an object")
+        output_identity = item.get("output_identity")
+        if (
+            item.get("coverage_status") != "comparable"
+            or not isinstance(output_identity, dict)
+            or output_identity.get("status") != "matched"
+            or item.get("post_sampling_verification", {}).get("status") != "verified"
+        ):
+            raise ContractViolation(
+                "reusable discovery fixtures must have matched output identity and be "
+                "comparable and post-verified"
+            )
+        normalized_receipts: dict[str, dict[str, Any]] = {}
+        for side in ("base", "head"):
+            benchmark = item.get(f"{side}_benchmark")
+            receipt = output_identity.get(side)
+            if not isinstance(benchmark, str) or not isinstance(receipt, dict):
+                raise ContractViolation(
+                    f"reusable discovery fixture {side} output receipt is missing"
+                )
+            encoded = json.dumps(receipt, separators=(",", ":"), allow_nan=False)
+            parsed = parse_preflight_receipts(
+                f"{_PREFLIGHT_PREFIX} {encoded}"
+            )
+            if parsed.get(benchmark) != receipt:
+                raise ContractViolation(
+                    f"reusable discovery fixture {side} output receipt identity differs"
+                )
+            normalized_receipts[side] = {
+                key: value for key, value in receipt.items() if key != "benchmark"
+            }
+        if normalized_receipts["base"] != normalized_receipts["head"]:
+            raise ContractViolation(
+                "reusable discovery fixture output identity is not actually matched"
+            )
 
     runners = source.get("runners")
     if not isinstance(runners, dict) or set(runners) != {"base", "head"}:
@@ -1248,6 +1475,28 @@ def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
                 f"reusable discovery {side} runner provenance is incomplete: "
                 f"missing={missing_fields}"
             )
+        corpus = runner.get("corpus")
+        if (
+            not isinstance(corpus, dict)
+            or corpus.get("preflight_receipts_required") is not True
+            or not isinstance(corpus.get("preflight_contract"), dict)
+        ):
+            raise ContractViolation(
+                f"reusable discovery {side} runner has no native preflight contract"
+            )
+        discovery = runner.get("discovery")
+        receipts = discovery.get("preflight_receipts") if isinstance(discovery, dict) else None
+        if not isinstance(receipts, dict) or not receipts:
+            raise ContractViolation(
+                f"reusable discovery {side} runner has no preflight receipts"
+            )
+        for item in fixtures:
+            benchmark = item[f"{side}_benchmark"]
+            expected_receipt = item["output_identity"][side]
+            if receipts.get(benchmark) != expected_receipt:
+                raise ContractViolation(
+                    f"reusable discovery {side} runner receipt differs for {benchmark}"
+                )
         verification = runner.get("post_sampling_verification")
         if not isinstance(verification, dict) or verification.get("status") != "verified":
             raise ContractViolation(
@@ -1367,7 +1616,7 @@ def _prepare_reused_runner(
             "manifest": _describe_required_file(manifest),
             "workspace_manifest": _describe_required_file(workspace_manifest),
             "lockfile": _describe_required_file(lockfile),
-            "corpus": _describe_required_file(corpus_path),
+            "corpus": _describe_corpus(corpus_path, recipe=recipe),
             "bench_source": _describe_required_file(bench_source),
         }
         for key, current in current_files.items():
@@ -1601,10 +1850,20 @@ def _prepare_reused_runner(
             if (match := _BENCH_LIST_LINE.match(strip_ansi(raw).strip()))
         }
         skipped = parse_skip_lines(combined)
+        preflight_receipts = parse_preflight_receipts(combined)
+        if current_files["corpus"]["preflight_receipts_required"]:
+            missing_receipts = sorted(benches - set(preflight_receipts))
+            unexpected_receipts = sorted(set(preflight_receipts) - benches)
+            if missing_receipts or unexpected_receipts:
+                raise ContractViolation(
+                    "reused Criterion discovery preflight receipts differ from registered "
+                    f"benchmarks: missing={missing_receipts}, unexpected={unexpected_receipts}"
+                )
         current_discovery = {
             "bench_count": len(benches),
             "benches": sorted(benches),
             "skipped": skipped,
+            "preflight_receipts": preflight_receipts,
             "output_sha256": hashlib.sha256(combined.encode("utf-8")).hexdigest(),
         }
         _require_equal_reuse_value(
@@ -1865,10 +2124,44 @@ def _complete_fixture_contracts(
     base: PreparedRunner,
     head: PreparedRunner,
 ) -> list[dict[str, Any]]:
+    def receipt_for(runner: PreparedRunner, benchmark: str | None) -> dict[str, Any] | None:
+        if benchmark is None:
+            return None
+        discovery = runner.provenance.get("discovery", {})
+        receipts = discovery.get("preflight_receipts", {})
+        receipt = receipts.get(benchmark) if isinstance(receipts, dict) else None
+        return receipt if isinstance(receipt, dict) else None
+
+    def identity(receipt: dict[str, Any]) -> dict[str, Any]:
+        return {key: value for key, value in receipt.items() if key != "benchmark"}
+
     for contract in contracts:
         base_status = _availability(base, contract["base_benchmark"])
         head_status = _availability(head, contract["head_benchmark"])
         contract["capability"] = {"base": base_status, "head": head_status}
+        base_receipt = receipt_for(base, contract["base_benchmark"])
+        head_receipt = receipt_for(head, contract["head_benchmark"])
+        base_requires_receipt = bool(
+            base.provenance.get("corpus", {}).get("preflight_receipts_required")
+        )
+        head_requires_receipt = bool(
+            head.provenance.get("corpus", {}).get("preflight_receipts_required")
+        )
+        if base_receipt is not None and head_receipt is not None:
+            output_identity_status = (
+                "matched"
+                if identity(base_receipt) == identity(head_receipt)
+                else "differs"
+            )
+        elif not base_requires_receipt or not head_requires_receipt:
+            output_identity_status = "legacy_unavailable"
+        else:
+            output_identity_status = "missing"
+        contract["output_identity"] = {
+            "status": output_identity_status,
+            "base": base_receipt,
+            "head": head_receipt,
+        }
         reasons: list[str] = []
         if not contract["selected"]["base"] or not contract["selected"]["head"]:
             reasons.append("fixture is not selected by both corpus recipes")
@@ -1876,6 +2169,37 @@ def _complete_fixture_contracts(
             reasons.append(f"fixture bytes are {contract['bytes']['status']}")
         if base_status != "available" or head_status != "available":
             reasons.append(f"benchmark capability base={base_status}, head={head_status}")
+        if output_identity_status == "differs":
+            reasons.append("benchmark output identity differs")
+        elif output_identity_status != "matched":
+            missing_sides = [
+                side
+                for side, receipt in (("base", base_receipt), ("head", head_receipt))
+                if receipt is None
+            ]
+            reasons.append(
+                "benchmark output identity is unavailable on " + "/".join(missing_sides)
+            )
+        selected_base = contract["selected"]["base"]
+        selected_head = contract["selected"]["head"]
+        selected_capability_failed = (
+            selected_base and base_status != "available"
+        ) or (selected_head and head_status != "available")
+        if selected_capability_failed:
+            coverage_class = "execution_failure"
+        elif not selected_base and selected_head:
+            coverage_class = "current_only"
+        elif selected_base and not selected_head:
+            coverage_class = "historical_only"
+        elif contract["bytes"]["status"] != "identical":
+            coverage_class = "input_mismatch"
+        elif output_identity_status == "differs":
+            coverage_class = "output_mismatch"
+        elif output_identity_status != "matched":
+            coverage_class = "unverified_output"
+        else:
+            coverage_class = "common"
+        contract["coverage_class"] = coverage_class
         contract["coverage_status"] = "comparable" if not reasons else "coverage_only"
         contract["coverage_reasons"] = reasons
     return contracts
@@ -1910,6 +2234,42 @@ def _measure_once(
     )
     _require_success(result, command=command, cwd=runner.recipe.checkout)
     output = "\n".join((result.stdout, result.stderr))
+    receipts = parse_preflight_receipts(output)
+    postflight_receipts = parse_postflight_receipts(output)
+    discovery = runner.provenance.get("discovery", {})
+    discovery_receipts = discovery.get("preflight_receipts", {})
+    expected_receipt = (
+        discovery_receipts.get(exact_bench)
+        if isinstance(discovery_receipts, dict)
+        else None
+    )
+    actual_receipt = receipts.get(exact_bench)
+    requires_receipt = bool(
+        runner.provenance.get("corpus", {}).get("preflight_receipts_required")
+    )
+    if expected_receipt is not None:
+        if actual_receipt is None:
+            raise ContractViolation(
+                f"Criterion output did not repeat the preflight receipt for {exact_bench}"
+            )
+        if set(receipts) != {exact_bench}:
+            raise ContractViolation(
+                "Criterion preflight receipts differ from the exact benchmark: "
+                f"expected={[exact_bench]}, actual={sorted(receipts)}"
+            )
+        if actual_receipt != expected_receipt:
+            raise ContractViolation(
+                f"Criterion output identity changed after discovery for {exact_bench}"
+            )
+        if postflight_receipts != {exact_bench}:
+            raise ContractViolation(
+                "Criterion postflight receipts differ from the exact benchmark: "
+                f"expected={[exact_bench]}, actual={sorted(postflight_receipts)}"
+            )
+    elif requires_receipt:
+        raise ContractViolation(
+            f"Criterion discovery has no preflight receipt for {exact_bench}"
+        )
     prefix, name = split_exact_bench(exact_bench)
     estimate = parse_criterion_times(output, prefix=prefix).get(name)
     if estimate is None:
@@ -1933,6 +2293,8 @@ def _measure_once(
         "raw_estimate_ns": raw_ns,
         "logical_operations": runner.recipe.logical_operations,
         "normalized_ns": normalized_ns,
+        "output_identity": actual_receipt,
+        "postflight_verified": postflight_receipts == {exact_bench},
         "command": command,
         "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
     }
@@ -2325,6 +2687,19 @@ def _verification_errors(
                 )
         except Exception as error:
             errors.append(str(error))
+    preflight_contract = runner.provenance.get("corpus", {}).get(
+        "preflight_contract"
+    )
+    if isinstance(preflight_contract, dict):
+        try:
+            current = _path_sha256(Path(preflight_contract["path"]))
+            verification["files"]["preflight_contract"] = current
+            if current != preflight_contract["sha256"]:
+                errors.append(
+                    f"{runner.recipe.label} preflight contract digest changed during sampling"
+                )
+        except Exception as error:
+            errors.append(str(error))
     try:
         current_git = _git_provenance(
             runner.recipe.checkout,
@@ -2420,6 +2795,7 @@ def _comparison_row(
         "base_benchmark": contract["base_benchmark"],
         "head_benchmark": contract["head_benchmark"],
         "coverage_status": contract.get("coverage_status"),
+        "output_identity": contract.get("output_identity"),
         "pair_count": len(pairs),
         "required_pairs": required_pairs,
         "evidence_mode": evidence_mode,
@@ -2483,7 +2859,23 @@ def _append_contract_error(report: dict[str, Any], stage: str, message: str) -> 
     report.setdefault("contract_errors", []).append({"stage": stage, "message": message})
 
 
+def _revoke_timing_claims(report: dict[str, Any], *, reason: str) -> None:
+    for row in report.get("rows", []):
+        row["outcome"] = "contract_failure"
+        row["improvement_outcome"] = None
+        row["base_ns"] = None
+        row["head_ns"] = None
+        row["bounds"] = None
+        existing_reason = row.get("reason")
+        row["reason"] = f"{existing_reason}; {reason}" if existing_reason else reason
+
+
 def _finalize_summary(report: dict[str, Any]) -> int:
+    if report.get("contract_errors"):
+        _revoke_timing_claims(
+            report,
+            reason="the evidence contract failed; timing claims were revoked",
+        )
     rows = report.get("rows", [])
     outcomes = [row.get("outcome", "contract_failure") for row in rows]
     if report.get("contract_errors"):
@@ -3422,13 +3814,22 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
                 )
             )
 
+    post_sampling_errors: list[str] = []
     for runner in prepared.values():
-        for error in _verification_errors(runner, timeout_seconds=args.timeout_seconds):
-            _append_contract_error(report, "freeze_verification", error)
-    for error in _fixture_verification_errors(contracts):
+        post_sampling_errors.extend(
+            _verification_errors(runner, timeout_seconds=args.timeout_seconds)
+        )
+    post_sampling_errors.extend(_fixture_verification_errors(contracts))
+    post_sampling_errors.extend(
+        _discovery_reuse_verification_errors(report["method"])
+    )
+    for error in post_sampling_errors:
         _append_contract_error(report, "freeze_verification", error)
-    for error in _discovery_reuse_verification_errors(report["method"]):
-        _append_contract_error(report, "freeze_verification", error)
+    if post_sampling_errors:
+        _revoke_timing_claims(
+            report,
+            reason="post-sampling evidence verification failed; timing claims were revoked",
+        )
 
 
 def decision_grade_main(argv: list[str]) -> int:

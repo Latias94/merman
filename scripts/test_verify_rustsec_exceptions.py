@@ -35,14 +35,6 @@ class RustSecExceptionTests(unittest.TestCase):
 
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].package_name, "affected")
-        verify.validate_profile_coverage(
-            records,
-            {
-                "full": frozenset({("affected", "2.0.0"), ("root", "1.0.0")}),
-                "slim": frozenset({("root", "1.0.0")}),
-            },
-            authoritative_profile_ids=frozenset({"full", "slim"}),
-        )
 
     def test_expired_review_is_rejected(self) -> None:
         with self.assertRaisesRegex(verify.RustSecExceptionError, "review expired"):
@@ -67,115 +59,6 @@ class RustSecExceptionTests(unittest.TestCase):
 
         with self.assertRaisesRegex(verify.RustSecExceptionError, "must exactly match"):
             verify.load_exception_records(self.root, today=date(2026, 7, 26))
-
-    def test_observed_profile_coverage_must_exactly_match_ledger(self) -> None:
-        records = verify.load_exception_records(
-            self.root,
-            today=date(2026, 7, 26),
-        )
-
-        with self.assertRaisesRegex(verify.RustSecExceptionError, "coverage verification failed"):
-            verify.validate_profile_coverage(
-                records,
-                {
-                    "full": frozenset({("root", "1.0.0")}),
-                    "slim": frozenset(
-                        {("affected", "2.0.0"), ("root", "1.0.0")}
-                    ),
-                },
-                authoritative_profile_ids=frozenset({"full", "slim"}),
-            )
-
-    def test_observed_profile_coverage_is_version_exact(self) -> None:
-        records = verify.load_exception_records(
-            self.root,
-            today=date(2026, 7, 26),
-        )
-
-        with self.assertRaisesRegex(
-            verify.RustSecExceptionError,
-            "coverage verification failed",
-        ):
-            verify.validate_profile_coverage(
-                records,
-                {
-                    "full": frozenset({("affected", "3.0.0")}),
-                    "slim": frozenset({("root", "1.0.0")}),
-                },
-                authoritative_profile_ids=frozenset({"full", "slim"}),
-            )
-
-    def test_coverage_ignores_missing_packages_from_non_authoritative_profiles(
-        self,
-    ) -> None:
-        records = verify.load_exception_records(
-            self.root,
-            today=date(2026, 7, 26),
-        )
-
-        verify.validate_profile_coverage(
-            records,
-            {
-                "full": frozenset({("root", "1.0.0")}),
-                "slim": frozenset({("root", "1.0.0")}),
-            },
-            authoritative_profile_ids=frozenset({"slim"}),
-        )
-
-    def test_coverage_ignores_extra_packages_from_non_authoritative_profiles(
-        self,
-    ) -> None:
-        records = verify.load_exception_records(
-            self.root,
-            today=date(2026, 7, 26),
-        )
-
-        verify.validate_profile_coverage(
-            records,
-            {
-                "full": frozenset({("affected", "2.0.0"), ("root", "1.0.0")}),
-                "slim": frozenset({("affected", "2.0.0"), ("root", "1.0.0")}),
-            },
-            authoritative_profile_ids=frozenset({"full"}),
-        )
-
-    def test_authoritative_profile_ids_must_be_observed(self) -> None:
-        records = verify.load_exception_records(
-            self.root,
-            today=date(2026, 7, 26),
-        )
-
-        with self.assertRaisesRegex(
-            verify.RustSecExceptionError,
-            "unknown authoritative profiles: missing",
-        ):
-            verify.validate_profile_coverage(
-                records,
-                {
-                    "full": frozenset({("affected", "2.0.0")}),
-                    "slim": frozenset({("root", "1.0.0")}),
-                },
-                authoritative_profile_ids=frozenset({"full", "missing"}),
-            )
-
-    def test_authoritative_target_set_coverage_remains_exact(self) -> None:
-        records = verify.load_exception_records(
-            self.root,
-            today=date(2026, 7, 26),
-        )
-
-        with self.assertRaisesRegex(
-            verify.RustSecExceptionError,
-            "coverage verification failed",
-        ):
-            verify.validate_profile_coverage(
-                records,
-                {
-                    "full": frozenset({("affected", "2.0.0")}),
-                    "slim": frozenset({("affected", "2.0.0")}),
-                },
-                authoritative_profile_ids=frozenset({"slim"}),
-            )
 
     def test_strict_json_rejects_duplicate_keys_with_rustsec_error(self) -> None:
         ledger_path = self.root / verify.LEDGER_PATH

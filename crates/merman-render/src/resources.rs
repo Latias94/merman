@@ -16,6 +16,18 @@ use merman_core::resources::{
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
 
+/// Hard recursion cap used by the SVG backend on WebAssembly targets.
+///
+/// Icon-body admission is intentionally derived from this smallest supported backend cap so a
+/// registry accepted on native targets remains portable to WebAssembly.
+pub const WASM_RESVG_TREE_DEPTH_HARD_CAP: usize = 64;
+/// Maximum XML nesting accepted inside a portable icon body.
+///
+/// The icon renderer adds at least one wrapping `<g>` before whole-document validation, so this
+/// remains strictly below the WebAssembly backend hard cap.
+pub const MAX_PORTABLE_ICON_BODY_XML_DEPTH: usize = 32;
+const _: () = assert!(MAX_PORTABLE_ICON_BODY_XML_DEPTH < WASM_RESVG_TREE_DEPTH_HARD_CAP);
+
 #[cfg(not(target_arch = "wasm32"))]
 pub const MAX_RESVG_TREE_DEPTH: usize = 256;
 pub const SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID: &str = "svg_backend_tree_depth";
@@ -27,7 +39,7 @@ pub const MAX_RESVG_TREE_NODES: usize = 1_000_000;
 pub const SVG_BACKEND_TREE_NODES_HARD_CAP_ID: &str = "svg_backend_tree_nodes";
 
 #[cfg(target_arch = "wasm32")]
-pub const MAX_RESVG_TREE_DEPTH: usize = 64;
+pub const MAX_RESVG_TREE_DEPTH: usize = WASM_RESVG_TREE_DEPTH_HARD_CAP;
 
 // Backend capability for recursively owned typed/compatibility trees, not a Mermaid syntax limit.
 // It remains active when policy budgets are disabled because increasing it is not stack-safe.
@@ -454,7 +466,15 @@ impl RenderResourcePolicy {
         svg: &str,
         phase: ResourceLimitPhase,
     ) -> Result<(), ResourceLimitExceeded> {
-        self.check_render_limit(phase, RenderResourceLimitId::MaxSvgBytes, svg.len())
+        self.check_svg_byte_count(svg.len(), phase)
+    }
+
+    pub(crate) fn check_svg_byte_count(
+        &self,
+        bytes: usize,
+        phase: ResourceLimitPhase,
+    ) -> Result<(), ResourceLimitExceeded> {
+        self.check_render_limit(phase, RenderResourceLimitId::MaxSvgBytes, bytes)
     }
 
     pub fn check_svg_structure(
@@ -554,6 +574,12 @@ impl RenderResourcePolicy {
 pub(crate) struct OperationWorkMeter {
     policy: RenderResourcePolicy,
     used: std::sync::atomic::AtomicUsize,
+    projected_svg_bytes: std::sync::atomic::AtomicUsize,
+}
+
+pub(crate) struct SvgByteReservation {
+    pub(crate) additional_bytes: usize,
+    pub(crate) limit_error: Option<ResourceLimitExceeded>,
 }
 
 impl OperationWorkMeter {
@@ -561,21 +587,38 @@ impl OperationWorkMeter {
         Self {
             policy,
             used: std::sync::atomic::AtomicUsize::new(0),
+            projected_svg_bytes: std::sync::atomic::AtomicUsize::new(0),
         }
+    }
+
+    pub(crate) const fn policy(&self) -> RenderResourcePolicy {
+        self.policy
     }
 
     /// Checks whether a phase estimate fits without reserving or consuming the estimate.
     pub(crate) fn preflight(&self, additional: usize) -> Result<(), ResourceLimitExceeded> {
         let used = self.used.load(std::sync::atomic::Ordering::Relaxed);
-        self.policy
-            .check_layout_work_units(used.saturating_add(additional))
+        let next = used.checked_add(additional).ok_or_else(|| {
+            accumulation_overflow(
+                self.policy,
+                ResourceLimitPhase::LayoutModel,
+                RenderResourceLimitId::MaxLayoutWorkUnits,
+            )
+        })?;
+        self.policy.check_layout_work_units(next)
     }
 
     /// Charges work atomically. A rejected charge leaves the cumulative usage unchanged.
     pub(crate) fn charge(&self, additional: usize) -> Result<(), ResourceLimitExceeded> {
         let mut used = self.used.load(std::sync::atomic::Ordering::Relaxed);
         loop {
-            let next = used.saturating_add(additional);
+            let next = used.checked_add(additional).ok_or_else(|| {
+                accumulation_overflow(
+                    self.policy,
+                    ResourceLimitPhase::LayoutModel,
+                    RenderResourceLimitId::MaxLayoutWorkUnits,
+                )
+            })?;
             self.policy.check_layout_work_units(next)?;
             match self.used.compare_exchange_weak(
                 used,
@@ -589,9 +632,158 @@ impl OperationWorkMeter {
         }
     }
 
+    /// Reserves the projected serialized bytes contributed by external icon expansion.
+    ///
+    /// The final whole-document SVG check remains authoritative. This earlier cumulative charge
+    /// prevents repeated maximum-size icons from allocating their complete expanded strings before
+    /// the operation-level output policy can reject them.
+    pub(crate) fn charge_svg_bytes(&self, additional: usize) -> Result<(), ResourceLimitExceeded> {
+        let mut used = self
+            .projected_svg_bytes
+            .load(std::sync::atomic::Ordering::Relaxed);
+        loop {
+            let next = used.checked_add(additional).ok_or_else(|| {
+                accumulation_overflow(
+                    self.policy,
+                    ResourceLimitPhase::SvgOutput,
+                    RenderResourceLimitId::MaxSvgBytes,
+                )
+            })?;
+            self.policy
+                .check_svg_byte_count(next, ResourceLimitPhase::SvgOutput)?;
+            match self.projected_svg_bytes.compare_exchange_weak(
+                used,
+                next,
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+            ) {
+                Ok(_) => return Ok(()),
+                Err(actual) => used = actual,
+            }
+        }
+    }
+
+    /// Returns the unreserved SVG budget for bounded policies after all successful charges.
+    #[cfg(test)]
+    pub(crate) fn remaining_svg_bytes(&self) -> Option<usize> {
+        let maximum = self.policy.value(ResourceLimitId::MaxSvgBytes)?;
+        let used = self
+            .projected_svg_bytes
+            .load(std::sync::atomic::Ordering::Relaxed);
+        Some(maximum.saturating_sub(used))
+    }
+
+    /// Atomically reserves up to `requested` additional SVG bytes.
+    ///
+    /// Bounded policies return a deterministic limit error alongside a partial reservation when
+    /// the full amount does not fit. The caller may still succeed if its bounded producer emits no
+    /// more than the reserved bytes, then reconcile the conservative reservation to actual output.
+    pub(crate) fn reserve_svg_bytes_up_to(
+        &self,
+        requested: usize,
+    ) -> Result<SvgByteReservation, ResourceLimitExceeded> {
+        let Some(maximum) = self.policy.value(ResourceLimitId::MaxSvgBytes) else {
+            self.charge_svg_bytes(requested)?;
+            return Ok(SvgByteReservation {
+                additional_bytes: requested,
+                limit_error: None,
+            });
+        };
+
+        let mut used = self
+            .projected_svg_bytes
+            .load(std::sync::atomic::Ordering::Relaxed);
+        loop {
+            let available = maximum.saturating_sub(used);
+            let additional_bytes = requested.min(available);
+            let next = used.checked_add(additional_bytes).ok_or_else(|| {
+                accumulation_overflow(
+                    self.policy,
+                    ResourceLimitPhase::SvgOutput,
+                    RenderResourceLimitId::MaxSvgBytes,
+                )
+            })?;
+            match self.projected_svg_bytes.compare_exchange_weak(
+                used,
+                next,
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    let limit_error = (additional_bytes < requested)
+                        .then(|| svg_byte_limit_error(self.policy, maximum));
+                    return Ok(SvgByteReservation {
+                        additional_bytes,
+                        limit_error,
+                    });
+                }
+                Err(actual) => used = actual,
+            }
+        }
+    }
+
+    /// Reconciles an earlier conservative SVG reservation with the bytes actually retained.
+    pub(crate) fn reconcile_svg_bytes(
+        &self,
+        reserved: usize,
+        actual: usize,
+    ) -> Result<(), ResourceLimitExceeded> {
+        if actual > reserved {
+            return self.charge_svg_bytes(actual - reserved);
+        }
+
+        let released = reserved - actual;
+        if released != 0 {
+            let previous = self
+                .projected_svg_bytes
+                .fetch_sub(released, std::sync::atomic::Ordering::Relaxed);
+            debug_assert!(previous >= released);
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(crate) fn used(&self) -> usize {
         self.used.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn projected_svg_bytes(&self) -> usize {
+        self.projected_svg_bytes
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+fn accumulation_overflow(
+    policy: RenderResourcePolicy,
+    phase: ResourceLimitPhase,
+    id: RenderResourceLimitId,
+) -> ResourceLimitExceeded {
+    let limit = ResourceLimitId::Render(id);
+    ResourceLimitExceeded {
+        phase,
+        limit: limit.as_str(),
+        actual: usize::MAX,
+        max: policy.value(limit).unwrap_or(usize::MAX - 1),
+        profile: policy.profile(),
+        explicit_overrides: policy
+            .explicit_overrides()
+            .map(|(id, value)| ResourceLimitOverride { id, value })
+            .collect(),
+    }
+}
+
+fn svg_byte_limit_error(policy: RenderResourcePolicy, maximum: usize) -> ResourceLimitExceeded {
+    ResourceLimitExceeded {
+        phase: ResourceLimitPhase::SvgOutput,
+        limit: ResourceLimitId::MaxSvgBytes.as_str(),
+        actual: maximum.saturating_add(1),
+        max: maximum,
+        profile: policy.profile(),
+        explicit_overrides: policy
+            .explicit_overrides()
+            .map(|(id, value)| ResourceLimitOverride { id, value })
+            .collect(),
     }
 }
 
@@ -789,6 +981,62 @@ mod tests {
         assert_eq!(meter.used(), 8);
         meter.charge(2).unwrap();
         assert_eq!(meter.used(), 10);
+    }
+
+    #[test]
+    fn operation_svg_meter_accepts_exact_limit_and_rejects_one_more() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 10)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        meter.charge_svg_bytes(10).unwrap();
+        assert_eq!(meter.projected_svg_bytes(), 10);
+        assert_eq!(meter.remaining_svg_bytes(), Some(0));
+
+        let error = meter.charge_svg_bytes(1).unwrap_err();
+        assert_eq!(error.actual, 11);
+        assert_eq!(error.max, 10);
+        assert_eq!(meter.projected_svg_bytes(), 10);
+    }
+
+    #[test]
+    fn operation_svg_meter_reconciles_conservative_reservations() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 12)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        meter.charge_svg_bytes(8).unwrap();
+        meter.reconcile_svg_bytes(8, 5).unwrap();
+        assert_eq!(meter.projected_svg_bytes(), 5);
+        assert_eq!(meter.remaining_svg_bytes(), Some(7));
+
+        meter.reconcile_svg_bytes(5, 12).unwrap();
+        assert_eq!(meter.projected_svg_bytes(), 12);
+        assert_eq!(meter.remaining_svg_bytes(), Some(0));
+    }
+
+    #[test]
+    fn operation_svg_meter_atomically_reserves_available_growth() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 10)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        meter.charge_svg_bytes(7).unwrap();
+        let reservation = meter.reserve_svg_bytes_up_to(5).unwrap();
+        assert_eq!(reservation.additional_bytes, 3);
+        let error = reservation
+            .limit_error
+            .expect("a partial reservation carries the deterministic limit error");
+        assert_eq!(error.actual, 11);
+        assert_eq!(error.max, 10);
+        assert_eq!(meter.projected_svg_bytes(), 10);
+
+        meter.reconcile_svg_bytes(3, 1).unwrap();
+        assert_eq!(meter.projected_svg_bytes(), 8);
+        assert_eq!(meter.remaining_svg_bytes(), Some(2));
     }
 
     #[test]

@@ -2,6 +2,7 @@
   "schema_version": 1,
   "admission_status": "candidate",
   "version": "0.8.0-alpha.4",
+  "node_engine": ">=22.0.0",
   "root": {
     "name": "@mermanjs/node",
     "directory": "packages/node"

@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:02e572e1010d2a3d440b69eef260cdf3b2d7f5a88f8c28ebe9fa486e184e722e" as const;
 
 export const TARGETS = [
   {
@@ -265,6 +265,8 @@ export const BINDING_OPERATIONS = [
   {
     "id": "analysis-facts-json",
     "capability": "analysis",
+    "output": null,
+    "compiled_prerequisites": [],
     "description": "Analyze Mermaid input and return semantic facts JSON.",
     "media_type": "application/json",
     "requires_uri": false,
@@ -276,6 +278,8 @@ export const BINDING_OPERATIONS = [
   {
     "id": "analysis-json",
     "capability": "analysis",
+    "output": null,
+    "compiled_prerequisites": [],
     "description": "Analyze Mermaid input and return diagnostics JSON.",
     "media_type": "application/json",
     "requires_uri": false,
@@ -288,6 +292,8 @@ export const BINDING_OPERATIONS = [
   {
     "id": "ascii",
     "capability": "ascii",
+    "output": "ascii",
+    "compiled_prerequisites": [],
     "description": "Render Mermaid input as terminal text.",
     "media_type": "text/plain; charset=utf-8",
     "requires_uri": false,
@@ -299,6 +305,8 @@ export const BINDING_OPERATIONS = [
   {
     "id": "document-analysis-facts-json",
     "capability": "analysis",
+    "output": null,
+    "compiled_prerequisites": [],
     "description": "Analyze a URI-backed Mermaid document and return semantic facts JSON.",
     "media_type": "application/json",
     "requires_uri": true,
@@ -310,6 +318,8 @@ export const BINDING_OPERATIONS = [
   {
     "id": "document-analysis-json",
     "capability": "analysis",
+    "output": null,
+    "compiled_prerequisites": [],
     "description": "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
     "media_type": "application/json",
     "requires_uri": true,
@@ -321,6 +331,10 @@ export const BINDING_OPERATIONS = [
   {
     "id": "jpeg",
     "capability": "jpeg",
+    "output": "jpeg",
+    "compiled_prerequisites": [
+      "svg"
+    ],
     "description": "Render Mermaid input as JPEG.",
     "media_type": "image/jpeg",
     "requires_uri": false,
@@ -331,6 +345,8 @@ export const BINDING_OPERATIONS = [
   {
     "id": "layout-json",
     "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
     "description": "Render Mermaid input into layout model JSON.",
     "media_type": "application/json",
     "requires_uri": false,
@@ -342,6 +358,10 @@ export const BINDING_OPERATIONS = [
   {
     "id": "pdf",
     "capability": "pdf",
+    "output": "pdf",
+    "compiled_prerequisites": [
+      "svg"
+    ],
     "description": "Render Mermaid input as PDF.",
     "media_type": "application/pdf",
     "requires_uri": false,
@@ -352,6 +372,10 @@ export const BINDING_OPERATIONS = [
   {
     "id": "png",
     "capability": "png",
+    "output": "png",
+    "compiled_prerequisites": [
+      "svg"
+    ],
     "description": "Render Mermaid input as PNG.",
     "media_type": "image/png",
     "requires_uri": false,
@@ -362,6 +386,8 @@ export const BINDING_OPERATIONS = [
   {
     "id": "semantic-json",
     "capability": null,
+    "output": null,
+    "compiled_prerequisites": [],
     "description": "Parse Mermaid input into canonical semantic JSON.",
     "media_type": "application/json",
     "requires_uri": false,
@@ -373,6 +399,8 @@ export const BINDING_OPERATIONS = [
   {
     "id": "svg",
     "capability": "svg",
+    "output": "svg",
+    "compiled_prerequisites": [],
     "description": "Render Mermaid input as SVG.",
     "media_type": "image/svg+xml",
     "requires_uri": false,
@@ -385,6 +413,8 @@ export const BINDING_OPERATIONS = [
   {
     "id": "svg-plan-json",
     "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
     "description": "Plan the capabilities required to render Mermaid input as SVG.",
     "media_type": "application/json",
     "requires_uri": false,
@@ -396,6 +426,8 @@ export const BINDING_OPERATIONS = [
   {
     "id": "validation-json",
     "capability": "analysis",
+    "output": null,
+    "compiled_prerequisites": [],
     "description": "Validate Mermaid input and return validation JSON.",
     "media_type": "application/json",
     "requires_uri": false,

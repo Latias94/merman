@@ -91,7 +91,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_hourglass_collate(out, common, details);
         }
         FlowchartShape::Icon => {
-            super::render_icon(out, ctx, common, label, details);
+            super::render_icon(out, ctx, common, label, details)?;
             return Ok(true);
         }
         FlowchartShape::IconCircle => {

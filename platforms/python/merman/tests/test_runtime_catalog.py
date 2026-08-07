@@ -2,6 +2,12 @@ import json
 import unittest
 
 import merman
+from merman._binding_contract import CONSTRUCTOR_SERVICE_SPECS
+
+
+CONSTRUCTOR_SERVICE_SPEC_BY_ID = {
+    spec["id"]: spec for spec in CONSTRUCTOR_SERVICE_SPECS
+}
 
 
 def valid_catalog():
@@ -21,6 +27,44 @@ def valid_catalog():
             "presentation-catalog",
             "supported-diagrams",
             "supported-themes",
+        ],
+        "option_group_ids": [
+            "ascii",
+            "environment",
+            "fixed_local_offset_minutes",
+            "fixed_today",
+            "layout",
+            "lint",
+            "parse",
+            "presentation",
+            "resources",
+            "runtime_policy",
+            "site_config",
+            "svg",
+            "version",
+        ],
+        "constructor_service_ids": ["host-text-measurement", "icon-registry"],
+        "constructor_service_contracts": [
+            {
+                "id": "host-text-measurement",
+                "provided_text_measurement_provider_ids": ["host-callback"],
+                "resource_limits": [
+                    dict(limit)
+                    for limit in CONSTRUCTOR_SERVICE_SPEC_BY_ID[
+                        "host-text-measurement"
+                    ]["resource_limits"]
+                ],
+            },
+            {
+                "id": "icon-registry",
+                "provided_text_measurement_provider_ids": [],
+                "resource_limits": [
+                    dict(limit)
+                    for limit in CONSTRUCTOR_SERVICE_SPEC_BY_ID["icon-registry"][
+                        "resource_limits"
+                    ]
+                ],
+            },
         ],
         "capabilities": {
             "capability_ids": ["analysis", "ascii", "svg", "system-clock"],
@@ -107,15 +151,28 @@ class RuntimeCatalogTest(unittest.TestCase):
         catalog = valid_catalog()
         engine = FakeEngine(catalog)
 
-        self.assertEqual(merman.get_runtime_catalog(engine), catalog)
+        parsed = merman.get_runtime_catalog(engine)
+
+        self.assertEqual(parsed, catalog)
         self.assertEqual(engine.catalog_calls, 1)
         self.assertFalse(hasattr(merman, "get_runtime_contract"))
         self.assertFalse(hasattr(merman, "get_runtime_capability_vocabulary"))
         self.assertFalse(hasattr(merman, "MermanRuntimeContractError"))
         self.assertEqual(catalog["options_schema_versions"], [2])
         self.assertEqual(
-            catalog["resources"]["limits"][0]["operation_ids"],
+            parsed["resources"]["limits"][0]["operation_ids"],
             ["analysis-json", "ascii", "semantic-json", "svg"],
+        )
+        limit_id = parsed["resources"]["limits"][0]["id"]
+        self.assertIs(limit_id, merman.ResourceLimitId.MAX_SOURCE_BYTES)
+        self.assertEqual(limit_id.phase, "source")
+        self.assertTrue(limit_id.overridable)
+        self.assertEqual(limit_id.minimum_value, 1)
+        with self.assertRaises(AttributeError):
+            limit_id.future_metadata = True
+        self.assertIs(
+            next(iter(parsed["resources"]["profiles"][0]["limits"])),
+            merman.ResourceLimitId.MAX_SOURCE_BYTES,
         )
 
     def test_accepts_catalog_without_svg_or_text_measurement(self):
@@ -124,6 +181,19 @@ class RuntimeCatalogTest(unittest.TestCase):
         catalog["capabilities"]["output_ids"].remove("svg")
         catalog["capabilities"]["operation_ids"].remove("svg")
         catalog["capabilities"]["text_measurement"] = None
+        catalog["constructor_service_ids"] = []
+        catalog["constructor_service_contracts"] = []
+        catalog["option_group_ids"] = [
+            "ascii",
+            "fixed_local_offset_minutes",
+            "fixed_today",
+            "lint",
+            "parse",
+            "resources",
+            "runtime_policy",
+            "site_config",
+            "version",
+        ]
         catalog["output_contracts"] = [
             contract for contract in catalog["output_contracts"] if contract["id"] != "svg"
         ]
@@ -133,6 +203,296 @@ class RuntimeCatalogTest(unittest.TestCase):
 
         self.assertNotIn("svg", parsed["capabilities"]["capability_ids"])
         self.assertIsNone(parsed["capabilities"]["text_measurement"])
+
+    def test_rejects_capability_missing_its_generated_implication(self):
+        catalog = valid_catalog()
+        catalog["capabilities"] = {
+            "capability_ids": ["layout-elk"],
+            "output_ids": [],
+            "operation_ids": ["semantic-json"],
+            "system_adapter_ids": [],
+            "text_measurement": None,
+        }
+
+        with self.assertRaisesRegex(
+            merman.MermanRuntimeCatalogError,
+            "layout-elk is missing implied capability svg",
+        ):
+            merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_accepts_legacy_catalog_without_additive_discovery_sections(self):
+        catalog = valid_catalog()
+        del catalog["option_group_ids"]
+        del catalog["constructor_service_ids"]
+        del catalog["constructor_service_contracts"]
+
+        parsed = merman.get_runtime_catalog(FakeEngine(catalog))
+
+        self.assertEqual(parsed["option_group_ids"], [])
+        self.assertEqual(parsed["constructor_service_ids"], [])
+        self.assertEqual(parsed["constructor_service_contracts"], [])
+
+    def test_accepts_output_backed_by_an_internal_svg_pipeline(self):
+        catalog = valid_catalog()
+        catalog["capabilities"] = {
+            "capability_ids": ["png"],
+            "output_ids": ["png"],
+            "operation_ids": ["png", "semantic-json"],
+            "system_adapter_ids": [],
+            "text_measurement": {
+                "protocol_version": merman.TEXT_MEASUREMENT_PROTOCOL_VERSION,
+                "provider_ids": ["host-callback", "vendored"],
+            },
+        }
+        catalog["metadata_ids"] = [
+            "diagram-family-capabilities",
+            "presentation-catalog",
+            "supported-diagrams",
+            "supported-themes",
+        ]
+        catalog["option_group_ids"] = [
+            "environment",
+            "fixed_local_offset_minutes",
+            "fixed_today",
+            "layout",
+            "parse",
+            "presentation",
+            "raster",
+            "resources",
+            "runtime_policy",
+            "site_config",
+            "svg",
+            "version",
+        ]
+        catalog["output_contracts"] = [
+            {
+                "id": "png",
+                "media_type": "image/png",
+                "system_fonts": None,
+                "embedded_images": None,
+            }
+        ]
+        catalog["resources"]["limits"][0]["operation_ids"] = [
+            "png",
+            "semantic-json",
+        ]
+
+        parsed = merman.get_runtime_catalog(FakeEngine(catalog))
+
+        self.assertEqual(parsed["capabilities"]["capability_ids"], ["png"])
+        self.assertEqual(
+            parsed["capabilities"]["text_measurement"]["provider_ids"],
+            ["host-callback", "vendored"],
+        )
+
+    def test_rejects_internal_svg_pipeline_without_text_measurement(self):
+        catalog = valid_catalog()
+        catalog["capabilities"] = {
+            "capability_ids": ["png"],
+            "output_ids": ["png"],
+            "operation_ids": ["png", "semantic-json"],
+            "system_adapter_ids": [],
+            "text_measurement": None,
+        }
+
+        with self.assertRaisesRegex(
+            merman.MermanRuntimeCatalogError,
+            "SVG pipeline requires text measurement",
+        ):
+            merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_rejects_constructor_service_without_its_provider(self):
+        catalog = valid_catalog()
+        catalog["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
+
+        with self.assertRaisesRegex(
+            merman.MermanRuntimeCatalogError,
+            "unavailable text measurement provider",
+        ):
+            merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_accepts_metadata_subsets_and_rejects_unavailable_metadata_or_option_drift(self):
+        missing_metadata = valid_catalog()
+        missing_metadata["metadata_ids"].remove("lint-rule-catalog")
+        parsed = merman.get_runtime_catalog(FakeEngine(missing_metadata))
+        self.assertNotIn("lint-rule-catalog", parsed["metadata_ids"])
+
+        extra_metadata = valid_catalog()
+        extra_metadata["capabilities"]["capability_ids"].remove("ascii")
+        extra_metadata["capabilities"]["output_ids"].remove("ascii")
+        extra_metadata["capabilities"]["operation_ids"].remove("ascii")
+        extra_metadata["output_contracts"].pop(0)
+        extra_metadata["resources"]["limits"][0]["operation_ids"].remove("ascii")
+        extra_metadata["option_group_ids"].remove("ascii")
+
+        missing_option = valid_catalog()
+        missing_option["option_group_ids"].remove("version")
+
+        extra_option = valid_catalog()
+        extra_option["option_group_ids"].insert(4, "jpeg")
+
+        for catalog in [
+            extra_metadata,
+            missing_option,
+            extra_option,
+        ]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "requires capability|capability closure",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_rejects_known_operation_relation_drift(self):
+        missing_capability = valid_catalog()
+        missing_capability["capabilities"]["capability_ids"].remove("svg")
+
+        missing_output = valid_catalog()
+        missing_output["capabilities"]["output_ids"].remove("svg")
+
+        for catalog in [missing_capability, missing_output]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "runtime operation svg is missing",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_rejects_missing_or_mismatched_constructor_service_pairs(self):
+        missing_contracts = valid_catalog()
+        del missing_contracts["constructor_service_contracts"]
+
+        missing_ids = valid_catalog()
+        del missing_ids["constructor_service_ids"]
+
+        mismatched_ids = valid_catalog()
+        mismatched_ids["constructor_service_ids"] = ["future-service"]
+
+        for catalog in [missing_contracts, missing_ids, mismatched_ids]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "constructor service",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_rejects_present_known_constructor_service_subsets(self):
+        icon_only = valid_catalog()
+        icon_only["constructor_service_ids"] = ["icon-registry"]
+        icon_only["constructor_service_contracts"] = [
+            icon_only["constructor_service_contracts"][1]
+        ]
+        icon_only["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
+
+        empty = valid_catalog()
+        empty["constructor_service_ids"] = []
+        empty["constructor_service_contracts"] = []
+        empty["capabilities"]["text_measurement"]["provider_ids"] = ["vendored"]
+
+        for catalog in [icon_only, empty]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "do not match the transport exposure",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_rejects_invalid_constructor_service_provider_ownership(self):
+        missing_owner = valid_catalog()
+        missing_owner["constructor_service_contracts"][0][
+            "provided_text_measurement_provider_ids"
+        ] = []
+
+        wrong_owner = valid_catalog()
+        wrong_owner["constructor_service_ids"] = [
+            "future-service",
+            "host-text-measurement",
+            "icon-registry",
+        ]
+        wrong_owner["constructor_service_contracts"].insert(
+            0,
+            {
+                "id": "future-service",
+                "provided_text_measurement_provider_ids": ["host-callback"],
+                "resource_limits": [],
+            },
+        )
+        wrong_owner["constructor_service_contracts"][1][
+            "provided_text_measurement_provider_ids"
+        ] = []
+
+        unavailable_provider = valid_catalog()
+        unavailable_provider["constructor_service_contracts"][0][
+            "provided_text_measurement_provider_ids"
+        ] = ["future-provider", "host-callback"]
+
+        for catalog in [missing_owner, wrong_owner, unavailable_provider]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "provider|owner",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_rejects_invalid_constructor_service_resource_limit_shapes(self):
+        base_limit = {
+            "id": "max_future_items",
+            "phase": "construction",
+            "unit": "items",
+            "description": "Maximum future items.",
+            "value": 16,
+        }
+        missing_field = valid_catalog()
+        missing_field["constructor_service_contracts"][0]["resource_limits"] = [
+            {key: value for key, value in base_limit.items() if key != "unit"}
+        ]
+
+        invalid_value = valid_catalog()
+        invalid_value["constructor_service_contracts"][0]["resource_limits"] = [
+            {**base_limit, "value": -1}
+        ]
+
+        unsafe_value = valid_catalog()
+        unsafe_value["constructor_service_contracts"][0]["resource_limits"] = [
+            {**base_limit, "value": (1 << 53)}
+        ]
+
+        invalid_id = valid_catalog()
+        invalid_id["constructor_service_contracts"][0]["resource_limits"] = [
+            {**base_limit, "id": "Bad ID"}
+        ]
+
+        unsorted = valid_catalog()
+        unsorted["constructor_service_contracts"][0]["resource_limits"] = [
+            base_limit,
+            {**base_limit, "id": "another_limit"},
+        ]
+
+        for catalog in [missing_field, invalid_value, unsafe_value, invalid_id, unsorted]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "resource limit",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_rejects_missing_or_mutated_known_constructor_resource_limits(self):
+        missing = valid_catalog()
+        missing["constructor_service_contracts"][1]["resource_limits"].pop(0)
+
+        mutated = valid_catalog()
+        mutated_limit = mutated["constructor_service_contracts"][1][
+            "resource_limits"
+        ][0]
+        mutated_limit["value"] += 1
+
+        for catalog in [missing, mutated]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "known resource limits",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
 
     def test_rejects_catalog_without_current_options_schema(self):
         catalog = valid_catalog()
@@ -144,9 +504,28 @@ class RuntimeCatalogTest(unittest.TestCase):
         ):
             merman.get_runtime_catalog(FakeEngine(catalog))
 
+    def test_rejects_missing_or_wrong_version_known_payload_schema(self):
+        missing = valid_catalog()
+        missing["payload_schemas"] = [{"id": "binding-result", "version": 1}]
+
+        wrong_version = valid_catalog()
+        wrong_version["payload_schemas"][1]["version"] = 2
+
+        for catalog in [missing, wrong_version]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaisesRegex(
+                    merman.MermanRuntimeCatalogError,
+                    "runtime payload schema",
+                ):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
     def test_accepts_unknown_future_ids_and_additive_fields(self):
         catalog = valid_catalog()
+        catalog["payload_schemas"].insert(
+            1, {"id": "future-payload", "version": 9}
+        )
         catalog["future_root_metadata"] = {}
+        catalog["future_ratio"] = 0.5
         catalog["registry"]["future_registry_metadata"] = True
         catalog["resources"]["future_resource_metadata"] = True
         capabilities = catalog["capabilities"]
@@ -173,7 +552,6 @@ class RuntimeCatalogTest(unittest.TestCase):
             "analysis-json",
             "ascii",
             "future-operation",
-            "future-output",
             "semantic-json",
             "svg",
         ]
@@ -183,10 +561,72 @@ class RuntimeCatalogTest(unittest.TestCase):
             "vendored",
         ]
         capabilities["text_measurement"]["future_measurement_metadata"] = True
+        catalog["metadata_ids"].insert(2, "future-metadata")
+        catalog["option_group_ids"].insert(4, "future-option-group")
+        catalog["constructor_service_ids"].insert(0, "future-service")
+        catalog["constructor_service_contracts"].insert(
+            0,
+            {
+                "id": "future-service",
+                "provided_text_measurement_provider_ids": ["future-provider"],
+                "resource_limits": [
+                    {
+                        "id": "future-constructor-limit",
+                        "phase": "construction",
+                        "unit": "items",
+                        "description": "Maximum future items.",
+                        "value": 0,
+                        "future_limit_metadata": {"version": 1},
+                    }
+                ],
+                "future_service_metadata": {"version": 1},
+            },
+        )
+        icon_contract = next(
+            contract
+            for contract in catalog["constructor_service_contracts"]
+            if contract["id"] == "icon-registry"
+        )
+        icon_contract["resource_limits"].append(
+            {
+                "id": "zz_future_constructor_limit",
+                "phase": "icon_registry_future",
+                "unit": "items",
+                "description": "Future additive constructor limit.",
+                "value": 1,
+            }
+        )
         catalog["resources"]["limits"][0]["future_limit_metadata"] = True
+        catalog["resources"]["limits"].append(
+            {
+                "id": "future_limit",
+                "phase": "future_phase",
+                "description": "Maximum future work.",
+                "overridable": False,
+                "hard_cap": False,
+                "minimum_value": 0,
+                "operation_ids": ["future-operation"],
+                "future_limit_metadata": {"version": 1},
+            }
+        )
+        for profile in catalog["resources"]["profiles"]:
+            profile["limits"]["future_limit"] = None
         catalog["resources"]["profiles"][0]["future_profile_metadata"] = True
 
-        self.assertEqual(merman.get_runtime_catalog(FakeEngine(catalog)), catalog)
+        parsed = merman.get_runtime_catalog(FakeEngine(catalog))
+        self.assertEqual(parsed, catalog)
+        self.assertEqual(parsed["future_ratio"], 0.5)
+        future_limit = parsed["resources"]["limits"][1]
+        self.assertIsInstance(future_limit["id"], merman.ResourceLimitId)
+        self.assertEqual(future_limit["id"].id, "future_limit")
+        self.assertFalse(future_limit["id"].is_known)
+        self.assertEqual(future_limit["future_limit_metadata"], {"version": 1})
+        for profile in parsed["resources"]["profiles"]:
+            future_profile_id = next(
+                limit_id for limit_id in profile["limits"] if limit_id == "future_limit"
+            )
+            self.assertIsInstance(future_profile_id, merman.ResourceLimitId)
+            self.assertFalse(future_profile_id.is_known)
 
     def test_public_star_export_has_no_removed_runtime_names(self):
         exported = {}
@@ -245,6 +685,10 @@ class RuntimeCatalogTest(unittest.TestCase):
         wrong_schema["schema_version"] = 2
         cases.append(wrong_schema)
 
+        boolean_schema = valid_catalog()
+        boolean_schema["schema_version"] = True
+        cases.append(boolean_schema)
+
         wrong_transport = valid_catalog()
         wrong_transport["transport_api_version"] = 2
         cases.append(wrong_transport)
@@ -269,6 +713,38 @@ class RuntimeCatalogTest(unittest.TestCase):
         invalid["capabilities"]["capability_ids"] = ["analysis", "Bad ID"]
 
         for catalog in [duplicate, unsorted, invalid]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaises(merman.MermanRuntimeCatalogError):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
+    def test_rejects_invalid_nested_runtime_catalog_identifiers(self):
+        invalid_resource_limit = valid_catalog()
+        invalid_resource_limit["resources"]["limits"][0]["id"] = "Bad ID"
+        for profile in invalid_resource_limit["resources"]["profiles"]:
+            value = profile["limits"].pop("max_source_bytes")
+            profile["limits"]["Bad ID"] = value
+
+        invalid_resource_profile = valid_catalog()
+        invalid_resource_profile["resources"]["profiles"][0]["id"] = "Bad ID"
+        invalid_resource_profile["resources"]["general_binding_default_profile"] = (
+            "Bad ID"
+        )
+
+        invalid_system_font = valid_catalog()
+        invalid_system_font["output_contracts"][1]["system_fonts"] = {
+            "source_id": "Bad ID",
+            "discovery": "first-use",
+            "cache_scope": "process-global",
+            "host_dependent": True,
+            "caller_configurable": False,
+            "resource_bounded": False,
+        }
+
+        for catalog in [
+            invalid_resource_limit,
+            invalid_resource_profile,
+            invalid_system_font,
+        ]:
             with self.subTest(catalog=catalog):
                 with self.assertRaises(merman.MermanRuntimeCatalogError):
                     merman.get_runtime_catalog(FakeEngine(catalog))

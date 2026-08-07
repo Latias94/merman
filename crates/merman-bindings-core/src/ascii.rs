@@ -4,13 +4,7 @@ use crate::common::{
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    crate::execute_once(crate::BindingOperationRequest {
-        operation_id: "ascii",
-        source,
-        uri: None,
-        options_json,
-    })
-    .map(|result| result.data)
+    crate::execute_once_data("ascii", source, None, options_json)
 }
 
 #[derive(Clone)]

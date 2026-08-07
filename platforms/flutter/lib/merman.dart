@@ -21,6 +21,13 @@ export 'src/generated/text_measurement_protocol.dart'
         MermanTextMeasurementResultKind,
         MermanTextWhiteSpace,
         MermanTextWrapMode;
+export 'src/operation_metadata.dart'
+    show
+        MermanOperationMetadata,
+        MermanOutputPlan,
+        MermanPdfFilterImagesOutputPlan,
+        MermanRasterOutputPlan,
+        MermanUnknownOutputPlan;
 export 'src/merman_ffi.dart'
     show
         Merman,
@@ -28,8 +35,13 @@ export 'src/merman_ffi.dart'
         MermanAsciiCapabilityEvidence,
         MermanBusyException,
         MermanDiagramFamilyCapability,
+        MermanEngine,
+        MermanEngineServices,
         MermanErrorKind,
         MermanException,
+        MermanIconPack,
+        MermanIconPackSet,
+        MermanIconRegistryErrorDetails,
         MermanLintRuleCatalogEntry,
         MermanMissingCapabilityException,
         MermanOperation,
@@ -43,11 +55,13 @@ export 'src/merman_ffi.dart'
         MermanResourceErrorDetails,
         MermanResourceLimitDescriptor,
         MermanResourceProfileDescriptor,
-        MermanReusableEngine,
         MermanRuntimeEmbeddedImageContract,
         MermanRuntimeEmbeddedImageLimits,
         MermanRuntimeCatalog,
+        MermanRuntimeConstructorResourceLimit,
+        MermanRuntimeConstructorServiceContract,
         MermanRuntimeOutputContract,
+        MermanRuntimePayloadSchema,
         MermanRuntimeSystemFontContract,
         MermanTextMeasureRequest,
         MermanTextMeasureResult,

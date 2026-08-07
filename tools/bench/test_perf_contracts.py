@@ -14,6 +14,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -43,6 +44,34 @@ PIPELINE_EXECUTABLE = (
 
 
 class CorpusContractsTest(unittest.TestCase):
+    def test_cross_family_has_one_fixture_per_declared_family(self) -> None:
+        corpus = load_corpus(CORPUS_PATH)
+        fixtures = select_corpus_fixtures(corpus, "cross_family")
+
+        self.assertEqual(len(fixtures), len({fixture.family for fixture in fixtures}))
+        self.assertTrue(all((ROOT / fixture.source).is_file() for fixture in fixtures))
+
+    def test_branch_start_controls_use_a_revision_stable_exact_filter(self) -> None:
+        corpus = load_corpus(CORPUS_PATH)
+        expected = {
+            "flowchart_medium",
+            "flowchart_large",
+            "flowchart_ports_heavy",
+            "class_medium",
+            "mindmap_medium",
+            "requirement_medium",
+            "architecture_medium",
+        }
+
+        self.assertNotIn("branch_start", corpus.suites)
+        exact = compare_self.expand_filter_to_exact_benches(
+            "end_to_end/(flowchart_medium|flowchart_large|flowchart_ports_heavy|"
+            "class_medium|mindmap_medium|requirement_medium|architecture_medium)"
+        )
+        self.assertEqual(
+            {compare_self.split_exact_bench(item)[1] for item in exact}, expected
+        )
+
     def test_pipeline_groups_are_owned_by_registered_lanes(self) -> None:
         corpus = load_corpus(CORPUS_PATH)
         expected_groups = {
@@ -73,23 +102,52 @@ class CorpusContractsTest(unittest.TestCase):
 
     def test_compiled_pipeline_list_requires_current_groups_and_rejects_history(self) -> None:
         corpus = load_corpus(CORPUS_PATH)
-        current_groups = sorted(
-            lane_selector_group(lane.selector)
-            for lane in corpus.lanes
-            if lane.transport == "native-criterion"
-            and set(lane.required_features).issubset({"svg"})
+        current = dict(
+            verify_pipeline_bench_list._pipeline_lane_groups(
+                corpus,
+                enabled_features=frozenset({"svg"}),
+            )[0]
         )
+        current_groups = sorted(current)
+        expected_benches = sorted(
+            verify_pipeline_bench_list._expected_pipeline_benches(
+                corpus,
+                current_groups=current,
+            )
+        )
+        expected_set = set(expected_benches)
+        self.assertIn("frontmatter_preprocess/frontmatter_basic", expected_set)
+        self.assertNotIn("end_to_end/frontmatter_basic", expected_set)
+        self.assertIn("end_to_end/error_basic", expected_set)
+        self.assertNotIn("frontmatter_preprocess/error_basic", expected_set)
         fixture = corpus.fixtures[0].name
-        output = "\n".join(
-            f"{group}/{fixture}: benchmark" for group in current_groups
+        list_output = "\n".join(f"{bench}: benchmark" for bench in expected_benches)
+        receipt_output = "\n".join(
+            "[bench][preflight] "
+            + json.dumps(
+                {
+                    "schema_version": 1,
+                    "benchmark": bench,
+                    "output_kind": compare_self._PREFLIGHT_OUTPUT_KIND_BY_GROUP[group],
+                    "output_bytes": 123,
+                    "output_sha256": "a" * 64,
+                    "svg_elements": 7 if group in {"render", "end_to_end"} else None,
+                },
+                separators=(",", ":"),
+            )
+            for bench in expected_benches
+            for group, _fixture in (bench.rsplit("/", 1),)
         )
+        output = f"{list_output}\n{receipt_output}"
 
         result = verify_pipeline_bench_list.validate_pipeline_bench_list(corpus, output)
 
         self.assertEqual(result["groups"], tuple(current_groups))
+        self.assertEqual(result["receipt_count"], len(expected_benches))
         historical = output.replace(
             f"compatibility_json_parse/{fixture}",
             f"parse_known_type/{fixture}",
+            1,
         )
         with self.assertRaisesRegex(
             verify_pipeline_bench_list.PipelineBenchListError,
@@ -105,6 +163,56 @@ class CorpusContractsTest(unittest.TestCase):
                 corpus,
                 output + f"\nunregistered/{fixture}: benchmark\n",
             )
+
+        missing_benchmark = "end_to_end/error_basic"
+        without_benchmark = "\n".join(
+            line
+            for line in output.splitlines()
+            if line != f"{missing_benchmark}: benchmark"
+            and f'"benchmark":"{missing_benchmark}"' not in line
+        )
+        with self.assertRaisesRegex(
+            verify_pipeline_bench_list.PipelineBenchListError,
+            "corpus/lane product.*missing",
+        ):
+            verify_pipeline_bench_list.validate_pipeline_bench_list(
+                corpus, without_benchmark
+            )
+
+        without_receipt = output.replace(
+            next(
+                line
+                for line in output.splitlines()
+                if line.startswith("[bench][preflight]")
+            ),
+            "",
+            1,
+        )
+        with self.assertRaisesRegex(
+            verify_pipeline_bench_list.PipelineBenchListError,
+            "preflight receipts differ",
+        ):
+            verify_pipeline_bench_list.validate_pipeline_bench_list(
+                corpus, without_receipt
+            )
+
+        for contract in (None, "docs/performance/contracts/unknown.json"):
+            mixed = replace(
+                corpus,
+                lanes=tuple(
+                    replace(lane, evidence_contract=contract)
+                    if lane.id == "render-svg"
+                    else lane
+                    for lane in corpus.lanes
+                ),
+            )
+            with self.subTest(contract=contract), self.assertRaisesRegex(
+                verify_pipeline_bench_list.PipelineBenchListError,
+                "uniformly declare",
+            ):
+                verify_pipeline_bench_list.validate_pipeline_bench_list(
+                    mixed, output
+                )
 
     def test_binding_request_corpus_owns_one_complete_benchmark_list(self) -> None:
         corpus = load_corpus(BINDING_REQUEST_CORPUS_PATH)
@@ -490,6 +598,14 @@ class CompareSelfContractsTest(unittest.TestCase):
         target = checkout / fixture_source
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(source.read_bytes())
+        if corpus.get("schema_version") == 2:
+            contract_source = (
+                ROOT
+                / "docs/performance/contracts/native-criterion-preflight-v1.json"
+            )
+            contract_target = checkout / contract_source.relative_to(ROOT)
+            contract_target.parent.mkdir(parents=True, exist_ok=True)
+            contract_target.write_bytes(contract_source.read_bytes())
         return compare_self.RunnerRecipe(
             label=checkout.name,
             checkout=checkout,
@@ -519,6 +635,461 @@ class CompareSelfContractsTest(unittest.TestCase):
             }
             for pair_index in range(count)
         ]
+
+    @staticmethod
+    def _preflight_receipt(
+        benchmark: str = "end_to_end/flowchart_medium",
+        *,
+        output_sha256: str = "a" * 64,
+        output_bytes: int = 123,
+        svg_elements: int | None = 7,
+    ) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "benchmark": benchmark,
+            "output_kind": "svg",
+            "output_bytes": output_bytes,
+            "output_sha256": output_sha256,
+            "svg_elements": svg_elements,
+        }
+
+    def test_native_preflight_receipts_reject_malformed_or_duplicate_entries(self) -> None:
+        receipt = self._preflight_receipt()
+        line = "[bench][preflight] " + json.dumps(receipt, separators=(",", ":"))
+
+        self.assertEqual(
+            compare_self.parse_preflight_receipts(line),
+            {receipt["benchmark"]: receipt},
+        )
+
+        with self.assertRaisesRegex(compare_self.ContractViolation, "duplicate"):
+            compare_self.parse_preflight_receipts(f"{line}\n{line}")
+
+        malformed = dict(receipt)
+        malformed["output_sha256"] = "short"
+        with self.assertRaisesRegex(compare_self.ContractViolation, "output_sha256"):
+            compare_self.parse_preflight_receipts(
+                "[bench][preflight] "
+                + json.dumps(malformed, separators=(",", ":"))
+            )
+
+        wrong_kind = dict(receipt)
+        wrong_kind["output_kind"] = "typed_render_model"
+        with self.assertRaisesRegex(compare_self.ContractViolation, "output_kind"):
+            compare_self.parse_preflight_receipts(
+                "[bench][preflight] "
+                + json.dumps(wrong_kind, separators=(",", ":"))
+            )
+
+        for field, value in (("output_bytes", 0), ("svg_elements", 0)):
+            invalid = dict(receipt)
+            invalid[field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(
+                compare_self.ContractViolation, field
+            ):
+                compare_self.parse_preflight_receipts(
+                    "[bench][preflight] "
+                    + json.dumps(invalid, separators=(",", ":"))
+                )
+
+        wrong_schema = dict(receipt)
+        wrong_schema["schema_version"] = 2
+        with self.assertRaisesRegex(compare_self.ContractViolation, "schema_version"):
+            compare_self.parse_preflight_receipts(
+                "[bench][preflight] "
+                + json.dumps(wrong_schema, separators=(",", ":"))
+            )
+
+        no_group = dict(receipt)
+        no_group["benchmark"] = "flowchart_medium"
+        with self.assertRaisesRegex(compare_self.ContractViolation, "group boundary"):
+            compare_self.parse_preflight_receipts(
+                "[bench][preflight] "
+                + json.dumps(no_group, separators=(",", ":"))
+            )
+
+        non_svg = dict(receipt)
+        non_svg["benchmark"] = "parse/flowchart_medium"
+        non_svg["output_kind"] = "typed_render_model"
+        with self.assertRaisesRegex(compare_self.ContractViolation, "null for non-SVG"):
+            compare_self.parse_preflight_receipts(
+                "[bench][preflight] "
+                + json.dumps(non_svg, separators=(",", ":"))
+            )
+
+        missing = dict(receipt)
+        del missing["output_bytes"]
+        with self.assertRaisesRegex(compare_self.ContractViolation, "fields differ"):
+            compare_self.parse_preflight_receipts(
+                "[bench][preflight] "
+                + json.dumps(missing, separators=(",", ":"))
+            )
+
+        with self.assertRaisesRegex(compare_self.ContractViolation, "invalid benchmark preflight"):
+            compare_self.parse_preflight_receipts("[bench][preflight] {")
+
+        self.assertEqual(
+            compare_self.parse_postflight_receipts(
+                "[bench][postflight] end_to_end/flowchart_medium"
+            ),
+            {"end_to_end/flowchart_medium"},
+        )
+        with self.assertRaisesRegex(compare_self.ContractViolation, "duplicate"):
+            compare_self.parse_postflight_receipts(
+                "[bench][postflight] end_to_end/flowchart_medium\n"
+                "[bench][postflight] end_to_end/flowchart_medium"
+            )
+
+    def test_direct_measurement_requires_the_discovery_output_receipt(self) -> None:
+        benchmark = "end_to_end/flowchart_medium"
+        receipt = self._preflight_receipt(benchmark)
+        runner = SimpleNamespace(
+            executable=Path("/tmp/pipeline"),
+            recipe=SimpleNamespace(
+                label="head",
+                checkout=ROOT,
+                logical_operations=1,
+            ),
+            env={},
+            provenance={
+                "corpus": {"preflight_receipts_required": True},
+                "discovery": {"preflight_receipts": {benchmark: receipt}},
+            },
+        )
+        timing = f"{benchmark}\ntime:   [100.0 ns 200.0 ns 300.0 ns]\n"
+        missing = subprocess.CompletedProcess([], 0, stdout=timing, stderr="")
+        with (
+            mock.patch.object(compare_self, "_run_process", return_value=missing),
+            self.assertRaisesRegex(compare_self.ContractViolation, "did not repeat"),
+        ):
+            compare_self._measure_once(
+                runner,
+                exact_bench=benchmark,
+                sample_size=10,
+                warm_up_seconds=1,
+                measurement_seconds=1,
+                timeout_seconds=30,
+                sequence_index=1,
+            )
+
+        receipt_line = "[bench][preflight] " + json.dumps(
+            receipt, separators=(",", ":")
+        )
+        completed = subprocess.CompletedProcess(
+            [],
+            0,
+            stdout=timing,
+            stderr=receipt_line
+            + "\n[bench][postflight] end_to_end/flowchart_medium",
+        )
+        with mock.patch.object(compare_self, "_run_process", return_value=completed):
+            measured = compare_self._measure_once(
+                runner,
+                exact_bench=benchmark,
+                sample_size=10,
+                warm_up_seconds=1,
+                measurement_seconds=1,
+                timeout_seconds=30,
+                sequence_index=2,
+            )
+        self.assertEqual(measured["output_identity"], receipt)
+        self.assertTrue(measured["postflight_verified"])
+
+        extra_benchmark = "end_to_end/class_medium"
+        extra_receipt = self._preflight_receipt(
+            extra_benchmark, output_sha256="c" * 64
+        )
+        extra_preflight = subprocess.CompletedProcess(
+            [],
+            0,
+            stdout=timing,
+            stderr=receipt_line
+            + "\n[bench][preflight] "
+            + json.dumps(extra_receipt, separators=(",", ":"))
+            + "\n[bench][postflight] end_to_end/flowchart_medium",
+        )
+        with (
+            mock.patch.object(
+                compare_self, "_run_process", return_value=extra_preflight
+            ),
+            self.assertRaisesRegex(
+                compare_self.ContractViolation, "preflight receipts differ"
+            ),
+        ):
+            compare_self._measure_once(
+                runner,
+                exact_bench=benchmark,
+                sample_size=10,
+                warm_up_seconds=1,
+                measurement_seconds=1,
+                timeout_seconds=30,
+                sequence_index=3,
+            )
+
+        preflight_only = subprocess.CompletedProcess(
+            [], 0, stdout=timing, stderr=receipt_line
+        )
+        with (
+            mock.patch.object(
+                compare_self, "_run_process", return_value=preflight_only
+            ),
+            self.assertRaisesRegex(compare_self.ContractViolation, "postflight receipts differ"),
+        ):
+            compare_self._measure_once(
+                runner,
+                exact_bench=benchmark,
+                sample_size=10,
+                warm_up_seconds=1,
+                measurement_seconds=1,
+                timeout_seconds=30,
+                sequence_index=3,
+            )
+
+        changed = self._preflight_receipt(benchmark, output_sha256="b" * 64)
+        changed_result = subprocess.CompletedProcess(
+            [],
+            0,
+            stdout=timing,
+            stderr="[bench][preflight] "
+            + json.dumps(changed, separators=(",", ":"))
+            + "\n[bench][postflight] end_to_end/flowchart_medium",
+        )
+        with (
+            mock.patch.object(
+                compare_self, "_run_process", return_value=changed_result
+            ),
+            self.assertRaisesRegex(compare_self.ContractViolation, "changed after discovery"),
+        ):
+            compare_self._measure_once(
+                runner,
+                exact_bench=benchmark,
+                sample_size=10,
+                warm_up_seconds=1,
+                measurement_seconds=1,
+                timeout_seconds=30,
+                sequence_index=4,
+            )
+
+    def test_native_preflight_contract_content_must_match_the_harness(self) -> None:
+        contract = (
+            ROOT / "docs/performance/contracts/native-criterion-preflight-v1.json"
+        )
+        description = compare_self._describe_preflight_contract(contract)
+        self.assertEqual(description["id"], "native-criterion-preflight-v1")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            changed = Path(temp_dir) / contract.name
+            value = json.loads(contract.read_text(encoding="utf-8"))
+            value["output_kinds"]["render"] = "prepared_layout"
+            changed.write_text(json.dumps(value), encoding="utf-8")
+            with self.assertRaisesRegex(compare_self.ContractViolation, "differs"):
+                compare_self._describe_preflight_contract(changed)
+
+    def test_post_sampling_failure_revokes_every_timing_claim(self) -> None:
+        report = {
+            "rows": [
+                {
+                    "outcome": "confirmed_non_regression",
+                    "improvement_outcome": "confirmed_improvement",
+                    "base_ns": 100.0,
+                    "head_ns": 80.0,
+                    "bounds": {"relative_percent": {"upper": -10.0}},
+                    "reason": None,
+                }
+            ]
+        }
+
+        compare_self._revoke_timing_claims(report, reason="verification failed")
+
+        row = report["rows"][0]
+        self.assertEqual(row["outcome"], "contract_failure")
+        self.assertIsNone(row["improvement_outcome"])
+        self.assertIsNone(row["base_ns"])
+        self.assertIsNone(row["head_ns"])
+        self.assertIsNone(row["bounds"])
+        self.assertEqual(row["reason"], "verification failed")
+
+    def test_finalize_revokes_timing_claims_when_any_contract_error_exists(self) -> None:
+        report = {
+            "method": {"discovery_only": False, "evidence_mode": "confirmation"},
+            "fixtures": [{"coverage_status": "comparable"}],
+            "contract_errors": [{"stage": "projection", "message": "failed"}],
+            "rows": [
+                {
+                    "outcome": "confirmed_non_regression",
+                    "improvement_outcome": "confirmed_improvement",
+                    "base_ns": 100.0,
+                    "head_ns": 80.0,
+                    "bounds": {"relative_percent": {"upper": -10.0}},
+                    "reason": None,
+                }
+            ],
+        }
+
+        exit_code = compare_self._finalize_summary(report)
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(report["summary"]["confirmed_improvements"], 0)
+        self.assertEqual(report["rows"][0]["outcome"], "contract_failure")
+        self.assertIsNone(report["rows"][0]["improvement_outcome"])
+
+    def test_current_only_classification_does_not_hide_head_execution_failure(self) -> None:
+        benchmark = "end_to_end/error_basic"
+        contract = {
+            "name": "error_basic",
+            "family": "error",
+            "base_benchmark": None,
+            "head_benchmark": benchmark,
+            "selected": {"base": False, "head": True},
+            "bytes": {"status": "missing_base"},
+        }
+        base = SimpleNamespace(
+            recipe=SimpleNamespace(label="base"),
+            benches=set(),
+            skipped={},
+            provenance={
+                "corpus": {"preflight_receipts_required": False},
+                "discovery": {"preflight_receipts": {}},
+            },
+        )
+        head = SimpleNamespace(
+            recipe=SimpleNamespace(label="head"),
+            benches=set(),
+            skipped={"end_to_end": ["error_basic: render failed"]},
+            provenance={
+                "corpus": {"preflight_receipts_required": True},
+                "discovery": {"preflight_receipts": {}},
+            },
+        )
+
+        completed = compare_self._complete_fixture_contracts(
+            [contract], base=base, head=head
+        )[0]
+
+        self.assertEqual(completed["coverage_status"], "coverage_only")
+        self.assertEqual(completed["coverage_class"], "execution_failure")
+
+    def test_historical_only_classification_does_not_hide_base_execution_failure(self) -> None:
+        benchmark = "end_to_end/error_basic"
+        contract = {
+            "name": "error_basic",
+            "family": "error",
+            "base_benchmark": benchmark,
+            "head_benchmark": None,
+            "selected": {"base": True, "head": False},
+            "bytes": {"status": "missing_head"},
+        }
+        base = SimpleNamespace(
+            recipe=SimpleNamespace(label="base"),
+            benches=set(),
+            skipped={"end_to_end": ["error_basic: render failed"]},
+            provenance={
+                "corpus": {"preflight_receipts_required": True},
+                "discovery": {"preflight_receipts": {}},
+            },
+        )
+        head = SimpleNamespace(
+            recipe=SimpleNamespace(label="head"),
+            benches=set(),
+            skipped={},
+            provenance={
+                "corpus": {"preflight_receipts_required": False},
+                "discovery": {"preflight_receipts": {}},
+            },
+        )
+
+        completed = compare_self._complete_fixture_contracts(
+            [contract], base=base, head=head
+        )[0]
+
+        self.assertEqual(completed["coverage_status"], "coverage_only")
+        self.assertEqual(completed["coverage_class"], "execution_failure")
+
+    def test_current_pipeline_rows_require_matching_output_identity(self) -> None:
+        benchmark = "end_to_end/flowchart_medium"
+        receipt = self._preflight_receipt(benchmark)
+        contract = {
+            "name": "flowchart_medium",
+            "family": "flowchart",
+            "base_benchmark": benchmark,
+            "head_benchmark": benchmark,
+            "selected": {"base": True, "head": True},
+            "bytes": {"status": "identical"},
+        }
+
+        def runner(label: str, value: dict[str, object]) -> SimpleNamespace:
+            return SimpleNamespace(
+                recipe=SimpleNamespace(label=label),
+                benches={benchmark},
+                skipped={},
+                provenance={
+                    "corpus": {"preflight_receipts_required": True},
+                    "discovery": {"preflight_receipts": {benchmark: value}},
+                },
+            )
+
+        matched = compare_self._complete_fixture_contracts(
+            [copy.deepcopy(contract)],
+            base=runner("base", receipt),
+            head=runner("head", receipt),
+        )[0]
+        self.assertEqual(matched["coverage_status"], "comparable")
+        self.assertEqual(matched["coverage_class"], "common")
+        self.assertEqual(matched["output_identity"]["status"], "matched")
+
+        changed = self._preflight_receipt(output_sha256="b" * 64)
+        mismatched = compare_self._complete_fixture_contracts(
+            [copy.deepcopy(contract)],
+            base=runner("base", receipt),
+            head=runner("head", changed),
+        )[0]
+        self.assertEqual(mismatched["coverage_status"], "coverage_only")
+        self.assertEqual(mismatched["coverage_class"], "output_mismatch")
+        self.assertTrue(
+            any("output identity differs" in reason for reason in mismatched["coverage_reasons"])
+        )
+
+    def test_legacy_pipeline_rows_record_identity_gap_without_claiming_a_match(self) -> None:
+        benchmark = "end_to_end/flowchart_medium"
+        receipt = self._preflight_receipt(benchmark)
+        contract = {
+            "name": "flowchart_medium",
+            "family": "flowchart",
+            "base_benchmark": benchmark,
+            "head_benchmark": benchmark,
+            "selected": {"base": True, "head": True},
+            "bytes": {"status": "identical"},
+        }
+        base = SimpleNamespace(
+            recipe=SimpleNamespace(label="base"),
+            benches={benchmark},
+            skipped={},
+            provenance={
+                "corpus": {"preflight_receipts_required": False},
+                "discovery": {"preflight_receipts": {}},
+            },
+        )
+        head = SimpleNamespace(
+            recipe=SimpleNamespace(label="head"),
+            benches={benchmark},
+            skipped={},
+            provenance={
+                "corpus": {"preflight_receipts_required": True},
+                "discovery": {"preflight_receipts": {benchmark: receipt}},
+            },
+        )
+
+        completed = compare_self._complete_fixture_contracts(
+            [contract], base=base, head=head
+        )[0]
+
+        self.assertEqual(completed["coverage_status"], "coverage_only")
+        self.assertEqual(completed["coverage_class"], "unverified_output")
+        self.assertEqual(
+            completed["output_identity"]["status"], "legacy_unavailable"
+        )
+        self.assertIsNone(completed["output_identity"]["base"])
+        self.assertEqual(completed["output_identity"]["head"], receipt)
 
     def test_v2_rows_require_both_relative_and_absolute_regression_bounds(self) -> None:
         common = {
@@ -937,12 +1508,21 @@ class CompareSelfContractsTest(unittest.TestCase):
             def prepare_reused(recipe, **_kwargs):
                 executable = base_executable if recipe.label == "base" else head_executable
                 digest = "1" * 64 if recipe.label == "base" else "2" * 64
+                receipt = self._preflight_receipt(
+                    "end_to_end/flowchart_medium"
+                )
                 provenance = {
                     "git": {
                         "revision": recipe.label,
                         "tree": recipe.label,
                         "dirty": False,
-                    }
+                    },
+                    "corpus": {"preflight_receipts_required": True},
+                    "discovery": {
+                        "preflight_receipts": {
+                            "end_to_end/flowchart_medium": receipt
+                        }
+                    },
                 }
                 return (
                     compare_self.PreparedRunner(
@@ -1384,13 +1964,29 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
 
     @staticmethod
     def _minimal_reusable_discovery() -> dict[str, object]:
+        benchmark = "end_to_end/flowchart_medium"
+        receipt = {
+            "schema_version": 1,
+            "benchmark": benchmark,
+            "output_kind": "svg",
+            "output_bytes": 123,
+            "output_sha256": "a" * 64,
+            "svg_elements": 7,
+        }
         runner = {
             "recipe": {},
             "git": {},
             "manifest": {},
             "workspace_manifest": {},
             "lockfile": {},
-            "corpus": {},
+            "corpus": {
+                "preflight_receipts_required": True,
+                "preflight_contract": {
+                    "path": "/tmp/native-criterion-preflight-v1.json",
+                    "bytes": 100,
+                    "sha256": "b" * 64,
+                },
+            },
             "bench_source": {},
             "toolchain": {},
             "build_environment": {},
@@ -1401,7 +1997,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             "frozen_executable": {},
             "executable": {},
             "discovery_command": [],
-            "discovery": {},
+            "discovery": {"preflight_receipts": {benchmark: receipt}},
             "post_sampling_verification": {"status": "verified"},
             "shared_target_freeze": {
                 "enabled": True,
@@ -1444,6 +2040,11 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     "base_benchmark": "end_to_end/flowchart_medium",
                     "head_benchmark": "end_to_end/flowchart_medium",
                     "coverage_status": "comparable",
+                    "output_identity": {
+                        "status": "matched",
+                        "base": copy.deepcopy(receipt),
+                        "head": copy.deepcopy(receipt),
+                    },
                     "post_sampling_verification": {"status": "verified"},
                 }
             ],
@@ -1452,6 +2053,11 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     "base_benchmark": "end_to_end/flowchart_medium",
                     "head_benchmark": "end_to_end/flowchart_medium",
                     "outcome": "diagnostic_advisory",
+                    "output_identity": {
+                        "status": "matched",
+                        "base": copy.deepcopy(receipt),
+                        "head": copy.deepcopy(receipt),
+                    },
                 }
             ],
             "runners": {
@@ -1541,6 +2147,11 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
         with self.assertRaisesRegex(compare_self.ContractViolation, "post-verified"):
             compare_self._validate_reusable_discovery_report(unverified)
 
+        missing_receipts = copy.deepcopy(valid)
+        del missing_receipts["fixtures"][0]["output_identity"]
+        with self.assertRaisesRegex(compare_self.ContractViolation, "output identity"):
+            compare_self._validate_reusable_discovery_report(missing_receipts)
+
         wrong_order = copy.deepcopy(valid)
         wrong_order["runners"]["base"]["shared_target_freeze"]["build_sequence"] = 2
         with self.assertRaisesRegex(compare_self.ContractViolation, "build sequence"):
@@ -1591,7 +2202,23 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             lockfile.write_text("# lock\n", encoding="utf-8")
             corpus = checkout / "tools" / "bench" / "corpus.json"
             corpus.parent.mkdir(parents=True)
-            corpus.write_text("{}\n", encoding="utf-8")
+            corpus.write_text(
+                json.dumps(
+                    CompareSelfContractsTest._minimal_corpus(
+                        schema_version=2,
+                        default_group="end_to_end",
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            contract_source = (
+                ROOT
+                / "docs/performance/contracts/native-criterion-preflight-v1.json"
+            )
+            contract_target = checkout / contract_source.relative_to(ROOT)
+            contract_target.parent.mkdir(parents=True)
+            contract_target.write_bytes(contract_source.read_bytes())
             bench_source = checkout / "benches" / "pipeline.rs"
             bench_source.parent.mkdir()
             bench_source.write_text("fn main() {}\n", encoding="utf-8")
@@ -1632,7 +2259,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 "manifest": compare_self._describe_required_file(manifest),
                 "workspace_manifest": compare_self._describe_required_file(manifest),
                 "lockfile": compare_self._describe_required_file(lockfile),
-                "corpus": compare_self._describe_required_file(corpus),
+                "corpus": compare_self._describe_corpus(corpus, recipe=recipe),
                 "bench_source": compare_self._describe_required_file(bench_source),
             }
             executable_description = compare_self._describe_required_file(executable)
@@ -1641,12 +2268,19 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 "executable": True,
                 "mode": "0555",
             }
+            receipt = CompareSelfContractsTest._preflight_receipt()
+            receipt_line = "[bench][preflight] " + json.dumps(
+                receipt, separators=(",", ":")
+            )
             discovery_stdout = "end_to_end/flowchart_medium: benchmark\n"
-            combined = discovery_stdout + "\n"
+            combined = "\n".join((discovery_stdout, receipt_line))
             discovery = {
                 "bench_count": 1,
                 "benches": ["end_to_end/flowchart_medium"],
                 "skipped": {},
+                "preflight_receipts": {
+                    "end_to_end/flowchart_medium": receipt,
+                },
                 "output_sha256": compare_self.hashlib.sha256(
                     combined.encode("utf-8")
                 ).hexdigest(),
@@ -1709,7 +2343,11 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     "executable_sha256": executable_description["sha256"],
                 },
             }
-            listed = mock.Mock(returncode=0, stdout=discovery_stdout, stderr="")
+            listed = mock.Mock(
+                returncode=0,
+                stdout=discovery_stdout,
+                stderr=receipt_line,
+            )
             package_id = f"path+file://{checkout}#merman@0.0.0"
             metadata = mock.Mock(
                 returncode=0,
@@ -1762,6 +2400,59 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             )
             self.assertEqual(run.call_args_list[1].args[0][0], str(executable))
             self.assertNotIn("build", run.call_args_list[0].args[0])
+
+            invalid_rediscoveries = {
+                "missing": mock.Mock(
+                    returncode=0,
+                    stdout=discovery_stdout,
+                    stderr="",
+                ),
+                "extra": mock.Mock(
+                    returncode=0,
+                    stdout=discovery_stdout,
+                    stderr=receipt_line
+                    + "\n[bench][preflight] "
+                    + json.dumps(
+                        CompareSelfContractsTest._preflight_receipt(
+                            "end_to_end/class_medium", output_sha256="c" * 64
+                        ),
+                        separators=(",", ":"),
+                    ),
+                ),
+            }
+            for label, invalid_rediscovery in invalid_rediscoveries.items():
+                with (
+                    self.subTest(label=label),
+                    mock.patch.object(
+                        compare_self, "_git_provenance", return_value=git
+                    ),
+                    mock.patch.object(
+                        compare_self, "_toolchain_version", return_value="rustc test"
+                    ),
+                    mock.patch.object(
+                        compare_self, "_cargo_version", return_value="cargo test"
+                    ),
+                    mock.patch.object(
+                        compare_self,
+                        "_run_process",
+                        side_effect=[metadata, invalid_rediscovery],
+                    ),
+                ):
+                    invalid_runner, _invalid_provenance, invalid_errors = (
+                        compare_self._prepare_reused_runner(
+                            recipe,
+                            origin=origin,
+                            source_report={
+                                "path": "/tmp/discovery.json",
+                                "sha256": "c" * 64,
+                            },
+                            timeout_seconds=1,
+                        )
+                    )
+                self.assertIsNone(invalid_runner)
+                self.assertTrue(
+                    any("preflight receipts differ" in error for error in invalid_errors)
+                )
 
             runner_mutations = {
                 "Git revision": lambda value: value["git"].__setitem__(
@@ -2262,7 +2953,23 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             (checkout / "Cargo.lock").write_text("# lock\n", encoding="utf-8")
             corpus = checkout / "tools" / "bench" / "corpus.json"
             corpus.parent.mkdir(parents=True)
-            corpus.write_text("{}\n", encoding="utf-8")
+            corpus.write_text(
+                json.dumps(
+                    CompareSelfContractsTest._minimal_corpus(
+                        schema_version=2,
+                        default_group="end_to_end",
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            contract_source = (
+                ROOT
+                / "docs/performance/contracts/native-criterion-preflight-v1.json"
+            )
+            contract_target = checkout / contract_source.relative_to(ROOT)
+            contract_target.parent.mkdir(parents=True)
+            contract_target.write_bytes(contract_source.read_bytes())
             bench_source = checkout / "benches" / "pipeline.rs"
             bench_source.parent.mkdir()
             bench_source.write_text("fn main() {}\n", encoding="utf-8")
@@ -2312,10 +3019,14 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 stdout="",
                 stderr="Removed 42 files, 12.3MiB total",
             )
+            receipt = CompareSelfContractsTest._preflight_receipt()
+            receipt_line = "[bench][preflight] " + json.dumps(
+                receipt, separators=(",", ":")
+            )
             discovery_result = mock.Mock(
                 returncode=0,
                 stdout="end_to_end/flowchart_medium: benchmark\n",
-                stderr="",
+                stderr=receipt_line,
             )
             git = {
                 "revision": "a" * 40,
@@ -2399,6 +3110,69 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 run_process.call_args_list[2].kwargs["env"]["CARGO_BUILD_JOBS"],
                 "1",
             )
+            self.assertEqual(
+                provenance["discovery"]["preflight_receipts"],
+                {"end_to_end/flowchart_medium": receipt},
+            )
+
+            invalid_discoveries = {
+                "missing": mock.Mock(
+                    returncode=0,
+                    stdout="end_to_end/flowchart_medium: benchmark\n",
+                    stderr="",
+                ),
+                "extra": mock.Mock(
+                    returncode=0,
+                    stdout="end_to_end/flowchart_medium: benchmark\n",
+                    stderr=receipt_line
+                    + "\n[bench][preflight] "
+                    + json.dumps(
+                        CompareSelfContractsTest._preflight_receipt(
+                            "end_to_end/class_medium", output_sha256="c" * 64
+                        ),
+                        separators=(",", ":"),
+                    ),
+                ),
+            }
+            for label, invalid_discovery in invalid_discoveries.items():
+                with (
+                    self.subTest(label=label),
+                    mock.patch.object(
+                        compare_self, "_git_provenance", return_value=git
+                    ),
+                    mock.patch.object(
+                        compare_self, "_toolchain_version", return_value="rustc"
+                    ),
+                    mock.patch.object(
+                        compare_self, "_cargo_version", return_value="cargo"
+                    ),
+                    mock.patch.object(
+                        compare_self,
+                        "_run_process",
+                        side_effect=[
+                            metadata_result,
+                            clean_result,
+                            cargo_result,
+                            invalid_discovery,
+                        ],
+                    ),
+                ):
+                    invalid_runner, _invalid_provenance, invalid_errors = (
+                        compare_self._prepare_runner(
+                            recipe,
+                            allow_dirty=False,
+                            timeout_seconds=1,
+                            freeze_plan=compare_self.SharedTargetFreezePlan(
+                                target_dir=target_dir,
+                                context=f"prepare-{label}",
+                            ),
+                            build_sequence=1,
+                        )
+                    )
+                self.assertIsNone(invalid_runner)
+                self.assertTrue(
+                    any("preflight receipts differ" in error for error in invalid_errors)
+                )
 
     def test_shared_target_freeze_rejects_source_digest_drift_during_copy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

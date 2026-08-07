@@ -667,7 +667,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::TreeView(pair) => tree_view::render_tree_view_diagram_svg_model(
             pair.layout(),
             pair.semantic(),
-            effective_config_value,
+            effective_config,
             options,
         ),
         BuiltinFamilyArtifact::Ishikawa(pair) => {

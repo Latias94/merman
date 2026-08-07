@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Mapping, Optional
+from typing import ClassVar, Mapping, Optional, Tuple
 
 BINDING_OPTIONS_SCHEMA_VERSION = 2
 
@@ -17,30 +17,142 @@ class ResourceProfile(str, Enum):
     TRUSTED_NATIVE = "trusted-native"
     UNBOUNDED_FOR_TRUSTED_INPUT = "unbounded-for-trusted-input"
 
-class ResourceLimitId(str, Enum):
-    MAX_SOURCE_BYTES = "max_source_bytes"
-    MAX_MODEL_ITEMS = "max_model_items"
-    MAX_MODEL_TEXT_BYTES = "max_model_text_bytes"
-    MAX_MODEL_NESTING_DEPTH = "max_model_nesting_depth"
-    MAX_LAYOUT_WORK_UNITS = "max_layout_work_units"
-    MAX_SVG_BYTES = "max_svg_bytes"
-    MAX_SVG_ELEMENTS = "max_svg_elements"
-    MAX_DOCUMENT_DIAGRAMS = "max_document_diagrams"
-    MAX_ASCII_GRID_CELLS = "max_ascii_grid_cells"
-    MAX_RASTER_WIDTH = "max_raster_width"
-    MAX_RASTER_HEIGHT = "max_raster_height"
-    MAX_RASTER_PIXELS = "max_raster_pixels"
-    MAX_EMBEDDED_IMAGE_BYTES = "max_embedded_image_bytes"
-    MAX_TOTAL_EMBEDDED_IMAGE_BYTES = "max_total_embedded_image_bytes"
-    MAX_EMBEDDED_IMAGE_PIXELS = "max_embedded_image_pixels"
-    MAX_TOTAL_EMBEDDED_IMAGE_PIXELS = "max_total_embedded_image_pixels"
-    MAX_PDF_FILTER_IMAGE_PIXELS = "max_pdf_filter_image_pixels"
-    MAX_SVG_CONVERSION_ISOLATION_DEPTH = "max_svg_conversion_isolation_depth"
-    MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER = "max_svg_conversion_filter_primitives_per_filter"
-    MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES = "max_total_svg_conversion_filter_primitives"
-    MAX_SVG_CONVERSION_SUBROOTS = "max_svg_conversion_subroots"
-    MAX_NESTED_SVG_IMAGES = "max_nested_svg_images"
-    SVG_BACKEND_TREE_NODES = "svg_backend_tree_nodes"
+class ResourceLimitId(str):
+    __slots__ = ()
+    MAX_SOURCE_BYTES: ClassVar[ResourceLimitId]
+    MAX_MODEL_ITEMS: ClassVar[ResourceLimitId]
+    MAX_MODEL_TEXT_BYTES: ClassVar[ResourceLimitId]
+    MAX_MODEL_NESTING_DEPTH: ClassVar[ResourceLimitId]
+    MAX_LAYOUT_WORK_UNITS: ClassVar[ResourceLimitId]
+    MAX_SVG_BYTES: ClassVar[ResourceLimitId]
+    MAX_SVG_ELEMENTS: ClassVar[ResourceLimitId]
+    MAX_DOCUMENT_DIAGRAMS: ClassVar[ResourceLimitId]
+    MAX_ASCII_GRID_CELLS: ClassVar[ResourceLimitId]
+    MAX_RASTER_WIDTH: ClassVar[ResourceLimitId]
+    MAX_RASTER_HEIGHT: ClassVar[ResourceLimitId]
+    MAX_RASTER_PIXELS: ClassVar[ResourceLimitId]
+    MAX_EMBEDDED_IMAGE_BYTES: ClassVar[ResourceLimitId]
+    MAX_TOTAL_EMBEDDED_IMAGE_BYTES: ClassVar[ResourceLimitId]
+    MAX_EMBEDDED_IMAGE_PIXELS: ClassVar[ResourceLimitId]
+    MAX_TOTAL_EMBEDDED_IMAGE_PIXELS: ClassVar[ResourceLimitId]
+    MAX_PDF_FILTER_IMAGE_PIXELS: ClassVar[ResourceLimitId]
+    MAX_SVG_CONVERSION_ISOLATION_DEPTH: ClassVar[ResourceLimitId]
+    MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER: ClassVar[ResourceLimitId]
+    MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES: ClassVar[ResourceLimitId]
+    MAX_SVG_CONVERSION_SUBROOTS: ClassVar[ResourceLimitId]
+    MAX_NESTED_SVG_IMAGES: ClassVar[ResourceLimitId]
+    SVG_BACKEND_TREE_NODES: ClassVar[ResourceLimitId]
+    known_values: ClassVar[Tuple[ResourceLimitId, ...]]
+
+    def __new__(cls, value: str) -> ResourceLimitId:
+        if not isinstance(value, str) or not value:
+            raise ValueError("resource limit id must be a non-empty string")
+        return str.__new__(cls, value)
+
+    @property
+    def id(self) -> str:
+        return str(self)
+
+    @property
+    def phase(self) -> Optional[str]:
+        metadata = _RESOURCE_LIMIT_METADATA.get(str(self))
+        return None if metadata is None else metadata[0]
+
+    @property
+    def overridable(self) -> Optional[bool]:
+        metadata = _RESOURCE_LIMIT_METADATA.get(str(self))
+        return None if metadata is None else metadata[1]
+
+    @property
+    def minimum_value(self) -> Optional[int]:
+        metadata = _RESOURCE_LIMIT_METADATA.get(str(self))
+        return None if metadata is None else metadata[2]
+
+    @property
+    def is_known(self) -> bool:
+        return str(self) in _RESOURCE_LIMIT_METADATA
+
+    @classmethod
+    def from_id(cls, value: str) -> ResourceLimitId:
+        known = _RESOURCE_LIMIT_BY_ID.get(value)
+        return known if known is not None else cls(value)
+
+ResourceLimitId.MAX_SOURCE_BYTES = ResourceLimitId("max_source_bytes")
+ResourceLimitId.MAX_MODEL_ITEMS = ResourceLimitId("max_model_items")
+ResourceLimitId.MAX_MODEL_TEXT_BYTES = ResourceLimitId("max_model_text_bytes")
+ResourceLimitId.MAX_MODEL_NESTING_DEPTH = ResourceLimitId("max_model_nesting_depth")
+ResourceLimitId.MAX_LAYOUT_WORK_UNITS = ResourceLimitId("max_layout_work_units")
+ResourceLimitId.MAX_SVG_BYTES = ResourceLimitId("max_svg_bytes")
+ResourceLimitId.MAX_SVG_ELEMENTS = ResourceLimitId("max_svg_elements")
+ResourceLimitId.MAX_DOCUMENT_DIAGRAMS = ResourceLimitId("max_document_diagrams")
+ResourceLimitId.MAX_ASCII_GRID_CELLS = ResourceLimitId("max_ascii_grid_cells")
+ResourceLimitId.MAX_RASTER_WIDTH = ResourceLimitId("max_raster_width")
+ResourceLimitId.MAX_RASTER_HEIGHT = ResourceLimitId("max_raster_height")
+ResourceLimitId.MAX_RASTER_PIXELS = ResourceLimitId("max_raster_pixels")
+ResourceLimitId.MAX_EMBEDDED_IMAGE_BYTES = ResourceLimitId("max_embedded_image_bytes")
+ResourceLimitId.MAX_TOTAL_EMBEDDED_IMAGE_BYTES = ResourceLimitId("max_total_embedded_image_bytes")
+ResourceLimitId.MAX_EMBEDDED_IMAGE_PIXELS = ResourceLimitId("max_embedded_image_pixels")
+ResourceLimitId.MAX_TOTAL_EMBEDDED_IMAGE_PIXELS = ResourceLimitId("max_total_embedded_image_pixels")
+ResourceLimitId.MAX_PDF_FILTER_IMAGE_PIXELS = ResourceLimitId("max_pdf_filter_image_pixels")
+ResourceLimitId.MAX_SVG_CONVERSION_ISOLATION_DEPTH = ResourceLimitId("max_svg_conversion_isolation_depth")
+ResourceLimitId.MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER = ResourceLimitId("max_svg_conversion_filter_primitives_per_filter")
+ResourceLimitId.MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES = ResourceLimitId("max_total_svg_conversion_filter_primitives")
+ResourceLimitId.MAX_SVG_CONVERSION_SUBROOTS = ResourceLimitId("max_svg_conversion_subroots")
+ResourceLimitId.MAX_NESTED_SVG_IMAGES = ResourceLimitId("max_nested_svg_images")
+ResourceLimitId.SVG_BACKEND_TREE_NODES = ResourceLimitId("svg_backend_tree_nodes")
+
+RESOURCE_LIMIT_IDS = (
+    ResourceLimitId.MAX_SOURCE_BYTES,
+    ResourceLimitId.MAX_MODEL_ITEMS,
+    ResourceLimitId.MAX_MODEL_TEXT_BYTES,
+    ResourceLimitId.MAX_MODEL_NESTING_DEPTH,
+    ResourceLimitId.MAX_LAYOUT_WORK_UNITS,
+    ResourceLimitId.MAX_SVG_BYTES,
+    ResourceLimitId.MAX_SVG_ELEMENTS,
+    ResourceLimitId.MAX_DOCUMENT_DIAGRAMS,
+    ResourceLimitId.MAX_ASCII_GRID_CELLS,
+    ResourceLimitId.MAX_RASTER_WIDTH,
+    ResourceLimitId.MAX_RASTER_HEIGHT,
+    ResourceLimitId.MAX_RASTER_PIXELS,
+    ResourceLimitId.MAX_EMBEDDED_IMAGE_BYTES,
+    ResourceLimitId.MAX_TOTAL_EMBEDDED_IMAGE_BYTES,
+    ResourceLimitId.MAX_EMBEDDED_IMAGE_PIXELS,
+    ResourceLimitId.MAX_TOTAL_EMBEDDED_IMAGE_PIXELS,
+    ResourceLimitId.MAX_PDF_FILTER_IMAGE_PIXELS,
+    ResourceLimitId.MAX_SVG_CONVERSION_ISOLATION_DEPTH,
+    ResourceLimitId.MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER,
+    ResourceLimitId.MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES,
+    ResourceLimitId.MAX_SVG_CONVERSION_SUBROOTS,
+    ResourceLimitId.MAX_NESTED_SVG_IMAGES,
+    ResourceLimitId.SVG_BACKEND_TREE_NODES,
+)
+ResourceLimitId.known_values = RESOURCE_LIMIT_IDS
+_RESOURCE_LIMIT_BY_ID = {limit.id: limit for limit in RESOURCE_LIMIT_IDS}
+_RESOURCE_LIMIT_METADATA = {
+    "max_source_bytes": ("source", True, 1),
+    "max_model_items": ("layout_model", True, 1),
+    "max_model_text_bytes": ("layout_model", True, 1),
+    "max_model_nesting_depth": ("layout_model", True, 1),
+    "max_layout_work_units": ("layout_model", True, 1),
+    "max_svg_bytes": ("svg_output", True, 1),
+    "max_svg_elements": ("svg_postprocess", True, 1),
+    "max_document_diagrams": ("document_scan", True, 0),
+    "max_ascii_grid_cells": ("ascii_layout", True, 1),
+    "max_raster_width": ("raster_allocation", True, 1),
+    "max_raster_height": ("raster_allocation", True, 1),
+    "max_raster_pixels": ("raster_allocation", True, 1),
+    "max_embedded_image_bytes": ("embedded_image_decode", True, 1),
+    "max_total_embedded_image_bytes": ("embedded_image_decode", True, 1),
+    "max_embedded_image_pixels": ("embedded_image_decode", True, 1),
+    "max_total_embedded_image_pixels": ("embedded_image_decode", True, 1),
+    "max_pdf_filter_image_pixels": ("pdf_filter_rasterization", True, 1),
+    "max_svg_conversion_isolation_depth": ("svg_conversion", False, 1),
+    "max_svg_conversion_filter_primitives_per_filter": ("svg_conversion", False, 1),
+    "max_total_svg_conversion_filter_primitives": ("svg_conversion", False, 1),
+    "max_svg_conversion_subroots": ("svg_conversion", False, 1),
+    "max_nested_svg_images": ("svg_conversion", False, 1),
+    "svg_backend_tree_nodes": ("svg_conversion", False, 1),
+}
 
 class ResourceOverrideId(str, Enum):
     MAX_SOURCE_BYTES = "max_source_bytes"

@@ -8,6 +8,7 @@ on:
     paths:
       - Cargo.lock
       - Cargo.toml
+      - rust-toolchain.toml
       - about.toml
       - capabilities/artifact-profiles-v1.json
       - deny.toml
@@ -18,10 +19,14 @@ on:
       - "crates/**/Cargo.toml"
       - fuzz/Cargo.lock
       - fuzz/Cargo.toml
+      - crates/merman-node/Cargo.lock
+      - platforms/node/candidate-builds.json
       - "platforms/**/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
       - "platforms/python/legal/rust-cargo-dependencies/*.json"
       - scripts/generate-rust-license-report.py
       - scripts/python_wheel_licenses.py
+      - scripts/artifact_profile_recipe.py
+      - scripts/strict_json.py
       - scripts/verify_artifact_dependency_closures.py
       - scripts/verify_rustsec_exceptions.py
       - ".github/workflows/security-audit.yml"
@@ -29,6 +34,7 @@ on:
     paths:
       - Cargo.lock
       - Cargo.toml
+      - rust-toolchain.toml
       - about.toml
       - capabilities/artifact-profiles-v1.json
       - deny.toml
@@ -39,10 +45,14 @@ on:
       - "crates/**/Cargo.toml"
       - fuzz/Cargo.lock
       - fuzz/Cargo.toml
+      - crates/merman-node/Cargo.lock
+      - platforms/node/candidate-builds.json
       - "platforms/**/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json"
       - "platforms/python/legal/rust-cargo-dependencies/*.json"
       - scripts/generate-rust-license-report.py
       - scripts/python_wheel_licenses.py
+      - scripts/artifact_profile_recipe.py
+      - scripts/strict_json.py
       - scripts/verify_artifact_dependency_closures.py
       - scripts/verify_rustsec_exceptions.py
       - ".github/workflows/security-audit.yml"
@@ -102,8 +112,16 @@ jobs:
       - name: Verify governed RustSec exceptions
         run: python3 scripts/verify_rustsec_exceptions.py
 
-      - name: Verify target-scoped advisory artifact-profile coverage
-        run: python3 scripts/verify_artifact_dependency_closures.py
+      - name: Verify artifact dependency boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            python3 scripts/verify_artifact_dependency_closures.py \
+              --representative-targets
+          else
+            python3 scripts/verify_artifact_dependency_closures.py
+          fi
 
       - name: Verify checked-in Rust dependency notices
         run: python3 scripts/generate-rust-license-report.py --check

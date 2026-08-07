@@ -25,20 +25,21 @@ from verify_artifact_dependency_closures import (  # noqa: E402
     FEATURE_MARKER,
     HOST_CLOSURE_REFERENCE_TARGET,
     LINUX_REFERENCE_SCOPE,
+    NATIVE_BINDING_FORBIDDEN_PACKAGES,
+    NATIVE_BINDING_PROFILE_IDS,
     PACKAGE_MARKER,
     PROFILE_TARGET_SCOPE,
     SEMANTIC_CLAIMS,
     ClosureClaim,
-    ClosureObservation,
     ClosureVerificationError,
     PackageFeatureExclusion,
     VerificationCase,
     _select_cases,
-    authoritative_rustsec_profile_ids,
     cargo_tree_command,
     check_case,
     load_verification_cases,
     parse_cargo_tree,
+    select_representative_cases,
     verify_cases,
 )
 
@@ -153,9 +154,12 @@ def write_descriptor(
 
 
 class VerificationCaseTests(unittest.TestCase):
-    def test_repository_cases_cover_every_profile_and_declared_target(self) -> None:
+    def test_repository_cases_cover_governed_profiles_and_declared_targets(self) -> None:
         profiles = load_artifact_profiles()
         cases = load_verification_cases()
+        governed_profiles = {
+            claim.profile_id for claim in SEMANTIC_CLAIMS
+        } | NATIVE_BINDING_PROFILE_IDS
         expected_targets = {
             profile.profile_id: (
                 (HOST_CLOSURE_REFERENCE_TARGET,)
@@ -163,6 +167,7 @@ class VerificationCaseTests(unittest.TestCase):
                 else profile.cargo.build_targets
             )
             for profile in profiles
+            if profile.profile_id in governed_profiles
         }
         actual_targets: dict[str, list[str]] = {}
         for current in cases:
@@ -200,7 +205,7 @@ class VerificationCaseTests(unittest.TestCase):
             )
             cases = load_verification_cases(
                 descriptor_path=descriptor,
-                semantic_claims=(),
+                semantic_claims=(claim("cross"),),
             )
 
         self.assertEqual(
@@ -208,9 +213,38 @@ class VerificationCaseTests(unittest.TestCase):
             ("target-one", "target-two"),
         )
 
-    def test_recipe_derives_scope_and_exact_root_claim(self) -> None:
+    def test_representative_selection_keeps_first_target_per_profile(self) -> None:
+        loaded = recipe(
+            "cross",
+            package="root",
+            build_target_kind="target-set",
+            build_targets=("target-one", "target-two"),
+        )
+        cases = (
+            case("cross", loaded_recipe=loaded, target="target-one"),
+            case("cross", loaded_recipe=loaded, target="target-two"),
+            case("host", target=HOST_CLOSURE_REFERENCE_TARGET),
+        )
+
+        selected = select_representative_cases(cases)
+
+        self.assertEqual(
+            tuple((current.recipe.profile_id, current.target) for current in selected),
+            (
+                ("cross", "target-one"),
+                ("host", HOST_CLOSURE_REFERENCE_TARGET),
+            ),
+        )
+
+    def test_only_semantic_and_native_binding_profiles_have_cases(self) -> None:
         cases = load_verification_cases()
         semantic_profiles = {claim.profile_id for claim in SEMANTIC_CLAIMS}
+        governed_profiles = semantic_profiles | NATIVE_BINDING_PROFILE_IDS
+
+        self.assertEqual(
+            {current.recipe.profile_id for current in cases},
+            governed_profiles,
+        )
 
         for current in cases:
             with self.subTest(
@@ -223,11 +257,24 @@ class VerificationCaseTests(unittest.TestCase):
                     else PROFILE_TARGET_SCOPE
                 )
                 self.assertEqual(current.closure_scope, expected_scope)
-                if current.recipe.profile_id not in semantic_profiles:
+                if current.recipe.profile_id in NATIVE_BINDING_PROFILE_IDS:
                     self.assertEqual(
                         current.claim.required_packages,
                         (current.recipe.package,),
                     )
+
+    def test_native_binding_profiles_share_one_dependency_denylist(self) -> None:
+        claims = {
+            current.recipe.profile_id: current.claim
+            for current in load_verification_cases()
+        }
+
+        for profile_id in NATIVE_BINDING_PROFILE_IDS:
+            with self.subTest(profile=profile_id):
+                self.assertEqual(
+                    claims[profile_id].forbidden_packages,
+                    NATIVE_BINDING_FORBIDDEN_PACKAGES,
+                )
 
 
 class DescriptorTests(unittest.TestCase):
@@ -400,6 +447,35 @@ class CargoTreeParserTests(unittest.TestCase):
             parse_cargo_tree(output)
 
 class ClaimTests(unittest.TestCase):
+    def test_native_binding_claim_rejects_tooling_and_application_dependencies(
+        self,
+    ) -> None:
+        loaded_claim = next(
+            current.claim
+            for current in load_verification_cases()
+            if current.recipe.profile_id == "c-abi-native"
+        )
+        closure = parse_cargo_tree(
+            "\n".join(
+                (
+                    tree_line("merman-ffi"),
+                    tree_line("merman-cli"),
+                    tree_line("reqwest"),
+                    tree_line("tokio"),
+                    tree_line("uniffi_bindgen"),
+                )
+            )
+        )
+
+        failures, _ = check_case(
+            case("c-abi-native", loaded_claim=loaded_claim),
+            closure,
+        )
+
+        self.assertEqual(len(failures), 1)
+        for package in ("merman-cli", "reqwest", "tokio", "uniffi_bindgen"):
+            self.assertIn(package, failures[0])
+
     def test_semantic_failures_are_reported_together(self) -> None:
         loaded_claim = claim(
             "semantic",
@@ -422,7 +498,7 @@ class ClaimTests(unittest.TestCase):
         self.assertTrue(any("forbidden packages present" in x for x in failures))
         self.assertTrue(any("enables forbidden features" in x for x in failures))
 
-    def test_observation_keeps_readable_package_evidence(self) -> None:
+    def test_observation_keeps_readable_package_count(self) -> None:
         closure = parse_cargo_tree(
             "\n".join(
                 (
@@ -436,10 +512,6 @@ class ClaimTests(unittest.TestCase):
 
         self.assertEqual(failures, [])
         self.assertEqual(observation.package_count, 2)
-        self.assertEqual(
-            observation.package_versions,
-            frozenset({("fixture", "1.0.0"), ("dependency", "2.0.0")}),
-        )
 
     def test_svg_basic_semantics_reject_optional_product_leaks(self) -> None:
         loaded_claim = next(
@@ -469,41 +541,6 @@ class ClaimTests(unittest.TestCase):
 
 
 class VerificationTests(unittest.TestCase):
-    def test_rustsec_authority_uses_recipe_scope(self) -> None:
-        observations = (
-            ClosureObservation(
-                profile_id="host",
-                build_target_kind="host",
-                closure_scope=LINUX_REFERENCE_SCOPE,
-                closure_target=HOST_CLOSURE_REFERENCE_TARGET,
-                package_count=1,
-                package_versions=frozenset({("host", "1.0.0")}),
-            ),
-            ClosureObservation(
-                profile_id="cross",
-                build_target_kind="target-set",
-                closure_scope=PROFILE_TARGET_SCOPE,
-                closure_target="x86_64-unknown-linux-gnu",
-                package_count=1,
-                package_versions=frozenset({("cross", "1.0.0")}),
-            ),
-        )
-
-        self.assertEqual(
-            authoritative_rustsec_profile_ids(
-                observations,
-                running_host_target="aarch64-apple-darwin",
-            ),
-            frozenset({"cross"}),
-        )
-        self.assertEqual(
-            authoritative_rustsec_profile_ids(
-                observations,
-                running_host_target=HOST_CLOSURE_REFERENCE_TARGET,
-            ),
-            frozenset({"cross", "host"}),
-        )
-
     def test_every_target_runs_once_and_produces_runtime_evidence(self) -> None:
         targets = ("target-one", "target-two")
         loaded = recipe(

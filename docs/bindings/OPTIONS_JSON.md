@@ -537,10 +537,10 @@ environment contracts as `null`.
 | Surface | API |
 | --- | --- |
 | C | `MermanNativeApi.runtime_catalog()` after `merman_get_native_api()` |
-| Android/Kotlin | `MermanEngine.runtimeCatalogJson()` |
-| Apple/Swift | `MermanEngine().runtimeCatalogJson()` |
+| Android/Kotlin | `Merman.runtimeCatalogJson()` |
+| Apple/Swift | `Merman().runtimeCatalogJson()` |
 | Flutter/Dart | `Merman.open().runtimeCatalog` |
-| UniFFI/Python | `MermanEngine.runtime_catalog_json()` / `merman.get_runtime_catalog(engine)` |
+| UniFFI/Python | `Merman.runtime_catalog_json()` / `merman.get_runtime_catalog(api)` |
 | Web/TypeScript | `runtimeCatalog()` |
 
 The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `3`, and payload

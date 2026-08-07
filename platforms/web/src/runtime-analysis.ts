@@ -120,26 +120,32 @@ export function detectDiagramFacts(
 
 export function analyzeDocument(
   source: string,
-  options?: SvgBindingOptions | string,
-  uri?: string
+  uri: string,
+  options?: SvgBindingOptions | string
 ): AnalysisResult {
+  if (typeof uri !== "string" || uri.length === 0) {
+    throw new TypeError("analyzeDocument() requires a non-empty document URI.");
+  }
   const analyzeDocument = getMerman().analyzeDocument;
   if (!analyzeDocument) {
     throw new Error("Merman analyzeDocument() is not available in this artifact.");
   }
-  return analyzeDocument(source, encodeOptions(options), uri);
+  return analyzeDocument(source, uri, encodeOptions(options));
 }
 
 export function analyzeDocumentFacts(
   source: string,
-  options?: SvgBindingOptions | string,
-  uri?: string
+  uri: string,
+  options?: SvgBindingOptions | string
 ): AnalysisFactsResult {
+  if (typeof uri !== "string" || uri.length === 0) {
+    throw new TypeError("analyzeDocumentFacts() requires a non-empty document URI.");
+  }
   const analyzeDocumentFacts = getMerman().analyzeDocumentFacts;
   if (!analyzeDocumentFacts) {
     throw new Error("Merman analyzeDocumentFacts() is not available in this artifact.");
   }
-  return analyzeDocumentFacts(source, encodeOptions(options), uri);
+  return analyzeDocumentFacts(source, uri, encodeOptions(options));
 }
 
 export function validate(source: string, options?: SvgBindingOptions | string): ValidationResult {

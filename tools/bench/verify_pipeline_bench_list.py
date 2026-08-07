@@ -14,10 +14,12 @@ from pathlib import Path
 
 from compare_mermaid_renderers import strip_ansi
 from compare_self import (
+    _NATIVE_CRITERION_PREFLIGHT_CONTRACT,
     RunnerRecipe,
     cargo_prebuild_command,
     criterion_list_command,
     parse_bench_executable,
+    parse_preflight_receipts,
 )
 from corpus_utils import Corpus, lane_selector_group, load_corpus
 
@@ -78,6 +80,22 @@ def parse_criterion_bench_list(output: str) -> tuple[str, ...]:
     return tuple(benches)
 
 
+def _expected_pipeline_benches(
+    corpus: Corpus,
+    *,
+    current_groups: dict[str, str],
+) -> set[str]:
+    frontmatter_lane = "frontmatter-preprocess-known-type"
+    expected: set[str] = set()
+    for group, lane_id in current_groups.items():
+        expects_frontmatter = lane_id == frontmatter_lane
+        for fixture in corpus.fixtures:
+            if (fixture.family == "frontmatter") != expects_frontmatter:
+                continue
+            expected.add(f"{group}/{fixture.name}")
+    return expected
+
+
 def validate_pipeline_bench_list(
     corpus: Corpus,
     output: str,
@@ -123,8 +141,53 @@ def validate_pipeline_bench_list(
             f"compiled Criterion list contains fixtures absent from corpus: {sorted(unknown_fixtures)}"
         )
 
+    expected_benches = _expected_pipeline_benches(
+        corpus,
+        current_groups=current,
+    )
+    missing_benches = sorted(expected_benches - set(benches))
+    unexpected_benches = sorted(set(benches) - expected_benches)
+    if missing_benches or unexpected_benches:
+        raise PipelineBenchListError(
+            "compiled Criterion benchmarks differ from the corpus/lane product: "
+            f"missing={missing_benches}, unexpected={unexpected_benches}"
+        )
+
+    active_native_lanes = [
+        lane
+        for lane in corpus.lanes
+        if lane.transport == "native-criterion"
+        and lane_selector_group(lane.selector) in current
+    ]
+    declared_contracts = {lane.evidence_contract for lane in active_native_lanes}
+    if declared_contracts == {None}:
+        requires_receipts = False
+    elif declared_contracts == {_NATIVE_CRITERION_PREFLIGHT_CONTRACT}:
+        requires_receipts = True
+    else:
+        raise PipelineBenchListError(
+            "pipeline native Criterion lanes must uniformly declare "
+            f"{_NATIVE_CRITERION_PREFLIGHT_CONTRACT!r}; "
+            f"actual={sorted(repr(value) for value in declared_contracts)}"
+        )
+    receipt_count = 0
+    if requires_receipts:
+        try:
+            receipts = parse_preflight_receipts(output)
+        except RuntimeError as error:
+            raise PipelineBenchListError(str(error)) from error
+        missing_receipts = sorted(set(benches) - set(receipts))
+        unexpected_receipts = sorted(set(receipts) - set(benches))
+        if missing_receipts or unexpected_receipts:
+            raise PipelineBenchListError(
+                "compiled Criterion preflight receipts differ from the bench list: "
+                f"missing={missing_receipts}, unexpected={unexpected_receipts}"
+            )
+        receipt_count = len(receipts)
+
     return {
         "bench_count": len(benches),
+        "receipt_count": receipt_count,
         "groups": tuple(sorted(groups)),
         "lane_ids": tuple(sorted(current.values())),
     }
@@ -262,6 +325,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             f"Verified {args.package}/{args.bench} Criterion list: "
             f"{result['bench_count']} benches, "
+            f"{result['receipt_count']} receipts, "
             f"{len(result['groups'])} lane groups"
         )
         return 0

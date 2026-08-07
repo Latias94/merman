@@ -26,7 +26,7 @@ class MermanNativeBindings {
   /// receives the largest complete producer prefix it can safely read. MermanNativeResult must be
   /// fully zero-initialized with MERMAN_NATIVE_RESULT_INIT before every producing call.
   ///
-  /// Frozen ABI 3 semantics from the descriptor:
+  /// ABI 3 semantics from the descriptor:
   /// - written-results-own-nonzero-allocation-tokens: Any producing call that writes Merman-owned
   /// result bytes writes a process-lifetime monotonic nonzero allocation_token; token exhaustion
   /// returns internal-error and leaves a caller-valid zero-initialized result unchanged.
@@ -69,6 +69,14 @@ class MermanNativeBindings {
   /// unknown operation code returns the same status with kind unknown-operation and a null
   /// capability_id. Both failures are written results with nonzero allocation_token values and must
   /// be released with result_free.
+  /// - engine_services: engine_new_with_services borrows the outer configuration, embedded options,
+  /// pack records, IconifyJSON bytes, and registration names only until return and never invokes the
+  /// host callback during construction. A successful engine owns the fully validated immutable
+  /// registry without retaining pack pointers; callback and user_data follow the existing
+  /// quiescent-close lifetime. Any validation, registry, service-conflict, engine, token,
+  /// result-allocation, or panic failure publishes no caller-visible engine. If publication must be
+  /// rolled back, the token is retired under lock and the complete engine and service graph are
+  /// destroyed only after all registry and admission locks are released.
   /// - engine_tokens: Engine tokens are opaque u64 values. engine_try_close never waits:
   /// callback-active returns reentrant-call, another active operation returns busy with the token
   /// still valid, and quiescent success permanently closes admission before retiring the token. A
@@ -87,6 +95,40 @@ class MermanNativeBindings {
   /// inside Merman-owned result storage. Zero, unknown, stale, and random non-live tokens release
   /// nothing and only clear the supplied record. Copying a live token is outside the same-process
   /// hostile-memory threat boundary. No result buffer may be passed to a host allocator.
+  ///
+  /// Opaque scalar rules from the ABI descriptor:
+  /// - engine_token: An opaque process-lifetime monotonic engine identity. The low-bit domain tag
+  /// rejects accidental cross-kind use, every issued value remains positive when projected through a
+  /// signed 64-bit host integer, and the token is not an authorization boundary.
+  /// - result_allocation_token: An opaque process-lifetime monotonic result-allocation ownership
+  /// identity stored in MermanNativeResult.allocation_token. The low-bit domain tag rejects
+  /// accidental engine-token use, every issued value remains positive when projected through a
+  /// signed 64-bit host integer, and the token is not an authorization boundary.
+  ///
+  /// Unsafe caller-memory preconditions from the ABI descriptor:
+  /// - record_pointer_alignment: Every caller-supplied native record pointer must be naturally aligned
+  /// for its declared C record type. Status-returning entry points reject safely allocated
+  /// misaligned records before typed access; the void result_free operation treats a misaligned
+  /// record as invalid and releases nothing.
+  /// - caller_memory_validity: For the complete duration of a call, every caller record and every
+  /// storage range reachable through it must be readable, live, and immutable except for declared
+  /// writable outputs, which must remain writable and live. Runtime validation detects only
+  /// representable shape, size, alignment, range, and documented overlap errors; dangling,
+  /// unreadable, concurrently mutated, or otherwise invalid memory remains a caller contract
+  /// violation and is not promised a typed status.
+  /// - engine_services_constructor_memory: For engine_new_with_services, out_engine and out_result
+  /// must be disjoint from each other and from the outer config, the pack record array, embedded
+  /// options, JSON bytes, and registration-name bytes. Structural record storage must not overlap
+  /// any nested byte slice it describes. Read-only options, JSON, and registration-name slices may
+  /// overlap each other, including multiple logical packs reusing the same bytes; each logical pack
+  /// is still charged independently. out_engine must be initialized to zero and remains zero on
+  /// every failure. In artifacts exposing the icon-registry constructor service, the implementation
+  /// validates icon_pack_count against the fixed pack ceiling before checked multiplication or array
+  /// access and rejects nonzero count with a null or misaligned array. Artifacts without the svg
+  /// capability may return missing-capability for any nonzero icon_pack_count without dereferencing
+  /// or validating the pack array or nested pack slices. The code-6 constructor requires
+  /// text_measure_user_data to be null when text_measure is null without changing the code-1
+  /// engine_new contract.
   int merman_get_native_api(
     ffi.Pointer<MermanNativeApiRequest> request,
     ffi.Pointer<MermanNativeApi> out_api,
@@ -333,6 +375,40 @@ typedef DartMermanNativeMetadataCollectFnFunction
 typedef MermanNativeMetadataCollectFn
     = ffi.Pointer<ffi.NativeFunction<MermanNativeMetadataCollectFnFunction>>;
 
+final class MermanNativeIconPack extends ffi.Struct {
+  @ffi.Uint32()
+  external int struct_size;
+
+  external MermanNativeSlice json;
+
+  external MermanNativeSlice registration_name;
+}
+
+final class MermanNativeEngineServicesConfig extends ffi.Struct {
+  @ffi.Uint32()
+  external int struct_size;
+
+  external MermanNativeEngineConfig engine_config;
+
+  external ffi.Pointer<MermanNativeIconPack> icon_packs;
+
+  @ffi.Size()
+  external int icon_pack_count;
+}
+
+typedef MermanNativeEngineNewWithServicesFnFunction
+    = MermanNativeStatus Function(
+        ffi.Pointer<MermanNativeEngineServicesConfig> config,
+        ffi.Pointer<MermanNativeEngineToken> out_engine,
+        ffi.Pointer<MermanNativeResult> out_result);
+typedef DartMermanNativeEngineNewWithServicesFnFunction
+    = DartMermanNativeStatus Function(
+        ffi.Pointer<MermanNativeEngineServicesConfig> config,
+        ffi.Pointer<MermanNativeEngineToken> out_engine,
+        ffi.Pointer<MermanNativeResult> out_result);
+typedef MermanNativeEngineNewWithServicesFn = ffi
+    .Pointer<ffi.NativeFunction<MermanNativeEngineNewWithServicesFnFunction>>;
+
 final class MermanNativeApi extends ffi.Struct {
   @ffi.Uint32()
   external int struct_size;
@@ -359,6 +435,8 @@ final class MermanNativeApi extends ffi.Struct {
   external MermanNativeResultFreeFn result_free;
 
   external MermanNativeMetadataCollectFn metadata_collect;
+
+  external MermanNativeEngineNewWithServicesFn engine_new_with_services;
 }
 
 const int MERMAN_TEXT_WRAP_MODE_SVG_LIKE = 0;
@@ -505,15 +583,17 @@ const int MERMAN_NATIVE_FUNCTION_RESULT_FREE = 4;
 
 const int MERMAN_NATIVE_FUNCTION_METADATA_COLLECT = 5;
 
+const int MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES = 6;
+
 const int MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION = 1;
 
 const int MERMAN_NATIVE_ABI_VERSION = 3;
 
 const String MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST =
-    'sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110';
+    'sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41';
 
 const String MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST =
-    'sha256:ca06712df13d9cf871258c726cf4f587906245264cbc00828a12ef36542c6ba8';
+    'sha256:607f0e32969124e2358bc7f6dbcc81154831a9b9e3c4466ce8a71d760055016a';
 
 const int MERMAN_NATIVE_RESULT_SCHEMA_VERSION = 1;
 
@@ -529,7 +609,15 @@ const String MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION = 'unknown-operation';
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_NONE = 0;
 
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_NONE = 0;
+
+const int MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_STATUS_NONE = 1;
+
+const String MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_ERROR_KIND_NONE = 'generic';
+
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG = 0;
+
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_SVG = 1;
 
 const String MERMAN_NATIVE_OPERATION_ID_SVG = 'svg';
 
@@ -539,6 +627,8 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG = 'image/svg+xml';
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_PNG = 0;
 
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_PNG = 1;
+
 const String MERMAN_NATIVE_OPERATION_ID_PNG = 'png';
 
 const String MERMAN_NATIVE_OPERATION_CAPABILITY_PNG = 'png';
@@ -546,6 +636,8 @@ const String MERMAN_NATIVE_OPERATION_CAPABILITY_PNG = 'png';
 const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_PNG = 'image/png';
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_JPEG = 0;
+
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_JPEG = 1;
 
 const String MERMAN_NATIVE_OPERATION_ID_JPEG = 'jpeg';
 
@@ -555,6 +647,8 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_JPEG = 'image/jpeg';
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_PDF = 0;
 
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_PDF = 1;
+
 const String MERMAN_NATIVE_OPERATION_ID_PDF = 'pdf';
 
 const String MERMAN_NATIVE_OPERATION_CAPABILITY_PDF = 'pdf';
@@ -562,6 +656,8 @@ const String MERMAN_NATIVE_OPERATION_CAPABILITY_PDF = 'pdf';
 const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_PDF = 'application/pdf';
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_ASCII = 0;
+
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_ASCII = 1;
 
 const String MERMAN_NATIVE_OPERATION_ID_ASCII = 'ascii';
 
@@ -572,12 +668,16 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_ASCII =
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_SEMANTIC_JSON = 0;
 
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_SEMANTIC_JSON = 1;
+
 const String MERMAN_NATIVE_OPERATION_ID_SEMANTIC_JSON = 'semantic-json';
 
 const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SEMANTIC_JSON =
     'application/json';
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_LAYOUT_JSON = 0;
+
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_LAYOUT_JSON = 1;
 
 const String MERMAN_NATIVE_OPERATION_ID_LAYOUT_JSON = 'layout-json';
 
@@ -588,6 +688,8 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_LAYOUT_JSON =
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_ANALYSIS_JSON = 0;
 
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_ANALYSIS_JSON = 1;
+
 const String MERMAN_NATIVE_OPERATION_ID_ANALYSIS_JSON = 'analysis-json';
 
 const String MERMAN_NATIVE_OPERATION_CAPABILITY_ANALYSIS_JSON = 'analysis';
@@ -596,6 +698,8 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_ANALYSIS_JSON =
     'application/json';
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_ANALYSIS_FACTS_JSON = 0;
+
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_ANALYSIS_FACTS_JSON = 1;
 
 const String MERMAN_NATIVE_OPERATION_ID_ANALYSIS_FACTS_JSON =
     'analysis-facts-json';
@@ -608,6 +712,8 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_ANALYSIS_FACTS_JSON =
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_VALIDATION_JSON = 0;
 
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_VALIDATION_JSON = 1;
+
 const String MERMAN_NATIVE_OPERATION_ID_VALIDATION_JSON = 'validation-json';
 
 const String MERMAN_NATIVE_OPERATION_CAPABILITY_VALIDATION_JSON = 'analysis';
@@ -616,6 +722,8 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_VALIDATION_JSON =
     'application/json';
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_DOCUMENT_ANALYSIS_JSON = 1;
+
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_DOCUMENT_ANALYSIS_JSON = 1;
 
 const String MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_JSON =
     'document-analysis-json';
@@ -628,6 +736,8 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_DOCUMENT_ANALYSIS_JSON =
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_DOCUMENT_ANALYSIS_FACTS_JSON = 1;
 
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_DOCUMENT_ANALYSIS_FACTS_JSON = 1;
+
 const String MERMAN_NATIVE_OPERATION_ID_DOCUMENT_ANALYSIS_FACTS_JSON =
     'document-analysis-facts-json';
 
@@ -639,6 +749,8 @@ const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_DOCUMENT_ANALYSIS_FACTS_JSON =
 
 const int MERMAN_NATIVE_OPERATION_REQUIRES_URI_SVG_PLAN_JSON = 0;
 
+const int MERMAN_NATIVE_OPERATION_EXECUTABLE_SVG_PLAN_JSON = 1;
+
 const String MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON = 'svg-plan-json';
 
 const String MERMAN_NATIVE_OPERATION_CAPABILITY_SVG_PLAN_JSON = 'svg';
@@ -646,6 +758,4 @@ const String MERMAN_NATIVE_OPERATION_CAPABILITY_SVG_PLAN_JSON = 'svg';
 const String MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON =
     'application/json';
 
-const int MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE = 144;
-
-const int MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE = 152;
+const int MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE = 160;

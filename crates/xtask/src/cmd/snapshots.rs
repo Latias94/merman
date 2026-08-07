@@ -540,6 +540,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GeneratedArtifactCheck {
+    BindingContract,
     CapabilitySurface,
     DefaultConfig,
     DompurifyDefaults,
@@ -574,8 +575,9 @@ fn verify_lalrpop_parsers_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::LalrpopParsers]
 }
 
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 12] {
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 13] {
     [
+        GeneratedArtifactCheck::BindingContract,
         GeneratedArtifactCheck::CapabilitySurface,
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
@@ -594,6 +596,7 @@ fn verify_generated_checks() -> [GeneratedArtifactCheck; 12] {
 impl GeneratedArtifactCheck {
     fn label(self) -> &'static str {
         match self {
+            GeneratedArtifactCheck::BindingContract => "binding contract",
             GeneratedArtifactCheck::CapabilitySurface => "capability surface",
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
@@ -653,6 +656,7 @@ fn verify_generated_artifact_check(
     tmp_dir: &Path,
 ) -> Result<Option<String>, XtaskError> {
     match check {
+        GeneratedArtifactCheck::BindingContract => super::verify_binding_contract_artifacts(),
         GeneratedArtifactCheck::CapabilitySurface => super::verify_capability_surface_artifacts(),
         GeneratedArtifactCheck::DefaultConfig => verify_default_config_artifact(tmp_dir),
         GeneratedArtifactCheck::DompurifyDefaults => verify_dompurify_defaults_artifact(tmp_dir),
@@ -1006,6 +1010,7 @@ mod tests {
         assert_eq!(
             verify_generated_checks(),
             [
+                GeneratedArtifactCheck::BindingContract,
                 GeneratedArtifactCheck::CapabilitySurface,
                 GeneratedArtifactCheck::DefaultConfig,
                 GeneratedArtifactCheck::DompurifyDefaults,
@@ -1023,6 +1028,10 @@ mod tests {
         assert_eq!(
             verify_lalrpop_parsers_checks(),
             [GeneratedArtifactCheck::LalrpopParsers]
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::BindingContract.label(),
+            "binding contract"
         );
         assert_eq!(
             GeneratedArtifactCheck::CapabilitySurface.label(),

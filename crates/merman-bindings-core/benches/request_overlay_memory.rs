@@ -192,17 +192,17 @@ fn sha256_bytes(bytes: &[u8]) -> String {
 
 fn result_sha256(result: &BindingOperationResult) -> String {
     let mut digest = Sha256::new();
-    digest.update(&result.data);
+    digest.update(result.data());
     digest.update([0]);
-    digest.update(&result.metadata_json);
+    digest.update(result.metadata_json());
     format!("{:x}", digest.finalize())
 }
 
 fn validate_result(result: &BindingOperationResult) -> Result<(), ProbeError> {
-    if result.operation.operation_id() != OPERATION_ID
-        || result.media_type != MEDIA_TYPE
-        || result.data != EXPECTED_DATA
-        || result.metadata_json != EXPECTED_METADATA
+    if result.operation().operation_id() != OPERATION_ID
+        || result.media_type() != MEDIA_TYPE
+        || result.data() != EXPECTED_DATA
+        || result.metadata_json() != EXPECTED_METADATA
     {
         return Err(ProbeError::new(
             "binding operation result differs from the fixed semantic contract",
@@ -215,12 +215,8 @@ fn execute_version_only(
     engine: &BindingEngine,
     calls: u32,
 ) -> Result<BindingOperationResult, ProbeError> {
-    let request = BindingOperationRequest {
-        operation_id: OPERATION_ID,
-        source: SOURCE,
-        uri: None,
-        options_json: VERSION_ONLY_OPTIONS,
-    };
+    let request =
+        BindingOperationRequest::new(OPERATION_ID, SOURCE).with_options_json(VERSION_ONLY_OPTIONS);
     for call in 0..calls {
         let result = engine.execute(request).map_err(|error| {
             ProbeError::new(format!("binding operation failed: {}", error.message()))
@@ -261,10 +257,10 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
                 kind: SEMANTIC_KIND,
                 operation_id: OPERATION_ID,
                 media_type: MEDIA_TYPE,
-                result_data_bytes: result.data.len() as u64,
-                result_metadata_bytes: result.metadata_json.len() as u64,
-                result_data_sha256: sha256_bytes(&result.data),
-                result_metadata_sha256: sha256_bytes(&result.metadata_json),
+                result_data_bytes: result.data().len() as u64,
+                result_metadata_bytes: result.metadata_json().len() as u64,
+                result_data_sha256: sha256_bytes(result.data()),
+                result_metadata_sha256: sha256_bytes(result.metadata_json()),
                 operation_calls: request.scale,
             },
         ),

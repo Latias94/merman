@@ -531,6 +531,78 @@ mod tests {
     }
 
     #[test]
+    fn native_cross_family_corpus_matches_admission_inventory() {
+        let corpus_path = crate::cmd::workspace_root().join("tools/bench/corpus.json");
+        let corpus: serde_json::Value =
+            serde_json::from_slice(&fs::read(&corpus_path).unwrap_or_else(|error| {
+                panic!("failed to read {}: {error}", corpus_path.display())
+            }))
+            .unwrap_or_else(|error| panic!("failed to parse {}: {error}", corpus_path.display()));
+        let fixtures = corpus["fixtures"]
+            .as_array()
+            .expect("performance corpus fixtures must be an array");
+        let cross_family_fixtures: Vec<_> = fixtures
+            .iter()
+            .filter(|fixture| {
+                fixture["suites"]
+                    .as_array()
+                    .is_some_and(|suites| suites.iter().any(|suite| suite == "cross_family"))
+            })
+            .collect();
+        let cross_family: BTreeSet<&str> = cross_family_fixtures
+            .iter()
+            .map(|fixture| {
+                fixture["family"]
+                    .as_str()
+                    .expect("cross-family fixture must declare a family")
+            })
+            .collect();
+        let admitted: BTreeSet<&str> = admission_inventory()
+            .iter()
+            .map(|record| record.diagram)
+            .collect();
+
+        assert_eq!(
+            cross_family, admitted,
+            "native cross-family corpus must track the executable admission inventory"
+        );
+        assert_eq!(
+            cross_family_fixtures.len(),
+            admitted.len(),
+            "native cross-family corpus must have exactly one fixture per admitted family"
+        );
+
+        let engine = merman_core::Engine::new();
+        for fixture in cross_family_fixtures {
+            let declared = fixture["family"]
+                .as_str()
+                .expect("cross-family fixture must declare a family");
+            let source = fixture["source"]
+                .as_str()
+                .expect("cross-family fixture must declare a source");
+            let source_path = crate::cmd::workspace_root().join(source);
+            let input = fs::read_to_string(&source_path).unwrap_or_else(|error| {
+                panic!("failed to read {}: {error}", source_path.display())
+            });
+            let metadata = engine.parse_metadata_sync(&input).unwrap_or_else(|error| {
+                panic!(
+                    "failed to detect {declared} fixture {}: {error}",
+                    source_path.display()
+                )
+            });
+            let detected = merman_core::diagram_type_metadata_id(&metadata.diagram_type)
+                .unwrap_or(metadata.diagram_type.as_str());
+            assert_eq!(
+                detected,
+                declared,
+                "cross-family fixture {} detects as {} instead of its declared family",
+                source_path.display(),
+                metadata.diagram_type
+            );
+        }
+    }
+
+    #[test]
     fn completed_root_viewport_families_are_not_deferred() {
         for diagram in ["treeView", "ishikawa", "eventmodeling"] {
             let record = record(diagram);
