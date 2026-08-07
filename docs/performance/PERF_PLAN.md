@@ -24,6 +24,20 @@ The release-range baseline and latest committed checkpoints were measured on 202
 - [Runtime evidence manifest](baselines/runtime-06616dd71.json) freezes source `06616dd71`, the
   native-memory executable, full six-scale report, recipes, fixtures, and host. Its
   `infrastructure-smoke` owner contract is not candidate-admission evidence.
+- [Flowchart work-accounting decision](flowchart_layout_work_accounting_2026-08-04.md) accepts the
+  single render-owned Dagre/ELK work meter as a structural repair. Its causal public controls
+  confirmed `flowchart_medium` at -2.60% and `flowchart_nested_clusters` at +3.09%, both within the
+  registered non-regression gate.
+- [Sequence metric-reuse decision](sequence_operation_metric_reuse_2026-08-07.md) accepts the
+  private built-in operation sidecar for the two registered high-message lanes, which improved by
+  40.00% and 40.88%; its six-scale allocation curves also passed.
+- The current-base Requirement and Mindmap U9 hypotheses are closed independently:
+  [Requirement](requirement_metric_reuse_2026-08-07.md) is rejected as written and by upper bound,
+  while [Mindmap](mindmap_metric_reuse_2026-08-07.md) is rejected as superseded by U8.
+
+The authoritative date for these hardening decisions is 2026-08-07. Automatic later timestamps
+from the local machine are known clock drift and are excluded; receipts bind revisions,
+executables, fixtures, and raw reports by digest.
 
 | Comparison lane | Shared rows | Median ratio | Geometric mean | Faster / slower |
 | --- | ---: | ---: | ---: | ---: |
@@ -95,6 +109,18 @@ runners use the same fixture.
 
 ## Completed work
 
+### 2026-08-07 headless hardening decisions
+
+| Unit | Decision | Durable boundary |
+|---|---|---|
+| U5 Flowchart work accounting | `accepted-structural` | One render-owned meter spans Dagre and ELK through neutral lower-crate controls; public causal controls are non-regressing. |
+| U9 Sequence operation metrics | `accepted-latency`, `accepted-memory` | Reuse is private to the exact built-in carrier and semantic owner; host/custom callbacks remain unchanged. |
+| U9 Requirement Markdown width | `rejected-as-written`, `rejected-upper-bound` | The old shared change reduced opaque callbacks; a compliant owner-local variant could save at most 13.249 us / 7.379%, below admission. |
+| U9 Mindmap inline metrics | `rejected-superseded` | U8 already removed every admissible discarded built-in request; the remaining opaque callbacks are observable behavior. |
+
+No failed U9 production path or global text cache remains. The old Requirement and Mindmap
+experiment branches are historical hypotheses only.
+
 ### Mindmap ordinary-label rendering
 
 Commit `b2129d9ec` resolved the confirmed ordinary-label regression without a family-local
@@ -159,7 +185,8 @@ sanitization, custom-measurer behavior, and public layout JSON.
 
 Completed on 2026-07-29. Sampling attributed 96.6% of Requirement prepare time to text/label work
 and Dugong, both excluded from the residual unit; the dispersed remainder has no qualifying
-owner-local term. U9 closes without production changes; see
+owner-local term. This 2026-07-29 residual item predates the 2026-08-02 U9 family metric-reuse unit
+and closes without production changes; see
 [the closure receipt](runtime_hypothesis_closures_2026-07-29.md).
 
 ### P1.1: Add fair reusable and strict cross-runner lanes
