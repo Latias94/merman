@@ -9,7 +9,7 @@ use brotli_decompressor::{
     Allocator, BrotliDecompressStream, BrotliResult, BrotliState, SliceWrapper, SliceWrapperMut,
 };
 use sha2::{Digest, Sha256};
-use ttf_parser::{Face, Name, Permissions, PlatformId, Style, name_id};
+use ttf_parser::{Face, Permissions, PlatformId, Style, name_id};
 
 use super::admission::{
     FontCatalogKind, FontEmbeddingRequirement, FontSource, ThemeAdmissionError,
@@ -848,10 +848,17 @@ fn validate_embedding_permissions(
     }
 }
 
+struct FontNameCandidate<'a> {
+    index: u16,
+    platform_id: PlatformId,
+    language_id: u16,
+    raw: &'a [u8],
+}
+
 fn preferred_face_name(face: &Face<'_>, ids: &[u16]) -> Option<String> {
     for id in ids {
         let names = face.names();
-        let mut candidates = Vec::<Name<'_>>::with_capacity(MAX_FONT_NAME_CANDIDATES);
+        let mut candidates = Vec::<FontNameCandidate<'_>>::with_capacity(MAX_FONT_NAME_CANDIDATES);
         for index in 0..names.len() {
             let Some(name) = names.get(index) else {
                 continue;
@@ -864,15 +871,24 @@ fn preferred_face_name(face: &Face<'_>, ids: &[u16]) -> Option<String> {
             {
                 continue;
             }
+            let candidate = FontNameCandidate {
+                index,
+                platform_id: name.platform_id,
+                language_id: name.language_id,
+                raw: name.name,
+            };
             let insert_at = candidates
-                .binary_search_by(|candidate| compare_name_candidates(candidate, &name))
+                .binary_search_by(|existing| compare_name_candidates(existing, &candidate))
                 .unwrap_or_else(|index| index);
             if insert_at < MAX_FONT_NAME_CANDIDATES {
-                candidates.insert(insert_at, name);
+                candidates.insert(insert_at, candidate);
                 candidates.truncate(MAX_FONT_NAME_CANDIDATES);
             }
         }
         for candidate in candidates {
+            let Some(candidate) = names.get(candidate.index) else {
+                continue;
+            };
             let Some(value) = candidate.to_string() else {
                 continue;
             };
@@ -885,13 +901,16 @@ fn preferred_face_name(face: &Face<'_>, ids: &[u16]) -> Option<String> {
     None
 }
 
-fn compare_name_candidates(left: &Name<'_>, right: &Name<'_>) -> std::cmp::Ordering {
+fn compare_name_candidates(
+    left: &FontNameCandidate<'_>,
+    right: &FontNameCandidate<'_>,
+) -> std::cmp::Ordering {
     name_candidate_rank(left)
         .cmp(&name_candidate_rank(right))
-        .then_with(|| left.name.cmp(right.name))
+        .then_with(|| left.raw.cmp(right.raw))
 }
 
-fn name_candidate_rank(name: &Name<'_>) -> (u8, u8) {
+fn name_candidate_rank(name: &FontNameCandidate<'_>) -> (u8, u8) {
     let platform = match name.platform_id {
         PlatformId::Windows => 0,
         PlatformId::Unicode => 1,
