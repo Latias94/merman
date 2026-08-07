@@ -50,8 +50,9 @@ lane. Completion criterion: baseline checks pass and deferred checks have a stat
 
 ## Refresh generated legal material in dependency order
 
-Run this chain whenever `Cargo.lock`, `Cargo.toml`, artifact profiles, native binding features, or
-license/report inputs change:
+Run this chain whenever `Cargo.lock`, dependency declarations, artifact profiles, native binding
+features, or license/report inputs change. A report-only refresh does not by itself require the
+FFI/Cargo feature matrix below:
 
 ```text
 python3 scripts/generate-rust-license-report.py --check
@@ -63,7 +64,9 @@ python3 -m unittest scripts.test_generate_rust_license_report scripts.test_sync_
 When the first command reports stale or missing reports, run its existing `--write` mode, inspect
 the semantic diff, and rerun `--check`. Then refresh release projections with the second command's
 `--write` mode and rerun both checks. Never hand-edit generated JSON or update a projection before
-its source report. This order catches both report drift and stale copies embedded in packages.
+its source report. The report command invokes the pinned `cargo-about` generator, so an environment
+that forbids Cargo must record this gate as deferred rather than claiming a Python-only pass. This
+order catches both report drift and stale copies embedded in packages.
 
 Completion criterion: source reports, release projections, and the third-party contract all pass;
 the diff contains only generator-owned changes justified by the current lock/features.
@@ -85,10 +88,20 @@ cargo run --locked -p xtask -- verify-binding-contract
 python3 scripts/verify-platform-bindings.py
 ```
 
-Derive feature strings from `capabilities/artifact-profiles-v1.json` or the owner workflow when
-possible. Compile the affected public consumer (C, UniFFI, JNI, Flutter, Python, Web, or Node) with
-its declared recipe. For an intentional breaking API, update all in-repository consumers and tests
-to the new contract; do not restore a compatibility alias merely to make an old test compile.
+For a changed `Cargo.lock` or external dependency, run the policy owner when `cargo-deny` is
+available:
+
+```text
+cargo deny check advisories bans licenses sources
+```
+
+Security Audit owns this check in CI; record it as deferred when the local tool is unavailable
+instead of replacing it with an ad hoc dependency parser. Derive feature strings from
+`capabilities/artifact-profiles-v1.json` or the owner workflow. For a real public-consumer proof,
+reuse the exact recipe in `.github/workflows/ci.yml` (C `c_consumer_smoke`, the Apple UniFFI smoke,
+or the platform binding verifier) rather than inventing a second feature list. For an intentional
+breaking API, update all in-repository consumers and tests to the new contract; do not restore a
+compatibility alias merely to make an old test compile.
 
 Completion criterion: the descriptor, Rust library, generated bindings, and at least one real public
 consumer agree on the same feature/API contract.
@@ -100,6 +113,10 @@ For `.github/workflows/**` or workflow-contract script changes, run the targeted
 ```text
 python3 -m unittest scripts.test_release_workflow_security scripts.test_workflow_path_filters scripts.test_ci_workflow_android_emulator
 ```
+
+Run `actionlint` when it is installed; the targeted Python suites remain the repository-specific
+semantic check when it is not. Validate only the workflow files touched by the change and keep the
+workflow contract tests in the same commit as a changed gate condition.
 
 For `tools/bench/**` changes, run the Python performance contracts:
 
