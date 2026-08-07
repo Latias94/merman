@@ -189,7 +189,7 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
             )?;
             let error = Error::diagram_parse_diagnostic(
                 meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(error.as_ref(), code.len()),
+                flowchart_parse_diagnostic(error.as_ref(), &code, &facts),
             );
             Err(crate::family::CombinedSemanticFailure::new(error, facts))
         }
@@ -721,9 +721,11 @@ fn flowchart_recovery_facts(
     error: &FlowchartAstParseError,
     control: &ParseControl,
 ) -> ParseControlResult<EditorSemanticFacts> {
-    let span = lalrpop_recovery_span(error, parser_code.len());
     let mut facts = recover_flowchart_editor_facts_from_tokens(parser_code, trace, control)?;
     collect_accessibility_directive_prefixes(accessibility_statements, &mut facts, control)?;
+    let span = flowchart_eof_recovery_insertion(error, parser_code, &facts)
+        .map(|insertion| SourceSpan::new(insertion, insertion))
+        .unwrap_or_else(|| lalrpop_recovery_span(error, parser_code.len()));
     facts.mark_recovered_from_parse_error(
         format!(
             "flowchart parser recovered after parse error: {}",
@@ -733,6 +735,37 @@ fn flowchart_recovery_facts(
     );
     control.checkpoint()?;
     Ok(facts)
+}
+
+fn flowchart_parse_diagnostic(
+    error: &FlowchartAstParseError,
+    code: &str,
+    facts: &EditorSemanticFacts,
+) -> crate::ParseDiagnostic {
+    let diagnostic = lalrpop_parse_diagnostic(error, code.len());
+    match flowchart_eof_recovery_insertion(error, code, facts) {
+        Some(insertion) => diagnostic.map_span(|_| SourceSpan::new(insertion, insertion)),
+        None => diagnostic,
+    }
+}
+
+fn flowchart_eof_recovery_insertion(
+    error: &FlowchartAstParseError,
+    code: &str,
+    facts: &EditorSemanticFacts,
+) -> Option<usize> {
+    if !matches!(error, lalrpop_util::ParseError::UnrecognizedEof { .. }) {
+        return None;
+    }
+    let insertion = code.trim_end_matches(['\r', '\n']).len();
+    (insertion < code.len()
+        && facts.expected_syntax.iter().any(|expected| {
+            matches!(
+                expected.kind,
+                EditorExpectedSyntaxKind::NodeIdentifier | EditorExpectedSyntaxKind::Operator
+            ) && expected.span.end == code.len()
+        }))
+    .then_some(insertion)
 }
 
 fn collect_expected_syntax_from_tokens<'a>(

@@ -1327,7 +1327,7 @@ impl<'input> Lexer<'input> {
         )
         .expecting(
             crate::EditorExpectedSyntaxKind::Operator,
-            SourceSpan::new(start, after_start),
+            SourceSpan::new(start_match.operator_span.start, after_start),
         )))
     }
 
