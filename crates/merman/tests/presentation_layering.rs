@@ -2,8 +2,8 @@
 
 use merman::Engine;
 use merman::svg::{
-    HeadlessRenderer, HostTheme, HostThemePreset, Presentation, PresentationAspectState,
-    PresentationProfile, SvgPipeline, SvgPipelinePreset,
+    HeadlessRenderer, HostTheme, HostThemePreset, PresentationAspectState, PresentationProfile,
+    SvgPipeline, SvgPipelinePreset,
 };
 use merman_core::MermaidConfig;
 use serde_json::{Value, json};
@@ -23,10 +23,10 @@ fn effective_config(renderer: &HeadlessRenderer, source: &str) -> Value {
         .clone()
 }
 
-fn presentation() -> Presentation {
-    Presentation::new()
-        .with_profile(PresentationProfile::MermanModern)
-        .with_theme(HostTheme::from_preset(HostThemePreset::OneDark))
+fn with_profile_and_theme(renderer: HeadlessRenderer) -> HeadlessRenderer {
+    renderer
+        .with_presentation_profile(PresentationProfile::MermanModern)
+        .with_host_theme(HostTheme::from_preset(HostThemePreset::OneDark))
 }
 
 fn assert_json_keys_absent(value: &Value, forbidden: &[&str]) {
@@ -71,13 +71,9 @@ fn renderer_configuration_precedence_is_independent_of_builder_order() {
         "themeVariables": { "lineColor": "#123456" },
     }));
 
-    let forward = HeadlessRenderer::new()
-        .with_engine(base.clone())
-        .with_presentation(presentation())
+    let forward = with_profile_and_theme(HeadlessRenderer::new().with_engine(base.clone()))
         .with_site_config(explicit.clone());
-    let reverse = HeadlessRenderer::new()
-        .with_site_config(explicit)
-        .with_presentation(presentation())
+    let reverse = with_profile_and_theme(HeadlessRenderer::new().with_site_config(explicit))
         .with_engine(base);
 
     let forward = effective_config(&forward, SOURCE);
@@ -90,13 +86,63 @@ fn renderer_configuration_precedence_is_independent_of_builder_order() {
 }
 
 #[test]
+fn explicit_mermaid_theme_replaces_profile_visual_fallback_without_erasing_behavior() {
+    let explicit = config(json!({
+        "theme": "base",
+        "themeVariables": { "primaryColor": "#abcdef" },
+    }));
+    let forward = HeadlessRenderer::new()
+        .with_presentation_profile(PresentationProfile::MermanModern)
+        .with_site_config(explicit.clone());
+    let reverse = HeadlessRenderer::new()
+        .with_site_config(explicit)
+        .with_presentation_profile(PresentationProfile::MermanModern);
+
+    let forward = effective_config(&forward, SOURCE);
+    let reverse = effective_config(&reverse, SOURCE);
+    assert_eq!(forward, reverse);
+    assert_eq!(forward["theme"], "base");
+    assert_eq!(forward["themeVariables"]["primaryColor"], "#abcdef");
+    assert_ne!(forward["themeVariables"]["mainBkg"], "#F8FAFC");
+    assert_ne!(forward["themeVariables"]["nodeBorder"], "#64748B");
+    assert_eq!(forward["look"], "neo");
+    assert_eq!(forward["flowchart"]["defaultRenderer"], "elk");
+}
+
+#[test]
+fn explicit_empty_mermaid_theme_does_not_mix_in_profile_visual_fallback_values() {
+    let renderer = HeadlessRenderer::new()
+        .with_presentation_profile(PresentationProfile::MermanModern)
+        .with_site_config(config(json!({ "theme": "  " })));
+
+    let effective = effective_config(&renderer, SOURCE);
+    assert_ne!(effective["themeVariables"]["mainBkg"], "#F8FAFC");
+    assert_ne!(effective["themeVariables"]["nodeBorder"], "#64748B");
+    assert_eq!(effective["look"], "neo");
+    assert_eq!(effective["flowchart"]["defaultRenderer"], "elk");
+}
+
+#[test]
+fn partial_theme_variable_overlay_keeps_the_profile_visual_fallback() {
+    let renderer = HeadlessRenderer::new()
+        .with_presentation_profile(PresentationProfile::MermanModern)
+        .with_site_config(config(json!({
+            "themeVariables": { "lineColor": "#123456" },
+        })));
+
+    let effective = effective_config(&renderer, SOURCE);
+    assert_eq!(effective["theme"], "redux");
+    assert_eq!(effective["themeVariables"]["mainBkg"], "#F8FAFC");
+    assert_eq!(effective["themeVariables"]["lineColor"], "#123456");
+}
+
+#[test]
 fn source_config_remains_the_final_nonsecure_mermaid_layer() {
     let source = r##"%%{init: {"theme": "neutral", "sequence": {"actorMargin": 88}}}%%
 sequenceDiagram
 Alice->>Bob: Hello"##;
-    let renderer = HeadlessRenderer::new()
-        .with_presentation(presentation())
-        .with_site_config(config(json!({
+    let renderer =
+        with_profile_and_theme(HeadlessRenderer::new()).with_site_config(config(json!({
             "theme": "dark",
             "sequence": { "actorMargin": 64 },
             "themeVariables": { "lineColor": "#123456" },
@@ -136,15 +182,13 @@ fn repeated_site_config_layers_preserve_engine_normalization_order() {
 
 #[test]
 fn presentation_does_not_select_or_override_svg_output_policy() {
-    let no_output = HeadlessRenderer::new().with_presentation(presentation());
+    let no_output = with_profile_and_theme(HeadlessRenderer::new());
     assert!(no_output.svg_pipeline().is_none());
 
-    let forward = HeadlessRenderer::new()
-        .with_presentation(presentation())
-        .with_svg_pipeline(SvgPipeline::readable());
-    let reverse = HeadlessRenderer::new()
-        .with_svg_pipeline(SvgPipeline::readable())
-        .with_presentation(presentation());
+    let forward =
+        with_profile_and_theme(HeadlessRenderer::new()).with_svg_pipeline(SvgPipeline::readable());
+    let reverse =
+        with_profile_and_theme(HeadlessRenderer::new().with_svg_pipeline(SvgPipeline::readable()));
 
     assert_eq!(
         forward.svg_pipeline().map(SvgPipeline::preset),
@@ -158,8 +202,7 @@ fn presentation_does_not_select_or_override_svg_output_policy() {
 
 #[test]
 fn direct_parse_and_prepared_semantic_share_the_same_materialized_engine() {
-    let renderer = HeadlessRenderer::new()
-        .with_presentation(presentation())
+    let renderer = with_profile_and_theme(HeadlessRenderer::new())
         .with_site_config(config(json!({ "theme": "dark" })));
 
     let direct = effective_config(&renderer, SOURCE);
@@ -185,9 +228,8 @@ fn direct_parse_and_prepared_semantic_share_the_same_materialized_engine() {
 
 #[test]
 fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() {
-    let renderer = HeadlessRenderer::new()
-        .with_presentation(presentation())
-        .with_site_config(config(json!({
+    let renderer =
+        with_profile_and_theme(HeadlessRenderer::new()).with_site_config(config(json!({
             "flowchart": {
                 "defaultRenderer": "dagre-wrapper",
                 "edgeLabelPadding": 0,
@@ -224,9 +266,8 @@ fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() 
     assert_eq!(background.attribute("rx"), Some("4"));
     assert_eq!(background.attribute("ry"), Some("4"));
 
-    let isolated = HeadlessRenderer::new()
-        .with_presentation(presentation())
-        .with_site_config(config(json!({
+    let isolated =
+        with_profile_and_theme(HeadlessRenderer::new()).with_site_config(config(json!({
             "flowchart": { "defaultRenderer": "dagre-wrapper" },
         })));
     let effective = effective_config(&isolated, source);
@@ -246,8 +287,7 @@ fn modern_flowchart_policy_is_typed_and_survives_an_explicit_non_elk_renderer() 
 
 #[test]
 fn render_plan_reports_each_presentation_aspect_independently() {
-    let sequence = HeadlessRenderer::new()
-        .with_presentation(presentation())
+    let sequence = with_profile_and_theme(HeadlessRenderer::new())
         .plan_svg_sync(SOURCE)
         .expect("sequence plan should succeed")
         .expect("sequence diagram should be detected");
@@ -265,8 +305,7 @@ fn render_plan_reports_each_presentation_aspect_independently() {
         PresentationAspectState::Inactive
     );
 
-    let dagre = HeadlessRenderer::new()
-        .with_presentation(presentation())
+    let dagre = with_profile_and_theme(HeadlessRenderer::new())
         .with_site_config(config(json!({
             "flowchart": { "defaultRenderer": "dagre-wrapper" },
         })))
@@ -283,8 +322,7 @@ fn render_plan_reports_each_presentation_aspect_independently() {
         PresentationAspectState::Inactive
     );
 
-    let default_flowchart = HeadlessRenderer::new()
-        .with_presentation(presentation())
+    let default_flowchart = with_profile_and_theme(HeadlessRenderer::new())
         .plan_svg_sync("flowchart TD\nA --> B")
         .expect("Flowchart plan should succeed")
         .expect("Flowchart should be detected");

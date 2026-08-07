@@ -36,68 +36,47 @@ impl PresentationProfile {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Presentation {
-    profile: Option<PresentationProfile>,
-    theme: Option<HostTheme>,
-}
-
-impl Presentation {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub const fn profile(&self) -> Option<PresentationProfile> {
-        self.profile
-    }
-
-    pub fn theme(&self) -> Option<&HostTheme> {
-        self.theme.as_ref()
-    }
-
-    pub fn with_profile(mut self, profile: PresentationProfile) -> Self {
-        self.profile = Some(profile);
-        self
-    }
-
-    pub fn with_theme(mut self, theme: HostTheme) -> Self {
-        self.theme = Some(theme);
-        self
-    }
-
-    pub fn resolve(self) -> ResolvedPresentation {
-        let mut mermaid_config = self.profile.map(profile_defaults).unwrap_or_default();
-        if let Some(theme) = &self.theme {
-            let theme = theme.mermaid_config_patch();
-            mermaid_config.deep_merge(theme.as_value());
-        }
-        ResolvedPresentation {
-            presentation: self,
-            mermaid_config,
-        }
-    }
-}
-
+#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub struct ResolvedPresentation {
-    presentation: Presentation,
+    profile: Option<PresentationProfile>,
     mermaid_config: MermaidConfig,
 }
 
 impl ResolvedPresentation {
-    pub fn presentation(&self) -> &Presentation {
-        &self.presentation
+    #[doc(hidden)]
+    pub fn resolve(
+        profile: Option<PresentationProfile>,
+        theme: Option<&HostTheme>,
+        later_mermaid_theme_selected: bool,
+    ) -> Self {
+        let mut mermaid_config = profile.map(profile_behavior_defaults).unwrap_or_default();
+        let has_host_theme = theme.is_some_and(HostTheme::has_values);
+
+        if !has_host_theme && !later_mermaid_theme_selected {
+            if let Some(profile) = profile {
+                mermaid_config.deep_merge(profile_theme_defaults(profile).as_value());
+            }
+        }
+        if let Some(theme) = theme {
+            mermaid_config.deep_merge(theme.mermaid_config_patch().as_value());
+        }
+
+        Self {
+            profile,
+            mermaid_config,
+        }
     }
 
+    #[doc(hidden)]
     pub fn materialize_engine(&self, engine: Engine) -> Engine {
         engine.with_site_config(self.mermaid_config.clone())
     }
 
     /// Returns the small renderer-owned policy that accompanies the materialized Mermaid config.
+    #[doc(hidden)]
     pub const fn render_policy(&self) -> PresentationRenderPolicy {
-        PresentationRenderPolicy {
-            profile: self.presentation.profile,
-        }
+        PresentationRenderPolicy::from_profile(self.profile)
     }
 }
 
@@ -107,11 +86,17 @@ impl ResolvedPresentation {
 /// first materialize the resolved presentation into the parsing engine, then carry this compact
 /// value alongside the resulting typed render model.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[doc(hidden)]
 pub struct PresentationRenderPolicy {
     profile: Option<PresentationProfile>,
 }
 
 impl PresentationRenderPolicy {
+    #[doc(hidden)]
+    pub const fn from_profile(profile: Option<PresentationProfile>) -> Self {
+        Self { profile }
+    }
+
     pub const fn profile(self) -> Option<PresentationProfile> {
         self.profile
     }
@@ -211,7 +196,16 @@ pub(crate) struct FlowchartPresentationPolicy {
     pub(crate) compact_edge_corners: bool,
 }
 
-fn profile_defaults(profile: PresentationProfile) -> MermaidConfig {
+fn profile_behavior_defaults(profile: PresentationProfile) -> MermaidConfig {
+    match profile {
+        PresentationProfile::MermanModern => MermaidConfig::from_value(serde_json::json!({
+            "look": "neo",
+            "flowchart": { "defaultRenderer": "elk" },
+        })),
+    }
+}
+
+fn profile_theme_defaults(profile: PresentationProfile) -> MermaidConfig {
     match profile {
         PresentationProfile::MermanModern => {
             let theme_variables = [
@@ -232,8 +226,6 @@ fn profile_defaults(profile: PresentationProfile) -> MermaidConfig {
             .collect();
             MermaidConfig::from_value(serde_json::json!({
                 "theme": "redux",
-                "look": "neo",
-                "flowchart": { "defaultRenderer": "elk" },
                 "themeVariables": Value::Object(theme_variables),
             }))
         }

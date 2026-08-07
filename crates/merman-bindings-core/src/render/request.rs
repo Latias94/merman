@@ -10,8 +10,8 @@ use crate::common::{
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use merman::svg::{
     HeadlessRenderer, HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions,
-    MeasurementProfileId, Presentation, PresentationProfile, RenderEnvironment,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemeRole,
+    MeasurementProfileId, PresentationProfile, RenderEnvironment, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemeRole,
 };
 use std::sync::Arc;
 
@@ -30,7 +30,8 @@ pub(super) struct RenderRequestPlan {
 pub(super) struct RenderOperationConfig {
     environment: RenderEnvironment,
     lenient_parsing: bool,
-    presentation: Option<Presentation>,
+    presentation_profile: Option<PresentationProfile>,
+    host_theme: Option<HostTheme>,
     site_config: Option<merman::MermaidConfig>,
     layout: LayoutOptions,
     svg: merman::svg::SvgRenderOptions,
@@ -229,11 +230,10 @@ impl RenderOperationConfig {
             .and_then(|parse| parse.suppress_errors)
             .unwrap_or(false);
         let mut output = merman::svg::SvgOutputPolicy::default();
-        let presentation = options
-            .presentation
-            .as_ref()
-            .map(binding_presentation)
-            .transpose()?;
+        let (presentation_profile, host_theme) = match options.presentation.as_ref() {
+            Some(options) => binding_presentation(options)?,
+            None => (None, None),
+        };
         let site_config = binding_site_config(options)?;
 
         let mut layout = LayoutOptions::headless_svg_defaults();
@@ -309,7 +309,8 @@ impl RenderOperationConfig {
         Ok(Self {
             environment,
             lenient_parsing,
-            presentation,
+            presentation_profile,
+            host_theme,
             site_config,
             layout,
             svg: svg_options,
@@ -330,8 +331,11 @@ impl RenderOperationConfig {
         } else {
             renderer.with_strict_parsing()
         };
-        if let Some(presentation) = self.presentation {
-            renderer = renderer.with_presentation(presentation);
+        if let Some(profile) = self.presentation_profile {
+            renderer = renderer.with_presentation_profile(profile);
+        }
+        if let Some(theme) = self.host_theme {
+            renderer = renderer.with_host_theme(theme);
         }
         if let Some(site_config) = self.site_config {
             renderer = renderer.with_site_config(site_config);
@@ -482,21 +486,27 @@ fn finite_nonnegative(value: f64, name: &'static str) -> Result<f64, BindingErro
     }
 }
 
-fn binding_presentation(options: &PresentationOptionsJson) -> Result<Presentation, BindingError> {
-    let mut presentation = Presentation::new();
-    if let Some(profile) = options.profile.as_deref() {
-        let profile = PresentationProfile::from_id(profile.trim()).map_err(|_| {
-            BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!("unsupported presentation.profile: {profile}"),
-            )
-        })?;
-        presentation = presentation.with_profile(profile);
-    }
-    if let Some(theme) = options.theme.as_ref() {
-        presentation = presentation.with_theme(binding_presentation_theme(theme)?);
-    }
-    Ok(presentation)
+fn binding_presentation(
+    options: &PresentationOptionsJson,
+) -> Result<(Option<PresentationProfile>, Option<HostTheme>), BindingError> {
+    let profile = options
+        .profile
+        .as_deref()
+        .map(|profile| {
+            PresentationProfile::from_id(profile.trim()).map_err(|_| {
+                BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!("unsupported presentation.profile: {profile}"),
+                )
+            })
+        })
+        .transpose()?;
+    let theme = options
+        .theme
+        .as_ref()
+        .map(binding_presentation_theme)
+        .transpose()?;
+    Ok((profile, theme))
 }
 
 fn binding_presentation_theme(

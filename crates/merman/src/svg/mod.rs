@@ -62,18 +62,20 @@ pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::presentation::{
-    HostTheme, HostThemeAppearance, HostThemePreset, Presentation, PresentationAspectApplicability,
+    HostTheme, HostThemeAppearance, HostThemePreset, PresentationAspectApplicability,
     PresentationAspectDescriptor, PresentationAspectResolution, PresentationAspectState,
-    PresentationError, PresentationProfile, PresentationProfileDescriptor, ResolvedPresentation,
-    ThemeRole, presentation_profile_descriptors, theme_preset_descriptors,
+    PresentationError, PresentationProfile, PresentationProfileDescriptor, ThemeRole,
+    presentation_profile_descriptors, theme_preset_descriptors,
 };
+use merman_render::presentation::{PresentationRenderPolicy, ResolvedPresentation};
 pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
     ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
     ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
-    resource_limit_descriptors, resource_profile_descriptors,
+    ResourcePolicyRestrictionError, ThemeResourceLimitId, resource_limit_descriptors,
+    resource_profile_descriptors,
 };
 pub use merman_render::svg::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor, IconRegistry,
@@ -132,6 +134,13 @@ pub enum OutputError {
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub type OutputResult<T> = std::result::Result<T, OutputError>;
+
+fn site_config_selects_mermaid_theme(config: &merman_core::MermaidConfig) -> bool {
+    config
+        .as_value()
+        .as_object()
+        .is_some_and(|root| root.contains_key("theme"))
+}
 
 fn default_render_environment() -> RenderEnvironment {
     RenderEnvironment::deterministic()
@@ -1284,11 +1293,33 @@ flowchart TD
     }
 
     #[test]
+    fn request_scoped_mermaid_theme_replaces_profile_visual_fallback() {
+        let source = "sequenceDiagram\nAlice->>Bob: Hello";
+        let site_config = merman_core::MermaidConfig::from_value(json!({ "theme": "dark" }));
+        let renderer = HeadlessRenderer::new()
+            .with_presentation_profile(PresentationProfile::MermanModern)
+            .with_diagram_id("request-profile-theme");
+
+        let request_scoped = renderer
+            .render_svg_with_site_config_sync(source, site_config.clone())
+            .unwrap()
+            .unwrap();
+        let persistent = renderer
+            .clone()
+            .with_site_config(site_config)
+            .render_svg_sync(source)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(request_scoped, persistent);
+        assert!(!request_scoped.contains("#F8FAFC"), "{request_scoped}");
+        assert!(!request_scoped.contains("#64748B"), "{request_scoped}");
+    }
+
+    #[test]
     fn presentation_theme_and_svg_output_policy_are_applied_independently() {
         let renderer = HeadlessRenderer::new()
-            .with_presentation(
-                Presentation::new().with_theme(HostTheme::from_preset(HostThemePreset::EditorDark)),
-            )
+            .with_host_theme(HostTheme::from_preset(HostThemePreset::EditorDark))
             .with_svg_pipeline(resvg_safe_theme_pipeline("#0f172a"))
             .with_diagram_id("presentation-theme");
 
@@ -1321,7 +1352,7 @@ flowchart TD
             .try_with_role(ThemeRole::Text, "#eeeeee")
             .expect("text role should be valid");
         let renderer = HeadlessRenderer::new()
-            .with_presentation(Presentation::new().with_theme(theme))
+            .with_host_theme(theme)
             .with_site_config(merman_core::MermaidConfig::from_value(json!({
                 "themeVariables": {"nodeBorder": "#abcdef"}
             })))
@@ -1381,7 +1412,8 @@ Missing ref: id2,after missing,1d
 #[derive(Clone)]
 pub struct HeadlessRenderer {
     base_engine: merman_core::Engine,
-    presentation: Option<Arc<ResolvedPresentation>>,
+    presentation_profile: Option<PresentationProfile>,
+    host_theme: Option<Arc<HostTheme>>,
     site_config_layers: Vec<merman_core::MermaidConfig>,
     materialized_engine: OnceLock<merman_core::Engine>,
     parse: merman_core::ParseOptions,
@@ -1409,7 +1441,8 @@ impl HeadlessRenderer {
     ) -> Self {
         Self {
             base_engine: engine,
-            presentation: None,
+            presentation_profile: None,
+            host_theme: None,
             site_config_layers: Vec::new(),
             materialized_engine: OnceLock::new(),
             environment,
@@ -1485,17 +1518,26 @@ impl HeadlessRenderer {
         self
     }
 
-    /// Selects product presentation independently from Mermaid site config and SVG output.
-    pub fn with_presentation(mut self, presentation: Presentation) -> Self {
-        self.presentation = Some(Arc::new(presentation.resolve()));
+    /// Selects a first-party presentation profile independently from theme and SVG output.
+    pub fn with_presentation_profile(mut self, profile: PresentationProfile) -> Self {
+        self.presentation_profile = Some(profile);
         self.invalidate_materialized_engine();
         self
     }
 
-    pub fn presentation(&self) -> Option<&Presentation> {
-        self.presentation
-            .as_deref()
-            .map(ResolvedPresentation::presentation)
+    pub const fn presentation_profile(&self) -> Option<PresentationProfile> {
+        self.presentation_profile
+    }
+
+    /// Applies semantic host theme data independently from presentation profile and SVG output.
+    pub fn with_host_theme(mut self, theme: HostTheme) -> Self {
+        self.host_theme = Some(Arc::new(theme));
+        self.invalidate_materialized_engine();
+        self
+    }
+
+    pub fn host_theme(&self) -> Option<&HostTheme> {
+        self.host_theme.as_deref()
     }
 
     pub fn with_svg_pipeline(mut self, pipeline: SvgPipeline) -> Self {
@@ -1588,8 +1630,17 @@ impl HeadlessRenderer {
     fn materialized_engine(&self) -> &merman_core::Engine {
         self.materialized_engine.get_or_init(|| {
             let mut engine = self.base_engine.clone();
-            if let Some(presentation) = self.presentation.as_deref() {
-                engine = presentation.materialize_engine(engine);
+            if self.presentation_profile.is_some() || self.host_theme.is_some() {
+                let later_mermaid_theme_selected = self
+                    .site_config_layers
+                    .iter()
+                    .any(site_config_selects_mermaid_theme);
+                engine = ResolvedPresentation::resolve(
+                    self.presentation_profile,
+                    self.host_theme.as_deref(),
+                    later_mermaid_theme_selected,
+                )
+                .materialize_engine(engine);
             }
             for site_config in &self.site_config_layers {
                 engine = engine.with_site_config(site_config.clone());
@@ -1617,10 +1668,7 @@ impl HeadlessRenderer {
             self.parse,
             &self.layout,
             &self.environment,
-            self.presentation
-                .as_deref()
-                .map(ResolvedPresentation::render_policy)
-                .unwrap_or_default(),
+            PresentationRenderPolicy::from_profile(self.presentation_profile),
         )
     }
 

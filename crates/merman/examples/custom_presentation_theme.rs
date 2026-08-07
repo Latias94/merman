@@ -1,6 +1,6 @@
 use merman::svg::{
-    CssOverridePolicy, HeadlessRenderer, HostTheme, HostThemeAppearance, Presentation,
-    SvgOutputPolicy, SvgPipelinePreset, ThemeRole,
+    CssOverridePolicy, HeadlessRenderer, HostTheme, HostThemeAppearance, SvgOutputPolicy,
+    SvgPipelinePreset, ThemeRole,
 };
 
 const SOURCE: &str = r#"sequenceDiagram
@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..SvgOutputPolicy::default()
     };
     let renderer = HeadlessRenderer::new()
-        .with_presentation(Presentation::new().with_theme(theme))
+        .with_host_theme(theme)
         .with_svg_pipeline(output.pipeline())
         .with_vendored_text_measurer()
         .with_diagram_id("custom-presentation-theme-example");

@@ -18,11 +18,13 @@ PR #28 added source-backed ELK processing, Neo geometry, route cutting, compact 
    - `PresentationProfile` owns named Merman product behavior. The first profile is `merman-modern`.
    - `MermaidConfig` remains the authority for official Mermaid fields such as `theme`, `themeVariables`, `themeCSS`, `look`, `layout`, `flowchart.defaultRenderer`, and `elk.*`.
    - `SvgOutputPolicy` and `SvgPipeline` remain the only owners of parity, readable, resvg-safe, scoped CSS, background, CSS override, and duplicate-fallback behavior.
+   - `HeadlessRenderer` accepts these owners directly through `with_presentation_profile`, `with_host_theme`, `with_site_config`, and `with_svg_pipeline`. A public `Presentation` aggregate is rejected because it adds no invariant or behavior of its own.
 
 2. The seven editor presets remain theme-only data. Selecting one does not change the SVG output pipeline or root background. Mermaid defaults are represented by no presentation selection, not a `mermaid` preset.
 
 3. `merman-modern` is one first-party presentation profile with independently resolved aspects.
-   - Global defaults provide the Redux/slate palette and Neo look.
+   - Behavior defaults provide Neo look independently from visual theme selection.
+   - A Redux/slate visual fallback is applied only when neither a non-empty host theme nor a later site-level Mermaid `theme` owns the appearance.
    - A private Flowchart SVG aspect provides compact routed corners and padded edge-label masks.
    - An optional Flowchart layout aspect defaults ordinary Flowcharts to ELK.
    - Non-Flowchart inputs do not require ELK. An explicit non-ELK `flowchart.defaultRenderer` disables only the layout aspect for an ordinary Flowchart. A `flowchart-elk` source always requires ELK.
@@ -31,12 +33,13 @@ PR #28 added source-backed ELK processing, Neo geometry, route cutting, compact 
 
 5. Configuration precedence is structural and independent of builder call order:
    1. base `Engine` config;
-   2. presentation profile defaults;
-   3. explicit host theme data;
-   4. explicit renderer or binding `site_config`;
-   5. source frontmatter and directives.
+   2. presentation profile behavior defaults;
+   3. the profile visual fallback when no later theme owner exists;
+   4. explicit host theme data;
+   5. explicit renderer or binding `site_config`;
+   6. source frontmatter and directives, subject to hardened secure keys.
 
-6. An empty presentation layer contributes no override. It preserves Mermaid parity when no lower presentation exists and inherits constructor presentation in a reusable-engine request. Schema 2 does not add nullable clear operations; callers that need a parity renderer use an engine without a base presentation.
+6. Omitting both presentation inputs contributes no override and preserves Mermaid parity. In reusable-engine Options JSON, omitted or empty presentation fields continue to inherit constructor values through the binding overlay. Schema 2 does not add nullable clear operations; callers that need a parity renderer use an engine without base presentation inputs.
 
 7. Runtime discovery reports known presentation entries separately from artifact availability. Profile aspects expose applicability and missing capability IDs so a slim artifact can accept a known profile for operations that do not activate its unavailable aspect.
 
@@ -48,7 +51,9 @@ PR #28 added source-backed ELK processing, Neo geometry, route cutting, compact 
 
 - Default rendering remains byte-compatible because no presentation selection produces no Mermaid patch, private policy, or output change.
 - Rust and binding implementations can share one presentation resolver instead of compiling theme and output behavior independently.
+- Ordinary Rust callers configure profile and host theme directly on `HeadlessRenderer`; low-level resolved-policy types remain hidden from the facade.
 - Host applications can combine editor tokens, official Mermaid config, product presentation, and output compatibility without a preset lattice.
+- Exact CSS-heavy or structural theme recipes use `MermaidConfig` and `SvgPipeline` instead of expanding `HostTheme` into an arbitrary CSS/SVG container.
 - Merman-only Flowchart behavior is no longer advertised as Mermaid config and cannot be activated by raw site config.
 - Capability discovery can remain truthful for full and slim artifacts without rejecting valid non-Flowchart operations.
 - Alpha.3 callers must migrate mixed `HostThemeProfile` and `host_theme` usage to the separate theme, presentation, top-level `site_config`, and SVG output owners.
@@ -65,3 +70,7 @@ PR #28 added source-backed ELK processing, Neo geometry, route cutting, compact 
    The pinned Mermaid detector derives Flowchart layout from `flowchart.defaultRenderer`; changing that precedence would require a separate provenance model and could break parity.
 5. Preserve editor-theme output coupling as compatibility behavior.
    Output compatibility is an explicit host decision and already has a dedicated pipeline owner.
+6. Keep a public `Presentation` value that only stores optional profile and theme fields.
+   It is a shallow forwarding container with no independent invariant. The renderer already owns configuration precedence and cache invalidation, so direct setters produce a smaller and more truthful public API.
+7. Add arbitrary CSS, backgrounds, SVG definitions, and resource loading to `HostTheme`.
+   Those values have different lifecycle, security, layout, and export semantics. Composite application themes should combine the existing owners rather than turning the semantic theme adapter into a second rendering configuration language.

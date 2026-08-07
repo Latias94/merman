@@ -315,13 +315,13 @@ postprocessing for editor-specific colors.
 }
 ```
 
-`presentation.profile` currently accepts `merman-modern`. The profile selects Redux/slate defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG presentation. A selected profile is not rejected during Options parsing merely because ELK is absent: `svg-plan-json` reports each profile aspect independently, and only a Flowchart whose final effective renderer still needs ELK is blocked.
+`presentation.profile` currently accepts `merman-modern`. The profile selects Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG presentation. It also supplies a Redux/slate visual fallback only when neither `presentation.theme` nor a later top-level `site_config.theme` owns the appearance. A selected profile is not rejected during Options parsing merely because ELK is absent: `svg-plan-json` reports each profile aspect independently, and only a Flowchart whose final effective renderer still needs ELK is blocked.
 
 `presentation.theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. `presentation.theme.appearance` accepts `light` or `dark`. Role keys use the stable kebab-case semantic IDs published by the Rust theme owner, such as `surface-alt`, `subtle-text`, and `edge-label-background`; unknown role IDs fail closed.
 
 Raw Mermaid overrides belong at top-level `site_config`. Output choices belong under `svg`. The removed `host_theme` group returns a migration-oriented error naming `presentation.theme`, `site_config`, and `svg`; nested `output`, `theme_variables`, and `site_config` fields are not accepted under `presentation.theme`.
 
-Merge precedence is the engine's base config, presentation profile defaults, explicit `presentation.theme`, top-level `site_config`, then diagram frontmatter and directives. In a reusable engine request, omitted or empty presentation values inherit the constructor presentation through normal deep overlay semantics.
+Merge precedence is the engine's base config, presentation profile behavior defaults, the conditional profile visual fallback, explicit `presentation.theme`, top-level `site_config`, then diagram frontmatter and directives subject to hardened secure keys. A non-empty `site_config.theme` replaces the profile visual fallback; a partial `themeVariables` object without `theme` overlays it. In a reusable engine request, omitted or empty presentation values inherit the constructor presentation through normal deep overlay semantics.
 
 ## Parse Options
 

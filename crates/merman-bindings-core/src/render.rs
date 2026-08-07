@@ -479,13 +479,10 @@ B -->|No| D[Debug]";
             .expect("binding SVG should be UTF-8");
 
         let renderer = merman::svg::HeadlessRenderer::new()
-            .with_presentation(
-                merman::svg::Presentation::new()
-                    .with_profile(merman::svg::PresentationProfile::MermanModern)
-                    .with_theme(merman::svg::HostTheme::from_preset(
-                        merman::svg::HostThemePreset::OneDark,
-                    )),
-            )
+            .with_presentation_profile(merman::svg::PresentationProfile::MermanModern)
+            .with_host_theme(merman::svg::HostTheme::from_preset(
+                merman::svg::HostThemePreset::OneDark,
+            ))
             .with_site_config(merman::MermaidConfig::from_value(serde_json::json!({
                 "flowchart": { "defaultRenderer": "dagre-wrapper" },
             })))

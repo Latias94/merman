@@ -1,8 +1,8 @@
 #![cfg(feature = "svg")]
 
 use merman::svg::{
-    CssOverridePolicy, HeadlessRenderer, HostTheme, HostThemePreset, Presentation,
-    PresentationProfile, SvgOutputPolicy, SvgPipelinePreset, ThemeRole,
+    CssOverridePolicy, HeadlessRenderer, HostTheme, HostThemePreset, PresentationProfile,
+    SvgOutputPolicy, SvgPipelinePreset, ThemeRole,
 };
 
 const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
@@ -74,7 +74,7 @@ fn themed_renderer(preset: HostThemePreset, name: &str) -> HeadlessRenderer {
     .pipeline();
 
     HeadlessRenderer::new()
-        .with_presentation(Presentation::new().with_theme(theme))
+        .with_host_theme(theme)
         .with_svg_pipeline(pipeline)
         .with_vendored_text_measurer()
         .with_diagram_id(name)
@@ -88,28 +88,10 @@ fn render_with_editor_dark_theme(name: &str, source: &str) -> String {
 }
 
 #[test]
-fn empty_presentation_preserves_default_svg_bytes() {
-    let source = "sequenceDiagram\nAlice->>Bob: Hello";
-    let default_svg = HeadlessRenderer::new()
-        .with_diagram_id("empty-profile-parity")
-        .render_svg_sync(source)
-        .expect("default render should succeed")
-        .expect("sequence diagram should be detected");
-    let empty_presentation_svg = HeadlessRenderer::new()
-        .with_presentation(Presentation::new())
-        .with_diagram_id("empty-profile-parity")
-        .render_svg_sync(source)
-        .expect("empty presentation render should succeed")
-        .expect("sequence diagram should be detected");
-
-    assert_eq!(empty_presentation_svg, default_svg);
-}
-
-#[test]
 fn merman_modern_profile_renders_non_flowchart_without_elk() {
     let source = "sequenceDiagram\nAlice->>Bob: Hello";
     let svg = HeadlessRenderer::new()
-        .with_presentation(Presentation::new().with_profile(PresentationProfile::MermanModern))
+        .with_presentation_profile(PresentationProfile::MermanModern)
         .with_diagram_id("modern-non-flowchart")
         .render_svg_sync(source)
         .expect("modern profile should not require ELK for sequence diagrams")

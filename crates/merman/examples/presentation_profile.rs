@@ -1,6 +1,4 @@
-use merman::svg::{
-    HeadlessRenderer, HostTheme, HostThemePreset, Presentation, PresentationProfile, SvgPipeline,
-};
+use merman::svg::{HeadlessRenderer, HostTheme, HostThemePreset, PresentationProfile, SvgPipeline};
 
 const SOURCE: &str = r#"flowchart LR
     Source[Mermaid source] --> Profile[Merman Modern]
@@ -9,11 +7,9 @@ const SOURCE: &str = r#"flowchart LR
 "#;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let presentation = Presentation::new()
-        .with_profile(PresentationProfile::MermanModern)
-        .with_theme(HostTheme::from_preset(HostThemePreset::OneDark));
     let renderer = HeadlessRenderer::new()
-        .with_presentation(presentation)
+        .with_presentation_profile(PresentationProfile::MermanModern)
+        .with_host_theme(HostTheme::from_preset(HostThemePreset::OneDark))
         .with_svg_pipeline(SvgPipeline::resvg_safe())
         .with_vendored_text_measurer()
         .with_diagram_id("presentation-profile-example");

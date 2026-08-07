@@ -1,12 +1,16 @@
 use merman_core::Engine;
 use merman_render::presentation::{
-    HostTheme, HostThemePreset, Presentation, PresentationProfile, ThemeRole,
+    HostTheme, HostThemePreset, PresentationProfile, ResolvedPresentation, ThemeRole,
     presentation_profile_descriptors, theme_preset_descriptors,
 };
 
-fn effective_config(presentation: Presentation, source: &str) -> serde_json::Value {
-    presentation
-        .resolve()
+fn effective_config(
+    profile: Option<PresentationProfile>,
+    theme: Option<HostTheme>,
+    later_mermaid_theme_selected: bool,
+    source: &str,
+) -> serde_json::Value {
+    ResolvedPresentation::resolve(profile, theme.as_ref(), later_mermaid_theme_selected)
         .materialize_engine(Engine::new())
         .parse_metadata_sync(source)
         .expect("metadata parse should succeed")
@@ -16,7 +20,7 @@ fn effective_config(presentation: Presentation, source: &str) -> serde_json::Val
 }
 
 #[test]
-fn empty_presentation_preserves_default_effective_config() {
+fn omitted_presentation_inputs_preserve_default_effective_config() {
     let source = "sequenceDiagram\nAlice->>Bob: Hello";
     let baseline = Engine::new()
         .parse_metadata_sync(source)
@@ -25,7 +29,7 @@ fn empty_presentation_preserves_default_effective_config() {
         .as_value()
         .clone();
 
-    assert_eq!(effective_config(Presentation::new(), source), baseline);
+    assert_eq!(effective_config(None, None, false, source), baseline);
 }
 
 #[test]
@@ -186,7 +190,9 @@ fn explicit_light_appearance_and_quoted_font_family_are_real_theme_inputs() {
         .try_with_font_family(r#"Inter, "Segoe UI", sans-serif"#)
         .expect("quoted CSS font names should be accepted");
     let config = effective_config(
-        Presentation::new().with_theme(theme),
+        None,
+        Some(theme),
+        false,
         "sequenceDiagram\nAlice->>Bob: Hello",
     );
 
@@ -201,7 +207,9 @@ fn custom_semantic_role_overrides_preset_data() {
         .try_with_role(ThemeRole::Canvas, "#010203")
         .expect("safe CSS color should be accepted");
     let config = effective_config(
-        Presentation::new().with_theme(theme),
+        None,
+        Some(theme),
+        false,
         "sequenceDiagram\nAlice->>Bob: Hello",
     );
 
@@ -213,9 +221,9 @@ fn custom_semantic_role_overrides_preset_data() {
 #[test]
 fn explicit_theme_overrides_modern_theme_defaults_without_erasing_profile_aspects() {
     let config = effective_config(
-        Presentation::new()
-            .with_profile(PresentationProfile::MermanModern)
-            .with_theme(HostTheme::from_preset(HostThemePreset::OneDark)),
+        Some(PresentationProfile::MermanModern),
+        Some(HostTheme::from_preset(HostThemePreset::OneDark)),
+        false,
         "flowchart TD\nA-->B",
     );
 
@@ -226,6 +234,39 @@ fn explicit_theme_overrides_modern_theme_defaults_without_erasing_profile_aspect
     assert!(config["flowchart"].get("edgeCornerRadius").is_none());
     assert!(config["flowchart"].get("edgeLabelPadding").is_none());
     assert!(config["flowchart"].get("compactEdgeCorners").is_none());
+}
+
+#[test]
+fn modern_profile_uses_its_visual_fallback_only_without_a_later_theme_owner() {
+    let fallback = effective_config(
+        Some(PresentationProfile::MermanModern),
+        None,
+        false,
+        "flowchart TD\nA-->B",
+    );
+    assert_eq!(fallback["theme"], "redux");
+    assert_eq!(fallback["themeVariables"]["mainBkg"], "#F8FAFC");
+
+    let explicit_mermaid_theme = effective_config(
+        Some(PresentationProfile::MermanModern),
+        None,
+        true,
+        "flowchart TD\nA-->B",
+    );
+    assert_eq!(explicit_mermaid_theme["theme"], "default");
+    assert_eq!(
+        explicit_mermaid_theme["themeVariables"]["mainBkg"],
+        "#ECECFF"
+    );
+    assert_ne!(
+        explicit_mermaid_theme["themeVariables"]["nodeBorder"],
+        "#64748B"
+    );
+    assert_eq!(explicit_mermaid_theme["look"], "neo");
+    assert_eq!(
+        explicit_mermaid_theme["flowchart"]["defaultRenderer"],
+        "elk"
+    );
 }
 
 #[test]

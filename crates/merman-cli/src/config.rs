@@ -16,7 +16,7 @@ use crate::invocation::ResolvedRenderOptions;
 use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 #[cfg(feature = "svg")]
 use merman::svg::{
-    HeadlessRenderer, IconRegistry, LayoutOptions, MathRenderer, Presentation, PresentationProfile,
+    HeadlessRenderer, IconRegistry, LayoutOptions, MathRenderer, PresentationProfile,
     RenderEnvironment, SvgRenderOptions, TextMeasurementPolicy,
 };
 #[cfg(feature = "svg")]
@@ -317,7 +317,7 @@ fn renderer_from_config(
         ))
         .with_svg_options(svg);
     if let Some(profile) = render.presentation_profile {
-        renderer = renderer.with_presentation(Presentation::new().with_profile(profile));
+        renderer = renderer.with_presentation_profile(profile);
     }
     Ok(renderer.with_site_config(site_config))
 }

@@ -8,11 +8,12 @@ mod theme;
 pub use presets::{HostThemePreset, ThemePresetDescriptor, theme_preset_descriptors};
 pub(crate) use profile::FlowchartPresentationPolicy;
 pub use profile::{
-    Presentation, PresentationAspectApplicability, PresentationAspectDescriptor,
-    PresentationAspectResolution, PresentationAspectState, PresentationProfile,
-    PresentationProfileDescriptor, PresentationRenderPolicy, ResolvedPresentation,
+    PresentationAspectApplicability, PresentationAspectDescriptor, PresentationAspectResolution,
+    PresentationAspectState, PresentationProfile, PresentationProfileDescriptor,
     presentation_profile_descriptors,
 };
+#[doc(hidden)]
+pub use profile::{PresentationRenderPolicy, ResolvedPresentation};
 pub use theme::{HostTheme, HostThemeAppearance, ThemeRole};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
