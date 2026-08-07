@@ -302,10 +302,12 @@ The release probe and wrapper must establish all of the following:
 - multiple fresh full-process runs with byte-identical reports;
 - the maximum corpus member, its source/output hashes, and the calculated headroom;
 - exact adjacent `W/W-1` admission behavior with a structured rejection payload;
-- a preregistered monotonic model-cardinality curve with the last success, first rejection, and
-  next rejection, scoped only to that curve;
+- a preregistered model-cardinality curve whose first rejection is established either by a
+  complete sequential accepted-prefix scan or by a reviewed monotonicity proof, scoped only to
+  that curve;
 - isolated semantic, layout, SVG, end-to-end, and failure probes, each in a fresh timeout-bound
-  process with exit status and peak RSS;
+  managed process group with exit status and peak RSS; cleanup must not infer group exit from the
+  leader or inherited pipe state, and its regression suite must run in the performance-contract CI;
 - a committed evidence manifest that binds ignored raw reports and timing output by byte length and
   SHA-256.
 

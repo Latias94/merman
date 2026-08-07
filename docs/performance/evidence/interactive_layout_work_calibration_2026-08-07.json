@@ -5,8 +5,8 @@
   "decision": "accepted-structural",
   "authoritative_date": "2026-08-07",
   "source_revision": {
-    "commit": "b32dae9521af2900f14fb267498d712d20f70eba",
-    "tree": "80e0c746b58784d9e49f882344845da8e23fb077",
+    "commit": "08c01654c0cf22347bf4f3879cc3a2c564e1cef2",
+    "tree": "5c991300a94a7cc997ab45ff5a7e141d3681594d",
     "tracked_worktree_clean": true
   },
   "source_disposition": {
@@ -33,139 +33,191 @@
     "cargo_manifest_sha256": "0b7687ad2a989792fcbe78eab7bf95d7d63018b460ba85c097e8235718cb2959",
     "corpus_manifest_sha256": "cb7cca600d3980e77180832bff599f7f79608c4a41ff1116a2d4f4fd8cf52e02",
     "fixture_members_sha256": "54a5e69af77e60fd545018db53336b1dd1f9c3d6a229aa7a47e4090e6060180c",
-    "calibration_source_sha256": "880b3fc558e6ace59f5174e48af203893dbcd343a6e473106a7719db867d7678",
-    "runner_sha256": "e9c660141ddf554da0f1d64d22faf18b4882d6a3c5dd9d8bff08025995684321",
-    "executable_sha256": "3f772fb806cbc9908491dcce1d63e710c5fa392ff61027d368ae7de3ce95816d",
+    "calibration_source_sha256": "d722e583aef5fcceaefe58761fa598ada60909b5344dd0afef970247351660b9",
+    "runner_sha256": "c567ff6993c28bb66bc914619a9f5a5fc445de955209e506b2f84c7632b7b746",
+    "runner_test_sha256": "fa64238a454b8652ccc27e00a6480a821bee471cda7cf0da00373efe23fa2474",
+    "executable_sha256": "5338ef68b5e14cfb1688ae6dff2c0ad5216363e4eb50bfa9e268a01aa0e354b7",
     "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
     "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
   },
   "host": {
+    "chip": "Apple M4 Pro",
     "model": "Mac16,7",
-    "processor": "Apple M4 Pro",
     "memory_bytes": 51539607552,
     "system": "Darwin 25.5.0 arm64",
     "platform": "macOS 26.5.1",
     "timeout_seconds_per_process": 300
   },
   "runner": {
-    "command": "python3 tools/bench/run_layout_work_calibration.py --authoritative-date 2026-08-07 --out-dir target/bench/layout-work-calibration-2026-08-07-final --timeout-seconds 300 --full-repeats 5",
-    "raw_root": "target/bench/layout-work-calibration-2026-08-07-final",
+    "command": "python3 tools/bench/run_layout_work_calibration.py --authoritative-date 2026-08-07 --binary /Users/frankorz/Documents/projects/rust/merman/target/release/examples/layout_work_calibration --out-dir target/bench/layout-work-calibration-2026-08-07-final-v3 --timeout-seconds 300 --full-repeats 5",
+    "raw_root": "target/bench/layout-work-calibration-2026-08-07-final-v3",
     "raw_committed": false,
-    "raw_summary_bytes": 18319,
-    "raw_summary_sha256": "9b9d9d988bec4c337d12aa5fe167d0c925f89467b388bceab0009178edb16478",
-    "stderr_bundle_sha256": "4ca69d28a23f03f9190c1cecf2b91dc9ce9b2779848fb1434e000d471142742c",
+    "raw_summary_bytes": 19707,
+    "raw_summary_sha256": "d8ef23bc814b43af8019cb2c61dfdcea16068533e6b6327937196b46d528fad8",
+    "stderr_index_sha256": "d9154c6f346cc98e29e0e009e0f27af968d59a37e83a8ce5575e1190d85590f2",
     "full_reports_byte_identical": true,
-    "full_report_bytes": 38275,
-    "full_report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf"
+    "full_report_bytes": 38787,
+    "full_report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+    "output_directory_was_empty": true,
+    "final_source_tree_revalidated": true,
+    "runner_and_executable_revalidated": true,
+    "isolated_outcomes_reconciled_to_full_report": true,
+    "timeout_terminates_managed_process_group": true,
+    "timeout_regression": {
+      "command": "PYTHONWARNINGS=error::ResourceWarning python3 -m unittest tools.bench.test_layout_work_calibration",
+      "raw_path": "target/bench/layout-work-calibration-2026-08-07-final-v3-runner-tests.txt",
+      "raw_committed": false,
+      "exit_code": 0,
+      "test_count": 4,
+      "raw_bytes": 102,
+      "raw_sha256": "6ac2ad615dc6e0e4f04087a91e0db928c731e875f8743d4504ee570e279b5afe",
+      "ci_workflow": ".github/workflows/performance.yml"
+    }
   },
   "processes": [
     {
       "name": "full-1",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 2.1379917496815324,
-      "peak_rss_bytes": 139100160,
-      "report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf",
-      "stderr_sha256": "6f232f0944b1bdfe4205f7a2fb49a7849779deccdbd6acdeff125f8b43aa0155"
+      "elapsed_seconds": 32.361542500089854,
+      "peak_rss_bytes": 119816192,
+      "report_bytes": 38787,
+      "report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+      "stdout_bytes": 155,
+      "stderr_bytes": 777,
+      "stderr_sha256": "dc748400650788be06195592a26416ee5a6446ebcb1c34ef2a746a6d960882f6"
     },
     {
       "name": "full-2",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 2.192070625256747,
-      "peak_rss_bytes": 144031744,
-      "report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf",
-      "stderr_sha256": "79ffeec0d1e5a0c38ab6fdcdca95c5be0d5c1eb8dab095a93bda9bdd6ef93dfd"
+      "elapsed_seconds": 32.91997837508097,
+      "peak_rss_bytes": 122830848,
+      "report_bytes": 38787,
+      "report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+      "stdout_bytes": 155,
+      "stderr_bytes": 777,
+      "stderr_sha256": "588e48b46a2d599586c2652016339ec41d002b60751f0516540baeef8dc91f68"
     },
     {
       "name": "full-3",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 2.1642924998886883,
-      "peak_rss_bytes": 146145280,
-      "report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf",
-      "stderr_sha256": "fa504e7208dd12f182454132b9fb2abefa8577a84248f1a51120a3bc5f30684c"
+      "elapsed_seconds": 33.014127833303064,
+      "peak_rss_bytes": 119521280,
+      "report_bytes": 38787,
+      "report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+      "stdout_bytes": 155,
+      "stderr_bytes": 777,
+      "stderr_sha256": "dd9713d38cd434593146f8b6ba748de93017d52e2dad80d408156cafbff8498c"
     },
     {
       "name": "full-4",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 2.12465391587466,
-      "peak_rss_bytes": 139755520,
-      "report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf",
-      "stderr_sha256": "606b361b8bc7f2636c66c7979059952b3320c70bb87da3e6922d16f8d83bf3bd"
+      "elapsed_seconds": 32.891634750179946,
+      "peak_rss_bytes": 119750656,
+      "report_bytes": 38787,
+      "report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+      "stdout_bytes": 155,
+      "stderr_bytes": 777,
+      "stderr_sha256": "778ec072b65b7748b48f032abf417784418c4418ef8cb368df82be0aad304a15"
     },
     {
       "name": "full-5",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 2.1147404578514397,
-      "peak_rss_bytes": 136871936,
-      "report_sha256": "05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf",
-      "stderr_sha256": "2cc588fa9c674ec4681980ae6075e394c0fa657c3e94c8b888b997fd45f055d0"
+      "elapsed_seconds": 32.81461520912126,
+      "peak_rss_bytes": 120438784,
+      "report_bytes": 38787,
+      "report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+      "stdout_bytes": 155,
+      "stderr_bytes": 777,
+      "stderr_sha256": "419d1df4c509f4e1cc396dbf88e0dc4ef68e3c380b046ee9d9eeade6064a71bf"
     },
     {
       "name": "max-semantic",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 0.7544934577308595,
-      "peak_rss_bytes": 45498368,
-      "report_sha256": "6f8c3d6eb53160f40731c6fbcdd9f3eacb254a00b76dbc0f10291629b0a76d6b",
-      "stderr_sha256": "a31a9c80710f8b1526968b116bbf01a23d585f470645fc8e06f8348cdfb04e6b"
+      "elapsed_seconds": 1.3041758751496673,
+      "peak_rss_bytes": 45563904,
+      "report_bytes": 1793,
+      "report_sha256": "7ab3d9ddde885edca88a80df4ee67be036b1240fed3ec9b115c9b9d627b8c7e5",
+      "stdout_bytes": 161,
+      "stderr_bytes": 777,
+      "stderr_sha256": "e2e5a383caf5de262705caf1f183d6e7fdee3cf2d7bb090a2cc8d8b4ef692cbe"
     },
     {
       "name": "max-layout",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 0.7413205001503229,
-      "peak_rss_bytes": 56836096,
-      "report_sha256": "f73f63a1a5f1f0152b8a24f12f0e9aa347836d7955a0a28ac1477523f77c6e8a",
-      "stderr_sha256": "cc8d5aa67b4ee2f0042f639c038af2be7b4329d4c1eb31f74e914bdb83b7aff7"
+      "elapsed_seconds": 1.3600193341262639,
+      "peak_rss_bytes": 56786944,
+      "report_bytes": 1847,
+      "report_sha256": "a9429f3adb4e3107b77f4595dfb29f40485ba19250a0a331b54edde8e06e6653",
+      "stdout_bytes": 159,
+      "stderr_bytes": 777,
+      "stderr_sha256": "5f90ac005211d3c7c0efc9490ae850afb52395f4e9a55bff80ee32f4d2a06353"
     },
     {
       "name": "max-svg",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 0.7537191659212112,
-      "peak_rss_bytes": 54329344,
-      "report_sha256": "455a6c1bd514878004a83e4f5f329bcb9072e27c815707306c805a78e3804c20",
-      "stderr_sha256": "68b78a955d4f8e73865389e2c33df8403e3945a438f0fc3f9b4492b31588c0dc"
+      "elapsed_seconds": 1.3531420417129993,
+      "peak_rss_bytes": 54460416,
+      "report_bytes": 1884,
+      "report_sha256": "6ea452f3d57ef8e608795aefa7fe4ae88cdd2d03cb475131b2227f6feb945cb9",
+      "stdout_bytes": 156,
+      "stderr_bytes": 777,
+      "stderr_sha256": "b04e66584b521a0fd66a61b623c0eb14a6438b6a4d53b4800e8a38930291af53"
     },
     {
       "name": "max-end-to-end",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 0.7178017091937363,
-      "peak_rss_bytes": 54362112,
-      "report_sha256": "b25e74aafe410983cbea7456fd17fb82f47741eaa167b3bcd785234be908c433",
-      "stderr_sha256": "c92086d9806dc4792376dcae5eb2fe355225f536dee906fb929ff6643dd320a5"
+      "elapsed_seconds": 1.3750992910936475,
+      "peak_rss_bytes": 54689792,
+      "report_bytes": 1892,
+      "report_sha256": "16a41d07609c634be95c0011284d025d294899c40cfdf47e46431d07f3c5ded8",
+      "stdout_bytes": 163,
+      "stderr_bytes": 777,
+      "stderr_sha256": "ab96868f4273273f9729653517948310ffe71826ffb41ee6f93a132a535fc978"
     },
     {
       "name": "cardinality-1643",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 0.7568936669267714,
-      "peak_rss_bytes": 87932928,
-      "report_sha256": "7f63d86903f141efdc3f9ef1bbf90fba9a02569657f3e92c1e0fc2891812595a",
-      "stderr_sha256": "b7629fbf0fba7a47d5241bbe2a4cbf993dc82e91f11746760b7d9770140232e2"
+      "elapsed_seconds": 1.3754103747196496,
+      "peak_rss_bytes": 86327296,
+      "report_bytes": 1862,
+      "report_sha256": "2bf57b76cfd0d8adc6db2c2e9eb4c40f3cd35533cc41c64e06c313d3e201fdca",
+      "stdout_bytes": 165,
+      "stderr_bytes": 777,
+      "stderr_sha256": "31fe91bb1750500beed2c30696f5b015cc8e609c9b472aa4c5c4a0da78966bfa"
     },
     {
       "name": "cardinality-1644",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 0.7457996248267591,
-      "peak_rss_bytes": 78528512,
-      "report_sha256": "9df92a0c01ea92d135073899982f36042340ceae86e3c9b4122ed3a401d6b4e3",
-      "stderr_sha256": "46b18b3f74e0c7b0757e134b89447c89a43bf9a7e454266c90718c826dfcb08a"
+      "elapsed_seconds": 1.3966573751531541,
+      "peak_rss_bytes": 78987264,
+      "report_bytes": 1917,
+      "report_sha256": "bf369ac52f96f547d2bba195da3aa22723c3d7e6c1d24d1346083d1f81d4d384",
+      "stdout_bytes": 165,
+      "stderr_bytes": 777,
+      "stderr_sha256": "a6ac881f98d83a2756e5fbfaf2ab06d9b735398fc8ab0d1e11fb5181782a0152"
     },
     {
       "name": "max-w-minus-one",
       "exit_code": 0,
       "timed_out": false,
-      "elapsed_seconds": 0.7654388337396085,
-      "peak_rss_bytes": 53542912,
-      "report_sha256": "381c332ec83c75c4a852439724745bc43171578dff75657439d4883d6b43179f",
-      "stderr_sha256": "5fead2406f69c5c884ce3f700a8e11100dc8db59ebd78d771108bbd31409fddf"
+      "elapsed_seconds": 1.3166639162227511,
+      "peak_rss_bytes": 54067200,
+      "report_bytes": 2126,
+      "report_sha256": "32a4434c6651ae6fdaf30052de3f5564e363e0802613535d5d3e1bb27ba2ba25",
+      "stdout_bytes": 164,
+      "stderr_bytes": 777,
+      "stderr_sha256": "ff46472ef12206206b347b2a80eab97ea64a956c8e9b72d5cb89a8782579085d"
     }
   ],
   "policy": {
@@ -207,7 +259,14 @@
   },
   "cardinality_boundary": {
     "curve": "flowchart-linear-chain-v1",
-    "scope": "This adjacent result applies only to the registered deterministic linear chain, not every Flowchart topology.",
+    "scope": "This sequential result applies only to the registered deterministic linear chain, not every Flowchart topology.",
+    "scan_start_nodes": 1,
+    "scanned_through_nodes": 1644,
+    "accepted_prefix_count": 1643,
+    "accepted_prefix_digest_encoding": "repeated u64-le(nodes) || u64-le(layout_work_units)",
+    "accepted_prefix_observations_sha256": "d1868aab150183b9d01cf66654602013d195814bd801d759e00c23eec3542b22",
+    "accepted_prefix_work_units_non_decreasing": true,
+    "first_rejected_nodes": 1644,
     "accepted": {
       "nodes": 1643,
       "edges": 1642,
@@ -242,36 +301,36 @@
   "isolated_stage_results": [
     {
       "stage": "semantic",
-      "internal_elapsed_ns": 846000,
+      "internal_elapsed_ns": 875417,
       "outcome": "accepted_semantic",
       "output": "flowchart-v2"
     },
     {
       "stage": "layout",
-      "internal_elapsed_ns": 9314750,
+      "internal_elapsed_ns": 9221208,
       "outcome": "accepted_layout",
       "output_sha256": "1080294a3c2c7169a17c62b9df55870f0eace63f130a098af05d1301614b55cc"
     },
     {
       "stage": "svg",
-      "internal_elapsed_ns": 1697792,
+      "internal_elapsed_ns": 1371833,
       "outcome": "accepted_svg",
       "output_sha256": "1a43732507bd36e0c26776bc7a768cb5400a70bb429acfeb47d1077f57a315fe"
     },
     {
       "stage": "end_to_end",
-      "internal_elapsed_ns": 9776375,
+      "internal_elapsed_ns": 10135416,
       "outcome": "accepted_svg",
       "output_sha256": "1a43732507bd36e0c26776bc7a768cb5400a70bb429acfeb47d1077f57a315fe"
     },
     {
       "stage": "cardinality_rejection",
-      "internal_elapsed_ns": 35824250,
+      "internal_elapsed_ns": 36667500,
       "outcome": "typed_ceiling_rejection"
     },
     {
       "stage": "exact_w_minus_one_rejection",
-      "internal_elapsed_ns": 8408834,
+      "internal_elapsed_ns": 8732541,
       "outcome": "typed_ceiling_rejection"
     }
   ],
@@ -280,6 +339,6 @@
     "memory_claim": false,
     "host_slo_claim": false,
     "mermaid_semantic_constant": false,
-    "accepted_statement": "The 800000-unit interactive ceiling satisfies the registered headroom rule for the closed 68-member corpus and produces deterministic typed rejection at the exact fixture and registered cardinality boundaries on the recorded host."
+    "accepted_statement": "The 800000-unit interactive ceiling satisfies the registered headroom rule for the closed 68-member corpus and produces deterministic typed rejection at the exact fixture threshold and the first rejection of the fully scanned registered cardinality curve on the recorded host."
   }
 }

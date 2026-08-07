@@ -30,25 +30,28 @@ It binds the ignored raw evidence by byte length and SHA-256.
 | Field | Value |
 |---|---|
 | Authoritative evidence date | `2026-08-07` |
-| Source revision | `b32dae9521af2900f14fb267498d712d20f70eba` |
-| Source tree | `80e0c746b58784d9e49f882344845da8e23fb077` |
+| Source revision | `08c01654c0cf22347bf4f3879cc3a2c564e1cef2` |
+| Source tree | `5c991300a94a7cc997ab45ff5a7e141d3681594d` |
 | Tracked worktree | Clean before and after every probe |
 | Build profile | `release` |
 | Feature closure | `svg`, `layout-cytoscape`, `layout-elk`, `math`, `complete-svg` |
-| Calibration source SHA-256 | `880b3fc558e6ace59f5174e48af203893dbcd343a6e473106a7719db867d7678` |
-| Runner SHA-256 | `e9c660141ddf554da0f1d64d22faf18b4882d6a3c5dd9d8bff08025995684321` |
-| Executable SHA-256 | `3f772fb806cbc9908491dcce1d63e710c5fa392ff61027d368ae7de3ce95816d` |
+| Calibration source SHA-256 | `d722e583aef5fcceaefe58761fa598ada60909b5344dd0afef970247351660b9` |
+| Runner SHA-256 | `c567ff6993c28bb66bc914619a9f5a5fc445de955209e506b2f84c7632b7b746` |
+| Process-tree test SHA-256 | `fa64238a454b8652ccc27e00a6480a821bee471cda7cf0da00373efe23fa2474` |
+| Process-tree test result | 4 tests passed; 102 bytes; SHA-256 `6ac2ad615dc6e0e4f04087a91e0db928c731e875f8743d4504ee570e279b5afe` |
+| Executable SHA-256 | `5338ef68b5e14cfb1688ae6dff2c0ad5216363e4eb50bfa9e268a01aa0e354b7` |
 | `Cargo.lock` SHA-256 | `4eb38cee29796405570fa3172fffd049429fdef5692f868fd6be02e45ee93a71` |
 | `crates/merman/Cargo.toml` SHA-256 | `0b7687ad2a989792fcbe78eab7bf95d7d63018b460ba85c097e8235718cb2959` |
 | Corpus manifest SHA-256 | `cb7cca600d3980e77180832bff599f7f79608c4a41ff1116a2d4f4fd8cf52e02` |
 | Fixture-member aggregate SHA-256 | `54a5e69af77e60fd545018db53336b1dd1f9c3d6a229aa7a47e4090e6060180c` |
-| Raw summary | 18,319 bytes; SHA-256 `9b9d9d988bec4c337d12aa5fe167d0c925f89467b388bceab0009178edb16478` |
-| Raw stderr bundle SHA-256 | `4ca69d28a23f03f9190c1cecf2b91dc9ce9b2779848fb1434e000d471142742c` |
+| Raw summary | 19,707 bytes; SHA-256 `d8ef23bc814b43af8019cb2c61dfdcea16068533e6b6327937196b46d528fad8` |
+| Timing-file index SHA-256 | `d9154c6f346cc98e29e0e009e0f27af968d59a37e83a8ce5575e1190d85590f2`; every timing file is 777 bytes and has an individual digest in the manifest. |
 
-The probe fails closed on tracked changes, untracked owned inputs, a changed postflight source
-snapshot, or a feature closure different from the exact set above. Pre-existing unrelated
-untracked paths are listed in the evidence manifest and were not used. The authoritative date and
-Git ancestry establish chronology; future-skewed host timestamps do not.
+Every full and isolated probe re-captures its source snapshot before writing a report. The wrapper
+then revalidates the final Git revision/tree, runner, executable, every raw artifact, and every
+isolated outcome against the full report. It also requires an empty output directory. Pre-existing
+unrelated untracked paths are listed in the evidence manifest and were not used. The authoritative
+date and Git ancestry establish chronology; future-skewed host timestamps do not.
 
 ## Host and process envelope
 
@@ -60,10 +63,10 @@ Git ancestry establish chronology; future-skewed host timestamps do not.
 | Outer timeout | 300 seconds per process |
 | Recorded processes | 12 |
 | Exit status | 0 for all processes; no timeout |
-| Five full-run elapsed range | 2.114740-2.192071 seconds |
-| Five full-run peak RSS range | 136,871,936-146,145,280 bytes |
-| Maximum recorded peak RSS | 146,145,280 bytes (139.38 MiB) |
-| Full report | 38,275 bytes; SHA-256 `05b6aabc97ad2583922f2f2b632ef579e3ce6060720335e6c91267ad2fba8bdf` |
+| Five full-run elapsed range | 32.361543-33.014128 seconds |
+| Five full-run peak RSS range | 119,521,280-122,830,848 bytes |
+| Maximum recorded peak RSS | 122,830,848 bytes (117.14 MiB) |
+| Full report | 38,787 bytes; SHA-256 `336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2` |
 
 All five fresh full processes produced byte-identical reports. External elapsed and RSS establish
 the recorded calibration envelope only. They are not a portable bound or an admitted performance
@@ -101,9 +104,12 @@ report-only implementation.
 ## Registered cardinality boundary
 
 The `flowchart-linear-chain-v1` curve generates a deterministic `N`-node, `N-1`-edge Flowchart.
-Exponential bracketing followed by binary search records the last success, first rejection, and
-next rejection. The result applies only to this registered curve; it is not generalized to all
-Flowchart topologies.
+Each full process renders every cardinality sequentially from `N=1` until the first structured
+rejection, so the boundary does not rely on a monotonicity assumption. All 1,643 accepted
+observations are bound as repeated little-endian `(nodes, layout_work_units)` pairs with SHA-256
+`d1868aab150183b9d01cf66654602013d195814bd801d759e00c23eec3542b22`; their observed work values
+were non-decreasing. `N=1,645` is only a local consecutive-rejection check. The result applies only
+to this registered curve and is not generalized to all Flowchart topologies.
 
 | Nodes | Edges | Result | Work/output evidence |
 |---:|---:|---|---|
@@ -112,7 +118,7 @@ Flowchart topologies.
 | 1,645 | 1,644 | Rejected | Structured ceiling error with `actual=800001`; source SHA-256 `7f52983bdfd8ccd5cbcc03e5665e1b25c171bcb0b6cd5eae721fc35fbf61d609`. |
 
 The accepted render emitted 2,397,515 SVG bytes and 23,034 elements. Its separate process peaked
-at 87,932,928 bytes RSS and completed within the 300-second timeout.
+at 86,327,296 bytes RSS and completed within the 300-second timeout.
 
 ## Configuration amplification boundary
 
@@ -132,18 +138,18 @@ boundary; final consumed units must not replace the admission estimate.
 
 ## Isolated stage and failure paths
 
-Each stage probe runs in a fresh process. Semantic work is timed directly. Layout preparation
-finishes before the layout timer; render preparation finishes before the SVG timer. End-to-end and
-failure probes use the public complete path.
+Each stage probe runs in a fresh process. Semantic work is timed directly. Semantic preparation
+finishes before the layout timer; semantic and layout preparation finish before the SVG timer.
+End-to-end and failure probes use the public complete path.
 
 | Lane | Internal elapsed | External elapsed | Peak RSS | Result |
 |---|---:|---:|---:|---|
-| `semantic` | 846,000 ns | 0.754493 s | 45,498,368 bytes | `flowchart-v2` semantic model |
-| `layout` | 9,314,750 ns | 0.741321 s | 56,836,096 bytes | Layout JSON SHA-256 `1080294a3c2c7169a17c62b9df55870f0eace63f130a098af05d1301614b55cc` |
-| `svg` | 1,697,792 ns | 0.753719 s | 54,329,344 bytes | Corpus-maximum SVG hash preserved |
-| `end-to-end` | 9,776,375 ns | 0.717802 s | 54,362,112 bytes | Corpus-maximum SVG hash preserved |
-| cardinality rejection | 35,824,250 ns | 0.745800 s | 78,528,512 bytes | Typed `800002 > 800000` rejection |
-| exact `W-1` rejection | 8,408,834 ns | 0.765439 s | 53,542,912 bytes | Typed `697752 > 697751` rejection |
+| `semantic` | 875,417 ns | 1.304176 s | 45,563,904 bytes | `flowchart-v2` semantic model |
+| `layout` | 9,221,208 ns | 1.360019 s | 56,786,944 bytes | Layout JSON SHA-256 `1080294a3c2c7169a17c62b9df55870f0eace63f130a098af05d1301614b55cc` |
+| `svg` | 1,371,833 ns | 1.353142 s | 54,460,416 bytes | Corpus-maximum SVG hash preserved |
+| `end-to-end` | 10,135,416 ns | 1.375099 s | 54,689,792 bytes | Corpus-maximum SVG hash preserved |
+| cardinality rejection | 36,667,500 ns | 1.396657 s | 78,987,264 bytes | Typed `800002 > 800000` rejection |
+| exact `W-1` rejection | 8,732,541 ns | 1.316664 s | 54,067,200 bytes | Typed `697752 > 697751` rejection |
 
 These timers prove that every required path was exercised and bounded by the runner timeout. They
 are not an A/B performance measurement.
@@ -156,17 +162,25 @@ Build the exact feature closure and run the evidence wrapper:
 CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
   --example layout_work_calibration --features complete-svg
 
+PYTHONWARNINGS=error::ResourceWarning \
+  python3 -m unittest tools.bench.test_layout_work_calibration
+
 python3 tools/bench/run_layout_work_calibration.py \
   --authoritative-date 2026-08-07 \
-  --out-dir target/bench/layout-work-calibration-2026-08-07-final \
+  --binary "$PWD/target/release/examples/layout_work_calibration" \
+  --out-dir target/bench/layout-work-calibration-2026-08-07-final-v3 \
   --timeout-seconds 300 \
   --full-repeats 5
 ```
 
-The wrapper uses `/usr/bin/time -l` on Darwin or GNU `time -v` on Linux, enforces the timeout with
-the Python subprocess API, launches every lane in a fresh process, verifies five byte-identical
-full reports, derives the maximum fixture and adjacent cardinality probes from the full report, and
-binds commands, exit status, RSS, report hashes, source, runner, executable, toolchain, and host.
+The wrapper uses `/usr/bin/time -l` on Darwin or GNU `time -v` on Linux. It starts each timing
+command in a new process group; timeout sends SIGTERM to the group, independently waits for group
+members rather than leader or pipe state, then SIGKILLs any survivor before bounded pipe recovery.
+Four regression tests cover a live leader, an exited leader, inherited pipes, and a grandchild that
+redirects its pipes while ignoring SIGTERM. The unconditional performance-contract CI lane runs
+the same suite. The wrapper verifies five byte-identical full reports, reconciles each isolated
+report with the full report, and binds commands, exit status, artifact byte lengths and hashes,
+RSS, source, runner, executable, toolchain, and host.
 
 ## Scope
 

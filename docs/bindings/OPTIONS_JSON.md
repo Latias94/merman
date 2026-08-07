@@ -516,10 +516,15 @@ python3 tools/bench/run_layout_work_calibration.py \
 ```
 
 The wrapper runs the closed corpus five times in fresh processes, verifies byte-identical reports,
-then launches isolated semantic, layout, SVG, end-to-end, exact `W-1`, and adjacent node/edge
-cardinality probes. It records the executable, source, manifest, runner, host, timeout, exit status,
-peak RSS, output, and raw-report hashes in one summary. Darwin uses `/usr/bin/time -l`; Linux uses
-GNU `time -v`. Unsupported timing formats fail closed rather than silently omitting RSS.
+and establishes the first rejected node/edge cardinality by scanning the complete accepted prefix
+without assuming monotonicity. It then launches isolated semantic, layout, SVG, end-to-end, exact
+`W-1`, and boundary probes. Each timing command owns a managed process group so a timeout terminates
+descendants independently of leader exit or pipe closure. The unconditional performance-contract
+CI lane runs the same timeout regression suite. The wrapper requires an empty output directory and
+records the executable, source, manifest, runner, host, timeout, exit status, timing-file byte
+lengths, peak RSS, output, and raw report hashes in one summary. Darwin uses `/usr/bin/time -l`;
+Linux uses GNU `time -v`.
+Unsupported timing formats fail closed rather than silently omitting RSS.
 
 The current `interactive` calibration is recorded in
 [`interactive_layout_work_calibration_2026-08-07.md`](../performance/interactive_layout_work_calibration_2026-08-07.md).

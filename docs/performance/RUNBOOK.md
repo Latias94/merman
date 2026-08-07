@@ -252,11 +252,15 @@ python3 tools/bench/run_layout_work_calibration.py \
 
 The source probe owns the closed corpus and registered headroom rule. The wrapper must bind five
 byte-identical full reports, isolated semantic/layout/SVG/end-to-end paths, the exact corpus
-maximum at `W` and `W-1`, an adjacent deterministic node/edge cardinality boundary, typed failure
-payloads, timeout, peak RSS, and output hashes. Commit a compact evidence manifest under
-`docs/performance/evidence/` that binds the ignored raw summary by byte length and SHA-256, then
-link a dated decision receipt from `PERF_PLAN.md`. Record the result as `accepted-structural` only;
-stage elapsed and RSS observations do not create latency, memory, or host-SLO claims.
+maximum at `W` and `W-1`, and a deterministic node/edge boundary proven by a complete sequential
+accepted-prefix scan or reviewed monotonicity proof. It must use a managed process group so timeout
+terminates descendants independently of leader exit or pipe closure, and the timeout regression
+suite must pass in the performance-contract CI. Require an empty evidence directory and bind typed
+failure payloads, timing-file byte lengths, peak RSS, and output hashes. Commit a compact evidence
+manifest under `docs/performance/evidence/` that binds the ignored raw summary by byte length and
+SHA-256, then link a dated decision receipt from `PERF_PLAN.md`. Record the result as
+`accepted-structural` only; stage elapsed and RSS observations do not create latency, memory, or
+host-SLO claims.
 
 The current accepted policy example is
 [`interactive_layout_work_calibration_2026-08-07.md`](interactive_layout_work_calibration_2026-08-07.md).
