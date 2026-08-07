@@ -52,6 +52,7 @@ pub struct ResvgCompatibleSvg {
     reference_plan: SvgReferencePlan,
     resource_closure: SvgResourceClosure,
     font_catalog: crate::diagram_theme::FontCatalog,
+    font_source_policy: crate::diagram_theme::FontSourcePolicy,
     resource_fingerprint: SvgResourceFingerprint,
 }
 
@@ -92,15 +93,18 @@ impl ResvgCompatibleSvg {
         session: &RenderSession,
     ) -> Self {
         let font_catalog = session.font_catalog().clone();
+        let font_source_policy = session.font_source_policy().clone();
         let resource_fingerprint = resource_closure::fingerprint_svg_resources(
             &svg,
             font_catalog.fingerprint().as_bytes(),
+            &font_source_policy,
         );
         Self {
             svg,
             reference_plan,
             resource_closure,
             font_catalog,
+            font_source_policy,
             resource_fingerprint,
         }
     }
@@ -129,7 +133,12 @@ impl ResvgCompatibleSvg {
         &self.font_catalog
     }
 
-    /// Returns a stable identity for the finalized SVG plus its retained font catalog.
+    /// Returns the host-authorized source priority retained for native font resolution.
+    pub const fn font_source_policy(&self) -> &crate::diagram_theme::FontSourcePolicy {
+        &self.font_source_policy
+    }
+
+    /// Returns a stable identity for the finalized SVG, retained catalog, and font-source policy.
     pub const fn resource_fingerprint(&self) -> SvgResourceFingerprint {
         self.resource_fingerprint
     }
@@ -142,6 +151,7 @@ impl fmt::Debug for ResvgCompatibleSvg {
             .field("reference_plan", &self.reference_plan)
             .field("resource_closure", &self.resource_closure)
             .field("font_catalog", &self.font_catalog.fingerprint())
+            .field("font_source_policy", &self.font_source_policy)
             .field("resource_fingerprint", &self.resource_fingerprint)
             .finish()
     }
@@ -153,6 +163,7 @@ impl PartialEq for ResvgCompatibleSvg {
             && self.reference_plan == other.reference_plan
             && self.resource_closure == other.resource_closure
             && self.font_catalog.fingerprint() == other.font_catalog.fingerprint()
+            && self.font_source_policy == other.font_source_policy
             && self.resource_fingerprint == other.resource_fingerprint
     }
 }

@@ -77,6 +77,11 @@ impl RenderOperationReport {
     pub const fn font_catalog_fingerprint(&self) -> super::FontCatalogFingerprint {
         self.session.font_catalog_fingerprint()
     }
+
+    /// Returns the host-owned font-source order frozen by the completed render operation.
+    pub const fn font_source_policy(&self) -> &super::FontSourcePolicy {
+        self.session.font_source_policy()
+    }
 }
 
 struct CompletedTypedHeadlessSvg {
@@ -204,6 +209,10 @@ impl RenderedDocument {
 
     pub const fn font_catalog(&self) -> &super::FontCatalog {
         self.svg.font_catalog()
+    }
+
+    pub const fn font_source_policy(&self) -> &super::FontSourcePolicy {
+        self.svg.font_source_policy()
     }
 
     /// Discards completed-operation evidence while retaining the low-level sealed SVG artifact.
@@ -505,6 +514,11 @@ impl RenderedSvgParts {
             svg.font_catalog().fingerprint(),
             report.font_catalog_fingerprint(),
             "sealed SVG and operation report must retain the same catalog"
+        );
+        debug_assert_eq!(
+            svg.font_source_policy(),
+            report.font_source_policy(),
+            "sealed SVG and operation report must retain the same font-source policy"
         );
         Ok(RenderedDocument { svg, report })
     }

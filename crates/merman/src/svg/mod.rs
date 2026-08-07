@@ -49,10 +49,10 @@ pub use merman_core::runtime::{
     OperationContext, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
 };
 pub use merman_render::diagram_theme::{
-    FontCatalog, FontCatalogFingerprint, ThemeResourceLimitDescriptor, ThemeResourceLimitExceeded,
-    ThemeResourceLimitId, ThemeResourceLimitOverride, ThemeResourceLimitOverrideError,
-    ThemeResourceLimitPhase, ThemeResourcePolicy, ThemeResourcePolicyRestrictionError,
-    theme_resource_limit_descriptors,
+    FontCatalog, FontCatalogFingerprint, FontSourcePolicy, ThemeResourceLimitDescriptor,
+    ThemeResourceLimitExceeded, ThemeResourceLimitId, ThemeResourceLimitOverride,
+    ThemeResourceLimitOverrideError, ThemeResourceLimitPhase, ThemeResourcePolicy,
+    ThemeResourcePolicyRestrictionError, theme_resource_limit_descriptors,
 };
 pub use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,

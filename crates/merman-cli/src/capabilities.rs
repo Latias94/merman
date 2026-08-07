@@ -154,7 +154,7 @@ fn output_view(output: &descriptor::OutputDescriptor) -> OutputView<'_> {
                 .expect("a compiled CLI export must have an environment contract");
             let system_fonts = environment
                 .system_fonts
-                .expect("native CLI exports must disclose host system fonts");
+                .expect("native CLI exports must disclose their system-font capability");
             let limits = environment.embedded_images.default_limits;
             OutputView {
                 id: output.id,

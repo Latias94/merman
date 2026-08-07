@@ -6,13 +6,17 @@
 //! arbitrary SVG string. Parsing, semantic construction, layout, SVG production, and terminal
 //! SVG validation stay owned by `merman`; this crate only owns allocation-aware encoding.
 
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+mod font_environment;
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+pub use font_environment::{ExportFontMode, ExportFontPlan};
+
 #[cfg(any(feature = "png", feature = "jpeg"))]
 use cssparser::{Delimiter, Parser, ParserInput, Token};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_render::svg::ResvgCompatibleSvg;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-use std::sync::{Arc, OnceLock};
-
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
@@ -38,6 +42,10 @@ pub enum ExportError {
     JpegDimensionLimit,
     #[error("failed to convert SVG to PDF")]
     PdfConvert,
+    #[error("retained font catalog and host font-source policy have no usable source")]
+    FontSourceUnavailable,
+    #[error("failed to load the retained font catalog into the native exporter")]
+    FontCatalogLoad,
     #[error("embedded image resource limit exceeded: {limit_name} is {actual}, maximum is {max}")]
     EmbeddedImageLimit {
         limit_name: &'static str,
@@ -644,7 +652,11 @@ impl Default for EmbeddedImageLimit {
     }
 }
 
-/// Host font behavior shared by native PNG, JPEG, and PDF exporters.
+/// Optional host-system font capability shared by native PNG, JPEG, and PDF exporters.
+///
+/// This static contract reports what a compiled backend can do. A concrete export consults this
+/// source only when its sealed font-source policy permits it; [`ExportFontPlan`] reports whether
+/// usvg actually selected a host face.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -672,7 +684,8 @@ pub struct EmbeddedImageEnvironmentContract {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ExportEnvironmentContract {
-    /// System font discovery used by this target, or `None` when the target cannot discover fonts.
+    /// System font discovery available to this target, or `None` when it cannot discover fonts.
+    /// Availability does not imply that every operation consults or selects a system font.
     pub system_fonts: Option<SystemFontEnvironmentContract>,
     pub embedded_images: EmbeddedImageEnvironmentContract,
 }
@@ -982,6 +995,7 @@ pub struct PreparedRaster {
     plan: RasterPlan,
     embedded_image_plan: EmbeddedImagePlan,
     conversion_plan: SvgConversionPlan,
+    font_plan: ExportFontPlan,
     options: RasterOptions,
 }
 
@@ -999,6 +1013,11 @@ impl PreparedRaster {
 
     pub const fn conversion_plan(&self) -> SvgConversionPlan {
         self.conversion_plan
+    }
+
+    /// Returns frozen font-source and fallback evidence from usvg parsing.
+    pub const fn font_plan(&self) -> ExportFontPlan {
+        self.font_plan
     }
 
     /// Returns an advisory weight for scheduling parallel PNG jobs.
@@ -1098,6 +1117,7 @@ pub struct PreparedPdf {
     filter_plan: PdfFilterImagePlan,
     embedded_image_plan: EmbeddedImagePlan,
     conversion_plan: SvgConversionPlan,
+    font_plan: ExportFontPlan,
 }
 
 #[cfg(feature = "pdf")]
@@ -1114,6 +1134,11 @@ impl PreparedPdf {
 
     pub const fn conversion_plan(&self) -> SvgConversionPlan {
         self.conversion_plan
+    }
+
+    /// Returns frozen font-source and fallback evidence from usvg parsing.
+    pub const fn font_plan(&self) -> ExportFontPlan {
+        self.font_plan
     }
 
     /// Returns an advisory weight for scheduling parallel PDF jobs.
@@ -1138,29 +1163,27 @@ impl PreparedPdf {
 /// Parses a sealed SVG once and prepares its bounded raster allocation plan.
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub fn prepare_raster(svg: &ResvgCompatibleSvg, options: &RasterOptions) -> Result<PreparedRaster> {
-    let source = svg.as_str().to_owned();
-    let reference_plan = svg.reference_plan().clone();
+    let svg = svg.clone();
     let options = options.clone();
-    run_recursive_svg_backend(move || {
-        prepare_raster_on_backend_stack(&source, reference_plan.raw_element_occurrences(), &options)
-    })
+    run_recursive_svg_backend(move || prepare_raster_on_backend_stack(&svg, &options))
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 fn prepare_raster_on_backend_stack(
-    source: &str,
-    raw_element_occurrences: &[usize],
+    svg: &ResvgCompatibleSvg,
     options: &RasterOptions,
 ) -> Result<PreparedRaster> {
+    let source = svg.as_str();
     let root_metadata = parse_root_svg_metadata(source)?;
     let mut usvg_options = usvg::Options::default();
-    configure_usvg_options_for_raster(&mut usvg_options, root_metadata);
+    let font_plan = configure_usvg_options_for_raster(&mut usvg_options, root_metadata, svg)?;
     let data_plan = plan_embedded_data_resources_with_occurrences(
         source,
-        raw_element_occurrences,
+        svg.reference_plan().raw_element_occurrences(),
         options.embedded_image_limit,
     )?;
     let tree = usvg::Tree::from_str(source, &usvg_options).map_err(|_| ExportError::SvgParse)?;
+    let font_plan = font_plan.finish();
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits)?;
     let embedded_image_plan = plan_embedded_images(&tree, options.embedded_image_limit, data_plan)?;
     let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
@@ -1173,6 +1196,7 @@ fn prepare_raster_on_backend_stack(
         plan,
         embedded_image_plan,
         conversion_plan,
+        font_plan,
         options: options.clone(),
     })
 }
@@ -1180,27 +1204,24 @@ fn prepare_raster_on_backend_stack(
 /// Parses a sealed SVG once and prepares vector PDF page and filter allocation policy.
 #[cfg(feature = "pdf")]
 pub fn prepare_pdf(svg: &ResvgCompatibleSvg, options: &PdfOptions) -> Result<PreparedPdf> {
-    let source = svg.as_str().to_owned();
-    let reference_plan = svg.reference_plan().clone();
+    let svg = svg.clone();
     let options = options.clone();
-    run_recursive_svg_backend(move || {
-        prepare_pdf_on_backend_stack(&source, reference_plan.raw_element_occurrences(), &options)
-    })
+    run_recursive_svg_backend(move || prepare_pdf_on_backend_stack(&svg, &options))
 }
 
 #[cfg(feature = "pdf")]
 fn prepare_pdf_on_backend_stack(
-    source: &str,
-    raw_element_occurrences: &[usize],
+    svg: &ResvgCompatibleSvg,
     options: &PdfOptions,
 ) -> Result<PreparedPdf> {
+    let source = svg.as_str();
     validate_pdf_options(options)?;
     let data_plan = plan_embedded_data_resources_with_occurrences(
         source,
-        raw_element_occurrences,
+        svg.reference_plan().raw_element_occurrences(),
         options.embedded_image_limit,
     )?;
-    let tree = parse_pdf_tree(source)?;
+    let (tree, font_plan) = parse_pdf_tree(svg)?;
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits)?;
     let embedded_image_plan = plan_embedded_images(&tree, options.embedded_image_limit, data_plan)?;
     let svg_size = pdf_svg_size(&tree)?;
@@ -1220,6 +1241,7 @@ fn prepare_pdf_on_backend_stack(
         filter_plan,
         embedded_image_plan,
         conversion_plan,
+        font_plan,
     })
 }
 
@@ -1280,10 +1302,11 @@ pub fn svg_to_pdf_with_options(svg: &ResvgCompatibleSvg, options: &PdfOptions) -
 }
 
 #[cfg(feature = "pdf")]
-fn parse_pdf_tree(svg: &str) -> Result<usvg::Tree> {
+fn parse_pdf_tree(svg: &ResvgCompatibleSvg) -> Result<(usvg::Tree, ExportFontPlan)> {
     let mut opts = usvg::Options::default();
-    configure_usvg_options_for_pdf(&mut opts);
-    usvg::Tree::from_str(svg, &opts).map_err(|_| ExportError::SvgParse)
+    let font_plan = configure_usvg_options_for_pdf(&mut opts, svg)?;
+    let tree = usvg::Tree::from_str(svg.as_str(), &opts).map_err(|_| ExportError::SvgParse)?;
+    Ok((tree, font_plan.finish()))
 }
 
 #[cfg(feature = "pdf")]
@@ -2247,8 +2270,14 @@ fn requested_raster_dim_px(value: f64) -> Result<f64> {
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
-fn configure_usvg_options_for_raster(opt: &mut usvg::Options<'_>, metadata: RootSvgMetadata) {
-    opt.fontdb = shared_system_fontdb();
+fn configure_usvg_options_for_raster(
+    opt: &mut usvg::Options<'_>,
+    metadata: RootSvgMetadata,
+    svg: &ResvgCompatibleSvg,
+) -> Result<font_environment::ExportFontPlanSeed> {
+    let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
+    let plan = fonts.plan;
+    opt.fontdb = fonts.fontdb;
 
     if !metadata.has_view_box
         && let Some(max_width) = metadata.max_width_px
@@ -2259,30 +2288,24 @@ fn configure_usvg_options_for_raster(opt: &mut usvg::Options<'_>, metadata: Root
         opt.default_size = size;
     }
 
-    opt.font_family =
-        raster_default_font_family(opt.fontdb.as_ref()).unwrap_or_else(|| "Arial".to_string());
-    opt.font_resolver = browser_like_font_resolver();
+    opt.font_family = fonts.default_family;
+    opt.font_resolver = fonts.resolver;
     opt.image_href_resolver = data_url_only_image_href_resolver();
+    Ok(plan)
 }
 
 #[cfg(feature = "pdf")]
-fn configure_usvg_options_for_pdf(opt: &mut usvg::Options<'_>) {
-    opt.fontdb = shared_system_fontdb();
-    opt.font_family =
-        raster_default_font_family(opt.fontdb.as_ref()).unwrap_or_else(|| "Arial".to_string());
-    opt.font_resolver = browser_like_pdf_font_resolver();
+fn configure_usvg_options_for_pdf(
+    opt: &mut usvg::Options<'_>,
+    svg: &ResvgCompatibleSvg,
+) -> Result<font_environment::ExportFontPlanSeed> {
+    let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
+    let plan = fonts.plan;
+    opt.fontdb = fonts.fontdb;
+    opt.font_family = fonts.default_family;
+    opt.font_resolver = fonts.resolver;
     opt.image_href_resolver = data_url_only_image_href_resolver();
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn shared_system_fontdb() -> Arc<usvg::fontdb::Database> {
-    static FONTDB: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
-    Arc::clone(FONTDB.get_or_init(|| {
-        let mut fontdb = usvg::fontdb::Database::new();
-        fontdb.load_system_fonts();
-        configure_fontdb_generic_families(&mut fontdb);
-        Arc::new(fontdb)
-    }))
+    Ok(plan)
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -2291,182 +2314,6 @@ fn data_url_only_image_href_resolver() -> usvg::ImageHrefResolver<'static> {
         resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
         resolve_string: Box::new(|_, _| None),
     }
-}
-
-#[cfg(any(feature = "png", feature = "jpeg"))]
-fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
-    let default_select = usvg::FontResolver::default_font_selector();
-
-    usvg::FontResolver {
-        select_font: Box::new(move |font, fontdb| {
-            default_select(font, fontdb)
-                .or_else(|| query_browser_like_fallback_font(font, fontdb.as_ref()))
-                .or_else(|| fontdb.faces().next().map(|face| face.id))
-        }),
-        select_fallback: usvg::FontResolver::default_fallback_selector(),
-    }
-}
-
-#[cfg(feature = "pdf")]
-fn browser_like_pdf_font_resolver() -> usvg::FontResolver<'static> {
-    let default_select = usvg::FontResolver::default_font_selector();
-
-    usvg::FontResolver {
-        select_font: Box::new(move |font, fontdb| {
-            default_select(font, fontdb)
-                .or_else(|| query_browser_like_pdf_fallback_font(font, fontdb.as_ref()))
-                .or_else(|| fontdb.faces().next().map(|face| face.id))
-        }),
-        select_fallback: usvg::FontResolver::default_fallback_selector(),
-    }
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn configure_fontdb_generic_families(fontdb: &mut usvg::fontdb::Database) {
-    let sans = first_font_family(fontdb, |face| !face.monospaced)
-        .or_else(|| first_font_family(fontdb, |_| true));
-    let mono = first_font_family(fontdb, |face| face.monospaced).or_else(|| sans.clone());
-
-    if query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif).is_none()
-        && let Some(family) = sans.as_ref()
-    {
-        fontdb.set_sans_serif_family(family.clone());
-    }
-    if query_normal_font_family(fontdb, usvg::fontdb::Family::Serif).is_none()
-        && let Some(family) = sans.as_ref()
-    {
-        fontdb.set_serif_family(family.clone());
-    }
-    if query_normal_font_family(fontdb, usvg::fontdb::Family::Monospace).is_none()
-        && let Some(family) = mono.as_ref()
-    {
-        fontdb.set_monospace_family(family.clone());
-    }
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn raster_default_font_family(fontdb: &usvg::fontdb::Database) -> Option<String> {
-    query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif)
-        .or_else(|| query_normal_font_family(fontdb, usvg::fontdb::Family::Serif))
-        .or_else(|| first_font_family(fontdb, |_| true))
-}
-
-#[cfg(any(feature = "png", feature = "jpeg"))]
-fn query_browser_like_fallback_font(
-    font: &usvg::Font,
-    fontdb: &usvg::fontdb::Database,
-) -> Option<usvg::fontdb::ID> {
-    let mut families = Vec::with_capacity(3);
-    if font_requests_monospace(font) {
-        families.push(usvg::fontdb::Family::Monospace);
-        families.push(usvg::fontdb::Family::SansSerif);
-        families.push(usvg::fontdb::Family::Serif);
-    } else {
-        families.push(usvg::fontdb::Family::SansSerif);
-        families.push(usvg::fontdb::Family::Serif);
-        families.push(usvg::fontdb::Family::Monospace);
-    }
-
-    let query = usvg::fontdb::Query {
-        families: &families,
-        weight: usvg::fontdb::Weight(font.weight()),
-        stretch: font.stretch().into(),
-        style: font.style().into(),
-    };
-    fontdb.query(&query)
-}
-
-#[cfg(feature = "pdf")]
-fn query_browser_like_pdf_fallback_font(
-    font: &usvg::Font,
-    fontdb: &usvg::fontdb::Database,
-) -> Option<usvg::fontdb::ID> {
-    let mut families = Vec::with_capacity(3);
-    if pdf_font_requests_monospace(font) {
-        families.push(usvg::fontdb::Family::Monospace);
-        families.push(usvg::fontdb::Family::SansSerif);
-        families.push(usvg::fontdb::Family::Serif);
-    } else {
-        families.push(usvg::fontdb::Family::SansSerif);
-        families.push(usvg::fontdb::Family::Serif);
-        families.push(usvg::fontdb::Family::Monospace);
-    }
-
-    let query = usvg::fontdb::Query {
-        families: &families,
-        weight: usvg::fontdb::Weight(font.weight()),
-        stretch: font.stretch().into(),
-        style: font.style().into(),
-    };
-    fontdb.query(&query)
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn query_normal_font_family(
-    fontdb: &usvg::fontdb::Database,
-    family: usvg::fontdb::Family<'_>,
-) -> Option<String> {
-    let families = [family];
-    let query = usvg::fontdb::Query {
-        families: &families,
-        weight: usvg::fontdb::Weight::NORMAL,
-        stretch: usvg::fontdb::Stretch::Normal,
-        style: usvg::fontdb::Style::Normal,
-    };
-    fontdb
-        .query(&query)
-        .and_then(|id| fontdb.face(id))
-        .and_then(face_family_name)
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn first_font_family<F>(fontdb: &usvg::fontdb::Database, mut predicate: F) -> Option<String>
-where
-    F: FnMut(&usvg::fontdb::FaceInfo) -> bool,
-{
-    fontdb
-        .faces()
-        .find(|face| predicate(face))
-        .and_then(face_family_name)
-}
-
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn face_family_name(face: &usvg::fontdb::FaceInfo) -> Option<String> {
-    face.families
-        .iter()
-        .find(|(_, lang)| *lang == usvg::fontdb::Language::English_UnitedStates)
-        .or_else(|| face.families.first())
-        .map(|(family, _)| family.clone())
-}
-
-#[cfg(any(feature = "png", feature = "jpeg"))]
-fn font_requests_monospace(font: &usvg::Font) -> bool {
-    font.families().iter().any(|family| match family {
-        usvg::FontFamily::Monospace => true,
-        usvg::FontFamily::Named(name) => {
-            let name = name.to_ascii_lowercase();
-            name.contains("mono")
-                || name.contains("courier")
-                || name.contains("consolas")
-                || name.contains("menlo")
-        }
-        _ => false,
-    })
-}
-
-#[cfg(feature = "pdf")]
-fn pdf_font_requests_monospace(font: &usvg::Font) -> bool {
-    font.families().iter().any(|family| match family {
-        usvg::FontFamily::Monospace => true,
-        usvg::FontFamily::Named(name) => {
-            let name = name.to_ascii_lowercase();
-            name.contains("mono")
-                || name.contains("courier")
-                || name.contains("consolas")
-                || name.contains("menlo")
-        }
-        _ => false,
-    })
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -2739,13 +2586,6 @@ mod tests {
         }
         assert!(output_environment_contract("svg").is_none());
         assert!(output_environment_contract("ascii").is_none());
-    }
-
-    #[test]
-    fn system_font_database_is_process_cached() {
-        let first = shared_system_fontdb();
-        let second = shared_system_fontdb();
-        assert!(Arc::ptr_eq(&first, &second));
     }
 
     fn trusted_compatible_svg(svg: &str) -> merman_render::svg::ResvgCompatibleSvg {

@@ -154,11 +154,15 @@ impl SvgResourceClosureBuilder {
 pub(crate) fn fingerprint_svg_resources(
     svg: &str,
     font_catalog_fingerprint: &[u8; 32],
+    font_source_policy: &crate::diagram_theme::FontSourcePolicy,
 ) -> SvgResourceFingerprint {
     let mut hasher = Sha256::new();
     update_len_prefixed(&mut hasher, SVG_RESOURCE_FINGERPRINT_DOMAIN);
     update_len_prefixed(&mut hasher, svg.as_bytes());
     update_len_prefixed(&mut hasher, font_catalog_fingerprint);
+    for source in font_source_policy.priority() {
+        update_len_prefixed(&mut hasher, source.id().as_bytes());
+    }
     SvgResourceFingerprint(hasher.finalize().into())
 }
 

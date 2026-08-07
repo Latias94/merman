@@ -277,6 +277,11 @@ impl FontAsset {
         &self.canonical_bytes
     }
 
+    /// Returns shared immutable canonical bytes without copying the retained asset.
+    pub fn canonical_data(&self) -> Arc<[u8]> {
+        Arc::clone(&self.canonical_bytes)
+    }
+
     pub const fn fingerprint(&self) -> FontAssetFingerprint {
         self.fingerprint
     }

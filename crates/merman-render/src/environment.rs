@@ -1,6 +1,6 @@
 //! Operation-owned render services and deterministic policy.
 
-use crate::diagram_theme::{FontCatalog, FontCatalogFingerprint};
+use crate::diagram_theme::{FontCatalog, FontCatalogFingerprint, FontSourcePolicy};
 use crate::math::MathRenderer;
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
@@ -1492,6 +1492,7 @@ pub struct RenderEnvironment {
     runtime_policy: RuntimePolicy,
     resource_policy: RenderResourcePolicy,
     font_catalog: FontCatalog,
+    font_source_policy: FontSourcePolicy,
 }
 
 impl fmt::Debug for RenderEnvironment {
@@ -1508,6 +1509,7 @@ impl fmt::Debug for RenderEnvironment {
             .field("runtime_policy", &self.runtime_policy)
             .field("resource_policy", &self.resource_policy)
             .field("font_catalog", &self.font_catalog.fingerprint())
+            .field("font_source_policy", &self.font_source_policy)
             .finish_non_exhaustive()
     }
 }
@@ -1527,6 +1529,7 @@ impl RenderEnvironment {
             runtime_policy: RuntimePolicy::deterministic(),
             resource_policy: RenderResourcePolicy::interactive(),
             font_catalog: FontCatalog::default_parity(),
+            font_source_policy: FontSourcePolicy::default(),
         }
     }
 
@@ -1602,6 +1605,15 @@ impl RenderEnvironment {
         &self.font_catalog
     }
 
+    pub fn with_font_source_policy(mut self, policy: FontSourcePolicy) -> Self {
+        self.font_source_policy = policy;
+        self
+    }
+
+    pub const fn font_source_policy(&self) -> &FontSourcePolicy {
+        &self.font_source_policy
+    }
+
     /// Captures time, timezone rules, random seed, and provenance exactly once.
     pub fn begin_session(&self) -> Result<RenderSession, RuntimePolicyError> {
         let operation_context = self.runtime_policy.begin_operation()?;
@@ -1615,6 +1627,7 @@ impl RenderEnvironment {
             resource_policy: self.resource_policy,
             work_meter: Arc::new(OperationWorkMeter::new(self.resource_policy)),
             font_catalog: self.font_catalog.clone(),
+            font_source_policy: self.font_source_policy.clone(),
         })
     }
 }
@@ -1637,6 +1650,7 @@ pub struct RenderSession {
     resource_policy: RenderResourcePolicy,
     work_meter: Arc<OperationWorkMeter>,
     font_catalog: FontCatalog,
+    font_source_policy: FontSourcePolicy,
 }
 
 impl RenderSession {
@@ -1688,6 +1702,10 @@ impl RenderSession {
         &self.font_catalog
     }
 
+    pub const fn font_source_policy(&self) -> &FontSourcePolicy {
+        &self.font_source_policy
+    }
+
     /// Reports effective operation availability after policy and backend/service resolution.
     pub(crate) fn supports_capability(&self, capability: RenderCapability) -> bool {
         if !self.capability_policy.allows(capability) {
@@ -1730,6 +1748,7 @@ impl RenderSession {
             resource_policy: self.resource_policy,
             layout_work_units: self.work_meter.used(),
             font_catalog_fingerprint: self.font_catalog.fingerprint(),
+            font_source_policy: self.font_source_policy.clone(),
         }
     }
 }
@@ -1744,6 +1763,7 @@ pub struct RenderSessionReport {
     resource_policy: RenderResourcePolicy,
     layout_work_units: usize,
     font_catalog_fingerprint: FontCatalogFingerprint,
+    font_source_policy: FontSourcePolicy,
 }
 
 impl RenderSessionReport {
@@ -1781,6 +1801,10 @@ impl RenderSessionReport {
 
     pub const fn font_catalog_fingerprint(&self) -> FontCatalogFingerprint {
         self.font_catalog_fingerprint
+    }
+
+    pub const fn font_source_policy(&self) -> &FontSourcePolicy {
+        &self.font_source_policy
     }
 
     /// Returns the deterministic owner-accounted layout and geometry work consumed so far.
