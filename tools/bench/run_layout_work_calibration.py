@@ -108,29 +108,50 @@ def host_report() -> dict[str, Any]:
 
 def terminate_process_group(
     process: subprocess.Popen[str], *, grace_seconds: float = TERMINATION_GRACE_SECONDS
-) -> None:
+) -> tuple[str, str]:
     process_group = process.pid
-    if process.poll() is not None:
-        return
     try:
         os.killpg(process_group, signal.SIGTERM)
     except ProcessLookupError:
-        return
+        if process.poll() is None:
+            process.terminate()
+
+    deadline = time.monotonic() + grace_seconds
+    group_exists = True
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(process_group, 0)
+        except ProcessLookupError:
+            group_exists = False
+            break
+        except PermissionError:
+            pass
+        time.sleep(0.01)
+
+    if group_exists:
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
     try:
-        process.wait(timeout=grace_seconds)
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(process_group, 0)
-    except ProcessLookupError:
-        return
-    os.killpg(process_group, signal.SIGKILL)
-    if process.poll() is None:
-        process.wait()
+        return process.communicate(timeout=grace_seconds)
+    except subprocess.TimeoutExpired as error:
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.stderr is not None:
+            process.stderr.close()
+        raise RuntimeError(
+            "managed process group terminated but inherited output pipes remained open"
+        ) from error
 
 
 def run_managed_process(
-    command: Sequence[str], *, cwd: Path, timeout_seconds: float
+    command: Sequence[str],
+    *,
+    cwd: Path,
+    timeout_seconds: float,
+    termination_grace_seconds: float = TERMINATION_GRACE_SECONDS,
 ) -> dict[str, Any]:
     process = subprocess.Popen(
         command,
@@ -149,8 +170,9 @@ def run_managed_process(
             "stderr": stderr,
         }
     except subprocess.TimeoutExpired:
-        terminate_process_group(process)
-        stdout, stderr = process.communicate()
+        stdout, stderr = terminate_process_group(
+            process, grace_seconds=termination_grace_seconds
+        )
         return {
             "returncode": process.returncode,
             "timed_out": True,

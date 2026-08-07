@@ -136,8 +136,10 @@ jobs:
             tools/bench/native_memory.py \
             tools/bench/perf_runner.py \
             tools/bench/render_perf_comment.py \
+            tools/bench/run_layout_work_calibration.py \
             tools/bench/run_native_memory.py \
             tools/bench/stage_spotcheck.py \
+            tools/bench/test_layout_work_calibration.py \
             tools/bench/test_perf_baseline_manifest.py \
             tools/bench/test_native_memory_contracts.py \
             tools/bench/test_native_memory_driver_contracts.py \
@@ -148,6 +150,7 @@ jobs:
         working-directory: head
         run: |
           python3 tools/bench/test_perf_baseline_manifest.py
+          python3 -m unittest tools.bench.test_layout_work_calibration
           python3 tools/bench/test_native_memory_contracts.py
           python3 tools/bench/test_native_memory_driver_contracts.py
           python3 tools/bench/test_perf_contracts.py
