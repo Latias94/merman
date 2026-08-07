@@ -82,14 +82,16 @@ struct ArchitectureAdapterWorkPlan {
     declared_constraints: ArchitectureConstraintWork,
 }
 
-fn checked_architecture_adapter_work_plan(
-    model: &ArchitectureModelView<'_>,
+fn checked_architecture_adapter_work_plan_from_hint_lengths(
+    node_count: usize,
+    group_count: usize,
+    edge_count: usize,
+    hint_member_counts: impl IntoIterator<Item = usize>,
 ) -> Option<ArchitectureAdapterWorkPlan> {
     let (hint_members, alignment_groups, constraint_members, relative_constraints) =
-        model.layout_hints.iter().try_fold(
+        hint_member_counts.into_iter().try_fold(
             (0usize, 0usize, 0usize, 0usize),
-            |(members, groups, constrained_members, relative), hint| {
-                let hint_member_count = hint.members.len();
+            |(members, groups, constrained_members, relative), hint_member_count| {
                 let members = members.checked_add(hint_member_count)?;
                 if hint_member_count < 2 {
                     return Some((members, groups, constrained_members, relative));
@@ -102,16 +104,12 @@ fn checked_architecture_adapter_work_plan(
                 ))
             },
         )?;
-    let spatial_planning_work_units = model
-        .nodes
-        .len()
+    let spatial_planning_work_units = node_count
         .checked_mul(2)?
-        .checked_add(model.edges.len().checked_mul(4)?)?;
-    let work_units = model
-        .nodes
-        .len()
-        .checked_add(model.groups.len())?
-        .checked_add(model.edges.len())?
+        .checked_add(edge_count.checked_mul(4)?)?;
+    let work_units = node_count
+        .checked_add(group_count)?
+        .checked_add(edge_count)?
         .checked_add(hint_members)?
         .checked_add(spatial_planning_work_units)?;
 
@@ -123,6 +121,29 @@ fn checked_architecture_adapter_work_plan(
             relative_constraint_count: relative_constraints,
         },
     })
+}
+
+#[cfg(test)]
+fn checked_architecture_adapter_work_plan(
+    model: &ArchitectureModelView<'_>,
+) -> Option<ArchitectureAdapterWorkPlan> {
+    checked_architecture_adapter_work_plan_from_hint_lengths(
+        model.nodes.len(),
+        model.groups.len(),
+        model.edges.len(),
+        model.layout_hints.iter().map(|hint| hint.members.len()),
+    )
+}
+
+fn checked_typed_architecture_adapter_work_plan(
+    model: &ArchitectureDiagramRenderModel,
+) -> Option<ArchitectureAdapterWorkPlan> {
+    checked_architecture_adapter_work_plan_from_hint_lengths(
+        model.nodes.len(),
+        model.groups.len(),
+        model.edges.len(),
+        model.layout_hints.iter().map(|hint| hint.members.len()),
+    )
 }
 
 fn checked_architecture_fcose_work_upper_bound(
@@ -880,8 +901,29 @@ struct ArchitectureModelView<'a> {
     layout_hints: Vec<ArchitectureLayoutHintView<'a>>,
 }
 
+#[cfg(test)]
+std::thread_local! {
+    static TYPED_ARCHITECTURE_PROJECTION_COUNT: std::cell::Cell<usize> = const {
+        std::cell::Cell::new(0)
+    };
+}
+
+#[cfg(test)]
+fn reset_typed_architecture_projection_count() {
+    TYPED_ARCHITECTURE_PROJECTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+fn typed_architecture_projection_count() -> usize {
+    TYPED_ARCHITECTURE_PROJECTION_COUNT.get()
+}
+
 impl<'a> ArchitectureModelView<'a> {
     fn from_typed(model: &'a ArchitectureDiagramRenderModel) -> Self {
+        #[cfg(test)]
+        TYPED_ARCHITECTURE_PROJECTION_COUNT
+            .set(TYPED_ARCHITECTURE_PROJECTION_COUNT.get().saturating_add(1));
+
         let nodes = model
             .nodes
             .iter()
@@ -1892,6 +1934,80 @@ fn project_architecture_fcose_result(
     ArchitectureFcoseResultProjection { compound_bounds }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ArchitectureLayoutAdmission {
+    fcose_num_iter: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ArchitectureLayoutAdmissionPlan {
+    fcose_num_iter: usize,
+    adapter_work_units: usize,
+    preflight_work_units: usize,
+}
+
+fn checked_architecture_layout_admission_plan(
+    node_count: usize,
+    group_count: usize,
+    edge_count: usize,
+    adapter_work_plan: ArchitectureAdapterWorkPlan,
+    effective_config: &Value,
+) -> Option<ArchitectureLayoutAdmissionPlan> {
+    let fcose_num_iter = manatee::algo::fcose::FcoseIterationSchedule::normalize_configured_number(
+        config_f64(effective_config, &["architecture", "numIter"]),
+    )
+    .ok()?;
+    let kernel_admission_units = if node_count == 0 {
+        0
+    } else {
+        let schedule = manatee::algo::fcose::FcoseIterationSchedule::from_normalized_graph_counts(
+            fcose_num_iter,
+            node_count,
+            group_count,
+            edge_count,
+            true,
+        )
+        .ok()?;
+        checked_architecture_fcose_work_upper_bound(
+            schedule,
+            adapter_work_plan.declared_constraints,
+        )?
+    };
+    let preflight_work_units = adapter_work_plan
+        .work_units
+        .checked_add(kernel_admission_units)?;
+
+    Some(ArchitectureLayoutAdmissionPlan {
+        fcose_num_iter,
+        adapter_work_units: adapter_work_plan.work_units,
+        preflight_work_units,
+    })
+}
+
+fn admit_architecture_layout(
+    node_count: usize,
+    group_count: usize,
+    edge_count: usize,
+    adapter_work_plan: ArchitectureAdapterWorkPlan,
+    effective_config: &Value,
+    work_meter: &OperationWorkMeter,
+) -> Result<ArchitectureLayoutAdmission> {
+    let plan = checked_architecture_layout_admission_plan(
+        node_count,
+        group_count,
+        edge_count,
+        adapter_work_plan,
+        effective_config,
+    )
+    .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    work_meter.preflight(plan.preflight_work_units)?;
+    work_meter.charge(plan.adapter_work_units)?;
+
+    Ok(ArchitectureLayoutAdmission {
+        fcose_num_iter: plan.fcose_num_iter,
+    })
+}
+
 pub(crate) fn layout_architecture_diagram_typed(
     model: &ArchitectureDiagramRenderModel,
     effective_config: &Value,
@@ -1899,22 +2015,62 @@ pub(crate) fn layout_architecture_diagram_typed(
     operation_seed: u64,
     work_meter: &OperationWorkMeter,
 ) -> Result<ArchitectureDiagramLayout> {
+    let adapter_work_plan = checked_typed_architecture_adapter_work_plan(model)
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let admission = admit_architecture_layout(
+        model.nodes.len(),
+        model.groups.len(),
+        model.edges.len(),
+        adapter_work_plan,
+        effective_config,
+        work_meter,
+    )?;
     let model = ArchitectureModelView::from_typed(model);
-    layout_architecture_diagram_model(
+    layout_architecture_diagram_model_admitted(
         &model,
         effective_config,
         text_measurer,
         operation_seed,
         work_meter,
+        admission,
     )
 }
 
+#[cfg(test)]
 fn layout_architecture_diagram_model(
     model: &ArchitectureModelView<'_>,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     operation_seed: u64,
     work_meter: &OperationWorkMeter,
+) -> Result<ArchitectureDiagramLayout> {
+    let adapter_work_plan = checked_architecture_adapter_work_plan(model)
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    let admission = admit_architecture_layout(
+        model.nodes.len(),
+        model.groups.len(),
+        model.edges.len(),
+        adapter_work_plan,
+        effective_config,
+        work_meter,
+    )?;
+    layout_architecture_diagram_model_admitted(
+        model,
+        effective_config,
+        text_measurer,
+        operation_seed,
+        work_meter,
+        admission,
+    )
+}
+
+fn layout_architecture_diagram_model_admitted(
+    model: &ArchitectureModelView<'_>,
+    effective_config: &Value,
+    text_measurer: &dyn TextMeasurer,
+    operation_seed: u64,
+    work_meter: &OperationWorkMeter,
+    admission: ArchitectureLayoutAdmission,
 ) -> Result<ArchitectureDiagramLayout> {
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);
@@ -1938,39 +2094,11 @@ fn layout_architecture_diagram_model(
         config_f64(effective_config, &["architecture", "edgeElasticity"])
             .filter(|v| v.is_finite() && *v >= 0.0)
             .unwrap_or(0.45);
-    let fcose_num_iter = manatee::algo::fcose::FcoseIterationSchedule::normalize_configured_number(
-        config_f64(effective_config, &["architecture", "numIter"]),
-    )
-    .map_err(|_| work_meter.arithmetic_overflow())?;
+    let fcose_num_iter = admission.fcose_num_iter;
     let fcose_random_policy = architecture_seed_policy(
         value_at(effective_config, &["architecture", "seed"]),
         operation_seed,
     );
-    let adapter_work_plan = checked_architecture_adapter_work_plan(model)
-        .ok_or_else(|| work_meter.arithmetic_overflow())?;
-    let kernel_admission_units = if model.nodes.is_empty() {
-        0
-    } else {
-        let schedule = manatee::algo::fcose::FcoseIterationSchedule::from_normalized_graph_counts(
-            fcose_num_iter,
-            model.nodes.len(),
-            model.groups.len(),
-            model.edges.len(),
-            true,
-        )
-        .map_err(|_| work_meter.arithmetic_overflow())?;
-        checked_architecture_fcose_work_upper_bound(
-            schedule,
-            adapter_work_plan.declared_constraints,
-        )
-        .ok_or_else(|| work_meter.arithmetic_overflow())?
-    };
-    let admission_units = adapter_work_plan
-        .work_units
-        .checked_add(kernel_admission_units)
-        .ok_or_else(|| work_meter.arithmetic_overflow())?;
-    work_meter.preflight(admission_units)?;
-    work_meter.charge(adapter_work_plan.work_units)?;
 
     let node_bounds_extras =
         architecture_fcose_node_bounds_extras(ArchitectureFcoseNodeBoundsExtrasInput {
@@ -2737,6 +2865,93 @@ mod tests {
         assert_eq!(error.actual, 22);
         assert_eq!(error.max, 9);
         assert_eq!(narrow_meter.used(), 0);
+    }
+
+    #[test]
+    fn typed_architecture_rejects_before_materializing_the_adapter_projection() {
+        use crate::resources::{
+            OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+        };
+        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "architecture-beta\nservice api(server)[API]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Architecture(model) = parsed.model() else {
+            panic!("expected Architecture model");
+        };
+        let config = serde_json::json!({"architecture": {"numIter": 5, "randomize": false}});
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let adapter_work_plan = super::checked_typed_architecture_adapter_work_plan(model)
+            .expect("typed adapter work plan");
+        let admission_plan = super::checked_architecture_layout_admission_plan(
+            model.nodes.len(),
+            model.groups.len(),
+            model.edges.len(),
+            adapter_work_plan,
+            &config,
+        )
+        .expect("typed Architecture admission plan");
+
+        super::reset_typed_architecture_projection_count();
+        let narrow_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                ResourceLimitId::MaxLayoutWorkUnits,
+                admission_plan.preflight_work_units - 1,
+            )
+            .unwrap();
+        let narrow_meter = OperationWorkMeter::new(narrow_policy);
+        let error =
+            super::layout_architecture_diagram_typed(model, &config, &measurer, 1, &narrow_meter)
+                .unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected layout work resource error");
+        };
+        assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(error.actual, admission_plan.preflight_work_units);
+        assert_eq!(narrow_meter.used(), 0);
+        assert_eq!(super::typed_architecture_projection_count(), 0);
+
+        super::reset_typed_architecture_projection_count();
+        let admission_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                ResourceLimitId::MaxLayoutWorkUnits,
+                admission_plan.preflight_work_units,
+            )
+            .unwrap();
+        let admission_meter = OperationWorkMeter::new(admission_policy);
+        let _ = super::layout_architecture_diagram_typed(
+            model,
+            &config,
+            &measurer,
+            1,
+            &admission_meter,
+        );
+        assert_eq!(super::typed_architecture_projection_count(), 1);
+        assert!(admission_meter.used() >= admission_plan.adapter_work_units);
+
+        super::reset_typed_architecture_projection_count();
+        let baseline_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        super::layout_architecture_diagram_typed(model, &config, &measurer, 1, &baseline_meter)
+            .unwrap();
+        let exact_work = baseline_meter.used();
+        assert!(exact_work >= admission_plan.preflight_work_units);
+        assert_eq!(super::typed_architecture_projection_count(), 1);
+
+        super::reset_typed_architecture_projection_count();
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .unwrap();
+        let exact_meter = OperationWorkMeter::new(exact_policy);
+        super::layout_architecture_diagram_typed(model, &config, &measurer, 1, &exact_meter)
+            .unwrap();
+        assert_eq!(exact_meter.used(), exact_work);
+        assert_eq!(super::typed_architecture_projection_count(), 1);
     }
 
     #[test]
