@@ -123,6 +123,11 @@ harness = false
 required-features = ["svg"]
 
 [[bench]]
+name = "sequence_message_memory"
+harness = false
+required-features = ["svg"]
+
+[[bench]]
 name = "elk_hierarchy_memory"
 harness = false
 required-features = ["layout-elk"]

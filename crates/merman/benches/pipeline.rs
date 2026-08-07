@@ -221,6 +221,26 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
             "sequence_medium",
             include_str!("fixtures/sequence_medium.mmd"),
         ),
+        (
+            "sequence_actor_only_control",
+            include_str!("fixtures/sequence_actor_only_control.mmd"),
+        ),
+        (
+            "sequence_block_repeat_low",
+            include_str!("fixtures/sequence_block_repeat_low.mmd"),
+        ),
+        (
+            "sequence_block_repeat_medium",
+            include_str!("fixtures/sequence_block_repeat_medium.mmd"),
+        ),
+        (
+            "sequence_block_repeat_high",
+            include_str!("fixtures/sequence_block_repeat_high.mmd"),
+        ),
+        (
+            "sequence_block_unique_high",
+            include_str!("fixtures/sequence_block_unique_high.mmd"),
+        ),
         ("er_medium", include_str!("fixtures/er_medium.mmd")),
         ("info_medium", include_str!("fixtures/info_medium.mmd")),
         ("pie_medium", include_str!("fixtures/pie_medium.mmd")),
