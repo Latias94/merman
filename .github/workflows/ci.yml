@@ -447,14 +447,12 @@ jobs:
         if: matrix.parity
         run: cargo nextest run -p merman --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing --cargo-quiet
 
-      - name: Test C FFI artifact-profile consumer smoke
+      - name: Test C FFI artifact-profile contract
         if: matrix.parity
         run: |
           features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
-          qualified_features="merman-ffi/${features//,/,merman-ffi/}"
-          cargo nextest run --locked -p merman-ffi -p merman --no-default-features \
-            --features "$qualified_features,merman/system-timing" \
-            --test c_consumer_smoke --cargo-quiet
+          cargo nextest run --locked -p merman-ffi --no-default-features \
+            --features "$features" --cargo-quiet
 
       - name: Check UniFFI no-render feature sets
         if: matrix.parity
