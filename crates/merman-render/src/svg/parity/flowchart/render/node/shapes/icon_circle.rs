@@ -34,21 +34,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
     let asset_w = common.node_asset_width.unwrap_or(48.0);
     let icon_size = asset_h.max(asset_w);
 
-    let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
-            measurer: ctx.measurer,
-            raw_label: label.text,
-            label_type: label.label_type,
-            style: if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-                &ctx.html_label_text_style
-            } else {
-                &ctx.text_style
-            },
-            max_width_px: Some(ctx.wrapping_width),
-            wrap_mode: ctx.node_wrap_mode,
-            config: ctx.config,
-            math_renderer: ctx.math_renderer,
-        },
+    let mut metrics = super::super::helpers::compute_node_label_metrics(
+        ctx,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
     );
     if !has_label {
         metrics.width = 0.0;

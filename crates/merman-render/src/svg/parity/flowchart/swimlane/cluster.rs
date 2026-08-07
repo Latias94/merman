@@ -162,9 +162,15 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let compiled = flowchart_compile_styles(ctx.class_defs, class_names, styles, &[]);
     let node_style = compiled.node_style.trim();
     let label_style = compiled.label_style.trim();
-    let render_title = subgraph.map_or(lane.title.as_str(), |subgraph| {
-        ctx.model.subgraph_title_for_render(subgraph)
-    });
+    let render_title = subgraph
+        .and_then(|subgraph| {
+            let subgraph_index = ctx.subgraph_index_by_id.get(cluster.id.as_str()).copied()?;
+            Some(
+                ctx.model
+                    .subgraph_title_for_render(subgraph_index, subgraph),
+            )
+        })
+        .unwrap_or(lane.title.as_str());
     let label_metrics = lane_label_metrics(ctx, lane, render_title);
     let label_width = label_metrics.width.max(0.0);
     let label_height = label_metrics.height.max(0.0);

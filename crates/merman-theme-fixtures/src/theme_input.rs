@@ -513,9 +513,9 @@ fn collect_flowchart_visible_text(
             insert_visible_text(visible, label);
         }
     }
-    for subgraph in &model.subgraphs {
+    for (semantic_index, subgraph) in model.subgraphs.iter().enumerate() {
         let title = sources.map_or(subgraph.title.as_str(), |sources| {
-            sources.subgraph_title_for_render(subgraph)
+            sources.subgraph_title_for_render(semantic_index, subgraph)
         });
         insert_visible_text(visible, title);
     }

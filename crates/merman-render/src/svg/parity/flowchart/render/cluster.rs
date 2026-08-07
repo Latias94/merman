@@ -154,7 +154,9 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let Some(sg) = ctx.subgraphs_by_id.get(cluster.id.as_str()) else {
         return;
     };
-    if sg.nodes.is_empty() && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx) {
+    if !ctx.subgraph_has_children(cluster.id.as_str())
+        && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx)
+    {
         return;
     }
 
@@ -174,7 +176,10 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     };
 
     let label_type = sg.label_type.as_deref().unwrap_or("text");
-    let render_title = ctx.model.subgraph_title_for_render(sg);
+    let Some(subgraph_index) = ctx.subgraph_index_by_id.get(cluster.id.as_str()).copied() else {
+        return;
+    };
+    let render_title = ctx.model.subgraph_title_for_render(subgraph_index, sg);
 
     let mut class_attr = String::new();
     for c in &sg.classes {
@@ -223,8 +228,25 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         if label_type == "markdown" {
             write_flowchart_svg_text_markdown(out, render_title, true);
         } else {
-            let source_lines =
-                crate::flowchart::flowchart_non_markdown_svg_source_word_lines(render_title);
+            let title_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                ctx.class_defs,
+                &sg.classes,
+                &sg.styles,
+            );
+            let owner = ctx
+                .svg_label_sidecar
+                .and_then(|sidecar| sidecar.subgraph_title_owner(cluster.id.as_str()));
+            let prepared = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+                ctx.svg_label_sidecar,
+                owner,
+                render_title,
+                ctx.measurer,
+                title_text_style.as_ref(),
+                None,
+                true,
+            );
+            let source_lines = prepared.wrapped_lines();
             write_flowchart_svg_source_word_lines(out, &source_lines, true);
         }
         out.push_str("</g></g></g>");

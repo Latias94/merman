@@ -408,14 +408,15 @@ pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines(
     crate::svg::parity::label::write_svg_text_source_word_lines(out, lines, include_style, false);
 }
 
-pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines_centered(
+pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines_centered_with_style(
     out: &mut String,
     lines: &[Vec<String>],
-    include_style: bool,
+    style: &str,
 ) {
-    crate::svg::parity::label::write_svg_text_source_word_lines(out, lines, include_style, true);
+    crate::svg::parity::label::write_svg_text_source_word_lines_with_style(out, lines, style, true);
 }
 
+#[cfg(test)]
 pub(in crate::svg::parity) fn wrap_flowchart_svg_source_word_lines(
     measurer: &dyn crate::text::TextMeasurer,
     lines: &[Vec<String>],

@@ -46,7 +46,7 @@ impl FlowchartModel {
 pub struct FlowchartRenderLabelSources {
     nodes: FxHashMap<String, String>,
     edges: FxHashMap<String, String>,
-    subgraphs: FxHashMap<String, String>,
+    subgraphs: Vec<Option<String>>,
 }
 
 impl FlowchartRenderLabelSources {
@@ -67,10 +67,14 @@ impl FlowchartRenderLabelSources {
     }
 
     #[doc(hidden)]
-    pub fn subgraph_title_for_render<'a>(&'a self, subgraph: &'a FlowSubgraph) -> &'a str {
+    pub fn subgraph_title_for_render<'a>(
+        &'a self,
+        semantic_index: usize,
+        subgraph: &'a FlowSubgraph,
+    ) -> &'a str {
         self.subgraphs
-            .get(&subgraph.id)
-            .map(String::as_str)
+            .get(semantic_index)
+            .and_then(Option::as_deref)
             .unwrap_or(subgraph.title.as_str())
     }
 
@@ -82,24 +86,24 @@ impl FlowchartRenderLabelSources {
         self.edges.insert(id, source);
     }
 
-    pub(crate) fn set_subgraph(&mut self, id: String, source: Option<String>) {
-        if let Some(source) = source {
-            self.subgraphs.insert(id, source);
-        } else {
-            // Flowchart's renderer indexes subgraphs by id with last-declaration-wins semantics.
-            // A later ordinary title must therefore retire an earlier provenance override.
-            self.subgraphs.remove(&id);
-        }
+    pub(crate) fn push_subgraph(&mut self, source: Option<String>) {
+        self.subgraphs.push(source);
     }
 
     pub(crate) fn retained_bytes(&self) -> usize {
         self.nodes
             .iter()
             .chain(&self.edges)
-            .chain(&self.subgraphs)
             .fold(0usize, |total, (id, label)| {
                 total.saturating_add(id.len()).saturating_add(label.len())
             })
+            .saturating_add(
+                self.subgraphs
+                    .iter()
+                    .flatten()
+                    .map(String::len)
+                    .sum::<usize>(),
+            )
     }
 }
 

@@ -207,6 +207,7 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
     label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     policy: Option<FlowchartPresentationPolicy>,
 }
 
@@ -217,6 +218,10 @@ impl<L> FlowchartFamilyArtifact<L> {
 
     pub(crate) fn label_sources(&self) -> &diagrams::flowchart::FlowchartRenderLabelSources {
         &self.label_sources
+    }
+
+    pub(crate) fn svg_label_sidecar(&self) -> &crate::flowchart::FlowchartSvgLabelSidecar {
+        &self.svg_label_sidecar
     }
 
     pub(crate) const fn policy(&self) -> Option<FlowchartPresentationPolicy> {
@@ -882,12 +887,16 @@ fn prepare_flowchart_artifact<L>(
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
         &diagrams::flowchart::FlowchartRenderLabelSources,
+        &crate::flowchart::FlowchartSvgLabelSidecarBuilder,
     ) -> Result<L>,
 ) -> Result<Box<FlowchartFamilyArtifact<L>>> {
-    let layout = layout(&semantic, &label_sources)?;
+    let svg_label_sidecar = crate::flowchart::FlowchartSvgLabelSidecarBuilder::default();
+    let layout = layout(&semantic, &label_sources, &svg_label_sidecar)?;
+    let svg_label_sidecar = svg_label_sidecar.finish();
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
         label_sources,
+        svg_label_sidecar,
         policy,
     }))
 }
@@ -1197,13 +1206,14 @@ fn prepare_non_class_render(
                 model,
                 flowchart_label_sources,
                 None,
-                |model, label_sources| {
-                    crate::swimlane::layout_swimlane_typed_with_work_meter(
+                |model, label_sources, svg_label_sidecar| {
+                    crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                         model,
                         label_sources,
                         &meta.effective_config,
                         execution.text_measurer(),
                         execution.math_renderer(),
+                        Some(svg_label_sidecar),
                         execution.work_meter(),
                     )
                 },
@@ -1214,13 +1224,14 @@ fn prepare_non_class_render(
                 model,
                 flowchart_label_sources,
                 render_policy.flowchart(),
-                |model, label_sources| {
-                    crate::layout_flowchart_typed_with_render_labels_by_engine(
+                |model, label_sources, svg_label_sidecar| {
+                    crate::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
                         diagram_type,
                         model,
                         label_sources,
                         &meta.effective_config,
                         &execution,
+                        Some(svg_label_sidecar),
                     )
                 },
             )?)
@@ -1677,6 +1688,377 @@ system - satisfies -> req1
             serde_json::from_value::<RequirementDiagramLayout>(layout.clone()).is_ok(),
             "prepared labels must not alter the public Requirement layout schema"
         );
+    }
+
+    #[test]
+    fn flowchart_family_renderer_reuses_prepared_labels_by_semantic_owner() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 96
+---
+flowchart LR
+subgraph S[Service title]
+  A[Node label]
+end
+subgraph E[Empty title]
+end
+A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second node]
+"#,
+                ParseOptions::strict(),
+            )
+            .expect("parse Flowchart")
+            .expect("detect Flowchart");
+        let artifact = prepare(parsed, &LayoutOptions::default(), session())
+            .expect("prepare Flowchart family artifact");
+
+        let owners = {
+            let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+                panic!("expected Flowchart family artifact");
+            };
+            let model = crate::flowchart::FlowchartRenderModelRef::new(
+                flowchart.pair().semantic(),
+                flowchart.label_sources(),
+            );
+            let node_index = model
+                .nodes
+                .iter()
+                .position(|node| node.id == "A")
+                .expect("semantic node A");
+            let empty_subgraph_index = model
+                .subgraphs
+                .iter()
+                .position(|subgraph| subgraph.id == "E")
+                .expect("semantic empty subgraph E");
+            let cluster_index = model
+                .subgraphs
+                .iter()
+                .position(|subgraph| subgraph.id == "S")
+                .expect("semantic cluster S");
+            let edge_index = model
+                .edges
+                .iter()
+                .position(|edge| edge.id == "labeled")
+                .expect("semantic labeled edge");
+            let sidecar = flowchart.svg_label_sidecar();
+
+            let owners = [
+                sidecar.node_owner("A", false).expect("node owner"),
+                sidecar
+                    .node_owner("E", false)
+                    .expect("empty subgraph owner"),
+                sidecar.edge_owner("labeled", false).expect("edge owner"),
+                sidecar
+                    .subgraph_title_owner("S")
+                    .expect("cluster title owner"),
+            ];
+            assert_eq!(
+                owners,
+                [
+                    crate::flowchart::FlowchartSvgLabelOwner::Node(node_index),
+                    crate::flowchart::FlowchartSvgLabelOwner::EmptySubgraphNode(
+                        empty_subgraph_index,
+                    ),
+                    crate::flowchart::FlowchartSvgLabelOwner::Edge(edge_index),
+                    crate::flowchart::FlowchartSvgLabelOwner::SubgraphTitle(cluster_index),
+                ]
+            );
+            owners
+        };
+
+        let (prepared_hits_before, source_plans_before) = {
+            let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+                unreachable!();
+            };
+            let sidecar = flowchart.svg_label_sidecar();
+            (
+                owners.map(|owner| sidecar.prepared_hit_count(owner)),
+                owners.map(|owner| sidecar.source_plan_count(owner)),
+            )
+        };
+
+        let svg = render_family_artifact_svg(
+            &artifact,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+        )
+        .expect("render Flowchart SVG");
+
+        let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+            unreachable!();
+        };
+        let sidecar = flowchart.svg_label_sidecar();
+        for (index, owner) in owners.into_iter().enumerate() {
+            let prepared_hits = sidecar.prepared_hit_count(owner);
+            let source_plans = sidecar.source_plan_count(owner);
+            assert!(
+                prepared_hits > prepared_hits_before[index],
+                "real Flowchart SVG emission must consume {owner:?}; prepared_hits={prepared_hits}, source_plans={source_plans}"
+            );
+            assert_eq!(
+                source_plans, source_plans_before[index],
+                "eligible owner {owner:?} must not fall back to render-time preparation"
+            );
+        }
+        let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+        let visible_text = document
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .flat_map(str::chars)
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>();
+        assert!(visible_text.contains("Servicetitle"), "{visible_text}");
+        assert!(visible_text.contains("Emptytitle"), "{visible_text}");
+        assert!(visible_text.contains("edgesemanticowner"), "{visible_text}");
+    }
+
+    #[test]
+    fn flowchart_special_shape_intersections_reuse_layout_label_metrics() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 96
+---
+flowchart LR
+P[plain]
+S([stadium label])
+H{{hexagon label}}
+D@{ shape: doc, label: "document label", labelType: "string" }
+P --> S
+P --> H
+P --> D
+S --> P
+H --> P
+D --> P
+"#,
+                ParseOptions::strict(),
+            )
+            .expect("parse Flowchart")
+            .expect("detect Flowchart");
+        let artifact = prepare(parsed, &LayoutOptions::default(), session())
+            .expect("prepare Flowchart family artifact");
+        let operation_count =
+            |artifact: &FamilyRenderArtifact,
+             operation: crate::environment::TextMeasurementOperation| {
+                artifact
+                    .session
+                    .text_measurement_report()
+                    .entries()
+                    .iter()
+                    .filter(|entry| entry.provenance().operation == operation)
+                    .map(|entry| entry.count())
+                    .sum::<u64>()
+            };
+        let operation_counts = |artifact: &FamilyRenderArtifact| {
+            [
+                operation_count(
+                    artifact,
+                    crate::environment::TextMeasurementOperation::Wrapped,
+                ),
+                operation_count(
+                    artifact,
+                    crate::environment::TextMeasurementOperation::ComputedLength,
+                ),
+            ]
+        };
+        let operations_before = operation_counts(&artifact);
+        let (owners, source_plans_before) = {
+            let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+                panic!("expected Flowchart family artifact");
+            };
+            let node_ids = flowchart
+                .pair()
+                .semantic()
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>();
+            let sidecar = flowchart.svg_label_sidecar();
+            let owners = ["S", "H", "D"].map(|id| {
+                sidecar.node_owner(id, false).unwrap_or_else(|| {
+                    panic!("missing semantic label owner for {id}; nodes={node_ids:?}")
+                })
+            });
+            (owners, owners.map(|owner| sidecar.source_plan_count(owner)))
+        };
+
+        let svg = render_family_artifact_svg(
+            &artifact,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+        )
+        .expect("render Flowchart SVG");
+
+        assert_eq!(
+            operation_counts(&artifact),
+            operations_before,
+            "special-shape edge intersections must consume layout label metrics"
+        );
+        let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+            unreachable!();
+        };
+        for (index, owner) in owners.into_iter().enumerate() {
+            assert_eq!(
+                flowchart.svg_label_sidecar().source_plan_count(owner),
+                source_plans_before[index],
+                "special-shape label {owner:?} must reuse its prepared SVG plan"
+            );
+        }
+        let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+        let visible_text = document
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .flat_map(str::chars)
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>();
+        assert!(visible_text.contains("stadiumlabel"), "{visible_text}");
+        assert!(visible_text.contains("hexagonlabel"), "{visible_text}");
+        assert!(visible_text.contains("documentlabel"), "{visible_text}");
+    }
+
+    #[test]
+    fn swimlane_family_renderer_reuses_the_original_semantic_edge_owner() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 96
+---
+swimlane-beta LR
+A --> C
+A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
+"#,
+                ParseOptions::strict(),
+            )
+            .expect("parse Swimlane")
+            .expect("detect Swimlane");
+        let artifact = prepare(parsed, &LayoutOptions::default(), session())
+            .expect("prepare Swimlane family artifact");
+
+        let (owner, hits_before, source_plans_before) = {
+            let BuiltinFamilyArtifact::Swimlane(swimlane) = &artifact.family else {
+                panic!("expected Swimlane family artifact");
+            };
+            let model = crate::flowchart::FlowchartRenderModelRef::new(
+                swimlane.pair().semantic(),
+                swimlane.label_sources(),
+            );
+            let edge_index = model
+                .edges
+                .iter()
+                .position(|edge| edge.id == "styled")
+                .expect("semantic styled edge");
+            let owner = swimlane
+                .svg_label_sidecar()
+                .edge_owner("styled", true)
+                .expect("Swimlane edge-label owner");
+            assert_eq!(
+                owner,
+                crate::flowchart::FlowchartSvgLabelOwner::SwimlaneEdgeLabel(edge_index)
+            );
+            assert_eq!(
+                swimlane
+                    .pair()
+                    .layout()
+                    .edges
+                    .iter()
+                    .find(|edge| edge.id == "styled")
+                    .and_then(|edge| edge.label_node_id.as_deref()),
+                Some("edge-label-A-B-styled")
+            );
+            (
+                owner,
+                swimlane.svg_label_sidecar().prepared_hit_count(owner),
+                swimlane.svg_label_sidecar().source_plan_count(owner),
+            )
+        };
+
+        let svg = render_family_artifact_svg(
+            &artifact,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+        )
+        .expect("render Swimlane SVG");
+
+        let BuiltinFamilyArtifact::Swimlane(swimlane) = &artifact.family else {
+            unreachable!();
+        };
+        assert!(
+            swimlane.svg_label_sidecar().prepared_hit_count(owner) > hits_before,
+            "real Swimlane SVG emission must consume the prepared labelRect"
+        );
+        assert_eq!(
+            swimlane.svg_label_sidecar().source_plan_count(owner),
+            source_plans_before
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid Swimlane SVG");
+        let visible_text = document
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .flat_map(str::chars)
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>();
+        assert!(
+            visible_text.contains("swimlanesemanticowner"),
+            "{visible_text}"
+        );
+    }
+
+    #[test]
+    fn flowchart_family_layout_projections_exclude_operation_prepared_labels() {
+        for (source, variant) in [
+            ("flowchart LR\nA -->|Flowchart label| B\n", "FlowchartV2"),
+            (
+                "swimlane-beta LR\nA -->|Swimlane label| B\n",
+                "SwimlaneDiagram",
+            ),
+        ] {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .expect("parse Flowchart family")
+                .expect("detect Flowchart family");
+            let artifact = prepare(parsed, &LayoutOptions::default(), session())
+                .expect("prepare Flowchart family artifact");
+            let projection = artifact.layout_json().expect("project public layout JSON");
+            let layout = &projection["layout"][variant];
+            let serialized = layout.to_string();
+
+            for internal_field in [
+                "wrapped_lines",
+                "plain_text",
+                "binding",
+                "render_ids",
+                "svg_label_sidecar",
+            ] {
+                assert!(
+                    !serialized.contains(internal_field),
+                    "{variant} leaked operation-local field {internal_field}: {serialized}"
+                );
+            }
+
+            match variant {
+                "FlowchartV2" => assert!(
+                    serde_json::from_value::<FlowchartLayout>(layout.clone()).is_ok(),
+                    "prepared labels must not alter the public Flowchart layout schema"
+                ),
+                "SwimlaneDiagram" => assert!(
+                    serde_json::from_value::<SwimlaneLayout>(layout.clone()).is_ok(),
+                    "prepared labels must not alter the public Swimlane layout schema"
+                ),
+                _ => unreachable!(),
+            }
+        }
     }
 
     #[test]

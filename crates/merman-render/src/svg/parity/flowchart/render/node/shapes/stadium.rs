@@ -46,23 +46,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
     // (`updateNodeBounds`) before running Dagre layout. That bbox is narrower than the
     // theoretical `(text bbox + padding)` width used to generate the stadium points. The
     // SVG path is still generated from the theoretical width, so we recompute it here.
-    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-        &ctx.text_style,
-        ctx.class_defs,
+    let metrics = super::super::helpers::compute_node_label_metrics(
+        ctx,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
         common.node_classes,
-        &[],
-    );
-    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
-            measurer: ctx.measurer,
-            raw_label: label.text,
-            label_type: label.label_type,
-            style: &node_text_style,
-            max_width_px: Some(ctx.wrapping_width),
-            wrap_mode: ctx.node_wrap_mode,
-            config: ctx.config,
-            math_renderer: ctx.math_renderer,
-        },
+        common.node_styles,
     );
     let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
         Some("stadium"),

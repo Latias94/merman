@@ -18,6 +18,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(in crate::svg::parity::flowchart) math_renderer:
         Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+    pub(in crate::svg::parity::flowchart) svg_label_sidecar:
+        Option<&'a crate::flowchart::FlowchartSvgLabelSidecar>,
     pub(in crate::svg::parity::flowchart) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(in crate::svg::parity::flowchart) security_level_loose: bool,
     pub(in crate::svg::parity::flowchart) node_html_labels: bool,
@@ -44,6 +46,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
     pub(in crate::svg::parity::flowchart) subgraphs_by_id:
         FxHashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
+    pub(in crate::svg::parity::flowchart) subgraph_index_by_id: FxHashMap<&'a str, usize>,
+    pub(in crate::svg::parity::flowchart) subgraph_ids_with_children: FxHashSet<&'a str>,
     pub(in crate::svg::parity::flowchart) tooltips: &'a FxHashMap<String, String>,
     pub(in crate::svg::parity::flowchart) recursive_clusters: FxHashSet<&'a str>,
     pub(in crate::svg::parity::flowchart) parent: FxHashMap<&'a str, &'a str>,
@@ -67,6 +71,12 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) edge_wrap_mode: WrapMode,
     pub(in crate::svg::parity::flowchart) text_style: TextStyle,
     pub(in crate::svg::parity::flowchart) html_label_text_style: TextStyle,
+}
+
+impl FlowchartRenderCtx<'_> {
+    pub(in crate::svg::parity::flowchart) fn subgraph_has_children(&self, id: &str) -> bool {
+        self.subgraph_ids_with_children.contains(id)
+    }
 }
 
 #[derive(Debug, Default, Clone)]

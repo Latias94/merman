@@ -363,7 +363,11 @@ A -->|"&nbsp;Edge&nbsp;"| B
         .expect("edge label node");
 
     assert_eq!(edge_label.label, "\u{00a0}Edge\u{00a0}");
-    assert_eq!(edge_label.label_width, 6.0 * 8.0);
+    assert_eq!(
+        edge_label.label_width,
+        6.0 * 8.0,
+        "unexpected edge-label geometry: {edge_label:?}"
+    );
 }
 
 #[test]
@@ -425,7 +429,10 @@ A -->|approval| B
         .expect("edge label node");
     assert_eq!(label.label, "approval");
     assert_eq!(label.shape, "labelRect");
-    assert!((label.width - 64.0).abs() <= EPSILON);
+    assert!(
+        (label.width - 64.0).abs() <= EPSILON,
+        "unexpected edge-label geometry: {label:?}"
+    );
     assert!((label.height - 20.0).abs() <= EPSILON);
     assert!((label.label_width - 64.0).abs() <= EPSILON);
     assert!(a.layer < label.layer && label.layer < b.layer);

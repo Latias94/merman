@@ -97,6 +97,38 @@ fn render_flowchart_svg_from_text_with_engine_and_policy(
 }
 
 #[test]
+fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
+    for source in [
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
+        "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
+        "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[\"&nbsp;Second title\"]\n    B\n  end\n",
+        "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\n  subgraph X[\"&nbsp;First title\"]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
+    ] {
+        let svg = render_flowchart_svg_from_text(source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+        let clusters = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("id").is_some_and(|id| id.ends_with("-X"))
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "cluster")
+                    })
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(clusters.len(), 1, "{svg}");
+        let visible_text = clusters[0]
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .collect::<String>();
+        assert!(visible_text.contains("First title"), "{svg}");
+        assert!(!visible_text.contains("Second title"), "{svg}");
+    }
+}
+
+#[test]
 fn flowchart_edge_trace_stays_in_explicit_caller_owned_memory() {
     let source = "flowchart TD\nA --> B\n";
     let session = RenderEnvironment::deterministic()
@@ -1973,7 +2005,7 @@ A@{
 }
 
 #[test]
-fn flowchart_html_plain_multiline_labels_trim_source_indentation() {
+fn flowchart_html_plain_multiline_labels_preserve_source_indentation() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
@@ -1992,12 +2024,8 @@ fn flowchart_html_plain_multiline_labels_trim_source_indentation() {
     )
     .expect("render svg");
     assert!(
-        svg.contains("<p>First<br />Second</p>"),
-        "expected plain multiline HTML label to trim indentation: {svg}"
-    );
-    assert!(
-        !svg.contains("<br />      Second"),
-        "expected no source indentation after HTML line break"
+        svg.contains("<p>First<br />      Second</p>"),
+        "expected Mermaid nonMarkdownToHTML to preserve source whitespace for browser collapse: {svg}"
     );
 }
 
@@ -2011,8 +2039,8 @@ fn flowchart_html_plain_node_labels_can_span_indented_lines() {
     );
 
     assert!(
-        svg.contains("<p>Multiline<br />bar</p>"),
-        "expected indented multiline node label to render as an HTML line break: {svg}"
+        svg.contains("<p>Multiline<br />     bar</p>"),
+        "expected indented multiline node label to preserve source whitespace after its HTML line break: {svg}"
     );
     assert!(
         svg.contains("<p>**Bold Foo**</p>"),

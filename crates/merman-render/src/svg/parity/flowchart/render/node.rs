@@ -9,6 +9,8 @@ mod label;
 pub(in crate::svg::parity) mod roughjs;
 pub(in crate::svg::parity::flowchart) mod shapes;
 
+pub(in crate::svg::parity::flowchart) use helpers::compute_node_label_metrics;
+
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'a> {
     pub node_id: &'a str,
     pub shape: &'a str,

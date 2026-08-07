@@ -90,21 +90,13 @@ fn render_icon_rect_frame(
     let width = icon_size + half_padding * 2.0;
     let x = -width / 2.0;
     let y = -height / 2.0;
-    let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-        crate::flowchart::FlowchartLabelMetricsRequest {
-            measurer: ctx.measurer,
-            raw_label: label.text,
-            label_type: label.label_type,
-            style: if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-                &ctx.html_label_text_style
-            } else {
-                &ctx.text_style
-            },
-            max_width_px: Some(ctx.wrapping_width),
-            wrap_mode: ctx.node_wrap_mode,
-            config: ctx.config,
-            math_renderer: ctx.math_renderer,
-        },
+    let mut metrics = super::super::helpers::compute_node_label_metrics(
+        ctx,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
     );
     if !has_label {
         metrics.width = 0.0;

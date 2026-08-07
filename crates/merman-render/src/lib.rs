@@ -420,21 +420,23 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
-    layout_flowchart_typed_with_render_labels_by_engine(
+    layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
         diagram_type,
         model,
         &merman_core::diagrams::flowchart::FlowchartRenderLabelSources::default(),
         effective_config,
         options,
+        None,
     )
 }
 
-pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
+pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
     diagram_type: &str,
     model: &FlowchartModel,
     render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
+    svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
 ) -> Result<model::FlowchartLayout> {
     if uses_elk_layout(effective_config) {
         return layout_flowchart_elk_typed_by_feature(
@@ -443,15 +445,17 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
             render_label_sources,
             effective_config,
             options,
+            svg_label_sidecar,
         );
     }
 
-    flowchart::layout_flowchart_typed_with_render_labels_and_work_meter(
+    flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
         model,
         render_label_sources,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
+        svg_label_sidecar,
         options.work_meter(),
     )
 }
@@ -463,6 +467,7 @@ fn layout_flowchart_elk_typed_by_feature(
     render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
+    svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
 ) -> Result<model::FlowchartLayout> {
     flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         model,
@@ -471,6 +476,7 @@ fn layout_flowchart_elk_typed_by_feature(
         options.text_measurer(),
         options.math_renderer(),
         options.elk_operation_seed(),
+        svg_label_sidecar,
         options.work_meter(),
     )
 }
@@ -482,6 +488,7 @@ fn layout_flowchart_elk_typed_by_feature(
     _render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
+    _svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
 ) -> Result<model::FlowchartLayout> {
     Err(Error::MissingCapability {
         capability: RenderCapability::LayoutElk,

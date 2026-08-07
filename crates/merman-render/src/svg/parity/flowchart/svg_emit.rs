@@ -8,68 +8,40 @@ use super::viewbox::{
 };
 use super::*;
 
-pub(in crate::svg::parity) fn render_flowchart_svg_model_with_config(
-    layout: &FlowchartLayout,
-    model: &crate::flowchart::FlowchartModel,
-    render_label_sources: &crate::flowchart::FlowchartRenderLabelSources,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_type: &str,
-    diagram_title: Option<&str>,
-    presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
+pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
+    artifact: &crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
+    metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     render_flowchart_svg_model(
         FlowchartSvgModelRequest {
-            layout,
+            layout: artifact.pair().layout(),
             swimlane_layout: None,
-            model,
-            render_label_sources,
-            effective_config,
-            diagram_type,
-            diagram_title,
-            presentation_policy,
+            model: artifact.pair().semantic(),
+            render_label_sources: artifact.label_sources(),
+            effective_config: &metadata.effective_config,
+            diagram_type: metadata.diagram_type.as_str(),
+            diagram_title: metadata.title.as_deref(),
+            presentation_policy: artifact.policy(),
+            svg_label_sidecar: artifact.svg_label_sidecar(),
         },
         options,
     )
 }
 
-pub(in crate::svg::parity::flowchart) fn render_flowchart_svg_model_with_swimlane(
-    layout: &FlowchartLayout,
-    swimlane_layout: &crate::model::SwimlaneLayout,
-    model: &crate::flowchart::FlowchartModel,
-    render_label_sources: &crate::flowchart::FlowchartRenderLabelSources,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_type: &str,
-    diagram_title: Option<&str>,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    render_flowchart_svg_model(
-        FlowchartSvgModelRequest {
-            layout,
-            swimlane_layout: Some(swimlane_layout),
-            model,
-            render_label_sources,
-            effective_config,
-            diagram_type,
-            diagram_title,
-            presentation_policy: None,
-        },
-        options,
-    )
+pub(super) struct FlowchartSvgModelRequest<'a> {
+    pub(super) layout: &'a FlowchartLayout,
+    pub(super) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
+    pub(super) model: &'a crate::flowchart::FlowchartModel,
+    pub(super) render_label_sources: &'a crate::flowchart::FlowchartRenderLabelSources,
+    pub(super) effective_config: &'a merman_core::MermaidConfig,
+    pub(super) diagram_type: &'a str,
+    pub(super) diagram_title: Option<&'a str>,
+    pub(super) presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
+    pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
 }
 
-struct FlowchartSvgModelRequest<'a> {
-    layout: &'a FlowchartLayout,
-    swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
-    model: &'a crate::flowchart::FlowchartModel,
-    render_label_sources: &'a crate::flowchart::FlowchartRenderLabelSources,
-    effective_config: &'a merman_core::MermaidConfig,
-    diagram_type: &'a str,
-    diagram_title: Option<&'a str>,
-    presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
-}
-
-fn render_flowchart_svg_model(
+pub(super) fn render_flowchart_svg_model(
     request: FlowchartSvgModelRequest<'_>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -82,6 +54,7 @@ fn render_flowchart_svg_model(
         diagram_type,
         diagram_title,
         presentation_policy,
+        svg_label_sidecar,
     } = request;
     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
@@ -191,15 +164,26 @@ fn render_flowchart_svg_model(
                 Some((label_node_id, edge))
             })
             .collect();
-    let subgraph_order: Vec<&str> = model.subgraphs.iter().map(|s| s.id.as_str()).collect();
+    let mut subgraph_order: Vec<&str> = Vec::with_capacity(model.subgraphs.len());
     let mut subgraphs_by_id: FxHashMap<&str, &crate::flowchart::FlowSubgraph> =
         FxHashMap::with_capacity_and_hasher(model.subgraphs.len(), Default::default());
-    for sg in &model.subgraphs {
-        subgraphs_by_id.insert(sg.id.as_str(), sg);
+    let mut subgraph_index_by_id: FxHashMap<&str, usize> =
+        FxHashMap::with_capacity_and_hasher(model.subgraphs.len(), Default::default());
+    let mut subgraph_ids_with_children: FxHashSet<&str> = FxHashSet::default();
+    for (subgraph_index, sg) in model.subgraphs.iter().enumerate() {
+        let id = sg.id.as_str();
+        if let std::collections::hash_map::Entry::Vacant(entry) = subgraphs_by_id.entry(id) {
+            entry.insert(sg);
+            subgraph_index_by_id.insert(id, subgraph_index);
+            subgraph_order.push(id);
+        }
+        if !sg.nodes.is_empty() {
+            subgraph_ids_with_children.insert(id);
+        }
     }
 
     let mut parent: FxHashMap<&str, &str> = FxHashMap::default();
-    for sg in &model.subgraphs {
+    for sg in model.subgraphs.iter().rev() {
         let sg_id = sg.id.as_str();
         for child in &sg.nodes {
             parent.insert(child.as_str(), sg_id);
@@ -263,6 +247,7 @@ fn render_flowchart_svg_model(
         hand_drawn_seed,
         work_meter: options.work_meter(),
         math_renderer: options.math_renderer(),
+        svg_label_sidecar: Some(svg_label_sidecar),
         icon_registry: options.icon_registry(),
         security_level_loose: effective_config.get_str("securityLevel") == Some("loose"),
         node_html_labels,
@@ -285,6 +270,8 @@ fn render_flowchart_svg_model(
         nodes_by_id,
         edges_by_id,
         subgraphs_by_id,
+        subgraph_index_by_id,
+        subgraph_ids_with_children,
         tooltips: &model.tooltips,
         recursive_clusters,
         parent,
