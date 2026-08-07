@@ -555,7 +555,7 @@ fn vendored_parity_profile() -> TextMeasurementProfile {
         concat!(
             "merman-render@",
             env!("CARGO_PKG_VERSION"),
-            "/mermaid@11.16.0"
+            "/mermaid@11.16.1"
         ),
     )
     .expect("static vendored profile version is valid");
@@ -1774,6 +1774,24 @@ mod tests {
             .builtin_operation_carrier(TextMeasurementOperation::WrappedWithRawWidth)
             .and_then(BuiltinTextMeasurementOperationCarrier::into_inline_html)
             .unwrap_or_else(InlineHtmlMeasurementCarrier::opaque)
+    }
+
+    #[test]
+    fn vendored_profile_identity_tracks_the_pinned_mermaid_release() {
+        let profile = vendored_parity_profile();
+
+        assert_eq!(
+            profile.identity().profile().as_str(),
+            "merman.mermaid-11.16-text-metrics"
+        );
+        assert_eq!(
+            profile.identity().version(),
+            concat!(
+                "merman-render@",
+                env!("CARGO_PKG_VERSION"),
+                "/mermaid@11.16.1"
+            )
+        );
     }
 
     #[test]
