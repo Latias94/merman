@@ -1425,8 +1425,7 @@ fn class_box_dimensions(
     let mut annotation_rect: Option<Rect> = None;
     let mut annotation_group_height = 0.0;
     let mut annotation_prepared = None;
-    if let Some(a) = node.annotations.first() {
-        let t = format!("\u{00AB}{}\u{00BB}", decode_entities_minimal(a.trim()));
+    if let Some(t) = node.annotation_text_for_render() {
         let (m, prepared) = measure_label(&t, "");
         annotation_prepared = prepared;
         annotation_rect = label_rect(m, 0.0);
@@ -1436,14 +1435,11 @@ fn class_box_dimensions(
     }
 
     // Title label group (bold).
-    let mut title_text = if use_html_labels {
+    let title_text = if use_html_labels {
         node.text.trim().to_string()
     } else {
-        decode_entities_minimal(&node.text)
+        node.title_text_for_render()
     };
-    if !use_html_labels && title_text.starts_with('\\') {
-        title_text = title_text.trim_start_matches('\\').to_string();
-    }
     // Mermaid 11.16 renders class titles with `font-weight: bolder`; preserve that CSS value for
     // the operation-owned SVG bbox measurement below.
     let title_markdown_analysis =
@@ -1537,14 +1533,11 @@ fn class_box_dimensions(
         let mut prepared_out = prepare_html_labels.then(|| Vec::with_capacity(rows.len()));
         let mut y_offset = 0.0;
         for row in rows {
-            let mut t = if use_html_labels {
+            let t = if use_html_labels {
                 class_member_create_text_input(row)
             } else {
-                decode_entities_minimal(row.display_text.trim())
+                row.display_text_for_render()
             };
-            if !use_html_labels && t.starts_with('\\') {
-                t = t.trim_start_matches('\\').to_string();
-            }
             let (metrics, prepared) = measure_label(&t, row.css_style.as_str());
             if let Some(out) = metrics_out.as_mut() {
                 out.push(metrics);

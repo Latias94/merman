@@ -1,4 +1,3 @@
-use crate::entities::{decode_entities_minimal, decode_entities_minimal_cow};
 use crate::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::models::class_diagram::ClassMember;
@@ -488,14 +487,7 @@ pub(super) fn render_class_html_node_body(
     let title_height = title_metrics.height.max(ctx.line_height).max(1.0);
     let title_x = -title_width / 2.0;
 
-    let annotation_text = node.annotations.first().map(|annotation| {
-        let decoded = decode_entities_minimal_cow(annotation.trim());
-        let mut label = String::new();
-        label.push('\u{00AB}');
-        label.push_str(decoded.as_ref());
-        label.push('\u{00BB}');
-        label
-    });
+    let annotation_text = node.annotation_text_for_render();
     let annotation_prepared = prepared_html.and_then(|prepared| prepared.annotation.as_ref());
     let annotation_metrics = annotation_text.as_deref().map(|text| {
         annotation_prepared.map_or_else(
@@ -736,10 +728,7 @@ pub(super) fn render_class_svg_node_body(
     let gap = padding;
     let text_padding = 3.0;
 
-    let mut title_text = decode_entities_minimal_cow(node.text.trim()).into_owned();
-    if title_text.starts_with('\\') {
-        title_text = title_text.trim_start_matches('\\').to_string();
-    }
+    let title_text = node.title_text_for_render();
     let title_markdown_analysis = crate::class::analyze_class_svg_markdown(&title_text);
     let wrapped_title_text = if title_markdown_analysis.all_runs_normal() {
         wrap_class_svg_text_like_mermaid(
@@ -804,9 +793,7 @@ pub(super) fn render_class_svg_node_body(
     let mut annotation_rect: Option<Rect> = None;
     let mut annotation_group_height: f64 = 0.0;
     let mut annotation_group_width: f64 = 0.0;
-    if let Some(a) = node.annotations.first() {
-        let decoded = decode_entities_minimal(a.trim());
-        let mut text = format!("\u{00AB}{decoded}\u{00BB}");
+    if let Some(mut text) = node.annotation_text_for_render() {
         if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
             text = wrap_class_svg_text_like_mermaid(
                 &text,
@@ -845,10 +832,7 @@ pub(super) fn render_class_svg_node_body(
     {
         let mut y_offset = 0.0;
         for m in &node.members {
-            let mut text = decode_entities_minimal(m.display_text.trim());
-            if text.starts_with('\\') {
-                text = text.trim_start_matches('\\').to_string();
-            }
+            let mut text = m.display_text_for_render();
             if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
                 text = wrap_class_svg_text_like_mermaid(
                     &text,
@@ -892,11 +876,7 @@ pub(super) fn render_class_svg_node_body(
     {
         let mut y_offset = 0.0;
         for m in &node.methods {
-            let raw = decode_entities_minimal(m.display_text.trim());
-            let mut text = raw;
-            if text.starts_with('\\') {
-                text = text.trim_start_matches('\\').to_string();
-            }
+            let mut text = m.display_text_for_render();
             if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
                 text = wrap_class_svg_text_like_mermaid(
                     &text,

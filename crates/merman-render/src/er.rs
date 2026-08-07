@@ -166,12 +166,7 @@ pub(crate) fn measure_entity_box(
     let min_w = settings.min_entity_width;
     let wrapping_width_px = settings.wrapping_width_px;
 
-    let label_source = if entity.alias.trim().is_empty() {
-        entity.label.as_str()
-    } else {
-        entity.alias.as_str()
-    };
-    let label = ErBoxLabel::from_source(label_source);
+    let label = ErBoxLabel::from_source(entity.label_source_for_render());
     let label_metrics = er_box_label_metrics(&label, measurer, label_style);
     let label_html_width = label_metrics.width.max(0.0);
 

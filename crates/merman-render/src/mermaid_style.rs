@@ -1,44 +1,11 @@
 //! Mermaid CSS/style helpers shared by layout and SVG parity code.
 
 pub(crate) fn parse_safe_style_decl(s: &str) -> Option<(&str, &str)> {
-    let s = s.trim().trim_end_matches(';').trim();
-    if s.is_empty() {
-        return None;
-    }
-    let (k, v) = s.split_once(':')?;
-    let k = k.trim();
-    let v = v.trim();
-    if !is_safe_css_property_name(k) || !is_safe_css_declaration_value(v) {
-        return None;
-    }
-    Some((k, v))
+    merman_core::style::parse_safe_style_decl(s)
 }
 
 pub(crate) fn is_safe_css_font_family_value(value: &str) -> bool {
-    is_safe_css_declaration_value(value) && !value.contains(':')
-}
-
-fn is_safe_css_property_name(key: &str) -> bool {
-    !key.is_empty()
-        && key
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-}
-
-fn is_safe_css_declaration_value(value: &str) -> bool {
-    let value = value.trim();
-    if value.is_empty() {
-        return false;
-    }
-
-    let lower = value.to_ascii_lowercase();
-    if lower.contains("url(") || lower.contains("expression(") {
-        return false;
-    }
-
-    value
-        .chars()
-        .all(|ch| !ch.is_control() && !matches!(ch, '<' | '>' | '{' | '}' | ';' | '@'))
+    merman_core::style::is_safe_css_font_family_value(value)
 }
 
 pub(crate) fn is_label_style_key(key: &str) -> bool {
