@@ -721,8 +721,12 @@ def _binary_independence_error(
     return None
 
 
-def criterion_list_command(executable: Path) -> list[str]:
-    return [
+def criterion_list_command(
+    executable: Path,
+    *,
+    exact_benchmark: str | None = None,
+) -> list[str]:
+    command = [
         str(executable),
         "--bench",
         "--color",
@@ -731,6 +735,9 @@ def criterion_list_command(executable: Path) -> list[str]:
         "--format",
         "terse",
     ]
+    if exact_benchmark is not None:
+        command.extend(("--exact", exact_benchmark))
+    return command
 
 
 def _command_text(command: Sequence[str]) -> str:
@@ -1081,6 +1088,7 @@ def _prepare_runner(
     *,
     allow_dirty: bool,
     timeout_seconds: int,
+    discovery_benchmark: str | None = None,
     freeze_plan: SharedTargetFreezePlan | None = None,
     build_sequence: int | None = None,
 ) -> tuple[PreparedRunner | None, dict[str, Any], list[str]]:
@@ -1204,7 +1212,10 @@ def _prepare_runner(
             "role": "frozen" if freeze_plan is not None else "cargo-artifact",
         }
 
-        list_command = criterion_list_command(executable)
+        list_command = criterion_list_command(
+            executable,
+            exact_benchmark=discovery_benchmark,
+        )
         provenance["discovery_command"] = list_command
         print(f"[discover] {recipe.label}: {_command_text(list_command)}", flush=True)
         listed = _run_process(
@@ -1833,7 +1844,13 @@ def _prepare_reused_runner(
             "CARGO_PROFILE_BENCH_DEBUG": "0",
             "CARGO_BUILD_JOBS": "1",
         }
-        list_command = criterion_list_command(executable)
+        discovery_benchmark = (
+            next(iter(required_benchmarks)) if len(required_benchmarks) == 1 else None
+        )
+        list_command = criterion_list_command(
+            executable,
+            exact_benchmark=discovery_benchmark,
+        )
         _require_equal_reuse_value(
             f"{recipe.label} original discovery command",
             list_command,
@@ -3527,6 +3544,15 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
                 recipe,
                 allow_dirty=args.allow_dirty,
                 timeout_seconds=args.timeout_seconds,
+                discovery_benchmark=(
+                    next(
+                        contract[f"{recipe.label}_benchmark"]
+                        for contract in contracts
+                        if contract[f"{recipe.label}_benchmark"]
+                    )
+                    if len(contracts) == 1
+                    else None
+                ),
                 freeze_plan=freeze_plan,
                 build_sequence=build_sequence if freeze_plan is not None else None,
             )
