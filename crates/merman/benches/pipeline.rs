@@ -177,6 +177,12 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
             include_str!("fixtures/flowchart_nested_clusters.mmd"),
         ),
         (
+            "flowchart_elk_nested_directions",
+            include_str!(
+                "../../../fixtures/flowchart/upstream_cypress_flowchart_elk_spec_2050_elk_handling_of_different_rendering_direction_in_subgraphs_036.mmd"
+            ),
+        ),
+        (
             "flowchart_asymmetric_components",
             include_str!("fixtures/flowchart_asymmetric_components.mmd"),
         ),
