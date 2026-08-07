@@ -30,6 +30,13 @@ def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
 
 
+def report_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def command_output(command: Sequence[str]) -> str:
     completed = subprocess.run(
         command,
@@ -612,7 +619,7 @@ def main() -> int:
             "python": sys.version,
             "argv": sys.argv,
         },
-        "binary": str(binary.relative_to(ROOT)),
+        "binary": report_path(binary),
         "executable_sha256": executable_sha256,
         "host": host_report(),
         "timeout_seconds": args.timeout_seconds,
