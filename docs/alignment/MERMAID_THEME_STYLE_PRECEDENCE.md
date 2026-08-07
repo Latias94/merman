@@ -1,8 +1,8 @@
 # Mermaid Theme Style Precedence
 
 This note records the source-backed style origins that the portable theme compiler must preserve.
-The evidence is pinned to Mermaid `11.16.0` at commit
-`7c0cafcf42e76bfaf79d0cbbd12edb986612f014` in `repo-ref/mermaid`.
+The evidence is pinned to Mermaid `11.16.1` at commit
+`7ecca0cd7f1658ef74f4e7e91f925724ef403bbf` in `repo-ref/mermaid`.
 
 ## Configuration Origins
 
@@ -43,10 +43,13 @@ resolved themeCSS
 generated classDef CSS
 ```
 
-The stylesheet is installed before the renderer starts layout and measurement. That means browser
-CSS can affect measurements, but native exporters do not necessarily implement the same selector
-or computed-style surface. A portable semantic plan must be resolved before layout; it must not
-reparse the final SVG to infer origins.
+The stylesheet is installed before the renderer starts layout and measurement. Mermaid 11.16.1
+also preserves the generated root `font-family`, `font-size`, and `fill` declarations as inheritable
+root rules instead of forcing another descendant namespace. That means browser CSS can affect
+measurements, but native exporters do not necessarily implement the same selector or computed-style
+surface. The matrix therefore separates the admitted generated-paint subset from a pre-layout
+typography residual. A portable semantic plan must be resolved before layout; it must not reparse
+the final SVG to infer origins.
 
 ## Family Matrices
 
@@ -161,8 +164,8 @@ All paths below are relative to `repo-ref/mermaid` at the pinned commit.
 
 | Contract | Source evidence |
 | --- | --- |
-| Built-in, site, frontmatter, and directive config order | `packages/mermaid/src/defaultConfig.ts:18-34`; `packages/mermaid/src/mermaidAPI.ts:71-75,606-629`; `packages/mermaid/src/preprocess.ts:19-63`; `packages/mermaid/src/config.ts:29-47`; `packages/mermaid/src/mermaidAPI.spec.ts:804-824` |
-| `themeCSS` and generated `classDef` CSS order | `packages/mermaid/src/mermaidAPI.ts:104-199,202-278,535-551`; `packages/mermaid/src/styles.ts:34-46,115-163` |
+| Built-in, site, frontmatter, and directive config order | `packages/mermaid/src/defaultConfig.ts:18-34`; `packages/mermaid/src/mermaidAPI.ts:71-75,636-659`; `packages/mermaid/src/preprocess.ts:19-63`; `packages/mermaid/src/config.ts:29-47`; `packages/mermaid/src/mermaidAPI.spec.ts:804-824` |
+| `themeCSS`, generated root typography, and generated `classDef` CSS order | `packages/mermaid/src/mermaidAPI.ts:104-200,218-325,565-581`; `packages/mermaid/src/styles.ts:34-46,115-163` |
 | Flowchart default/node/assigned/inline node styles | `packages/mermaid/src/diagrams/flowchart/parser/flow.jison:533-570`; `packages/mermaid/src/diagrams/flowchart/flowDb.ts:207-215,406-429,462-476,1026-1093`; `packages/mermaid/src/rendering-util/rendering-elements/handDrawnShapeStyles.ts:18-89` |
 | Flowchart default and edge-specific link styles | `packages/mermaid/src/diagrams/flowchart/flowDb.ts:1141-1178`; `packages/mermaid/src/rendering-util/rendering-elements/edges.js:64-120,751-807` |
 | ClassDiagram asymmetric encounter-order copying and late style application | `packages/mermaid/src/diagrams/class/classDb.ts:122-134,192-194,331-367,684-695`; `packages/mermaid/src/diagrams/class/classRenderer-v3-unified.ts:34-39`; `packages/mermaid/src/diagrams/class/shapeUtil.ts:13-26`; `packages/mermaid/src/rendering-util/rendering-elements/shapes/classBox.ts:13-33,236-267` |

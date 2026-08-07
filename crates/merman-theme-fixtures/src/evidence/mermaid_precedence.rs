@@ -353,6 +353,15 @@ fn expected_style_precedence_tuple(id: &str) -> Option<StylePrecedenceTuple> {
             Some(0),
             false,
         ),
+        "global-css-family-typography-residual" => (
+            Global,
+            FamilyThemeCss,
+            StylesheetTypography,
+            PreLayout,
+            UnverifiedResidual,
+            Some(0),
+            false,
+        ),
         "global-css-theme" => (
             Global,
             ThemeCss,

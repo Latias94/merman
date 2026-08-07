@@ -22,6 +22,7 @@
     "global-config-init",
     "global-css-classdef",
     "global-css-family",
+    "global-css-family-typography-residual",
     "global-css-theme"
   ]
 }

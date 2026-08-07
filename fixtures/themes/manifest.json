@@ -64,16 +64,16 @@
     {
       "id": "source-mermaid",
       "project": "mermaid-js/mermaid",
-      "revision": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+      "revision": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
       "upstreamLicensePath": "LICENSE",
       "licensePath": "licenses/mermaid-MIT.txt",
       "licenseSha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
       "snapshotPath": "evidence/mermaid-style-precedence.json",
-      "snapshotSha256": "1692ef5cec49599ae934dcf89169dcf71f5a7531b3aac2655773a2c7f4667c88",
+      "snapshotSha256": "d4fa92bac03b1bf9ef134221a63c0b9b24c2ee6a1f6a05e6880ee3d76507023a",
       "evidence": [
         {
           "sourcePath": "packages/mermaid/src/config.ts",
-          "sha256": "2804104c8c9fb9a59781258cc995b497b847a1013eacf19597bd3121df1e4eb3"
+          "sha256": "49f92451e4ca7652b54169007edb3714e40aa9da2a122601a98c0f7ed076da28"
         },
         {
           "sourcePath": "packages/mermaid/src/diagrams/class/classDb.ts",
@@ -121,7 +121,7 @@
         },
         {
           "sourcePath": "packages/mermaid/src/mermaidAPI.ts",
-          "sha256": "1dc2827d74550cc1d699ff05639e9767c5665134da61410c6070d93f62702cbc"
+          "sha256": "87626fb17af931a56db29f5e88165e3a845002c843dd0e4188145d69c7a0c2b1"
         },
         {
           "sourcePath": "packages/mermaid/src/preprocess.ts",
@@ -145,7 +145,7 @@
         },
         {
           "sourcePath": "packages/mermaid/src/styles.ts",
-          "sha256": "358518cb61118bae71c784c296eb07fd64046416980825c7b460da8c153db9d1"
+          "sha256": "2c6b17f84b2e0a88ebfd9591cb3df7dcb32d7d05561bdceabcd40f8888f327c1"
         }
       ]
     }
@@ -279,7 +279,7 @@
       "sourcePath": "sources/style-precedence.mmd",
       "sourceSha256": "3c4113d9d9d1854717fa366d631485bd07734f1075fa935cc9ddafcaa6e33df6",
       "expectationPath": "expectations/style-precedence.json",
-      "expectationSha256": "23b340f3cd66ad2b56944ef0629c77ed95f9612a2f44bd8d1814b51d91210f95",
+      "expectationSha256": "7e334edbc9e21fd0ee6b58fc6546526e2b36b47473652c0901e701b0b1550ea4",
       "evidenceSourceIds": [
         "source-mermaid",
         "source-modern-mermaid"
@@ -291,7 +291,7 @@
       "sourcePath": "sources/frontmatter-style-precedence.mmd",
       "sourceSha256": "c14641cbc3e79ce9525c8e1d4f2fc0c732900c1a54d89446db6d3c1f3f6963a6",
       "expectationPath": "expectations/frontmatter-style-precedence.json",
-      "expectationSha256": "13f04ebbdbf33175aaf392a63f2a16eb1a66753a8bc3303e94dcf05265e77101",
+      "expectationSha256": "1ed96e347f5768d49b8e94c03cbdf730f18f6137dbeeebfa2ea79f03fbbf0142",
       "evidenceSourceIds": [
         "source-mermaid"
       ],

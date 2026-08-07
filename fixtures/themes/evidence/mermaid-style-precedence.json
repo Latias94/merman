@@ -1,11 +1,11 @@
 {
   "snapshotVersion": 1,
   "sourceId": "source-mermaid",
-  "revision": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+  "revision": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
   "evidenceFiles": [
     {
       "path": "packages/mermaid/src/config.ts",
-      "sha256": "2804104c8c9fb9a59781258cc995b497b847a1013eacf19597bd3121df1e4eb3"
+      "sha256": "49f92451e4ca7652b54169007edb3714e40aa9da2a122601a98c0f7ed076da28"
     },
     {
       "path": "packages/mermaid/src/diagrams/class/classDb.ts",
@@ -53,7 +53,7 @@
     },
     {
       "path": "packages/mermaid/src/mermaidAPI.ts",
-      "sha256": "1dc2827d74550cc1d699ff05639e9767c5665134da61410c6070d93f62702cbc"
+      "sha256": "87626fb17af931a56db29f5e88165e3a845002c843dd0e4188145d69c7a0c2b1"
     },
     {
       "path": "packages/mermaid/src/preprocess.ts",
@@ -77,7 +77,7 @@
     },
     {
       "path": "packages/mermaid/src/styles.ts",
-      "sha256": "358518cb61118bae71c784c296eb07fd64046416980825c7b460da8c153db9d1"
+      "sha256": "2c6b17f84b2e0a88ebfd9591cb3df7dcb32d7d05561bdceabcd40f8888f327c1"
     }
   ],
   "entries": [
@@ -104,7 +104,7 @@
       "encounterOrder": false,
       "evidence": [
         "packages/mermaid/src/config.ts:29-47",
-        "packages/mermaid/src/mermaidAPI.ts:439-443"
+        "packages/mermaid/src/mermaidAPI.ts:469-473"
       ],
       "note": "Init directives overlay prior configuration in source encounter order."
     },
@@ -118,7 +118,22 @@
       "rank": 0,
       "encounterOrder": false,
       "evidence": ["packages/mermaid/src/styles.ts:34-46,115-163"],
-      "note": "Generated family theme CSS is emitted before request themeCSS."
+      "note": "Generated family theme CSS contributes the admitted paint subset before request themeCSS."
+    },
+    {
+      "id": "global-css-family-typography-residual",
+      "family": "global",
+      "origin": "family-theme-css",
+      "property": "stylesheet-typography",
+      "plane": "pre-layout",
+      "admission": "unverified-residual",
+      "rank": 0,
+      "encounterOrder": false,
+      "evidence": [
+        "packages/mermaid/src/styles.ts:34-46",
+        "packages/mermaid/src/mermaidAPI.ts:218-309,311-325,565-581"
+      ],
+      "note": "Generated root font-family and font-size CSS is installed before browser layout, but no portable family adapter currently resolves that cascade before measurement."
     },
     {
       "id": "global-css-theme",
@@ -129,7 +144,7 @@
       "admission": "source-compatibility",
       "rank": 1,
       "encounterOrder": false,
-      "evidence": ["packages/mermaid/src/mermaidAPI.ts:104-199,535-551"],
+      "evidence": ["packages/mermaid/src/mermaidAPI.ts:104-200,218-309,565-581"],
       "note": "Raw themeCSS is a compatibility origin whose selector cascade is not portable."
     },
     {
@@ -141,7 +156,7 @@
       "admission": "paint-only",
       "rank": 2,
       "encounterOrder": false,
-      "evidence": ["packages/mermaid/src/mermaidAPI.ts:535-551"],
+      "evidence": ["packages/mermaid/src/mermaidAPI.ts:128-200,311-325,565-581"],
       "note": "Generated classDef rules are emitted after resolved themeCSS."
     },
     {

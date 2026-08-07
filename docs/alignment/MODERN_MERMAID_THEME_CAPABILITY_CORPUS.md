@@ -101,7 +101,7 @@ target-specific `cssClass` and `classDef` application witnesses rather than fina
 line-text guesses. Flowchart compatibility evidence admits the trusted visual directive keys into
 the fixture engine's effective config, parses qualified CSS rules and non-empty declarations, and
 rejects selector/property words that exist only in comments, strings, or invalid placeholders.
-The 25-entry Mermaid precedence snapshot is closed over parser-backed Flowchart, Class, State, and
+The 26-entry Mermaid precedence snapshot is closed over parser-backed Flowchart, Class, State, and
 ER consumers. Typed capability fixtures reject source-owned visual evidence, every precedence
 entry has a source-compatibility fixture consumer, and every hashed Mermaid evidence file is cited
 by a matrix entry. Sequence remains documented but is not admitted until its fixture parser and

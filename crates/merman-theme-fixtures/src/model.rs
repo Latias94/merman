@@ -6,7 +6,7 @@ pub const SCHEMA_VERSION: u32 = 2;
 pub const FIXTURE_EXPECTATION_VERSION: u32 = 2;
 pub const THEME_INPUT_VERSION: u32 = 2;
 pub const MODERN_MERMAID_REFERENCE_THEME_COUNT: usize = 24;
-pub const MERMAID_STYLE_PRECEDENCE_ENTRY_COUNT: usize = 25;
+pub const MERMAID_STYLE_PRECEDENCE_ENTRY_COUNT: usize = 26;
 
 pub const MERMAID_STYLE_PRECEDENCE_ENTRY_IDS: [&str; MERMAID_STYLE_PRECEDENCE_ENTRY_COUNT] = [
     "class-assignment-before-definition-copy",
@@ -24,6 +24,7 @@ pub const MERMAID_STYLE_PRECEDENCE_ENTRY_IDS: [&str; MERMAID_STYLE_PRECEDENCE_EN
     "global-config-init",
     "global-css-classdef",
     "global-css-family",
+    "global-css-family-typography-residual",
     "global-css-theme",
     "state-node-assigned",
     "state-node-inline",
@@ -242,6 +243,7 @@ pub enum MermaidStyleProperty {
     NodePaint,
     NodeTypography,
     StylesheetPaint,
+    StylesheetTypography,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]

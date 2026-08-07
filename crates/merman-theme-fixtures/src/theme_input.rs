@@ -316,6 +316,7 @@ fn collect_flowchart_style_evidence(
     }
     if !evidence.is_empty() {
         evidence.insert("global-css-family".to_string());
+        evidence.insert("global-css-family-typography-residual".to_string());
     }
 }
 
