@@ -298,7 +298,7 @@ fn layout_mindmap_diagram_model(
     config: &MermaidConfig,
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    work_control: &mut OperationLayoutWorkControl,
+    _work_control: &mut OperationLayoutWorkControl,
 ) -> Result<MindmapDiagramLayout> {
     let effective_config = config.as_value();
     let text_style = mindmap_text_style(effective_config);
@@ -390,9 +390,9 @@ fn layout_mindmap_diagram_model(
             let positions = manatee::algo::cose_bilkent::layout_indexed_with_work_control(
                 &indexed_nodes,
                 &indexed_edges,
-                work_control,
+                _work_control,
             )
-            .map_err(|error| work_control.map_manatee_error(error))?;
+            .map_err(|error| _work_control.map_manatee_error(error))?;
 
             for (n, p) in nodes.iter_mut().zip(positions) {
                 n.x = p.x;

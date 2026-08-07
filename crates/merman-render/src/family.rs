@@ -2220,7 +2220,7 @@ linkStyle 0 font-size:12px,font-style:italic
 
     #[test]
     fn session_report_accounts_for_every_metered_layout_family() {
-        let mut cases = vec![
+        let cases = vec![
             (
                 "classDiagram\nclass A\nclass B\nA --> B\n",
                 RenderFamilyKind::Class,
@@ -2261,10 +2261,14 @@ linkStyle 0 font-size:12px,font-style:italic
         ];
 
         #[cfg(feature = "layout-cytoscape")]
-        cases.push((
-            "mindmap\n  Root\n    First child\n    Second child\n",
-            RenderFamilyKind::Mindmap,
-        ));
+        let cases = {
+            let mut cases = cases;
+            cases.push((
+                "mindmap\n  Root\n    First child\n    Second child\n",
+                RenderFamilyKind::Mindmap,
+            ));
+            cases
+        };
 
         for (source, expected_family) in cases {
             let parsed = Engine::new()

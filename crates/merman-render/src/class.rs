@@ -2005,7 +2005,7 @@ fn layout_class_diagram_typed_inner(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     engine: ClassLayoutEngine,
-    mut work_control: Option<&mut OperationLayoutWorkControl>,
+    work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<ClassLayoutResult> {
     validate_class_namespace_hierarchy(model)?;
     let diagram_dir = rank_dir_from(&model.direction);
@@ -2302,11 +2302,9 @@ fn layout_class_diagram_typed_inner(
 
     #[cfg(feature = "layout-elk")]
     if let ClassLayoutEngine::Elk(operation_seed) = engine {
-        let work_control = work_control
-            .as_deref_mut()
-            .ok_or_else(|| Error::InvalidModel {
-                message: "Class ELK layout requires an operation work control".to_string(),
-            })?;
+        let work_control = work_control.ok_or_else(|| Error::InvalidModel {
+            message: "Class ELK layout requires an operation work control".to_string(),
+        })?;
         return layout_class_diagram_elk_from_graph(
             model,
             *g,
