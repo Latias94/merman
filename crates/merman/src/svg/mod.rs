@@ -302,13 +302,6 @@ pub fn svg_readable(
     apply_svg_pipeline(svg, &SvgPipeline::readable(), session)
 }
 
-pub fn svg_resvg_safe(
-    svg: &str,
-    session: &merman_render::environment::RenderSession,
-) -> Result<String> {
-    apply_svg_pipeline(svg, &SvgPipeline::resvg_safe(), session)
-}
-
 pub fn render_svg_with_pipeline_sync(
     engine: &merman_core::Engine,
     text: &str,
@@ -344,21 +337,33 @@ pub fn render_svg_readable_sync(
     )
 }
 
-pub fn render_svg_resvg_safe_sync(
+/// Synchronously renders and terminally seals SVG for resvg/raster consumers.
+///
+/// The returned value is intentionally opaque: callers must keep the terminal capability instead
+/// of receiving an indistinguishable `String` that could be mistaken for arbitrary SVG.
+pub fn render_resvg_compatible_svg_sync(
     engine: &merman_core::Engine,
     text: &str,
     parse_options: merman_core::ParseOptions,
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
-) -> Result<Option<String>> {
-    render_svg_with_pipeline_sync(
+) -> Result<Option<ResvgCompatibleSvg>> {
+    let environment = default_render_environment();
+    let Some(prepared) = operation::HeadlessOperation::new(
         engine,
         text,
         parse_options,
         layout_options,
+        &environment,
+    )?
+    .prepare_render()?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(prepared.render_resvg_compatible_svg(
         svg_options,
         &SvgPipeline::resvg_safe(),
-    )
+    )?))
 }
 
 pub async fn prepare_render(
@@ -427,16 +432,16 @@ pub async fn render_svg_with_pipeline(
     )
 }
 
-pub async fn render_svg_resvg_safe(
+pub async fn render_resvg_compatible_svg(
     engine: &merman_core::Engine,
     text: &str,
     parse_options: merman_core::ParseOptions,
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
-) -> Result<Option<String>> {
+) -> Result<Option<ResvgCompatibleSvg>> {
     // This async API is runtime-agnostic: rendering is CPU-bound and does not perform I/O.
     // It executes synchronously and does not yield.
-    render_svg_resvg_safe_sync(engine, text, parse_options, layout_options, svg_options)
+    render_resvg_compatible_svg_sync(engine, text, parse_options, layout_options, svg_options)
 }
 
 #[cfg(test)]
@@ -1736,10 +1741,12 @@ impl HeadlessRenderer {
         self.render_svg_with_pipeline_sync(text, &SvgPipeline::readable())
     }
 
-    pub fn render_svg_resvg_safe_sync(&self, text: &str) -> Result<Option<String>> {
-        Ok(self
-            .render_resvg_compatible_svg_with_pipeline_sync(text, &SvgPipeline::resvg_safe())?
-            .map(ResvgCompatibleSvg::into_string))
+    /// Renders and terminally seals SVG for resvg/raster consumers.
+    pub fn render_resvg_compatible_svg_sync(
+        &self,
+        text: &str,
+    ) -> Result<Option<ResvgCompatibleSvg>> {
+        self.render_resvg_compatible_svg_with_pipeline_sync(text, &SvgPipeline::resvg_safe())
     }
 
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

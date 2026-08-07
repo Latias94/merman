@@ -24,7 +24,7 @@ import type {
   RenderCoordinatorState,
   RenderPublicationId,
 } from "./render-coordinator.ts";
-import { projectSafeInlineSvg } from "./render-artifact.ts";
+import { projectNavigableInlineSvg } from "./render-artifact.ts";
 import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
 
 test("selects SVG and ASCII only from the named current publication", async () => {
@@ -93,7 +93,7 @@ test("rerenders only Merman PNG through the resvg-safe operation", async () => {
   const runtime = readyRuntime((input) => {
     renderInputs.push(input);
     return {
-      artifact: projectSafeInlineSvg(svg("merman-png")),
+      artifact: projectNavigableInlineSvg(svg("merman-png")),
       error: null,
       renderTime: 1,
       status: "success",
@@ -191,7 +191,7 @@ function completedPublication(
     svgPlan: null,
     status: "success",
     merman: Object.freeze({
-      artifact: projectSafeInlineSvg(svg("merman")),
+      artifact: projectNavigableInlineSvg(svg("merman")),
       ascii: `ascii-${key}`,
       asciiError: null,
       engine: "merman",
@@ -200,7 +200,7 @@ function completedPublication(
       status: "success",
     }),
     mermaid: Object.freeze({
-      artifact: projectSafeInlineSvg(svg("mermaid")),
+      artifact: projectNavigableInlineSvg(svg("mermaid")),
       engine: "mermaid",
       prepareTimeMs: 1,
       presentationTimeMs: 1,
@@ -226,7 +226,7 @@ function publicationId(value: number): RenderPublicationId {
 
 function readyRuntime(
   render: MermanDomainFacade["render"] = (input) => ({
-    artifact: projectSafeInlineSvg(svg(input.source)),
+    artifact: projectNavigableInlineSvg(svg(input.source)),
     error: null,
     renderTime: 1,
     status: "success",

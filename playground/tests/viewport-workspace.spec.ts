@@ -138,6 +138,191 @@ test("touch pan, pinch zoom, keyboard controls, and artifact auto-fit remain coh
   errors.assertNone();
 });
 
+test("Kanban ticket links remain navigable inside the panning viewport", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  const source = [
+    "---",
+    "config:",
+    "  kanban:",
+    "    ticketBaseUrl: 'https://example.test/browse/#TICKET#'",
+    "---",
+    "kanban",
+    "  Todo",
+    "    task[Task]@{ ticket: MC-1 }",
+  ].join("\n");
+  await replaceEditorSource(page, source);
+
+  const viewport = primaryViewport(page);
+  const anchor = viewport.locator("a.kanban-ticket-link");
+  await expect(anchor).toHaveCount(1);
+  await expect(anchor).toHaveAttribute("target", "_blank");
+  await expect(anchor).toHaveAttribute("rel", /\bnoopener\b/u);
+  await expect(anchor).toHaveAttribute("rel", /\bnoreferrer\b/u);
+  await expect
+    .poll(() =>
+      anchor.evaluate(
+        (element) =>
+          element.getAttribute("href") ??
+          element.getAttributeNS("http://www.w3.org/1999/xlink", "href") ??
+          element.getAttribute("xlink:href")
+      )
+    )
+    .toBe("https://example.test/browse/MC-1");
+
+  await anchor.evaluate((element) => {
+    element.setAttribute("data-test-click-count", "0");
+    window.addEventListener("pointerdown", (event) => {
+      if (event.composedPath().includes(element)) {
+        element.setAttribute(
+          "data-test-pointerdown-default-prevented",
+          String(event.defaultPrevented)
+        );
+      }
+    });
+    element.addEventListener("click", (event) => {
+      event.preventDefault();
+      element.setAttribute(
+        "data-test-click-count",
+        String(Number(element.getAttribute("data-test-click-count")) + 1)
+      );
+    });
+  });
+
+  const positionBefore = await viewportPositionTransform(viewport);
+  await anchor.click();
+  await expect(anchor).toHaveAttribute("data-test-click-count", "1");
+  await expect(anchor).toHaveAttribute(
+    "data-test-pointerdown-default-prevented",
+    "false"
+  );
+  await expect(viewport).toHaveAttribute("data-dragging", "false");
+  expect(await viewportPositionTransform(viewport)).toBe(positionBefore);
+
+  await anchor.focus();
+  await page.keyboard.press("Enter");
+  await expect(anchor).toHaveAttribute("data-test-click-count", "2");
+  errors.assertNone();
+});
+
+test("tap intent preserves auto-fit and promoted anchor drags suppress navigation", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(
+    page,
+    [
+      "---",
+      "config:",
+      "  kanban:",
+      "    ticketBaseUrl: 'https://example.test/browse/#TICKET#'",
+      "---",
+      "kanban",
+      "  Todo",
+      "    task[Task]@{ ticket: MC-2 }",
+    ].join("\n")
+  );
+
+  const viewport = primaryViewport(page);
+  await expect(viewport).toHaveAttribute("data-auto-fit", "true");
+  await dispatchPointer(viewport, "pointerdown", 81, 40, 40);
+  await dispatchPointer(viewport, "pointerup", 81, 40, 40);
+  await expect(viewport).toHaveAttribute("data-auto-fit", "true");
+
+  const anchor = viewport.locator("a.kanban-ticket-link");
+  await expect(anchor).toHaveCount(1);
+  await anchor.evaluate((element) => {
+    element.setAttribute("data-test-click-count", "0");
+    element.addEventListener("click", (event) => {
+      event.preventDefault();
+      element.setAttribute(
+        "data-test-click-count",
+        String(Number(element.getAttribute("data-test-click-count")) + 1)
+      );
+    });
+  });
+  const box = await anchor.boundingBox();
+  expect(box).not.toBeNull();
+  const startX = box!.x + box!.width / 2;
+  const startY = box!.y + box!.height / 2;
+  const positionBefore = await viewportPositionTransform(viewport);
+
+  await dispatchPointer(anchor, "pointerdown", 82, startX, startY);
+  await dispatchPointer(anchor, "pointermove", 82, startX + 48, startY + 24);
+  await dispatchPointer(anchor, "pointerup", 82, startX + 48, startY + 24);
+  await waitForTwoFrames(page);
+  await expect(viewport).toHaveAttribute("data-auto-fit", "false");
+  expect(await viewportPositionTransform(viewport)).not.toBe(positionBefore);
+
+  await anchor.dispatchEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    detail: 1,
+  });
+  await expect(anchor).toHaveAttribute("data-test-click-count", "0");
+
+  await anchor.focus();
+  await page.keyboard.press("Enter");
+  await expect(anchor).toHaveAttribute("data-test-click-count", "1");
+  errors.assertNone();
+});
+
+test("XHTML label links remain navigable across the shadow viewport boundary", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(
+    page,
+    [
+      "stateDiagram-v2",
+      "A",
+      "note right of A",
+      "  <a href='https://example.test/docs' target='_self'><code>Docs</code></a>",
+      "end note",
+    ].join("\n")
+  );
+
+  const viewport = primaryViewport(page);
+  const anchor = viewport.locator("foreignObject a");
+  await expect(anchor).toHaveCount(1);
+  await expect(anchor).toHaveAttribute("target", "_blank");
+  await expect(anchor).toHaveAttribute("rel", /\bnoopener\b/u);
+  await expect(anchor).toHaveAttribute("rel", /\bnoreferrer\b/u);
+  await anchor.evaluate((element) => {
+    element.setAttribute("data-test-click-count", "0");
+    window.addEventListener("pointerdown", (event) => {
+      if (!event.composedPath().includes(element)) return;
+      element.setAttribute(
+        "data-test-pointerdown-default-prevented",
+        String(event.defaultPrevented)
+      );
+    });
+    element.addEventListener("click", (event) => {
+      event.preventDefault();
+      element.setAttribute(
+        "data-test-click-count",
+        String(Number(element.getAttribute("data-test-click-count")) + 1)
+      );
+    });
+  });
+
+  const positionBefore = await viewportPositionTransform(viewport);
+  await anchor.click();
+  await expect(anchor).toHaveAttribute("data-test-click-count", "1");
+  await expect(anchor).toHaveAttribute(
+    "data-test-pointerdown-default-prevented",
+    "false"
+  );
+  await expect(viewport).toHaveAttribute("data-dragging", "false");
+  expect(await viewportPositionTransform(viewport)).toBe(positionBefore);
+  errors.assertNone();
+});
+
 test("Compare panes retain independent viewport transforms", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
@@ -274,7 +459,7 @@ async function viewportPositionTransform(viewport: Locator): Promise<string> {
 }
 
 async function dispatchPointer(
-  viewport: Locator,
+  target: Locator,
   type:
     | "pointerdown"
     | "pointermove"
@@ -286,7 +471,7 @@ async function dispatchPointer(
   clientY: number,
   pointerType = "mouse"
 ): Promise<void> {
-  await viewport.dispatchEvent(type, {
+  await target.dispatchEvent(type, {
     bubbles: true,
     button: 0,
     buttons:
@@ -297,6 +482,7 @@ async function dispatchPointer(
         : 1,
     clientX,
     clientY,
+    composed: true,
     pointerId,
     pointerType,
   });

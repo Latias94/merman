@@ -4,6 +4,9 @@ use crate::svg::icon_registry::mermaid_unknown_icon_svg;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::util::escape_attr_display;
 use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
+use merman_core::svg_security::{
+    MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
+};
 use std::fmt::Write as _;
 
 pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
@@ -65,32 +68,6 @@ pub(super) fn try_render_self_loop_label_placeholder(
     true
 }
 
-fn href_is_renderable(href: &str) -> bool {
-    let href = href.trim();
-    if href.is_empty() {
-        return false;
-    }
-
-    let lower = href.to_ascii_lowercase();
-    if lower.starts_with('#')
-        || lower.starts_with("mailto:")
-        || lower.starts_with("http://")
-        || lower.starts_with("https://")
-        || lower.starts_with("//")
-        || lower.starts_with('/')
-        || lower.starts_with("./")
-        || lower.starts_with("../")
-    {
-        return true;
-    }
-
-    // Mermaid's SVG output does not include `xlink:href` for unknown schemes (e.g. `notes://...`
-    // or `javascript:...`). Treat any explicit scheme as unsafe unless it matched the allow-list
-    // above.
-    let scheme_end = lower.find(['/', '?', '#']).unwrap_or(lower.len());
-    !lower[..scheme_end].contains(':')
-}
-
 fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
     escape_xml_into(out, base);
     for c in classes {
@@ -110,7 +87,8 @@ pub(super) struct NodeWrapperAttrs<'a> {
     pub(super) class_attr_base: &'a str,
     pub(super) node_classes: &'a [String],
     pub(super) wrapped_in_a: bool,
-    pub(super) href: Option<&'a str>,
+    pub(super) href: Option<&'a SerializedMermaidNavigationHref>,
+    pub(super) target: Option<&'a str>,
     pub(super) x: f64,
     pub(super) y: f64,
     pub(super) tooltip_enabled: bool,
@@ -127,6 +105,7 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         node_classes,
         wrapped_in_a,
         href,
+        target,
         x,
         y,
         tooltip_enabled,
@@ -137,8 +116,14 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
     if wrapped_in_a {
         if let Some(href) = href {
             out.push_str(r#"<a xlink:href=""#);
-            escape_xml_into(out, href);
-            out.push_str(r#"" transform="translate("#);
+            out.push_str(href.as_serialized_str());
+            out.push('"');
+            if let Some(target) = target {
+                out.push_str(r#" target=""#);
+                escape_xml_into(out, target);
+                out.push('"');
+            }
+            out.push_str(r#" transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);
             out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
@@ -246,7 +231,8 @@ pub(super) struct ResolvedNodeRenderInfo<'a> {
     pub(super) dom_idx: Option<usize>,
     pub(super) class_attr_base: &'static str,
     pub(super) wrapped_in_a: bool,
-    pub(super) href: Option<&'a str>,
+    pub(super) href: Option<SerializedMermaidNavigationHref>,
+    pub(super) target: Option<&'a str>,
     pub(super) label_text: &'a str,
     pub(super) label_text_is_node_id: bool,
     pub(super) label_type: &'a str,
@@ -273,6 +259,7 @@ pub(super) fn resolve_node_render_info<'a>(
             class_attr_base: "node",
             wrapped_in_a: false,
             href: None,
+            target: None,
             label_text: ctx.model.subgraph_title_for_render(sg),
             label_text_is_node_id: false,
             label_type: sg.label_type.as_deref().unwrap_or("text"),
@@ -301,21 +288,26 @@ pub(super) fn resolve_node_render_info<'a>(
             "node default"
         };
 
-        let link = node
-            .link
-            .as_deref()
-            .map(|u| u.trim())
-            .filter(|u| !u.is_empty());
+        let link = node.link.as_deref().filter(|u| !u.is_empty());
         let link_present = link.is_some();
         // Mermaid stores the original click link in the model, but the final SVG sanitizer removes
         // unsafe or unknown schemes from the emitted anchor while keeping the `<a>` wrapper.
-        let href = link
-            .filter(|u| *u != "about:blank")
-            .filter(|u| href_is_renderable(u));
+        let security_level_loose = ctx.config.get_str("securityLevel") == Some("loose");
+        let href = link.and_then(|url| {
+            prepare_mermaid_navigation_href(
+                url,
+                MermaidNavigationSecurity::from_security_level_loose(security_level_loose),
+            )
+        });
         // Mermaid wraps nodes in `<a>` only when a link is present. Callback-based
         // interactions (`click A someFn`) still mark the node as clickable, but do not
         // emit an anchor element in the SVG.
         let wrapped_in_a = link_present;
+        let target = security_level_loose
+            .then_some(node.link_target.as_deref())
+            .flatten()
+            .map(str::trim)
+            .filter(|target| !target.is_empty());
 
         let (label_text, label_text_is_node_id) =
             if let Some(v) = ctx.model.node_label_for_render(node) {
@@ -329,6 +321,7 @@ pub(super) fn resolve_node_render_info<'a>(
             class_attr_base,
             wrapped_in_a,
             href,
+            target,
             label_text,
             label_text_is_node_id,
             label_type: node.label_type.as_deref().unwrap_or("text"),

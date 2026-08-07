@@ -189,8 +189,8 @@
     },
     "stress_flowchart_html_labels_default_class_077": {
       "input_sha256": "cead2740efa9b00d7e86ba4f6413d31d4674d8feb0a6d1305ace530f4c14dd01",
-      "svg_sha256": "3cb0f2e0ad8b45476f5078a796776fc5f57ba87c25c01402be0c92fb04e1085c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "c0efe77ca044dc61b8059efbb370262c2f6b4913b929426d8fb82f69f68f6a33",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "stress_flowchart_html_labels_global_false_flowchart_true_069": {
       "input_sha256": "01e26670e35b043d04baba10560e72437e18423851559659513eb10d597f6d89",
@@ -284,8 +284,8 @@
     },
     "stress_flowchart_markdown_mixed_raw_blocks_078": {
       "input_sha256": "a891ec616bd64bdfebad366d7bda7a1fe680218e48369c74fe0e4d480335e227",
-      "svg_sha256": "dcbaf4fc0ad52288e3c25cbac3e798415a1cdeaa605a9399de6aca8d9811ed60",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "67bfac90b7224c8d9b19460a488f24ab30255a259bb42d44634cb070c5f8908d",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "stress_flowchart_markdown_underscore_delims_074": {
       "input_sha256": "2e9fed5f6acaf4a31c04d57a89510e3986d5bb65fc2c67323029897c0d7608ab",
@@ -584,18 +584,18 @@
     },
     "upstream_cypress_flowchart_elk_spec_2050_elk_handling_of_different_rendering_direction_in_subgraphs_036": {
       "input_sha256": "2cb57e51813ecf06fbc53962849a62930dbe50b31977bec5aef7de4897db99cb",
-      "svg_sha256": "447b361745afba2213856fc8fff102eb811d582341d20c7b41a56f376f21d4a2",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "a10cf46dda248a76eeceb86751f0b65c8b751026190415e4422a270cd1f6a58c",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_2388_elk_handling_default_in_the_node_name_037": {
       "input_sha256": "35007bb960aa4266b833c801b8d6583aa32d1a36fe4c361f16b0cf6cdc23e8ea",
-      "svg_sha256": "86f56a9d2ca3a5163591cde31ddfc38646131c759c370f43668d7da94d158d15",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "71e3176d2cf9a08fdce2c54ee0d825d74bd25126fa23f5510deaad9d22e3a981",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_2824_elk_clipping_of_edges_038": {
       "input_sha256": "069fc0ee8890ceb3de7f79bd7b44510f0c7c415b211b75853ba2f3051fc8f8ac",
-      "svg_sha256": "b12df4d78e76c5d85a3fa833009e92e7608f06240b32a1dfc4b4999cbdaa80d9",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "b81fc24c251865ad50a927bb6df4695d0c3a75156ba7a45cdaffa251a3f77b34",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_2_elk_should_render_a_simple_flowchart_with_diagrampadding_set_t_003": {
       "input_sha256": "6c368dfbec7975bdcd4dbe8ff2221cce0e193c95a82678176b95c62c35c6244b",
@@ -614,63 +614,63 @@
     },
     "upstream_cypress_flowchart_elk_spec_50_elk_handle_nested_subgraphs_in_reverse_order_009": {
       "input_sha256": "9c59011e0ea12f8374770f25a4c75d0c33f9ac5e55edfbdd7030ec820a21d735",
-      "svg_sha256": "c713eae5c457c2f5c3576237720ecb3e949f4933ddee948f4e16a953974f039c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "1a020cd29ed92e3c697593ebc9069ea30aeeb019720eb586483dd5a1cbcec5f8",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_51_elk_handle_nested_subgraphs_in_reverse_order_010": {
       "input_sha256": "9c59011e0ea12f8374770f25a4c75d0c33f9ac5e55edfbdd7030ec820a21d735",
-      "svg_sha256": "248fe89fef341354b4d2fcdd2312529290338075f8a1261ce32ce778975392bb",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "f41765dd42987d26b525edd4a569404a0a3ac0b5e8d4b5f137efc3c5fe646b66",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_52_elk_handle_nested_subgraphs_in_several_levels_011": {
       "input_sha256": "ec6889c35f3396d8f13c4cf18d5f463cd31ea72dc3ed5c5e24de9a5aa85bd14f",
-      "svg_sha256": "898a15d066eab53bb9f491c7e1ac385ba114055213ad48484127510f0a35c398",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "dabb7dce34f8477061f489f13648186751a3910e7543d93dbdf71653736b6b85",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_53_elk_handle_nested_subgraphs_with_edges_in_and_out_012": {
       "input_sha256": "f1d6b47974f2b57cfe4ef9d220c8470449f5dce23f8b0fba37a89f3a4202aa67",
-      "svg_sha256": "e1857d34c31eecad19ef0a8bf64ed7158e07b871ad1e3620c7c7491e0f28b04a",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "6bf65f8d28a1b41c1391901287c4ad4f86a20c37419b7a61379461910a418b89",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_54_elk_handle_nested_subgraphs_with_outgoing_links_013": {
       "input_sha256": "8c0df24164d0c179df2dfbce9db8816fcd7485e2a2b88693f1563f94a5ee5dfa",
-      "svg_sha256": "efa0ab819d518cfdfaeabf1471c8f6fadf4580f9f4022a50f14b108c81b6bc77",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "300cc9b5bb7cdb3fe6400ac63dca1b26bc65cb968e76e9e6a91548e4a59ecb2f",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_55_elk_handle_nested_subgraphs_with_outgoing_links_2_014": {
       "input_sha256": "fd2697b2895a79cbe4051bda460bf5e1e4cbc95f3f29d08a56d2d6352f722eef",
-      "svg_sha256": "33680e94f1448d6c4cbb7474f00849aaa3318526c1bb8a8bdf1f3f6d333efb59",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "b4dfa2bac5e74d03a2265a6c682ca49ff5812f7275950cfbb3e08367c56b6ab6",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_56_elk_handle_nested_subgraphs_with_outgoing_links_3_015": {
       "input_sha256": "cdcd6326f546c9f297dbdfd47913d8d187b323aab8ec788ea7c3d2426f06df34",
-      "svg_sha256": "1fa565b8766b1c87672aaee184286a1efbefa54747c5397eebbdefd803756605",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "5409d96488b63a7ca6e9e23b55e4a8de69b614e607e220f6fc846fc7dd74d105",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_57_elk_handle_nested_subgraphs_with_outgoing_links_2_017": {
       "input_sha256": "a97b9e7a022fa7e0b4af423fc759f36a62380c7fd8169bc87a409a0b5b13a970",
-      "svg_sha256": "ff021d00d39e9cb42fe286b9eeb8a380e5a51f41f1e135478557076782710594",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "addba1b154443848225edb2abf0ce90b32bbac22fc23232cf886418814d02c9d",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_57_elk_handle_nested_subgraphs_with_outgoing_links_4_016": {
       "input_sha256": "7450cad060bda757224d3b9bb207ce59df82b7e2757a13f2bd598a1081b2d603",
-      "svg_sha256": "16e9a261cd16d23f69f83cac458d817b29b1487bdca7071e7dbc032f3087c7a7",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "b8fbf1765cdb00cd96e155cc4504508a7e10518b7ca1c57e3708ac9ff37b1231",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_57_x_handle_nested_subgraphs_with_outgoing_links_5_018": {
       "input_sha256": "f5f6ba77e589135066eaac577e7ae03486e5f8b2b2305272648af5027c439423",
-      "svg_sha256": "bc5358e21e868d44000c612ecf4b2163bc640d530254b309f84fb6bcb026fdce",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "dee0fd9d3a5bbf1ea5c47d0f3545749c65c3f4c0774b25cef7f823f25e7746be",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_58_elk_handle_styling_with_style_expressions_019": {
       "input_sha256": "d5325d16428c3a0d2a776f33d528d1f5a5a5ce1ca59f690108dd364a7e8a8367",
-      "svg_sha256": "8c640d659173097aea3664e307823da64ea4d1d806c148012eefb44df53ba616",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "e9b3035d3ec5382d9083fc5bfdcf3ac97c11dde2a9cb0e8fe88aab2b65fb61c7",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_59_elk_handle_styling_of_subgraphs_and_links_020": {
       "input_sha256": "9180a6df3d5517951fc720f182a3705ac7581737256768149e384ed9c6d9e6a5",
-      "svg_sha256": "229491d0c031686bddd6aedf2fdbf8223499167518df63dbf5ed2be0e428e229",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "bd247c797cc618aa4c9c83d6a9b964465a55b1058c3f09831d0c74103d5312b9",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_5_elk_should_render_escaped_without_html_labels_006": {
       "input_sha256": "135292a95aae9e1e47f3742fac9a98e5318c9c0bc24e850846e42642e9504b5b",
@@ -714,28 +714,28 @@
     },
     "upstream_cypress_flowchart_elk_spec_60_elk_handle_styling_for_all_node_shapes_v2_021": {
       "input_sha256": "bbd7a553cffec41409bb08275eac9101abe74024bde703abe08859268ff85963",
-      "svg_sha256": "4a7f73eaf5ffa20f759a09729236821b3cd61a1f794d520e4355bd504b156a78",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "1b85e73ed60db27d26de70264f6ec5dafa1a10bafeaa4a4650413d3a63f013c1",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_61_elk_fontawesome_icons_in_edge_labels_022": {
       "input_sha256": "dfb1f0cfacf0c0652ff0b58df503dd804ae4dc914b4167fe4f6c9c487fbe2bbf",
-      "svg_sha256": "6bcffcd21a85610a9add4028e4096ae45158b729bad4e1d3603093100347ec4c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "026bf28c7baef18f9ce9d62c0152bfa75485f380900e9ecae034f9dabfb083c1",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_62_elk_should_render_styled_subgraphs_023": {
       "input_sha256": "3988ec6c7f7e1f72492222d977b0af037aee32de17463e8a9020893941c5368d",
-      "svg_sha256": "38342ef9601fd13165210345c411550d69a51814db1ae104baaa318ed78d21ac",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "45517012c86642d089accad4f3667fb3a5845a1913186f2b40d4591e2dab262f",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_63_elk_title_on_subgraphs_should_be_themeable_024": {
       "input_sha256": "a38219ac288dbb19c1b08c12610347487d068c747872a78206e3fafd694b75f3",
-      "svg_sha256": "90d88c816136555f57b5ff8bb87432ff6e410ae0f168164d6fc7a1235711804c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "c088a4a1c340e95e4b1c50cf0ce6e2c72b3b9af2a27d154a4fc5a1c85ee1b1b6",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_65_elk_text_color_from_classes_025": {
       "input_sha256": "fe3e8af6ac6cfc3a5f125552c73c27fdaf2bf587073e2f4761e63297bb3496c3",
-      "svg_sha256": "1df366ae8ec751a66177ab637fb5fe8f705322161399232920a9b3dfe777e3dd",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "46968a7fee68b251f621e71223b133ffc93b767420ed6e7464f483294c2f1858",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_6647_elk_should_keep_node_order_when_using_elk_layout_unless_it_057": {
       "input_sha256": "c584044a2d84cafbb93f2f4e75bb66165acf87e51700b7bacce4814f0eedc9ea",
@@ -744,38 +744,38 @@
     },
     "upstream_cypress_flowchart_elk_spec_66_elk_more_nested_subgraph_cases_tb_026": {
       "input_sha256": "faab6718c204d0017840238ee3ac447b065c7103814e34ecf395e665fe8bebab",
-      "svg_sha256": "6bf94d6515752373d0dd702fe5c3e85de1aa2172c190e6d357936c14e15cb3c9",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "0102a31b00a4b6035b98d9e69bdea69fa5a7347b9d3a812331138779ab0a01e4",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_67_elk_more_nested_subgraph_cases_rl_027": {
       "input_sha256": "70b565fe026e97a7a060b579176aa32ef5d2c0875cd994f00ae58270f4f092f3",
-      "svg_sha256": "7f78fd1dabc8d0eaada49d7b8754d0f24c21f55b5103008cacc142451ea20a96",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "839e5bf2bc9b30cc543fc18407099203e234cacce2036799ea24febb84b4fb9f",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_68_elk_more_nested_subgraph_cases_bt_028": {
       "input_sha256": "f8050f2d8a52057e5cbe94542cc00021c4d42a937b64e330953e17ff0610269e",
-      "svg_sha256": "0e37f4d699ed3a10ab56c5db3f96ae6fe5121ead6a7471069419279eb84a7517",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "97f2c2abb5dc3ab58a7992c76e97235a0d9d6f04e6d52385a575fd325c827a37",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_69_elk_more_nested_subgraph_cases_lr_029": {
       "input_sha256": "6e183995ddca124f37aeadbc7e1315a71ac94828b11bc6d82c9885895d752655",
-      "svg_sha256": "1ee3ac15a74d6ffdc0f2bffb1fe14b301ee31064d8b3235095fab27064f14709",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "2c49f94743592d4fd8dea7dc35079a3533bcf6307fd0f5f9bb1e9e5764adf334",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_6_elk_should_render_non_escaped_with_html_labels_007": {
       "input_sha256": "9074ef16b9ab5deebf79fd312d64bf750776d113a62522852bbd09079213dc72",
-      "svg_sha256": "902eeb8e6d8f1c384bf1eab8e11ec958b176989daa2c2becabe67c47e375cb64",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "e65ccbdf462a416dbf5d1d52d79671db6577dd07d5afabb7a624325391b1ac0a",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_70_elk_handle_nested_subgraph_cases_tb_link_out_and_link_between_030": {
       "input_sha256": "1335bf3c9537f2b740b75daf83557fa43b640dcbda6c88557881b8887ec3100d",
-      "svg_sha256": "9932176abcee6e81f116a58d984639e88262c2b8e6b0518dfb46f2da0584bb6d",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "66d2543139f0f37927e444e51cca88ae15834bc6d8bc47aaf8e1cdea061ad64b",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_71_elk_handle_nested_subgraph_cases_rl_link_out_and_link_between_031": {
       "input_sha256": "0ce3147e3b65260447659fa89b6bde991fea645ae8febf9849982eccd432598d",
-      "svg_sha256": "0047fca37a1718a336aafca97c18b94d6976b2c116971aa562a326e15507f00c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "5e5e6fdc488fec94e8d3beae68eaa17871063f3105afa1cd292105b4e358a369",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_7213_should_render_elk_edges_with_right_angles_not_curves_058": {
       "input_sha256": "892001b030f8c0581eeb1bbdb5a196c54763f4bd41d5ffd93ca96658a7347de7",
@@ -784,23 +784,23 @@
     },
     "upstream_cypress_flowchart_elk_spec_72_elk_handle_nested_subgraph_cases_bt_link_out_and_link_between_032": {
       "input_sha256": "5c3d55d6291c5a8a3cae4141f7e80f0d573959411e90ef66a38ba6a8bc1525c1",
-      "svg_sha256": "2e3f0546cf504846b41262ac1fda6967001114c816f39a7b14d3ba1ba459ce50",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "e0defd4572cb3a5b509250c18d7d0204fcde2b62ff49516a14004f7fe6f058c8",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034": {
       "input_sha256": "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0",
-      "svg_sha256": "2683169760f6d16a7d06df1e4b8fe14e69fec133c662c5196967ea79e0b0cc58",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "7db68748e7ce841e29246c546a01e77a92db2bf7e6c43ac65757b8e2304c90e2",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_74_elk_handle_nested_subgraph_cases_rl_link_out_and_link_between_033": {
       "input_sha256": "0ce3147e3b65260447659fa89b6bde991fea645ae8febf9849982eccd432598d",
-      "svg_sha256": "0907540d8f01202c93b256282334bb69c034a80e767fc28114ed3e07883e08d2",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "9e754c589d9b6892595abd3e4a4bc7f0b409c083a615328c904f7fbf8fca106d",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_76_elk_handle_unicode_encoded_character_with_html_labels_true_035": {
       "input_sha256": "b644d2489803e2ae4f3529dd2f06c6c193d004a25aa17a342cac024542d7af2a",
-      "svg_sha256": "433b1bc4bb500b463c98446711fe197d22a04685688318ec73125c114edeea1d",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "82c3650a3ee892f5d8442d21225a2989536bec89d3a81695740af69819cac566",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_elk_spec_7_elk_should_render_a_flowchart_when_usemaxwidth_is_true_default_059": {
       "input_sha256": "097317b85af3b491e8dcda60e79c1308a77a3496170849453606833d089c783e",
@@ -969,8 +969,8 @@
     },
     "upstream_cypress_flowchart_handdrawn_spec_fdh37_should_render_non_escaped_with_html_labels_037": {
       "input_sha256": "925d29abfb850e5aff089913bceaebc750231e793f89c1d398cc408a2dbe0255",
-      "svg_sha256": "80c1c8236bb8bdca88d9a5182274e7b27ad6b8b3bf3e247ee541f0158c45233f",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "73fd4149a9745b88aac37d3bf529870f423ccb1ec686a9006a35d2c62b9005d5",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_handdrawn_spec_fdh40_handle_styling_with_style_expressions_038": {
       "input_sha256": "c3d6273b7152277cfb63860a2f7f74184f2159884dfb64c89e4ecdb23e725074",
@@ -1429,8 +1429,8 @@
     },
     "upstream_cypress_flowchart_spec_25_handle_link_click_events_link_anchor_mailto_other_protocol_sc_025": {
       "input_sha256": "b18c361d4a6185e356092db0b665f5ea945e33232ca63ed7a191efa046a4c73c",
-      "svg_sha256": "a277ff931e3e1d2e5a52829cda84024e5bb662e182e7db3b49144d4ffd4ccae3",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "8d5dc146024e6b67090995512677c7d1367f6250de8d8dfc4cbae601b06eae6a",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_spec_26_set_text_color_of_nodes_and_links_according_to_styles_when_ht_026": {
       "input_sha256": "db23b6bd6126b7670d8b17785f4522a65a5ef2e2eaa681439a3eb76f3cfba08e",
@@ -1484,8 +1484,8 @@
     },
     "upstream_cypress_flowchart_spec_37_should_render_non_escaped_with_html_labels_037": {
       "input_sha256": "b7ee79a46705565ebec33f7724803cc65f4c077f82a1bba991da0d2eb8e71173",
-      "svg_sha256": "3c9f31184c470aae5986e77e9a115964a718f292d19087dce38e53bb6e345cda",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "816376131136d5a7d0a926467c09776dcbb2d497509b8c3e20359f492503e7f4",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_spec_3_should_render_a_simple_flowchart_with_line_breaks_003": {
       "input_sha256": "d642388d76748e4c191bec67e0ff98c2a9c922b6d42f4c5bd394a543ffa6f2f6",
@@ -1499,8 +1499,8 @@
     },
     "upstream_cypress_flowchart_spec_58_handle_styling_with_style_expressions_038": {
       "input_sha256": "2aa47285e6c4c9a3d890e8f5039a429b8a5315c331c75a4c78772798ccb1a25a",
-      "svg_sha256": "565a8b6a37d59f405cbdccd1fd34011ece66371798a9546a3e11446307142296",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "bf120562780a23601ce0116435d6c21aca556ddd41ac074bd998d0127fb129bc",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_spec_5_should_style_nodes_via_a_class_005": {
       "input_sha256": "6f95961b2d03c2c51137f65a5e45dd460b583a2497e0174b1ee4e15201741d1f",
@@ -1509,18 +1509,18 @@
     },
     "upstream_cypress_flowchart_spec_60_handle_styling_for_all_node_shapes_039": {
       "input_sha256": "179ce4321f1be9e355bb51dd69122a4b06e7d0a9d466a7c454769f7a4f3b6a75",
-      "svg_sha256": "7145bd88b3392b8e71201827c08931dd77403fcdfae9e05f0815020ea78e45ea",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "dc48911dcc1558d057b7fea58e9cbd455acc07c967932d2e4a2864993ac4c435",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_spec_61_fontawesome_icons_in_edge_labels_040": {
       "input_sha256": "8fe383d15d468a8b89c9893ac0e194f66453bcf87f58a814c3dd822fadc97aaf",
-      "svg_sha256": "39577f04d8a9c971ffa1219a0bd72dc3ab02dc0062a49a2e243a65aa101f135a",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "d3160216232733d59ca29f004d85f55da15400061988bb874bcacee097f56d85",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_spec_62_fontawesome_icons_in_edge_labels_041": {
       "input_sha256": "141aa9b337f3cfd7cf507a8945e0704bb4271f84daa5ac359a8f4222cee11e0d",
-      "svg_sha256": "fc1a72f37549b328d75b3b69c4d03d655b122234966fcfa410f6ddcb43500826",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "9032bf7daa41d297895af9f76793b7a58890e2025b807dee44accfa68e7a942e",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_spec_6369_edge_color_should_affect_arrow_head_047": {
       "input_sha256": "89df16b814281c090e1aff49803ee0a27f2a92e6bad4764f0e3b74a28c0ae9f5",
@@ -1529,18 +1529,18 @@
     },
     "upstream_cypress_flowchart_spec_63_fontawesome_icons_in_edge_labels_042": {
       "input_sha256": "2c02a436f82c95c78be73dd1c36fc5e049bee3ec54924b192e0265f996d60af7",
-      "svg_sha256": "c79b24f5b01730d96f23c821a4931bf036f3e9e5a1ef4653c9241db42821d21d",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "3b7fdc40a79f0d6dd2d006ff1e419102c17d1bfdb3c714bf22a701525f2547e6",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_spec_66_apply_class_called_default_on_node_called_default_045": {
       "input_sha256": "782011737b1ad3546d56075f080b8d619694293bf33968cc9209a2780fab6a81",
-      "svg_sha256": "4825b57dda82b51969660bf0f4dbdfcd3a597f8f898464e52007ba862504f907",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "ef1b93f0c93592ea5e58709d369700dac2dd2276bb3994b30e42fc1f61592d77",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_spec_67_should_be_able_to_style_default_node_independently_046": {
       "input_sha256": "29a2b7f4ad294e110889387956883836a29392b95d1af13b10b252bc5531c5a0",
-      "svg_sha256": "378d95a8dbb8178f6a38dd36ea0e4a42521d5404fad1df0255bd24911e315e31",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "d87a03e39f985eacd095012d8f84c8ee60f8d504b93804ab21ae14fc03ba2226",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_spec_68_should_honor_subgraph_direction_when_inheritdir_is_false_048": {
       "input_sha256": "77952efd38bc88e94dcfeb7d250d291db36e4f192449d247be1faf545ad16753",
@@ -1589,8 +1589,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_2050_handling_of_different_rendering_direction_in_subgraphs_038": {
       "input_sha256": "28a04264f3673c0224b2f9a6e7f4be5ec77e124c9a5413e67eb2032a1f5d189c",
-      "svg_sha256": "d3519be23b5f0ac390be7fadd6965358e6a1fe29b5a515c1d2a8a48592523510",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "6d2302681c68c09be14d6508051d49d5b19b0e1d3bd845a4b4d8b780285d8e39",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_2388_handling_default_in_the_node_name_038": {
       "input_sha256": "a6a3f6b44f2f2c95603f187d96bf5681bd2d0142bd2ce7a573cec4462ad56a71",
@@ -1599,8 +1599,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_2388_handling_default_in_the_node_name_039": {
       "input_sha256": "93a7c413895e3b7b0cfcc788b98710a3fb6e1f4a7fed365502a5efad2bc3f59d",
-      "svg_sha256": "db752a16d94858393fba4362514e9b8cddcc14405d5f523f99b5257f88405a6a",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "62fa74d7010f7782f3e237e76946ef8169cb70c75677f5dcc2099df902ce9a23",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_2824_clipping_of_edges_039": {
       "input_sha256": "da08db8a28221de7eaaf62fcb996a300ec2a68f5a9130377efd9287386696a84",
@@ -1609,8 +1609,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_2824_clipping_of_edges_040": {
       "input_sha256": "8f9cd6041d93f14ec3baa28d309fa0caf533319fdd5d6bf1e13426c7e5472145",
-      "svg_sha256": "8665ddee0df629b683559306838e39c77d2ed200d6b31373e5114348ab4bda2f",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "98bc7d988d6b22c2b1a5d33d86cf3d12e1a40d011ad464637c7a9463d0739f36",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_2_should_render_a_simple_flowchart_with_diagrampadding_set_to_0_002": {
       "input_sha256": "95aba3fff005b03efca083201076f645308b827fac514a01280b735827d8c5d5",
@@ -1669,8 +1669,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_50_handle_nested_subgraphs_in_reverse_order_009": {
       "input_sha256": "5762f350fbea5821b27d49677bb8100f2fe12ca9f7de1ab7ccf339a4a995c7f5",
-      "svg_sha256": "58d1660057cbd26a97c009e7ebee01a73f08a72573112650f4ed9dc3b8b05933",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "a80848ffad2946dd04b9f1ebf425052d854a21f33661091b52b661ace8f01c75",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_52_handle_nested_subgraphs_in_several_levels_010": {
       "input_sha256": "0038d136459001d8546e71a0d44c3eb92ef00c650eaa6190391df0c3e4bd7936",
@@ -1679,8 +1679,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_52_handle_nested_subgraphs_in_several_levels_011": {
       "input_sha256": "5972a7663b03cc14a083d21da405e30e36ce0cc4ed837b2541689daa520f0e72",
-      "svg_sha256": "282e581bec89b988277e75ca7865153c9ea230b80b1d7d5eef0559980a4a0c98",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "088b1165bcff0b1d4a990d526f04ba2fb20eb247966fa903b9049a775635881a",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_53_handle_nested_subgraphs_with_edges_in_and_out_011": {
       "input_sha256": "a3e1b8b8461bae956352d4ee4352ff6df58b2ace365c2b0834b35a267dc5d0a4",
@@ -1689,8 +1689,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_53_handle_nested_subgraphs_with_edges_in_and_out_012": {
       "input_sha256": "c083dcb8c3c3719bec4ddfbbe8384d8fd922d5f06570c0db256b344d4ce8259c",
-      "svg_sha256": "449ac07114af7d279b2f3ecbe7d21f08f90cb4e42b952a965058429ce225ab9c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "f23f05fcd1432b572214d245b657143ea47a0a5a4815992fcebdee37b61d33cd",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_54_handle_nested_subgraphs_with_outgoing_links_012": {
       "input_sha256": "b92d83c65a1ce5605d5e4684949c3dc514efc1af01eb3e21d4a050726ecd7c95",
@@ -1699,8 +1699,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_54_handle_nested_subgraphs_with_outgoing_links_013": {
       "input_sha256": "68ec2459afd987f48d8add759dd4f97a39bb9fe7ccec54ca774add5834911aac",
-      "svg_sha256": "80769ad94e38ec250e4cc5ad1133d89c7b2f14945d74004012c5d06faabea8aa",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "5e0ff5ac30981e2607b47913f02b60f27e1001eddbf7b7be94da09799ab7dfa0",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_55_handle_nested_subgraphs_with_outgoing_links_2_013": {
       "input_sha256": "7fe6ee5f3268d7dd9c9546d7a6e4b37414970cb8774781226838136975c0ce71",
@@ -1709,8 +1709,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_55_handle_nested_subgraphs_with_outgoing_links_2_014": {
       "input_sha256": "7d7d4de0ab5b0eeeb56fee7428a52aa53a956332b3edea445d6f762976eb44f4",
-      "svg_sha256": "d448d76139b05d87a306923b1fde2ad43dfc5cca0abce3f2c13aede21008dc06",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "7a7dcc24ac442bd8802c5c1e590a3c4ef31d2d0e80e87fad1d898d598e558faf",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_56_handle_nested_subgraphs_with_outgoing_links_3_014": {
       "input_sha256": "2b6ce43ac8a88680f318fd4d8dc7015270d2845cc65c42e6829a67fbbea02a3a",
@@ -1719,8 +1719,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_56_handle_nested_subgraphs_with_outgoing_links_3_015": {
       "input_sha256": "d525434251fe29052b2866dbc6622b2ff55040870e6be8ae7cfe729964a7ab7e",
-      "svg_sha256": "048ec67acdd07944c3ac6d801bf10732bf5a81338d135199a47391864626cc10",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "51ccee3c66eb5eb180c1be337f30f34ff2d113bc68920ddbaccfca4c2e5d7d1d",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_2_016": {
       "input_sha256": "e071a22da7c52dda5775036ba0c52f67d1706c9b3299dd75d633e52f2cb982c5",
@@ -1729,8 +1729,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_2_017": {
       "input_sha256": "aeeb54a83bb881c01c2961d44627ee325afafde450de0d2daa5c7bf27daa0d97",
-      "svg_sha256": "d8ce493e9f872c3bcb1f889e6154dcef8c71c1d17762483bb26c797fd137611c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "939b54a6dc0dd2396d0ef6f82744ffb4732e05efbb6c2d99e94a0f21e51c6859",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015": {
       "input_sha256": "7953d270eb13cdfda577a54c7079b6002e4d803c0865232692244c22f9e42178",
@@ -1739,8 +1739,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_016": {
       "input_sha256": "c27dd1cdbdf04f761c037c02042ba0ec6f2374bfe407034be1e9c9fc1d9535ee",
-      "svg_sha256": "3ca3dd2b532265b0f24f906008b7a90055ea37e8623cfb08da6a9018d2900112",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "61983d2e926d8cda541a2b6de808a4f52ebf66ffe08a72f1fa7e5c79ec22d373",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_57_x_handle_nested_subgraphs_with_outgoing_links_5_017": {
       "input_sha256": "4537e2aaf0a6a9e6a860d227c4bc341711f67239ad4aa917f0ba9dc7f344878e",
@@ -1749,8 +1749,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_57_x_handle_nested_subgraphs_with_outgoing_links_5_018": {
       "input_sha256": "410ecbcff85d974d8475c2823e9f994c309baf20244cb58cf40c58c4bf2d4f26",
-      "svg_sha256": "15b3eeee04c70e21230070a1d72e69ad5b47299c6a79885adf095588c570384e",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "26fb50dcd2a72188d8dbb3da9ae7de5b26d73b5670c6747793dca01f3cbfeb83",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_58_handle_styling_with_style_expressions_018": {
       "input_sha256": "e4771e84b597bb28c13553e10b153cc9f202abe30d2beb7b98d8cb3f03637eec",
@@ -1759,8 +1759,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_58_handle_styling_with_style_expressions_019": {
       "input_sha256": "5aa7f6c95c718d8d316d157c7367fae9ea32fe9a9fa77e7bacd6cc344249b687",
-      "svg_sha256": "be3c1d35f6c86368edc5c77df6e623233cb1fd6651be78c0d09d373492c3fbb5",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "c89a483022229e3f819d5ff04c94dea6fc0ec7b5c83b4693c1da28a9e572a94c",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_59_handle_styling_of_subgraphs_and_links_019": {
       "input_sha256": "09d93d20bb10ac4a5fcb4f1d2800d2dee2b4afd19a303f564a2ec3fcef0cf5b0",
@@ -1769,8 +1769,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_59_handle_styling_of_subgraphs_and_links_020": {
       "input_sha256": "bdf2efbae79b6eb9db0b5d6076fda6e58a04caa08bdf5d5e17065a2ee1047094",
-      "svg_sha256": "35afa985ca3401d82ebb433647be53199363a6fbf41d42056fc15c9d614bc049",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "2ade73b974ca5b719240620a05552f1d040e53b6e579c653216e69be185c572e",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_5_should_render_escaped_without_html_labels_005": {
       "input_sha256": "b32ae67b4e265267a3fe0d8801a2e2ba42ab5dff8570a265446668be334934e7",
@@ -1784,8 +1784,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_021": {
       "input_sha256": "913ee975becbdabe00aa3792aa0731167041f36d78dfb57e0f8a78f791870d25",
-      "svg_sha256": "0948dd5b1c7b852390b9fd4d4f6147521e4f0a15b64aba380c65b570cffcac58",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "473ddb419ca409eb32c14f0749cd7f4e7a866045fc7bd460454f74a31f4a5e88",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_61_fontawesome_icons_in_edge_labels_021": {
       "input_sha256": "f2340da35964a1dea0058cf340814953f6588aad7323eb0f9a9c3891213e2d10",
@@ -1794,8 +1794,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_61_fontawesome_icons_in_edge_labels_022": {
       "input_sha256": "d1f48e3c57d27cab2e1bfd9303ee82ac2ca3bb6da752adeae43f9296124ffb25",
-      "svg_sha256": "eb6df65a3e4b82ef9643869d098fb82b5d0ffc011c8e666172e145d8edc3241b",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "5a3cdf251a3efef2a2b01f07769fc52dca71853cff70509020e628066aee0d5f",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_62_should_render_styled_subgraphs_022": {
       "input_sha256": "e4bba004bc5185b53ba64a1369f8c149afe7442a96650fb8000c54e81ba8845e",
@@ -1804,8 +1804,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_62_should_render_styled_subgraphs_023": {
       "input_sha256": "ec19e015e808e1ddfa38c318cad33e0ef5a20c9833fc86cd6028f01a78882462",
-      "svg_sha256": "770f8a09fbae2fc6c3ee6a8f6a2d2b176e1acb72b971375c48450dfe143a146e",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "25710b0c9ce5d8271c6777e29260929f0c3d555e177926f5736ec6d1c6a3c4a4",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_63_title_on_subgraphs_should_be_themeable_023": {
       "input_sha256": "972f259eed2cabf5590d85cc550518d5f805290b91a344f2ba34b267eb9bee34",
@@ -1814,13 +1814,13 @@
     },
     "upstream_cypress_flowchart_v2_spec_63_title_on_subgraphs_should_be_themeable_024": {
       "input_sha256": "cb0efdbce1ae6133cb73b84ecb8697acdb85400a453043e223986f47ee3290aa",
-      "svg_sha256": "edf9eaac119b12875abc782b06fa8589b87bec9c8c6606f0d0af8ad3cc26a8f7",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "370326cdada1cedaebc56aa3255fcffae97220871a342be245d659fad5fa1436",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_65_1_text_color_from_classes_025": {
       "input_sha256": "a91f8849725097e980aab76924ea0d129a730805ad2aa563dd1eeb552747e0d3",
-      "svg_sha256": "730e51ac1847234637b2aee4d809ba7a6e1df25c50fb54b060bdadb0b8fc8816",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "41c9f2117b2ab7512554da31f2e08d22a164f464f16c17c65c2e89414bbce508",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_65_2_bold_text_from_classes_025": {
       "input_sha256": "02b4d7e4a9306b953e1a4f28330635466776aae46abe577f7856622c8d838471",
@@ -1829,8 +1829,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_65_2_bold_text_from_classes_026": {
       "input_sha256": "efbc99fbc3a71ca98553a07c1169ff37c30070eda9fc3c81186f05521e28e74d",
-      "svg_sha256": "76344cac478f15a4844858e693c65452e0f73303be70ee617f5a7aea8cb83c06",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "d3be12ecd0f9dd6149c8f0bddf0abb4e17178ba4f0d0e2724fe07914d6b2ce98",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_65_3_bigger_font_from_classes_026": {
       "input_sha256": "40fb72366e29e7cff47eb5b92a7925b36fabfe2b71cb6e213168a8b4fa31e096",
@@ -1839,8 +1839,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_65_3_bigger_font_from_classes_027": {
       "input_sha256": "4bfc406b41c291021aeb86518935dca8c9de98ea460a47e238af06ce5cb449af",
-      "svg_sha256": "934139990ad8fdc452669355fbc2b6a429ff458f7d50a44823dd710552a9aed1",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "10c542a3d4c0777dd0c68afaf2799ac61f75ed4f78c2cb01e6882963761b93b0",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_6617_per_link_curve_styling_using_edge_ids_071": {
       "input_sha256": "6a241357464d639c65d0fe8c572e057c8cb22c0da3decc5cc5b9dd302dde6278",
@@ -1854,8 +1854,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_66_more_nested_subgraph_cases_tb_028": {
       "input_sha256": "cb531d477248235686332a6f3c041cd8ff14dfcfbaec21c402d26615901c5884",
-      "svg_sha256": "5f4922511783b15b699aaef881bb208cd7ee2dc1d045d8a33b4530752cd50581",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "3012e8c44644c582e11da6f16934444c1ba65d91287928096c257f57edafb734",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_67_more_nested_subgraph_cases_rl_028": {
       "input_sha256": "fd99c178be1af141b04dcb125c55624be51e903d5278298b80fbe67adb2a60ce",
@@ -1864,8 +1864,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_67_more_nested_subgraph_cases_rl_029": {
       "input_sha256": "6c23c1b706e74570bc7afa3bccc8b571a8bb6acf9e8d3bb5597c83847bede7b7",
-      "svg_sha256": "cd784fb2141a9c06fe2506ec81c4f69ce0322fb099da45dd09f6a0ee25acb429",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "49428e965719aa3aec4708d4f04d240e6cc7e0ecb701f09117e735f2262b9582",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_68_more_nested_subgraph_cases_bt_029": {
       "input_sha256": "4fd72228aa0c2c3674c00e06223efdad90323186c83f616dfb530ff7dbd3e08f",
@@ -1874,8 +1874,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_68_more_nested_subgraph_cases_bt_030": {
       "input_sha256": "c602b8b38a9d2caaf50c0b35de558c6fde1c6eb59690c97bdafd371b78c1c5bc",
-      "svg_sha256": "2f8e38b0848506aa169665eff2e35085117c5b82291ea0f0dea4a9a146fc287e",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "1fc27153da19ceb5261a23b9a19a16c38b18d1264228b9b0fe53883e8c058bcb",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_69_more_nested_subgraph_cases_lr_030": {
       "input_sha256": "863122c68b73fdb2ab630fa0aaeb59d42ab39cc9c6105c1cccba8873472f7be3",
@@ -1884,18 +1884,18 @@
     },
     "upstream_cypress_flowchart_v2_spec_69_more_nested_subgraph_cases_lr_031": {
       "input_sha256": "f2aa4f4217342b2d1e23176cda178d874de04b0d7f3a3c34df757f7ab7ad0260",
-      "svg_sha256": "628a980636600723af932f470d3eb347c8d4b80fb23f22c40034c482fca17e34",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "63cd246366f52a1f7d0e977dc7cfdc54d3152ee405b921f0fc66c6c99744eaca",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_6_should_render_non_escaped_with_html_labels_006": {
       "input_sha256": "9afdf0f4b8792de020a2f807a5311d9fc4a20260b2b19f24a0cd70a850144408",
-      "svg_sha256": "4d24ab522a0b6bdb3def561ec7b5697bed6cea15022fac4aa3a74d56f9a395ae",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "5cef1451f6e7c04f3fe1e78a61686057ed12577868afadbbd710de7824714c20",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_6a_should_render_complex_html_in_labels_with_sandbox_security_007": {
       "input_sha256": "49ded0f616c06fedf284bc424fc3def676c159cd388f68c6f8c487367a94541f",
       "svg_sha256": "b7209864028ba8cf4e0affc310f56b91ecbed588190b4fb48bf9a5d564a9b0a3",
-      "renderer_profile": "mmdc-default"
+      "renderer_profile": "mmdc-default-host-security-sandbox-to-strict-v1"
     },
     "upstream_cypress_flowchart_v2_spec_70_handle_nested_subgraph_cases_tb_link_out_and_link_between_sub_031": {
       "input_sha256": "05981d9c990848eb71eed0b91ae8e4827bfef1be6c89d9eeca57ccae05510730",
@@ -1904,8 +1904,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_70_handle_nested_subgraph_cases_tb_link_out_and_link_between_sub_032": {
       "input_sha256": "4fae53810cbc1b57d10cb22a5eefe394896154fb53fd4241448c0211da3cc636",
-      "svg_sha256": "ccdeab2595144facafcfd28c284faf10f29aa4f69531ac145cb0a67c448140a9",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "9595979debf88a67a5ad35efddf3cc6707f9a7c690dd57bca221c7a166256705",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_71_handle_nested_subgraph_cases_rl_link_out_and_link_between_sub_032": {
       "input_sha256": "69ca7141eacddc37db2aec0f0b25c127964bf970ef1d87ed9fee95bc073ce252",
@@ -1914,8 +1914,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_71_handle_nested_subgraph_cases_rl_link_out_and_link_between_sub_033": {
       "input_sha256": "9193c9d881c8024f0a9652a518111121ce68f3c9551167ecc6d6c114282d01fc",
-      "svg_sha256": "8431e7935466353adb7ca2b4afe4244030354c8276da4304c58914bac93426e7",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "fb44cafddd09c363f1d27eab4c8fd9cb9e982e9f3ce77f122542f635b56b5f0a",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_72_handle_nested_subgraph_cases_bt_link_out_and_link_between_sub_033": {
       "input_sha256": "4513e4235f38d72ddbe7a00c406256fa5059c89aafd16ec14064f67b641f6ee7",
@@ -1924,8 +1924,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_72_handle_nested_subgraph_cases_bt_link_out_and_link_between_sub_034": {
       "input_sha256": "3d86091310af92b828c95fa78715cd4f2fca19dc207310068ad6bcf249e719f4",
-      "svg_sha256": "5582fa77bf6749485f356c34882c0286424f97ab568e191a7d482316769cb22c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "182bc396e95ad05b1ae4f6683b480498a1ecf64c61915eaef645a2b937f53268",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_74_handle_labels_for_multiple_edges_from_and_to_the_same_couple_035": {
       "input_sha256": "b6dce89ae52fddc890c27b40bffca999303371b6b22a9218716828eeffc1be5c",
@@ -1934,8 +1934,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_74_handle_labels_for_multiple_edges_from_and_to_the_same_couple_036": {
       "input_sha256": "49cd33d07c6a16c3771f88819fdb3ddbb02802cc540f4ddfa210c91ef0ea4d2d",
-      "svg_sha256": "cfb7340751e481da9910556fd43e5b7b9b601532ba095e1cc5fa64999dae4d7a",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "7b5f749499470b62d53b2d0f9b5e6e249df6bd3d80d0527d9c2d51777cdcc414",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_76_handle_unicode_encoded_character_with_html_labels_true_036": {
       "input_sha256": "d90176cf76cefb0e313d2212485f6802e24e43e9c76707c13812975d6fa64d93",
@@ -1944,8 +1944,8 @@
     },
     "upstream_cypress_flowchart_v2_spec_76_handle_unicode_encoded_character_with_html_labels_true_037": {
       "input_sha256": "9a516077f13a30468dd269c9fd5df449c2564fce0a49f1927e237fcaa3c1bf4c",
-      "svg_sha256": "65179d36929cf3f7a04e26cde8db72ea3adcfc02743d683ab3a871c8d775c6a8",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "18d79c75c94b5362cd577503cb199399255f3ff92da4ef2299b1d64f29584cf2",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_cypress_flowchart_v2_spec_new_line_in_node_and_formatted_edge_label_050": {
       "input_sha256": "d9b4c82b1890d27a4ed78e51126ff7313bf5d017076f47e15540f75410f50b15",
@@ -3714,8 +3714,8 @@
     },
     "upstream_flow_interactions_callbacks_loose_spec": {
       "input_sha256": "f84e865ab79a3da2b2a7089a6f6e943cd747063867f7183144cf9e9606fac352",
-      "svg_sha256": "25ae6d708decd6e53974bb4f79c65c2ad1e4614eb9f23b2b50d96dd57ce5a4cc",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "c68091e6579c57040efef5c3b47cc45057422d864c21e171a5056ecb1bf614da",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flow_interactions_callbacks_strict_spec": {
       "input_sha256": "1c0f23a2424d7d0da68dd1c1eb9f32a85288f5d6a6535aee525cfd2b7b399bea",
@@ -3734,8 +3734,8 @@
     },
     "upstream_flow_node_data_shape_aliases_spec": {
       "input_sha256": "c7d5bf784a891b93d53de5d3c4b6a2103431913bfe96f4edfab058032a84bd08",
-      "svg_sha256": "0da965b4e85a3fd58e7f7969d92ea0755224b93eee9394141687223dc15b05a1",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "29218b81c8f0f095ff1bcf76905dde029aaf6b62f45c6189b65b38dd1cb20b32",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flow_spec_special_chars_and_a11y": {
       "input_sha256": "4f8496313c454fc20d284dce720962494c7d40ff549573b17df666aac62abaa0",
@@ -3859,23 +3859,23 @@
     },
     "upstream_flowchart_v2_bigger_font_from_classes_spec": {
       "input_sha256": "5426d88b1409971e0229b19df9db072edca7b2ac6f9c1c4e093133038c62abf8",
-      "svg_sha256": "c2d40464c5f40b8b6ae1e63bd07183062c2994807cd8d617e3acfae2a09fadbf",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "af4014ed5623f0a28d714d68574f55d36ade7e31de9eba3de5a586d769d5db68",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_bold_text_from_classes_spec": {
       "input_sha256": "2a9b5a4eaa73e5ff29545b3c55058f90fbb13eef0086e34612729cfc66554ad2",
-      "svg_sha256": "0fabe5b96c3d56a066d55fec20cb33033209eef0c43936b397c7b118e53b97ef",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "9a50d198300911eb02f41fb6086fd0fc00d78e2ca3d2e2ee84b4bdcf0ec0e012",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_clipping_of_edges_spec": {
       "input_sha256": "7ef6b9f6b073a4933398fc54c78a609fd9d5a714c4f69c53def57d5eea802648",
-      "svg_sha256": "f00183e6904d153f8edb281db88724804ab68790f58bea3281732a63e80a1b69",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "bfa147db776cd25195a0276a408e1d52841eede4528b4691200598538d9380d3",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_default_in_node_name_spec": {
       "input_sha256": "bfe5e1aa37c798731f4372320e78876cff97bd02f1030660477e44e4ba416061",
-      "svg_sha256": "6b26bda72019593b77cea0ee0a8b13dc7cf6fe0f266f448e5760cef23533d5d2",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "4584b49140f906a20c6cb168b3ce540e908282fba320eae17f2569c5cab15133",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_diagramPadding_0_spec": {
       "input_sha256": "3add2196e5de1a7122816e7681164b7f7ca6b2320fcae2b9c4e8aba597bead7d",
@@ -3904,8 +3904,8 @@
     },
     "upstream_flowchart_v2_icons_in_edge_labels_spec": {
       "input_sha256": "883861c7e4cc03fa1ac350f68928d9e0b064648d1e6ade5a3f20e7a7a20b2f8b",
-      "svg_sha256": "3e35c0536d245932e8b15e54d36fbd7091f34065dbba38372f6effa895bcc25c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "9ab7a807b3eb3ab07b1bb62b03195eabfa8044b64f5c56845c50353d5270e081",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_invisible_edges_titleTopMargin_10_spec": {
       "input_sha256": "faecd3130902437ff414a9762606acc1facfa232a24734da9d70ffbe88c4717d",
@@ -3979,43 +3979,43 @@
     },
     "upstream_flowchart_v2_more_nested_subgraph_cases_bt_spec": {
       "input_sha256": "a2a292625a3cc6e5a098865d729b7e57d266c3396b1aa49b245fd99275f8356c",
-      "svg_sha256": "53121e2743122c47238fd809a52e12f54f2ba0c5c21de45f9d0528b666cc377c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "4ce770a6d604ef4f8d189cbfcbc09397267a036a15f38e827980411851910ebe",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_more_nested_subgraph_cases_lr_spec": {
       "input_sha256": "88fcef84e6fb4633bab32be054ae7fa5e05947330f52159fc0dd67d08143caba",
-      "svg_sha256": "50ae38528430f128be3325277c936268f12d860258820bd8b3f2c5c8edde081e",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "80070b52410133ebd7d5d10842bbce5758ada08252b884f10f013346fb41fd2d",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_more_nested_subgraph_cases_rl_spec": {
       "input_sha256": "635fb233c00202076ec10dc752a12f62a3bc25d2fb9bf54cef5863e05318f99f",
-      "svg_sha256": "4bb482e5100fb26a93569ed2cf4e254d0d48b611f5bc31e4d69041d87a485b54",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "694ebc6bf42ae68fd726e422d1909f403871f37bf72f0b0979cbcfefd6a571c2",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_more_nested_subgraph_cases_tb_spec": {
       "input_sha256": "cbd7b42162b5495fd8178c1514065899a5f25cd71659a7c97f1ac9140758660e",
-      "svg_sha256": "ada864e93fb4d6aa20e60a9f4f1b44bdf7f97f18f7343e45f84a7ffecdc89ee3",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "af4e1676dfacc35a0c9e93a6ea29059d6808cc62e74ea8856d5f1780251c222d",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_multiple_labeled_edges_between_same_nodes_spec": {
       "input_sha256": "fb1db282b4022dcf89fa07bc6345856bda7dda0128619dee75f5f05e058b06fe",
-      "svg_sha256": "b51f67c0420ea1aca681f7e675adbd26c87c0af9fbc8e2baf5460a1e5d31d737",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "105b0016b4bee07f177cc2b9e893f7b0cf01ad7770868070be7a26e3a12d7433",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_nested_subgraph_link_out_and_between_bt_spec": {
       "input_sha256": "a4d6b1dbed464e3b7b850400ea104008fb9627c33a043f7adef99cedb9217123",
-      "svg_sha256": "b534c6b51dee59cb8fc14b7206062d76425a31f984690ff485cc5e3d85233795",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "4091dc52ea79e851578ed1549d2a822c43874b3e59bf7f07a52e0e1613e097ec",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_nested_subgraph_link_out_and_between_rl_spec": {
       "input_sha256": "0b13cb6cd66465a37af68e09c65238be182173a1966499b81e63212e3de25d35",
-      "svg_sha256": "06aa3e1e8fb92ba91e8668696afc863d272766b859ab2b10337028a5d74d0eb3",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "1f8d6eeddf855a7da1a473e56136a463c21c42c685126e370bed7c88e38fdb71",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_nested_subgraph_link_out_and_between_tb_spec": {
       "input_sha256": "c6823be3bc92d3a108d29746aeb5512b65a1775c722cbb4e17a37a86f8b2baf8",
-      "svg_sha256": "49ac76d5425c3bf9fe4347f2d07e280995aaecf992f5ebafbec4d4fe9998810e",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "48332ca796ccbff27e7ce6406731eb2d45e5190b089ec28795851c5cd8d47798",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_nested_subgraphs_basic_variants_spec": {
       "input_sha256": "d8b71d51b6761bbd6142740a6ee4bd7c04bfcaa939897b28127db6db6e9f5c80",
@@ -4034,33 +4034,33 @@
     },
     "upstream_flowchart_v2_outgoing_links_2_spec": {
       "input_sha256": "25cb3f98269faf15cf906e947c11f9f2d51fe88ce12667a06304a960d8efe1b0",
-      "svg_sha256": "e19489cc3e359f531c9fcc3c68b0bf22f8f3cfb38d0779a6082beaa1d04f2a01",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "8942c3096cbe3dac012e64fb7604bc7d8f76415892d407954dba2bb51a1bb3fd",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_outgoing_links_2b_spec": {
       "input_sha256": "1bcc44d16a709a60bd0a2a03afd2fe252c288b3c6253fb265144edaa391728dd",
-      "svg_sha256": "22eb5c0e48c168901eebd3409be3ce5158d39860e643e6aa2246f9d89e35f9f8",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "5a5461caefdb64b18912f410ea3a33a3a952ef168cc8f94cf235bae602e9fc06",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_outgoing_links_3_spec": {
       "input_sha256": "1620e39c91e0f6850c312c8642b3f76c5361d8dfa474463c0d903fd3e624aa9b",
-      "svg_sha256": "2bdaabfb0b1f0157c04b9c0b56a98f20459d627a4b22c1058e263ab4daf9622e",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "aeabe9b41439c4a8c5495017b4fbf2bdb3623b5a4f9fe471dcf8fd6feb5566e0",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_outgoing_links_4_spec": {
       "input_sha256": "85330747349feffb60168539e53daaa43ea60b5412ac28b1f3b71433ff5fdd1b",
-      "svg_sha256": "709ec3efaf24a6ec9da7c28422b09a5851641094a18af33ca172f0a909681796",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "9cc42797c2ad619bb7f2e517e44e2aff29fbaaeaf6b7d031394d015c3602eb1c",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_outgoing_links_5_spec": {
       "input_sha256": "ab64980ca546c61986bed539bf467e707e0df4300954c6deb09416bc5399307c",
-      "svg_sha256": "4d7d103056d36065fc70464cb99ba71fab2276bddebeb1d8c4c2e298b0013f3f",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "ac5da46e0dddd3d8933d9e70ebaea739086d725a24e2116fbceafb315c240e9e",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_outgoing_links_spec": {
       "input_sha256": "9a810871a9be92c0ccfb02a7143e591d982e6740650adeb048bcf38cf4af02b5",
-      "svg_sha256": "6158d748db484328b4a33018aa6899a84cb04753f5a667188787dcfee101ccce",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "1486ca93ba509bdc1289b055938713e606bf03fa74137e1b87d0ec05a80c357d",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_self_loops_spec": {
       "input_sha256": "8df9e3c34906604932c14b97c1374dba1a1717de8937ef7e0c8c9df589313b00",
@@ -4069,8 +4069,8 @@
     },
     "upstream_flowchart_v2_shape_styling_matrix_spec": {
       "input_sha256": "f6581a7a3081c7b021fdd22d21d837f9ad3c45b99cbd608088c54d70c513926d",
-      "svg_sha256": "2aaf32e1370b0806aaf632b3fbec26b93d8255a85bcd89c5d8afc8e572da23a1",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "8697f47ed1901ebcff40deb54cfed2946229dbb67ea59fe86c58848a3826ecd3",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_simple_flowchart_spec": {
       "input_sha256": "86d2b88c46e6b3629a7236c7e7fb5f01667f4e082115b38f284d84480a1655d3",
@@ -4109,13 +4109,13 @@
     },
     "upstream_flowchart_v2_style_expressions_spec": {
       "input_sha256": "9b992ec19fb6f85b6cd180eb94e061be60bbe036ccd3b1f62db17eaa1f540dfc",
-      "svg_sha256": "2d036bfe329c06adea6a2422d4f32b445cc0d102abec37a9fae7dc513c008ece",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "3fad49253734843dfc1a6048e89522a0777d901fa47ed7102f809e793e46b688",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_styled_subgraphs_spec": {
       "input_sha256": "ded297eeeed8086f0bbe1538ae0ce6ecbbf844b13f99c08313303a7194962965",
-      "svg_sha256": "fd5e3d004fdda954084c9ff69232fc54addcf5a3a90bcbb33d941d796bba294c",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "f565da1e48cf63bde90b684890b0a79e877a6c4939f3cd38a8d531d983c4d974",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_subgraph_child_links_outside_spec": {
       "input_sha256": "ff57eb12d66c5c5c996ccef768610d82ded662640990b2f03e10f5a606dc1fe0",
@@ -4184,13 +4184,13 @@
     },
     "upstream_flowchart_v2_subgraph_title_themeable_spec": {
       "input_sha256": "1df5b44f393dbad31171c0699e4cd56bed6e9d8921a26aa13c8212e4f05508ae",
-      "svg_sha256": "d77b1b9e687918ddb482726a4ffc0a896d9cbe0fa20bba5f54ee88767db9862a",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "eddefc2c8bdf28071016698802734e7f1dacf57dfae17109e671381f80f7b687",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_subgraphs_and_link_styles_spec": {
       "input_sha256": "68a68b564d70930f421d156bb8a122484c5aab87682c9a42314c1b2de7f3a4bc",
-      "svg_sha256": "67bf52024e24eb5baa9a4a147b65679588e09e8e5f6332a78218e43add3b6473",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "68a92e50e429130f80e2524c1e3345c43670bf3d39c3c7f5979b01cadeffaead",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_subgraphs_different_directions_spec": {
       "input_sha256": "cd41f07cb0a508cc8de6d8b438c3ba7e790584f8f9a9671aeaefe687693e868c",
@@ -4199,8 +4199,8 @@
     },
     "upstream_flowchart_v2_text_color_from_classes_spec": {
       "input_sha256": "0b64e3254ac535f7d232b8c5656eadf270777a3a8ecc6247695a16a22f281493",
-      "svg_sha256": "3d6adcc7a1802ce1ce634637c8195c51ac48010f2177975ff7a34b973357ae90",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "0bf6887c2682b52fb967e1d29ef613ea866bfdc3e9b0bae012eeb6bc1a00ce9d",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_titled_flowchart_titleTopMargin_10_spec": {
       "input_sha256": "099fb000564b70338acf27b76575ee9d8ea916b14738722135d1e78e155ca10a",
@@ -4209,13 +4209,13 @@
     },
     "upstream_flowchart_v2_unescaped_with_html_labels_spec": {
       "input_sha256": "1aaac5c18415c354f0f9b3daa3d9597288b600141295c8b1b3c8936324bf3453",
-      "svg_sha256": "e95934d1bb639517b78aa97b1a7bab8b17c2fb8162b2aec501db7280741d0dae",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "83afaa8721195ac86de312e60662f6cf5dafa1192246b6feb784e36cdea8deee",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_unicode_encoded_character_html_labels_true_spec": {
       "input_sha256": "86f088a58ab32cb4d46e997924850ad9351e53c812fa6ce2037ae182adec2a0d",
-      "svg_sha256": "358dd8d2e22fd8ffc2a338b3843b1799801068780955e961ac6fc7aad2d42726",
-      "renderer_profile": "mmdc-default"
+      "svg_sha256": "09a35ef1ddaf5b0cf040ccaa1f506fc28c53e354393182b9664d01949c590f62",
+      "renderer_profile": "mmdc-default-host-security-loose-v1"
     },
     "upstream_flowchart_v2_useMaxWidth_false_spec": {
       "input_sha256": "a5d20f060a5368d7ce02176b90065bcdf644028fe9df39456001e33f70a6246f",

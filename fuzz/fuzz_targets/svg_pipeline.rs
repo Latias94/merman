@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use merman::svg::{RenderEnvironment, svg_resvg_safe};
+use merman::svg::{RenderEnvironment, finalize_resvg_svg};
 use merman_fuzz::{MAX_SVG_INPUT_BYTES, assert_resvg_safe_svg, bounded_utf8, is_well_formed_svg};
 
 fuzz_target!(|data: &[u8]| {
@@ -13,9 +13,9 @@ fuzz_target!(|data: &[u8]| {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("parity render session must be constructible");
-    if let Ok(sanitized) = svg_resvg_safe(svg, &session)
+    if let Ok(sanitized) = finalize_resvg_svg(svg, &session)
         && input_is_well_formed_svg
     {
-        assert_resvg_safe_svg(&sanitized);
+        assert_resvg_safe_svg(sanitized.as_ref());
     }
 });

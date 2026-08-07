@@ -148,7 +148,10 @@ export const packageStableValueExportNames = [
 ];
 
 export const packageRenderValueExportNames = [
-  "assertSafeSvgForDom",
+  "assertNavigableSvgForDom",
+  "assertSelfContainedSvgForDom",
+  "prepareNavigableSvgForDomMount",
+  "prepareSelfContainedSvgForDomMount",
   "createBrowserTextMeasurementSession",
 ];
 
@@ -211,7 +214,12 @@ export const surfaceModules = defineSurfaceModules([
   {
     specifier: "../svg-safety.js",
     owner: "render",
-    valueExportNames: ["assertSafeSvgForDom"],
+    valueExportNames: [
+      "assertNavigableSvgForDom",
+      "assertSelfContainedSvgForDom",
+      "prepareNavigableSvgForDomMount",
+      "prepareSelfContainedSvgForDomMount",
+    ],
   },
   {
     specifier: "../generated/token-descriptor.js",

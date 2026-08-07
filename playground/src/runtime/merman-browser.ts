@@ -26,7 +26,7 @@ import {
 } from "@mermanjs/web";
 
 import { projectError } from "./error-projection.ts";
-import { projectSafeInlineSvg } from "./render-artifact.ts";
+import { projectNavigableInlineSvg } from "./render-artifact.ts";
 import type {
   MermanDomainFacade,
   MermanRuntimeDependencies,
@@ -132,7 +132,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       }
       try {
         return {
-          artifact: projectSafeInlineSvg(svg),
+          artifact: projectNavigableInlineSvg(svg),
           error: null,
           renderTime: performance.now() - startedAt,
           status: "success",

@@ -214,6 +214,8 @@ impl StateDb {
     }
 
     fn add_link(&mut self, state_id: &str, url: &str, tooltip: &str) {
+        // Mermaid's Jison parser creates a fresh idStatement object for every click directive.
+        // Group by the normalized state id, but retain declaration order for wrapper replay.
         self.links
             .entry(state_id.to_string())
             .or_default()
@@ -452,24 +454,25 @@ impl StateDb {
         let links: HashMap<String, StateDiagramRenderLinks> = self
             .links
             .iter()
-            .map(|(k, v)| {
-                let links = if v.len() == 1 {
-                    let l = &v[0];
+            .map(|(key, links)| {
+                let links = if links.len() == 1 {
+                    let link = &links[0];
                     StateDiagramRenderLinks::One(StateDiagramRenderLink {
-                        url: l.url.clone(),
-                        tooltip: l.tooltip.clone(),
+                        url: link.url.clone(),
+                        tooltip: link.tooltip.clone(),
                     })
                 } else {
                     StateDiagramRenderLinks::Many(
-                        v.iter()
-                            .map(|l| StateDiagramRenderLink {
-                                url: l.url.clone(),
-                                tooltip: l.tooltip.clone(),
+                        links
+                            .iter()
+                            .map(|link| StateDiagramRenderLink {
+                                url: link.url.clone(),
+                                tooltip: link.tooltip.clone(),
                             })
                             .collect(),
                     )
                 };
-                (k.clone(), links)
+                (key.clone(), links)
             })
             .collect();
 

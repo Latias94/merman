@@ -1,81 +1,11 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generatedBy": "playground/scripts/zenuml-browser-admission.mjs",
   "command": "npm run test:zenuml-browser-admission",
   "probeContract": {
     "path": "tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json",
     "sha256": "fdd5bf5a83571ef6aa897be15d3c61d62afca4e27ad01cf3fb54dea41e59e4b9"
   },
-  "sourceFiles": [
-    {
-      "path": "platforms/web/src/svg-safety-policy.ts",
-      "sha256": "f60b4a6f8f91cb92e606cb0820772e1e5cca80991eaf21af7a5528aa53f581cf"
-    },
-    {
-      "path": "platforms/web/src/svg-safety.ts",
-      "sha256": "ed915775295c6a1c66097bdbea5c6c00e613f0cd88fe7f5584bf77cbbb11c0cd"
-    },
-    {
-      "path": "playground/scripts/zenuml-admission-reporter.mjs",
-      "sha256": "57cbe205cf0e4d5050dad72fb8840c8007408e1bf06b2ab8b4aa5132cc3a579c"
-    },
-    {
-      "path": "playground/scripts/zenuml-browser-admission.mjs",
-      "sha256": "6dd95b4a22d2a3a4529979b20cfd00688ce7a1c316236f46c2c3b17cd181da06"
-    },
-    {
-      "path": "playground/src/benchmark/realm/bootstrap.ts",
-      "sha256": "5e3e56227bb98af8200b32505b6f7086476a149bce76e89a2fd3c6a949c95027"
-    },
-    {
-      "path": "playground/src/benchmark/realm/controller.ts",
-      "sha256": "6ae22f005aaf118cb983dd7c32f22f684d6581623efc7201a4ca7132acc777c2"
-    },
-    {
-      "path": "playground/src/benchmark/realm/engines/mermaid.ts",
-      "sha256": "c32e2041dc9b10200329cd3904a2c91c994cf85031adead40988fd8aa377c1fc"
-    },
-    {
-      "path": "playground/src/benchmark/realm/generated/benchmark-mermaid.generated.ts",
-      "sha256": "9f4ee7acbf3f4f34e5c66c257e3a40ebf6c34589118cb595ad908023e0da10cb"
-    },
-    {
-      "path": "playground/src/benchmark/realm/opaque-mermaid-artifact.ts",
-      "sha256": "1443069d0d5b62935bd439c0c79d9434b4547d38e3dbd75830a479f482acf516"
-    },
-    {
-      "path": "playground/src/benchmark/realm/opaque-mermaid-entry.ts",
-      "sha256": "b856fbfa4f47fd460bc2c219b1c5411308d01b9c908d67735687297b3b9b6275"
-    },
-    {
-      "path": "playground/src/runtime/realm/browser-realm-channel.ts",
-      "sha256": "7ac2b9899c2b6622881185ca74a793691998395495aa9e495f1acd5f734c0c48"
-    },
-    {
-      "path": "playground/src/runtime/realm/channel-protocol.ts",
-      "sha256": "2d98f8e6d4a9415cc28be16a10896586448e045315f0157e22753d1b81da5fbc"
-    },
-    {
-      "path": "playground/src/runtime/realm/generated/opaque-realm-plan.generated.ts",
-      "sha256": "807bbaf4ea49a616fcca1f48465ea2300a4efd71a6f8184762fc710e3812fe78"
-    },
-    {
-      "path": "playground/src/runtime/realm/opaque-realm-document.ts",
-      "sha256": "17c485c8bd0892be64e354b43eb554fd1d522b9ddf758a6fcdb8fb53d71bbeea"
-    },
-    {
-      "path": "playground/src/runtime/realm/opaque-realm-projection.ts",
-      "sha256": "cb2f1ce814f8dca3ac0eb0389cfd9c0ed9574a321d1c111406756f9d480874dc"
-    },
-    {
-      "path": "playground/src/runtime/render-artifact.ts",
-      "sha256": "db53c62a313bf4d93b40999c9db359ed7ae6534a5794477665dbf6e9ce4c8935"
-    },
-    {
-      "path": "playground/tests/benchmark.realm.spec.ts",
-      "sha256": "53f75bed056c0358ebc4f2482e36db0b21c114aec13ad847874af04492b69033"
-    }
-  ],
   "projects": [
     "chromium-desktop"
   ],

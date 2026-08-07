@@ -5,7 +5,7 @@
     "version": "0.9.1",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "4b5dc24ee4037349abe9995997a85ef9ca7ab59164611452526cb7013a8ade6f",
+    "cargo_lock_sha256": "8716a18c0c38734f9b9e6ea2047c5d8d35d1540e115f690df90eb97891a37cef",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4"
   },
   "licenses": [
@@ -2405,6 +2405,17 @@
             "Manish Goregaokar <manishsmail@gmail.com>"
           ],
           "repository": "https://github.com/unicode-rs/unicode-properties"
+        },
+        {
+          "name": "unicode-segmentation",
+          "version": "1.13.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-segmentation"
         },
         {
           "name": "unicode-vo",

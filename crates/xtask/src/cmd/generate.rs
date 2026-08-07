@@ -7,10 +7,12 @@ use crate::cmd::{
 };
 use crate::svgdom;
 use crate::util::{extract_add_to_set_string_array, extract_frozen_string_array};
+use merman_fixture_render_context::{FixtureRenderContext, SecurityLevel};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -461,6 +463,105 @@ fn unique_upstream_svg_temp_path(staging_dir: &Path, out_path: &Path) -> PathBuf
         ".{file_name}.{}.{timestamp}.{sequence}.tmp.svg",
         std::process::id(),
     ))
+}
+
+fn upstream_svg_headless_security_level(level: SecurityLevel) -> &'static str {
+    match level {
+        SecurityLevel::Loose => "loose",
+        // Mermaid's sandbox mode is a browser-owned iframe boundary. Headless SVG parity compares
+        // the iframe body, whose sanitization semantics are the same as strict mode.
+        SecurityLevel::Sandbox => "strict",
+    }
+}
+
+fn upstream_svg_mermaid_config_value(
+    pinned_config: &JsonValue,
+    fixture_context: Option<&FixtureRenderContext>,
+) -> JsonValue {
+    let mut merged = merman_core::MermaidConfig::from_value(pinned_config.clone());
+    if let Some(context) = fixture_context {
+        merged.deep_merge(&serde_json::json!({
+            "securityLevel": upstream_svg_headless_security_level(context.security_level()),
+        }));
+    }
+    merged.as_value().clone()
+}
+
+#[derive(Debug)]
+enum PreparedUpstreamSvgMermaidConfig {
+    Pinned(PathBuf),
+    Temporary(tempfile::NamedTempFile),
+}
+
+impl PreparedUpstreamSvgMermaidConfig {
+    fn pinned(path: &Path) -> Self {
+        Self::Pinned(path.to_path_buf())
+    }
+
+    fn temporary(file: tempfile::NamedTempFile) -> Self {
+        Self::Temporary(file)
+    }
+
+    fn path(&self) -> &Path {
+        match self {
+            Self::Pinned(path) => path,
+            Self::Temporary(file) => file.path(),
+        }
+    }
+
+    fn cleanup(self) -> Result<(), String> {
+        match self {
+            Self::Pinned(_) => Ok(()),
+            Self::Temporary(file) => {
+                let path = file.path().to_path_buf();
+                file.close().map_err(|err| {
+                    format!(
+                        "failed to clean temporary Mermaid config {}: {err}",
+                        path.display()
+                    )
+                })
+            }
+        }
+    }
+}
+
+fn prepare_upstream_svg_mermaid_config(
+    pinned_config_path: &Path,
+    pinned_config: &JsonValue,
+    fixture_context: Option<&FixtureRenderContext>,
+    staging_dir: &Path,
+    out_path: &Path,
+) -> Result<PreparedUpstreamSvgMermaidConfig, String> {
+    if fixture_context.is_none() {
+        return Ok(PreparedUpstreamSvgMermaidConfig::pinned(pinned_config_path));
+    }
+
+    let file_name = out_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("upstream.svg");
+    let mut config_file = tempfile::Builder::new()
+        .prefix(&format!(".{file_name}."))
+        .suffix(".mermaid-config.json")
+        .tempfile_in(staging_dir)
+        .map_err(|err| {
+            format!(
+                "failed to create temporary Mermaid config under {}: {err}",
+                staging_dir.display()
+            )
+        })?;
+    let config = upstream_svg_mermaid_config_value(pinned_config, fixture_context);
+    serde_json::to_writer_pretty(config_file.as_file_mut(), &config)
+        .map_err(|err| format!("failed to serialize fixture Mermaid config: {err}"))?;
+    config_file
+        .as_file_mut()
+        .write_all(b"\n")
+        .map_err(|err| format!("failed to finish fixture Mermaid config: {err}"))?;
+    config_file
+        .as_file_mut()
+        .flush()
+        .map_err(|err| format!("failed to flush fixture Mermaid config: {err}"))?;
+    Ok(PreparedUpstreamSvgMermaidConfig::temporary(config_file))
 }
 
 fn unique_upstream_svg_failure_report_path(staging_dir: &Path) -> PathBuf {
@@ -1115,6 +1216,10 @@ fn gen_upstream_svgs_impl(
     let mmdc = validate_mermaid_cli_install(&tools_root)?;
     let puppeteer_config = ensure_upstream_svg_puppeteer_config()?;
     let render_probe = probe_upstream_svg_render_environment(&tools_root)?;
+    let pinned_mermaid_config_path = tools_root.join("mermaid-config.json");
+    let pinned_mermaid_config = read_package_manifest(&pinned_mermaid_config_path)?;
+    let fixture_render_contexts =
+        crate::cmd::UpstreamSvgRenderContextSnapshot::capture(&fixtures_root)?;
     println!(
         "upstream SVG render environment: {}/{} (revision {}, locale {}, timezone {}), Puppeteer {}, font probe {}",
         render_probe.render_environment.browser.product,
@@ -1133,6 +1238,9 @@ fn gen_upstream_svgs_impl(
         mmdc: &'a Path,
         puppeteer_config: &'a Path,
         render_probe: &'a UpstreamSvgRenderProbe,
+        pinned_mermaid_config_path: &'a Path,
+        pinned_mermaid_config: &'a JsonValue,
+        fixture_render_contexts: &'a crate::cmd::UpstreamSvgRenderContextSnapshot,
         jobs: NonZeroUsize,
         fresh_output: bool,
         external_family_lock: Option<&'a crate::cmd::UpstreamSvgFamilyLock>,
@@ -1149,6 +1257,9 @@ fn gen_upstream_svgs_impl(
         let mmdc = context.mmdc;
         let puppeteer_config = context.puppeteer_config;
         let render_probe = context.render_probe;
+        let pinned_mermaid_config_path = context.pinned_mermaid_config_path;
+        let pinned_mermaid_config = context.pinned_mermaid_config;
+        let fixture_render_contexts = context.fixture_render_contexts;
         let jobs = context.jobs;
         let fresh_output = context.fresh_output;
         let external_family_lock = context.external_family_lock;
@@ -1270,6 +1381,7 @@ fn gen_upstream_svgs_impl(
                             full_generation,
                             fresh_output,
                             render_environment: verified_environment,
+                            render_contexts: fixture_render_contexts,
                         },
                         || fixture_snapshots.validate_live_selection_and_hashes(),
                     )
@@ -1314,15 +1426,41 @@ fn gen_upstream_svgs_impl(
             let temp_out_path = unique_upstream_svg_temp_path(&staging_dir, &out_path);
             let svg_id = crate::cmd::upstream_svg_id(stem);
 
+            let fixture_context = match fixture_render_contexts
+                .catalog()
+                .context_for_fixture(mmd_path)
+            {
+                Ok(context) => context,
+                Err(error) => {
+                    return Err(upstream_svg_failure_with_cleanup(
+                        &temp_out_path,
+                        format!(
+                            "failed to resolve fixture render context for {}: {error}",
+                            mmd_path.display()
+                        ),
+                    ));
+                }
+            };
+            let mermaid_config = match prepare_upstream_svg_mermaid_config(
+                pinned_mermaid_config_path,
+                pinned_mermaid_config,
+                fixture_context,
+                &staging_dir,
+                &out_path,
+            ) {
+                Ok(config) => config,
+                Err(error) => {
+                    return Err(upstream_svg_failure_with_cleanup(&temp_out_path, error));
+                }
+            };
+
             let status = if use_scripted_renderer {
-                use std::io::Write;
                 use std::process::Stdio;
 
                 // Architecture and GitGraph need deterministic randomness. Sequence also uses this
                 // wrapper so deferred participant MathML is complete before SVG serialization.
                 // Error uses it to retain Mermaid's rendered fallback SVG when render() rethrows the
                 // originating parse error.
-                let pinned_config = node_cwd.join("mermaid-config.json");
                 let seed: u64 = 1;
                 let output_abs = if temp_out_path.is_absolute() {
                     temp_out_path.clone()
@@ -1333,7 +1471,7 @@ fn gen_upstream_svgs_impl(
                 let input_json = serde_json::json!({
                     "input_path": snapshot_path.display().to_string(),
                     "output_path": output_abs.display().to_string(),
-                    "config_path": pinned_config.display().to_string(),
+                    "config_path": mermaid_config.path().display().to_string(),
                     "theme": "default",
                     "svg_id": svg_id,
                     "seed": seed,
@@ -1400,11 +1538,7 @@ fn gen_upstream_svgs_impl(
                 // shapes too (often with `roughness: 0`), but the stroke control points still depend on
                 // `random()` via `divergePoint`. Pin `handDrawnSeed` for reproducible upstream SVG
                 // baselines.
-                let pinned_config = workspace_root
-                    .join("tools")
-                    .join("mermaid-cli")
-                    .join("mermaid-config.json");
-                cmd.arg("-c").arg(pinned_config);
+                cmd.arg("-c").arg(mermaid_config.path());
 
                 // Gantt rendering depends on the page width (`parentElement.offsetWidth`). In a
                 // headless Rust context we default to the Mermaid fallback width (1200) when no DOM
@@ -1425,7 +1559,7 @@ fn gen_upstream_svgs_impl(
                 }
             };
 
-            match status {
+            let rendered = match status {
                 Ok(status) if status.success() => validate_upstream_svg_temp(&temp_out_path)
                     .map(|()| PendingUpstreamSvg {
                         temp_path: temp_out_path.clone(),
@@ -1452,6 +1586,13 @@ fn gen_upstream_svgs_impl(
                     &temp_out_path,
                     format!("mmdc failed for {}: {err}", mmd_path.display()),
                 )),
+            };
+            match mermaid_config.cleanup() {
+                Ok(()) => rendered,
+                Err(cleanup) => match rendered {
+                    Ok(_) => Err(upstream_svg_failure_with_cleanup(&temp_out_path, cleanup)),
+                    Err(error) => Err(format!("{error}; {cleanup}")),
+                },
             }
         });
 
@@ -1566,6 +1707,7 @@ fn gen_upstream_svgs_impl(
                     full_generation,
                     fresh_output,
                     render_environment: verified_environment,
+                    render_contexts: fixture_render_contexts,
                 },
                 || fixture_snapshots.validate_live_selection_and_hashes(),
             )
@@ -1599,6 +1741,9 @@ fn gen_upstream_svgs_impl(
         mmdc: &mmdc,
         puppeteer_config: &puppeteer_config,
         render_probe: &render_probe,
+        pinned_mermaid_config_path: &pinned_mermaid_config_path,
+        pinned_mermaid_config: &pinned_mermaid_config,
+        fixture_render_contexts: &fixture_render_contexts,
         jobs,
         fresh_output,
         external_family_lock,
@@ -3280,7 +3425,8 @@ mod tests {
         promote_upstream_svg_batch, render_dompurify_defaults_rs, render_family_fixture_svg,
         scripted_renderer_background_color, select_upstream_svg_diagrams,
         unique_upstream_svg_failure_report_path, unique_upstream_svg_temp_path,
-        upstream_svg_check_dom_mode, upstream_svg_filter_matches, upstream_svg_package_tree_sha256,
+        upstream_svg_check_dom_mode, upstream_svg_filter_matches,
+        upstream_svg_mermaid_config_value, upstream_svg_package_tree_sha256,
         use_or_acquire_upstream_svg_family_lock, uses_scripted_upstream_svg_renderer,
         uses_seeded_upstream_svg_renderer, validate_and_promote_upstream_svg_temp,
         validate_external_upstream_svg_family_lock, validate_mermaid_cli_install,
@@ -3321,6 +3467,42 @@ mod tests {
         let staging_dir = root.join("staging");
         fs::create_dir_all(&staging_dir).expect("create test staging directory");
         unique_upstream_svg_temp_path(&staging_dir, out_path)
+    }
+
+    #[test]
+    fn upstream_svg_mermaid_config_projects_fixture_security_as_host_config() {
+        let pinned = json!({ "handDrawnSeed": 1 });
+        assert_eq!(
+            upstream_svg_mermaid_config_value(&pinned, None),
+            pinned,
+            "fixtures without a render context must retain the pinned renderer config"
+        );
+
+        let loose_source = b"---\nconfig:\n  securityLevel: loose\n---\nflowchart TD\nA-->B\n";
+        let loose = merman_fixture_render_context::FixtureRenderContext::derive(
+            "flowchart/loose.mmd",
+            loose_source,
+        )
+        .expect("derive loose fixture context")
+        .expect("loose fixture context");
+        assert_eq!(
+            upstream_svg_mermaid_config_value(&pinned, Some(&loose)),
+            json!({ "handDrawnSeed": 1, "securityLevel": "loose" })
+        );
+
+        let sandbox_source =
+            b"%%{init: {\"securityLevel\":\"sandbox\"}}%%\nclassDiagram\nclass A\n";
+        let sandbox = merman_fixture_render_context::FixtureRenderContext::derive(
+            "class/sandbox.mmd",
+            sandbox_source,
+        )
+        .expect("derive sandbox fixture context")
+        .expect("sandbox fixture context");
+        assert_eq!(
+            upstream_svg_mermaid_config_value(&pinned, Some(&sandbox)),
+            json!({ "handDrawnSeed": 1, "securityLevel": "strict" }),
+            "headless baselines compare the sandbox iframe body under strict-like sanitization"
+        );
     }
 
     #[test]

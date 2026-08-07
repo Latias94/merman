@@ -37,6 +37,16 @@ fn fixture_render_context_catalog() -> &'static RenderContextCatalog {
 }
 
 pub(crate) fn fixture_site_config_for_path(path: &Path) -> Option<merman::MermaidConfig> {
+    let fixtures_root = crate::cmd::fixtures_root();
+    let is_committed_fixture = path.starts_with(&fixtures_root)
+        || fs::canonicalize(path)
+            .ok()
+            .zip(fs::canonicalize(&fixtures_root).ok())
+            .is_some_and(|(path, root)| path.starts_with(root));
+    if !is_committed_fixture {
+        return None;
+    }
+
     fixture_render_context_catalog()
         .context_for_fixture(path)
         .unwrap_or_else(|error| {
@@ -225,22 +235,27 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             }
         };
 
-        let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
-            &text,
-            merman::ParseOptions {
-                suppress_errors: true,
-            },
-        )) {
-            Ok(Some(v)) => v,
-            Ok(None) => {
-                failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
+        let fixture_engine = match fixture_site_config_for_path(&mmd_path) {
+            Some(site_config) => engine.clone().with_site_config(site_config),
+            None => engine.clone(),
         };
+        let parsed =
+            match futures::executor::block_on(fixture_engine.parse_diagram_for_render_model(
+                &text,
+                merman::ParseOptions {
+                    suppress_errors: true,
+                },
+            )) {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                    continue;
+                }
+                Err(err) => {
+                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
 
         if !snapshot_selector_accepts(&diagram, parsed.metadata().diagram_type.as_str()) {
             continue;

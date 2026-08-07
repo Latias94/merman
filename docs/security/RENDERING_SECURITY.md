@@ -36,6 +36,11 @@ parses the final XML and returns the sealed `ResvgCompatibleSvg` type used by lo
 APIs. `<a>` navigation links remain in the SVG because rasterizers do not resolve them as resources;
 they are outside this non-browser raster-resource contract.
 
+Navigation admission is representation-aware. Renderer-created DOM values are serialized first,
+then pass through Mermaid's global `decodeEntities` cleanup before the strict-like DOMPurify URI
+check. The resvg-safe source scanner consumes serialized attribute text, while terminal XML
+validation consumes parsed values; neither layer reinterprets the other's entity encoding.
+
 ## Output Resource Boundaries
 
 Output type determines the relevant allocation policy:
@@ -89,18 +94,44 @@ same generated SVG safety policy:
 - Freshness check: `node scripts/check-svg-safety-policy.mjs`
 - Regeneration command: `node scripts/generate-svg-safety-policy.mjs`
 
-Use `assertSafeSvgForDom()` from `@mermanjs/web` before inserting raw SVG strings into a browser
-DOM. The web helper entry points that mount SVG into an element apply the same policy before DOM
-insertion. VS Code preview uses the generated policy copy so the extension does not drift from the
-browser package.
+Use `assertSelfContainedSvgForDom()` from `@mermanjs/web` for a closed preview that must reject both
+external navigation and external rendering resources. It accepts same-document fragment references
+and narrowly validated inline raster data URLs, but rejects HTTP(S), protocol-relative,
+root-relative, and document-relative URLs in links, images, styles, and resource references. VS Code
+preview keeps this self-contained policy through the generated policy copy.
 
-That helper deliberately accepts only self-contained DOM output: same-document fragment references
-and narrowly validated inline raster data URLs. It rejects HTTP(S), protocol-relative, root-relative,
-and document-relative URLs in links, images, styles, and resource references. A valid diagram that
-intentionally uses an external link or image can therefore be rejected. Use this helper for closed
-preview surfaces; for external-resource diagrams, either embed/rewrite the resources, keep the SVG
-as a download, or build a host-specific policy with an explicit URL allowlist, CSP, and isolation
-model. Do not silently weaken the shared helper and continue describing it as the same policy.
+Authoring surfaces that intentionally support Mermaid links can instead use
+`assertNavigableSvgForDom()`. That policy permits Mermaid-compatible, user-activated navigation on
+SVG `<a href>` or `<a xlink:href>` elements: document-relative and root-relative URLs plus the pinned
+DOMPurify-safe schemes (`http`, `https`, `ftp`, `ftps`, `mailto`, `tel`, `callto`, `sms`, `cid`,
+`xmpp`, and `matrix`). Protocol-relative URLs remain rejected because their capability depends on
+the embedding document. The standard Mermaid targets (`_self`, `_blank`, `_parent`, and `_top`) are
+accepted as navigation metadata. External images, `<use>` targets, filter images, CSS resources,
+tracking URLs, active content, unsafe schemes, navigation downloads, opener relationships, and
+named browsing contexts remain rejected. The Web `renderSvgElement()` and `renderSvgToElement()`
+convenience APIs use this navigable policy and harden every non-fragment anchor with a new browsing
+context plus `noopener noreferrer`. Fragment anchors receive `target="_self"` so a host
+`<base target>` cannot redirect them into another browsing context. The SVG string returned by
+`renderSvg()` remains unchanged.
+
+The validators return distinct opaque `SelfContainedSvgDomAdmission` and
+`NavigableSvgDomAdmission` capabilities, not a claim detached from the host document. They are
+bound to the Web package instance at runtime, so a shaped object or structured clone is rejected.
+For a closed preview, import the parsed root into the actual owner document and call
+`prepareSelfContainedSvgForDomMount()` immediately before insertion. For a navigable preview, use
+`prepareNavigableSvgForDomMount()`, which combines the same root/document/base revalidation with
+anchor hardening. Browsers resolve `href="#fragment"`
+and CSS `url(#fragment)` through `document.baseURI`; an external HTML `<base>` can therefore turn a
+source-local reference into a network request. The mount check is conditional: SVG without
+fragment references remains admissible in a document with a different base. `renderSvgElement()`
+checks the global document, while `renderSvgToElement()` checks the target element's own document.
+The Playground combines the shared mount helper with `base-uri 'none'`; the VS Code webview also
+declares `base-uri 'none'`.
+
+Neither policy admits external rendering resources. For diagrams that require them, embed or
+rewrite the resources, keep the SVG as a download, or build a host-specific policy with an explicit
+URL allowlist, CSP, and isolation model. Do not expose a broad "allow external resources" switch to
+solve a navigation-only requirement.
 
 Inline raster validation runs before `DOMParser`, `innerHTML`, or decoded-byte allocation. The shared
 policy applies these independent limits:
@@ -132,9 +163,9 @@ allocation bound.
 If an application bypasses these wrappers and inserts `renderSvg()` output directly with
 `innerHTML`, the application owns that DOM trust decision.
 
-Neither `assertSafeSvgForDom()` nor strict sanitization creates Mermaid's sandboxed iframe. A host
-that needs origin isolation must insert the validated result into a host-owned sandboxed iframe or
-another equivalent isolation boundary.
+Neither DOM assertion nor strict sanitization creates Mermaid's sandboxed iframe. A host that needs
+origin isolation must insert the validated result into a host-owned sandboxed iframe or another
+equivalent isolation boundary.
 
 ## Loose Security Settings
 
@@ -147,7 +178,11 @@ local authoring previews or controlled documents, not for untrusted multi-tenant
 Hosts should:
 
 - keep untrusted authoring and preview surfaces on strict/default settings;
-- use `assertSafeSvgForDom()` or the VS Code preview policy before DOM insertion;
+- choose `assertSelfContainedSvgForDom()` for closed previews or `assertNavigableSvgForDom()` for
+  authoring surfaces with explicit link navigation;
+- carry the returned admission to the real mount boundary and call
+  `prepareNavigableSvgForDomMount()` for navigable SVG or
+  `prepareSelfContainedSvgForDomMount()` for a closed preview with the target's `ownerDocument`;
 - avoid postprocessing that reintroduces scripts, event handlers, external loads, or unsafe links;
 - run all trusted SVG/CSS postprocessors before the resvg-safe terminal stage; modifying the sealed
   string invalidates its evidence;
@@ -162,4 +197,6 @@ Hosts should:
 
 For parser and sanitizer design context, see `docs/adr/0020-sanitization-and-security-level.md`,
 `docs/adr/0023-url-sanitization-braintree-port.md`, and
-`docs/adr/0024-dompurify-default-allowlists-and-generation.md`.
+`docs/adr/0024-dompurify-default-allowlists-and-generation.md`. The public capability split between
+Mermaid sanitization, headless SVG output, raster-resource closure, and browser navigation is
+recorded in `docs/adr/0078-headless-svg-security-capability-boundaries.md`.

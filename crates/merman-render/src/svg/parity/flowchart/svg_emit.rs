@@ -238,6 +238,7 @@ pub(super) fn render_flowchart_svg_model(
         math_renderer: options.math_renderer(),
         svg_label_sidecar: Some(svg_label_sidecar),
         icon_registry: options.icon_registry(),
+        security_level_loose: effective_config.get_str("securityLevel") == Some("loose"),
         node_html_labels,
         edge_html_labels,
         swimlane_title_html_labels,

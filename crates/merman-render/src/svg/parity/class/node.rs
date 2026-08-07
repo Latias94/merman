@@ -2,6 +2,7 @@ use crate::entities::{decode_entities_minimal, decode_entities_minimal_cow};
 use crate::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::models::class_diagram::ClassMember;
+use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
 use std::fmt::Write as _;
 use std::time::Duration;
 
@@ -158,21 +159,33 @@ pub(super) fn render_class_node_shell_open(
     let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
     let has_tooltip = !tooltip.is_empty();
 
-    let link = node
-        .link
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
-    let include_href = link.is_some_and(|s| class_href_is_renderable(s, security_level_loose));
+    let link = node.link.as_deref().filter(|s| !s.is_empty());
+    let href = link.and_then(|href| {
+        prepare_mermaid_navigation_href(
+            href,
+            MermaidNavigationSecurity::from_security_level_loose(security_level_loose),
+        )
+    });
     let have_callback = node.have_callback;
 
-    if let Some(link) = link {
+    if link.is_some() {
         out.push_str(r#"<a data-look=""#);
         super::super::util::escape_attr_into(out, look);
         out.push('"');
-        if include_href {
+        if let Some(href) = href.as_ref() {
             out.push_str(r#" xlink:href=""#);
-            super::super::util::escape_attr_into(out, link);
+            out.push_str(href.as_serialized_str());
+            out.push('"');
+        }
+        if security_level_loose
+            && let Some(target) = node
+                .link_target
+                .as_deref()
+                .map(str::trim)
+                .filter(|target| !target.is_empty())
+        {
+            out.push_str(r#" target=""#);
+            super::super::util::escape_attr_into(out, target);
             out.push('"');
         }
         if have_callback {
@@ -217,33 +230,6 @@ pub(super) fn render_class_node_shell_open(
     out.push('>');
 
     link.is_some()
-}
-
-fn class_href_is_renderable(href: &str, security_level_loose: bool) -> bool {
-    let href = href.trim();
-    if href.is_empty() || href == "about:blank" {
-        return false;
-    }
-
-    if security_level_loose {
-        return true;
-    }
-
-    let lower = href.to_ascii_lowercase();
-    if lower.starts_with('#')
-        || lower.starts_with("mailto:")
-        || lower.starts_with("http://")
-        || lower.starts_with("https://")
-        || lower.starts_with("//")
-        || lower.starts_with('/')
-        || lower.starts_with("./")
-        || lower.starts_with("../")
-    {
-        return true;
-    }
-
-    let scheme_end = lower.find(['/', '?', '#']).unwrap_or(lower.len());
-    !lower[..scheme_end].contains(':')
 }
 
 pub(super) fn render_class_node_basic_container(

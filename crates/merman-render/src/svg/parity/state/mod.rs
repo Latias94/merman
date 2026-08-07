@@ -3,7 +3,6 @@ use rustc_hash::FxHashMap;
 use std::rc::Rc;
 mod context;
 mod edge;
-mod links;
 mod node;
 mod rough_cache;
 #[cfg(test)]
@@ -28,7 +27,6 @@ use roughjs::{
 
 use context::*;
 use edge::*;
-use links::*;
 use node::*;
 use rough_cache::*;
 #[cfg(test)]

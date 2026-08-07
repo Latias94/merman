@@ -1,5 +1,8 @@
 import { encodeOptions, getMerman } from "./runtime-core.js";
-import { assertSafeSvgForDom } from "./svg-safety.js";
+import {
+  assertNavigableSvgForDom,
+  prepareNavigableSvgForDomMount,
+} from "./svg-safety.js";
 import type {
   BrowserTextMeasurementSession,
   HostTextMeasureRequest,
@@ -692,13 +695,26 @@ export function renderSvgElement(
   source: string,
   options?: SvgBindingOptions | string
 ): SVGSVGElement {
-  if (typeof DOMParser === "undefined" || typeof document === "undefined") {
+  if (typeof document === "undefined") {
     throw new Error("renderSvgElement() requires a browser DOM.");
   }
 
+  return renderSvgElementInDocument(document, source, options);
+}
+
+function renderSvgElementInDocument(
+  ownerDocument: Document,
+  source: string,
+  options?: SvgBindingOptions | string
+): SVGSVGElement {
+  const Parser = ownerDocument.defaultView?.DOMParser ?? globalThis.DOMParser;
+  if (!Parser) {
+    throw new Error("Rendering SVG to an element requires DOMParser support.");
+  }
+
   const svgText = renderSvg(source, options);
-  assertSafeSvgForDom(svgText);
-  const parsed = new DOMParser().parseFromString(svgText, "image/svg+xml");
+  const admission = assertNavigableSvgForDom(svgText);
+  const parsed = new Parser().parseFromString(svgText, "image/svg+xml");
   const parseError = parsed.querySelector("parsererror");
   if (parseError) {
     throw new Error(parseError.textContent || "Merman rendered invalid SVG.");
@@ -708,7 +724,9 @@ export function renderSvgElement(
   if (svg.localName !== "svg") {
     throw new Error("Merman render output did not contain an SVG root element.");
   }
-  return document.importNode(svg, true) as unknown as SVGSVGElement;
+  const imported = ownerDocument.importNode(svg, true) as unknown as SVGSVGElement;
+  prepareNavigableSvgForDomMount(admission, imported, ownerDocument);
+  return imported;
 }
 
 export function renderSvgToElement(
@@ -716,7 +734,11 @@ export function renderSvgToElement(
   source: string,
   options?: SvgBindingOptions | string
 ): SVGSVGElement {
-  const svg = renderSvgElement(source, options);
+  const ownerDocument = target.ownerDocument;
+  if (!ownerDocument) {
+    throw new Error("renderSvgToElement() requires a target with an owner document.");
+  }
+  const svg = renderSvgElementInDocument(ownerDocument, source, options);
   target.replaceChildren(svg);
   return svg;
 }

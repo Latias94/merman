@@ -62,7 +62,7 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target",
     "offline": true,
-    "cargo_lock_sha256": "4b5dc24ee4037349abe9995997a85ef9ca7ab59164611452526cb7013a8ade6f",
+    "cargo_lock_sha256": "8716a18c0c38734f9b9e6ea2047c5d8d35d1540e115f690df90eb97891a37cef",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "bdeb9758502773ae1161a6f529f83d03a1e582a233017e1732e133b414023aab"
   },
@@ -70,13 +70,13 @@
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 241,
-      "packages_sha256": "d08312a802ada9e8b19410cf74ac08f620ebfe2f9c521455bcc80eed82487986"
+      "package_count": 242,
+      "packages_sha256": "3fbf464188ea76e21507b086a31c252d1f5e7d02d092eb641183757d3a31af98"
     }
   ],
   "dependency_closure": {
-    "package_count": 241,
-    "packages_sha256": "d08312a802ada9e8b19410cf74ac08f620ebfe2f9c521455bcc80eed82487986"
+    "package_count": 242,
+    "packages_sha256": "3fbf464188ea76e21507b086a31c252d1f5e7d02d092eb641183757d3a31af98"
   },
   "licenses": [
     {
@@ -1281,6 +1281,17 @@
             "Manish Goregaokar <manishsmail@gmail.com>"
           ],
           "repository": "https://github.com/unicode-rs/unicode-properties"
+        },
+        {
+          "name": "unicode-segmentation",
+          "version": "1.13.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-segmentation"
         },
         {
           "name": "unicode-vo",

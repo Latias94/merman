@@ -7,23 +7,23 @@ import {
   type PngRasterPlan,
 } from "@/src/lib/png-export-plan";
 import {
-  assertSafeInlineSvgArtifact,
-  type SafeInlineSvg,
+  assertNavigableInlineSvgArtifact,
+  type NavigableInlineSvg,
 } from "@/src/runtime/render-artifact";
 
 /** Download an SVG file. */
 export function exportSVG(
-  artifact: SafeInlineSvg,
+  artifact: NavigableInlineSvg,
   filename: string = 'diagram'
 ): void {
-  assertSafeInlineSvgArtifact(artifact);
+  assertNavigableInlineSvgArtifact(artifact);
   const blob = new Blob([artifact.svg], { type: 'image/svg+xml;charset=utf-8' });
   downloadBlob(blob, `${filename}.svg`);
 }
 
 /** Download a PNG file and report its actual raster dimensions. */
 export async function exportPNG(
-  artifact: SafeInlineSvg,
+  artifact: NavigableInlineSvg,
   filename: string = 'diagram',
   scale: number = 2,
   hooks: PngExportHooks = {}
@@ -48,8 +48,8 @@ export async function copyASCIIToClipboard(ascii: string): Promise<void> {
 }
 
 /** Copy an SVG artifact to the clipboard. */
-export async function copySVGToClipboard(artifact: SafeInlineSvg): Promise<void> {
-  assertSafeInlineSvgArtifact(artifact);
+export async function copySVGToClipboard(artifact: NavigableInlineSvg): Promise<void> {
+  assertNavigableInlineSvgArtifact(artifact);
   await navigator.clipboard.writeText(artifact.svg);
 }
 
@@ -71,7 +71,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 }
 
 interface RasterSvgSource {
-  artifact: SafeInlineSvg;
+  artifact: NavigableInlineSvg;
   width: number;
   height: number;
 }
@@ -103,11 +103,11 @@ const FALLBACK_RASTER_WIDTH = 300;
 const FALLBACK_RASTER_HEIGHT = 150;
 
 async function rasterizeSvgToPngBlob(
-  artifact: SafeInlineSvg,
+  artifact: NavigableInlineSvg,
   scale: number,
   hooks: PngExportHooks = {}
 ): Promise<RasterizedPng> {
-  assertSafeInlineSvgArtifact(artifact);
+  assertNavigableInlineSvgArtifact(artifact);
   const source = prepareSvgForRasterExport(artifact);
   const plan = planPngRaster(source.width, source.height, normalizeScale(scale));
   hooks.onPlan?.(plan);
@@ -149,14 +149,14 @@ async function rasterizeSvgToPngBlob(
   };
 }
 
-function prepareSvgForRasterExport(artifact: SafeInlineSvg): RasterSvgSource {
+function prepareSvgForRasterExport(artifact: NavigableInlineSvg): RasterSvgSource {
   const dimensions = parseSvgDimensions(artifact.svg);
   return dimensions
     ? { artifact, ...dimensions }
     : fallbackRasterSvgSource(artifact);
 }
 
-function fallbackRasterSvgSource(artifact: SafeInlineSvg): RasterSvgSource {
+function fallbackRasterSvgSource(artifact: NavigableInlineSvg): RasterSvgSource {
   return {
     artifact,
     width: FALLBACK_RASTER_WIDTH,

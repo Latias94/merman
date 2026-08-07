@@ -42,13 +42,13 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "4b5dc24ee4037349abe9995997a85ef9ca7ab59164611452526cb7013a8ade6f",
+    "cargo_lock_sha256": "8716a18c0c38734f9b9e6ea2047c5d8d35d1540e115f690df90eb97891a37cef",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "3c7cfbd2829a4a0a797e87113656e16e58afb2f43f7a1d6d4d26ff0616a2936e"
   },
   "dependency_closure": {
-    "package_count": 172,
-    "packages_sha256": "326706698cc0aecf6d0734ae4fd960c1da78585e2c630646b549656c3b034e3f"
+    "package_count": 173,
+    "packages_sha256": "43f92d310126248bd90fa74f2f8dc28cc2453659c88b187529fe4ad6ad7dce3c"
   },
   "licenses": [
     {
@@ -908,6 +908,17 @@
             "kwantam <kwantam@gmail.com>"
           ],
           "repository": "https://github.com/unicode-rs/unicode-normalization"
+        },
+        {
+          "name": "unicode-segmentation",
+          "version": "1.13.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-segmentation"
         },
         {
           "name": "unicode-width",

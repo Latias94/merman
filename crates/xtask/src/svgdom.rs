@@ -637,6 +637,12 @@ fn build_node(
                 .is_some_and(|c| c.split_whitespace().any(|t| t == token))
         }
 
+        fn is_flowchart_label_container_path(n: roxmltree::Node<'_, '_>) -> bool {
+            n.tag_name().name() == "path"
+                && is_flowchart_diagram(n)
+                && has_class_token(n, "label-container")
+        }
+
         fn is_class_rough_node_path(n: roxmltree::Node<'_, '_>) -> bool {
             n.tag_name().name() == "path"
                 && is_class_diagram(n)
@@ -938,7 +944,8 @@ fn build_node(
                 // `-0` as a number.
             } else if !normalized_geom
                 && matches!(mode, DomMode::Parity | DomMode::ParityRoot)
-                && is_geometry_attr(&key)
+                && (is_geometry_attr(&key)
+                    || (key == "label-offset-y" && is_flowchart_label_container_path(n)))
                 && !(mode == DomMode::ParityRoot
                     && n.tag_name().name() == "svg"
                     && (key == "width" || key == "height"))
@@ -2468,13 +2475,28 @@ mod tests {
 
     #[test]
     fn parity_masks_geometry_attrs_as_n() {
-        let svg = r#"<svg><rect x="12.3" y="4.56" width="7" height="8"/></svg>"#;
+        let svg = r#"<svg class="flowchart" aria-roledescription="flowchart-v2"><path x="12.3" y="4.56" width="7" height="8" class="label-container" label-offset-y="9.19347190389631"/></svg>"#;
         let dom = dom_signature(svg, DomMode::Parity, 3).unwrap();
-        let rect = &dom.children[0];
-        assert_eq!(rect.attrs.get("x").map(|s| s.as_str()), Some("<n>"));
-        assert_eq!(rect.attrs.get("y").map(|s| s.as_str()), Some("<n>"));
-        assert_eq!(rect.attrs.get("width").map(|s| s.as_str()), Some("<n>"));
-        assert_eq!(rect.attrs.get("height").map(|s| s.as_str()), Some("<n>"));
+        let path = &dom.children[0];
+        assert_eq!(path.attrs.get("x").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(path.attrs.get("y").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(path.attrs.get("width").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(path.attrs.get("height").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(
+            path.attrs.get("label-offset-y").map(|s| s.as_str()),
+            Some("<n>")
+        );
+    }
+
+    #[test]
+    fn parity_keeps_label_offset_y_outside_flowchart_label_container() {
+        let svg = r#"<svg aria-roledescription="stateDiagram"><path class="label-container" label-offset-y="9.19347190389631"/></svg>"#;
+        let dom = dom_signature(svg, DomMode::Parity, 3).unwrap();
+        let path = &dom.children[0];
+        assert_eq!(
+            path.attrs.get("label-offset-y").map(|s| s.as_str()),
+            Some("9.193")
+        );
     }
 
     #[test]

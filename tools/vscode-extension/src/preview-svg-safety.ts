@@ -1,5 +1,5 @@
-import { assertSafeSvgWithMessagePrefix } from "./preview-svg-safety-policy.js";
+import { assertSelfContainedSvgWithMessagePrefix } from "./preview-svg-safety-policy.js";
 
-export function assertSafePreviewSvg(svg: string): void {
-  assertSafeSvgWithMessagePrefix(svg, "Preview renderer returned");
+export function assertSelfContainedPreviewSvg(svg: string): void {
+  assertSelfContainedSvgWithMessagePrefix(svg, "Preview renderer returned");
 }

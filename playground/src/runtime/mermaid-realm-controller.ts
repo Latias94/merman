@@ -1,8 +1,8 @@
 import type { DiagramFont } from "../lib/diagram-font.ts";
 import type { MermaidExternalRequirements } from "./mermaid-requirements.ts";
 import {
-  projectSafeInlineSvg,
-  type SafeInlineSvg,
+  projectNavigableInlineSvg,
+  type NavigableInlineSvg,
 } from "./render-artifact.ts";
 import {
   REALM_BUDGETS,
@@ -24,7 +24,7 @@ export interface MermaidRealmRenderInput {
 }
 
 export interface MermaidRealmRenderSuccess {
-  readonly artifact: SafeInlineSvg;
+  readonly artifact: NavigableInlineSvg;
   readonly prepareTimeMs: number;
   readonly presentationTimeMs: number;
   readonly renderTimeMs: number;
@@ -197,7 +197,7 @@ export function createMermaidRealmController({
         return result;
       }
       try {
-        const artifact = projectSafeInlineSvg(result.svg);
+        const artifact = projectNavigableInlineSvg(result.svg);
         const { svg: _svg, ...evidence } = result;
         return { ...evidence, artifact };
       } catch (error) {

@@ -779,12 +779,13 @@ impl<'a> CompareHarnessOptions<'a> {
 
 pub(crate) type CompareRunPaths = super::CompareDiagramPaths;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct CompareFixtureInput<'a> {
     pub(crate) stem: &'a str,
     pub(crate) fixture_path: &'a Path,
     pub(crate) upstream_svg: &'a str,
     pub(crate) text: &'a str,
+    pub(crate) site_config: Option<merman::MermaidConfig>,
 }
 
 #[derive(Debug)]
@@ -982,7 +983,11 @@ pub(crate) fn run_canonical_svg_compare(
             }
         },
         |state, input| {
-            let semantic = renderer
+            let fixture_renderer = match input.site_config.clone() {
+                Some(site_config) => renderer.clone().with_site_config(site_config),
+                None => renderer.clone(),
+            };
+            let semantic = fixture_renderer
                 .prepare_semantic_sync(input.text)
                 .map_err(|error| {
                     format!("parse failed for {}: {error}", input.fixture_path.display())
@@ -1406,12 +1411,24 @@ where
             }
         };
 
+        let site_config = match &provenance {
+            Some(provenance) => match provenance.fixture_site_config(&mmd_path) {
+                Ok(site_config) => site_config,
+                Err(error) => {
+                    failures.push(error);
+                    continue;
+                }
+            },
+            None => crate::cmd::fixture_site_config_for_path(&mmd_path),
+        };
+
         let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
         let input = CompareFixtureInput {
             stem,
             fixture_path: &mmd_path,
             upstream_svg: &upstream_svg,
             text: &text,
+            site_config,
         };
 
         let outcome = match render_fixture(state, &input) {
@@ -2320,8 +2337,10 @@ mod tests {
 
     #[test]
     fn semantic_label_evidence_counts_remain_orthogonal_to_dom_evidence() {
-        let mut evidence = CompareEvidence::default();
-        evidence.semantic_label_expected_fixture_comparisons = 1;
+        let mut evidence = CompareEvidence {
+            semantic_label_expected_fixture_comparisons: 1,
+            ..CompareEvidence::default()
+        };
 
         evidence.record_comparison(FixtureComparisonEvidence {
             raw_source: RawSourceComparison::SvgDom,

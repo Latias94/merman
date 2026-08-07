@@ -81,7 +81,9 @@ The main document never imports Mermaid. Compare uses a generated
 and message budgets. A CSP-hashed bootstrap manifest binds the exact engine artifact identity; the
 realm verifies the engine digest before blob import. One recovering queue owns external
 registration, initialization, render, and ZenUML recovery. The parent alone converts returned
-markup into `SafeInlineSvg` through the shared strict validator immediately before publication.
+markup into `NavigableInlineSvg` through the shared navigable validator immediately before
+publication. That interface permits only user-activated anchor navigation; automatic external
+rendering resources remain closed.
 Timeout, protocol corruption, invalid SVG, or navigation poisons and destroys the realm.
 
 One declarative artifact plan owns engine identities, source entries, generated/public outputs,
@@ -141,14 +143,16 @@ the R16 rule. The full/editor comparison and its exact 35-family/11-query semant
 on-demand architecture evidence, not a normal browser gate. Receipt schema 2 carries selection
 input schema 4, which content-binds every production page runtime closure, the Worker/equivalence
 closure, portable runtime JavaScript and package contracts, the stable WASM source/profile/capability
-contract, the measurement contract, and equivalence evidence. Current generated JavaScript and
-WASM files must still match their own provenance, but platform-specific WASM binary identity and
-host-form tool descriptions do not invalidate portable receipt authority. Normal prepared tests
-recompute those digests and the derived decision hermetically; only stale semantic or build inputs
-require another browser measurement.
+contract, the measurement contract, and equivalence evidence at measurement time. The normal
+authority check validates the receipt's derived decision and proves that current dependencies,
+lockfile links, and the Worker import implement that selection. It intentionally does not compare
+historical measurement digests with current implementation bytes. Current JavaScript, package, and
+WASM integrity remain owned by the ordinary Web build, provenance, semantic, and contract tests;
+implementation changes do not create a browser-measurement gate. A new browser measurement is an
+explicit architecture decision activity, not a repair step for routine source drift.
 Tailwind v4 automatic source detection is disabled. Its explicit `App`, product-component, and UI
 primitive roots are structurally checked as a subset of the production TypeScript runtime closure,
-so test or tooling strings cannot alter shipped CSS without entering R16's bound inputs.
+so test or tooling strings cannot alter shipped CSS through Tailwind's implicit filesystem scan.
 `didOpen` constructs its analyzed document, `didChange` atomically replaces the snapshot with a
 newer source/version, and queries do not resend or compare source text. Diagnostics, detection,
 completions, hover, code actions, symbols, definition, references, rename, and semantic tokens all
@@ -185,7 +189,9 @@ non-data image capabilities. Only bounded frozen ephemeral storage facades are i
 engine verification. A self-navigation can issue its first document request before observation;
 the next load poisons the session and removes the frame, so absolute zero egress remains a host
 interception capability rather than a browser-iframe claim. SVG must pass the shared parent-side
-DOM-safety policy before insertion.
+DOM-safety policy before insertion. The validated artifact carries whether it contains fragment
+references, and the preview checks the actual owner document before mounting; `base-uri 'none'`
+provides an independent deployment invariant against fragment resolution through an external base.
 
 Vite content hashes allow HTTP caching, but deployment headers are externally owned. The currently
 observed hashed-asset policy is `Cache-Control: max-age=14400`, without `immutable`. Long-lived
