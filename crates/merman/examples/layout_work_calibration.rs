@@ -264,7 +264,13 @@ enum ConfigurationBoundaryProbe {
 struct CardinalityBoundaryReport {
     curve: &'static str,
     search_contract: &'static str,
-    adjacent_rejection_nodes: usize,
+    scan_start_nodes: usize,
+    scanned_through_nodes: usize,
+    accepted_prefix_count: usize,
+    accepted_prefix_digest_encoding: &'static str,
+    accepted_prefix_observations_sha256: String,
+    accepted_prefix_work_units_non_decreasing: bool,
+    first_rejected_nodes: usize,
     accepted: CardinalityBoundaryAccepted,
     rejected: CardinalityBoundaryRejected,
     next_rejected: CardinalityBoundaryRejected,
@@ -293,6 +299,16 @@ struct CardinalityBoundaryRejected {
 
 enum CardinalityBoundaryProbe {
     Accepted(CardinalityBoundaryAccepted),
+    Rejected(CardinalityBoundaryRejected),
+}
+
+struct CardinalityScanAccepted {
+    nodes: usize,
+    layout_work_units: usize,
+}
+
+enum CardinalityScanProbe {
+    Accepted(CardinalityScanAccepted),
     Rejected(CardinalityBoundaryRejected),
 }
 
@@ -341,6 +357,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let report = run_single_probe(
             &workspace_root,
             &corpus,
+            &owned_paths,
             &preflight,
             probe,
             policy,
@@ -402,6 +419,7 @@ fn write_json_report<T: Serialize>(path: &Path, report: &T) -> Result<(), Box<dy
 fn run_single_probe(
     workspace_root: &Path,
     corpus: &CorpusSelection,
+    owned_paths: &[PathBuf],
     snapshot: &SourceSnapshot,
     request: ProbeRequest,
     base_policy: RenderResourcePolicy,
@@ -527,6 +545,10 @@ fn run_single_probe(
             }
         }
     };
+    let postflight = capture_source_snapshot(workspace_root, corpus, owned_paths)?;
+    if *snapshot != postflight {
+        return Err("calibration inputs or executable changed during the probe".into());
+    }
 
     Ok(SingleProbeReport {
         schema_version: 1,
@@ -1133,37 +1155,44 @@ fn find_flowchart_cardinality_boundary(
 ) -> Result<CardinalityBoundaryReport, Box<dyn Error>> {
     let renderer =
         HeadlessRenderer::new().with_resource_profile(RenderResourceProfile::Interactive);
-    let mut accepted_nodes = 1usize;
-    match probe_linear_flowchart(&renderer, accepted_nodes, max_layout_work_units)? {
-        CardinalityBoundaryProbe::Accepted(_) => {}
-        CardinalityBoundaryProbe::Rejected(_) => {
-            return Err("single-node Flowchart must be accepted".into());
+    let mut accepted_nodes = 0usize;
+    let mut accepted_prefix_count = 0usize;
+    let mut accepted_prefix_digest = Sha256::new();
+    let mut previous_work_units = None;
+    let mut accepted_prefix_work_units_non_decreasing = true;
+    let first_rejected = 'scan: {
+        for nodes in 1..=boundary_max_nodes {
+            match scan_linear_flowchart_admission(&renderer, nodes, max_layout_work_units)? {
+                CardinalityScanProbe::Accepted(observation) => {
+                    accepted_nodes = observation.nodes;
+                    accepted_prefix_count = accepted_prefix_count
+                        .checked_add(1)
+                        .ok_or("Flowchart accepted-prefix count overflow")?;
+                    let nodes_u64 = u64::try_from(observation.nodes)
+                        .map_err(|_| "Flowchart node count does not fit the scan encoding")?;
+                    let work_u64 = u64::try_from(observation.layout_work_units)
+                        .map_err(|_| "Flowchart work does not fit the scan encoding")?;
+                    accepted_prefix_digest.update(nodes_u64.to_le_bytes());
+                    accepted_prefix_digest.update(work_u64.to_le_bytes());
+                    if previous_work_units
+                        .is_some_and(|previous| observation.layout_work_units < previous)
+                    {
+                        accepted_prefix_work_units_non_decreasing = false;
+                    }
+                    previous_work_units = Some(observation.layout_work_units);
+                }
+                CardinalityScanProbe::Rejected(rejected) => break 'scan rejected,
+            }
         }
+        return Err(format!(
+            "no Flowchart layout-work rejection found by {boundary_max_nodes} nodes"
+        )
+        .into());
+    };
+    if accepted_nodes == 0 || first_rejected.nodes != accepted_nodes + 1 {
+        return Err("Flowchart sequential scan did not produce an accepted prefix".into());
     }
-
-    let mut rejected_nodes = 2usize;
-    while let CardinalityBoundaryProbe::Accepted(_) =
-        probe_linear_flowchart(&renderer, rejected_nodes, max_layout_work_units)?
-    {
-        accepted_nodes = rejected_nodes;
-        rejected_nodes = rejected_nodes
-            .checked_mul(2)
-            .ok_or("Flowchart boundary node count overflow")?;
-        if rejected_nodes > boundary_max_nodes {
-            return Err(format!(
-                "no Flowchart layout-work rejection found by {boundary_max_nodes} nodes"
-            )
-            .into());
-        }
-    }
-
-    while accepted_nodes + 1 < rejected_nodes {
-        let midpoint = accepted_nodes + (rejected_nodes - accepted_nodes) / 2;
-        match probe_linear_flowchart(&renderer, midpoint, max_layout_work_units)? {
-            CardinalityBoundaryProbe::Accepted(_) => accepted_nodes = midpoint,
-            CardinalityBoundaryProbe::Rejected(_) => rejected_nodes = midpoint,
-        }
-    }
+    let rejected_nodes = first_rejected.nodes;
 
     let accepted = match probe_linear_flowchart(&renderer, accepted_nodes, max_layout_work_units)? {
         CardinalityBoundaryProbe::Accepted(accepted) => accepted,
@@ -1184,18 +1213,49 @@ fn find_flowchart_cardinality_boundary(
     {
         CardinalityBoundaryProbe::Rejected(rejected) => rejected,
         CardinalityBoundaryProbe::Accepted(_) => {
-            return Err("Flowchart boundary was not monotonic at the adjacent point".into());
+            return Err("Flowchart first rejection was not repeated at the following point".into());
         }
     };
 
     Ok(CardinalityBoundaryReport {
         curve: "flowchart-linear-chain-v1",
-        search_contract: "A deterministic N-node/N-1-edge linear Flowchart chain is searched by exponential bracketing and binary search. The receipt claims only this registered curve's adjacent accepted/rejected boundary; it does not generalize the result to every Flowchart topology.",
-        adjacent_rejection_nodes: rejected_nodes,
+        search_contract: "A deterministic N-node/N-1-edge linear Flowchart chain is rendered sequentially for every N starting at one. The first structured layout-work rejection defines the boundary without assuming monotonicity; N+1 is rerun only as a local consecutive-rejection check. The receipt claims only this registered curve and does not generalize the result to every Flowchart topology.",
+        scan_start_nodes: 1,
+        scanned_through_nodes: rejected_nodes,
+        accepted_prefix_count,
+        accepted_prefix_digest_encoding: "repeated u64-le(nodes) || u64-le(layout_work_units)",
+        accepted_prefix_observations_sha256: format!("{:x}", accepted_prefix_digest.finalize()),
+        accepted_prefix_work_units_non_decreasing,
+        first_rejected_nodes: rejected_nodes,
         accepted,
         rejected,
         next_rejected,
     })
+}
+
+fn scan_linear_flowchart_admission(
+    renderer: &HeadlessRenderer,
+    nodes: usize,
+    max_layout_work_units: usize,
+) -> Result<CardinalityScanProbe, Box<dyn Error>> {
+    let source = linear_flowchart_source(nodes);
+    match renderer.render_svg_report_sync(&source) {
+        Ok(Some(rendered)) => Ok(CardinalityScanProbe::Accepted(CardinalityScanAccepted {
+            nodes,
+            layout_work_units: rendered.report().layout_work_units(),
+        })),
+        Ok(None) => Err("linear Flowchart was not recognized during sequential scan".into()),
+        Err(HeadlessError::Render(RenderError::ResourceLimitExceeded(limit))) => Ok(
+            CardinalityScanProbe::Rejected(CardinalityBoundaryRejected {
+                nodes,
+                edges: nodes.saturating_sub(1),
+                source_sha256: sha256_hex(source.as_bytes()),
+                source_bytes: source.len(),
+                rejection: validate_layout_rejection(limit, max_layout_work_units, None)?,
+            }),
+        ),
+        Err(error) => Err(format!("linear Flowchart scan failed unexpectedly: {error}").into()),
+    }
 }
 
 fn probe_linear_flowchart(

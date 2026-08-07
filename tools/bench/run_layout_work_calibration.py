@@ -9,6 +9,7 @@ import json
 import os
 import platform
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -18,6 +19,7 @@ from typing import Any, Sequence
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = Path(__file__).resolve()
+TERMINATION_GRACE_SECONDS = 2.0
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -94,6 +96,7 @@ def host_report() -> dict[str, Any]:
         "uname": command_output(["uname", "-srm"]),
     }
     if platform.system() == "Darwin":
+        report["chip"] = command_output(["sysctl", "-n", "machdep.cpu.brand_string"])
         report["model"] = command_output(["sysctl", "-n", "hw.model"])
         report["memory_bytes"] = int(command_output(["sysctl", "-n", "hw.memsize"]))
     elif platform.system() == "Linux":
@@ -101,6 +104,59 @@ def host_report() -> dict[str, Any]:
         match = re.search(r"^MemTotal:\s*(\d+)\s+kB$", meminfo, re.MULTILINE)
         report["memory_bytes"] = int(match.group(1)) * 1024 if match else None
     return report
+
+
+def terminate_process_group(
+    process: subprocess.Popen[str], *, grace_seconds: float = TERMINATION_GRACE_SECONDS
+) -> None:
+    process_group = process.pid
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process_group, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return
+    os.killpg(process_group, signal.SIGKILL)
+    if process.poll() is None:
+        process.wait()
+
+
+def run_managed_process(
+    command: Sequence[str], *, cwd: Path, timeout_seconds: float
+) -> dict[str, Any]:
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+        return {
+            "returncode": process.returncode,
+            "timed_out": False,
+            "stdout": stdout,
+            "stderr": stderr,
+        }
+    except subprocess.TimeoutExpired:
+        terminate_process_group(process)
+        stdout, stderr = process.communicate()
+        return {
+            "returncode": process.returncode,
+            "timed_out": True,
+            "stdout": stdout,
+            "stderr": stderr,
+        }
 
 
 def run_one(
@@ -120,42 +176,18 @@ def run_one(
         [*common_arguments, "--json-out", str(report_path), *arguments],
     )
     started = time.monotonic()
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=timeout_seconds,
-        )
-        timed_out = False
-    except subprocess.TimeoutExpired as error:
-        elapsed = time.monotonic() - started
-        stdout = error.stdout if isinstance(error.stdout, str) else ""
-        stderr = error.stderr if isinstance(error.stderr, str) else ""
-        stdout_path.write_text(stdout, encoding="utf-8")
-        stderr_path.write_text(stderr, encoding="utf-8")
-        return {
-            "name": name,
-            "command": command,
-            "returncode": None,
-            "timed_out": True,
-            "timeout_seconds": timeout_seconds,
-            "elapsed_seconds": elapsed,
-            "stdout_path": str(stdout_path.relative_to(ROOT)),
-            "stdout_sha256": sha256_file(stdout_path),
-            "stderr_path": str(stderr_path.relative_to(ROOT)),
-            "stderr_sha256": sha256_file(stderr_path),
-        }
+    completed = run_managed_process(command, cwd=ROOT, timeout_seconds=timeout_seconds)
 
     elapsed = time.monotonic() - started
-    stdout_path.write_text(completed.stdout, encoding="utf-8")
-    stderr_path.write_text(completed.stderr, encoding="utf-8")
-    if completed.returncode != 0:
+    stdout_path.write_text(completed["stdout"], encoding="utf-8")
+    stderr_path.write_text(completed["stderr"], encoding="utf-8")
+    if completed["timed_out"]:
         raise RuntimeError(
-            f"{name} failed with exit {completed.returncode}: {completed.stderr.strip()}"
+            f"{name} exceeded the {timeout_seconds}-second timeout; the managed process group was terminated"
+        )
+    if completed["returncode"] != 0:
+        raise RuntimeError(
+            f"{name} failed with exit {completed['returncode']}: {completed['stderr'].strip()}"
         )
     if not report_path.is_file():
         raise RuntimeError(f"{name} did not create {report_path}")
@@ -164,26 +196,32 @@ def run_one(
     return {
         "name": name,
         "command": command,
-        "returncode": completed.returncode,
-        "timed_out": timed_out,
+        "returncode": completed["returncode"],
+        "timed_out": completed["timed_out"],
         "timeout_seconds": timeout_seconds,
         "elapsed_seconds": elapsed,
         "maximum_resident_set_size_bytes": parse_peak_rss_bytes(
-            completed.stderr, timing_format
+            completed["stderr"], timing_format
         ),
         "timing_format": timing_format,
         "report_path": str(report_path.relative_to(ROOT)),
         "report_bytes": len(payload),
         "report_sha256": sha256_bytes(payload),
         "stdout_path": str(stdout_path.relative_to(ROOT)),
+        "stdout_bytes": stdout_path.stat().st_size,
         "stdout_sha256": sha256_file(stdout_path),
         "stderr_path": str(stderr_path.relative_to(ROOT)),
+        "stderr_bytes": stderr_path.stat().st_size,
         "stderr_sha256": sha256_file(stderr_path),
     }
 
 
 def validate_report_provenance(
-    report_path: Path, *, git_revision: str, executable_sha256: str
+    report_path: Path,
+    *,
+    git_revision: str,
+    executable_sha256: str,
+    expected_provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     provenance = report["provenance"]
@@ -197,7 +235,194 @@ def validate_report_provenance(
         and provenance["postflight_identical"]
     ):
         raise RuntimeError(f"{report_path}: fail-closed provenance did not pass")
+    if expected_provenance is not None and provenance != expected_provenance:
+        raise RuntimeError(f"{report_path}: provenance differs from the full report")
     return report
+
+
+def require_fields(actual: dict[str, Any], expected: dict[str, Any], label: str) -> None:
+    for key, value in expected.items():
+        if actual.get(key) != value:
+            raise RuntimeError(
+                f"{label}: expected {key}={value!r}, observed {actual.get(key)!r}"
+            )
+
+
+def require_sha256(value: Any, label: str) -> None:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise RuntimeError(f"{label}: expected a lowercase SHA-256 digest")
+
+
+def validate_full_report_contract(report: dict[str, Any]) -> None:
+    boundary = report["cardinality_boundary"]
+    accepted = boundary["accepted"]
+    rejected = boundary["rejected"]
+    if boundary["scan_start_nodes"] != 1:
+        raise RuntimeError("cardinality scan must start at one node")
+    if boundary["scanned_through_nodes"] != rejected["nodes"]:
+        raise RuntimeError("cardinality scan end must be the first rejected node")
+    if boundary["first_rejected_nodes"] != rejected["nodes"]:
+        raise RuntimeError("cardinality first-rejection field differs from the payload")
+    if accepted["nodes"] + 1 != rejected["nodes"]:
+        raise RuntimeError("cardinality accepted prefix is not adjacent to the rejection")
+    if boundary["accepted_prefix_count"] != accepted["nodes"]:
+        raise RuntimeError("cardinality accepted-prefix count is incomplete")
+    if boundary["accepted_prefix_digest_encoding"] != (
+        "repeated u64-le(nodes) || u64-le(layout_work_units)"
+    ):
+        raise RuntimeError("cardinality digest encoding is unexpected")
+    require_sha256(
+        boundary["accepted_prefix_observations_sha256"],
+        "cardinality accepted-prefix observations",
+    )
+
+
+def fixture_probe_input(fixture: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": "fixture",
+        "name": fixture["name"],
+        "source_path": fixture["source_path"],
+        "nodes": None,
+        "edges": None,
+        "source_sha256": fixture["source_sha256"],
+        "source_bytes": fixture["source_bytes"],
+    }
+
+
+def cardinality_probe_input(point: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": "linear_flowchart",
+        "name": f"linear_flowchart_{point['nodes']}",
+        "source_path": None,
+        "nodes": point["nodes"],
+        "edges": point["edges"],
+        "source_sha256": point["source_sha256"],
+        "source_bytes": point["source_bytes"],
+    }
+
+
+def accepted_svg_outcome(point: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": "accepted_svg",
+        "layout_work_units": point["layout_work_units"],
+        "svg_sha256": point["svg_sha256"],
+        "svg_bytes": point["svg_bytes"],
+        "svg_elements": point["svg_elements"],
+    }
+
+
+def validate_single_probe_contract(
+    name: str, report: dict[str, Any], full_report: dict[str, Any]
+) -> None:
+    if report.get("report_kind") != "single_probe":
+        raise RuntimeError(f"{name}: expected a single-probe report")
+    corpus = full_report["fixture_corpus"]
+    boundary = full_report["cardinality_boundary"]
+    maximum_fixture = next(
+        fixture
+        for fixture in corpus["fixtures"]
+        if fixture["name"] == corpus["maximum_layout_work_fixture"]
+    )
+    exact = corpus["exact_limit_check"]
+    expected_fixture_input = fixture_probe_input(maximum_fixture)
+    outcome = report["outcome"]
+
+    if name == "max-semantic":
+        require_fields(report["input"], expected_fixture_input, name)
+        require_fields(
+            report,
+            {"stage": "semantic"},
+            name,
+        )
+        require_fields(
+            outcome,
+            {
+                "status": "accepted_semantic",
+                "semantic_kind": "flowchart",
+                "diagram_type": "flowchart-v2",
+            },
+            name,
+        )
+    elif name == "max-layout":
+        require_fields(report["input"], expected_fixture_input, name)
+        require_fields(report, {"stage": "layout"}, name)
+        require_fields(outcome, {"status": "accepted_layout"}, name)
+        require_sha256(outcome.get("layout_json_sha256"), name)
+        if not isinstance(outcome.get("layout_json_bytes"), int) or outcome[
+            "layout_json_bytes"
+        ] <= 0:
+            raise RuntimeError(f"{name}: layout JSON must be non-empty")
+    elif name in {"max-svg", "max-end-to-end"}:
+        require_fields(report["input"], expected_fixture_input, name)
+        require_fields(
+            report,
+            {"stage": "svg" if name == "max-svg" else "end_to_end"},
+            name,
+        )
+        require_fields(outcome, accepted_svg_outcome(maximum_fixture), name)
+    elif name == f"cardinality-{boundary['accepted']['nodes']}":
+        require_fields(
+            report["input"], cardinality_probe_input(boundary["accepted"]), name
+        )
+        require_fields(report, {"stage": "end_to_end"}, name)
+        require_fields(outcome, accepted_svg_outcome(boundary["accepted"]), name)
+    elif name == f"cardinality-{boundary['rejected']['nodes']}":
+        require_fields(
+            report["input"], cardinality_probe_input(boundary["rejected"]), name
+        )
+        require_fields(report, {"stage": "end_to_end"}, name)
+        require_fields(
+            outcome,
+            {"status": "rejected", "rejection": boundary["rejected"]["rejection"]},
+            name,
+        )
+    elif name == "max-w-minus-one":
+        require_fields(report["input"], expected_fixture_input, name)
+        require_fields(report, {"stage": "end_to_end"}, name)
+        require_fields(
+            report["policy"],
+            {
+                "max_layout_work_units": exact["rejected_limit"],
+                "explicit_overrides": [
+                    {
+                        "id": "max_layout_work_units",
+                        "value": exact["rejected_limit"],
+                    }
+                ],
+            },
+            name,
+        )
+        require_fields(
+            outcome,
+            {"status": "rejected", "rejection": exact["rejection"]},
+            name,
+        )
+    else:
+        raise RuntimeError(f"unexpected calibration probe: {name}")
+
+    if not isinstance(outcome.get("elapsed_ns"), int) or outcome["elapsed_ns"] <= 0:
+        raise RuntimeError(f"{name}: internal elapsed time must be positive")
+
+
+def prepare_output_directory(path: Path) -> None:
+    if path.exists():
+        if not path.is_dir():
+            raise RuntimeError(f"calibration output path is not a directory: {path}")
+        if any(path.iterdir()):
+            raise RuntimeError(f"calibration output directory must be empty: {path}")
+        return
+    path.mkdir(parents=True)
+
+
+def validate_run_artifacts(run: dict[str, Any]) -> None:
+    for kind in ("report", "stdout", "stderr"):
+        path = ROOT / run[f"{kind}_path"]
+        expected_bytes = run[f"{kind}_bytes"]
+        expected_sha256 = run[f"{kind}_sha256"]
+        if path.stat().st_size != expected_bytes:
+            raise RuntimeError(f"{run['name']}: {kind} byte length changed after capture")
+        if sha256_file(path) != expected_sha256:
+            raise RuntimeError(f"{run['name']}: {kind} digest changed after capture")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -227,12 +452,13 @@ def main() -> int:
         raise RuntimeError("--full-repeats must be at least two")
 
     source = require_clean_tracked_worktree()
+    runner_sha256 = sha256_file(SCRIPT_PATH)
     binary = args.binary.resolve()
     if not binary.is_file() or not os.access(binary, os.X_OK):
         raise RuntimeError(f"release calibration binary is missing: {binary}")
     executable_sha256 = sha256_file(binary)
     out_dir = args.out_dir.resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
+    prepare_output_directory(out_dir)
     common_arguments = [
         "--authoritative-date",
         args.authoritative_date,
@@ -269,6 +495,15 @@ def main() -> int:
         git_revision=source["git_revision"],
         executable_sha256=executable_sha256,
     )
+    validate_full_report_contract(full_report)
+    expected_provenance = full_report["provenance"]
+    for run in runs[1:]:
+        validate_report_provenance(
+            ROOT / run["report_path"],
+            git_revision=source["git_revision"],
+            executable_sha256=executable_sha256,
+            expected_provenance=expected_provenance,
+        )
     fixture_corpus = full_report["fixture_corpus"]
     boundary = full_report["cardinality_boundary"]
     maximum_fixture = fixture_corpus["maximum_layout_work_fixture"]
@@ -323,14 +558,26 @@ def main() -> int:
             out_dir=out_dir,
             timeout_seconds=args.timeout_seconds,
         )
-        validate_report_provenance(
+        report = validate_report_provenance(
             ROOT / run["report_path"],
             git_revision=source["git_revision"],
             executable_sha256=executable_sha256,
+            expected_provenance=expected_provenance,
         )
+        validate_single_probe_contract(name, report, full_report)
         runs.append(run)
 
-    stderr_bundle = "\n".join(
+    final_source = require_clean_tracked_worktree()
+    if final_source != source:
+        raise RuntimeError("Git revision or tree changed during calibration")
+    if sha256_file(SCRIPT_PATH) != runner_sha256:
+        raise RuntimeError("calibration runner changed during calibration")
+    if sha256_file(binary) != executable_sha256:
+        raise RuntimeError("calibration executable changed during calibration")
+    for run in runs:
+        validate_run_artifacts(run)
+
+    stderr_index = "\n".join(
         f"{run['name']}\0{run['stderr_sha256']}" for run in runs
     ).encode("utf-8")
     summary = {
@@ -339,7 +586,7 @@ def main() -> int:
         "source": source,
         "runner": {
             "path": str(SCRIPT_PATH.relative_to(ROOT)),
-            "sha256": sha256_file(SCRIPT_PATH),
+            "sha256": runner_sha256,
             "python": sys.version,
             "argv": sys.argv,
         },
@@ -350,7 +597,7 @@ def main() -> int:
         "full_repeats": args.full_repeats,
         "full_reports_byte_identical": True,
         "full_report_sha256": next(iter(full_hashes)),
-        "stderr_bundle_sha256": sha256_bytes(stderr_bundle),
+        "stderr_index_sha256": sha256_bytes(stderr_index),
         "runs": runs,
     }
     summary_path = out_dir / "run-summary.json"
