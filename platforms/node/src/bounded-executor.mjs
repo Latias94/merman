@@ -63,12 +63,16 @@ export class BoundedExecutor {
   }
 
   assertSyncAvailable() {
-    if (this.#state !== "open") throw new MermanDisposedError();
+    this.assertOpen();
     if (this.#active !== 0 || this.#pending.length !== 0) {
       throw new MermanLifecycleError(
         "renderSvgSync() cannot run while asynchronous operations are active or queued.",
       );
     }
+  }
+
+  assertOpen() {
+    if (this.#state !== "open") throw new MermanDisposedError();
   }
 
   dispose() {

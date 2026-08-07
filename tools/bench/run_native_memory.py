@@ -66,10 +66,8 @@ _PROBE_FIELDS = frozenset(
         "bench",
         "features",
         "default_features",
-        "inputs",
     }
 )
-_PROBE_INPUT_FIELDS = frozenset({"path", "sha256"})
 _SCALE_FIELDS = frozenset({"dimension", "units_per_scale"})
 _BOUND_FIELDS = frozenset({"slope_cap", "max_scale_cap"})
 _BUILD_ENVIRONMENT_OVERRIDES = {
@@ -323,23 +321,6 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
             raise DriverContractError(
                 "owner contract probe features differ from lane required_features"
             )
-        inputs = probe["inputs"]
-        if not isinstance(inputs, list) or not inputs:
-            raise DriverContractError("owner contract probe inputs must be a non-empty list")
-        seen_paths: set[str] = set()
-        for index, raw_input in enumerate(inputs):
-            if not isinstance(raw_input, dict) or frozenset(raw_input) != _PROBE_INPUT_FIELDS:
-                raise DriverContractError(f"probe.inputs[{index}] fields differ")
-            input_path = _repo_relative_path(
-                raw_input["path"], field=f"probe.inputs[{index}].path"
-            )
-            if input_path in seen_paths:
-                raise DriverContractError("owner contract probe inputs contain duplicate paths")
-            seen_paths.add(input_path)
-            _lowercase_sha256(
-                raw_input["sha256"], field=f"probe.inputs[{index}].sha256"
-            )
-
         scale = contract["scale"]
         if not isinstance(scale, dict) or frozenset(scale) != _SCALE_FIELDS:
             raise DriverContractError("owner contract scale fields differ")
@@ -813,25 +794,8 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
                 str(probe["package_manifest"]),
                 field="probe.package_manifest",
             )
-            probe_inputs: list[dict[str, object]] = []
-            raw_inputs = probe["inputs"]
-            assert isinstance(raw_inputs, list)
-            for index, raw_input in enumerate(raw_inputs):
-                assert isinstance(raw_input, Mapping)
-                input_path = _resolve_repo_file(
-                    root,
-                    str(raw_input["path"]),
-                    field=f"probe.inputs[{index}].path",
-                )
-                record = _describe_file(input_path, root=root)
-                if record["sha256"] != raw_input["sha256"]:
-                    raise DriverContractError(
-                        f"owner contract probe input digest differs at index {index}"
-                    )
-                probe_inputs.append(record)
         else:
             package_manifest_path = root / "crates" / "merman" / "Cargo.toml"
-            probe_inputs = []
 
         report_inputs: dict[str, object] = {
             "workspace_manifest": _describe_file(root / "Cargo.toml", root=root),
@@ -849,8 +813,6 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
                 "value": contract,
             },
         }
-        if probe_inputs:
-            report_inputs["probe_inputs"] = probe_inputs
         report["inputs"] = report_inputs
         build_command = cargo_prebuild_command(recipe)
         report["recipe"] = {

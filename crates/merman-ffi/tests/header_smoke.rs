@@ -34,6 +34,8 @@ int merman_header_smoke(void) {
     MermanNativeResult result = MERMAN_NATIVE_RESULT_INIT;
     MermanNativeApiRequest request = {0};
     MermanNativeApi api = {0};
+    MermanNativeIconPack icon_pack = {0};
+    MermanNativeEngineServicesConfig services_config = {0};
     MermanNativeStatus (*get_api)(const MermanNativeApiRequest *, MermanNativeApi *) = &merman_get_native_api;
     MermanNativeTextMeasureCallback measure = 0;
 
@@ -53,6 +55,9 @@ int merman_header_smoke(void) {
     request.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApiRequest);
     request.expected_abi_version = MERMAN_NATIVE_ABI_VERSION;
     api.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi);
+    icon_pack.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeIconPack);
+    services_config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineServicesConfig);
+    services_config.engine_config = config;
 
     if (MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON != 11) {
         return 10;
@@ -66,11 +71,10 @@ int merman_header_smoke(void) {
     if (MERMAN_NATIVE_FUNCTION_METADATA_COLLECT != 5) {
         return 13;
     }
-    if (
-        MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE <=
-            MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ||
-        MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE > sizeof(MermanNativeApi)
-    ) {
+    if (MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES != 6) {
+        return 18;
+    }
+    if (MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE != sizeof(MermanNativeApi)) {
         return 16;
     }
     if (
@@ -100,6 +104,8 @@ int merman_header_smoke(void) {
     (void)result;
     (void)request;
     (void)api;
+    (void)icon_pack;
+    (void)services_config;
     return 0;
 }
 "#,
@@ -117,6 +123,16 @@ int merman_header_smoke(void) {
         .try_compile("merman_header_smoke")
         .expect("C header should compile");
 
+    cc::Build::new()
+        .target(target)
+        .host(target)
+        .opt_level(0)
+        .include(manifest_dir.join("include"))
+        .file(manifest_dir.join("examples/render_svg_engine.c"))
+        .out_dir(&out_dir)
+        .try_compile("merman_render_svg_engine_example")
+        .expect("service-constructor C example should compile");
+
     let cpp_source = out_dir.join("header_smoke.cc");
     fs::write(
         &cpp_source,
@@ -129,12 +145,12 @@ static_assert(MERMAN_NATIVE_ABI_VERSION == 3u, "unexpected native ABI version");
 static_assert(MERMAN_NATIVE_RESULT_SCHEMA_VERSION == 1u, "unexpected result schema version");
 static_assert(MERMAN_NATIVE_FUNCTION_METADATA_COLLECT == 5, "unexpected metadata slot");
 static_assert(
-    MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE > MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
-    "metadata slot must remain outside the frozen prefix"
+    MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES == 6,
+    "unexpected service constructor slot"
 );
 static_assert(
-    MERMAN_NATIVE_API_METADATA_COLLECT_PREFIX_SIZE <= sizeof(MermanNativeApi),
-    "metadata slot boundary must fit the current table"
+    MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE == sizeof(MermanNativeApi),
+    "the current minimum prefix must include the complete release table"
 );
 static_assert(
     MERMAN_RESOURCE_LIMIT_MAX_SOURCE_BYTES_MINIMUM == 1 &&
@@ -161,19 +177,36 @@ static_assert(
     >,
     "C++ metadata function type must be noexcept"
 );
+static_assert(
+    std::is_nothrow_invocable_r_v<
+        MermanNativeStatus,
+        MermanNativeEngineNewWithServicesFn,
+        const MermanNativeEngineServicesConfig *,
+        MermanNativeEngineToken *,
+        MermanNativeResult *
+    >,
+    "C++ service constructor function type must be noexcept"
+);
 
 int merman_cpp_header_smoke() {
     MermanNativeApiRequest request{};
     MermanNativeApi api{};
     MermanNativeResult result = MERMAN_NATIVE_RESULT_INIT;
+    MermanNativeIconPack icon_pack{};
+    MermanNativeEngineServicesConfig services_config{};
     auto discover = &merman_get_native_api;
 
     request.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApiRequest);
     request.expected_abi_version = MERMAN_NATIVE_ABI_VERSION;
     api.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi);
+    icon_pack.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeIconPack);
+    services_config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineServicesConfig);
 
     return discover == nullptr ||
-        result.struct_size != MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult) ? 1 : 0;
+        result.struct_size != MERMAN_NATIVE_STRUCT_SIZE(MermanNativeResult) ||
+        icon_pack.struct_size != MERMAN_NATIVE_STRUCT_SIZE(MermanNativeIconPack) ||
+        services_config.struct_size != MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineServicesConfig)
+        ? 1 : 0;
 }
 "#,
     )

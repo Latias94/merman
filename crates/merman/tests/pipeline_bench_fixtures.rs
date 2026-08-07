@@ -64,7 +64,8 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
                     "{name}: known-type parse failed for {}: {err}",
                     metadata.diagram_type
                 )
-            });
+            })
+            .unwrap_or_else(|| panic!("{name}: known-type parser returned no diagram"));
 
         let parsed = engine
             .parse_diagram_for_render_model_sync(&input, parse_options)
@@ -75,6 +76,13 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             diagram_id: Some(merman::svg::sanitize_svg_id(&name)),
             ..Default::default()
         };
+        let layout_json = merman::svg::layout_json_sync(&engine, &input, parse_options, &layout)
+            .unwrap_or_else(|err| panic!("{name}: layout JSON failed: {err}"))
+            .unwrap_or_else(|| panic!("{name}: layout JSON returned no diagram"));
+        assert!(
+            layout_json.is_object(),
+            "{name}: layout JSON must be an object"
+        );
         let svg =
             merman::svg::render_svg_sync(&engine, &input, parse_options, &layout, &svg_options)
                 .unwrap_or_else(|err| panic!("{name}: end-to-end SVG render failed: {err}"))
@@ -84,6 +92,17 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             !svg.is_empty(),
             "{name}: render returned an empty SVG for {:?}",
             parsed.metadata().diagram_type
+        );
+        let document = roxmltree::Document::parse(&svg)
+            .unwrap_or_else(|err| panic!("{name}: rendered SVG is invalid XML: {err}"));
+        assert_eq!(
+            document.root_element().tag_name().name(),
+            "svg",
+            "{name}: rendered output root must be svg"
+        );
+        assert!(
+            document.descendants().any(|node| node.is_element()),
+            "{name}: rendered SVG must contain elements"
         );
         assert_no_empty_style_elements(&name, &svg);
     }

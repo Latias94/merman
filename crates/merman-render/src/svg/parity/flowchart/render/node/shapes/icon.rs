@@ -14,7 +14,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> crate::Result<()> {
     // Port of Mermaid `icon.ts` (`icon-shape default`).
     let label_text_plain =
         flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
@@ -134,7 +134,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
             common.node_id,
             icon_name,
             icon_size,
-        );
+        )?;
         let _ = write!(
             out,
             r#"<g transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,
@@ -149,4 +149,5 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon(
     if common.wrapped_in_a {
         out.push_str("</a>");
     }
+    Ok(())
 }

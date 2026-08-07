@@ -10,6 +10,15 @@
 #[cfg(not(feature = "svg"))]
 compile_error!("the Node candidates must be built with the direct static SVG feature set");
 
+#[cfg(not(feature = "layout-cytoscape"))]
+compile_error!("the Node candidates require the static layout-cytoscape capability recipe");
+
+#[cfg(not(feature = "layout-elk"))]
+compile_error!("the Node candidates require the static layout-elk capability recipe");
+
+#[cfg(not(feature = "math"))]
+compile_error!("the Node candidates require the static math capability recipe");
+
 #[cfg(all(feature = "transport-napi", feature = "transport-wasm"))]
 compile_error!("select exactly one Node transport candidate");
 

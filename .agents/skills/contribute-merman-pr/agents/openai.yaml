@@ -1,0 +1,4 @@
+interface:
+  display_name: "Contribute Merman PR"
+  short_description: "Prepare focused, CI-ready Merman pull requests"
+  default_prompt: "Use $contribute-merman-pr to prepare this branch for a focused, CI-ready pull request."

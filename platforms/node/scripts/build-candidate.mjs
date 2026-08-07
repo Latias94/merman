@@ -15,7 +15,8 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { resolveNodeTarget } from "../src/native-loader.mjs";
+import { validateTransportIdentityJson } from "../src/errors.mjs";
+import { nodeLoaderPackageVersion, resolveNodeTarget } from "../src/native-loader.mjs";
 import { validateRuntimeCatalog } from "../src/engine.mjs";
 import { replaceDirectory } from "./replace-directory.mjs";
 import { svgTransportEvidence } from "./benchmark/svg-signature.mjs";
@@ -241,17 +242,32 @@ export function probeCandidateRuntime(stage, recipe) {
     recipe.candidate === "napi" ? "merman.node" : "merman_node.js",
   );
   const binding = requireFromBuild(artifact);
+  if (typeof binding?.transportIdentityJson !== "function") {
+    throw new Error(`${recipe.candidate} candidate does not export transportIdentityJson().`);
+  }
+  validateTransportIdentityJson(binding.transportIdentityJson(), {
+    expectedPackageVersion: nodeLoaderPackageVersion(),
+    expectedTransport: recipe.candidate === "napi" ? "napi" : "wasm",
+  });
   const Engine = recipe.candidate === "napi"
     ? binding?.NativeEngine ?? binding?.default?.NativeEngine
     : binding?.WasmEngine ?? binding?.default?.WasmEngine;
-  if (typeof Engine !== "function") {
-    throw new Error(`${recipe.candidate} candidate does not export its engine constructor.`);
+  if (
+    typeof Engine !== "function" ||
+    typeof Engine.prototype?.execute !== "function" ||
+    typeof Engine.prototype?.executeSync !== "function" ||
+    typeof Engine.prototype?.runtimeCatalogJson !== "function" ||
+    typeof Engine.prototype?.metadataJson !== "function" ||
+    typeof Engine.prototype?.dispose !== "function"
+  ) {
+    throw new Error(`${recipe.candidate} candidate does not export its complete engine contract.`);
   }
   const engine = new Engine(JSON.stringify({
     version: 2,
     runtime_policy: "deterministic",
     resources: { profile: "interactive" },
   }));
+  let disposed = false;
   try {
     const catalog = validateRuntimeCatalog(engine.runtimeCatalogJson());
     const capabilities = catalog?.capabilities;
@@ -290,12 +306,13 @@ export function probeCandidateRuntime(stage, recipe) {
     }
 
     const source = "flowchart TD\nA --> B";
-    const semantic = parseWireResponse(engine.executeSync(JSON.stringify({
+    const semanticRequest = JSON.stringify({
       operation_id: "semantic-json",
       source,
       uri: null,
       options_json: JSON.stringify({ version: 2 }),
-    })));
+    });
+    const semantic = parseWireResponse(engine.executeSync(semanticRequest));
     if (
       semantic.ok !== true ||
       semantic.result?.operation_id !== "semantic-json" ||
@@ -305,6 +322,7 @@ export function probeCandidateRuntime(stage, recipe) {
       throw new Error(`${recipe.candidate} runtime semantic JSON probe failed.`);
     }
     JSON.parse(semantic.result.data);
+    const asyncProbe = probeCandidateAsyncLifecycle(artifact, recipe, semanticRequest);
     const svgPlan = parseWireResponse(engine.executeSync(JSON.stringify({
       operation_id: "svg-plan-json",
       source,
@@ -376,11 +394,12 @@ export function probeCandidateRuntime(stage, recipe) {
     ) {
       throw new Error(`${recipe.candidate} runtime lost its typed missing-capability error.`);
     }
-    return {
+    const runtime = {
       catalog_digest: digestJson(catalog),
       catalog,
       probe: {
         missing_capability_id: missing.error.capability_id,
+        async_semantic_json_bytes: asyncProbe.semantic_json_bytes,
         semantic_json_bytes: Buffer.byteLength(semantic.result.data),
         svg_plan_json_bytes: Buffer.byteLength(svgPlan.result.data),
         svg_bytes: Buffer.byteLength(success.result.data),
@@ -390,8 +409,81 @@ export function probeCandidateRuntime(stage, recipe) {
         request_options_limit_code_name: limited.error.code_name,
       },
     };
+    engine.dispose();
+    disposed = true;
+    assertDisposedCandidateEngine(engine, recipe.candidate, semanticRequest);
+    engine.dispose();
+    return runtime;
   } finally {
-    engine.dispose?.();
+    if (!disposed) {
+      try {
+        engine.dispose?.();
+      } catch {
+        // Preserve the probe failure that made the staged candidate unusable.
+      }
+    }
+  }
+}
+
+function assertDisposedCandidateEngine(engine, candidate, requestJson) {
+  for (const [method, invoke] of [
+    ["executeSync", () => engine.executeSync(requestJson)],
+    ["runtimeCatalogJson", () => engine.runtimeCatalogJson()],
+    ["metadataJson", () => engine.metadataJson("supported-diagrams")],
+  ]) {
+    let cause;
+    try {
+      invoke();
+    } catch (error) {
+      cause = error;
+    }
+    const envelope = cause === undefined
+      ? null
+      : parseWireResponse(cause instanceof Error ? cause.message : String(cause));
+    if (
+      envelope?.ok !== false ||
+      envelope.error?.code_name !== "MERMAN_INVALID_ARGUMENT" ||
+      envelope.error?.kind !== "generic" ||
+      !/disposed/i.test(envelope.error?.message ?? "")
+    ) {
+      throw new Error(`${candidate} candidate ${method} did not fail closed after dispose.`);
+    }
+  }
+}
+
+function probeCandidateAsyncLifecycle(artifact, recipe, requestJson) {
+  const script = path.join(nodeRoot, "scripts", "probe-candidate-async.mjs");
+  const result = spawnSync(
+    process.execPath,
+    [
+      script,
+      "--artifact",
+      artifact,
+      "--candidate",
+      recipe.candidate,
+      "--request-json",
+      requestJson,
+    ],
+    {
+      cwd: nodeRoot,
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `${recipe.candidate} async candidate probe failed: ${result.stderr.trim() || result.stdout.trim()}`,
+    );
+  }
+  try {
+    const evidence = JSON.parse(result.stdout);
+    if (!Number.isSafeInteger(evidence.semantic_json_bytes) || evidence.semantic_json_bytes < 1) {
+      throw new Error();
+    }
+    return evidence;
+  } catch {
+    throw new Error(`${recipe.candidate} async candidate probe returned invalid evidence.`);
   }
 }
 
@@ -448,7 +540,7 @@ function cargoMetadata(recipe) {
   return JSON.parse(runCapture("cargo", args));
 }
 
-function collectLocalInputEntries(metadata) {
+export function collectLocalInputEntries(metadata) {
   const roots = new Set();
   for (const item of metadata.packages) {
     if (item.source !== null) continue;
@@ -471,7 +563,11 @@ function collectLocalInputEntries(metadata) {
     path.join(nodeRoot, "src", "bounded-executor.mjs"),
     path.join(nodeRoot, "src", "engine.mjs"),
     path.join(nodeRoot, "src", "errors.mjs"),
+    path.join(nodeRoot, "src", "generated", "binding-contract.mjs"),
+    path.join(nodeRoot, "src", "generated", "capability-surface.mjs"),
+    path.join(nodeRoot, "src", "generated", "node-wire-contract.json"),
     path.join(nodeRoot, "src", "native-loader.mjs"),
+    path.join(nodeRoot, "src", "transport-contract.mjs"),
   ]);
   for (const root of roots) {
     for (const file of walkFiles(root, { skipBuildOutputs: true })) files.add(file);
@@ -600,21 +696,38 @@ export function resolveCandidateRuntimeContract() {
   const capabilityById = new Map(
     capabilitySurface.capabilities.map((capability) => [capability?.id, capability]),
   );
-  const outputIds = capabilitySurface.outputs
-    .filter(
-      (output) =>
-        output?.targets?.includes(target) &&
-        capabilityIds.includes(output.capability),
-    )
-    .map((output) => output.id)
-    .sort();
-  const operationIds = capabilitySurface.binding_operations
+  const outputById = new Map(
+    capabilitySurface.outputs.map((output) => [output?.id, output]),
+  );
+  const operations = capabilitySurface.binding_operations
     .filter(
       (operation) =>
         operation?.targets?.includes(target) &&
         (operation.capability === null || capabilityIds.includes(operation.capability)),
-    )
-    .map((operation) => operation.id)
+    );
+  for (const operation of operations) {
+    if (
+      !Object.hasOwn(operation, "output") ||
+      !(operation.output === null || typeof operation.output === "string") ||
+      !Array.isArray(operation.compiled_prerequisites) ||
+      operation.compiled_prerequisites.some(
+        (capability) => typeof capability !== "string" || capability.length === 0,
+      ) ||
+      stableJson(operation.compiled_prerequisites) !==
+        stableJson([...new Set(operation.compiled_prerequisites)].sort())
+    ) {
+      throw new Error(`Candidate binding operation ${operation?.id ?? "<unknown>"} is invalid.`);
+    }
+    if (operation.output !== null && !outputById.has(operation.output)) {
+      throw new Error(
+        `Candidate binding operation ${operation.id} references unknown output ${operation.output}.`,
+      );
+    }
+  }
+  const operationIds = operations.map((operation) => operation.id).sort();
+  const outputIds = operations
+    .map((operation) => operation.output)
+    .filter((output) => output !== null)
     .sort();
   const systemAdapterIds = capabilityIds
     .filter((capabilityId) => capabilityById.get(capabilityId)?.kind === "adapter")
@@ -756,7 +869,7 @@ export function validateCandidateDependencyPackages(packages, candidate) {
         throw new Error(`${forbidden} leaked into the Node WASM dependency closure.`);
       }
     }
-    for (const required of ["serde-wasm-bindgen", "wasm-bindgen"]) {
+    for (const required of ["wasm-bindgen"]) {
       if (!names.has(required)) {
         throw new Error(`${required} is missing from the Node WASM dependency closure.`);
       }

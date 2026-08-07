@@ -407,6 +407,36 @@ const expectedResourceLimitIds = [
   ...(hasCapability("svg") ? ["max_svg_bytes", "max_svg_elements"] : []),
 ].sort();
 assert.deepEqual(resourceLimitIds, expectedResourceLimitIds);
+assert.equal(Object.isFrozen(api.RESOURCE_PROFILES), true);
+assert.equal(Object.isFrozen(api.RESOURCE_LIMIT_IDS), true);
+assert.equal(Object.isFrozen(api.RESOURCE_OVERRIDE_IDS), true);
+assert.equal(Object.isFrozen(api.RESOURCE_LIMIT_METADATA), true);
+for (const metadata of Object.values(api.RESOURCE_LIMIT_METADATA)) {
+  assert.equal(Object.isFrozen(metadata), true);
+}
+assert.throws(
+  () => api.RESOURCE_PROFILES.push("future-profile"),
+  TypeError,
+);
+assert.throws(
+  () => api.RESOURCE_OVERRIDE_IDS.push("future-limit"),
+  TypeError,
+);
+assert.equal(api.isKnownResourceLimitId("max_source_bytes"), true);
+assert.equal(api.isKnownResourceLimitId("future-limit"), false);
+assert.equal(
+  api.resourceLimitMetadata("max_source_bytes")?.id,
+  "max_source_bytes",
+);
+assert.equal(api.resourceLimitMetadata("future-limit"), undefined);
+assert.throws(
+  () => api.resourceOptions("future-profile"),
+  /unsupported resource profile/,
+);
+assert.throws(
+  () => api.resourceOptions(undefined, { "future-limit": 1 }),
+  /resource limit is not overridable/,
+);
 assertRuntimeOwnerEvidence(capabilities, {
   runtime_capability_ids: presetManifest.runtime_capability_ids,
   runtime_output_ids: presetManifest.outputs,
@@ -473,8 +503,8 @@ if (hasCapability("analysis")) {
 
   const markdownAnalysis = api.analyzeDocument(
     "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
-    deterministicTime,
-    "file:///tmp/example.md"
+    "file:///tmp/example.md",
+    deterministicTime
   );
   assert.equal(markdownAnalysis.valid, false);
   assert.equal(markdownAnalysis.source.kind, "markdown");
@@ -579,8 +609,8 @@ if (hasCapability("analysis")) {
 
   const markdownFacts = api.analyzeDocumentFacts(
     "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
-    deterministicTime,
-    "file:///tmp/example.md"
+    "file:///tmp/example.md",
+    deterministicTime
   );
   assert.equal(markdownFacts.valid, false);
   assert.equal(markdownFacts.source.kind, "markdown");
@@ -595,8 +625,8 @@ if (hasCapability("analysis")) {
 
   const mdxAnalysis = api.analyzeDocument(
     "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
-    deterministicTime,
-    "file:///tmp/example.mdx?rev=1#fence"
+    "file:///tmp/example.mdx?rev=1#fence",
+    deterministicTime
   );
   assert.equal(mdxAnalysis.valid, false);
   assert.equal(mdxAnalysis.source.kind, "mdx");
@@ -606,11 +636,11 @@ if (hasCapability("analysis")) {
 
   const markdownFixAnalysis = api.analyzeDocument(
     '```mermaid\n%%{ initialize: {"theme":"dark"} }%%\nflowchart TD\nA-->B\n```\n',
+    "file:///tmp/example.md",
     {
       ...deterministicTime,
       lint: { profile: "recommended" },
-    },
-    "file:///tmp/example.md"
+    }
   );
   const configFixDiagnostic = markdownFixAnalysis.diagnostics.find(
     (diagnostic) =>

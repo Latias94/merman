@@ -4,19 +4,42 @@
 //! convenient render and analysis helpers, but every plugin operation returns the same closed
 //! transport envelope so hosts can handle failures without depending on trap behavior.
 
+use merman_bindings_core::{
+    ArtifactContractSpec, BindingOperationRequest, BindingTransportKey, CapabilityKey,
+    OperationKey, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+};
 use serde_json::{json, Value};
 
 const TYPST_RESULT_PAYLOAD_SCHEMA_VERSION: u32 = 1;
 pub const TYPST_RUNTIME_CATALOG_SCHEMA_VERSION: u32 =
     merman_bindings_core::RUNTIME_CATALOG_SCHEMA_VERSION;
-/// Canonical binding operations exposed by the Typst transport.
+/// Closed binding-operation allowlist owned by the Typst transport.
 ///
 /// These are semantic operation IDs from the shared capability descriptor, not WebAssembly export
-/// names. Keep this list closed so the package and artifact smoke tests can reject accidental
-/// transport expansion.
-pub const TYPST_BINDING_OPERATION_IDS: &[&str] = &["analysis-json", "svg"];
+/// names. Artifact profiles may select a subset, but must never infer additional operations merely
+/// because their capabilities could support them.
+pub const TYPST_TRANSPORT_OPERATION_KEYS: &[OperationKey] =
+    &[OperationKey::AnalysisJson, OperationKey::Svg];
 const RENDER_OPERATION: &str = "render-svg";
 const ANALYZE_OPERATION: &str = "analyze";
+const TYPST_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+];
+const TYPST_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+];
+static ARTIFACT_CONTRACT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(TargetKey::Typst, BindingTransportKey::Typst)
+        .with_operations(TYPST_OPERATIONS)
+        .with_supplemental_capabilities(TYPST_SUPPLEMENTAL_CAPABILITIES)
+        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+        .materialize();
 
 #[cfg(target_arch = "wasm32")]
 wasm_minimal_protocol::initiate_protocol!();
@@ -46,20 +69,12 @@ pub fn capabilities_json() -> Vec<u8> {
     typst_capabilities_json()
 }
 
-fn typst_capability_surface() -> merman_bindings_core::ArtifactCapabilitySurface {
-    merman_bindings_core::compiled_runtime_capability_surface()
-        .project_to_descriptor_target(
-            "typst",
-            merman_bindings_core::TextMeasurementProviderProjection::VendoredOnly,
-        )
-        .expect("the Typst target is declared by the capability descriptor")
+fn typst_artifact_contract() -> &'static ValidatedArtifactContract {
+    &ARTIFACT_CONTRACT
 }
 
 fn typst_capabilities_json() -> Vec<u8> {
-    let catalog = merman_bindings_core::runtime_catalog_for(
-        TYPST_PLUGIN_ABI_VERSION,
-        typst_capability_surface(),
-    );
+    let catalog = typst_artifact_contract().runtime_catalog(TYPST_PLUGIN_ABI_VERSION);
     serde_json::to_vec(&catalog).expect("the checked Typst capability catalog is serializable")
 }
 
@@ -69,7 +84,7 @@ pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
         Ok(options_json) => options_json,
         Err(error) => return typst_binding_error_payload(RENDER_OPERATION, &error),
     };
-    match merman_bindings_core::render_svg(source, &options_json) {
+    match execute_typst_operation("svg", source, &options_json) {
         Ok(svg) => match std::str::from_utf8(&svg) {
             Ok(svg) => typst_success_payload(RENDER_OPERATION, json!({ "svg": svg })),
             Err(error) => typst_internal_error_payload(
@@ -87,7 +102,7 @@ pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
         Ok(options_json) => options_json,
         Err(error) => return typst_binding_error_payload(ANALYZE_OPERATION, &error),
     };
-    match merman_bindings_core::analyze_json(source, &options_json) {
+    match execute_typst_operation("analysis-json", source, &options_json) {
         Ok(analysis_json) => match serde_json::from_slice::<Value>(&analysis_json) {
             Ok(analysis) => {
                 typst_success_payload(ANALYZE_OPERATION, json!({ "analysis": analysis }))
@@ -111,6 +126,18 @@ fn typst_success_payload(operation: &str, data: Value) -> Vec<u8> {
         Some(data),
     ))
     .expect("Typst result envelope is serializable")
+}
+
+fn execute_typst_operation(
+    operation_id: &'static str,
+    source: &[u8],
+    options_json: &[u8],
+) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
+    typst_artifact_contract()
+        .execute_once(
+            BindingOperationRequest::new(operation_id, source).with_options_json(options_json),
+        )
+        .map(merman_bindings_core::BindingOperationResult::into_data)
 }
 
 fn typst_binding_error_payload(
@@ -203,7 +230,7 @@ fn typst_options_json(options_json: &[u8]) -> Result<Vec<u8>, merman_bindings_co
         Some(_) => {}
     }
 
-    if typst_capability_surface()
+    if typst_artifact_contract()
         .runtime_capabilities()
         .has_operation("svg")
     {
@@ -280,10 +307,7 @@ mod tests {
     #[test]
     fn capabilities_json_exposes_the_flat_artifact_runtime_catalog() {
         let payload: Value = serde_json::from_slice(&capabilities_json()).expect("valid JSON");
-        let expected_catalog = merman_bindings_core::runtime_catalog_for(
-            TYPST_PLUGIN_ABI_VERSION,
-            typst_capability_surface(),
-        );
+        let expected_catalog = typst_artifact_contract().runtime_catalog(TYPST_PLUGIN_ABI_VERSION);
 
         assert_eq!(payload, serde_json::to_value(&expected_catalog).unwrap());
         assert_eq!(
@@ -315,26 +339,54 @@ mod tests {
 
     #[test]
     fn typst_target_projection_tracks_resolved_backend_and_closed_operation_set() {
-        let projected = typst_capability_surface().runtime_capabilities();
-        let backend = merman_bindings_core::compiled_runtime_capabilities();
-        assert!(projected
-            .operation_ids
+        let projected = typst_artifact_contract().runtime_capabilities();
+        assert_eq!(
+            projected.operation_ids,
+            TYPST_OPERATIONS
+                .iter()
+                .copied()
+                .map(OperationKey::id)
+                .collect::<Vec<_>>()
+        );
+        assert!(TYPST_OPERATIONS
             .iter()
-            .all(|operation| TYPST_BINDING_OPERATION_IDS.contains(operation)));
-        for operation in TYPST_BINDING_OPERATION_IDS {
+            .all(|operation| TYPST_TRANSPORT_OPERATION_KEYS.contains(operation)));
+        assert_eq!(
+            TYPST_TRANSPORT_OPERATION_KEYS
+                .iter()
+                .copied()
+                .map(OperationKey::id)
+                .collect::<Vec<_>>(),
+            ["analysis-json", "svg"]
+        );
+        assert_eq!(
+            projected.has_operation("analysis-json"),
+            cfg!(feature = "analysis")
+        );
+        assert_eq!(projected.has_operation("svg"), cfg!(feature = "svg"));
+        #[cfg(feature = "svg")]
+        {
             assert_eq!(
-                projected.has_operation(operation),
-                backend.has_operation(operation),
-                "the Typst projection must follow the resolved backend for {operation}"
+                projected.capability_ids.contains(&"layout-cytoscape"),
+                cfg!(feature = "layout-cytoscape")
+            );
+            assert_eq!(
+                projected.capability_ids.contains(&"layout-elk"),
+                cfg!(feature = "layout-elk")
             );
         }
-        for layout in ["layout-cytoscape", "layout-elk"] {
-            assert_eq!(
-                projected.capability_ids.contains(&layout),
-                backend.capability_ids.contains(&layout),
-                "the capability descriptor admits {layout} for Typst"
-            );
-        }
+    }
+
+    #[test]
+    fn typst_execution_is_bound_to_the_closed_operation_set() {
+        let error = execute_typst_operation("semantic-json", b"flowchart TD\nA --> B", b"")
+            .expect_err("the Typst transport must not inherit the Rust semantic operation");
+
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::UnsupportedOperation
+        );
+        assert!(error.message().contains("not exposed by target `typst`"));
     }
 
     #[test]
@@ -343,7 +395,7 @@ mod tests {
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
         assert_eq!(payload["runtime_policy"], "deterministic");
         assert_eq!(payload["resources"]["profile"], "constrained");
-        if typst_capability_surface()
+        if typst_artifact_contract()
             .runtime_capabilities()
             .has_operation("svg")
         {
@@ -355,7 +407,7 @@ mod tests {
 
     #[test]
     fn typst_transport_treats_null_target_policy_fields_as_unspecified() {
-        let has_svg = typst_capability_surface()
+        let has_svg = typst_artifact_contract()
             .runtime_capabilities()
             .has_operation("svg");
         let input = if has_svg {
@@ -401,7 +453,7 @@ mod tests {
             assert_eq!(payload["runtime_policy"], "deterministic");
             assert!(payload[wrapper].get("runtime_policy").is_none());
             assert!(payload[wrapper].get("environment").is_none());
-            if typst_capability_surface()
+            if typst_artifact_contract()
                 .runtime_capabilities()
                 .has_operation("svg")
             {
@@ -424,7 +476,7 @@ mod tests {
         );
         assert_eq!(native.capability_id(), Some("system-clock"));
 
-        if typst_capability_surface()
+        if typst_artifact_contract()
             .runtime_capabilities()
             .has_operation("svg")
         {

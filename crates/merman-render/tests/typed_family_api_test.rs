@@ -83,7 +83,7 @@ fn architecture_reports_the_missing_cytoscape_layout_capability() {
 
     assert_eq!(
         error.to_string(),
-        "compiled renderer lacks capability `layout-cytoscape` required by diagram `architecture`"
+        "render session lacks capability `layout-cytoscape` required by diagram `architecture`"
     );
 }
 
@@ -117,7 +117,7 @@ fn elk_flowchart_reports_the_missing_layout_capability() {
 
     assert_eq!(
         error.to_string(),
-        "compiled renderer lacks capability `layout-elk` required by diagram `flowchart-v2`"
+        "render session lacks capability `layout-elk` required by diagram `flowchart-v2`"
     );
 }
 
@@ -133,7 +133,7 @@ fn elk_er_reports_the_missing_layout_capability() {
 
     assert_eq!(
         error.to_string(),
-        "compiled renderer lacks capability `layout-elk` required by diagram `er`"
+        "render session lacks capability `layout-elk` required by diagram `er`"
     );
 }
 

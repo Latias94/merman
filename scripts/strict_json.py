@@ -6,7 +6,9 @@ from collections.abc import Callable, Collection
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
+import stat
 from typing import Any, TypeAlias
 
 
@@ -28,6 +30,26 @@ class StrictJsonContract:
     def load(self, path: Path) -> Any:
         """Load UTF-8 JSON while rejecting duplicate object keys at every depth."""
 
+        try:
+            source = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            raise self.error_factory(
+                f"{self.read_error_prefix} {path}: {error}"
+            ) from error
+        return self.loads(source, path=path)
+
+    def load_bytes(self, path: Path) -> tuple[bytes, Any]:
+        """Read and parse one regular-file byte snapshot without following symlinks."""
+        raw = read_regular_file_bytes(
+            path,
+            error_factory=self.error_factory,
+            read_error_prefix=self.read_error_prefix,
+        )
+        return raw, self.loads(raw, path=path)
+
+    def loads(self, source: str | bytes, *, path: Path) -> Any:
+        """Parse one already captured JSON value with duplicate-key rejection."""
+
         def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             result: dict[str, Any] = {}
             for key, value in pairs:
@@ -38,7 +60,7 @@ class StrictJsonContract:
 
         try:
             return json.loads(
-                path.read_text(encoding="utf-8"),
+                source,
                 object_pairs_hook=reject_duplicate_keys,
             )
         except _DuplicateJsonKeyError as error:
@@ -46,7 +68,7 @@ class StrictJsonContract:
             raise self.error_factory(
                 f"duplicate JSON key{location}: {error.key}"
             ) from None
-        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        except (UnicodeError, json.JSONDecodeError) as error:
             raise self.error_factory(
                 f"{self.read_error_prefix} {path}: {error}"
             ) from error
@@ -98,3 +120,30 @@ def canonical_sha256(value: Any) -> str:
         sort_keys=True,
     ).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def bytes_sha256(value: bytes) -> str:
+    return f"sha256:{hashlib.sha256(value).hexdigest()}"
+
+
+def read_regular_file_bytes(
+    path: Path,
+    *,
+    error_factory: Callable[[str], Exception],
+    read_error_prefix: str,
+) -> bytes:
+    """Read one non-symlink regular file through a single descriptor snapshot."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+        try:
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise OSError("not a regular file")
+            with os.fdopen(descriptor, "rb", closefd=False) as source:
+                return source.read()
+        finally:
+            os.close(descriptor)
+    except OSError as error:
+        raise error_factory(f"{read_error_prefix} {path}: {error}") from error

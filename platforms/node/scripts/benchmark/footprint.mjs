@@ -23,9 +23,10 @@ import { digestJson } from "../stable-json.mjs";
 import { svgTransportEvidence } from "./svg-signature.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const packageVersion = JSON.parse(
+const packageSurface = JSON.parse(
   readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
-).version;
+);
+const packageVersion = packageSurface.version;
 export function measureFootprint({ candidate, artifact, target }) {
   return withCandidateInstallation(
     { candidate, artifact, target },
@@ -72,10 +73,18 @@ export function stageWasmPackage(temporaryRoot, artifact) {
       version: packageVersion,
       private: true,
       type: "module",
+      engines: { node: packageSurface.node_engine },
       main: "./index.mjs",
-      exports: { ".": "./index.mjs" },
+      types: "./index.d.ts",
+      exports: {
+        ".": {
+          types: "./index.d.ts",
+          import: "./index.mjs",
+        },
+      },
       files: [
         "artifact",
+        "index.d.ts",
         "index.mjs",
         "src",
         "LICENSE-APACHE",
@@ -89,17 +98,29 @@ export function stageWasmPackage(temporaryRoot, artifact) {
   writeFileSync(
     path.join(packageRoot, "index.mjs"),
     [
-      'import { createNodeEngine as createEngineWithTransport } from "./src/engine.mjs";',
+      'import { MermanEngine, createNodeEngine as createEngineWithTransport } from "./src/engine.mjs";',
       'import { loadNodeWasmTransport } from "./src/candidates/wasm.mjs";',
       'const modulePath = new URL("./artifact/merman_node.js", import.meta.url).href;',
+      "export { MermanEngine };",
       "export function createNodeEngine(options) {",
       "  return createEngineWithTransport(options, {",
       "    loadTransport: (optionsJson) => loadNodeWasmTransport(optionsJson, { modulePath }),",
       "  });",
       "}",
+      "export {",
+      "  MermanDisposedError,",
+      "  MermanError,",
+      "  MermanInvalidTransportError,",
+      "  MermanLifecycleError,",
+      "  MermanMissingPlatformPackageError,",
+      "  MermanOperationError,",
+      "  MermanQueueSaturatedError,",
+      "  MermanUnsupportedTargetError,",
+      '} from "./src/errors.mjs";',
       "",
     ].join("\n"),
   );
+  cpSync(path.join(nodeRoot, "src", "index.d.ts"), path.join(packageRoot, "index.d.ts"));
   projectLegalMaterial(packageRoot);
   return packageRoot;
 }

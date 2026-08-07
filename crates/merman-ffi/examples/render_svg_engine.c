@@ -35,10 +35,16 @@ static MermanNativeStatus measure_text(
 }
 
 int main(void) {
-    static const uint8_t source[] = "flowchart TD\nA[Hello] --> B[World]";
+    static const uint8_t source[] =
+        "flowchart TD\nA@{ icon: \"example:rocket\", label: \"Hello\" } --> B[World]";
+    static const uint8_t icon_pack_json[] =
+        "{\"prefix\":\"example\",\"icons\":{\"rocket\":{\"body\":"
+        "\"<path data-icon=\\\"example-registry\\\" d=\\\"M0 0H16V16H0z\\\"/>\"}}}";
     MermanNativeApiRequest discovery;
     MermanNativeApi api;
     MermanNativeEngineConfig config;
+    MermanNativeIconPack icon_pack;
+    MermanNativeEngineServicesConfig services_config;
     MermanNativeOperationRequest request;
     MermanNativeResult result;
     MermanNativeEngineToken engine = 0;
@@ -52,7 +58,10 @@ int main(void) {
     );
     memset(&api, 0, sizeof(api));
     api.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi);
-    if (merman_get_native_api(&discovery, &api) != MERMAN_NATIVE_STATUS_OK) {
+    if (
+        merman_get_native_api(&discovery, &api) != MERMAN_NATIVE_STATUS_OK ||
+        api.engine_new_with_services == NULL
+    ) {
         return 1;
     }
 
@@ -61,8 +70,20 @@ int main(void) {
     config.options_json = borrowed_slice(NULL, 0);
     config.text_measure = measure_text;
     config.text_measure_user_data = NULL;
+    memset(&icon_pack, 0, sizeof(icon_pack));
+    icon_pack.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeIconPack);
+    icon_pack.json = borrowed_slice(icon_pack_json, sizeof(icon_pack_json) - 1);
+    icon_pack.registration_name = borrowed_slice(NULL, 0);
+    memset(&services_config, 0, sizeof(services_config));
+    services_config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineServicesConfig);
+    services_config.engine_config = config;
+    services_config.icon_packs = &icon_pack;
+    services_config.icon_pack_count = 1;
     result = (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
-    if (api.engine_new(&config, &engine, &result) != MERMAN_NATIVE_STATUS_OK) {
+    if (
+        api.engine_new_with_services(&services_config, &engine, &result) !=
+        MERMAN_NATIVE_STATUS_OK
+    ) {
         api.result_free(&result);
         return 1;
     }

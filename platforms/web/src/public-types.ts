@@ -18,7 +18,10 @@ import type {
   HostTextWrapMode,
 } from "./generated/text-measurement-abi.js";
 import type { EditorRenamePolicy } from "./generated/token-descriptor.js";
-import type { ResourceOptions } from "./generated/resource-contract.js";
+import type {
+  ResourceLimitId,
+  ResourceOptions,
+} from "./generated/resource-contract.js";
 
 export type {
   HostTextDirection,
@@ -52,17 +55,19 @@ export interface RenderEnvironmentOptions {
  * artifacts and should make decisions only from the relations present in this catalog.
  */
 export interface RuntimeCatalog {
-  schema_version: number;
+  [key: string]: unknown;
+  schema_version: 1;
   transport_api_version: number;
   package_version: string;
   options_schema_versions: number[];
   payload_schemas: RuntimePayloadSchema[];
   metadata_ids: string[];
+  option_group_ids: string[];
+  constructor_service_ids: string[];
+  constructor_service_contracts: RuntimeConstructorServiceContract[];
   capabilities: RuntimeCapabilities;
   output_contracts: RuntimeOutputContract[];
-  registry: {
-    diagram_family_count: number;
-  };
+  registry: RuntimeRegistryContract;
   resources: RuntimeResourceContract;
 }
 
@@ -100,11 +105,34 @@ export interface PresentationAspectApplicability {
 }
 
 export interface RuntimePayloadSchema {
+  [key: string]: unknown;
   id: string;
   version: number;
 }
 
+export interface RuntimeRegistryContract {
+  [key: string]: unknown;
+  diagram_family_count: number;
+}
+
+export interface RuntimeConstructorServiceContract {
+  [key: string]: unknown;
+  id: string;
+  provided_text_measurement_provider_ids: string[];
+  resource_limits: RuntimeConstructorResourceLimit[];
+}
+
+export interface RuntimeConstructorResourceLimit {
+  [key: string]: unknown;
+  id: string;
+  phase: string;
+  unit: string;
+  description: string;
+  value: number;
+}
+
 export interface RuntimeOutputContract {
+  [key: string]: unknown;
   id: string;
   media_type: string;
   system_fonts: RuntimeSystemFontContract | null;
@@ -112,6 +140,7 @@ export interface RuntimeOutputContract {
 }
 
 export interface RuntimeSystemFontContract {
+  [key: string]: unknown;
   source_id: string;
   discovery: string;
   cache_scope: string;
@@ -121,6 +150,7 @@ export interface RuntimeSystemFontContract {
 }
 
 export interface RuntimeEmbeddedImageContract {
+  [key: string]: unknown;
   source_ids: string[];
   filesystem_access: boolean;
   network_access: boolean;
@@ -129,6 +159,7 @@ export interface RuntimeEmbeddedImageContract {
 }
 
 export interface RuntimeEmbeddedImageLimits {
+  [key: string]: unknown;
   max_bytes_per_image: number | null;
   max_total_bytes: number | null;
   max_pixels_per_image: number | null;
@@ -136,6 +167,7 @@ export interface RuntimeEmbeddedImageLimits {
 }
 
 export interface RuntimeResourceContract {
+  [key: string]: unknown;
   general_binding_default_profile: string;
   cli_default_profile: string;
   limits: RuntimeResourceLimit[];
@@ -143,7 +175,8 @@ export interface RuntimeResourceContract {
 }
 
 export interface RuntimeResourceLimit {
-  id: string;
+  [key: string]: unknown;
+  id: ResourceLimitId;
   phase: string;
   description: string;
   overridable: boolean;
@@ -153,11 +186,12 @@ export interface RuntimeResourceLimit {
 }
 
 export interface RuntimeResourceProfile {
+  [key: string]: unknown;
   id: string;
   purpose: string;
   trust_assumption: string;
   recommended_binding_default: boolean;
-  limits: Record<string, number | null>;
+  limits: Record<ResourceLimitId, number | null>;
 }
 
 export interface SvgOptions {
@@ -943,13 +977,13 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   analysisFacts?: (source: string, optionsJson?: string | null) => AnalysisFactsResult;
   analyzeDocument?: (
     source: string,
-    optionsJson?: string | null,
-    uri?: string | null
+    uri: string,
+    optionsJson?: string | null
   ) => AnalysisResult;
   analyzeDocumentFacts?: (
     source: string,
-    optionsJson?: string | null,
-    uri?: string | null
+    uri: string,
+    optionsJson?: string | null
   ) => AnalysisFactsResult;
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   editorDiagnostics?: (

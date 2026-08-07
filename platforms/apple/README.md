@@ -32,16 +32,16 @@ Add the repository root as a local package in Xcode or SwiftPM and link the `Mer
 ```swift
 import Merman
 
-let engine = MermanEngine()
+let client = Merman()
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let options = try resourceOptionsJson(profile: .constrained, overrides: [])
-let svg = try engine.renderSvg(source: source, optionsJson: options)
+let svg = try client.renderSvg(source: source, optionsJson: options)
 precondition(svg.hasPrefix("<svg"))
 ```
 
 `resourceOptionsJson` emits Options JSON schema `2`. Pass `nil` as the profile for a reusable request overlay that must inherit its constructor ceiling; generated override records accept only `MermanResourceOverrideId` values.
 
-Use `MermanOperationRequest` and `engine.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field. The generated `MermanOperationResult` carries binary-safe bytes, media type, and operation metadata. `MermanReusableEngine` is available for repeated work with baseline options plus per-operation deep-merged overrides. Reusable requests cannot change the constructor-owned runtime policy.
+Use `MermanOperationRequest` and `client.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field. The generated `MermanOperationResult` carries binary-safe bytes, media type, and typed operation metadata. For repeated work, construct `try MermanEngine(optionsJson:services:)` directly with baseline options and an optional immutable `MermanEngineServices` bundle. Per-operation options deep-merge over that baseline but cannot change the constructor-owned runtime policy. Call `close()` deterministically when an engine may retain foreign services; close is idempotent and retryable after busy or reentrant failures.
 
 Empty or omitted options select deterministic runtime state even in the full native SDK. Pass `{"runtime_policy":"native"}` only when the operation should use Apple's clock, time-zone rules, and random source. Generic operation metadata records the selected `runtime_policy`; a custom slim artifact missing a requested adapter returns a typed unsupported-operation error.
 
@@ -51,7 +51,7 @@ The full native SDK artifact includes semantic JSON, analysis, ASCII, SVG, PNG, 
 
 ## Text Measurement
 
-The default vendored measurer is appropriate for CI, server jobs, and deterministic output. Apple previews that must match their final font stack can pass a generated `MermanTextMeasurer` when constructing a reusable engine. That callback is immutable for the engine. Return `nil` for unhandled requests and avoid re-entering the engine during a measurement callback. Callback-free engines allow concurrent operations; callback engines serialize admission and report typed `busy` or `reentrantCall` errors without waiting. Only errors returned through UniFFI's generated callback trampoline are converted; callback code must not unwind across the generated FFI boundary. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#apple-swift) documents the protocol and lifecycle rules.
+The default vendored measurer is appropriate for CI, server jobs, and deterministic output. Apple previews that must match their final font stack can start with `MermanEngineServices()`, call `withTextMeasurer(textMeasurer:)`, and pass the returned immutable bundle to the direct reusable-engine constructor. The original bundle remains unchanged, and the callback is immutable for the engine. Return `nil` for unhandled requests and avoid re-entering the engine during a measurement callback. Callback-free engines allow concurrent operations; callback engines serialize admission and report typed `busy` or `reentrantCall` errors without waiting. Only errors returned through UniFFI's generated callback trampoline are converted; callback code must not unwind across the generated FFI boundary. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#apple-swift) documents the protocol and lifecycle rules.
 
 ## Verify Locally
 

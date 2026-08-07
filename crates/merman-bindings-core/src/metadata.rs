@@ -1,43 +1,22 @@
+use crate::artifact_contract::ValidatedArtifactContract;
+use crate::capability as capability_descriptor;
 use crate::common::{BindingError, internal_json_error};
-use crate::operation::compiled_operation_kind_ids;
+use crate::metadata_registry::{MetadataHandlerKey, MetadataKey};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
-
-#[allow(dead_code)]
-mod capability_descriptor {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../capabilities/generated/capability_surface.rs"
-    ));
-}
 
 /// First public schema for the artifact-owned runtime catalog.
 pub const RUNTIME_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const PRESENTATION_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK: &str = "host-callback";
 pub const TEXT_MEASUREMENT_PROVIDER_VENDORED: &str = "vendored";
-pub const BINDING_METADATA_IDS: [&str; 6] = [
-    "supported-diagrams",
-    "ascii-capabilities",
-    "diagram-family-capabilities",
-    "lint-rule-catalog",
-    "supported-themes",
-    "presentation-catalog",
-];
-
-#[cfg(feature = "svg")]
-const TEXT_MEASUREMENT_PROVIDER_IDS: &[&str] = &[
-    TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
-    TEXT_MEASUREMENT_PROVIDER_VENDORED,
-];
 
 static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
-static RUNTIME_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 #[cfg(feature = "analysis")]
 static LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 #[cfg(feature = "analysis")]
@@ -53,309 +32,6 @@ static CONFIGURABLE_LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 pub struct TextMeasurementCapabilities {
     pub protocol_version: u32,
     pub provider_ids: Vec<&'static str>,
-}
-
-impl TextMeasurementCapabilities {
-    #[cfg(feature = "svg")]
-    pub fn new(provider_ids: Vec<&'static str>) -> Result<Self, BindingError> {
-        validate_sorted_unique(
-            "text measurement provider IDs",
-            &provider_ids,
-            TEXT_MEASUREMENT_PROVIDER_IDS,
-        )?;
-        if !provider_ids.contains(&TEXT_MEASUREMENT_PROVIDER_VENDORED) {
-            return Err(invalid_capability_surface(
-                "text measurement support must include the built-in `vendored` provider",
-            ));
-        }
-        Ok(Self {
-            protocol_version: merman::svg::TEXT_MEASUREMENT_PROTOCOL_VERSION,
-            provider_ids,
-        })
-    }
-}
-
-/// Exact public capability selection owned by one compiled artifact.
-///
-/// This is deliberately a closed, validated vocabulary rather than a collection of transport
-/// booleans. Artifact owners construct it from their callable endpoints and must not project or
-/// mutate another artifact's report after the fact.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArtifactCapabilitySurface {
-    capability_ids: Vec<&'static str>,
-    output_ids: Vec<&'static str>,
-    operation_ids: Vec<&'static str>,
-    system_adapter_ids: Vec<&'static str>,
-    text_measurement: Option<TextMeasurementCapabilities>,
-}
-
-/// Selects which compiled text-measurement providers an artifact exposes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextMeasurementProviderProjection {
-    /// Keep every provider exposed by the compiled shared binding facade.
-    PreserveCompiled,
-    /// Expose only the built-in vendored provider.
-    VendoredOnly,
-}
-
-impl ArtifactCapabilitySurface {
-    pub fn new(
-        capability_ids: Vec<&'static str>,
-        output_ids: Vec<&'static str>,
-        system_adapter_ids: Vec<&'static str>,
-        text_measurement: Option<TextMeasurementCapabilities>,
-    ) -> Result<Self, BindingError> {
-        let operation_ids = binding_operation_ids_for_capabilities(&capability_ids);
-        Self::new_with_operation_ids(
-            capability_ids,
-            output_ids,
-            operation_ids,
-            system_adapter_ids,
-            text_measurement,
-        )
-    }
-
-    /// Constructs an artifact-owned surface with its exact callable operation set.
-    ///
-    /// [`Self::new`] derives the full operation set implied by the selected capabilities. Use
-    /// this constructor when a transport intentionally exposes a smaller endpoint set.
-    pub fn new_with_operation_ids(
-        capability_ids: Vec<&'static str>,
-        output_ids: Vec<&'static str>,
-        operation_ids: Vec<&'static str>,
-        system_adapter_ids: Vec<&'static str>,
-        text_measurement: Option<TextMeasurementCapabilities>,
-    ) -> Result<Self, BindingError> {
-        validate_sorted_unique(
-            "runtime capability IDs",
-            &capability_ids,
-            capability_descriptor::CAPABILITY_IDS,
-        )?;
-        validate_sorted_unique(
-            "public output IDs",
-            &output_ids,
-            capability_descriptor::OUTPUT_IDS,
-        )?;
-        validate_sorted_unique(
-            "public binding operation IDs",
-            &operation_ids,
-            capability_descriptor::BINDING_OPERATION_IDS,
-        )?;
-        validate_sorted_unique(
-            "system adapter IDs",
-            &system_adapter_ids,
-            capability_descriptor::CAPABILITY_IDS,
-        )?;
-
-        for capability_id in &capability_ids {
-            let capability = capability_descriptor::CAPABILITIES
-                .iter()
-                .find(|capability| capability.id == *capability_id)
-                .expect("validated capability ID must have a descriptor");
-            for implication in capability.implications {
-                if !capability_ids.contains(implication) {
-                    return Err(invalid_capability_surface(format!(
-                        "capability `{capability_id}` requires `{implication}`"
-                    )));
-                }
-            }
-        }
-
-        for output_id in &output_ids {
-            let output = capability_descriptor::OUTPUTS
-                .iter()
-                .find(|output| output.id == *output_id)
-                .expect("validated output ID must have a descriptor");
-            if !capability_ids.contains(&output.capability) {
-                return Err(invalid_capability_surface(format!(
-                    "public output `{output_id}` requires capability `{}`",
-                    output.capability
-                )));
-            }
-            if !operation_ids.contains(output_id) {
-                return Err(invalid_capability_surface(format!(
-                    "public output `{output_id}` must also be a public binding operation"
-                )));
-            }
-        }
-
-        for operation_id in &operation_ids {
-            let operation = capability_descriptor::BINDING_OPERATIONS
-                .iter()
-                .find(|operation| operation.id == *operation_id)
-                .expect("validated binding operation ID must have a descriptor");
-            if let Some(capability_id) = operation.capability_id
-                && !capability_ids.contains(&capability_id)
-            {
-                return Err(invalid_capability_surface(format!(
-                    "public binding operation `{operation_id}` requires capability `{capability_id}`"
-                )));
-            }
-        }
-
-        for adapter_id in &system_adapter_ids {
-            let capability = capability_descriptor::CAPABILITIES
-                .iter()
-                .find(|capability| capability.id == *adapter_id)
-                .expect("validated system adapter ID must have a descriptor");
-            if capability.kind != "adapter" {
-                return Err(invalid_capability_surface(format!(
-                    "system adapter ID `{adapter_id}` is not an adapter capability"
-                )));
-            }
-            if !capability_ids.contains(adapter_id) {
-                return Err(invalid_capability_surface(format!(
-                    "system adapter ID `{adapter_id}` is not present in runtime capabilities"
-                )));
-            }
-        }
-
-        let svg_available = capability_ids.contains(&"svg");
-        if svg_available != text_measurement.is_some() {
-            return Err(invalid_capability_surface(
-                "text-measurement support must be present exactly when the SVG capability is public",
-            ));
-        }
-
-        Ok(Self {
-            capability_ids,
-            output_ids,
-            operation_ids,
-            system_adapter_ids,
-            text_measurement,
-        })
-    }
-
-    #[must_use]
-    pub fn runtime_capabilities(&self) -> RuntimeCapabilities {
-        RuntimeCapabilities {
-            capability_ids: self.capability_ids.clone(),
-            output_ids: self.output_ids.clone(),
-            operation_ids: self.operation_ids.clone(),
-            system_adapter_ids: self.system_adapter_ids.clone(),
-            text_measurement: self.text_measurement.clone(),
-        }
-    }
-
-    /// Projects this compiled surface onto one capability-descriptor target.
-    ///
-    /// This is the only valid way for a target-specific artifact to drop capabilities solely
-    /// because the descriptor excludes that target. Additional endpoint differences must be
-    /// expressed by constructing a separate checked surface rather than mutating a report.
-    pub fn project_to_descriptor_target(
-        &self,
-        target_id: &str,
-        text_measurement_projection: TextMeasurementProviderProjection,
-    ) -> Result<Self, BindingError> {
-        if !capability_descriptor::TARGET_IDS.contains(&target_id) {
-            return Err(invalid_capability_surface(format!(
-                "unknown capability-descriptor target `{target_id}`"
-            )));
-        }
-
-        let capability_ids: Vec<_> = self
-            .capability_ids
-            .iter()
-            .copied()
-            .filter(|id| {
-                capability_descriptor::CAPABILITIES
-                    .iter()
-                    .find(|capability| capability.id == *id)
-                    .is_some_and(|capability| capability.targets.contains(&target_id))
-            })
-            .collect();
-        let output_ids: Vec<_> = self
-            .output_ids
-            .iter()
-            .copied()
-            .filter(|id| {
-                capability_descriptor::OUTPUTS
-                    .iter()
-                    .find(|output| output.id == *id)
-                    .is_some_and(|output| output.targets.contains(&target_id))
-            })
-            .collect();
-        let operation_ids: Vec<_> = self
-            .operation_ids
-            .iter()
-            .copied()
-            .filter(|id| {
-                capability_descriptor::BINDING_OPERATIONS
-                    .iter()
-                    .find(|operation| operation.id == *id)
-                    .is_some_and(|operation| operation.targets.contains(&target_id))
-            })
-            .collect();
-        let system_adapter_ids: Vec<_> = self
-            .system_adapter_ids
-            .iter()
-            .copied()
-            .filter(|id| capability_ids.contains(id))
-            .collect();
-
-        #[cfg(feature = "svg")]
-        let text_measurement = if capability_ids.contains(&"svg") {
-            match text_measurement_projection {
-                TextMeasurementProviderProjection::PreserveCompiled => {
-                    self.text_measurement.clone()
-                }
-                TextMeasurementProviderProjection::VendoredOnly => {
-                    Some(TextMeasurementCapabilities::new(vec![
-                        TEXT_MEASUREMENT_PROVIDER_VENDORED,
-                    ])?)
-                }
-            }
-        } else {
-            None
-        };
-        #[cfg(not(feature = "svg"))]
-        let text_measurement = {
-            let _ = text_measurement_projection;
-            None
-        };
-
-        Self::new_with_operation_ids(
-            capability_ids,
-            output_ids,
-            operation_ids,
-            system_adapter_ids,
-            text_measurement,
-        )
-    }
-
-    fn project_to_binding_runtime_policy(self) -> Result<Self, BindingError> {
-        let Self {
-            mut capability_ids,
-            output_ids,
-            operation_ids,
-            system_adapter_ids,
-            text_measurement,
-        } = self;
-        let native_system_adapter_ids = merman::runtime::RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS;
-        let native_policy_available = native_system_adapter_ids
-            .iter()
-            .all(|id| system_adapter_ids.contains(id));
-        let selected_system_adapter_ids = if native_policy_available {
-            system_adapter_ids
-                .iter()
-                .copied()
-                .filter(|id| native_system_adapter_ids.contains(id))
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
-        capability_ids.retain(|id| {
-            !system_adapter_ids.contains(id) || selected_system_adapter_ids.contains(id)
-        });
-
-        Self::new_with_operation_ids(
-            capability_ids,
-            output_ids,
-            operation_ids,
-            selected_system_adapter_ids,
-            text_measurement,
-        )
-    }
 }
 
 /// Stable runtime capability report shared by every transport.
@@ -387,55 +63,6 @@ impl RuntimeCapabilities {
     }
 }
 
-fn binding_operation_ids_for_capabilities(capability_ids: &[&'static str]) -> Vec<&'static str> {
-    let mut operation_ids = capability_descriptor::BINDING_OPERATIONS
-        .iter()
-        .filter(|operation| match operation.capability_id {
-            Some(capability_id) => capability_ids.contains(&capability_id),
-            None => true,
-        })
-        .map(|operation| operation.id)
-        .collect::<Vec<_>>();
-    operation_ids.sort_unstable();
-    operation_ids
-}
-
-fn invalid_capability_surface(message: impl Into<String>) -> BindingError {
-    BindingError::new(
-        crate::BindingStatus::InvalidArgument,
-        format!("invalid runtime capability surface: {}", message.into()),
-    )
-}
-
-fn validate_sorted_unique(
-    label: &str,
-    values: &[&'static str],
-    vocabulary: &[&str],
-) -> Result<(), BindingError> {
-    let mut previous = None;
-    for value in values {
-        if !vocabulary.contains(value) {
-            return Err(invalid_capability_surface(format!(
-                "{label} contains unknown ID `{value}`"
-            )));
-        }
-        if let Some(previous) = previous
-            && previous >= *value
-        {
-            let reason = if previous == *value {
-                "duplicate"
-            } else {
-                "not sorted"
-            };
-            return Err(invalid_capability_surface(format!(
-                "{label} must be sorted and unique; `{value}` is {reason}"
-            )));
-        }
-        previous = Some(*value);
-    }
-    Ok(())
-}
-
 /// Current capabilities and policies exposed by one concrete transport artifact.
 ///
 /// This catalog intentionally excludes the global capability vocabulary and the bodies of detailed
@@ -459,6 +86,12 @@ pub struct RuntimeCatalog {
     pub payload_schemas: Vec<RuntimePayloadSchema>,
     /// Detailed metadata catalog IDs available through the transport's metadata dispatcher.
     pub metadata_ids: Vec<&'static str>,
+    /// Canonical top-level option fields and objects accepted by this artifact.
+    pub option_group_ids: Vec<&'static str>,
+    /// Immutable host services accepted while constructing a reusable engine.
+    pub constructor_service_ids: Vec<&'static str>,
+    /// Structured contracts for the immutable constructor services exposed by this artifact.
+    pub constructor_service_contracts: Vec<RuntimeConstructorServiceContract>,
     pub capabilities: RuntimeCapabilities,
     pub output_contracts: Vec<RuntimeOutputContract>,
     pub registry: RuntimeRegistryContract,
@@ -471,6 +104,26 @@ pub struct RuntimeCatalog {
 pub struct RuntimePayloadSchema {
     pub id: &'static str,
     pub version: u32,
+}
+
+/// Runtime contract for one immutable service accepted during reusable-engine construction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct RuntimeConstructorServiceContract {
+    pub id: &'static str,
+    pub provided_text_measurement_provider_ids: Vec<&'static str>,
+    pub resource_limits: Vec<RuntimeConstructorResourceLimit>,
+}
+
+/// One compiled, caller-immutable resource ceiling owned by a constructor service.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct RuntimeConstructorResourceLimit {
+    pub id: &'static str,
+    pub phase: &'static str,
+    pub unit: &'static str,
+    pub description: &'static str,
+    pub value: u64,
 }
 
 /// Runtime behavior of one output exposed by the concrete artifact.
@@ -554,6 +207,7 @@ pub struct RuntimeResourceProfile {
 pub use merman::DiagramFamilyCapability as BindingDiagramFamilyCapability;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct BindingAsciiCapability {
     pub diagram_type: &'static str,
     pub display_name: &'static str,
@@ -565,6 +219,7 @@ pub struct BindingAsciiCapability {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct BindingAsciiCapabilityEvidence {
     pub kind: &'static str,
     pub source: &'static str,
@@ -572,6 +227,7 @@ pub struct BindingAsciiCapabilityEvidence {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct RuleCatalogEntry {
     pub id: &'static str,
     pub description: &'static str,
@@ -623,147 +279,227 @@ struct BindingPresentationApplicability {
     family_id: Option<&'static str>,
 }
 
-/// Reports the exact capability surface compiled into the shared binding facade.
-///
-/// This is the Rust owner's complete compiled fact set, including adapters selectable only through
-/// a custom [`merman::runtime::RuntimePolicy`]. Foreign transports must use
-/// [`binding_transport_capability_surface`] or construct their own checked
-/// [`ArtifactCapabilitySurface`] when they expose a smaller callable endpoint set.
-pub fn compiled_runtime_capability_surface() -> ArtifactCapabilitySurface {
-    let mut capability_ids = Vec::new();
-    let mut system_adapter_ids = merman::runtime::compiled_system_adapter_ids().to_vec();
+impl ValidatedArtifactContract {
+    /// Produces the exact open-string capability DTO advertised by this transport.
+    #[must_use]
+    pub fn runtime_capabilities(&self) -> RuntimeCapabilities {
+        let provider_ids = stable_ids(
+            self.text_measurement_provider_keys(),
+            crate::TextMeasurementProviderKey::id,
+        );
+        #[cfg(feature = "svg")]
+        let text_measurement = (!provider_ids.is_empty()).then_some(TextMeasurementCapabilities {
+            protocol_version: merman::svg::TEXT_MEASUREMENT_PROTOCOL_VERSION,
+            provider_ids,
+        });
+        #[cfg(not(feature = "svg"))]
+        let text_measurement = {
+            debug_assert!(provider_ids.is_empty());
+            None
+        };
 
-    #[cfg(feature = "svg")]
-    {
-        capability_ids.push("svg");
-        if compiled_layout_cytoscape_available() {
-            capability_ids.push("layout-cytoscape");
-        }
-        if compiled_layout_elk_available() {
-            capability_ids.push("layout-elk");
+        RuntimeCapabilities {
+            capability_ids: stable_ids(self.capability_keys(), crate::CapabilityKey::id),
+            output_ids: stable_ids(self.output_keys(), crate::OutputKey::id),
+            operation_ids: stable_ids(self.operation_keys(), crate::OperationKey::id),
+            system_adapter_ids: stable_ids(self.system_adapter_keys(), crate::CapabilityKey::id),
+            text_measurement,
         }
     }
-    #[cfg(feature = "analysis")]
-    capability_ids.push("analysis");
-    #[cfg(feature = "ascii")]
-    capability_ids.push("ascii");
-    #[cfg(feature = "png")]
-    capability_ids.push("png");
-    #[cfg(feature = "jpeg")]
-    capability_ids.push("jpeg");
-    #[cfg(feature = "pdf")]
-    capability_ids.push("pdf");
-    #[cfg(feature = "svg")]
-    if compiled_math_available() {
-        capability_ids.push("math");
+
+    /// Builds one atomic runtime catalog from the same selection used for admission and dispatch.
+    #[must_use]
+    pub fn runtime_catalog(&self, transport_api_version: u32) -> RuntimeCatalog {
+        let capabilities = self.runtime_capabilities();
+        let constructor_service_contracts = runtime_constructor_service_contracts_for(self);
+        let payload_schemas = self
+            .payload_schema_keys()
+            .map(|schema| RuntimePayloadSchema {
+                id: schema.id(),
+                version: schema.version(),
+            })
+            .collect::<Vec<_>>();
+
+        let catalog = RuntimeCatalog {
+            schema_version: RUNTIME_CATALOG_SCHEMA_VERSION,
+            transport_api_version,
+            package_version: env!("CARGO_PKG_VERSION"),
+            options_schema_versions: vec![crate::BINDING_OPTIONS_SCHEMA_VERSION],
+            payload_schemas,
+            metadata_ids: stable_ids(self.metadata_keys(), MetadataKey::id),
+            option_group_ids: stable_ids(
+                self.option_group_keys(),
+                crate::BindingOptionGroupKey::id,
+            ),
+            constructor_service_ids: stable_ids(
+                self.constructor_service_keys(),
+                crate::ConstructorServiceKey::id,
+            ),
+            constructor_service_contracts,
+            output_contracts: runtime_output_contracts_for(&capabilities),
+            registry: RuntimeRegistryContract {
+                diagram_family_count: diagram_family_capabilities().len(),
+            },
+            resources: runtime_resource_contract_for(self, &capabilities),
+            capabilities,
+        };
+        assert_runtime_catalog_json_safe_integers(&catalog);
+        catalog
     }
-    capability_ids.extend(system_adapter_ids.iter().copied());
-    capability_ids.sort_unstable();
-    system_adapter_ids.sort_unstable();
 
-    let mut operation_ids = compiled_operation_kind_ids();
-    operation_ids.sort_unstable();
+    pub fn runtime_catalog_json(
+        &self,
+        transport_api_version: u32,
+    ) -> Result<Vec<u8>, BindingError> {
+        serde_json::to_vec(&self.runtime_catalog(transport_api_version))
+            .map_err(internal_json_error)
+    }
 
-    let mut output_ids = operation_ids
-        .iter()
-        .copied()
-        .filter(|id| capability_descriptor::OUTPUT_IDS.contains(id))
-        .collect::<Vec<_>>();
-    output_ids.sort_unstable();
+    /// Dispatches only metadata advertised by this exact transport contract.
+    pub fn metadata_json(&self, id: &str) -> Result<Vec<u8>, BindingError> {
+        let key = MetadataKey::from_id(id).ok_or_else(|| {
+            BindingError::invalid_argument(format!("unknown binding metadata catalog `{id}`"))
+        })?;
+        if !self.exposes_metadata(key) {
+            return Err(BindingError::unsupported_operation(format!(
+                "binding metadata catalog `{id}` is not exposed by target `{}`",
+                self.target().id()
+            )));
+        }
+        collect_metadata(self, key)
+    }
+}
 
-    #[cfg(feature = "svg")]
-    let text_measurement = Some(
-        TextMeasurementCapabilities::new(vec![
-            TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
-            TEXT_MEASUREMENT_PROVIDER_VENDORED,
-        ])
-        .expect("the built-in binding surface has a valid text-measurement contract"),
+fn assert_runtime_catalog_json_safe_integers(catalog: &RuntimeCatalog) {
+    let maximum = u128::from(crate::RUNTIME_CATALOG_MAX_SAFE_INTEGER);
+    let assert_safe = |value: u128, field: &str| {
+        assert!(
+            value <= maximum,
+            "runtime catalog field `{field}` exceeds the JSON-safe integer maximum"
+        );
+    };
+
+    assert_safe(u128::from(catalog.schema_version), "schema_version");
+    assert_safe(
+        u128::from(catalog.transport_api_version),
+        "transport_api_version",
     );
-    #[cfg(not(feature = "svg"))]
-    let text_measurement = None;
-
-    ArtifactCapabilitySurface::new_with_operation_ids(
-        capability_ids,
-        output_ids,
-        operation_ids,
-        system_adapter_ids,
-        text_measurement,
-    )
-    .expect("the compiled binding surface uses descriptor-owned capability IDs")
+    for version in &catalog.options_schema_versions {
+        assert_safe(u128::from(*version), "options_schema_versions");
+    }
+    for schema in &catalog.payload_schemas {
+        assert_safe(u128::from(schema.version), "payload_schemas.version");
+    }
+    if let Some(text_measurement) = &catalog.capabilities.text_measurement {
+        assert_safe(
+            u128::from(text_measurement.protocol_version),
+            "capabilities.text_measurement.protocol_version",
+        );
+    }
+    for service in &catalog.constructor_service_contracts {
+        for limit in &service.resource_limits {
+            assert_safe(
+                u128::from(limit.value),
+                "constructor_service_contracts.resource_limits.value",
+            );
+        }
+    }
+    for output in &catalog.output_contracts {
+        if let Some(images) = &output.embedded_images {
+            for limit in [
+                images.limits.max_bytes_per_image,
+                images.limits.max_total_bytes,
+                images.limits.max_pixels_per_image,
+                images.limits.max_total_pixels,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                assert_safe(u128::from(limit), "output_contracts.embedded_images.limits");
+            }
+        }
+    }
+    assert_safe(
+        catalog.registry.diagram_family_count as u128,
+        "registry.diagram_family_count",
+    );
+    for limit in &catalog.resources.limits {
+        assert_safe(
+            limit.minimum_value as u128,
+            "resources.limits.minimum_value",
+        );
+    }
+    for profile in &catalog.resources.profiles {
+        for value in profile.limits.values().flatten() {
+            assert_safe(*value as u128, "resources.profiles.limits");
+        }
+    }
 }
 
-/// Reports the exact capability surface selectable through the shared binding JSON policy.
+fn stable_ids<T>(
+    values: impl IntoIterator<Item = T>,
+    id: impl Fn(T) -> &'static str,
+) -> Vec<&'static str> {
+    // Every typed vocabulary is declared in stable-ID order, and artifact selections retain that
+    // order. Keeping the descriptor order avoids pulling generic sorting machinery into minimal
+    // native artifacts while preserving deterministic catalogs.
+    values.into_iter().map(id).collect()
+}
+
+fn runtime_constructor_service_contracts_for(
+    artifact_contract: &ValidatedArtifactContract,
+) -> Vec<RuntimeConstructorServiceContract> {
+    artifact_contract
+        .constructor_service_keys()
+        .map(|service| RuntimeConstructorServiceContract {
+            id: service.id(),
+            provided_text_measurement_provider_ids: stable_ids(
+                crate::TextMeasurementProviderKey::ALL
+                    .iter()
+                    .copied()
+                    .filter(|provider| {
+                        matches!(
+                            provider.source(),
+                            crate::TextMeasurementProviderSource::ConstructorService(owner)
+                                if owner == service
+                        )
+                    }),
+                crate::TextMeasurementProviderKey::id,
+            ),
+            resource_limits: runtime_constructor_resource_limits(service),
+        })
+        .collect()
+}
+
+/// Returns the descriptor-owned resource ceilings for one constructor service.
 ///
-/// Cargo feature unification can compile additional system adapters for Rust callers that supply
-/// a custom [`merman::runtime::RuntimePolicy`]. Foreign transports using [`crate::BindingEngine`]
-/// JSON options can select only `deterministic` or `native`. The native policy requires clock,
-/// time-zone, and randomness as one atomic set, while timing instrumentation is not selectable
-/// through binding JSON. The transport catalog therefore exposes all three native adapters or none.
-pub fn binding_transport_capability_surface() -> ArtifactCapabilitySurface {
-    compiled_runtime_capability_surface()
-        .project_to_binding_runtime_policy()
-        .expect("the binding runtime policy uses descriptor-owned system adapter IDs")
-}
-
+/// Runtime catalogs and generated SDK projections share this function so service ownership and
+/// resource values cannot drift between the producer and its host-language contracts.
 #[must_use]
-pub fn compiled_runtime_capabilities() -> RuntimeCapabilities {
-    compiled_runtime_capability_surface().runtime_capabilities()
-}
-
-#[cfg(feature = "svg")]
-const fn compiled_layout_cytoscape_available() -> bool {
-    merman::svg::layout_cytoscape_available()
-}
-
-#[cfg(feature = "svg")]
-const fn compiled_layout_elk_available() -> bool {
-    merman::svg::layout_elk_available()
-}
-
-#[cfg(feature = "svg")]
-const fn compiled_math_available() -> bool {
-    merman::svg::math_available()
-}
-
-#[must_use]
-pub fn runtime_catalog(transport_api_version: u32) -> RuntimeCatalog {
-    runtime_catalog_for(
-        transport_api_version,
-        binding_transport_capability_surface(),
-    )
-}
-
-#[must_use]
-pub fn runtime_catalog_for(
-    transport_api_version: u32,
-    capability_surface: ArtifactCapabilitySurface,
-) -> RuntimeCatalog {
-    let capabilities = capability_surface.runtime_capabilities();
-    let output_contracts = runtime_output_contracts_for(&capabilities);
-    let mut metadata_ids = BINDING_METADATA_IDS.to_vec();
-    metadata_ids.sort_unstable();
-    RuntimeCatalog {
-        schema_version: RUNTIME_CATALOG_SCHEMA_VERSION,
-        transport_api_version,
-        package_version: env!("CARGO_PKG_VERSION"),
-        options_schema_versions: vec![crate::BINDING_OPTIONS_SCHEMA_VERSION],
-        payload_schemas: vec![
-            RuntimePayloadSchema {
-                id: "binding-result",
-                version: crate::BINDING_RESULT_PAYLOAD_VERSION,
-            },
-            RuntimePayloadSchema {
-                id: "operation-metadata",
-                version: crate::BINDING_OPERATION_SCHEMA_VERSION,
-            },
-        ],
-        metadata_ids,
-        output_contracts,
-        registry: RuntimeRegistryContract {
-            diagram_family_count: diagram_family_capabilities().len(),
-        },
-        resources: runtime_resource_contract_for(&capabilities),
-        capabilities,
+pub fn runtime_constructor_resource_limits(
+    service: crate::ConstructorServiceKey,
+) -> Vec<RuntimeConstructorResourceLimit> {
+    match service.spec().resource_catalog() {
+        None => Vec::new(),
+        Some(crate::service_contract::ConstructorServiceResourceCatalog::IconRegistry) => {
+            #[cfg(feature = "svg")]
+            {
+                let mut limits = merman::svg::icon_registry_resource_limit_descriptors()
+                    .iter()
+                    .map(|descriptor| RuntimeConstructorResourceLimit {
+                        id: descriptor.stable_id,
+                        phase: descriptor.phase,
+                        unit: descriptor.unit,
+                        description: descriptor.description,
+                        value: descriptor.hard_maximum,
+                    })
+                    .collect::<Vec<_>>();
+                limits.sort_unstable_by_key(|limit| limit.id);
+                limits
+            }
+            #[cfg(not(feature = "svg"))]
+            unreachable!("validated no-SVG artifacts cannot expose the icon registry service")
+        }
     }
 }
 
@@ -824,40 +560,15 @@ fn runtime_output_contract(
     }
 }
 
-pub fn runtime_catalog_json(transport_api_version: u32) -> Result<Vec<u8>, BindingError> {
-    runtime_catalog_json_for(
-        transport_api_version,
-        binding_transport_capability_surface(),
-    )
-}
-
-pub fn runtime_catalog_json_for(
-    transport_api_version: u32,
-    capability_surface: ArtifactCapabilitySurface,
-) -> Result<Vec<u8>, BindingError> {
-    serde_json::to_vec(&runtime_catalog_for(
-        transport_api_version,
-        capability_surface,
-    ))
-    .map_err(internal_json_error)
-}
-
-fn runtime_resource_contract_for(capabilities: &RuntimeCapabilities) -> RuntimeResourceContract {
+fn runtime_resource_contract_for(
+    artifact_contract: &ValidatedArtifactContract,
+    capabilities: &RuntimeCapabilities,
+) -> RuntimeResourceContract {
     let contract = crate::binding_resource_contract();
     let limits = contract
         .limits
         .into_iter()
-        .filter(|descriptor| {
-            match crate::resource_contract::resource_limit_owner(descriptor.stable_id) {
-                crate::resource_contract::BindingResourceOwner::Artifact => true,
-                crate::resource_contract::BindingResourceOwner::Capability(capability) => {
-                    capabilities.has_capability(capability)
-                }
-                crate::resource_contract::BindingResourceOwner::Outputs(outputs) => {
-                    outputs.iter().any(|output| capabilities.has_output(output))
-                }
-            }
-        })
+        .filter(|descriptor| artifact_contract.exposes_resource_limit(descriptor))
         .collect::<Vec<_>>();
     RuntimeResourceContract {
         general_binding_default_profile: contract.general_binding_default_profile,
@@ -904,34 +615,14 @@ pub fn diagram_family_capabilities() -> Vec<BindingDiagramFamilyCapability> {
     merman::diagram_family_capabilities().to_vec()
 }
 
-pub fn runtime_capabilities_json() -> Result<Vec<u8>, BindingError> {
-    if let Some(bytes) = RUNTIME_CAPABILITIES_JSON.get() {
-        return Ok(bytes.clone());
-    }
-
-    let bytes = runtime_capabilities_json_for(&compiled_runtime_capabilities())?;
-    let _ = RUNTIME_CAPABILITIES_JSON.set(bytes.clone());
-    Ok(bytes)
-}
-
-pub fn runtime_capabilities_json_for(
-    capabilities: &RuntimeCapabilities,
-) -> Result<Vec<u8>, BindingError> {
-    serde_json::to_vec(capabilities).map_err(internal_json_error)
-}
-
 pub fn supported_themes() -> &'static [&'static str] {
     merman::supported_themes()
 }
 
 fn presentation_catalog_for(
-    capability_surface: &ArtifactCapabilitySurface,
+    artifact_contract: &ValidatedArtifactContract,
 ) -> BindingPresentationCatalog {
-    if capability_surface
-        .capability_ids
-        .binary_search(&"svg")
-        .is_err()
-    {
+    if !artifact_contract.exposes_capability(crate::CapabilityKey::Svg) {
         return BindingPresentationCatalog {
             schema_version: PRESENTATION_CATALOG_SCHEMA_VERSION,
             theme_presets: Vec::new(),
@@ -960,10 +651,9 @@ fn presentation_catalog_for(
                         let applicability = aspect.applicability();
                         let required_capability_id = aspect.required_capability_id();
                         let available = required_capability_id.is_none_or(|capability_id| {
-                            capability_surface
-                                .capability_ids
-                                .binary_search(&capability_id)
-                                .is_ok()
+                            artifact_contract
+                                .capability_keys()
+                                .any(|capability| capability.id() == capability_id)
                         });
                         BindingPresentationAspect {
                             id: aspect.id(),
@@ -1078,15 +768,10 @@ pub fn supported_themes_json() -> Result<Vec<u8>, BindingError> {
     cached_json(&SUPPORTED_THEMES_JSON, supported_themes)
 }
 
-pub fn presentation_catalog_json() -> Result<Vec<u8>, BindingError> {
-    let capability_surface = binding_transport_capability_surface();
-    presentation_catalog_json_for(&capability_surface)
-}
-
-pub fn presentation_catalog_json_for(
-    capability_surface: &ArtifactCapabilitySurface,
+fn presentation_catalog_json_for(
+    artifact_contract: &ValidatedArtifactContract,
 ) -> Result<Vec<u8>, BindingError> {
-    serde_json::to_vec(&presentation_catalog_for(capability_surface)).map_err(internal_json_error)
+    serde_json::to_vec(&presentation_catalog_for(artifact_contract)).map_err(internal_json_error)
 }
 
 pub fn lint_rule_catalog() -> Result<Vec<RuleCatalogEntry>, BindingError> {
@@ -1177,28 +862,17 @@ pub fn diagram_family_capabilities_json() -> Result<Vec<u8>, BindingError> {
     Ok(bytes)
 }
 
-/// Returns one transport-neutral binding metadata catalog by its stable identifier.
-pub fn binding_metadata_json(id: &str) -> Result<Vec<u8>, BindingError> {
-    let capability_surface = binding_transport_capability_surface();
-    binding_metadata_json_for(id, &capability_surface)
-}
-
-/// Returns one transport-neutral binding metadata catalog projected to an artifact surface.
-pub fn binding_metadata_json_for(
-    id: &str,
-    capability_surface: &ArtifactCapabilitySurface,
+fn collect_metadata(
+    artifact_contract: &ValidatedArtifactContract,
+    key: MetadataKey,
 ) -> Result<Vec<u8>, BindingError> {
-    match id {
-        "supported-diagrams" => supported_diagrams_json(),
-        "ascii-capabilities" => ascii_capabilities_json(),
-        "diagram-family-capabilities" => diagram_family_capabilities_json(),
-        "lint-rule-catalog" => lint_rule_catalog_json(),
-        "supported-themes" => supported_themes_json(),
-        "presentation-catalog" => presentation_catalog_json_for(capability_surface),
-        _ => Err(BindingError::new(
-            crate::BindingStatus::InvalidArgument,
-            format!("unknown binding metadata catalog `{id}`"),
-        )),
+    match key.spec().handler() {
+        MetadataHandlerKey::AsciiCapabilities => ascii_capabilities_json(),
+        MetadataHandlerKey::DiagramFamilyCapabilities => diagram_family_capabilities_json(),
+        MetadataHandlerKey::LintRuleCatalog => lint_rule_catalog_json(),
+        MetadataHandlerKey::PresentationCatalog => presentation_catalog_json_for(artifact_contract),
+        MetadataHandlerKey::SupportedDiagrams => supported_diagrams_json(),
+        MetadataHandlerKey::SupportedThemes => supported_themes_json(),
     }
 }
 
@@ -1234,8 +908,28 @@ fn rule_catalog_entry(rule: merman_analysis::RuleCatalogEntry) -> RuleCatalogEnt
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::BindingStatus;
+    use crate::{ArtifactContractSpec, BindingStatus, OperationKey, TargetKey};
     use serde_json::Value;
+
+    fn full_native_contract() -> ValidatedArtifactContract {
+        crate::artifact_contract::DEFAULT_ARTIFACT_SNAPSHOT
+    }
+
+    fn semantic_contract() -> ValidatedArtifactContract {
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::SemanticJson])
+            .materialize()
+    }
+
+    fn expected_native_system_adapter_ids() -> Vec<&'static str> {
+        let mut ids = if cfg!(feature = "native-runtime") {
+            vec!["system-clock", "system-random", "system-timezone"]
+        } else {
+            Vec::new()
+        };
+        ids.sort_unstable();
+        ids
+    }
 
     #[test]
     fn supported_themes_exposes_core_theme_surface() {
@@ -1259,7 +953,7 @@ mod tests {
 
     #[test]
     fn runtime_capabilities_follow_callable_feature_surface() {
-        let capabilities = compiled_runtime_capabilities();
+        let capabilities = full_native_contract().runtime_capabilities();
 
         assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
         assert_eq!(
@@ -1270,15 +964,15 @@ mod tests {
             capabilities.has_capability("ascii"),
             cfg!(feature = "ascii")
         );
-        let mut expected_system_adapter_ids =
-            merman::runtime::compiled_system_adapter_ids().to_vec();
-        expected_system_adapter_ids.sort_unstable();
-        assert_eq!(capabilities.system_adapter_ids, expected_system_adapter_ids);
+        assert_eq!(
+            capabilities.system_adapter_ids,
+            expected_native_system_adapter_ids()
+        );
         #[cfg(feature = "svg")]
         let (expected_layout_cytoscape, expected_layout_elk, expected_math) = (
-            compiled_layout_cytoscape_available(),
-            compiled_layout_elk_available(),
-            compiled_math_available(),
+            merman::svg::layout_cytoscape_available(),
+            merman::svg::layout_elk_available(),
+            merman::svg::math_available(),
         );
         #[cfg(not(feature = "svg"))]
         let (expected_layout_cytoscape, expected_layout_elk, expected_math) = (false, false, false);
@@ -1310,7 +1004,12 @@ mod tests {
             capabilities.has_operation("document-analysis-json"),
             cfg!(feature = "analysis")
         );
-        let mut compiled_operation_ids = compiled_operation_kind_ids();
+        let mut compiled_operation_ids = crate::compiled_operation_kind_ids();
+        compiled_operation_ids.retain(|id| {
+            crate::OperationKey::from_id(id).is_some_and(|operation| {
+                operation.spec().targets.contains(&crate::TargetKey::Native)
+            })
+        });
         compiled_operation_ids.sort_unstable();
         assert_eq!(capabilities.operation_ids, compiled_operation_ids);
         assert!(!capabilities.has_capability("semantic"));
@@ -1337,9 +1036,11 @@ mod tests {
     }
 
     #[test]
-    fn runtime_capabilities_json_reports_stable_id_sets() {
-        let capabilities: Value =
-            serde_json::from_slice(&runtime_capabilities_json().unwrap()).unwrap();
+    fn runtime_catalog_json_reports_stable_id_sets() {
+        let contract = full_native_contract();
+        let catalog: Value =
+            serde_json::from_slice(&contract.runtime_catalog_json(2).unwrap()).unwrap();
+        let capabilities = &catalog["capabilities"];
 
         assert!(capabilities.get("render").is_none());
         assert!(capabilities.get("ratex_math").is_none());
@@ -1349,40 +1050,18 @@ mod tests {
         assert!(capabilities["system_adapter_ids"].is_array());
         assert_eq!(
             capabilities,
-            serde_json::to_value(compiled_runtime_capabilities()).unwrap()
+            &serde_json::to_value(contract.runtime_capabilities()).unwrap()
         );
     }
 
     #[test]
-    fn binding_transport_surface_matches_the_atomic_native_policy() {
-        let compiled = compiled_runtime_capabilities();
-        let transport = binding_transport_capability_surface().runtime_capabilities();
-        let native_system_adapter_ids = merman::runtime::RuntimePolicy::NATIVE_SYSTEM_ADAPTER_IDS;
-        let native_policy_available = native_system_adapter_ids
-            .iter()
-            .all(|id| compiled.system_adapter_ids.contains(id));
-        let expected_system_adapter_ids = compiled
-            .system_adapter_ids
-            .iter()
-            .copied()
-            .filter(|id| native_policy_available && native_system_adapter_ids.contains(id))
-            .collect::<Vec<_>>();
-        let expected_capability_ids = compiled
-            .capability_ids
-            .iter()
-            .copied()
-            .filter(|id| {
-                !compiled.system_adapter_ids.contains(id)
-                    || expected_system_adapter_ids.contains(id)
-            })
-            .collect::<Vec<_>>();
+    fn native_contract_exposes_the_exact_transport_owned_runtime_adapters() {
+        let transport = full_native_contract().runtime_capabilities();
+        let compiled_system_adapter_ids = merman::runtime::compiled_system_adapter_ids();
+        let expected_system_adapter_ids = expected_native_system_adapter_ids();
 
-        assert_eq!(transport.capability_ids, expected_capability_ids);
-        assert_eq!(transport.output_ids, compiled.output_ids);
-        assert_eq!(transport.operation_ids, compiled.operation_ids);
-        assert_eq!(transport.text_measurement, compiled.text_measurement);
         assert_eq!(transport.system_adapter_ids, expected_system_adapter_ids);
-        for adapter_id in &compiled.system_adapter_ids {
+        for adapter_id in compiled_system_adapter_ids {
             assert_eq!(
                 transport.has_capability(adapter_id),
                 expected_system_adapter_ids.contains(adapter_id),
@@ -1393,132 +1072,21 @@ mod tests {
         assert!(!transport.system_adapter_ids.contains(&"system-timing"));
     }
 
-    fn system_adapter_surface(system_adapter_ids: Vec<&'static str>) -> ArtifactCapabilitySurface {
-        ArtifactCapabilitySurface::new(system_adapter_ids.clone(), vec![], system_adapter_ids, None)
-            .expect("test system-adapter surface must be valid")
-    }
-
-    #[test]
-    fn binding_transport_surface_exposes_the_complete_native_adapter_set() {
-        let transport =
-            system_adapter_surface(vec!["system-clock", "system-random", "system-timezone"])
-                .project_to_binding_runtime_policy()
-                .expect("the complete native adapter set must project")
-                .runtime_capabilities();
-
-        assert_eq!(
-            transport.system_adapter_ids,
-            ["system-clock", "system-random", "system-timezone"]
-        );
-        assert_eq!(
-            transport.capability_ids,
-            ["system-clock", "system-random", "system-timezone"]
-        );
-    }
-
-    #[test]
-    fn binding_transport_surface_hides_every_partial_native_adapter_set() {
-        for partial_adapter_ids in [
-            vec!["system-clock", "system-random"],
-            vec!["system-clock", "system-timezone"],
-            vec!["system-random", "system-timezone"],
-        ] {
-            let transport = system_adapter_surface(partial_adapter_ids)
-                .project_to_binding_runtime_policy()
-                .expect("a partial native adapter set must project to no selectable policy")
-                .runtime_capabilities();
-
-            assert!(transport.system_adapter_ids.is_empty());
-            assert!(transport.capability_ids.is_empty());
-        }
-    }
-
-    #[test]
-    fn binding_transport_surface_hides_externally_unified_timing() {
-        let transport = system_adapter_surface(vec![
-            "system-clock",
-            "system-random",
-            "system-timezone",
-            "system-timing",
-        ])
-        .project_to_binding_runtime_policy()
-        .expect("externally unified timing must not invalidate transport projection")
-        .runtime_capabilities();
-
-        assert_eq!(
-            transport.system_adapter_ids,
-            ["system-clock", "system-random", "system-timezone"]
-        );
-        assert_eq!(
-            transport.capability_ids,
-            ["system-clock", "system-random", "system-timezone"]
-        );
-        assert!(!transport.has_capability("system-timing"));
-    }
-
-    #[test]
-    fn capability_surface_rejects_unknown_duplicate_and_incoherent_ids() {
-        let unknown =
-            ArtifactCapabilitySurface::new(vec!["not-a-capability"], vec![], vec![], None)
-                .expect_err("unknown capability must fail closed");
-        assert_eq!(unknown.status(), BindingStatus::InvalidArgument);
-
-        let duplicate =
-            ArtifactCapabilitySurface::new(vec!["analysis", "analysis"], vec![], vec![], None)
-                .expect_err("duplicate capability must fail closed");
-        assert_eq!(duplicate.status(), BindingStatus::InvalidArgument);
-
-        let output_without_capability =
-            ArtifactCapabilitySurface::new(vec![], vec!["svg"], vec![], None)
-                .expect_err("output without capability must fail closed");
-        assert_eq!(
-            output_without_capability.status(),
-            BindingStatus::InvalidArgument
-        );
-
-        let engine_without_svg =
-            ArtifactCapabilitySurface::new(vec!["layout-elk"], vec![], vec![], None)
-                .expect_err("engine implication without SVG must fail closed");
-        assert_eq!(engine_without_svg.status(), BindingStatus::InvalidArgument);
-
-        let non_adapter =
-            ArtifactCapabilitySurface::new(vec!["analysis"], vec![], vec!["analysis"], None)
-                .expect_err("non-adapter system ID must fail closed");
-        assert_eq!(non_adapter.status(), BindingStatus::InvalidArgument);
-
-        let duplicate_operation = ArtifactCapabilitySurface::new_with_operation_ids(
-            vec![],
-            vec![],
-            vec!["semantic-json", "semantic-json"],
-            vec![],
-            None,
-        )
-        .expect_err("duplicate operation must fail closed");
-        assert_eq!(duplicate_operation.status(), BindingStatus::InvalidArgument);
-
-        let operation_without_capability = ArtifactCapabilitySurface::new_with_operation_ids(
-            vec![],
-            vec![],
-            vec!["validation-json"],
-            vec![],
-            None,
-        )
-        .expect_err("capability-gated operation must fail closed");
-        assert_eq!(
-            operation_without_capability.status(),
-            BindingStatus::InvalidArgument
-        );
-    }
-
     #[test]
     fn runtime_catalog_is_versioned_and_projects_the_resource_descriptor() {
-        let catalog = runtime_catalog(2);
+        let contract = full_native_contract();
+        let catalog = contract.runtime_catalog(2);
         assert_eq!(catalog.schema_version, RUNTIME_CATALOG_SCHEMA_VERSION);
         assert_eq!(catalog.transport_api_version, 2);
         assert_eq!(catalog.package_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(catalog.capabilities, contract.runtime_capabilities());
         assert_eq!(
-            catalog.capabilities,
-            binding_transport_capability_surface().runtime_capabilities()
+            catalog.constructor_service_ids,
+            catalog
+                .constructor_service_contracts
+                .iter()
+                .map(|service| service.id)
+                .collect::<Vec<_>>()
         );
         assert_eq!(
             catalog
@@ -1601,8 +1169,10 @@ mod tests {
                 },
             ]
         );
-        let mut expected_metadata_ids = BINDING_METADATA_IDS.to_vec();
-        expected_metadata_ids.sort_unstable();
+        let expected_metadata_ids = contract
+            .metadata_keys()
+            .map(MetadataKey::id)
+            .collect::<Vec<_>>();
         assert_eq!(catalog.metadata_ids, expected_metadata_ids);
         assert_eq!(
             resources.limits.iter().any(|limit| limit.hard_cap),
@@ -1655,7 +1225,8 @@ mod tests {
         assert!(layout.is_none());
         #[cfg(feature = "svg")]
         assert_eq!(interactive.limits["max_layout_work_units"], Some(250_000));
-        let json: Value = serde_json::from_slice(&runtime_catalog_json(2).unwrap()).unwrap();
+        let json: Value =
+            serde_json::from_slice(&contract.runtime_catalog_json(2).unwrap()).unwrap();
         assert_eq!(json["schema_version"], RUNTIME_CATALOG_SCHEMA_VERSION);
         assert_eq!(json["transport_api_version"], 2);
         assert!(json.get("abi_version").is_none());
@@ -1685,6 +1256,99 @@ mod tests {
         assert_eq!(json, serde_json::to_value(catalog).unwrap());
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_catalog_projects_fixed_icon_registry_resources_without_cli_acquisition_ids() {
+        const CLI_ICON_ACQUISITION_AND_NETWORK_RESOURCE_IDS: &[&str] = &[
+            "connect_timeout_seconds",
+            "max_aggregate_icon_bytes",
+            "max_icon_packs",
+            "max_local_icon_body_bytes",
+            "max_redirects",
+            "max_remote_icon_body_bytes",
+            "per_hop_timeout_seconds",
+            "workflow_timeout_seconds",
+        ];
+
+        let catalog = full_native_contract().runtime_catalog(2);
+        assert!(
+            catalog
+                .constructor_service_contracts
+                .windows(2)
+                .all(|services| services[0].id < services[1].id)
+        );
+
+        let host_text_measurement = catalog
+            .constructor_service_contracts
+            .iter()
+            .find(|service| service.id == "host-text-measurement")
+            .expect("host text measurement constructor service");
+        assert_eq!(
+            host_text_measurement.provided_text_measurement_provider_ids,
+            ["host-callback"]
+        );
+        assert!(host_text_measurement.resource_limits.is_empty());
+
+        let icon_registry = catalog
+            .constructor_service_contracts
+            .iter()
+            .find(|service| service.id == "icon-registry")
+            .expect("icon registry constructor service");
+        assert!(
+            icon_registry
+                .provided_text_measurement_provider_ids
+                .is_empty()
+        );
+        let descriptors = merman::svg::icon_registry_resource_limit_descriptors();
+        assert!(!icon_registry.resource_limits.is_empty());
+        assert_eq!(icon_registry.resource_limits.len(), descriptors.len());
+        assert!(
+            icon_registry
+                .resource_limits
+                .windows(2)
+                .all(|resources| resources[0].id < resources[1].id)
+        );
+        for resource in &icon_registry.resource_limits {
+            let descriptor = descriptors
+                .iter()
+                .find(|descriptor| descriptor.stable_id == resource.id)
+                .expect("resource descriptor");
+            assert_eq!(resource.id, descriptor.stable_id);
+            assert_eq!(resource.phase, descriptor.phase);
+            assert_eq!(resource.unit, descriptor.unit);
+            assert_eq!(resource.description, descriptor.description);
+            assert_eq!(resource.value, descriptor.hard_maximum);
+        }
+        assert!(icon_registry.resource_limits.iter().all(|resource| {
+            !CLI_ICON_ACQUISITION_AND_NETWORK_RESOURCE_IDS.contains(&resource.id)
+        }));
+
+        let json = serde_json::to_value(&catalog).expect("runtime catalog serializes");
+        let service_contracts = json["constructor_service_contracts"]
+            .as_array()
+            .expect("constructor service contracts array");
+        for service in service_contracts {
+            assert!(service.get("required_provider_ids").is_none());
+            assert!(service.get("requires_svg_pipeline").is_none());
+            assert!(service.get("fixed_resources").is_none());
+            assert!(service.get("caller_configurable").is_none());
+        }
+    }
+
+    #[test]
+    fn catalog_without_svg_exposure_omits_icon_registry_service_contract() {
+        let catalog = semantic_contract().runtime_catalog(2);
+
+        assert!(!catalog.capabilities.has_capability("svg"));
+        assert!(!catalog.constructor_service_ids.contains(&"icon-registry"));
+        assert!(
+            catalog
+                .constructor_service_contracts
+                .iter()
+                .all(|service| service.id != "icon-registry")
+        );
+    }
+
     #[test]
     fn every_descriptor_output_has_an_explicit_runtime_contract_owner() {
         for output in capability_descriptor::OUTPUTS {
@@ -1710,7 +1374,10 @@ mod tests {
         for descriptor in capability_descriptor::BINDING_OPERATIONS {
             let operation = crate::BindingOperationKind::from_id(descriptor.id)
                 .expect("descriptor operation must be present in the ABI projection");
-            assert_eq!(operation.required_capability_id(), descriptor.capability_id);
+            assert_eq!(
+                operation.availability_capability_id(),
+                descriptor.capability.map(crate::CapabilityKey::id)
+            );
             assert_eq!(operation.media_type(), descriptor.media_type);
             assert_eq!(operation.requires_uri(), descriptor.requires_uri);
         }
@@ -1719,7 +1386,7 @@ mod tests {
             .iter()
             .find(|operation| operation.id == "semantic-json")
             .expect("semantic operation must remain discoverable");
-        assert_eq!(semantic.capability_id, None);
+        assert_eq!(semantic.capability, None);
         assert!(
             capability_descriptor::BINDING_OPERATIONS
                 .iter()
@@ -1735,10 +1402,20 @@ mod tests {
     #[cfg(all(feature = "svg", feature = "analysis"))]
     #[test]
     fn transport_owned_projection_hides_svg_resources_but_keeps_semantic_limits() {
-        let surface = ArtifactCapabilitySurface::new(vec!["analysis"], vec![], vec![], None)
-            .expect("analysis-only artifact surface");
-        let capabilities = surface.runtime_capabilities();
-        let catalog = runtime_catalog_for(2, surface);
+        const ANALYSIS_OPERATIONS: &[OperationKey] = &[
+            OperationKey::AnalysisFactsJson,
+            OperationKey::AnalysisJson,
+            OperationKey::DocumentAnalysisFactsJson,
+            OperationKey::DocumentAnalysisJson,
+            OperationKey::SemanticJson,
+            OperationKey::ValidationJson,
+        ];
+        let contract =
+            ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+                .with_operations(ANALYSIS_OPERATIONS)
+                .materialize();
+        let capabilities = contract.runtime_capabilities();
+        let catalog = contract.runtime_catalog(2);
 
         assert_eq!(catalog.capabilities, capabilities);
         let resources = catalog.resources;
@@ -1841,11 +1518,9 @@ mod tests {
 
     #[test]
     fn presentation_catalog_projects_the_artifact_surface() {
-        let analysis_surface =
-            ArtifactCapabilitySurface::new(vec!["analysis"], vec![], vec![], None)
-                .expect("analysis-only artifact surface");
+        let empty_contract = semantic_contract();
         let empty: Value =
-            serde_json::from_slice(&presentation_catalog_json_for(&analysis_surface).unwrap())
+            serde_json::from_slice(&presentation_catalog_json_for(&empty_contract).unwrap())
                 .unwrap();
         assert_eq!(
             empty,
@@ -1858,16 +1533,10 @@ mod tests {
 
         #[cfg(feature = "svg")]
         {
-            let no_elk = ArtifactCapabilitySurface::new(
-                vec!["svg"],
-                vec!["svg"],
-                vec![],
-                Some(
-                    TextMeasurementCapabilities::new(vec![TEXT_MEASUREMENT_PROVIDER_VENDORED])
-                        .expect("vendored SVG measurement surface"),
-                ),
-            )
-            .expect("SVG surface without ELK");
+            let no_elk =
+                ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+                    .with_operations(&[OperationKey::Svg])
+                    .materialize();
             let no_elk: Value =
                 serde_json::from_slice(&presentation_catalog_json_for(&no_elk).unwrap()).unwrap();
             assert_eq!(
@@ -1942,24 +1611,26 @@ mod tests {
                 ])
             );
 
-            let full = ArtifactCapabilitySurface::new(
-                vec!["layout-elk", "svg"],
-                vec!["svg"],
-                vec![],
-                Some(
-                    TextMeasurementCapabilities::new(vec![TEXT_MEASUREMENT_PROVIDER_VENDORED])
-                        .expect("vendored SVG measurement surface"),
-                ),
-            )
-            .expect("SVG surface with ELK");
-            let full: Value =
-                serde_json::from_slice(&presentation_catalog_json_for(&full).unwrap()).unwrap();
-            assert_eq!(full["profiles"][0]["fully_available"], true);
-            assert_eq!(
-                full["profiles"][0]["missing_capability_ids"],
-                serde_json::json!([])
-            );
-            assert_eq!(full["profiles"][0]["aspects"][2]["available"], true);
+            let empty_again: Value =
+                serde_json::from_slice(&presentation_catalog_json_for(&empty_contract).unwrap())
+                    .unwrap();
+            assert_eq!(empty_again, empty);
+
+            if merman::svg::layout_elk_available() {
+                let full =
+                    ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+                        .with_operations(&[OperationKey::Svg])
+                        .with_supplemental_capabilities(&[crate::CapabilityKey::LayoutElk])
+                        .materialize();
+                let full: Value =
+                    serde_json::from_slice(&presentation_catalog_json_for(&full).unwrap()).unwrap();
+                assert_eq!(full["profiles"][0]["fully_available"], true);
+                assert_eq!(
+                    full["profiles"][0]["missing_capability_ids"],
+                    serde_json::json!([])
+                );
+                assert_eq!(full["profiles"][0]["aspects"][2]["available"], true);
+            }
         }
     }
 
@@ -2065,8 +1736,10 @@ mod tests {
         let ascii_capabilities: Value =
             serde_json::from_slice(&ascii_capabilities_json().unwrap()).unwrap();
         let themes: Value = serde_json::from_slice(&supported_themes_json().unwrap()).unwrap();
-        let presentation_catalog: Value =
-            serde_json::from_slice(&presentation_catalog_json().unwrap()).unwrap();
+        let presentation_catalog: Value = serde_json::from_slice(
+            &presentation_catalog_json_for(&full_native_contract()).unwrap(),
+        )
+        .unwrap();
         let family_capabilities: Value =
             serde_json::from_slice(&diagram_family_capabilities_json().unwrap()).unwrap();
         assert!(
@@ -2173,23 +1846,19 @@ mod tests {
     }
 
     #[test]
-    fn binding_metadata_json_dispatches_the_six_public_catalogs() {
-        type MetadataProvider = fn() -> Result<Vec<u8>, BindingError>;
-        let cases: [(&str, MetadataProvider); 6] = [
-            ("supported-diagrams", supported_diagrams_json),
-            ("ascii-capabilities", ascii_capabilities_json),
-            (
-                "diagram-family-capabilities",
-                diagram_family_capabilities_json,
-            ),
-            ("lint-rule-catalog", lint_rule_catalog_json),
-            ("supported-themes", supported_themes_json),
-            ("presentation-catalog", presentation_catalog_json),
-        ];
-        assert_eq!(cases.map(|(id, _)| id), BINDING_METADATA_IDS);
-
-        for (id, expected) in cases {
-            match (binding_metadata_json(id), expected()) {
+    fn artifact_metadata_dispatches_every_advertised_catalog() {
+        let contract = full_native_contract();
+        for key in contract.metadata_keys() {
+            let id = key.id();
+            let expected = match key {
+                MetadataKey::AsciiCapabilities => ascii_capabilities_json(),
+                MetadataKey::DiagramFamilyCapabilities => diagram_family_capabilities_json(),
+                MetadataKey::LintRuleCatalog => lint_rule_catalog_json(),
+                MetadataKey::PresentationCatalog => presentation_catalog_json_for(&contract),
+                MetadataKey::SupportedDiagrams => supported_diagrams_json(),
+                MetadataKey::SupportedThemes => supported_themes_json(),
+            };
+            match (contract.metadata_json(id), expected) {
                 (Ok(actual), Ok(expected)) => assert_eq!(actual, expected, "{id}"),
                 (Err(actual), Err(expected)) => {
                     assert_eq!(actual.status(), expected.status(), "{id}");
@@ -2206,47 +1875,23 @@ mod tests {
     }
 
     #[test]
-    fn presentation_metadata_dispatch_is_surface_specific_without_global_cache() {
-        let analysis_surface =
-            ArtifactCapabilitySurface::new(vec!["analysis"], vec![], vec![], None)
-                .expect("analysis-only artifact surface");
-        let empty: Value = serde_json::from_slice(
-            &binding_metadata_json_for("presentation-catalog", &analysis_surface).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(empty["theme_presets"], serde_json::json!([]));
-        assert_eq!(empty["profiles"], serde_json::json!([]));
+    fn artifact_metadata_rejects_known_but_unadvertised_catalogs() {
+        let contract = semantic_contract();
+        let error = contract
+            .metadata_json(MetadataKey::SupportedDiagrams.id())
+            .unwrap_err();
 
-        #[cfg(feature = "svg")]
-        {
-            let svg_surface = ArtifactCapabilitySurface::new(
-                vec!["svg"],
-                vec!["svg"],
-                vec![],
-                Some(
-                    TextMeasurementCapabilities::new(vec![TEXT_MEASUREMENT_PROVIDER_VENDORED])
-                        .expect("vendored SVG measurement surface"),
-                ),
-            )
-            .expect("SVG artifact surface");
-            let svg: Value = serde_json::from_slice(
-                &binding_metadata_json_for("presentation-catalog", &svg_surface).unwrap(),
-            )
-            .unwrap();
-            assert_eq!(svg["theme_presets"].as_array().unwrap().len(), 7);
-            assert_eq!(svg["profiles"][0]["id"], "merman-modern");
-
-            let empty_again: Value = serde_json::from_slice(
-                &binding_metadata_json_for("presentation-catalog", &analysis_surface).unwrap(),
-            )
-            .unwrap();
-            assert_eq!(empty_again, empty);
-        }
+        assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+        assert_eq!(error.kind(), crate::BindingErrorKind::Generic);
+        assert_eq!(error.capability_id(), None);
+        assert!(error.message().contains("is not exposed"));
     }
 
     #[test]
-    fn binding_metadata_json_rejects_unknown_catalogs() {
-        let error = binding_metadata_json("supported-host-theme-presets").unwrap_err();
+    fn artifact_metadata_rejects_removed_host_theme_catalog() {
+        let error = full_native_contract()
+            .metadata_json("supported-host-theme-presets")
+            .unwrap_err();
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert_eq!(error.kind(), crate::BindingErrorKind::Generic);

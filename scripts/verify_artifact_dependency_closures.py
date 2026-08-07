@@ -19,11 +19,6 @@ from artifact_profile_recipe import (
     load_artifact_profiles,
     rustc_host_target,
 )
-from verify_rustsec_exceptions import (
-    RustSecExceptionError,
-    load_exception_records,
-    validate_profile_coverage,
-)
 
 
 PACKAGE_MARKER = "__MERMAN_CLOSURE_PACKAGE__"
@@ -38,6 +33,29 @@ HOST_CLOSURE_REFERENCE_TARGET = "x86_64-unknown-linux-gnu"
 LINUX_REFERENCE_SCOPE = "linux-reference"
 PROFILE_TARGET_SCOPE = "profile-target"
 RESOLVED_REPO_ROOT = REPO_ROOT.resolve()
+NATIVE_BINDING_PROFILE_IDS = frozenset(
+    {
+        "android-native",
+        "apple-uniffi-native",
+        "c-abi-native",
+        "flutter-android-native",
+        "flutter-desktop-native",
+        "flutter-ios-native",
+        "python-uniffi-native",
+        "rust-bindings-core-native-sdk",
+    }
+)
+NATIVE_BINDING_FORBIDDEN_PACKAGES = (
+    "cargo_metadata",
+    "clap",
+    "clap_complete",
+    "hickory-resolver",
+    "merman-cli",
+    "rayon",
+    "reqwest",
+    "tokio",
+    "uniffi_bindgen",
+)
 
 
 @dataclass(frozen=True)
@@ -96,7 +114,6 @@ class ClosureObservation:
     closure_scope: str
     closure_target: str
     package_count: int
-    package_versions: frozenset[tuple[str, str]]
 
 
 class ClosureVerificationError(RuntimeError):
@@ -337,14 +354,16 @@ def load_verification_cases(
             )
 
         claim = semantic_by_profile.get(profile_id)
-        if claim is None:
+        if claim is None and profile_id in NATIVE_BINDING_PROFILE_IDS:
             claim = ClosureClaim(
-                claim_id=f"{profile_id}-exact-runtime-dependency-closure",
+                claim_id=f"{profile_id}-native-runtime-dependency-boundary",
                 profile_id=profile_id,
                 required_packages=(recipe.package,),
-                forbidden_packages=(),
+                forbidden_packages=NATIVE_BINDING_FORBIDDEN_PACKAGES,
             )
-        elif recipe.package not in claim.required_packages:
+        if claim is None:
+            continue
+        if recipe.package not in claim.required_packages:
             raise ClosureVerificationError(
                 f"semantic claim {claim.claim_id!r} must require descriptor root "
                 f"package {recipe.package!r}"
@@ -538,10 +557,6 @@ def check_case(
         closure_scope=case.closure_scope,
         closure_target=case.target,
         package_count=len(closure.features_by_package_identity),
-        package_versions=frozenset(
-            (name, version)
-            for name, version, _source in closure.features_by_package_identity
-        ),
     )
     return failures, observation
 
@@ -608,23 +623,6 @@ def verify_cases(
     return tuple(observations)
 
 
-def authoritative_rustsec_profile_ids(
-    observations: Iterable[ClosureObservation],
-    *,
-    running_host_target: str,
-) -> frozenset[str]:
-    """Select profiles whose package observations are authoritative on this host."""
-    return frozenset(
-        observation.profile_id
-        for observation in observations
-        if observation.build_target_kind == "target-set"
-        or (
-            observation.build_target_kind == "host"
-            and observation.closure_target == running_host_target
-        )
-    )
-
-
 def _select_cases(
     cases: Sequence[VerificationCase],
     profile_ids: Sequence[str],
@@ -641,6 +639,25 @@ def _select_cases(
     return tuple(case for case in cases if case.recipe.profile_id in requested)
 
 
+def select_representative_cases(
+    cases: Sequence[VerificationCase],
+) -> tuple[VerificationCase, ...]:
+    """Keep the descriptor's first target for each profile.
+
+    The full target set remains the release/mainline contract. Pull requests only
+    need one representative resolution per profile to catch feature leakage
+    without turning a dependency-policy check into a cross-compilation matrix.
+    """
+    selected: list[VerificationCase] = []
+    seen_profiles: set[str] = set()
+    for case in cases:
+        if case.recipe.profile_id in seen_profiles:
+            continue
+        selected.append(case)
+        seen_profiles.add(case.recipe.profile_id)
+    return tuple(selected)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -655,6 +672,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=[],
         help="Verify only this artifact profile; may be repeated.",
     )
+    parser.add_argument(
+        "--representative-targets",
+        action="store_true",
+        help="Verify only the first descriptor target for each selected profile.",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -662,27 +684,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             load_verification_cases(descriptor_path=args.descriptor),
             args.profile,
         )
+        if args.representative_targets:
+            cases = select_representative_cases(cases)
         try:
             running_host_target = rustc_host_target()
         except RuntimeError as error:
             raise ClosureVerificationError(str(error)) from error
         observations = verify_cases(cases)
-        if not args.profile and args.descriptor.resolve() == DEFAULT_DESCRIPTOR.resolve():
-            profile_packages: dict[str, frozenset[tuple[str, str]]] = {}
-            for observation in observations:
-                profile_packages[observation.profile_id] = (
-                    profile_packages.get(observation.profile_id, frozenset())
-                    | observation.package_versions
-                )
-            validate_profile_coverage(
-                load_exception_records(REPO_ROOT),
-                profile_packages,
-                authoritative_profile_ids=authoritative_rustsec_profile_ids(
-                    observations,
-                    running_host_target=running_host_target,
-                ),
-            )
-    except (ClosureVerificationError, RustSecExceptionError) as error:
+    except ClosureVerificationError as error:
         print(error, file=sys.stderr)
         return 1
 

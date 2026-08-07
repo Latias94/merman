@@ -1,17 +1,41 @@
-# Merman Node/SSG transport evaluation
+# Merman Node/SSG private candidate
 
-This directory is the private U14 comparison workspace. It does not declare an admitted public Node product. A release surface may be added only after the same corpus, options, resource profile, target, installation, semantic-model, SVG-structure, error, queue, lifecycle, timing, RSS, and footprint gates pass. Exact geometry drift is reported independently.
+This directory contains the private Node static-SVG candidate. It is not an admitted or published
+Merman product. A release surface may be added only after the same corpus, options, resource
+profile, target, installation, semantic-model, SVG-structure, error, queue, lifecycle, timing, RSS,
+and footprint gates pass. Exact geometry drift remains separate evidence.
 
 For a supported Node or static-site integration today, invoke `merman-cli` as a child process and exchange Mermaid source and output through files or standard streams. Do not depend on this workspace or either candidate package in an application.
 
-The current local evaluation is inconclusive because it covers only one target and its candidate artifacts predate the final refactor state. The macOS arm64 smoke does prove that installing only the root package resolves and loads its target package through `optionalDependencies`; the other declared targets still require the same evidence. See [`docs/performance/NODE_TRANSPORT_ADMISSION.md`](https://github.com/Latias94/merman/blob/main/docs/performance/NODE_TRANSPORT_ADMISSION.md) for the reproducible evidence and the explicit non-admission decision.
+Local contract tests and actual native/WASM build probes validate the current source, but the full
+multi-target admission matrix is still incomplete. See
+[`docs/performance/NODE_TRANSPORT_ADMISSION.md`](https://github.com/Latias94/merman/blob/main/docs/performance/NODE_TRANSPORT_ADMISSION.md)
+for the reproducible comparison evidence and explicit non-admission decision.
 
 The candidates are deliberately separate:
 
 - `node-wasm` is built from `crates/merman-node` with `wasm-pack --target nodejs`. It never loads `@mermanjs/web` or an artifact from `platforms/web`.
 - `napi` is built from the same crate and shared operation bridge with napi-rs. Each native package owns one target-specific `merman.node` file.
 
-Both candidates resolve the same private native capability recipe and append only their private transport leaf. The recipe is checked against the canonical capability descriptor; it is not a claim that either candidate is a published Merman artifact profile. Each build receipt binds the current `Cargo.lock`, resolved dependency closure, exact target and feature configuration, complete artifact file set, build-verifier inputs, and artifact-owned runtime catalog and operation probes. The SVG probe parses a real successful result and records its structure and geometry digests. The receipt summary carries every runtime file needed by the selected transport, including the Node WASM loader, binary, and nested module manifest, so installed hashes can be checked one by one. The comparison rejects receipts whose shared source, lockfile, binding contract, capability recipe, or runtime catalog digests differ. The candidates construct `merman_bindings_core::BindingEngine`, execute `BindingOperationRequest`, default to the deterministic runtime policy, and preserve typed missing-capability and unknown-operation errors. The generic operation API also exercises the descriptor-owned `svg-plan-json` capability planner through both the build receipt and installed-package probe.
+Both candidates resolve the same private static-SVG recipe and append only their transport leaf. The
+recipe is checked against the canonical capability descriptor; it is not a published Merman
+artifact profile. Each build receipt binds the current `Cargo.lock`, resolved dependency closure,
+exact target and features, complete artifact file set, verifier inputs, transport identity, runtime
+catalog, metadata, synchronous and asynchronous operation probes, and post-dispose behavior. Native
+and WASM package identity/version checks are compatibility checks performed after module code has
+loaded; they are not origin authentication.
+
+The public candidate facade is `MermanEngine`, created asynchronously with `createNodeEngine()`.
+It accepts only deterministic runtime policy and text results. Binary operations are rejected until
+a future deliberate wire break. The native and WASM transports exchange JSON strings only and
+enforce the same pre-parse byte ceilings, structural depth, member/token work, field lengths,
+catalog relations, response/error envelope rules, and nested metadata limits. Unknown future
+metadata fields are preserved, while known operation, media type, output contract, and deterministic
+runtime-policy relations are checked exactly.
+
+The maintained engine floor is Node `>=22.0.0`. `runtimeCatalog` reports only the private static-SVG
+surface. `metadataJson(id)`, `svgPlanJson()`, and generic `executeOperation()` consume the shared
+bindings-core operation and metadata contracts rather than local handwritten vocabularies.
 
 Install the pinned candidate tooling and run static contracts:
 

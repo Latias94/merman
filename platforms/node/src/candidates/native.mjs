@@ -1,10 +1,12 @@
 import {
   MermanInvalidTransportError,
   decodeWireCreationError,
+  validateTransportIdentityExport,
 } from "../errors.mjs";
 import {
-  assertNativeRuntimePackageVersion,
+  assertRuntimePackageVersion,
   loadNativeBinding,
+  nodeLoaderPackageVersion,
 } from "../native-loader.mjs";
 import { wrapCandidateEngine } from "./wrap-engine.mjs";
 
@@ -16,6 +18,11 @@ export async function loadNativeTransport(optionsJson, loaderOptions = {}) {
       "The target-specific Merman package does not export NativeEngine.",
     );
   }
+  validateTransportIdentityExport(binding?.transportIdentityJson, {
+    expectedPackageVersion: nodeLoaderPackageVersion(),
+    expectedTransport: "napi",
+    label: "The target-specific Merman package",
+  });
   let transport;
   try {
     transport = wrapCandidateEngine(
@@ -26,7 +33,7 @@ export async function loadNativeTransport(optionsJson, loaderOptions = {}) {
     throw decodeWireCreationError(cause, "The target-specific Merman addon");
   }
   try {
-    const runtimeCatalogJson = assertNativeRuntimePackageVersion(
+    const runtimeCatalogJson = assertRuntimePackageVersion(
       transport.runtimeCatalogJson(),
     );
     return {

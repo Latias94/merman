@@ -128,6 +128,19 @@ const editorDescriptorValueExportNames = [
   "SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX",
 ];
 
+export const resourceContractValueExportNames = [
+  "BINDING_OPTIONS_SCHEMA_VERSION",
+  "RESOURCE_LIMIT_IDS",
+  "RESOURCE_LIMIT_METADATA",
+  "RESOURCE_OVERRIDE_IDS",
+  "RESOURCE_PROFILES",
+  "isKnownResourceLimitId",
+  "rawResourceOptionsJson",
+  "resourceLimitMetadata",
+  "resourceOptions",
+  "resourceOptionsJson",
+];
+
 export const packageStableValueExportNames = [
   "MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION",
   "UNAVAILABLE_DIAGRAM_DETECTION",
@@ -145,6 +158,7 @@ export const packageStableValueExportNames = [
   "normalizeThemeName",
   "normalizeBundledThemePresetName",
   "encodeOptions",
+  ...resourceContractValueExportNames,
 ];
 
 export const packageRenderValueExportNames = [
@@ -203,7 +217,8 @@ export const surfaceModules = defineSurfaceModules([
       (name) =>
         name !== "MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION" &&
         name !== "UNAVAILABLE_DIAGRAM_DETECTION" &&
-        name !== "encodeOptions",
+        name !== "encodeOptions" &&
+        !resourceContractValueExportNames.includes(name),
     ),
   },
   {
@@ -242,9 +257,14 @@ export const surfaceModules = defineSurfaceModules([
     internalValueExportNames: ["assertBrowserRuntime", "bindSurfaceRuntime"],
     exactValueExports: true,
   },
+  { specifier: "../generated/binding-contract.js", owner: "shared" },
   { specifier: "../generated/capability-surface.js", owner: "shared" },
   { specifier: "../generated/diagram-catalog.js", owner: "shared" },
-  { specifier: "../generated/resource-contract.js", owner: "shared" },
+  {
+    specifier: "../generated/resource-contract.js",
+    owner: "shared",
+    valueExportNames: resourceContractValueExportNames,
+  },
   { specifier: "../svg-safety-policy.js", owner: "render" },
   { specifier: "../editor-semantic-tokens.js", owner: "editor" },
 ]);

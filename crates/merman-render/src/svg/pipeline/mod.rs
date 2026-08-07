@@ -11,6 +11,7 @@ pub use builtin::{
     ScopedCssPostprocessor, StripForeignObjectPostprocessor,
 };
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
+pub(crate) use final_validation::validate_well_formed_svg;
 pub use policy::SvgOutputPolicy;
 pub use preset::SvgPipelinePreset;
 

@@ -9,9 +9,10 @@ use merman_render::environment::{
 };
 use merman_render::family::{self, RenderFamilyKind};
 use merman_render::model::ArchitectureDiagramLayout;
-use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::TextMetrics;
 use regex::Regex;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -128,6 +129,68 @@ fn render_architecture_fixture(fixture_name: &str) -> String {
             ..Default::default()
         },
     )
+}
+
+#[test]
+fn architecture_public_render_path_uses_the_immutable_icon_registry() {
+    let pack = br##"{
+        "prefix":"test",
+        "icons":{
+            "rocket":{
+                "body":"<defs><clipPath id=\"clip\"><path id=\"shape\" d=\"M0 0H16V16H0z\"/></clipPath></defs><path data-icon=\"architecture-registry\" clip-path=\"url(#clip)\" d=\"M0 0H16V16H0z\"/><use href=\"#shape\"/>"
+            }
+        }
+    }"##;
+    let registry = IconRegistry::from_packs([IconPack::new(pack)]).expect("valid Iconify pack");
+    let source = r#"%%{init: {"architecture": {"numIter": 1, "randomize": false}}}%%
+architecture-beta
+service api(test:rocket)[API]
+service worker(test:rocket)[Worker]
+"#;
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse architecture")
+        .expect("architecture detected");
+    let session = RenderEnvironment::deterministic()
+        .with_icon_registry(registry)
+        .begin_session()
+        .expect("begin render session");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare architecture");
+    let svg = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("architecture-registry".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render architecture")
+        .svg()
+        .to_owned();
+
+    assert_eq!(
+        svg.matches(r#"data-icon="architecture-registry""#).count(),
+        2,
+        "{svg}"
+    );
+    assert!(!svg.contains(r#"id="clip""#), "{svg}");
+    assert!(!svg.contains(r#"id="shape""#), "{svg}");
+    assert!(!svg.contains("url(#clip)"), "{svg}");
+    assert!(!svg.contains(r##"href="#shape""##), "{svg}");
+
+    let scoped_ids = Regex::new(r#"id="(IconifyId[^"]+)""#)
+        .unwrap()
+        .captures_iter(&svg)
+        .map(|capture| capture[1].to_string())
+        .collect::<Vec<_>>();
+    assert!(scoped_ids.len() >= 4, "{svg}");
+    assert_eq!(
+        scoped_ids.iter().collect::<HashSet<_>>().len(),
+        scoped_ids.len(),
+        "each Architecture node must receive an independent icon ID scope: {svg}"
+    );
 }
 
 fn deep_group_chain_diagram(depth: usize) -> String {

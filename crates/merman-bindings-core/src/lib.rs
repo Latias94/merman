@@ -6,26 +6,48 @@
 //! result-code classification, and byte payload production. Unsafe transport concerns such as raw
 //! pointers and owned C buffers remain in `merman-ffi`.
 
+mod artifact_contract;
+mod capability;
+mod catalog_contract;
 mod common;
 mod engine;
+mod key_set;
 mod lifecycle;
 mod metadata;
+mod metadata_registry;
 mod operation;
+mod operation_contract;
+mod option_contract;
+mod payload_contract;
 mod resource_contract;
+mod service_contract;
+mod services;
 mod svg_plan;
 #[cfg(feature = "svg")]
 mod text_measurement;
+mod transport_contract;
 
 #[cfg(feature = "ascii")]
 mod ascii;
 #[cfg(feature = "svg")]
 mod render;
 
+pub use artifact_contract::{ArtifactContractSpec, ValidatedArtifactContract};
+pub use capability::{
+    CAPABILITY_DESCRIPTOR_DIGEST, CAPABILITY_DESCRIPTOR_SCHEMA_VERSION, CapabilityDescriptor,
+    CapabilityKey, OperationKey, OperationSpec, OutputDescriptor, OutputKey, TargetDescriptor,
+    TargetKey, TransportCompiledExtensionKey,
+};
+pub use catalog_contract::{
+    RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN, RUNTIME_CATALOG_IDENTIFIER_PATTERN,
+    RUNTIME_CATALOG_MAX_SAFE_INTEGER,
+};
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION, BindingError, BindingErrorKind,
-    BindingResourceErrorDetails, BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
-    binding_error_payload_json_bytes, error_payload_json_bytes, render_payload_json_bytes,
-    render_resource_options_unavailable, resource_options_json,
+    BindingIconRegistryErrorDetails, BindingResourceErrorDetails, BindingRuntimePolicy,
+    BindingStatus, apply_resource_ceiling_json, binding_error_payload_json_bytes,
+    error_payload_json_bytes, render_payload_json_bytes, render_resource_options_unavailable,
+    resource_options_json,
 };
 pub use engine::BindingEngine;
 pub use lifecycle::{
@@ -33,32 +55,46 @@ pub use lifecycle::{
     BindingEngineAdmissionMode, BindingOperationAdmission,
 };
 pub use metadata::{
-    ArtifactCapabilitySurface, BINDING_METADATA_IDS, BindingAsciiCapability,
-    BindingAsciiCapabilityEvidence, BindingDiagramFamilyCapability,
+    BindingAsciiCapability, BindingAsciiCapabilityEvidence, BindingDiagramFamilyCapability,
     PRESENTATION_CATALOG_SCHEMA_VERSION, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,
-    RuntimeCapabilities, RuntimeCatalog, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
+    RuntimeCapabilities, RuntimeCatalog, RuntimeConstructorResourceLimit,
+    RuntimeConstructorServiceContract, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
     RuntimeOutputContract, RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract,
     RuntimeResourceLimit, RuntimeResourceProfile, RuntimeSystemFontContract,
     TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK, TEXT_MEASUREMENT_PROVIDER_VENDORED,
-    TextMeasurementCapabilities, TextMeasurementProviderProjection, ascii_capabilities,
-    ascii_capabilities_json, ascii_supported_diagrams, ascii_supported_diagrams_json,
-    binding_metadata_json, binding_metadata_json_for, binding_transport_capability_surface,
-    compiled_runtime_capabilities, compiled_runtime_capability_surface,
-    configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,
-    diagram_family_capabilities, diagram_family_capabilities_json, lint_rule_catalog,
-    lint_rule_catalog_json, presentation_catalog_json, presentation_catalog_json_for,
-    runtime_capabilities_json, runtime_capabilities_json_for, runtime_catalog, runtime_catalog_for,
-    runtime_catalog_json, runtime_catalog_json_for, supported_diagrams, supported_diagrams_json,
+    TextMeasurementCapabilities, ascii_capabilities, ascii_capabilities_json,
+    ascii_supported_diagrams, ascii_supported_diagrams_json, configurable_lint_rule_catalog,
+    configurable_lint_rule_catalog_json, diagram_family_capabilities,
+    diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
+    runtime_constructor_resource_limits, supported_diagrams, supported_diagrams_json,
     supported_themes, supported_themes_json,
 };
+pub use metadata_registry::{MetadataKey, MetadataSpec};
 pub use operation::{
-    BINDING_OPERATION_SCHEMA_VERSION, BindingOperationKind, BindingOperationRequest,
-    BindingOperationResult, OperationKey, OperationSpec, compiled_operation_kind_ids, execute_once,
+    BindingOperationKind, BindingOperationMetadata, BindingOperationRequest,
+    BindingOperationResult, BindingOutputPlan, BindingPdfFilterImageOutputPlan,
+    BindingRasterOutputPlan, BindingUnknownOutputPlan, compiled_operation_kind_ids, execute_once,
 };
+pub use operation_contract::{
+    BINDING_OPERATION_METADATA_CONTRACT_SCHEMA_VERSION, BindingJsonFieldContract,
+    BindingOperationExpectation, BindingOperationMetadataContract, BindingOutputPlanContract,
+    BindingUnavailableOperationExpectation, binding_operation_expectations,
+    binding_operation_expectations_json, operation_metadata_contract,
+    operation_metadata_contract_json,
+};
+pub use option_contract::{BindingOptionGroupKey, BindingOptionGroupSpec};
+pub use payload_contract::{BINDING_OPERATION_SCHEMA_VERSION, BindingPayloadSchemaKey};
 pub use resource_contract::{
     BindingResourceContract, BindingResourceLimitDescriptor, BindingResourceProfileDescriptor,
     binding_resource_contract,
 };
+pub use service_contract::{
+    ConstructorServiceKey, RuntimePolicyExposure, TextMeasurementProviderKey,
+    TextMeasurementProviderSource,
+};
+pub use services::BindingEngineServices;
+#[cfg(feature = "svg")]
+pub use services::{BindingIconRegistry, build_icon_registry};
 pub use svg_plan::{
     SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, SvgPlanPresentationAspect, svg_plan_json,
 };
@@ -76,8 +112,10 @@ pub use ascii::render_ascii;
 #[cfg(feature = "svg")]
 pub use merman::svg::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
-    HostTextMeasurementRequest, HostTextMeasurer, TextMeasurementOperation, TextMeasurementPhase,
-    TextMetrics, TextStyle, WrapMode, validate_host_text_measurement,
+    HostTextMeasurementRequest, HostTextMeasurer, IconPack, IconRegistryResourceLimitDescriptor,
+    IconRegistryResourceLimitId, TEXT_MEASUREMENT_PROTOCOL_VERSION, TextMeasurementOperation,
+    TextMeasurementPhase, TextMetrics, TextStyle, WrapMode,
+    icon_registry_resource_limit_descriptors, validate_host_text_measurement,
 };
 #[cfg(feature = "jpeg")]
 pub use render::render_jpeg;
@@ -92,6 +130,7 @@ pub use text_measurement::{
     HostTextMeasurementRecord, HostTextMeasurementResultKind, HostTextMeasurementTransportFields,
     decode_host_text_measurement, host_text_measurement_transport_fields,
 };
+pub use transport_contract::{BindingTransportExposureSpec, BindingTransportKey};
 
 #[cfg(not(feature = "ascii"))]
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -108,16 +147,16 @@ pub fn analysis_facts_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>
 
 pub fn analyze_document_json(
     source: &[u8],
-    options_json: &[u8],
     uri: &[u8],
+    options_json: &[u8],
 ) -> Result<Vec<u8>, BindingError> {
     execute_once_data("document-analysis-json", source, Some(uri), options_json)
 }
 
 pub fn analyze_document_facts_json(
     source: &[u8],
-    options_json: &[u8],
     uri: &[u8],
+    options_json: &[u8],
 ) -> Result<Vec<u8>, BindingError> {
     execute_once_data(
         "document-analysis-facts-json",
@@ -156,19 +195,38 @@ pub fn render_pdf(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Binding
     execute_once_data("pdf", source, None, options_json)
 }
 
+pub fn render_png_result(
+    source: &[u8],
+    options_json: &[u8],
+) -> Result<BindingOperationResult, BindingError> {
+    execute_once(BindingOperationRequest::new("png", source).with_options_json(options_json))
+}
+
+pub fn render_jpeg_result(
+    source: &[u8],
+    options_json: &[u8],
+) -> Result<BindingOperationResult, BindingError> {
+    execute_once(BindingOperationRequest::new("jpeg", source).with_options_json(options_json))
+}
+
+pub fn render_pdf_result(
+    source: &[u8],
+    options_json: &[u8],
+) -> Result<BindingOperationResult, BindingError> {
+    execute_once(BindingOperationRequest::new("pdf", source).with_options_json(options_json))
+}
+
 fn execute_once_data(
     operation_id: &str,
     source: &[u8],
     uri: Option<&[u8]>,
     options_json: &[u8],
 ) -> Result<Vec<u8>, BindingError> {
-    execute_once(BindingOperationRequest {
-        operation_id,
-        source,
-        uri,
-        options_json,
-    })
-    .map(|result| result.data)
+    operation::execute_once_data(
+        BindingOperationRequest::new(operation_id, source)
+            .with_optional_uri(uri)
+            .with_options_json(options_json),
+    )
 }
 
 #[cfg(all(
@@ -184,47 +242,53 @@ mod tests {
     #[cfg(feature = "analysis")]
     use serde_json::Value;
 
+    fn assert_missing_capability(error: &BindingError, capability_id: &str) {
+        assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+        assert_eq!(error.kind(), BindingErrorKind::MissingCapability);
+        assert_eq!(error.capability_id(), Some(capability_id));
+    }
+
     #[cfg(not(feature = "svg"))]
     #[test]
     fn render_and_layout_entry_points_report_missing_svg_capability() {
         let err = render_svg(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
-        assert_eq!(err.message(), "SVG rendering requires the svg feature");
+        assert_missing_capability(&err, "svg");
 
         assert!(!parse_json(b"flowchart TD\nA", b"").unwrap().is_empty());
 
         let err = layout_json(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+        assert_missing_capability(&err, "svg");
+
+        let err = render_png_result(b"flowchart TD\nA", b"").unwrap_err();
+        assert_missing_capability(&err, "png");
     }
 
     #[cfg(not(feature = "ascii"))]
     #[test]
     fn ascii_entry_point_reports_missing_ascii_feature() {
         let err = render_ascii(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
-        assert!(err.message().contains("ascii feature"));
+        assert_missing_capability(&err, "ascii");
     }
 
     #[cfg(not(feature = "analysis"))]
     #[test]
     fn analysis_entry_points_report_missing_analysis_feature() {
         let err = analyze_json(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
-        assert!(err.message().contains("analysis feature"));
+        assert_missing_capability(&err, "analysis");
 
         let err = analysis_facts_json(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+        assert_missing_capability(&err, "analysis");
 
         let err =
-            analyze_document_json(b"flowchart TD\nA", b"", b"file:///tmp/example.mmd").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+            analyze_document_json(b"flowchart TD\nA", b"file:///tmp/example.mmd", b"").unwrap_err();
+        assert_missing_capability(&err, "analysis");
 
-        let err = analyze_document_facts_json(b"flowchart TD\nA", b"", b"file:///tmp/example.mmd")
+        let err = analyze_document_facts_json(b"flowchart TD\nA", b"file:///tmp/example.mmd", b"")
             .unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+        assert_missing_capability(&err, "analysis");
 
         let err = validate_json(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+        assert_missing_capability(&err, "analysis");
     }
 
     #[cfg(feature = "analysis")]
@@ -278,7 +342,7 @@ mod tests {
     fn analyze_document_json_reports_markdown_source_and_host_ranges() {
         let source = b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n";
         let json: Value = serde_json::from_slice(
-            &analyze_document_json(source, b"", b"file:///tmp/example.md").unwrap(),
+            &analyze_document_json(source, b"file:///tmp/example.md", b"").unwrap(),
         )
         .unwrap();
 
@@ -300,7 +364,7 @@ mod tests {
     fn analyze_document_json_reports_mdx_source_with_uri_fragment() {
         let source = b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n";
         let json: Value = serde_json::from_slice(
-            &analyze_document_json(source, b"", b"file:///tmp/example.mdx?rev=1#fence").unwrap(),
+            &analyze_document_json(source, b"file:///tmp/example.mdx?rev=1#fence", b"").unwrap(),
         )
         .unwrap();
 
@@ -327,7 +391,7 @@ mod tests {
             }
         }"#;
         let json: Value = serde_json::from_slice(
-            &analyze_document_json(source.as_bytes(), options, b"file:///tmp/limited.md").unwrap(),
+            &analyze_document_json(source.as_bytes(), b"file:///tmp/limited.md", options).unwrap(),
         )
         .unwrap();
 
@@ -344,7 +408,7 @@ mod tests {
     fn analyze_document_facts_json_reports_markdown_fence_facts_with_host_ranges() {
         let source = b"before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n";
         let json: Value = serde_json::from_slice(
-            &analyze_document_facts_json(source, b"", b"file:///tmp/example.md").unwrap(),
+            &analyze_document_facts_json(source, b"file:///tmp/example.md", b"").unwrap(),
         )
         .unwrap();
 

@@ -33,7 +33,7 @@ Measure text with the same text stack that will display the SVG.
 sequenceDiagram
     participant Host as Host UI / preview surface
     participant Adapter as Host text measurer
-    participant Engine as MermanReusableEngine
+    participant Engine as MermanEngine
     participant Fallback as Vendored metrics
 
     Host->>Engine: renderSvg(source)
@@ -224,7 +224,7 @@ host text API needs owned strings.
 The direct UniFFI surface uses the shared reusable-engine admission contract:
 
 - The host callback is immutable after reusable-engine construction. Construct a separate engine
-  to change or remove it; there is no callback mutation or manual close API.
+  to change or remove it; there is no callback mutation API.
 - Callback-free engines admit concurrent operations. Engines constructed with a callback serialize
   operation admission and return typed `MermanErrorKind::Busy` to a competing operation.
 - While the callback is active, every new operation on the same engine fails immediately with
@@ -233,9 +233,12 @@ The direct UniFFI surface uses the shared reusable-engine admission contract:
 - Other reusable engine instances remain independent. Calls on one engine do not observe another
   engine's active callback; callbacks that share host state remain the host's synchronization
   responsibility.
-- UniFFI object reference counting retains the callback for the reusable engine lifetime. UniFFI's
-  generated trampoline can report a returned callback error, but Merman does not catch arbitrary
-  foreign unwinds, exceptions, or longjmps that bypass that generated boundary.
+- `close()` is explicit and idempotent. Busy or re-entrant close retains the complete engine and
+  callback for retry; successful close detaches them under synchronization and destroys the
+  callback only after the admission lock is released.
+- UniFFI object reference counting retains the callback until successful close or final object
+  destruction. UniFFI's generated trampoline can report a returned callback error, but Merman does
+  not catch arbitrary foreign unwinds, exceptions, or longjmps that bypass that generated boundary.
 
 ## Python UniFFI
 
@@ -252,10 +255,13 @@ class PreviewMeasurer(merman.MermanTextMeasurer):
         return None
 
 
-engine = merman.MermanEngine()
-reusable = engine.reusable_engine_with_text_measurer(None, PreviewMeasurer())
-svg = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
-assert svg.startswith("<svg")
+services = merman.MermanEngineServices().with_text_measurer(PreviewMeasurer())
+engine = merman.MermanEngine(None, services)
+try:
+    svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
+    assert svg.startswith("<svg")
+finally:
+    engine.close()
 ```
 
 For long-lived preview surfaces, construct the reusable engine after its host text stack is
@@ -267,9 +273,10 @@ render operation.
 Use `diagram_family_capabilities()` to decide whether a diagram family can render through the
 current Python binding before installing host-specific measurement logic.
 
-The one-shot engine accepts `options_json` on each operation, for example
-`engine.render_svg(source, options_json)`. A reusable engine receives baseline `options_json` when
-it is created and request-local overrides through `reusable.render_svg(source, options_json)`. The
+The one-shot `Merman` facade accepts `options_json` on each operation, for example
+`api.render_svg(source, options_json)`. A reusable `MermanEngine` receives baseline `options_json`
+when it is created and request-local overrides through `engine.render_svg(source, options_json)`.
+The
 repository's
 [`platforms/python/merman/examples/smoke.py`](../../platforms/python/merman/examples/smoke.py) is the
 canonical executable example; the UniFFI bindgen smoke generates a fresh Python binding and native
@@ -277,18 +284,21 @@ library, then runs that file against the generated API.
 
 ## Android JNI
 
-Use `MermanReusableEngine` with `MermanTextMeasurer`:
+Use `MermanEngineServices` with the direct `MermanEngine` constructor:
 
 ```kotlin
-val engine = MermanReusableEngine(
-    textMeasurer = { request ->
+val services = MermanEngineServices(
+    textMeasurer = MermanTextMeasurer { request ->
         when (request.operation) {
             MermanTextMeasurementOperation.MEASURE ->
                 MermanTextMeasureResult.metrics(width = 42.0, height = 18.0, lineCount = 1)
             else -> null
         }
-    }
+    },
 )
+MermanEngine(services = services).use { engine ->
+    engine.renderSvg("flowchart TD\nA --> B")
+}
 ```
 
 The four named factories require exactly the meaningful shape: `metrics(width, height, lineCount)`,
@@ -341,12 +351,10 @@ final class CoreTextMeasurer: MermanTextMeasurer, @unchecked Sendable {
     }
 }
 
-let engine = MermanEngine()
 let measurer = CoreTextMeasurer()
-let reusable = try engine.reusableEngineWithTextMeasurer(
-    optionsJson: nil,
-    measurer: measurer
-)
+let services = MermanEngineServices().withTextMeasurer(textMeasurer: measurer)
+let engine = try MermanEngine(optionsJson: nil, services: services)
+defer { try? engine.close() }
 ```
 
 Recommended Apple implementation choices:
@@ -380,29 +388,29 @@ Relevant platform references:
 
 ## Flutter / Dart FFI
 
-Create `MermanReusableEngine` with its optional measurer. The callback is part
-of engine construction and cannot be installed or replaced after that point:
+Create `MermanEngine` with a `MermanEngineServices` value. The callback is part of engine
+construction and cannot be installed or replaced after that point:
 
 ```dart
-final merman = Merman.open();
-final engine = merman.reusableEngine(
-  textMeasurer: (request) {
-    if (request.operation == MermanTextMeasurementOperation.measure) {
-      return MermanTextMeasureResult.metrics(
-        width: 42,
-        height: 18,
-        lineCount: 1,
-      );
-    }
-    return null;
-  },
+final engine = MermanEngine(
+  services: MermanEngineServices(
+    textMeasurer: (request) {
+      if (request.operation == MermanTextMeasurementOperation.measure) {
+        return MermanTextMeasureResult.metrics(
+          width: 42,
+          height: 18,
+          lineCount: 1,
+        );
+      }
+      return null;
+    },
+  ),
 );
 
 try {
   // Render with engine here.
 } finally {
-  engine.dispose();
-  merman.dispose();
+  engine.close();
 }
 ```
 
@@ -417,7 +425,7 @@ on the same isolate thread that created it. That has practical consequences:
 
 - Create the reusable engine with the measurer, render, and close the engine on the same Dart
   isolate.
-- Do not pass a measured `MermanReusableEngine` to another isolate.
+- Do not pass a measured `MermanEngine` to another isolate.
 - Always call `close()` when finished; closing releases the native engine and the Dart callback.
 - Keep the measurer fast and synchronous. Dart's `NativeCallable.listener` can be invoked from any
   thread, but it only supports asynchronous `void` callbacks, so it is not a fit for this

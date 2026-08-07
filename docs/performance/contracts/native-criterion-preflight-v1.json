@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "native-criterion-preflight-v1",
+  "line_prefix": "[bench][preflight] ",
+  "postflight_line_prefix": "[bench][postflight] ",
+  "required_fields": [
+    "schema_version",
+    "benchmark",
+    "output_kind",
+    "output_bytes",
+    "output_sha256",
+    "svg_elements"
+  ],
+  "output_kinds": {
+    "parse": "typed_render_model",
+    "compatibility_json_parse": "compatibility_json",
+    "parse_cold_engine": "typed_render_model",
+    "frontmatter_preprocess": "preprocessed_diagram",
+    "layout": "prepared_layout",
+    "render": "svg",
+    "end_to_end": "svg"
+  },
+  "comparison": {
+    "ignore_fields": ["benchmark"],
+    "required_equal_fields": [
+      "schema_version",
+      "output_kind",
+      "output_bytes",
+      "output_sha256",
+      "svg_elements"
+    ]
+  }
+}

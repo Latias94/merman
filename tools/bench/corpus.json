@@ -5,7 +5,7 @@
     "canary": "The four benchmark sentinels used for the default hotspot workflow.",
     "quick": "Small smoke set for local iteration; mirrors the historical comparison filter.",
     "standard": "Balanced 24-family set for routine native comparison reports.",
-    "cross_family": "One representative medium fixture per family currently registered in this native corpus; not the complete supported-family inventory.",
+    "cross_family": "One representative fixture per admitted diagram family currently registered in this native corpus.",
     "flowchart": "Flowchart-focused routing and layout stress coverage.",
     "frontmatter": "Frontmatter preprocessing and config ingestion coverage.",
     "stress": "Known heavier fixtures used when validating optimization work.",
@@ -28,9 +28,9 @@
       "history_aliases": [],
       "size_vector": [],
       "workload": "corpus-fixture",
-      "evidence_contract": null,
+      "evidence_contract": "docs/performance/contracts/native-criterion-preflight-v1.json",
       "measurement_metrics": ["latency_ns"],
-      "semantic_output_dimensions": ["typed_render_model"]
+      "semantic_output_dimensions": ["typed_render_model_sha256", "typed_render_model_bytes"]
     },
     {
       "id": "compatibility-json-parse",
@@ -48,9 +48,9 @@
       "history_aliases": ["parse_known_type/{fixture}"],
       "size_vector": [],
       "workload": "corpus-fixture",
-      "evidence_contract": null,
+      "evidence_contract": "docs/performance/contracts/native-criterion-preflight-v1.json",
       "measurement_metrics": ["latency_ns"],
-      "semantic_output_dimensions": ["compatibility_json_bytes"]
+      "semantic_output_dimensions": ["compatibility_json_sha256", "compatibility_json_bytes"]
     },
     {
       "id": "typed-render-model-parse-cold",
@@ -68,9 +68,9 @@
       "history_aliases": [],
       "size_vector": [],
       "workload": "corpus-fixture",
-      "evidence_contract": null,
+      "evidence_contract": "docs/performance/contracts/native-criterion-preflight-v1.json",
       "measurement_metrics": ["latency_ns"],
-      "semantic_output_dimensions": ["typed_render_model"]
+      "semantic_output_dimensions": ["typed_render_model_sha256", "typed_render_model_bytes"]
     },
     {
       "id": "frontmatter-preprocess-known-type",
@@ -88,12 +88,11 @@
       "history_aliases": [],
       "size_vector": [],
       "workload": "corpus-fixture",
-      "evidence_contract": null,
+      "evidence_contract": "docs/performance/contracts/native-criterion-preflight-v1.json",
       "measurement_metrics": ["latency_ns"],
       "semantic_output_dimensions": [
-        "preprocessed_code",
-        "frontmatter_title",
-        "frontmatter_config"
+        "preprocessed_diagram_sha256",
+        "preprocessed_diagram_bytes"
       ]
     },
     {
@@ -112,9 +111,9 @@
       "history_aliases": [],
       "size_vector": [],
       "workload": "corpus-fixture",
-      "evidence_contract": null,
+      "evidence_contract": "docs/performance/contracts/native-criterion-preflight-v1.json",
       "measurement_metrics": ["latency_ns"],
-      "semantic_output_dimensions": ["svg_bytes"]
+      "semantic_output_dimensions": ["svg_sha256", "svg_bytes", "svg_elements"]
     },
     {
       "id": "prepare-layout",
@@ -132,9 +131,9 @@
       "history_aliases": [],
       "size_vector": [],
       "workload": "corpus-fixture",
-      "evidence_contract": null,
+      "evidence_contract": "docs/performance/contracts/native-criterion-preflight-v1.json",
       "measurement_metrics": ["latency_ns"],
-      "semantic_output_dimensions": ["prepared_artifact"]
+      "semantic_output_dimensions": ["prepared_layout_sha256", "prepared_layout_bytes"]
     },
     {
       "id": "emit-svg",
@@ -152,9 +151,9 @@
       "history_aliases": [],
       "size_vector": [],
       "workload": "corpus-fixture",
-      "evidence_contract": null,
+      "evidence_contract": "docs/performance/contracts/native-criterion-preflight-v1.json",
       "measurement_metrics": ["latency_ns"],
-      "semantic_output_dimensions": ["svg_bytes"]
+      "semantic_output_dimensions": ["svg_sha256", "svg_bytes", "svg_elements"]
     },
     {
       "id": "flowchart-end-to-end-memory",
@@ -570,7 +569,7 @@
     },
     {
       "name": "quadrant_medium",
-      "family": "quadrant",
+      "family": "quadrantchart",
       "size": "medium",
       "category": "standard",
       "source": "crates/merman/benches/fixtures/quadrant_medium.mmd",
@@ -657,6 +656,126 @@
       "suites": ["standard", "cross_family"],
       "features": ["axes", "series", "ticks"],
       "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "venn_medium",
+      "family": "venn",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/venn_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["sets", "union"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "swimlane_medium",
+      "family": "swimlane",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/swimlane_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["lanes", "nodes", "edges"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "eventmodeling_medium",
+      "family": "eventmodeling",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/eventmodeling_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["timeline", "commands", "events", "data"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "treeview_medium",
+      "family": "treeView",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/treeview_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["hierarchy", "labels"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "ishikawa_medium",
+      "family": "ishikawa",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/ishikawa_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["causes", "nested_causes"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "railroad_medium",
+      "family": "railroad",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/railroad_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["sequence", "terminal", "nonterminal", "repetition"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "railroad_abnf_medium",
+      "family": "railroadAbnf",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/railroad_abnf_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["choice", "repetition", "optional", "numval"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "railroad_ebnf_medium",
+      "family": "railroadEbnf",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/railroad_ebnf_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["choice", "optional", "repetition", "special"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "railroad_peg_medium",
+      "family": "railroadPeg",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/railroad_peg_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["prefix", "suffix", "any"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "wardley_medium",
+      "family": "wardley",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/wardley_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["anchors", "components", "evolution", "notes"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "cynefin_medium",
+      "family": "cynefin",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/cynefin_medium.mmd",
+      "suites": ["cross_family"],
+      "features": ["domains", "items", "transitions"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "error_basic",
+      "family": "error",
+      "size": "tiny",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/error_basic.mmd",
+      "suites": ["cross_family"],
+      "features": ["direct_error", "fixed_layout"],
+      "quality": ["svg_sanity", "dom_compare"]
     },
     {
       "name": "frontmatter_basic",
