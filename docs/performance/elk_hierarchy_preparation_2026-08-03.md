@@ -240,8 +240,8 @@ bootstrap resamples, and seed `20260807`.
 - independently recomputed base A/A noise: `1.180393%`;
 - independently recomputed head A/A noise: `0.637069%`;
 - derived structural relative budget: `5%`, with both noises below the 3% inconclusive boundary;
-- base median estimate: `351,531.25 ns`;
-- candidate median estimate: `346,805 ns`;
+- mean of the eight Criterion point estimates on base: `351,531.25 ns`;
+- mean of the eight Criterion point estimates on candidate: `346,805 ns`;
 - paired relative estimate: `-1.334814%`, with a 95% simultaneous regression upper bound of
   `+0.531097%`;
 - paired absolute estimate: `-4,726.25 ns`, with a 95% simultaneous regression upper bound of
