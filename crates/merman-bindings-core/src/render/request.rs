@@ -10,10 +10,10 @@ use crate::common::{
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use merman::svg::{
     HeadlessRenderer, HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions,
-    MeasurementProfileId, Presentation, PresentationProfile, RenderEnvironment,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemeRole,
+    MeasurementProfileId, Presentation, PresentationProfile, RenderCapability,
+    RenderCapabilityPolicy, RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy,
+    TextMeasurementProfileIdentity, ThemeRole,
 };
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub(super) struct RenderRequestPlan {
@@ -56,29 +56,6 @@ impl RenderRequestPlan {
         }
     }
 
-    pub(super) fn with_host_text_measurer(
-        &self,
-        measurer: Arc<dyn merman::svg::HostTextMeasurer>,
-    ) -> Self {
-        let identity = TextMeasurementProfileIdentity::new(
-            MeasurementProfileId::new("merman.binding-host").expect("static profile id"),
-            concat!("merman-bindings-core@", env!("CARGO_PKG_VERSION")),
-        )
-        .expect("static profile identity");
-        let policy =
-            TextMeasurementPolicy::host_display(identity, measurer, TextMeasurementPhase::ALL);
-        Self {
-            renderer: self.renderer.clone().with_text_measurement_policy(policy),
-            pipeline: self.pipeline.clone(),
-            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-            export_resource_profile: self.export_resource_profile,
-            #[cfg(any(feature = "png", feature = "jpeg"))]
-            raster_options: self.raster_options.clone(),
-            #[cfg(feature = "pdf")]
-            pdf_options: self.pdf_options.clone(),
-        }
-    }
-
     pub(super) fn layout_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
         let layout_json = self
             .renderer
@@ -100,14 +77,6 @@ impl RenderRequestPlan {
     }
 
     #[cfg(feature = "png")]
-    pub(super) fn render_png(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        self.renderer
-            .render_png_sync(source, &self.raster_options)
-            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
-            .ok_or_else(no_diagram_error)
-    }
-
-    #[cfg(feature = "png")]
     pub(super) fn render_png_output(
         &self,
         source: &str,
@@ -121,14 +90,6 @@ impl RenderRequestPlan {
     }
 
     #[cfg(feature = "jpeg")]
-    pub(super) fn render_jpeg(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        self.renderer
-            .render_jpeg_sync(source, &self.raster_options)
-            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
-            .ok_or_else(no_diagram_error)
-    }
-
-    #[cfg(feature = "jpeg")]
     pub(super) fn render_jpeg_output(
         &self,
         source: &str,
@@ -139,14 +100,6 @@ impl RenderRequestPlan {
             .map_err(|error| classify_output_error(error, self.export_resource_profile))?
             .ok_or_else(no_diagram_error)?;
         Ok(crate::operation::BindingOperationOutput::raster(data, plan))
-    }
-
-    #[cfg(feature = "pdf")]
-    pub(super) fn render_pdf(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        self.renderer
-            .render_pdf_with_options_sync(source, &self.pdf_options)
-            .map_err(|error| classify_output_error(error, self.export_resource_profile))?
-            .ok_or_else(no_diagram_error)
     }
 
     #[cfg(feature = "pdf")]
@@ -168,9 +121,21 @@ pub(super) fn pipeline_for_options(
     options: &BindingOptions,
 ) -> Result<merman::svg::SvgPipeline, BindingError> {
     Ok(
-        RenderOperationConfig::compile(options, merman::runtime::RuntimePolicy::deterministic())?
+        compile_for_test(options, merman::runtime::RuntimePolicy::deterministic())?
             .output
             .pipeline(),
+    )
+}
+
+#[cfg(test)]
+fn compile_for_test(
+    options: &BindingOptions,
+    runtime_policy: merman::runtime::RuntimePolicy,
+) -> Result<RenderOperationConfig, BindingError> {
+    RenderOperationConfig::compile(
+        options,
+        runtime_policy,
+        RenderCapabilityPolicy::unrestricted(),
     )
 }
 
@@ -178,9 +143,11 @@ impl RenderOperationConfig {
     pub(super) fn compile(
         options: &BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
+        capability_policy: RenderCapabilityPolicy,
     ) -> Result<Self, BindingError> {
-        let mut environment =
-            RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
+        let mut environment = RenderEnvironment::deterministic()
+            .with_capability_policy(capability_policy)
+            .with_runtime_policy(runtime_policy);
         environment = environment.with_resource_policy(binding_resource_policy(
             options.analysis.resources.as_ref(),
         )?);
@@ -205,10 +172,12 @@ impl RenderOperationConfig {
                         environment = environment.without_math_renderer();
                     }
                     "ratex" => {
-                        if !merman::svg::math_available() {
+                        if !capability_policy.allows(RenderCapability::Math)
+                            || !merman::svg::math_available()
+                        {
                             return Err(BindingError::missing_capability(
                                 "math",
-                                "environment.math_renderer=ratex requires the compiled math capability",
+                                "environment.math_renderer=ratex requires the artifact-owned math capability",
                             ));
                         }
                         environment = environment.with_compiled_math_renderer();
@@ -323,8 +292,23 @@ impl RenderOperationConfig {
         })
     }
 
-    pub(super) fn materialize(self) -> RenderRequestPlan {
-        let mut renderer = HeadlessRenderer::new().with_environment(self.environment);
+    pub(super) fn materialize(self, services: &crate::BindingEngineServices) -> RenderRequestPlan {
+        let environment = if let Some(registry) = services.icon_registry() {
+            self.environment.with_icon_registry(registry)
+        } else {
+            self.environment
+        };
+        let mut renderer = HeadlessRenderer::new().with_environment(environment);
+        if let Some(measurer) = services.host_text_measurer() {
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("merman.binding-host").expect("static profile id"),
+                concat!("merman-bindings-core@", env!("CARGO_PKG_VERSION")),
+            )
+            .expect("static profile identity");
+            let policy =
+                TextMeasurementPolicy::host_display(identity, measurer, TextMeasurementPhase::ALL);
+            renderer = renderer.with_text_measurement_policy(policy);
+        }
         renderer = if self.lenient_parsing {
             renderer.with_lenient_parsing()
         } else {
@@ -594,10 +578,17 @@ fn classify_render_error(err: merman::svg::HeadlessError) -> BindingError {
                 .id(),
             err.to_string(),
         ),
+        merman::svg::HeadlessError::Render(
+            err @ merman::svg::RenderError::InvalidIconOutput { .. },
+        ) => BindingError::new(BindingStatus::InvalidArgument, err.to_string()),
+        merman::svg::HeadlessError::Render(
+            err @ merman::svg::RenderError::IconProcessing { .. },
+        ) => BindingError::internal(err.to_string()),
         merman::svg::HeadlessError::Render(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
         merman::svg::HeadlessError::RuntimePolicy(err) => runtime_policy_error(err),
+        _ => BindingError::internal("unknown headless renderer failure"),
     }
 }
 
@@ -619,6 +610,7 @@ fn classify_output_error(
             ),
             None => BindingError::new(BindingStatus::RenderError, err.to_string()),
         },
+        _ => BindingError::internal("unknown SVG output failure"),
     }
 }
 
@@ -648,11 +640,8 @@ mod tests {
             }"##,
         )
         .expect("valid export options");
-        let config = RenderOperationConfig::compile(
-            &options,
-            merman::runtime::RuntimePolicy::deterministic(),
-        )
-        .expect("export options compile");
+        let config = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
+            .expect("export options compile");
         assert_eq!(config.raster_options.scale, 1.5);
         assert_eq!(config.raster_options.jpeg_quality, 82);
         let fit = config.raster_options.fit_to.expect("fit box");
@@ -679,11 +668,8 @@ mod tests {
             br#"{"svg":{"diagram_id":"docs-flow","viewBoxPadding":12.5}}"#,
         )
         .expect("valid SVG options");
-        let config = RenderOperationConfig::compile(
-            &options,
-            merman::runtime::RuntimePolicy::deterministic(),
-        )
-        .expect("SVG options compile");
+        let config = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
+            .expect("SVG options compile");
 
         assert_eq!(config.svg.diagram_id.as_deref(), Some("docs-flow"));
         assert_eq!(config.svg.viewbox_padding, 12.5);
@@ -694,10 +680,7 @@ mod tests {
     fn svg_viewbox_padding_rejects_negative_or_unrepresentable_values() {
         let error = crate::common::parse_options(br#"{"svg":{"viewbox_padding":-1}}"#)
             .and_then(|options| {
-                RenderOperationConfig::compile(
-                    &options,
-                    merman::runtime::RuntimePolicy::deterministic(),
-                )
+                compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
             })
             .err()
             .expect("negative SVG padding");
@@ -714,12 +697,9 @@ mod tests {
     fn export_options_reject_backend_colors_that_would_be_ignored() {
         let options = crate::common::parse_options(br#"{"raster":{"background":"not-a-color"}}"#)
             .expect("JSON shape is valid");
-        let error = RenderOperationConfig::compile(
-            &options,
-            merman::runtime::RuntimePolicy::deterministic(),
-        )
-        .err()
-        .expect("unsupported backend color");
+        let error = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
+            .err()
+            .expect("unsupported backend color");
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(error.message().contains("raster.background"));
     }
@@ -750,12 +730,9 @@ mod tests {
 
         for &(options_json, expected_field) in cases {
             let options = crate::common::parse_options(options_json).expect("valid JSON shape");
-            let error = RenderOperationConfig::compile(
-                &options,
-                merman::runtime::RuntimePolicy::deterministic(),
-            )
-            .err()
-            .expect("invalid export option must fail before backend work");
+            let error = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
+                .err()
+                .expect("invalid export option must fail before backend work");
             assert_eq!(error.status(), BindingStatus::InvalidArgument);
             assert!(
                 error.message().contains(expected_field),

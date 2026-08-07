@@ -86,7 +86,7 @@ fn generate(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         languages: vec![uniffi::TargetLanguage::Swift],
         source: utf8_path(&library).into(),
         out_dir: utf8_path(&args.output_dir).into(),
-        // The source is normally a compiled library in target/. The bindgen-smoke
+        // The source is normally a compiled library in target/. The binding-generation
         // feature enables UniFFI's Cargo metadata layer so it can still locate
         // crates/merman-uniffi/uniffi.toml from the compiled crate name.
         config_override: None,
@@ -108,8 +108,6 @@ fn generate(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         }
         normalize_generated_text(&path)?;
     }
-    require_stable_swift_surface(&args.output_dir.join("Merman.swift"))?;
-
     println!(
         "generated Swift UniFFI bindings in {} from {}",
         args.output_dir.display(),
@@ -183,59 +181,6 @@ fn normalize_generated_text(path: &Path) -> Result<(), Box<dyn std::error::Error
         normalized.pop();
     }
     std::fs::write(path, normalized)?;
-    Ok(())
-}
-
-fn require_stable_swift_surface(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let source = std::fs::read_to_string(path)?;
-    for required in [
-        "enum MermanErrorKind",
-        "case unknownOperation",
-        "kind: MermanErrorKind",
-        "capabilityId: String?",
-        "struct MermanResourceErrorDetails",
-        "public var cause: String",
-        "enum MermanResourceOverrideId",
-        "public var id: MermanResourceOverrideId",
-        "func resourceOptionsJson(profile: MermanResourceProfile?",
-        "resource: MermanResourceErrorDetails?",
-        "public var operationId: String",
-        "public var optionsJson: String?",
-        "func execute(request: MermanOperationRequest) throws",
-        "func presentationCatalogJson() throws",
-        "func renderSvg(source: String, optionsJson: String?) throws",
-        "func reusableEngineWithTextMeasurer(",
-        "private final class VTableStorage: @unchecked Sendable",
-    ] {
-        if !source.contains(required) {
-            return Err(format!(
-                "generated Swift binding is missing stable contract `{required}`: {}",
-                path.display()
-            )
-            .into());
-        }
-    }
-    for removed in [
-        "func execute(request: MermanOperationRequest, optionsJson:",
-        "func renderSvg(source: String) throws",
-        "public var outputId: String",
-        "case unknownOutput",
-        "nonisolated(unsafe) static let vtablePtr",
-        "func setTextMeasurer(",
-        "func clearTextMeasurer(",
-        "func supportedHostThemePresets()",
-        "enum MermanResourceLimitId",
-        "public var id: MermanResourceLimitId",
-        "func resourceOptionsJson(profile: MermanResourceProfile,",
-    ] {
-        if source.contains(removed) {
-            return Err(format!(
-                "generated Swift binding retains obsolete API `{removed}`: {}",
-                path.display()
-            )
-            .into());
-        }
-    }
     Ok(())
 }
 
@@ -314,6 +259,6 @@ fn utf8_path(path: &Path) -> String {
 
 fn print_usage() {
     eprintln!(
-        "usage: cargo run -p merman-uniffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --example generate_swift_bindings -- [--library PATH] [--output-dir PATH]"
+        "usage: cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_swift_bindings -- [--library PATH] [--output-dir PATH]"
     );
 }

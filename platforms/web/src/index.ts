@@ -25,17 +25,25 @@ export {
   MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
 } from "./generated/text-measurement-abi.js";
 export {
+  BINDING_OPTIONS_SCHEMA_VERSION,
   RESOURCE_LIMIT_IDS,
+  RESOURCE_LIMIT_METADATA,
+  RESOURCE_OVERRIDE_IDS,
   RESOURCE_PROFILES,
+  isKnownResourceLimitId,
   rawResourceOptionsJson,
+  resourceLimitMetadata,
   resourceOptions,
   resourceOptionsJson,
 } from "./generated/resource-contract.js";
 export type {
+  KnownResourceLimitId,
+  KnownResourceLimitMetadata,
   RawResourceOptions,
   ResourceLimitId,
   ResourceLimitOverrides,
   ResourceOptions,
+  ResourceOverrideId,
   ResourceProfile,
 } from "./generated/resource-contract.js";
 export {

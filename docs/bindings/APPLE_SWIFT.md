@@ -22,7 +22,7 @@ swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 
 Use `--ios` or `--macos` to build a subset of slices. The script builds the release
 library from the descriptor-owned `apple-uniffi-native` profile with its direct feature set, then
-runs the local UniFFI generator with the same features plus `bindgen-smoke`. The generator must produce `Merman.swift`,
+runs the local UniFFI generator with only `binding-generation` against the built native library. The generator must produce `Merman.swift`,
 `MermanFFI.h`, and `MermanFFI.modulemap`; a missing library or generated artifact is a
 hard failure. Each XCFramework slice contains the header and module map required by the
 generated Swift source.
@@ -45,14 +45,14 @@ together.
 import Merman
 
 let source = "flowchart TD\nA[Hello] --> B[World]"
-let engine = MermanEngine()
+let merman = Merman()
 
-guard engine.bindingApiVersion() == 3 else {
+guard merman.bindingApiVersion() == 3 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
 let options = try resourceOptionsJson(profile: .constrained, overrides: [])
-let svg = try engine.renderSvg(source: source, optionsJson: options)
+let svg = try merman.renderSvg(source: source, optionsJson: options)
 
 let request = MermanOperationRequest(
     operationId: "png",
@@ -60,15 +60,16 @@ let request = MermanOperationRequest(
     uri: nil,
     optionsJson: options
 )
-let png = try engine.execute(request: request).data
+let png = try merman.execute(request: request).data
 ```
 
-`MermanEngine` owns one-shot operations. Use `MermanReusableEngine` when a group of
-operations shares baseline options:
+`Merman` owns discovery, metadata, and one-shot operations. Construct `MermanEngine` directly when
+a group of operations shares baseline options or constructor services:
 
 ```swift
-let reusable = try engine.reusableEngine(optionsJson: options)
-let pdf = try reusable.renderPdf(source: source, optionsJson: nil)
+let engine = try MermanEngine(optionsJson: options, services: nil)
+defer { try? engine.close() }
+let pdf = try engine.renderPdf(source: source, optionsJson: nil)
 ```
 
 The generic `execute` operation is the authoritative dispatch path. Its stable `operationId`
@@ -87,7 +88,7 @@ the human-readable message.
 
 ## Capabilities And Limits
 
-`engine.runtimeCatalogJson()` returns flat runtime catalog schema `1`. Its top-level transport and
+`merman.runtimeCatalogJson()` returns flat runtime catalog schema `1`. Its top-level transport and
 package identity belong to the loaded UniFFI artifact; `capabilities` contains sorted current
 capability, output, operation, system-adapter, and text-measurement IDs. `registry` and `resources`
 describe the same artifact's diagram-family count and resource profiles. Consumers validate this
@@ -100,22 +101,47 @@ Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `2`. 
 ## Text Measurement
 
 Merman uses its deterministic vendored measurer by default. A Swift UI that must match Core Text,
-AppKit, or UIKit geometry can implement the generated `MermanTextMeasurer` protocol and pass it to
-`engine.reusableEngineWithTextMeasurer(optionsJson:measurer:)`. The callback is immutable for that
-engine; construct another engine to change it or return to the built-in measurer.
+AppKit, or UIKit geometry can implement the generated `MermanTextMeasurer` protocol, place it in
+`MermanEngineServices`, and pass that value to the direct engine constructor:
+
+```swift
+let services = MermanEngineServices()
+    .withTextMeasurer(textMeasurer: CoreTextMeasurer())
+let engine = try MermanEngine(optionsJson: nil, services: services)
+defer { try? engine.close() }
+```
+
+The callback is immutable for that engine; construct another engine to change it or return to the
+built-in measurer.
 
 The callback receives the independent text-measurement protocol version `1`, not a C ABI record.
 Return `nil` for a request that cannot be answered synchronously and faithfully; the corresponding
 operation uses Merman's vendored fallback. Callback-free engines admit concurrent calls. Callback
-engines serialize admission and return `.busy` to a competitor; same-engine entry from a callback
-returns `.reentrantCall`. Only callback errors delivered through UniFFI's generated trampoline can
-be converted to fallback. Callback implementations must not unwind across the generated FFI
-boundary. See [host text measurement](HOST_TEXT_MEASUREMENT.md#apple-swift) for the operation and
-lifecycle contract.
+engines serialize admission and return `.busy` to a competitor; same-engine entry or close from a
+callback returns `.reentrantCall`. A busy or re-entrant close retains the engine and services for a
+later retry. Only callback errors delivered through UniFFI's generated trampoline can be converted
+to fallback. Callback implementations must not unwind across the generated FFI boundary. See
+[host text measurement](HOST_TEXT_MEASUREMENT.md#apple-swift) for the operation and lifecycle
+contract.
+
+## Migrating From The Previous Prerelease API
+
+- Replace the old one-shot `MermanEngine` with `Merman`.
+- Delete `MermanReusableEngine`, `reusableEngine(...)`, and
+  `reusableEngineWithTextMeasurer(...)` usage. Construct `MermanEngine(optionsJson:services:)`
+  directly.
+- Start with `MermanEngineServices()` and chain `withIconRegistry(...)` or
+  `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
+  an existing engine.
+- Call `close()` deterministically, especially when a callback can capture the engine.
+- Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
+  required; byte-returning methods remain available. Switch on `outputPlan.kind`, inspect the
+  optional `raster` or `pdfFilterImages` payload, and retain `rawJson` for future kinds.
 
 ## Verification
 
-The Apple smoke calls the generated public API against the built XCFramework. It verifies binding
-API `3`, runtime catalog schema `1`, local capability relations, generic operation dispatch, reusable
-operations, and SVG/PNG/JPEG/PDF output. CI also rebuilds the checked-in generated Swift binding,
-so an API drift cannot pass by compiling an older hand-written facade.
+The Apple smoke calls the generated public API against the built XCFramework. It intentionally
+checks only SVG output, immutable icon and text-measurement services, and deterministic close.
+Owner-local Rust tests carry exhaustive catalog, error, output, and lifecycle contracts. CI also
+rebuilds the checked-in generated Swift binding, so API drift cannot pass by compiling an older
+hand-written facade.

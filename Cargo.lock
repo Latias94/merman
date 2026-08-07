@@ -2259,6 +2259,7 @@ version = "0.8.0-alpha.4"
 dependencies = [
  "jni",
  "merman-bindings-core",
+ "simd_cesu8",
 ]
 
 [[package]]

@@ -7,6 +7,11 @@ use super::{
     wasm_module_surface::{LoadedWasmModule, WasmModuleLoadError, WasmSurfaceProfile},
 };
 use crate::XtaskError;
+#[cfg(test)]
+use merman_bindings_core::OperationKey;
+use merman_bindings_core::{
+    BindingOptionGroupKey, BindingPayloadSchemaKey, ConstructorServiceKey, MetadataKey,
+};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::path::{Path, PathBuf};
 use wasmi::{Caller, Linker, Store, Val, ValType};
@@ -342,6 +347,47 @@ fn canonical_typst_artifact_profile(
     Ok((*artifact).clone())
 }
 
+fn expected_typst_operation_ids(artifact: &WasmArtifactProfile) -> Vec<String> {
+    merman_typst_plugin::TYPST_TRANSPORT_OPERATION_KEYS
+        .iter()
+        .copied()
+        .filter(|operation| {
+            let spec = operation.spec();
+            spec.targets
+                .contains(&merman_bindings_core::TargetKey::Typst)
+                && spec.capability.is_none_or(|capability| {
+                    artifact.capabilities.iter().any(|id| id == capability.id())
+                })
+                && spec
+                    .compiled_prerequisites
+                    .iter()
+                    .all(|capability| artifact.capabilities.iter().any(|id| id == capability.id()))
+                && spec
+                    .output
+                    .is_none_or(|output| artifact.outputs.iter().any(|id| id == output.id()))
+        })
+        .map(|operation| operation.id().to_string())
+        .collect()
+}
+
+fn expected_typst_option_group_ids(artifact: &WasmArtifactProfile) -> Vec<String> {
+    let uses_svg_pipeline = artifact.capabilities.iter().any(|id| id == "svg");
+    BindingOptionGroupKey::ALL
+        .iter()
+        .copied()
+        .filter(|key| {
+            let spec = key.spec();
+            spec.always_available()
+                || (spec.requires_svg_pipeline() && uses_svg_pipeline)
+                || spec
+                    .any_capabilities()
+                    .iter()
+                    .any(|capability| artifact.capabilities.iter().any(|id| id == capability.id()))
+        })
+        .map(|key| key.id().to_string())
+        .collect()
+}
+
 fn call_json(
     instance: &mut PluginInstance,
     name: &str,
@@ -364,7 +410,11 @@ fn assert_capability_catalog(
         payload,
         &[
             "capabilities",
+            "metadata_ids",
+            "options_schema_versions",
+            "output_contracts",
             "package_version",
+            "payload_schemas",
             "registry",
             "resources",
             "schema_version",
@@ -384,6 +434,50 @@ fn assert_capability_catalog(
         return Err(smoke_error(format!(
             "capabilities_json returned an invalid Typst catalog header: {payload}"
         )));
+    }
+
+    let options_schema_versions = positive_integer_array(
+        catalog
+            .get("options_schema_versions")
+            .expect("validated Typst capability catalog"),
+        "Typst options schema versions",
+    )?;
+    if !options_schema_versions
+        .contains(&(merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION as u64))
+    {
+        return Err(smoke_error(format!(
+            "Typst runtime catalog does not advertise options schema v{}",
+            merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION
+        )));
+    }
+
+    let payload_schema_ids = validated_payload_schema_ids(
+        catalog
+            .get("payload_schemas")
+            .expect("validated Typst capability catalog"),
+    )?;
+    if payload_schema_ids
+        .iter()
+        .any(|id| BindingPayloadSchemaKey::from_id(id).is_some())
+    {
+        return Err(smoke_error(
+            "Typst runtime catalog must not advertise binding payload schemas",
+        ));
+    }
+
+    let metadata_ids = string_array(
+        catalog
+            .get("metadata_ids")
+            .expect("validated Typst capability catalog"),
+        "Typst runtime metadata IDs",
+    )?;
+    if metadata_ids
+        .iter()
+        .any(|id| MetadataKey::from_id(id).is_some())
+    {
+        return Err(smoke_error(
+            "Typst runtime catalog must not advertise known metadata dispatchers",
+        ));
     }
 
     let runtime_capabilities = catalog
@@ -428,16 +522,25 @@ fn assert_capability_catalog(
             output_ids.join(",")
         )));
     }
+    let output_contract_ids = validated_output_contract_ids(
+        catalog
+            .get("output_contracts")
+            .expect("validated Typst capability catalog"),
+    )?;
+    if output_contract_ids != output_ids {
+        return Err(smoke_error(format!(
+            "Typst runtime output contracts do not match output IDs: expected [{}], found [{}]",
+            output_ids.join(","),
+            output_contract_ids.join(",")
+        )));
+    }
     let operation_ids = string_array(
         runtime_capabilities
             .get("operation_ids")
             .expect("closed runtime capabilities object"),
         "Typst runtime operation IDs",
     )?;
-    let expected_operation_ids = merman_typst_plugin::TYPST_BINDING_OPERATION_IDS
-        .iter()
-        .map(|id| (*id).to_string())
-        .collect::<Vec<_>>();
+    let expected_operation_ids = expected_typst_operation_ids(artifact);
     if operation_ids != expected_operation_ids {
         return Err(smoke_error(format!(
             "Typst runtime operation IDs do not match the closed plugin transport: expected [{}], found [{}]",
@@ -499,6 +602,25 @@ fn assert_capability_catalog(
             JsonValue::Object(text_measurement.clone())
         )));
     }
+
+    if let Some(option_group_ids) = catalog.get("option_group_ids") {
+        let option_group_ids = string_array(option_group_ids, "Typst runtime option group IDs")?;
+        let expected_option_group_ids = expected_typst_option_group_ids(artifact);
+        let known_option_group_ids = option_group_ids
+            .iter()
+            .filter(|id| BindingOptionGroupKey::from_id(id).is_some())
+            .cloned()
+            .collect::<Vec<_>>();
+        if known_option_group_ids != expected_option_group_ids {
+            return Err(smoke_error(format!(
+                "Typst runtime option group IDs do not match the artifact: expected [{}], found [{}]",
+                expected_option_group_ids.join(","),
+                known_option_group_ids.join(",")
+            )));
+        }
+    }
+
+    assert_typst_constructor_services(catalog, &text_measurement_provider_ids)?;
 
     let mut runtime_ids = capability_ids.clone();
     runtime_ids.sort();
@@ -612,6 +734,216 @@ fn string_array(value: &JsonValue, context: &str) -> Result<Vec<String>, XtaskEr
         )));
     }
     Ok(values)
+}
+
+fn positive_integer_array(value: &JsonValue, context: &str) -> Result<Vec<u64>, XtaskError> {
+    let array = value
+        .as_array()
+        .ok_or_else(|| smoke_error(format!("{context} must be an array")))?;
+    let values = array
+        .iter()
+        .map(|value| {
+            value
+                .as_u64()
+                .filter(|value| *value > 0)
+                .ok_or_else(|| smoke_error(format!("{context} must contain positive integers")))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut sorted = values.clone();
+    sorted.sort_unstable();
+    sorted.dedup();
+    if values != sorted {
+        return Err(smoke_error(format!(
+            "{context} must be sorted and unique: {values:?}"
+        )));
+    }
+    Ok(values)
+}
+
+fn validated_payload_schema_ids(value: &JsonValue) -> Result<Vec<String>, XtaskError> {
+    let schemas = value
+        .as_array()
+        .ok_or_else(|| smoke_error("Typst runtime payload schemas must be an array"))?;
+    let mut ids = Vec::with_capacity(schemas.len());
+    for schema in schemas {
+        let schema = required_object(schema, &["id", "version"], "Typst runtime payload schema")?;
+        let id = schema
+            .get("id")
+            .and_then(JsonValue::as_str)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| smoke_error("Typst runtime payload schema ID must be non-empty"))?;
+        if schema
+            .get("version")
+            .and_then(JsonValue::as_u64)
+            .is_none_or(|version| version == 0)
+        {
+            return Err(smoke_error(
+                "Typst runtime payload schema version must be positive",
+            ));
+        }
+        ids.push(id.to_string());
+    }
+    ensure_sorted_unique(&ids, "Typst runtime payload schema IDs")?;
+    Ok(ids)
+}
+
+fn validated_output_contract_ids(value: &JsonValue) -> Result<Vec<String>, XtaskError> {
+    let contracts = value
+        .as_array()
+        .ok_or_else(|| smoke_error("Typst runtime output contracts must be an array"))?;
+    let mut ids = Vec::with_capacity(contracts.len());
+    for contract in contracts {
+        let contract = required_object(
+            contract,
+            &["id", "media_type", "system_fonts", "embedded_images"],
+            "Typst runtime output contract",
+        )?;
+        let id = contract
+            .get("id")
+            .and_then(JsonValue::as_str)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| smoke_error("Typst runtime output contract ID must be non-empty"))?;
+        if contract
+            .get("media_type")
+            .and_then(JsonValue::as_str)
+            .is_none_or(str::is_empty)
+        {
+            return Err(smoke_error(
+                "Typst runtime output contract media_type must be non-empty",
+            ));
+        }
+        ids.push(id.to_string());
+    }
+    ensure_sorted_unique(&ids, "Typst runtime output contract IDs")?;
+    Ok(ids)
+}
+
+fn assert_typst_constructor_services(
+    catalog: &JsonMap<String, JsonValue>,
+    text_measurement_provider_ids: &[String],
+) -> Result<(), XtaskError> {
+    let service_ids = catalog.get("constructor_service_ids");
+    let service_contracts = catalog.get("constructor_service_contracts");
+    let (Some(service_ids), Some(service_contracts)) = (service_ids, service_contracts) else {
+        if service_ids.is_some() || service_contracts.is_some() {
+            return Err(smoke_error(
+                "Typst constructor service IDs and contracts must appear together",
+            ));
+        }
+        return Ok(());
+    };
+
+    let service_ids = string_array(service_ids, "Typst constructor service IDs")?;
+    if service_ids
+        .iter()
+        .any(|id| ConstructorServiceKey::from_id(id).is_some())
+    {
+        return Err(smoke_error(
+            "Typst runtime must not advertise a known constructor service",
+        ));
+    }
+    let contracts = service_contracts
+        .as_array()
+        .ok_or_else(|| smoke_error("Typst constructor service contracts must be an array"))?;
+    let mut contract_ids = Vec::with_capacity(contracts.len());
+    for contract in contracts {
+        let contract = required_object(
+            contract,
+            &[
+                "id",
+                "provided_text_measurement_provider_ids",
+                "resource_limits",
+            ],
+            "Typst constructor service contract",
+        )?;
+        let id = contract
+            .get("id")
+            .and_then(JsonValue::as_str)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| smoke_error("Typst constructor service ID must be non-empty"))?;
+        let provider_ids = string_array(
+            contract
+                .get("provided_text_measurement_provider_ids")
+                .expect("closed constructor service contract"),
+            "Typst constructor service provider IDs",
+        )?;
+        if provider_ids
+            .iter()
+            .any(|provider| !text_measurement_provider_ids.contains(provider))
+        {
+            return Err(smoke_error(
+                "Typst constructor service names an unavailable text measurement provider",
+            ));
+        }
+        if !provider_ids.is_empty() {
+            return Err(smoke_error(
+                "Typst constructor services must not claim pipeline-owned text measurement providers",
+            ));
+        }
+        validate_constructor_resource_limits(
+            contract
+                .get("resource_limits")
+                .expect("closed constructor service contract"),
+        )?;
+        contract_ids.push(id.to_string());
+    }
+    ensure_sorted_unique(&contract_ids, "Typst constructor service contract IDs")?;
+    if contract_ids != service_ids {
+        return Err(smoke_error(
+            "Typst constructor service contracts must match constructor service IDs",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_constructor_resource_limits(value: &JsonValue) -> Result<(), XtaskError> {
+    let limits = value
+        .as_array()
+        .ok_or_else(|| smoke_error("Typst constructor service resource limits must be an array"))?;
+    let mut ids = Vec::with_capacity(limits.len());
+    for limit in limits {
+        let limit = required_object(
+            limit,
+            &["id", "phase", "unit", "description", "value"],
+            "Typst constructor service resource limit",
+        )?;
+        let id = limit
+            .get("id")
+            .and_then(JsonValue::as_str)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| smoke_error("Typst constructor resource limit ID must be non-empty"))?;
+        for field in ["phase", "unit", "description"] {
+            if limit
+                .get(field)
+                .and_then(JsonValue::as_str)
+                .is_none_or(str::is_empty)
+            {
+                return Err(smoke_error(format!(
+                    "Typst constructor resource limit {field} must be non-empty"
+                )));
+            }
+        }
+        if limit.get("value").and_then(JsonValue::as_u64).is_none() {
+            return Err(smoke_error(
+                "Typst constructor resource limit value must be a non-negative integer",
+            ));
+        }
+        ids.push(id.to_string());
+    }
+    ensure_sorted_unique(&ids, "Typst constructor resource limit IDs")
+}
+
+fn ensure_sorted_unique(values: &[String], context: &str) -> Result<(), XtaskError> {
+    let mut sorted = values.to_vec();
+    sorted.sort();
+    sorted.dedup();
+    if values != sorted {
+        return Err(smoke_error(format!(
+            "{context} must be sorted and unique: [{}]",
+            values.join(",")
+        )));
+    }
+    Ok(())
 }
 
 fn assert_render_payload(payload: &JsonValue) -> Result<usize, XtaskError> {
@@ -1088,21 +1420,75 @@ mod tests {
         assert!(artifact.capabilities.contains(&"svg".to_string()));
         assert!(artifact.capabilities.contains(&"analysis".to_string()));
         assert_eq!(artifact.runtime_ids, artifact.capabilities);
+        assert_eq!(
+            expected_typst_operation_ids(&artifact),
+            [OperationKey::AnalysisJson.id(), OperationKey::Svg.id()]
+        );
+    }
+
+    #[test]
+    fn typst_operation_projection_intersects_the_transport_allowlist_with_the_artifact() {
+        let catalog = load_typst_profiles().expect("Typst package descriptor");
+        let canonical = canonical_typst_artifact_profile(&catalog).expect("Typst artifact recipe");
+
+        let mut analysis_only = canonical.clone();
+        analysis_only.capabilities = vec!["analysis".to_string()];
+        analysis_only.outputs.clear();
+        assert_eq!(
+            expected_typst_operation_ids(&analysis_only),
+            [OperationKey::AnalysisJson.id()]
+        );
+
+        let mut svg_only = canonical.clone();
+        svg_only.capabilities = vec!["svg".to_string()];
+        svg_only.outputs = vec!["svg".to_string()];
+        assert_eq!(
+            expected_typst_operation_ids(&svg_only),
+            [OperationKey::Svg.id()]
+        );
+
+        let mut svg_with_layouts = svg_only;
+        svg_with_layouts.capabilities = vec![
+            "layout-cytoscape".to_string(),
+            "layout-elk".to_string(),
+            "svg".to_string(),
+        ];
+        assert_eq!(
+            expected_typst_operation_ids(&svg_with_layouts),
+            [OperationKey::Svg.id()],
+            "supplemental capabilities must not expand the closed Typst transport"
+        );
     }
 
     #[test]
     fn capability_catalog_allows_additive_fields_within_the_current_schema() {
         let profiles = load_typst_profiles().expect("Typst package descriptor");
         let artifact = canonical_typst_artifact_profile(&profiles).expect("Typst artifact recipe");
+        let operation_ids = expected_typst_operation_ids(&artifact);
+        let output_contracts = artifact
+            .outputs
+            .iter()
+            .map(|id| {
+                json!({
+                    "id": id,
+                    "media_type": "application/octet-stream",
+                    "system_fonts": null,
+                    "embedded_images": null,
+                })
+            })
+            .collect::<Vec<_>>();
         let mut payload = json!({
             "schema_version": merman_typst_plugin::TYPST_RUNTIME_CATALOG_SCHEMA_VERSION,
             "transport_api_version": merman_typst_plugin::TYPST_PLUGIN_ABI_VERSION,
             "package_version": String::from_utf8(merman_typst_plugin::package_version())
                 .expect("UTF-8 package version"),
+            "options_schema_versions": [merman_bindings_core::BINDING_OPTIONS_SCHEMA_VERSION],
+            "payload_schemas": [],
+            "metadata_ids": [],
             "capabilities": {
                 "capability_ids": artifact.capabilities,
                 "output_ids": artifact.outputs,
-                "operation_ids": merman_typst_plugin::TYPST_BINDING_OPERATION_IDS,
+                "operation_ids": operation_ids,
                 "system_adapter_ids": [],
                 "text_measurement": {
                     "protocol_version": 1,
@@ -1111,6 +1497,7 @@ mod tests {
                 },
                 "future_capability_metadata": {},
             },
+            "output_contracts": output_contracts,
             "registry": {
                 "diagram_family_count": 35,
                 "future_registry_metadata": true,
@@ -1125,7 +1512,47 @@ mod tests {
             "future_catalog_metadata": {},
         });
 
-        assert!(assert_capability_catalog(&payload, &artifact).is_ok());
+        assert_capability_catalog(&payload, &artifact)
+            .expect("schema-1 Typst catalogs must tolerate additive fields");
+
+        for field in [
+            "options_schema_versions",
+            "payload_schemas",
+            "metadata_ids",
+            "output_contracts",
+        ] {
+            let mut missing = payload.clone();
+            missing
+                .as_object_mut()
+                .expect("runtime catalog")
+                .remove(field);
+            assert!(
+                assert_capability_catalog(&missing, &artifact)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(field),
+                "missing original schema-1 field `{field}` must fail"
+            );
+        }
+
+        let mut explicit_additive_sections = payload.clone();
+        explicit_additive_sections["option_group_ids"] =
+            json!(expected_typst_option_group_ids(&artifact));
+        explicit_additive_sections["constructor_service_ids"] = json!([]);
+        explicit_additive_sections["constructor_service_contracts"] = json!([]);
+        assert_capability_catalog(&explicit_additive_sections, &artifact)
+            .expect("present additive sections must satisfy their cross-field contracts");
+
+        explicit_additive_sections
+            .as_object_mut()
+            .expect("runtime catalog")
+            .remove("constructor_service_contracts");
+        assert!(
+            assert_capability_catalog(&explicit_additive_sections, &artifact)
+                .unwrap_err()
+                .to_string()
+                .contains("must appear together")
+        );
 
         payload["resources"]
             .as_object_mut()

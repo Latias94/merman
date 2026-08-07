@@ -4,6 +4,7 @@ import {
   MermanInvalidTransportError,
   MermanMissingPlatformPackageError,
   MermanUnsupportedTargetError,
+  parseRuntimeCatalogJsonText,
 } from "./errors.mjs";
 
 const TARGET_PACKAGES = Object.freeze({
@@ -22,23 +23,15 @@ if (typeof loaderPackageVersion !== "string" || loaderPackageVersion.length === 
   throw new Error("The Merman Node package manifest must declare a non-empty version.");
 }
 
-export function nativeLoaderPackageVersion() {
+export function nodeLoaderPackageVersion() {
   return loaderPackageVersion;
 }
 
-export function assertNativeRuntimePackageVersion(value) {
-  let catalog;
-  try {
-    catalog = typeof value === "string" ? JSON.parse(value) : value;
-  } catch (cause) {
-    throw new MermanInvalidTransportError(
-      "The native Merman runtime returned invalid catalog JSON while checking its package version.",
-      cause,
-    );
-  }
+export function assertRuntimePackageVersion(value) {
+  const catalog = parseRuntimeCatalogJsonText(value);
   if (catalog?.package_version !== loaderPackageVersion) {
     throw new MermanInvalidTransportError(
-      `The native runtime package version ${JSON.stringify(catalog?.package_version)} does not match the loader package version ${JSON.stringify(loaderPackageVersion)}.`,
+      `The Merman runtime package version ${JSON.stringify(catalog?.package_version)} does not match the loader package version ${JSON.stringify(loaderPackageVersion)}.`,
     );
   }
   return value;

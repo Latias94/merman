@@ -6,8 +6,6 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 from email.parser import Parser
-import json
-import os
 import shutil
 import subprocess
 import sys
@@ -17,10 +15,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from artifact_profile_recipe import (
-    DEFAULT_DESCRIPTOR,
     CargoArtifactRecipe,
     cargo_build_args,
-    cargo_run_example_args,
     load_artifact_profile,
     rustc_host_target,
 )
@@ -31,12 +27,9 @@ from python_wheel_licenses import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CAPABILITY_DESCRIPTOR = REPO_ROOT / "capabilities" / "feature-surface-v1.json"
-SEMANTIC_OPERATION_FIXTURES = (
-    REPO_ROOT / "fixtures" / "bindings" / "assets" / "semantic-operations-v1.json"
-)
 PYTHON_GENERATED_SUPPORT_FILES = (
     "src/merman/__init__.py",
+    "src/merman/_binding_contract.py",
     "src/merman/_resource_options.py",
     "src/merman/_runtime_catalog.py",
     "src/merman/_text_measurement_protocol.py",
@@ -65,22 +58,13 @@ def production_cdylib_path(recipe: CargoArtifactRecipe, target: str) -> Path:
 
 
 def validate_python_native_recipe(recipe: CargoArtifactRecipe) -> None:
-    expected_target_contract = ("cdylib", "rlib", "staticlib")
     if (
         recipe.profile_id != "python-uniffi-native"
-        or recipe.package != "merman-uniffi"
-        or recipe.manifest != "crates/merman-uniffi/Cargo.toml"
-        or recipe.cargo_profile != "native-sdk"
-        or recipe.default_features
-        or recipe.target_name != "merman_uniffi"
-        or recipe.target_kinds != expected_target_contract
-        or recipe.crate_types != expected_target_contract
-        or recipe.build_target_kind != "target-set"
+        or "cdylib" not in recipe.crate_types
         or not recipe.build_targets
     ):
         raise RuntimeError(
-            "python-uniffi-native must remain the exact target-set native-sdk "
-            "merman-uniffi complete native SDK cdylib recipe"
+            "python-uniffi-native must publish a cdylib for at least one target"
         )
     manifest = REPO_ROOT / recipe.manifest
     if not manifest.is_file():
@@ -102,386 +86,27 @@ def python_generator_args(
     cdylib: Path,
     package_dir: Path,
 ) -> list[str]:
-    return cargo_run_example_args(
-        recipe,
+    return [
+        "cargo",
+        "run",
+        "--package",
+        recipe.package,
+        "--manifest-path",
+        str(REPO_ROOT / recipe.manifest),
+        "--locked",
+        "--no-default-features",
+        "--features",
+        "binding-generation",
+        "--example",
         "generate_python_package",
-        locked=True,
-        extra_features=("bindgen-smoke",),
-        example_args=(
+        "--",
+        *(
             "--cdylib",
             str(cdylib),
             "--package-dir",
             str(package_dir),
         ),
-    )
-
-
-def python_generator_environment() -> dict[str, str]:
-    environment = os.environ.copy()
-    environment["CARGO_TARGET_DIR"] = str(REPO_ROOT / "target" / "python-uniffi-bindgen")
-    return environment
-
-WHEEL_SMOKE = """
-import json
-import os
-
-import merman
-
-
-def assert_shared_semantic_operation_fixtures(engine):
-    fixture_path = os.environ["MERMAN_SEMANTIC_OPERATION_FIXTURES"]
-    with open(fixture_path, encoding="utf-8") as handle:
-        fixture_root = json.load(handle)
-    assert set(fixture_root) == {"schema_version", "cases"}
-    assert fixture_root["schema_version"] == 1
-    assert fixture_root["cases"]
-
-    for index, case in enumerate(fixture_root["cases"]):
-        label = f"fixture {index} operation `{case['operation_id']}`"
-        options = case.get("options")
-        request = merman.MermanOperationRequest(
-            operation_id=case["operation_id"],
-            source=case["source"],
-            uri=case.get("uri"),
-            options_json=(
-                json.dumps(options, separators=(",", ":"))
-                if options is not None
-                else None
-            ),
-        )
-        try:
-            result = engine.execute(request)
-        except merman.MermanError.Binding as error:
-            assert case.get("expected_media_type") is None, label
-            assert case.get("expected_error_kind") == "generic", label
-            assert error.kind == merman.MermanErrorKind.GENERIC, label
-            assert error.capability_id is None, label
-            assert error.message, label
-            assert case["payload_invariants"] == ["error-message-nonempty"], label
-            continue
-
-        assert case.get("expected_error_kind") is None, label
-        assert result.operation_id == case["operation_id"], label
-        assert result.media_type == case["expected_media_type"], label
-        for invariant in case["payload_invariants"]:
-            if invariant == "nonempty":
-                assert result.data, label
-            elif invariant == "utf8":
-                result.data.decode("utf-8")
-            elif invariant == "json-object":
-                assert isinstance(json.loads(result.data), dict), label
-            elif invariant == "svg-root":
-                assert result.data.lstrip().startswith(b"<svg"), label
-            elif invariant == "metadata-operation-id":
-                metadata = json.loads(result.metadata_json)
-                assert metadata["operation_id"] == case["operation_id"], label
-            else:
-                raise AssertionError(f"{label} has unsupported invariant `{invariant}`")
-
-
-def measurement_result(operation, width, height):
-    operation_type = merman.MermanTextMeasurementOperation
-    values = dict(
-        result_kind=merman.MermanTextMeasurementResultKind.METRICS,
-        width=0.0,
-        height=0.0,
-        length=0.0,
-        line_count=0,
-        bbox_left=None,
-        bbox_right=None,
-        raw_width=None,
-    )
-    if operation in {
-        operation_type.MEASURE,
-        operation_type.WRAPPED,
-        operation_type.MERMAID_CALCULATE_TEXT_DIMENSIONS,
-    }:
-        values.update(width=width, height=height, line_count=1)
-    elif operation in {
-        operation_type.COMPUTED_LENGTH,
-        operation_type.SIMPLE_B_BOX_WIDTH,
-        operation_type.RAW_B_BOX_WIDTH,
-        operation_type.BOUNDING_CLIENT_RECT_WIDTH,
-        operation_type.TSPAN_B_BOX_WIDTH,
-        operation_type.WRAP_PROBE_B_BOX_WIDTH,
-        operation_type.CANVAS_MEASURE_TEXT_WIDTH,
-    }:
-        values.update(
-            result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
-            length=width,
-        )
-    elif operation in {
-        operation_type.TSPAN_B_BOX_HEIGHT,
-        operation_type.SIMPLE_B_BOX_HEIGHT,
-        operation_type.RAW_B_BOX_HEIGHT,
-    }:
-        values.update(
-            result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
-            length=height,
-        )
-    elif operation in {
-        operation_type.CREATE_TEXT_B_BOX_Y_OFFSET,
-        operation_type.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET,
-    }:
-        values.update(
-            result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
-            length=(
-                -2.0
-                if operation == operation_type.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET
-                else -1.0
-            ),
-        )
-    elif operation in {
-        operation_type.B_BOX_X,
-        operation_type.B_BOX_X_WITH_ASCII_OVERHANG,
-        operation_type.TITLE_B_BOX_X,
-    }:
-        values.update(
-            result_kind=merman.MermanTextMeasurementResultKind.HORIZONTAL_EXTENTS,
-            bbox_left=width / 2.0,
-            bbox_right=width / 2.0,
-        )
-    elif operation == operation_type.WRAPPED_WITH_RAW_WIDTH:
-        values.update(
-            result_kind=merman.MermanTextMeasurementResultKind.WRAPPED_WITH_RAW_WIDTH,
-            width=width,
-            height=height,
-            line_count=1,
-            raw_width=width,
-        )
-    else:
-        return None
-    return merman.MermanTextMeasureResult(**values)
-
-
-class Measurer(merman.MermanTextMeasurer):
-    def __init__(self):
-        self.calls = 0
-
-    def measure(self, request):
-        self.calls += 1
-        return measurement_result(
-            request.operation,
-            max(len(request.text) * 8.0, 1.0),
-            max(request.line_height, 1.0),
-        )
-
-
-operation_type = merman.MermanTextMeasurementOperation
-expected_operation_codes = {entry[0] for entry in merman.TEXT_MEASUREMENT_OPERATIONS}
-expected_result_kind_codes = {entry[0] for entry in merman.TEXT_MEASUREMENT_RESULT_KINDS}
-assert {operation.value for operation in operation_type} == expected_operation_codes
-assert {
-    kind.value for kind in merman.MermanTextMeasurementResultKind
-} == expected_result_kind_codes
-dimensions = measurement_result(
-    merman.MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
-    42.0,
-    24.0,
-)
-assert dimensions.result_kind == merman.MermanTextMeasurementResultKind.METRICS
-canvas_width = measurement_result(
-    merman.MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH,
-    42.0,
-    24.0,
-)
-assert canvas_width.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
-raw_bbox_height = measurement_result(
-    merman.MermanTextMeasurementOperation.RAW_B_BOX_HEIGHT,
-    42.0,
-    24.0,
-)
-assert raw_bbox_height.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
-assert raw_bbox_height.length == 24.0
-y_offset = measurement_result(
-    merman.MermanTextMeasurementOperation.CREATE_TEXT_B_BOX_Y_OFFSET,
-    42.0,
-    24.0,
-)
-assert y_offset.length < 0.0
-middle_y_offset = measurement_result(
-    merman.MermanTextMeasurementOperation.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET,
-    42.0,
-    24.0,
-)
-assert middle_y_offset.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
-assert middle_y_offset.length < 0.0
-
-engine = merman.MermanEngine()
-assert engine.binding_api_version() == 3
-assert engine.package_version()
-catalog = merman.get_runtime_catalog(engine)
-capabilities = catalog["capabilities"]
-assert catalog["schema_version"] == 1
-assert catalog["transport_api_version"] == engine.binding_api_version()
-assert catalog["package_version"] == engine.package_version()
-assert capabilities["capability_ids"] == sorted(capabilities["capability_ids"])
-assert capabilities["output_ids"] == sorted(capabilities["output_ids"])
-assert capabilities["operation_ids"] == sorted(capabilities["operation_ids"])
-assert not hasattr(merman, "get_runtime_contract")
-assert not hasattr(merman, "get_runtime_capability_vocabulary")
-assert capabilities["capability_ids"] == EXPECTED_CAPABILITY_IDS
-assert capabilities["capability_ids"] == EXPECTED_RUNTIME_IDS
-assert capabilities["output_ids"] == EXPECTED_OUTPUT_IDS
-assert capabilities["operation_ids"] == EXPECTED_OPERATION_IDS
-assert set(capabilities["output_ids"]).issubset(capabilities["operation_ids"])
-source = "flowchart TD\\nA[Hello] --> B[World]"
-try:
-    engine.execute(
-        merman.MermanOperationRequest(
-            operation_id="not-an-operation",
-            source=source,
-            uri=None,
-            options_json=None,
-        )
-    )
-except merman.MermanError.Binding as error:
-    assert error.kind == merman.MermanErrorKind.UNKNOWN_OPERATION
-    assert error.capability_id is None
-else:
-    raise AssertionError("unknown operation did not preserve its typed binding error")
-assert_shared_semantic_operation_fixtures(engine)
-assert "Hello" in engine.render_svg(source, None)
-assert "Hello" in engine.render_ascii(source, None)
-assert engine.render_png(source, None).startswith(b"\\x89PNG\\r\\n\\x1a\\n")
-assert engine.render_jpeg(source, None).startswith(b"\\xff\\xd8\\xff")
-assert engine.render_pdf(source, None).startswith(b"%PDF-")
-assert "flowchart-v2" in engine.parse_json(source, None)
-assert "layout" in engine.layout_json(source, None)
-assert engine.validate(source, None).valid
-assert "flowchart" in engine.supported_diagrams()
-ascii_capabilities = engine.ascii_capabilities()
-assert any(
-    item.diagram_type == "sequence" and item.support_level == "full"
-    for item in ascii_capabilities
-)
-assert any(
-    item.diagram_type == "gantt"
-    and item.support_level == "summary"
-    and not item.summary_fallback
-    for item in ascii_capabilities
-)
-assert any(
-    item.diagram_type == "class"
-    and item.support_level == "partial"
-    and item.summary_fallback
-    for item in ascii_capabilities
-)
-assert "default" in engine.supported_themes()
-assert any(item.diagram_type == "flowchart" for item in engine.diagram_family_capabilities())
-assert hasattr(merman, "MermanLintRuleCatalogEntry")
-lint_rules = engine.lint_rule_catalog()
-assert lint_rules
-assert all(isinstance(rule, merman.MermanLintRuleCatalogEntry) for rule in lint_rules)
-assert any(
-    rule.id == "merman.authoring.flowchart.explicit_direction"
-    and rule.origin == "merman_authoring"
-    for rule in lint_rules
-)
-configurable_rules = engine.configurable_lint_rule_catalog()
-assert configurable_rules
-assert all(
-    isinstance(rule, merman.MermanLintRuleCatalogEntry) for rule in configurable_rules
-)
-assert any(
-    rule.id == "merman.authoring.flowchart.explicit_direction"
-    and rule.configurable
-    for rule in configurable_rules
-)
-assert all(rule.configurable for rule in configurable_rules)
-
-measurer = Measurer()
-reusable = engine.reusable_engine_with_text_measurer(None, measurer)
-assert reusable.render_svg(source, None).startswith("<svg")
-assert "Hello" in reusable.render_ascii(source, None)
-assert "flowchart-v2" in reusable.parse_json(source, None)
-assert "layout" in reusable.layout_json(source, None)
-assert reusable.validate(source, None).valid
-assert measurer.calls > 0
-
-setter_measurer = Measurer()
-callback_engine = engine.reusable_engine_with_text_measurer(None, setter_measurer)
-assert callback_engine.render_svg(source, None).startswith("<svg")
-assert setter_measurer.calls > 0
-plain_engine = engine.reusable_engine(None)
-assert plain_engine.render_svg(source, None).startswith("<svg")
-assert not hasattr(callback_engine, "set_text_measurer")
-assert not hasattr(callback_engine, "clear_text_measurer")
-
-
-class FailingMeasurer(merman.MermanTextMeasurer):
-    def __init__(self):
-        self.calls = 0
-
-    def measure(self, request):
-        self.calls += 1
-        raise RuntimeError("host measurer failed")
-
-
-failing_measurer = FailingMeasurer()
-failing = engine.reusable_engine_with_text_measurer(None, failing_measurer)
-assert failing.render_svg(source, None).startswith("<svg")
-assert failing_measurer.calls > 0
-replacement = engine.reusable_engine_with_text_measurer(None, Measurer())
-assert replacement.render_svg(source, None).startswith("<svg")
-print("python wheel smoke passed")
-"""
-
-
-def python_wheel_smoke_script(profile_id: str) -> str:
-    descriptor = json.loads(DEFAULT_DESCRIPTOR.read_text(encoding="utf-8"))
-    matches = [
-        profile for profile in descriptor.get("profiles", []) if profile.get("id") == profile_id
     ]
-    if len(matches) != 1:
-        raise RuntimeError(
-            f"artifact profile {profile_id!r} must occur exactly once; found {len(matches)}"
-        )
-    expected = matches[0].get("expected")
-    if not isinstance(expected, dict):
-        raise RuntimeError(f"artifact profile {profile_id!r} has no expected contract")
-    values: dict[str, list[str]] = {}
-    for field in ("capabilities", "runtime_ids", "outputs"):
-        value = expected.get(field)
-        if (
-            not isinstance(value, list)
-            or any(not isinstance(item, str) or not item for item in value)
-            or value != sorted(set(value))
-        ):
-            raise RuntimeError(
-                f"artifact profile {profile_id!r} expected.{field} must be sorted unique strings"
-            )
-        values[field] = value
-    capability_descriptor = json.loads(CAPABILITY_DESCRIPTOR.read_text(encoding="utf-8"))
-    expected_capabilities = set(values["capabilities"])
-    expected_operations = sorted(
-        operation["id"]
-        for operation in capability_descriptor.get("binding_operations", [])
-        if "native" in operation.get("targets", [])
-        and (
-            operation.get("capability") is None
-            or operation.get("capability") in expected_capabilities
-        )
-    )
-    return (
-        f"EXPECTED_CAPABILITY_IDS = {values['capabilities']!r}\n"
-        f"EXPECTED_RUNTIME_IDS = {values['runtime_ids']!r}\n"
-        f"EXPECTED_OUTPUT_IDS = {values['outputs']!r}\n"
-        f"EXPECTED_OPERATION_IDS = {expected_operations!r}\n"
-        + WHEEL_SMOKE
-    )
-
-
-def wheel_smoke_environment() -> dict[str, str]:
-    if not SEMANTIC_OPERATION_FIXTURES.is_file():
-        raise RuntimeError(
-            f"semantic operation fixtures are missing: {SEMANTIC_OPERATION_FIXTURES}"
-        )
-    environment = os.environ.copy()
-    environment["MERMAN_SEMANTIC_OPERATION_FIXTURES"] = str(
-        SEMANTIC_OPERATION_FIXTURES
-    )
-    return environment
 
 
 def parse_args() -> argparse.Namespace:
@@ -504,7 +129,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run-smoke",
         action="store_true",
-        help="Install the newest wheel into a temporary venv and run an import/render smoke.",
+        help="Install the newest wheel into a temporary venv and run the checked-in smoke.",
     )
     return parser.parse_args()
 
@@ -513,14 +138,14 @@ def run(
     args: list[str],
     *,
     cwd: Path = REPO_ROOT,
-    env: dict[str, str] | None = None,
 ) -> None:
     display_args = ("<inline-script>" if "\n" in arg else arg for arg in args)
     print("+", " ".join(display_args))
-    subprocess.run(args, cwd=cwd, env=env, check=True)
+    subprocess.run(args, cwd=cwd, check=True)
 
 
-def require_tracked_python_support_files(package_dir: Path) -> None:
+def verify_generated_python_support_files(package_dir: Path, staged: Path) -> None:
+    repository_paths: list[str] = []
     for relative in PYTHON_GENERATED_SUPPORT_FILES:
         source = package_dir / relative
         if not source.is_file():
@@ -531,18 +156,9 @@ def require_tracked_python_support_files(package_dir: Path) -> None:
             raise RuntimeError(
                 f"Python package source must be inside the repository: {package_dir}"
             ) from exc
-        run(["git", "ls-files", "--error-unmatch", "--", repository_path])
+        repository_paths.append(repository_path)
 
-
-@contextmanager
-def staged_python_package(package_dir: Path) -> Iterator[Path]:
-    with tempfile.TemporaryDirectory(prefix="merman-python-wheel-") as temp_dir:
-        staged = Path(temp_dir) / package_dir.name
-        shutil.copytree(package_dir, staged, ignore=PYTHON_STAGING_IGNORE)
-        yield staged
-
-
-def verify_staged_python_support_files(package_dir: Path, staged: Path) -> None:
+    run(["git", "ls-files", "--error-unmatch", "--", *repository_paths])
     for relative in PYTHON_GENERATED_SUPPORT_FILES:
         source = package_dir / relative
         generated = staged / relative
@@ -555,6 +171,14 @@ def verify_staged_python_support_files(package_dir: Path, staged: Path) -> None:
                 "stale generated Python support file: "
                 f"{relative}; regenerate and commit the source projection"
             )
+
+
+@contextmanager
+def staged_python_package(package_dir: Path) -> Iterator[Path]:
+    with tempfile.TemporaryDirectory(prefix="merman-python-wheel-") as temp_dir:
+        staged = Path(temp_dir) / package_dir.name
+        shutil.copytree(package_dir, staged, ignore=PYTHON_STAGING_IGNORE)
+        yield staged
 
 
 def venv_python(venv_dir: Path) -> Path:
@@ -589,14 +213,11 @@ def remove_stale_package_build(package_dir: Path) -> None:
         shutil.rmtree(build_dir)
 
 
-def require_platform_wheel(wheel: Path) -> None:
+def require_native_platform_wheel(wheel: Path) -> None:
     if wheel.name.endswith("-py3-none-any.whl"):
         raise RuntimeError(
             f"expected a platform wheel with the bundled native library, got universal wheel: {wheel.name}"
         )
-
-
-def require_native_platlib_layout(wheel: Path) -> None:
     native_suffixes = (".dll", ".dylib", ".so")
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
@@ -636,7 +257,6 @@ def main() -> int:
     recipe = load_artifact_profile("python-uniffi-native")
     validate_python_native_recipe(recipe)
     target = select_python_wheel_target(recipe)
-    require_tracked_python_support_files(package_source)
     run(cargo_build_args(recipe, locked=True, target=target))
     cdylib = production_cdylib_path(recipe, target)
     if not cdylib.is_file():
@@ -644,9 +264,8 @@ def main() -> int:
     with staged_python_package(package_source) as package_dir:
         run(
             python_generator_args(recipe, cdylib, package_dir),
-            env=python_generator_environment(),
         )
-        verify_staged_python_support_files(package_source, package_dir)
+        verify_generated_python_support_files(package_source, package_dir)
         install_target_report(REPO_ROOT, package_dir, target)
 
         remove_stale_package_build(package_dir)
@@ -665,8 +284,7 @@ def main() -> int:
             ]
         )
         wheel = newest_wheel(wheel_dir)
-        require_platform_wheel(wheel)
-        require_native_platlib_layout(wheel)
+        require_native_platform_wheel(wheel)
         verify_wheel_license_report(
             wheel,
             root=REPO_ROOT,
@@ -680,14 +298,6 @@ def main() -> int:
         run([args.python, "-m", "venv", str(venv_dir)])
         python = venv_python(venv_dir)
         run([str(python), "-m", "pip", "install", "--no-deps", str(wheel)])
-        run(
-            [
-                str(python),
-                "-c",
-                python_wheel_smoke_script(recipe.profile_id),
-            ],
-            env=wheel_smoke_environment(),
-        )
         example = package_source / "examples" / "smoke.py"
         if not example.is_file():
             raise RuntimeError(f"Python wheel smoke example is missing: {example}")

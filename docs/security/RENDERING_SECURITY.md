@@ -26,6 +26,49 @@ consumer is not a browser DOM:
 use merman::svg::{ResvgCompatibleSvg, SvgPipeline};
 ```
 
+## Icon Pack Boundary
+
+Icon registries accept host-provided IconifyJSON bytes, but they do not trust those bytes. The
+renderer-owned constructor is a consuming transaction: it checks per-pack and aggregate encoded
+bytes before decoding, performs bounded schema-aware JSON admission, validates identifiers and
+finite geometry, resolves a bounded alias graph, rejects unsafe XML syntax, and publishes only one
+immutable registry after every pack succeeds. The caller may release the original buffers after
+construction. There is no public insertion method that can mutate a published registry or bypass
+the admission path.
+
+The fixed constructor policy includes these primary ceilings:
+
+| Resource | Fixed ceiling |
+| --- | ---: |
+| Packs | 16 |
+| One encoded pack | 16 MiB |
+| Aggregate encoded packs | 32 MiB |
+| Direct icons | 32,768 |
+| Aliases / alias edges | 32,768 |
+| Published entries | 65,536 |
+| One decoded SVG body | 256 KiB |
+| Aggregate retained bodies | 32 MiB |
+| XML elements in one body | 4,096 |
+| XML nesting in one body | 32 |
+
+The runtime resource catalog exposes the complete fixed limit set. These values are constructor
+capabilities, not caller-loosenable policy. Complete Iconify collections are accepted when they fit;
+larger collections must be trimmed by the host before construction. Merman does not perform that
+slicing.
+
+Rendering does not embed a retained body verbatim. For each insertion, Merman applies XML-aware
+deterministic ID scoping, assembles the icon SVG, sanitizes under the request's effective Mermaid
+configuration, and validates the result again. Ambiguous sanitizer output fails closed. The threat
+matrix verifies that scripts, event attributes, style elements, `foreignObject`, and dangerous SVG
+or XLink URLs do not survive in either strict or loose mode.
+
+The SDK performs no filesystem lookup, package resolution, environment lookup, network request, or
+per-render icon acquisition. This is an acquisition-I/O guarantee about Merman, not a guarantee that
+a downstream SVG consumer performs no I/O. A policy-allowed external reference can still be loaded
+by a browser or custom renderer. Parity/readable SVG therefore still requires `SafeInlineSvg` or
+`assertSafeSvgForDom()`, CSP, or sandboxing before browser DOM insertion. The `resvg_safe` terminal
+pipeline closes external rendering resources for Merman's export APIs.
+
 The resvg-safe preset always runs after custom draft postprocessors. It tokenizes CSS, removes
 active SVG/SMIL content and unsafe attributes, and closes non-navigation rendering resources.
 Structural references are limited to same-document fragments; ordinary image resources require an
@@ -193,6 +236,8 @@ Hosts should:
   memory/time quotas at hostile boundaries;
 - treat host text measurement as synchronous untrusted work: bound input and caches, avoid UI-thread
   deadlocks, and follow the [host measurement lifecycle](../bindings/HOST_TEXT_MEASUREMENT.md);
+- treat Iconify pack bytes as untrusted constructor input, retain the fixed registry ceilings, and
+  do not reintroduce mutable or per-render icon-loading paths around the shared registry;
 - run `node scripts/check-svg-safety-policy.mjs` when changing the shared policy.
 
 For parser and sanitizer design context, see `docs/adr/0020-sanitization-and-security-level.md`,

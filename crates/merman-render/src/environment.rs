@@ -7,6 +7,7 @@ use crate::text::{
     DeterministicTextMeasurer, FontMetricsTable, TextMeasurer, TextMetrics, TextStyle,
     VendoredFontMetricsTextMeasurer, WrapMode, estimate_line_width_px, round_to_1_64_px,
 };
+use crate::{RenderCapability, RenderCapabilityPolicy};
 use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
 use merman_core::time::LocalTimeZoneProvenance;
 use std::fmt;
@@ -1484,8 +1485,9 @@ fn default_math_renderer() -> Option<Arc<dyn MathRenderer + Send + Sync>> {
 #[derive(Clone)]
 pub struct RenderEnvironment {
     text_measurement: TextMeasurementPolicy,
+    capability_policy: RenderCapabilityPolicy,
     math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
-    icon_registry: Option<Arc<IconRegistry>>,
+    icon_registry: Option<IconRegistry>,
     runtime_policy: RuntimePolicy,
     resource_policy: RenderResourcePolicy,
 }
@@ -1494,7 +1496,12 @@ impl fmt::Debug for RenderEnvironment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RenderEnvironment")
             .field("text_measurement", &self.text_measurement)
-            .field("has_math_renderer", &self.math_renderer.is_some())
+            .field("capability_policy", &self.capability_policy)
+            .field(
+                "has_math_renderer",
+                &(self.capability_policy.allows(RenderCapability::Math)
+                    && self.math_renderer.is_some()),
+            )
             .field("has_icon_registry", &self.icon_registry.is_some())
             .field("runtime_policy", &self.runtime_policy)
             .field("resource_policy", &self.resource_policy)
@@ -1511,6 +1518,7 @@ impl RenderEnvironment {
     pub fn deterministic() -> Self {
         Self {
             text_measurement: TextMeasurementPolicy::parity(),
+            capability_policy: RenderCapabilityPolicy::unrestricted(),
             math_renderer: default_math_renderer(),
             icon_registry: None,
             runtime_policy: RuntimePolicy::deterministic(),
@@ -1527,6 +1535,15 @@ impl RenderEnvironment {
 
     pub fn with_text_measurement_policy(mut self, policy: TextMeasurementPolicy) -> Self {
         self.text_measurement = policy;
+        self
+    }
+
+    /// Restricts optional renderer capabilities for every operation begun by this environment.
+    ///
+    /// This is primarily useful to artifact owners whose public feature contract can be narrower
+    /// than Cargo's resolved dependency feature union.
+    pub const fn with_capability_policy(mut self, policy: RenderCapabilityPolicy) -> Self {
+        self.capability_policy = policy;
         self
     }
 
@@ -1549,7 +1566,7 @@ impl RenderEnvironment {
         self
     }
 
-    pub fn with_icon_registry(mut self, registry: Arc<IconRegistry>) -> Self {
+    pub fn with_icon_registry(mut self, registry: IconRegistry) -> Self {
         self.icon_registry = Some(registry);
         self
     }
@@ -1574,6 +1591,7 @@ impl RenderEnvironment {
         Ok(RenderSession {
             text_measurement: self.text_measurement.clone(),
             measurement_recorder: Box::default(),
+            capability_policy: self.capability_policy,
             math_renderer: self.math_renderer.clone(),
             icon_registry: self.icon_registry.clone(),
             operation_context,
@@ -1594,8 +1612,9 @@ pub struct RenderSession {
     text_measurement: TextMeasurementPolicy,
     // Keep movable family artifacts compact for bounded worker stacks.
     measurement_recorder: Box<TextMeasurementRecorder>,
+    capability_policy: RenderCapabilityPolicy,
     math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
-    icon_registry: Option<Arc<IconRegistry>>,
+    icon_registry: Option<IconRegistry>,
     operation_context: OperationContext,
     resource_policy: RenderResourcePolicy,
     work_meter: Arc<OperationWorkMeter>,
@@ -1646,16 +1665,32 @@ impl RenderSession {
         self.resource_policy
     }
 
+    /// Reports effective operation availability after policy and backend/service resolution.
+    pub(crate) fn supports_capability(&self, capability: RenderCapability) -> bool {
+        if !self.capability_policy.allows(capability) {
+            return false;
+        }
+        match capability {
+            RenderCapability::LayoutCytoscape => crate::layout_cytoscape_available(),
+            RenderCapability::LayoutElk => crate::layout_elk_available(),
+            RenderCapability::Math => self.math_renderer.is_some(),
+        }
+    }
+
     pub(crate) fn work_meter(&self) -> &Arc<OperationWorkMeter> {
         &self.work_meter
     }
 
     pub fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {
-        self.math_renderer.as_deref()
+        if self.supports_capability(RenderCapability::Math) {
+            self.math_renderer.as_deref()
+        } else {
+            None
+        }
     }
 
     pub fn icon_registry(&self) -> Option<&IconRegistry> {
-        self.icon_registry.as_deref()
+        self.icon_registry.as_ref()
     }
 
     /// Freezes the observable policy and provenance accumulated so far.
@@ -2923,7 +2958,7 @@ mod tests {
         let environment = RenderEnvironment::deterministic()
             .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(0))
             .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
-            .with_icon_registry(Arc::new(IconRegistry::new()))
+            .with_icon_registry(crate::svg::IconRegistryBuilder::new().build().unwrap())
             .with_resource_policy(limits);
 
         let session = environment.begin_session().expect("begin render session");
@@ -2949,5 +2984,29 @@ mod tests {
             .expect("begin render session");
 
         assert!(session.math_renderer().is_none());
+    }
+
+    #[test]
+    fn capability_policy_masks_installed_services_and_compiled_backends() {
+        let session = RenderEnvironment::deterministic()
+            .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
+            .with_capability_policy(RenderCapabilityPolicy::deny_all())
+            .begin_session()
+            .expect("begin render session");
+
+        assert!(!session.supports_capability(RenderCapability::LayoutCytoscape));
+        assert!(!session.supports_capability(RenderCapability::LayoutElk));
+        assert!(!session.supports_capability(RenderCapability::Math));
+        assert!(session.math_renderer().is_none());
+
+        let session = RenderEnvironment::deterministic()
+            .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
+            .with_capability_policy(
+                RenderCapabilityPolicy::deny_all().with_allowed(RenderCapability::Math),
+            )
+            .begin_session()
+            .expect("begin render session");
+        assert!(session.supports_capability(RenderCapability::Math));
+        assert!(session.math_renderer().is_some());
     }
 }

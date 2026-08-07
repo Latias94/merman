@@ -117,6 +117,7 @@ def cargo_build_args(
     locked: bool = False,
     target: str | None = None,
     build_tool: CargoBuildTool = "cargo",
+    repo_root: Path = REPO_ROOT,
 ) -> list[str]:
     """Project one validated descriptor recipe into a Cargo build command."""
     reject_cargo_profile_environment_overrides(recipe)
@@ -133,7 +134,13 @@ def cargo_build_args(
         raise RuntimeError(
             f"artifact profile {recipe.profile_id!r} does not declare target {target!r}"
         )
-    return _cargo_build_args(recipe, locked=locked, target=target, build_tool=build_tool)
+    return _cargo_build_args(
+        recipe,
+        locked=locked,
+        target=target,
+        build_tool=build_tool,
+        repo_root=repo_root,
+    )
 
 
 def cargo_host_build_args(
@@ -142,6 +149,7 @@ def cargo_host_build_args(
     *,
     locked: bool = False,
     build_tool: CargoBuildTool = "cargo",
+    repo_root: Path = REPO_ROOT,
 ) -> list[str]:
     """Build a target-set recipe for the validated current host without `--target`."""
     reject_cargo_profile_environment_overrides(recipe)
@@ -154,7 +162,13 @@ def cargo_host_build_args(
             f"artifact profile {recipe.profile_id!r} does not declare host target "
             f"{host_target!r}"
         )
-    return _cargo_build_args(recipe, locked=locked, target=None, build_tool=build_tool)
+    return _cargo_build_args(
+        recipe,
+        locked=locked,
+        target=None,
+        build_tool=build_tool,
+        repo_root=repo_root,
+    )
 
 
 def rustc_host_target() -> str:
@@ -187,6 +201,7 @@ def _cargo_build_args(
     locked: bool,
     target: str | None,
     build_tool: CargoBuildTool,
+    repo_root: Path,
 ) -> list[str]:
     """Project validated Cargo selectors; target is omitted only for a host build."""
 
@@ -226,7 +241,7 @@ def _cargo_build_args(
         recipe.package,
         *target_args,
         "--manifest-path",
-        str(REPO_ROOT / recipe.manifest),
+        str(repo_root / recipe.manifest),
     ]
     if locked:
         args.append("--locked")
@@ -236,45 +251,6 @@ def _cargo_build_args(
         args.extend(["--features", recipe.feature_argument])
     if target is not None:
         args.extend(["--target", target])
-    return args
-
-
-def cargo_run_example_args(
-    recipe: CargoArtifactRecipe,
-    example: str,
-    *,
-    locked: bool = False,
-    extra_features: tuple[str, ...] = (),
-    example_args: tuple[str, ...] = (),
-) -> list[str]:
-    """Project descriptor-owned Cargo selectors into a maintenance example."""
-    reject_cargo_profile_environment_overrides(recipe)
-    if not example:
-        raise RuntimeError("Cargo example name must not be empty")
-    if any(not feature for feature in extra_features):
-        raise RuntimeError("extra Cargo features must not be empty")
-
-    features = tuple(sorted(set((*recipe.features, *extra_features))))
-    args = [
-        "cargo",
-        "run",
-        "--profile",
-        recipe.cargo_profile,
-        "--package",
-        recipe.package,
-        "--manifest-path",
-        str(REPO_ROOT / recipe.manifest),
-    ]
-    if locked:
-        args.append("--locked")
-    if not recipe.default_features:
-        args.append("--no-default-features")
-    if features:
-        args.extend(["--features", ",".join(features)])
-    args.extend(["--example", example])
-    if example_args:
-        args.append("--")
-        args.extend(example_args)
     return args
 
 
@@ -596,23 +572,6 @@ def main() -> int:
         default="cargo",
         help="Cargo build frontend used with --build.",
     )
-    parser.add_argument(
-        "--run-example",
-        metavar="NAME",
-        help="Run one maintenance example with descriptor-owned Cargo selectors.",
-    )
-    parser.add_argument(
-        "--extra-feature",
-        action="append",
-        default=[],
-        help="Add one maintenance-only feature to --run-example.",
-    )
-    parser.add_argument(
-        "--example-argument",
-        action="append",
-        default=[],
-        help="Append one argument to --run-example; use = for values beginning with --.",
-    )
     parser.add_argument("--locked", action="store_true", help="Pass --locked to Cargo.")
     parser.add_argument(
         "--target-triple",
@@ -621,16 +580,9 @@ def main() -> int:
     args = parser.parse_args()
 
     recipe = load_artifact_profile(args.profile_id, args.descriptor)
-    selected_actions = (
-        args.build,
-        args.build_host,
-        args.run_example is not None,
-    )
-    if sum(selected_actions) > 1:
-        parser.error("--build, --build-host, and --run-example are mutually exclusive")
+    if args.build and args.build_host:
+        parser.error("--build and --build-host are mutually exclusive")
     if args.build:
-        if args.extra_feature or args.example_argument:
-            parser.error("--extra-feature and --example-argument require --run-example")
         subprocess.run(
             cargo_build_args(
                 recipe,
@@ -645,8 +597,6 @@ def main() -> int:
     if args.build_host:
         if args.target_triple is not None:
             parser.error("--target-triple requires --build")
-        if args.extra_feature or args.example_argument:
-            parser.error("--extra-feature and --example-argument require --run-example")
         subprocess.run(
             cargo_host_build_args(
                 recipe,
@@ -658,33 +608,9 @@ def main() -> int:
             check=True,
         )
         return 0
-    if args.run_example is not None:
-        if args.target_triple is not None:
-            parser.error("--target-triple requires --build")
-        if args.build_tool != "cargo":
-            parser.error("--build-tool requires --build")
-        subprocess.run(
-            cargo_run_example_args(
-                recipe,
-                args.run_example,
-                locked=args.locked,
-                extra_features=tuple(args.extra_feature),
-                example_args=tuple(args.example_argument),
-            ),
-            cwd=REPO_ROOT,
-            check=True,
-        )
-        return 0
-    if (
-        args.locked
-        or args.target_triple is not None
-        or args.build_tool != "cargo"
-        or args.extra_feature
-        or args.example_argument
-    ):
+    if args.locked or args.target_triple is not None or args.build_tool != "cargo":
         parser.error(
-            "--locked, --target-triple, --build-tool, --extra-feature, and "
-            "--example-argument require an execution mode"
+            "--locked, --target-triple, and --build-tool require an execution mode"
         )
     values = {
         "features": recipe.feature_argument,

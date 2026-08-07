@@ -86,12 +86,67 @@ pub enum RenderCapability {
 }
 
 impl RenderCapability {
+    const fn bit(self) -> u8 {
+        match self {
+            Self::LayoutCytoscape => 1 << 0,
+            Self::LayoutElk => 1 << 1,
+            Self::Math => 1 << 2,
+        }
+    }
+
     pub const fn id(self) -> &'static str {
         match self {
             Self::LayoutCytoscape => "layout-cytoscape",
             Self::LayoutElk => "layout-elk",
             Self::Math => "math",
         }
+    }
+}
+
+const ALL_RENDER_CAPABILITY_BITS: u8 = RenderCapability::LayoutCytoscape.bit()
+    | RenderCapability::LayoutElk.bit()
+    | RenderCapability::Math.bit();
+
+/// Operation-level permission for optional renderer capabilities.
+///
+/// The policy does not claim that a backend is compiled or that a service is installed. Effective
+/// availability requires both this permission and the concrete backend/service. The unrestricted
+/// default preserves the direct Rust renderer API, while artifact facades can project their exact
+/// owner-selected capability contract without depending on binding-specific types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderCapabilityPolicy {
+    allowed_bits: u8,
+}
+
+impl RenderCapabilityPolicy {
+    /// Allows every optional renderer capability that is otherwise available.
+    pub const fn unrestricted() -> Self {
+        Self {
+            allowed_bits: ALL_RENDER_CAPABILITY_BITS,
+        }
+    }
+
+    /// Denies every optional renderer capability until explicitly allowed.
+    pub const fn deny_all() -> Self {
+        Self { allowed_bits: 0 }
+    }
+
+    /// Allows one optional renderer capability.
+    #[must_use]
+    pub const fn with_allowed(mut self, capability: RenderCapability) -> Self {
+        self.allowed_bits |= capability.bit();
+        self
+    }
+
+    /// Reports whether this policy permits the capability.
+    pub const fn allows(self, capability: RenderCapability) -> bool {
+        self.allowed_bits & capability.bit() != 0
+    }
+}
+
+impl Default for RenderCapabilityPolicy {
+    fn default() -> Self {
+        Self::unrestricted()
     }
 }
 
@@ -115,12 +170,11 @@ pub use resources::{
 };
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error("unsupported diagram type for layout: {diagram_type}")]
     UnsupportedDiagram { diagram_type: String },
-    #[error(
-        "compiled renderer lacks capability `{capability}` required by diagram `{diagram_type}`"
-    )]
+    #[error("render session lacks capability `{capability}` required by diagram `{diagram_type}`")]
     MissingCapability {
         capability: RenderCapability,
         diagram_type: String,
@@ -137,6 +191,10 @@ pub enum Error {
     },
     #[error("SVG postprocessor `{pass}` failed: {message}")]
     SvgPostprocess { pass: String, message: String },
+    #[error("external icon output is invalid: {message}")]
+    InvalidIconOutput { message: String },
+    #[error("icon rendering failed internally: {message}")]
+    IconProcessing { message: String },
     #[error(transparent)]
     ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[error(transparent)]
@@ -161,6 +219,18 @@ impl Error {
     pub fn svg_postprocess(pass: impl Into<String>, message: impl Into<String>) -> Self {
         Self::SvgPostprocess {
             pass: pass.into(),
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn invalid_icon_output(message: impl Into<String>) -> Self {
+        Self::InvalidIconOutput {
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn icon_processing(message: impl Into<String>) -> Self {
+        Self::IconProcessing {
             message: message.into(),
         }
     }
@@ -457,10 +527,32 @@ mod tests {
             assert_eq!(
                 error.to_string(),
                 format!(
-                    "compiled renderer lacks capability `{stable_id}` required by diagram `contract-test`"
+                    "render session lacks capability `{stable_id}` required by diagram `contract-test`"
                 )
             );
         }
+    }
+
+    #[test]
+    fn render_capability_policy_is_an_explicit_allow_mask() {
+        let denied = RenderCapabilityPolicy::deny_all();
+        for capability in [
+            RenderCapability::LayoutCytoscape,
+            RenderCapability::LayoutElk,
+            RenderCapability::Math,
+        ] {
+            assert!(!denied.allows(capability));
+            assert!(
+                RenderCapabilityPolicy::unrestricted().allows(capability),
+                "unrestricted policy denied {}",
+                capability.id()
+            );
+        }
+
+        let math_only = denied.with_allowed(RenderCapability::Math);
+        assert!(math_only.allows(RenderCapability::Math));
+        assert!(!math_only.allows(RenderCapability::LayoutCytoscape));
+        assert!(!math_only.allows(RenderCapability::LayoutElk));
     }
 
     #[cfg(feature = "layout-elk")]

@@ -4,7 +4,6 @@ mod request;
 use crate::common::parse_options;
 use crate::common::{BindingError, BindingOptions, source_text};
 use request::RenderRequestPlan;
-use std::sync::Arc;
 
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     execute_once_data("svg", source, options_json)
@@ -29,15 +28,6 @@ impl CachedRenderEngine {
         self.plan.render_svg(source)
     }
 
-    pub(crate) fn with_host_text_measurer(
-        &self,
-        measurer: Arc<dyn crate::HostTextMeasurer>,
-    ) -> Self {
-        Self {
-            plan: self.plan.with_host_text_measurer(measurer),
-        }
-    }
-
     pub(crate) fn layout_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.layout_json(source)
@@ -46,12 +36,6 @@ impl CachedRenderEngine {
     pub(crate) fn svg_plan_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.svg_plan_json(source)
-    }
-
-    #[cfg(feature = "png")]
-    pub(crate) fn render_png(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        let source = source_text(source)?;
-        self.plan.render_png(source)
     }
 
     #[cfg(feature = "png")]
@@ -64,24 +48,12 @@ impl CachedRenderEngine {
     }
 
     #[cfg(feature = "jpeg")]
-    pub(crate) fn render_jpeg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        let source = source_text(source)?;
-        self.plan.render_jpeg(source)
-    }
-
-    #[cfg(feature = "jpeg")]
     pub(crate) fn render_jpeg_output(
         &self,
         source: &[u8],
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
         self.plan.render_jpeg_output(source)
-    }
-
-    #[cfg(feature = "pdf")]
-    pub(crate) fn render_pdf(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        let source = source_text(source)?;
-        self.plan.render_pdf(source)
     }
 
     #[cfg(feature = "pdf")]
@@ -98,15 +70,20 @@ impl RenderOperationConfig {
     pub(crate) fn compile(
         options: &BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
+        capability_policy: merman::svg::RenderCapabilityPolicy,
     ) -> Result<Self, BindingError> {
         Ok(Self {
-            plan: request::RenderOperationConfig::compile(options, runtime_policy)?,
+            plan: request::RenderOperationConfig::compile(
+                options,
+                runtime_policy,
+                capability_policy,
+            )?,
         })
     }
 
-    pub(crate) fn materialize(self) -> CachedRenderEngine {
+    pub(crate) fn materialize(self, services: &crate::BindingEngineServices) -> CachedRenderEngine {
         CachedRenderEngine {
-            plan: self.plan.materialize(),
+            plan: self.plan.materialize(services),
         }
     }
 }
@@ -131,13 +108,7 @@ fn execute_once_data(
     source: &[u8],
     options_json: &[u8],
 ) -> Result<Vec<u8>, BindingError> {
-    crate::execute_once(crate::BindingOperationRequest {
-        operation_id,
-        source,
-        uri: None,
-        options_json,
-    })
-    .map(|result| result.data)
+    crate::execute_once_data(operation_id, source, None, options_json)
 }
 
 #[cfg(test)]
@@ -188,38 +159,70 @@ mod tests {
         assert!(svg.contains("World"));
     }
 
-    #[cfg(feature = "layout-elk")]
     #[test]
-    fn render_svg_returns_svg_for_flowchart_elk() {
-        let svg =
-            String::from_utf8(render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"").unwrap())
-                .unwrap();
-
-        assert!(svg.contains("<svg"));
-        assert!(svg.contains("Hello"));
-        assert!(svg.contains("World"));
-        assert!(!svg.contains("NaN"));
-    }
-
-    #[cfg(not(feature = "layout-elk"))]
-    #[test]
-    fn render_svg_flowchart_elk_follows_the_resolved_dependency_feature_set() {
+    fn render_svg_flowchart_elk_follows_the_artifact_owner_feature() {
         let result = render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"");
 
-        match result {
-            Ok(svg) => {
-                // Cargo can unify `merman/layout-elk` from another selected workspace package even
-                // when the binding facade's own feature is disabled.
-                let svg = String::from_utf8(svg).expect("SVG is UTF-8");
-                assert!(svg.contains("<svg"));
-                assert!(svg.contains("Hello"));
-                assert!(svg.contains("World"));
-            }
-            Err(err) => {
-                assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
-                assert!(err.message().contains("layout-elk"), "{err:?}");
-            }
+        if cfg!(feature = "layout-elk") {
+            let svg = String::from_utf8(result.unwrap()).expect("SVG is UTF-8");
+            assert!(svg.contains("<svg"));
+            assert!(svg.contains("Hello"));
+            assert!(svg.contains("World"));
+            assert!(!svg.contains("NaN"));
+        } else {
+            let err =
+                result.expect_err("ELK must be denied when the artifact owner did not select it");
+            assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+            assert!(err.message().contains("layout-elk"), "{err:?}");
         }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn render_svg_flowchart_elk_does_not_follow_ambient_dependency_features() {
+        if cfg!(feature = "layout-elk") {
+            return;
+        }
+
+        let result = render_svg(
+            b"---\nconfig:\n  layout: elk\n---\nflowchart TD\nA[Hello] --> B[World]",
+            b"",
+        );
+        let err = result.expect_err("ambient ELK must not widen the artifact contract");
+        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+        assert_eq!(err.capability_id(), Some("layout-elk"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn render_svg_architecture_does_not_follow_ambient_cytoscape_features() {
+        if cfg!(feature = "layout-cytoscape") {
+            return;
+        }
+
+        let result = render_svg(b"architecture-beta\n  service api(server)[API]", b"");
+        let err = result.expect_err("ambient Cytoscape must not widen the artifact contract");
+        assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+        assert_eq!(err.capability_id(), Some("layout-cytoscape"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn binding_math_renderer_follows_the_artifact_owner_feature() {
+        let source = b"flowchart TD\nA[\"$$x^2$$\"] --> B[Done]";
+        let default = render_svg(source, b"");
+
+        if cfg!(feature = "math") {
+            assert!(
+                default.is_ok(),
+                "the owner-selected math capability must be usable by default"
+            );
+        } else {
+            assert_missing_math(default.unwrap_err());
+        }
+
+        let disabled = render_svg(source, br#"{"environment":{"math_renderer":"none"}}"#);
+        assert_missing_math(disabled.unwrap_err());
     }
 
     #[test]
@@ -238,25 +241,6 @@ mod tests {
 
         assert!(svg.contains("id=\"bindings-core-diagram\""));
         assert!(svg.contains("data-merman-foreignobject"));
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn binding_math_renderer_follows_the_compiled_default() {
-        let source = b"flowchart TD\nA[\"$$x^2$$\"] --> B[Done]";
-        let default = render_svg(source, b"");
-
-        if merman::svg::math_available() {
-            assert!(
-                default.is_ok(),
-                "the compiled math capability must be usable by default"
-            );
-        } else {
-            assert_missing_math(default.unwrap_err());
-        }
-
-        let disabled = render_svg(source, br#"{"environment":{"math_renderer":"none"}}"#);
-        assert_missing_math(disabled.unwrap_err());
     }
 
     #[cfg(feature = "svg")]
@@ -551,7 +535,7 @@ B -->|No| D[Debug]";
         );
 
         let default_flowchart = render_svg(b"flowchart TD\nA --> B", profile);
-        if merman::svg::layout_elk_available() {
+        if cfg!(feature = "layout-elk") {
             assert!(default_flowchart.is_ok());
         } else {
             let error = default_flowchart.expect_err("missing ELK should block admission");
@@ -1296,17 +1280,18 @@ Missing ref: id2,after missing,1d
     }
 
     #[test]
-    fn ratex_selection_follows_the_compiled_math_capability() {
+    fn ratex_selection_follows_the_artifact_owner_math_feature() {
         let result = render_svg(
             b"flowchart TD\nA[Hello]",
             br#"{ "environment": { "math_renderer": "ratex" } }"#,
         );
 
-        if merman::svg::math_available() {
-            assert!(result.is_ok());
+        if cfg!(feature = "math") {
+            assert!(result.is_ok(), "{result:?}");
         } else {
             let err = result.unwrap_err();
             assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+            assert_eq!(err.capability_id(), Some("math"));
         }
     }
 }

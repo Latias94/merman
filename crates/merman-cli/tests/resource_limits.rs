@@ -287,6 +287,36 @@ fn local_icon_bodies_enforce_individual_and_aggregate_limits() {
 }
 
 #[test]
+fn bare_local_icon_pack_uses_its_embedded_prefix() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let icon_path = tmp.path().join("@host-icons.json");
+    fs::write(
+        &icon_path,
+        r#"{"prefix":"embedded","icons":{"cloud":{"body":"<path data-bare-pack=\"yes\"/>"}}}"#,
+    )
+    .expect("write bare local icon pack");
+
+    let output = run_with_stdin_in_dir(
+        &[
+            "render",
+            "-",
+            "--output",
+            "-",
+            "--icon-pack",
+            "./@host-icons.json",
+        ],
+        "flowchart TD\nA@{ icon: \"embedded:cloud\", label: \"Cloud\" }\n",
+        Some(tmp.path()),
+    );
+
+    assert!(output.status.success(), "stderr: {}", utf8(&output.stderr));
+    assert!(
+        utf8(&output.stdout).contains("data-bare-pack=\"yes\""),
+        "the renderer must resolve the JSON prefix instead of deriving one from the filename"
+    );
+}
+
+#[test]
 fn icon_count_is_rejected_before_opening_sources() {
     let output = run_with_stdin(
         &[

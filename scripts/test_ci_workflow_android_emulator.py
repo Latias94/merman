@@ -67,6 +67,15 @@ class AndroidEmulatorWorkflowTests(unittest.TestCase):
         self.assertIn("emulator-boot-timeout: 900", emulator_step)
         self.assertIn("-no-metrics", emulator_step)
 
+    def test_android_emulator_is_main_or_explicit_platform_validation(self) -> None:
+        text = read_ci_workflow()
+
+        self.assertIn(
+            "if: github.event_name != 'pull_request' || "
+            "contains(github.event.pull_request.labels.*.name, 'platform')",
+            text,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Iterable
-import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import subprocess
@@ -14,6 +13,10 @@ import xml.etree.ElementTree as ElementTree
 
 
 if __package__:
+    from .capability_surface_contract import (
+        capability_surface_digest,
+        validate_capability_authority,
+    )
     from .release_archive import (
         ArchiveMember,
         ArchiveVerificationError,
@@ -39,6 +42,10 @@ if __package__:
         target_matches_host,
     )
 else:
+    from capability_surface_contract import (
+        capability_surface_digest,
+        validate_capability_authority,
+    )
     from release_archive import (
         ArchiveMember,
         ArchiveVerificationError,
@@ -93,9 +100,6 @@ PACKAGE_README_PATH = "README.md"
 ROOT_RELEASE_PATHS = ("CHANGELOG.md", "LICENSE-APACHE", "LICENSE-MIT")
 NOTICE_PATH = "THIRD_PARTY_NOTICES.md"
 LICENSE_ROOT = "THIRD_PARTY_LICENSES"
-
-_CAPABILITY_KINDS = {"adapter", "api", "engine", "output", "tool"}
-
 
 def release_archive_name(target: str) -> str:
     """Return the cargo-dist archive name consumed by installation metadata."""
@@ -290,18 +294,6 @@ def _require_json_string(value: object, *, label: str) -> str:
     return value
 
 
-def _require_json_integer(value: object, *, label: str) -> int:
-    if type(value) is not int:
-        raise ArchiveVerificationError(f"{label} must be a JSON integer")
-    return value
-
-
-def _require_json_boolean(value: object, *, label: str) -> bool:
-    if type(value) is not bool:
-        raise ArchiveVerificationError(f"{label} must be a JSON boolean")
-    return value
-
-
 def _require_string_array(value: object, *, label: str) -> list[str]:
     values = _require_json_array(value, label=label)
     result = [
@@ -313,293 +305,11 @@ def _require_string_array(value: object, *, label: str) -> list[str]:
     return result
 
 
-def _require_unique_ids(values: list[dict[str, object]], *, label: str) -> None:
-    ids = [
-        _require_json_string(value.get("id"), label=f"{label}[{index}].id")
-        for index, value in enumerate(values)
-    ]
-    if len(set(ids)) != len(ids):
-        raise ArchiveVerificationError(f"{label} contains duplicate ids")
-
-
-def _canonical_capability_surface(
-    value: dict[str, object],
-) -> dict[str, object]:
-    surface = _require_json_object(
-        value,
-        label="capability surface",
-        fields={
-            "schema_version",
-            "descriptor_id",
-            "targets",
-            "capabilities",
-            "outputs",
-            "binding_operations",
-        },
-    )
-    schema_version = _require_json_integer(
-        surface["schema_version"],
-        label="capability surface schema_version",
-    )
-    descriptor_id = _require_json_string(
-        surface["descriptor_id"],
-        label="capability surface descriptor_id",
-    )
-
-    targets = []
-    for index, item in enumerate(
-        _require_json_array(surface["targets"], label="capability surface targets")
-    ):
-        target = _require_json_object(
-            item,
-            label=f"capability surface targets[{index}]",
-            fields={"id", "description"},
-        )
-        targets.append(
-            {
-                "id": _require_json_string(
-                    target["id"],
-                    label=f"capability surface targets[{index}].id",
-                ),
-                "description": _require_json_string(
-                    target["description"],
-                    label=f"capability surface targets[{index}].description",
-                ),
-            }
-        )
-    _require_unique_ids(targets, label="capability surface targets")
-
-    capabilities = []
-    for index, item in enumerate(
-        _require_json_array(
-            surface["capabilities"],
-            label="capability surface capabilities",
-        )
-    ):
-        capability = _require_json_object(
-            item,
-            label=f"capability surface capabilities[{index}]",
-            fields={
-                "id",
-                "kind",
-                "description",
-                "targets",
-                "implications",
-                "absence",
-            },
-        )
-        kind = _require_json_string(
-            capability["kind"],
-            label=f"capability surface capabilities[{index}].kind",
-        )
-        if kind not in _CAPABILITY_KINDS:
-            raise ArchiveVerificationError(
-                f"capability surface capabilities[{index}].kind is unknown: {kind!r}"
-            )
-        absence = _require_json_object(
-            capability["absence"],
-            label=f"capability surface capabilities[{index}].absence",
-            fields={"error_id", "contract"},
-        )
-        capabilities.append(
-            {
-                "id": _require_json_string(
-                    capability["id"],
-                    label=f"capability surface capabilities[{index}].id",
-                ),
-                "kind": kind,
-                "description": _require_json_string(
-                    capability["description"],
-                    label=f"capability surface capabilities[{index}].description",
-                ),
-                "targets": sorted(
-                    _require_string_array(
-                        capability["targets"],
-                        label=f"capability surface capabilities[{index}].targets",
-                    )
-                ),
-                "implications": sorted(
-                    _require_string_array(
-                        capability["implications"],
-                        label=f"capability surface capabilities[{index}].implications",
-                    )
-                ),
-                "absence": {
-                    "error_id": _require_json_string(
-                        absence["error_id"],
-                        label=(
-                            f"capability surface capabilities[{index}]"
-                            ".absence.error_id"
-                        ),
-                    ),
-                    "contract": _require_json_string(
-                        absence["contract"],
-                        label=(
-                            f"capability surface capabilities[{index}]"
-                            ".absence.contract"
-                        ),
-                    ),
-                },
-            }
-        )
-    _require_unique_ids(capabilities, label="capability surface capabilities")
-
-    outputs = []
-    for index, item in enumerate(
-        _require_json_array(surface["outputs"], label="capability surface outputs")
-    ):
-        output = _require_json_object(
-            item,
-            label=f"capability surface outputs[{index}]",
-            fields={"id", "capability", "description", "media_type", "targets"},
-        )
-        outputs.append(
-            {
-                "id": _require_json_string(
-                    output["id"],
-                    label=f"capability surface outputs[{index}].id",
-                ),
-                "capability": _require_json_string(
-                    output["capability"],
-                    label=f"capability surface outputs[{index}].capability",
-                ),
-                "description": _require_json_string(
-                    output["description"],
-                    label=f"capability surface outputs[{index}].description",
-                ),
-                "media_type": _require_json_string(
-                    output["media_type"],
-                    label=f"capability surface outputs[{index}].media_type",
-                ),
-                "targets": sorted(
-                    _require_string_array(
-                        output["targets"],
-                        label=f"capability surface outputs[{index}].targets",
-                    )
-                ),
-            }
-        )
-    _require_unique_ids(outputs, label="capability surface outputs")
-
-    operations = []
-    for index, item in enumerate(
-        _require_json_array(
-            surface["binding_operations"],
-            label="capability surface binding_operations",
-        )
-    ):
-        operation = _require_json_object(
-            item,
-            label=f"capability surface binding_operations[{index}]",
-            fields={
-                "id",
-                "capability",
-                "description",
-                "media_type",
-                "requires_uri",
-                "targets",
-            },
-        )
-        capability_id = operation["capability"]
-        if capability_id is not None:
-            capability_id = _require_json_string(
-                capability_id,
-                label=(
-                    f"capability surface binding_operations[{index}].capability"
-                ),
-            )
-        operations.append(
-            {
-                "id": _require_json_string(
-                    operation["id"],
-                    label=f"capability surface binding_operations[{index}].id",
-                ),
-                "capability": capability_id,
-                "description": _require_json_string(
-                    operation["description"],
-                    label=(
-                        f"capability surface binding_operations[{index}].description"
-                    ),
-                ),
-                "media_type": _require_json_string(
-                    operation["media_type"],
-                    label=(
-                        f"capability surface binding_operations[{index}].media_type"
-                    ),
-                ),
-                "requires_uri": _require_json_boolean(
-                    operation["requires_uri"],
-                    label=(
-                        f"capability surface binding_operations[{index}].requires_uri"
-                    ),
-                ),
-                "targets": sorted(
-                    _require_string_array(
-                        operation["targets"],
-                        label=(
-                            f"capability surface binding_operations[{index}].targets"
-                        ),
-                    )
-                ),
-            }
-        )
-    _require_unique_ids(
-        operations,
-        label="capability surface binding_operations",
-    )
-
-    return {
-        "schema_version": schema_version,
-        "descriptor_id": descriptor_id,
-        "targets": sorted(targets, key=lambda target: target["id"]),
-        "capabilities": sorted(
-            capabilities,
-            key=lambda capability: capability["id"],
-        ),
-        "outputs": sorted(outputs, key=lambda output: output["id"]),
-        "binding_operations": sorted(
-            operations,
-            key=lambda operation: operation["id"],
-        ),
-    }
-
-
-def _capability_surface_digest(surface: dict[str, object]) -> str:
-    encoded = json.dumps(
-        surface,
-        ensure_ascii=False,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
-
-
 def _cli_release_runtime_ids(
     profiles: dict[str, object],
     *,
     surface: dict[str, object],
-    digest: str,
 ) -> tuple[list[str], list[str]]:
-    authority = _require_json_object(
-        profiles.get("capability_authority"),
-        label="artifact profiles capability_authority",
-        fields={"path", "schema_version", "digest"},
-    )
-    _require_exact_json(
-        "artifact profiles capability_authority.path",
-        authority["path"],
-        CAPABILITY_SURFACE_PATH,
-    )
-    _require_exact_json(
-        "artifact profiles capability_authority.schema_version",
-        authority["schema_version"],
-        surface["schema_version"],
-    )
-    _require_exact_json(
-        "artifact profiles capability_authority.digest",
-        authority["digest"],
-        digest,
-    )
-
     candidates = []
     for index, value in enumerate(
         _require_json_array(profiles.get("profiles"), label="artifact profiles")
@@ -790,14 +500,20 @@ def _release_capabilities_contract(
     version: str,
 ) -> dict[str, object]:
     profiles = _read_repository_json(repo_root, ARTIFACT_PROFILES_PATH)
-    surface = _canonical_capability_surface(
-        _read_repository_json(repo_root, CAPABILITY_SURFACE_PATH)
+    surface = validate_capability_authority(
+        profiles,
+        _read_repository_json(repo_root, CAPABILITY_SURFACE_PATH),
+        expected_path=CAPABILITY_SURFACE_PATH,
+        error_factory=ArchiveVerificationError,
+        profiles_context="artifact profiles",
+        capability_context="capability surface",
+        expected_schema_version=1,
+        require_sorted_compiled_prerequisites=True,
     )
-    digest = _capability_surface_digest(surface)
+    digest = capability_surface_digest(surface)
     runtime_ids, expected_output_ids = _cli_release_runtime_ids(
         profiles,
         surface=surface,
-        digest=digest,
     )
     enabled = set(runtime_ids)
     capabilities = [

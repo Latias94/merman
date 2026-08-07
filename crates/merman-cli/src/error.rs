@@ -113,6 +113,8 @@ pub(crate) enum CliError {
     MissingInput { command: &'static str },
     #[error("{0}")]
     InvalidInput(String),
+    #[error("internal error: {0}")]
+    Internal(String),
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     InvalidOutput(String),
@@ -207,7 +209,9 @@ impl CliError {
             }
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
             Self::InvalidOutput(_) => ErrorCategory::Usage,
-            Self::Io(_) | Self::JsonOutput(_) | Self::Stream { .. } => ErrorCategory::Operational,
+            Self::Io(_) | Self::JsonOutput(_) | Self::Stream { .. } | Self::Internal(_) => {
+                ErrorCategory::Operational
+            }
             #[cfg(feature = "markdown")]
             Self::Transaction(_) => ErrorCategory::Operational,
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]

@@ -5,9 +5,11 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use crate::artifact_contract::{DEFAULT_ARTIFACT_SNAPSHOT, ValidatedArtifactContract};
+use crate::option_contract::BindingOptionGroupKey;
 use crate::resource_contract::{
-    BindingResourceScope, binding_resource_contract, resource_limit_descriptor,
-    resource_profile_value,
+    BindingResourceLimitDescriptor, BindingResourceScope, binding_resource_contract,
+    resource_limit_descriptor, resource_profile_value,
 };
 
 /// Current schema for constructor and request options JSON.
@@ -140,6 +142,7 @@ pub struct BindingError {
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
     resource: Option<BindingResourceErrorDetails>,
+    icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
     message: String,
 }
 
@@ -156,6 +159,15 @@ pub struct BindingResourceErrorDetails {
     pub profile: &'static str,
 }
 
+/// Structured failure details for transactional Iconify registry construction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BindingIconRegistryErrorDetails {
+    pub kind_id: &'static str,
+    pub pack_index: Option<u64>,
+    pub registration_name: Option<String>,
+}
+
 impl BindingError {
     pub fn new(status: BindingStatus, message: impl Into<String>) -> Self {
         Self {
@@ -163,8 +175,24 @@ impl BindingError {
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource: None,
+            icon_registry: None,
             message: message.into(),
         }
+    }
+
+    /// Creates a caller-owned invalid-argument failure without requiring status reconstruction.
+    pub fn invalid_argument(message: impl Into<String>) -> Self {
+        Self::new(BindingStatus::InvalidArgument, message)
+    }
+
+    /// Creates a caller-owned options-JSON failure without requiring status reconstruction.
+    pub fn invalid_options_json(message: impl Into<String>) -> Self {
+        Self::new(BindingStatus::OptionsJsonError, message)
+    }
+
+    /// Creates an internal implementation failure without requiring status reconstruction.
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::new(BindingStatus::InternalError, message)
     }
 
     pub fn unknown_operation(message: impl Into<String>) -> Self {
@@ -173,6 +201,7 @@ impl BindingError {
             kind: BindingErrorKind::UnknownOperation,
             capability_id: None,
             resource: None,
+            icon_registry: None,
             message: message.into(),
         }
     }
@@ -183,8 +212,15 @@ impl BindingError {
             kind: BindingErrorKind::MissingCapability,
             capability_id: Some(capability_id),
             resource: None,
+            icon_registry: None,
             message: message.into(),
         }
+    }
+
+    /// Creates a caller-owned failure for a known operation or metadata endpoint that this
+    /// transport intentionally does not expose.
+    pub fn unsupported_operation(message: impl Into<String>) -> Self {
+        Self::new(BindingStatus::UnsupportedOperation, message)
     }
 
     pub fn reentrant_call(message: impl Into<String>) -> Self {
@@ -193,6 +229,7 @@ impl BindingError {
             kind: BindingErrorKind::ReentrantCall,
             capability_id: None,
             resource: None,
+            icon_registry: None,
             message: message.into(),
         }
     }
@@ -203,6 +240,7 @@ impl BindingError {
             kind: BindingErrorKind::Busy,
             capability_id: None,
             resource: None,
+            icon_registry: None,
             message: message.into(),
         }
     }
@@ -248,6 +286,63 @@ impl BindingError {
                 max,
                 profile,
             }),
+            icon_registry: None,
+            message: message.into(),
+        }
+    }
+
+    /// Creates the canonical structured failure for UTF-8 rejected before registry ingestion.
+    #[cfg(feature = "svg")]
+    pub fn icon_registry_invalid_utf8(pack_index: usize, message: impl Into<String>) -> Self {
+        Self::icon_registry_preflight_failure(
+            merman::svg::IconRegistryBuildErrorKind::InvalidUtf8,
+            Some(pack_index),
+            None,
+            message,
+        )
+    }
+
+    /// Creates the canonical structured failure for a registry limit rejected before ingestion.
+    #[cfg(feature = "svg")]
+    pub fn icon_registry_resource_limit(
+        limit: crate::IconRegistryResourceLimitId,
+        actual: u64,
+        pack_index: Option<usize>,
+        message: impl Into<String>,
+    ) -> Self {
+        let descriptor = limit.descriptor();
+        Self::icon_registry_preflight_failure(
+            merman::svg::IconRegistryBuildErrorKind::ResourceLimitExceeded,
+            pack_index,
+            Some(BindingResourceErrorDetails {
+                cause: BindingResourceLimitCause::Ceiling,
+                limit_id: descriptor.stable_id,
+                phase: descriptor.phase,
+                actual,
+                max: limit.fixed_value(),
+                profile: "constructor-fixed",
+            }),
+            message,
+        )
+    }
+
+    #[cfg(feature = "svg")]
+    fn icon_registry_preflight_failure(
+        kind: merman::svg::IconRegistryBuildErrorKind,
+        pack_index: Option<usize>,
+        resource: Option<BindingResourceErrorDetails>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            status: icon_registry_error_status(kind),
+            kind: BindingErrorKind::Generic,
+            capability_id: None,
+            resource,
+            icon_registry: Some(Box::new(BindingIconRegistryErrorDetails {
+                kind_id: kind.stable_id(),
+                pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
+                registration_name: None,
+            })),
             message: message.into(),
         }
     }
@@ -266,6 +361,10 @@ impl BindingError {
 
     pub const fn resource_details(&self) -> Option<BindingResourceErrorDetails> {
         self.resource
+    }
+
+    pub fn icon_registry_details(&self) -> Option<&BindingIconRegistryErrorDetails> {
+        self.icon_registry.as_deref()
     }
 
     pub fn message(&self) -> &str {
@@ -287,6 +386,66 @@ pub(crate) fn input_resource_limit_error(
     )
 }
 
+#[cfg(feature = "svg")]
+impl From<merman::svg::IconRegistryBuildError> for BindingError {
+    fn from(error: merman::svg::IconRegistryBuildError) -> Self {
+        let error_kind = error.kind();
+        let limit = error.limit();
+        let message = error.to_string();
+        let details = BindingIconRegistryErrorDetails {
+            kind_id: error.kind().stable_id(),
+            pack_index: error
+                .pack_index()
+                .and_then(|index| u64::try_from(index).ok()),
+            registration_name: error.registration_name().map(str::to_owned),
+        };
+        let resource = match (limit, error.actual(), error.maximum()) {
+            (Some(limit), Some(actual), Some(max)) => {
+                let descriptor = limit.descriptor();
+                Some(BindingResourceErrorDetails {
+                    cause: match error_kind {
+                        merman::svg::IconRegistryBuildErrorKind::ArithmeticOverflow => {
+                            BindingResourceLimitCause::ArithmeticOverflow
+                        }
+                        _ => BindingResourceLimitCause::Ceiling,
+                    },
+                    limit_id: descriptor.stable_id,
+                    phase: descriptor.phase,
+                    actual,
+                    max,
+                    profile: "constructor-fixed",
+                })
+            }
+            _ => None,
+        };
+        Self {
+            status: icon_registry_error_status(error_kind),
+            kind: BindingErrorKind::Generic,
+            capability_id: None,
+            resource,
+            icon_registry: Some(Box::new(details)),
+            message,
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
+pub(crate) fn icon_registry_error_status(
+    kind: merman::svg::IconRegistryBuildErrorKind,
+) -> BindingStatus {
+    match kind {
+        merman::svg::IconRegistryBuildErrorKind::AllocationFailed
+        | merman::svg::IconRegistryBuildErrorKind::ArithmeticOverflow => {
+            BindingStatus::InternalError
+        }
+        merman::svg::IconRegistryBuildErrorKind::InvalidUtf8 => BindingStatus::Utf8Error,
+        merman::svg::IconRegistryBuildErrorKind::ResourceLimitExceeded => {
+            BindingStatus::ResourceLimitExceeded
+        }
+        _ => BindingStatus::InvalidArgument,
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct ErrorPayload<'a> {
     version: u32,
@@ -302,7 +461,10 @@ struct ErrorPayload<'a> {
 
 #[derive(Debug, Serialize)]
 struct ErrorDetails<'a> {
-    resource: &'a BindingResourceErrorDetails,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resource: Option<&'a BindingResourceErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
 }
 
 #[derive(Debug, Serialize)]
@@ -331,6 +493,9 @@ pub(crate) struct BindingOptions {
     pub(crate) layout: Option<LayoutOptionsJson>,
     #[cfg(feature = "svg")]
     pub(crate) environment: Option<RenderEnvironmentOptionsJson>,
+    #[cfg(feature = "svg")]
+    #[serde(skip)]
+    pub(crate) text_measurement_selector_explicit: bool,
     #[cfg(feature = "svg")]
     pub(crate) svg: Option<SvgOptionsJson>,
     #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -527,7 +692,14 @@ pub(crate) struct PresentationThemeOptionsJson {
 }
 
 pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8> {
-    error_payload_json_bytes_with_details(status, BindingErrorKind::Generic, None, None, message)
+    error_payload_json_bytes_with_details(
+        status,
+        BindingErrorKind::Generic,
+        None,
+        None,
+        None,
+        message,
+    )
 }
 
 pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
@@ -536,6 +708,7 @@ pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
         error.kind(),
         error.capability_id(),
         error.resource.as_ref(),
+        error.icon_registry.as_deref(),
         error.message(),
     )
 }
@@ -545,6 +718,7 @@ fn error_payload_json_bytes_with_details(
     kind: BindingErrorKind,
     capability_id: Option<&str>,
     resource: Option<&BindingResourceErrorDetails>,
+    icon_registry: Option<&BindingIconRegistryErrorDetails>,
     message: &str,
 ) -> Vec<u8> {
     let payload = ErrorPayload {
@@ -554,7 +728,10 @@ fn error_payload_json_bytes_with_details(
         code_name: status.code_name(),
         kind: kind.id(),
         capability_id,
-        details: resource.map(|resource| ErrorDetails { resource }),
+        details: (resource.is_some() || icon_registry.is_some()).then_some(ErrorDetails {
+            resource,
+            icon_registry,
+        }),
         message,
     };
     serde_json::to_vec(&payload).unwrap_or_else(|_| {
@@ -645,11 +822,26 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
     parse_options_value(&options_json_value(bytes)?)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_base_options(
     bytes: &[u8],
 ) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
+    parse_base_options_for_contract(bytes, &DEFAULT_ARTIFACT_SNAPSHOT)
+}
+
+pub(crate) fn parse_base_options_for_artifact(
+    bytes: &[u8],
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
+    parse_base_options_for_contract(bytes, artifact_contract)
+}
+
+fn parse_base_options_for_contract(
+    bytes: &[u8],
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
     let wire = options_json_value(bytes)?;
-    let typed = parse_options_value(&wire)?;
+    let typed = parse_options_value_for_contract(&wire, artifact_contract)?;
     let resource_ceiling = typed.analysis.resources.clone().unwrap_or_default();
     Ok((
         typed,
@@ -661,11 +853,18 @@ pub(crate) fn parse_base_options(
 }
 
 fn parse_options_value(value: &Value) -> Result<BindingOptions, BindingError> {
+    parse_options_value_for_contract(value, &DEFAULT_ARTIFACT_SNAPSHOT)
+}
+
+fn parse_options_value_for_contract(
+    value: &Value,
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<BindingOptions, BindingError> {
     validate_options_schema_version(value)?;
     reject_ambiguous_analysis_wrappers(value)?;
     reject_removed_host_theme(value)?;
     reject_null_presentation_values(value)?;
-    reject_uncompiled_option_groups(value)?;
+    reject_unavailable_option_groups(value, artifact_contract)?;
     #[cfg(feature = "svg")]
     reject_removed_layout_fields(value)?;
     #[cfg(feature = "ascii")]
@@ -677,9 +876,17 @@ fn parse_options_value(value: &Value) -> Result<BindingOptions, BindingError> {
             format!("invalid options_json: {err}"),
         )
     })?;
+    #[cfg(feature = "svg")]
+    {
+        options.text_measurement_selector_explicit = value
+            .as_object()
+            .and_then(|root| root.get("environment"))
+            .and_then(Value::as_object)
+            .is_some_and(|environment| environment.contains_key("text_measurement"));
+    }
     reject_unknown_options_json_fields(value)?;
     options.analysis = binding_analysis_options_json_from_json_value(value)?;
-    validate_resource_contract_ids(options.analysis.resources.as_ref())?;
+    validate_artifact_resource_options(options.analysis.resources.as_ref(), artifact_contract)?;
     Ok(options)
 }
 
@@ -821,9 +1028,30 @@ fn reject_unknown_options_json_fields(value: &Value) -> Result<(), BindingError>
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn parse_request_overlay(
     request_options_json: &[u8],
     resource_scope: BindingResourceScope,
+) -> Result<BindingRequestOverlay, BindingError> {
+    parse_request_overlay_for_contract(
+        request_options_json,
+        resource_scope,
+        &DEFAULT_ARTIFACT_SNAPSHOT,
+    )
+}
+
+pub(crate) fn parse_request_overlay_for_artifact(
+    request_options_json: &[u8],
+    resource_scope: BindingResourceScope,
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<BindingRequestOverlay, BindingError> {
+    parse_request_overlay_for_contract(request_options_json, resource_scope, artifact_contract)
+}
+
+fn parse_request_overlay_for_contract(
+    request_options_json: &[u8],
+    resource_scope: BindingResourceScope,
+    artifact_contract: &ValidatedArtifactContract,
 ) -> Result<BindingRequestOverlay, BindingError> {
     let request_value = options_json_value(request_options_json)?;
     if is_unchanged_request(&request_value) {
@@ -837,7 +1065,7 @@ pub(crate) fn parse_request_overlay(
             "request options_json cannot set runtime_policy; configure it when creating the engine",
         ));
     }
-    parse_options_value(&request_value)?;
+    parse_options_value_for_contract(&request_value, artifact_contract)?;
 
     let mut normalized_wire = normalize_analysis_wrapper(request_value);
     let requested_resources = take_request_resource_options(&mut normalized_wire, resource_scope)?;
@@ -848,13 +1076,17 @@ pub(crate) fn parse_request_overlay(
 }
 
 impl BaseBindingOptions {
-    pub(crate) fn validate_unchanged_request(&self) -> Result<(), BindingError> {
-        parse_options_value(&self.normalized_wire).map(drop)
+    pub(crate) fn validate_unchanged_request(
+        &self,
+        artifact_contract: &ValidatedArtifactContract,
+    ) -> Result<(), BindingError> {
+        parse_options_value_for_contract(&self.normalized_wire, artifact_contract).map(drop)
     }
 
     pub(crate) fn apply_overlay(
         &self,
         overlay: BindingRequestOverlay,
+        artifact_contract: &ValidatedArtifactContract,
     ) -> Result<BindingOptions, BindingError> {
         let BindingRequestOverlay::Override {
             normalized_wire,
@@ -876,7 +1108,7 @@ impl BaseBindingOptions {
                     serde_json::to_value(resources).map_err(internal_json_error)?,
                 );
         }
-        parse_options_value(&merged)
+        parse_options_value_for_contract(&merged, artifact_contract)
     }
 }
 
@@ -892,21 +1124,15 @@ fn is_unchanged_request(value: &Value) -> bool {
                 .is_some_and(|version| version == u64::from(BINDING_OPTIONS_SCHEMA_VERSION)))
 }
 
-fn reject_uncompiled_option_groups(value: &Value) -> Result<(), BindingError> {
+fn reject_unavailable_option_groups(
+    value: &Value,
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<(), BindingError> {
     let Some(options) = value.as_object() else {
         return Ok(());
     };
-    for (group, compiled) in [
-        ("lint", cfg!(feature = "analysis")),
-        ("ascii", cfg!(feature = "ascii")),
-        ("presentation", cfg!(feature = "svg")),
-        ("layout", cfg!(feature = "svg")),
-        ("environment", cfg!(feature = "svg")),
-        ("svg", cfg!(feature = "svg")),
-        ("raster", cfg!(any(feature = "png", feature = "jpeg"))),
-        ("jpeg", cfg!(feature = "jpeg")),
-        ("pdf", cfg!(feature = "pdf")),
-    ] {
+    for key in BindingOptionGroupKey::ALL {
+        let group = key.id();
         let present = options.contains_key(group)
             || (group == "lint"
                 && ["analysis", "merman"].iter().any(|wrapper| {
@@ -915,10 +1141,14 @@ fn reject_uncompiled_option_groups(value: &Value) -> Result<(), BindingError> {
                         .and_then(Value::as_object)
                         .is_some_and(|nested| nested.contains_key(group))
                 }));
-        if present && !compiled {
+        let available = artifact_contract.exposes_option_group(*key);
+        if present && !available {
             return Err(BindingError::new(
                 BindingStatus::OptionsJsonError,
-                format!("options group `{group}` is not available in this artifact"),
+                format!(
+                    "options group `{group}` is not available because it is not exposed by target `{}`",
+                    artifact_contract.target().id()
+                ),
             ));
         }
     }
@@ -952,36 +1182,74 @@ fn validate_output_options_for_scope(
     Ok(())
 }
 
-fn validate_resource_contract_ids(
+fn validate_artifact_resource_options(
+    resources: Option<&ResourceOptionsJson>,
+    artifact_contract: &ValidatedArtifactContract,
+) -> Result<(), BindingError> {
+    let Some(resources) = resources else {
+        return Ok(());
+    };
+    for (id, value) in &resources.limits {
+        let descriptor = compiled_resource_limit_descriptor(id)?;
+        if !artifact_contract.exposes_resource_limit(&descriptor) {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                format!(
+                    "resource limit id `{id}` is not exposed by target `{}`",
+                    artifact_contract.target().id()
+                ),
+            ));
+        }
+        validate_resource_limit_override(id, *value, descriptor)?;
+    }
+    Ok(())
+}
+
+fn validate_compiled_resource_options(
     resources: Option<&ResourceOptionsJson>,
 ) -> Result<(), BindingError> {
     let Some(resources) = resources else {
         return Ok(());
     };
     for (id, value) in &resources.limits {
-        let Some(descriptor) = resource_limit_descriptor(id) else {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!(
-                    "resource limit id `{id}` is not part of resource contract schema {BINDING_OPTIONS_SCHEMA_VERSION}"
-                ),
-            ));
-        };
-        if !descriptor.overridable {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!("resource limit id `{id}` is not overridable"),
-            ));
-        }
-        if *value < descriptor.minimum_value {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!(
-                    "resources.limits.{id} must be at least {}",
-                    descriptor.minimum_value
-                ),
-            ));
-        }
+        let descriptor = compiled_resource_limit_descriptor(id)?;
+        validate_resource_limit_override(id, *value, descriptor)?;
+    }
+    Ok(())
+}
+
+fn compiled_resource_limit_descriptor(
+    id: &str,
+) -> Result<BindingResourceLimitDescriptor, BindingError> {
+    resource_limit_descriptor(id).ok_or_else(|| {
+        BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!(
+                "resource limit id `{id}` is not part of resource contract schema {BINDING_OPTIONS_SCHEMA_VERSION}"
+            ),
+        )
+    })
+}
+
+fn validate_resource_limit_override(
+    id: &str,
+    value: usize,
+    descriptor: BindingResourceLimitDescriptor,
+) -> Result<(), BindingError> {
+    if !descriptor.overridable {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("resource limit id `{id}` is not overridable"),
+        ));
+    }
+    if value < descriptor.minimum_value {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!(
+                "resources.limits.{id} must be at least {}",
+                descriptor.minimum_value
+            ),
+        ));
     }
     Ok(())
 }
@@ -1808,7 +2076,7 @@ fn effective_resource_limits(
         })
         .transpose()?
         .unwrap_or(merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE);
-    validate_resource_contract_ids(Some(resources))?;
+    validate_compiled_resource_options(Some(resources))?;
 
     let mut values = binding_resource_contract()
         .limits
@@ -1916,10 +2184,10 @@ mod tests {
         let (_, base) = parse_base_options(base)?;
         Ok(match parse_request_overlay(request, scope)? {
             BindingRequestOverlay::Unchanged => {
-                base.validate_unchanged_request()?;
+                base.validate_unchanged_request(&DEFAULT_ARTIFACT_SNAPSHOT)?;
                 parse_options_value(&base.normalized_wire)?
             }
-            overlay => base.apply_overlay(overlay)?,
+            overlay => base.apply_overlay(overlay, &DEFAULT_ARTIFACT_SNAPSHOT)?,
         })
     }
 
@@ -1977,7 +2245,7 @@ mod tests {
         let payload = binding_error_payload_json_bytes(&error);
         let json: Value = serde_json::from_slice(&payload).unwrap();
         assert_eq!(json["details"]["resource"]["cause"], "arithmetic_overflow");
-        assert!(std::mem::size_of::<BindingError>() < 128);
+        assert_eq!(std::mem::size_of::<BindingResourceLimitCause>(), 1);
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -2028,7 +2296,7 @@ mod tests {
     fn uncompiled_output_option_groups_are_rejected() {
         let error = parse_options(br#"{"raster":{"scale":2}}"#).unwrap_err();
         assert_eq!(error.status(), BindingStatus::OptionsJsonError);
-        assert!(error.message().contains("not available in this artifact"));
+        assert!(error.message().contains("not exposed by target"));
     }
 
     #[test]
@@ -2403,17 +2671,25 @@ mod tests {
     #[cfg(any(feature = "svg", feature = "ascii"))]
     #[test]
     fn parse_options_accepts_analysis_wrapper_without_dropping_binding_options() {
-        let options = parse_options(
-            br#"{
+        #[cfg(feature = "svg")]
+        let input = br#"{
                 "parse": { "suppress_errors": true },
                 "analysis": {
                     "resources": { "limits": { "max_source_bytes": 4 } }
                 },
                 "version": 2,
                 "svg": { "pipeline": "resvg-safe" }
-            }"#,
-        )
-        .unwrap();
+            }"#;
+        #[cfg(all(not(feature = "svg"), feature = "ascii"))]
+        let input = br#"{
+                "parse": { "suppress_errors": true },
+                "analysis": {
+                    "resources": { "limits": { "max_source_bytes": 4 } }
+                },
+                "version": 2,
+                "ascii": { "color_mode": "none" }
+            }"#;
+        let options = parse_options(input).unwrap();
 
         assert_eq!(options.version, Some(2));
         assert_eq!(
@@ -2442,6 +2718,14 @@ mod tests {
         assert_eq!(
             options.svg.as_ref().and_then(|svg| svg.pipeline.as_deref()),
             Some("resvg-safe")
+        );
+        #[cfg(all(not(feature = "svg"), feature = "ascii"))]
+        assert_eq!(
+            options
+                .ascii
+                .as_ref()
+                .and_then(|ascii| ascii.color_mode.as_deref()),
+            Some("none")
         );
     }
 

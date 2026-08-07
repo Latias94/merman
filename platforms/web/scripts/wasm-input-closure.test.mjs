@@ -119,9 +119,9 @@ describe("WASM artifact Cargo closure", () => {
       "runtime-only Node audit assets must not invalidate browser WASM",
     );
     assert.equal(
-      paths.has("capabilities/generated/capability_surface.rs"),
+      paths.has("crates/merman-bindings-core/src/generated/capability_surface.rs"),
       true,
-      "the bindings runtime compiles the generated capability projection outside its src tree",
+      "the packaged bindings runtime owns its generated capability projection",
     );
   });
 });

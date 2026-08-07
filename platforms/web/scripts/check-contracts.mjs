@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   allPackageRuntimeExportNames,
+  resourceContractValueExportNames,
   surfaceModules,
   webPackages,
 } from "./surface-manifest.mjs";
@@ -241,6 +242,10 @@ failed ||= reportMissing(
 failed ||= reportMissing(
   "check-contracts: stable public TypeScript helpers are missing",
   requiredPublicWrappers.filter((name) => !publicValueExports.has(name)),
+);
+failed ||= reportMissing(
+  "check-contracts: root public API is missing resource contract values",
+  resourceContractValueExportNames.filter((name) => !publicValueExports.has(name)),
 );
 failed ||= reportMissing(
   "check-contracts: generated public ABI types are missing",

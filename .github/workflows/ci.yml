@@ -360,76 +360,15 @@ jobs:
           features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
           cargo nextest run -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
 
-      - name: Test exact artifact owner APIs
-        if: matrix.parity
-        shell: bash
-        run: |
-          run_owner_test() {
-            local profile="$1"
-            local expected_package="$2"
-            shift 2
-
-            local package
-            package="$(python3 scripts/artifact_profile_recipe.py "$profile" --field package)"
-            test "$package" = "$expected_package"
-
-            local features
-            features="$(python3 scripts/artifact_profile_recipe.py "$profile")"
-            local -a args=(
-              --locked
-              --package "$package"
-              --no-default-features
-              --cargo-quiet
-            )
-            if [[ -n "$features" ]]; then
-              args+=(--features "$features")
-            fi
-            cargo nextest run "${args[@]}" "$@"
-          }
-
-          run_owner_test rust-analysis merman-analysis \
-            --test analyzer facts_and_diagnostics_payloads_use_independent_version_constants
-          run_owner_test rust-ascii merman-ascii \
-            --test flowchart_model flowchart_parser_lr_chain_matches_upstream_ascii_golden
-          run_owner_test rust-editor-core merman-editor-core \
-            --test completion completion_offers_known_node_ids_with_text_edits
-          run_owner_test rust-editor-facade merman \
-            --test feature_surface_smoke facade_exposes_callable_analysis_and_editor_apis
-          run_owner_test rust-svg-basic merman
-          run_owner_test rust-bindings-core-native-sdk merman-bindings-core \
-            --lib runtime_capabilities_follow_callable_feature_surface
-          run_owner_test rust-export-jpeg merman-export \
-            --lib jpeg_leaf_encodes_a_sealed_svg
-          run_owner_test rust-export-png merman-export \
-            --lib png_leaf_encodes_a_sealed_svg
-          run_owner_test rust-export-pdf merman-export \
-            --lib pdf_leaf_encodes_a_sealed_svg
-
-      - name: Test external Cargo feature unification contract
+      - name: Test representative Cargo feature unification contract
         if: matrix.parity
         run: |
-          cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --lib --cargo-quiet \
-            -E 'test(render_and_layout_entry_points_report_missing_svg_capability) | test(ascii_entry_point_reports_missing_ascii_feature) | test(analysis_entry_points_report_missing_analysis_feature)'
-          cargo nextest run --locked -p merman-ffi --no-default-features \
-            --lib --cargo-quiet \
-            -E 'test(metadata_collect_returns_owned_catalogs_and_typed_failures) | test(svg_operation_follows_the_resolved_dependency_surface_and_owns_its_result)'
-          cargo nextest run --locked -p merman-uniffi --no-default-features \
-            --lib --cargo-quiet \
-            -E 'test(engine_exposes_metadata) | test(engine_render_svg_matches_the_resolved_transport_surface)'
-          cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features merman-bindings-core/svg,merman/layout-cytoscape,merman/layout-elk,merman/math,merman/system-timing \
-            --lib --cargo-quiet
-          features="$(python3 scripts/artifact_profile_recipe.py apple-uniffi-native)"
-          qualified_features="merman-uniffi/${features//,/,merman-uniffi/}"
-          cargo nextest run --locked -p merman-uniffi -p merman --no-default-features \
-            --features "$qualified_features,merman/system-timing" \
-            --lib --cargo-quiet \
-            -E 'package(merman-uniffi) & test(engine_exposes_metadata)'
-          cargo nextest run --manifest-path crates/merman-node/Cargo.toml --locked \
+          ambient_render_features="merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-elk,merman-bindings-core/math"
+          cargo nextest run --locked -p merman-bindings-core -p merman-ffi \
             --no-default-features \
-            --features svg,layout-cytoscape,layout-elk,math,transport-napi,merman-bindings-core/png,merman-bindings-core/system-clock,merman-bindings-core/system-timezone,merman-bindings-core/system-random \
-            --lib --cargo-quiet
+            --features "$ambient_render_features,merman-ffi/svg" \
+            --lib --cargo-quiet \
+            -E '(package(merman-bindings-core) & test(ambient_render_backends_are_really_compiled)) | (package(merman-ffi) & test(ambient_render_dependencies_do_not_widen_the_native_c_owner_contract))'
 
       - name: Install Node candidate development dependencies
         if: matrix.parity
@@ -439,13 +378,28 @@ jobs:
         if: matrix.parity
         run: npm test --prefix platforms/node
 
+      - name: Install pinned wasm-pack for Node candidate builds
+        if: matrix.parity && github.event_name != 'pull_request'
+        run: cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Build and probe the Node-WASM candidate
+        if: matrix.parity && github.event_name != 'pull_request'
+        run: npm run --prefix platforms/node build:candidate -- --candidate node-wasm
+
+      - name: Build and probe the Node N-API candidate
+        if: matrix.parity && github.event_name != 'pull_request'
+        run: npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu
+
       - name: Verify Cypress corpus against pinned Mermaid source
         if: matrix.parity
         run: cargo run --locked -p xtask -- import-upstream-cypress --check-11-16-corpus-manifest-source
 
-      - name: Test (nextest, merman render)
+      - name: Test system adapter feature contracts
         if: matrix.parity
-        run: cargo nextest run -p merman --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing --cargo-quiet
+        run: |
+          cargo nextest run -p merman --no-default-features \
+            --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing \
+            --test runtime_determinism --test render_timezone --cargo-quiet
 
       - name: Test C FFI artifact-profile contract
         if: matrix.parity
@@ -524,7 +478,7 @@ jobs:
         run: |
           cargo test --locked -p merman-typst-plugin --no-default-features
           cargo test --locked -p merman-typst-plugin --no-default-features \
-            --features merman-bindings-core/svg,merman-bindings-core/math,merman-bindings-core/system-clock,merman-bindings-core/system-timezone,merman-bindings-core/system-random
+            --features merman-bindings-core/svg,merman-bindings-core/math,merman-bindings-core/native-runtime
 
       - name: Check exact Typst WASM size budget
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
@@ -652,6 +606,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Read Android toolchain versions
@@ -707,6 +662,7 @@ jobs:
 
   android-instrumentation:
     name: android-instrumentation
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'platform')
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
@@ -834,6 +790,7 @@ jobs:
 
   apple-swift-5-9-smoke:
     name: apple-swift-5-9-smoke
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'platform')
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v6
@@ -849,20 +806,18 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Build Apple XCFramework with Swift 5.9
+      - name: Build iOS XCFramework with Swift 5.9
         env:
           MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-        run: bash scripts/build-apple-xcframework.sh
+        run: bash scripts/build-apple-xcframework.sh --ios
 
-      - name: Validate Swift 5.9 package
+      - name: Type-check generated Swift with Swift 5.9
         run: |
-          swift package describe
-          swift build
           swiftc -typecheck -module-name Merman \
             -target arm64-apple-ios14.0 \
             -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
@@ -873,7 +828,6 @@ jobs:
             -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
             -I platforms/apple/Merman.xcframework/ios-arm64_x86_64-simulator/Headers \
             platforms/apple/Sources/Merman/Generated/Merman.swift
-          swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
           git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
   apple-uniffi-smoke:

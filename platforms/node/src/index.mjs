@@ -1,10 +1,10 @@
 import { loadNativeTransport } from "./candidates/native.mjs";
 import {
-  MermanNodeEngine,
+  MermanEngine,
   createNodeEngine as createEngineWithTransport,
 } from "./engine.mjs";
 
-export { MermanNodeEngine };
+export { MermanEngine };
 
 export function createNodeEngine(options) {
   return createEngineWithTransport(options, { loadTransport: loadNativeTransport });
@@ -13,6 +13,7 @@ export function createNodeEngine(options) {
 export {
   MermanDisposedError,
   MermanError,
+  MermanInvalidTransportError,
   MermanLifecycleError,
   MermanMissingPlatformPackageError,
   MermanOperationError,

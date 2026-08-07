@@ -17,27 +17,23 @@ const PROTOCOL_ID: &str = "merman-native";
 const ABI_VERSION: u32 = 3;
 const SCHEMA_VERSION: u32 = 1;
 const RESULT_SCHEMA_VERSION: u32 = 1;
-const ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
-    "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110";
-const ABI3_FROZEN_PUBLISHED_PREFIX_LAYOUT_DIGEST: &str =
-    "sha256:25fbe339846e6c9b8fa66dbf48894a2d28d8fe037028f098d650bfa892915ace";
-const ABI3_FROZEN_PUBLISHED_FUNCTION_SLOT_COUNT: usize = 6;
-const ABI3_FROZEN_MINIMUM_SEMANTICS: [&str; 10] = [
-    "written-results-own-nonzero-allocation-tokens",
-    "result-free-authorizes-by-token-and-clears-the-record",
-    "engine-try-close-is-nonblocking-and-success-is-quiescent",
-    "host-callback-nonlocal-exits-are-forbidden",
-    "engine-new-inputs-and-outputs-do-not-overlap",
-    "error-kind-vocabulary-is-closed",
-    "api-table-capacity-returns-complete-prefix",
-    "moved-result-record-transfers-token-ownership",
-    "input-and-callback-slices-are-borrowed",
-    "callback-state-is-constructor-owned-until-quiescent-close",
-];
 const FFI_RUST_OUTPUT: &str = "crates/merman-ffi/src/generated/abi3.rs";
 const FFI_HEADER_OUTPUT: &str = "crates/merman-ffi/include/merman.h";
+const FLUTTER_OPERATION_OUTPUT: &str = "platforms/flutter/lib/src/generated/native_operations.dart";
+const FLUTTER_OPERATION_FIXED_MEMBERS: &[&str] = &[
+    "fromNativeCode",
+    "fromOperationId",
+    "hashCode",
+    "knownValues",
+    "nativeCode",
+    "noSuchMethod",
+    "operationId",
+    "requiresUri",
+    "runtimeType",
+    "toString",
+];
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct NativeAbiDescriptor {
     schema_version: u32,
@@ -47,6 +43,10 @@ struct NativeAbiDescriptor {
     minimum_prefix: MinimumPrefixDescriptor,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     minimum_semantics: Vec<SemanticRule>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    opaque_scalars: Vec<OpaqueScalarDescriptor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    caller_memory_rules: Vec<SemanticRule>,
     error_kinds: Vec<ErrorKindDescriptor>,
     entry_point: EntryPoint,
     status_codes: Vec<CodeDescriptor>,
@@ -57,7 +57,7 @@ struct NativeAbiDescriptor {
     ownership_rules: Vec<OwnershipRule>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct MinimumPrefixDescriptor {
     status_code_count: usize,
@@ -68,32 +68,63 @@ struct MinimumPrefixDescriptor {
     record_count: usize,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct SemanticRule {
     id: String,
     description: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct OpaqueScalarDescriptor {
+    id: String,
+    c_name: Option<String>,
+    rust_name: Option<String>,
+    c_type: String,
+    rust_type: String,
+    invalid_value: u64,
+    domain: TokenDomainDescriptor,
+    description: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct TokenDomainDescriptor {
+    tag: u64,
+    mask: u64,
+    counter_shift: u32,
+    maximum_counter: u64,
+    maximum_value: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct EntryPoint {
     c_name: String,
     rust_name: String,
     calling_convention: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    return_c_type: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    return_rust_type: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    parameters: Vec<ParameterDescriptor>,
     description: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct CodeDescriptor {
     id: String,
     c_name: String,
     code: i32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    error_kinds: Vec<String>,
     description: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct ErrorKindDescriptor {
     id: String,
@@ -102,15 +133,30 @@ struct ErrorKindDescriptor {
     description: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct OperationCodeDescriptor {
     id: String,
     c_name: String,
     code: i32,
+    #[serde(default, skip_serializing_if = "is_false")]
+    executable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    non_executable_failure: Option<OperationFailureDescriptor>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct OperationFailureDescriptor {
+    status_id: String,
+    error_kind_id: String,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct CallableDescriptor {
     id: String,
@@ -123,7 +169,7 @@ struct CallableDescriptor {
     description: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct ParameterDescriptor {
     name: String,
@@ -131,7 +177,7 @@ struct ParameterDescriptor {
     rust_type: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct RecordDescriptor {
     id: String,
@@ -143,7 +189,7 @@ struct RecordDescriptor {
     fields: Vec<FieldDescriptor>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct FieldDescriptor {
     name: String,
@@ -152,7 +198,7 @@ struct FieldDescriptor {
     ownership: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct OwnershipRule {
     id: String,
@@ -173,15 +219,26 @@ struct CapabilityOperationReference {
     targets: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 struct ResolvedOperation {
     id: String,
     c_name: String,
     code: i32,
+    executable: bool,
+    non_executable_failure: Option<ResolvedOperationFailure>,
     binding_operation_id: Option<String>,
     capability_id: Option<String>,
     media_type: Option<String>,
     requires_uri: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct ResolvedOperationFailure {
+    status_id: String,
+    status_code: i32,
+    error_kind_id: String,
+    error_kind_json_name: String,
 }
 
 struct PreparedNativeAbi {
@@ -296,6 +353,21 @@ fn validate_contiguous_codes(
     }
 }
 
+fn validate_codes_in_descriptor_order(
+    values: impl IntoIterator<Item = i32>,
+    context: &str,
+) -> Result<(), String> {
+    for (expected, actual) in values.into_iter().enumerate() {
+        let expected = i32::try_from(expected).expect("descriptor count fits i32");
+        if actual != expected {
+            return Err(descriptor_error(format!(
+                "{context} must appear in code order; descriptor index {expected} contains code {actual}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn validate_code_descriptors(
     values: &[CodeDescriptor],
     id_context: &str,
@@ -310,6 +382,7 @@ fn validate_code_descriptors(
         &format!("{id_context} C names"),
     )?;
     validate_contiguous_codes(values.iter().map(|value| value.code), id_context)?;
+    validate_codes_in_descriptor_order(values.iter().map(|value| value.code), id_context)?;
     for value in values {
         validate_identifier(&value.id, id_context)?;
         if !value.c_name.starts_with(c_prefix) || !is_ascii_identifier(&value.c_name) {
@@ -394,11 +467,181 @@ fn validate_callable(
     Ok(())
 }
 
-fn validate_abi3_published_contract(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
-    if descriptor.function_slots.len() < ABI3_FROZEN_PUBLISHED_FUNCTION_SLOT_COUNT {
+fn validate_opaque_scalars(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
+    validate_unique(
+        descriptor
+            .opaque_scalars
+            .iter()
+            .map(|scalar| scalar.id.as_str()),
+        "native ABI opaque scalar ids",
+    )?;
+    if descriptor.opaque_scalars.len() != 2 {
         return Err(descriptor_error(
-            "native ABI 3 function table is shorter than its published six-slot contract",
+            "native ABI must define exactly the engine_token and result_allocation_token roles",
         ));
+    }
+    let engine = descriptor
+        .opaque_scalars
+        .iter()
+        .find(|scalar| scalar.id == "engine_token")
+        .ok_or_else(|| descriptor_error("native ABI must define the engine_token role"))?;
+    let result = descriptor
+        .opaque_scalars
+        .iter()
+        .find(|scalar| scalar.id == "result_allocation_token")
+        .ok_or_else(|| {
+            descriptor_error("native ABI must define the result_allocation_token role")
+        })?;
+
+    let mut tags = BTreeSet::new();
+    for scalar in &descriptor.opaque_scalars {
+        validate_identifier(&scalar.id, "native ABI opaque scalar")?;
+        validate_type_name(
+            &scalar.c_type,
+            "C",
+            &format!("native ABI opaque scalar `{}`", scalar.id),
+        )?;
+        validate_type_name(
+            &scalar.rust_type,
+            "Rust",
+            &format!("native ABI opaque scalar `{}`", scalar.id),
+        )?;
+        if scalar.description.trim().is_empty() {
+            return Err(descriptor_error(format!(
+                "native ABI opaque scalar `{}` must have a description",
+                scalar.id
+            )));
+        }
+        let shift = scalar.domain.counter_shift;
+        let expected_mask = 1_u64
+            .checked_shl(shift)
+            .and_then(|value| value.checked_sub(1))
+            .ok_or_else(|| {
+                descriptor_error(format!(
+                    "native ABI opaque scalar `{}` has an invalid token counter shift",
+                    scalar.id
+                ))
+            })?;
+        let expected_counter_max = (i64::MAX as u64) >> shift;
+        if scalar.invalid_value != 0
+            || scalar.domain.mask != expected_mask
+            || scalar.domain.maximum_counter != expected_counter_max
+            || scalar.domain.tag == 0
+            || scalar.domain.tag > scalar.domain.mask
+            || !tags.insert(scalar.domain.tag)
+        {
+            return Err(descriptor_error(format!(
+                "native ABI opaque scalar `{}` must use a unique nonzero low-bit domain tag and the sign-bit-preserving counter range",
+                scalar.id
+            )));
+        }
+        let maximum_value = scalar
+            .domain
+            .maximum_counter
+            .checked_shl(scalar.domain.counter_shift)
+            .and_then(|counter| counter.checked_add(scalar.domain.tag))
+            .ok_or_else(|| {
+                descriptor_error(format!(
+                    "native ABI opaque scalar `{}` maximum token overflows",
+                    scalar.id
+                ))
+            })?;
+        if scalar.domain.maximum_value != maximum_value || maximum_value > i64::MAX as u64 {
+            return Err(descriptor_error(format!(
+                "native ABI opaque scalar `{}` maximum value must preserve the signed-64 sign bit",
+                scalar.id
+            )));
+        }
+    }
+
+    if engine.domain.mask != result.domain.mask
+        || engine.domain.counter_shift != result.domain.counter_shift
+        || engine.domain.maximum_counter != result.domain.maximum_counter
+    {
+        return Err(descriptor_error(
+            "native ABI opaque token roles must share one mask, shift, and counter range",
+        ));
+    }
+    if engine.c_name.as_deref() != Some("MermanNativeEngineToken")
+        || engine.rust_name.as_deref() != Some("MermanNativeEngineToken")
+        || engine.c_type != "uint64_t"
+        || engine.rust_type != "u64"
+    {
+        return Err(descriptor_error(
+            "native ABI engine_token must project the MermanNativeEngineToken uint64_t/u64 alias",
+        ));
+    }
+    if result.c_name.is_some()
+        || result.rust_name.is_some()
+        || result.c_type != "uint64_t"
+        || result.rust_type != "u64"
+    {
+        return Err(descriptor_error(
+            "native ABI result_allocation_token must retain its anonymous uint64_t/u64 record-field representation",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_operation_global_identifiers(
+    operations: &[OperationCodeDescriptor],
+) -> Result<(), String> {
+    let mut identifiers = BTreeMap::from([(
+        "MERMAN_NATIVE_OPERATION_DESCRIPTORS".to_string(),
+        "generated Rust operation descriptor table".to_string(),
+    )]);
+    for operation in operations {
+        let suffix = upper_snake(&operation.id);
+        let mut emitted = vec![
+            (operation.c_name.clone(), "operation code"),
+            (
+                format!("MERMAN_NATIVE_OPERATION_REQUIRES_URI_{suffix}"),
+                "requires-URI flag",
+            ),
+            (
+                format!("MERMAN_NATIVE_OPERATION_EXECUTABLE_{suffix}"),
+                "executable flag",
+            ),
+        ];
+        if operation.non_executable_failure.is_some() {
+            emitted.extend([
+                (
+                    format!("MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_STATUS_{suffix}"),
+                    "non-executable status",
+                ),
+                (
+                    format!("MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_ERROR_KIND_{suffix}"),
+                    "non-executable error kind",
+                ),
+            ]);
+        }
+        if operation.id != "none" {
+            // Capability is optional today, but reserving every generated metadata name keeps a
+            // later capability assignment from retroactively breaking the ABI projection.
+            emitted.extend([
+                (
+                    format!("MERMAN_NATIVE_OPERATION_ID_{suffix}"),
+                    "binding operation id",
+                ),
+                (
+                    format!("MERMAN_NATIVE_OPERATION_CAPABILITY_{suffix}"),
+                    "capability id",
+                ),
+                (
+                    format!("MERMAN_NATIVE_OPERATION_MEDIA_TYPE_{suffix}"),
+                    "media type",
+                ),
+            ]);
+        }
+
+        for (identifier, role) in emitted {
+            let source = format!("operation `{}` {role}", operation.id);
+            if let Some(previous) = identifiers.insert(identifier.clone(), source.clone()) {
+                return Err(descriptor_error(format!(
+                    "native ABI global identifier `{identifier}` is emitted by both {previous} and {source}"
+                )));
+            }
+        }
     }
     Ok(())
 }
@@ -429,16 +672,43 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         )));
     }
     let minimum_prefix = &descriptor.minimum_prefix;
-    if minimum_prefix.status_code_count != 17
-        || minimum_prefix.operation_code_count != 14
-        || minimum_prefix.error_kind_count != 5
-        || minimum_prefix.callback_count != 1
-        || minimum_prefix.function_slot_count != 5
-        || minimum_prefix.record_count != 9
-    {
-        return Err(descriptor_error(
-            "native ABI 3 minimum prefix must freeze 17 statuses, 14 operations, 5 error kinds, 1 callback, 5 function slots, and 9 records",
-        ));
+    for (name, count, available) in [
+        (
+            "status codes",
+            minimum_prefix.status_code_count,
+            descriptor.status_codes.len(),
+        ),
+        (
+            "operation codes",
+            minimum_prefix.operation_code_count,
+            descriptor.operation_codes.len(),
+        ),
+        (
+            "error kinds",
+            minimum_prefix.error_kind_count,
+            descriptor.error_kinds.len(),
+        ),
+        (
+            "callbacks",
+            minimum_prefix.callback_count,
+            descriptor.callbacks.len(),
+        ),
+        (
+            "function slots",
+            minimum_prefix.function_slot_count,
+            descriptor.function_slots.len(),
+        ),
+        (
+            "records",
+            minimum_prefix.record_count,
+            descriptor.records.len(),
+        ),
+    ] {
+        if count == 0 || count > available {
+            return Err(descriptor_error(format!(
+                "native ABI minimum prefix selects {count} {name}, but the descriptor defines {available}"
+            )));
+        }
     }
     validate_unique(
         descriptor
@@ -456,27 +726,36 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             )));
         }
     }
-    if descriptor
-        .minimum_semantics
-        .iter()
-        .map(|semantic| semantic.id.as_str())
-        .ne(ABI3_FROZEN_MINIMUM_SEMANTICS)
-    {
-        return Err(descriptor_error(
-            "native ABI 3 minimum semantics changed; incompatible ownership or lifecycle changes require a new ABI version",
-        ));
+    validate_opaque_scalars(descriptor)?;
+    validate_unique(
+        descriptor
+            .caller_memory_rules
+            .iter()
+            .map(|rule| rule.id.as_str()),
+        "native ABI caller-memory rule ids",
+    )?;
+    for rule in &descriptor.caller_memory_rules {
+        validate_identifier(&rule.id, "native ABI caller-memory rule")?;
+        if rule.description.trim().is_empty() {
+            return Err(descriptor_error(format!(
+                "native ABI caller-memory rule `{}` must have a description",
+                rule.id
+            )));
+        }
     }
     if descriptor.error_kinds.len() != minimum_prefix.error_kind_count {
-        return Err(descriptor_error(
-            "native ABI 3 error-kind vocabulary is closed at five entries",
-        ));
+        return Err(descriptor_error(format!(
+            "native ABI error-kind vocabulary is closed by the minimum prefix at {} entries, but the descriptor defines {}",
+            minimum_prefix.error_kind_count,
+            descriptor.error_kinds.len()
+        )));
     }
-    if descriptor.callbacks.len() < minimum_prefix.callback_count
-        || descriptor.records.len() < minimum_prefix.record_count
-    {
-        return Err(descriptor_error(
-            "native ABI descriptor is shorter than its frozen error, callback, or record prefix",
-        ));
+    if descriptor.callbacks.len() != minimum_prefix.callback_count {
+        return Err(descriptor_error(format!(
+            "native ABI callback vocabulary is closed by the minimum prefix at {} entries, but the descriptor defines {}",
+            minimum_prefix.callback_count,
+            descriptor.callbacks.len()
+        )));
     }
     validate_unique(
         descriptor.error_kinds.iter().map(|kind| kind.id.as_str()),
@@ -496,42 +775,6 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .map(|kind| kind.json_name.as_str()),
         "native ABI error kind JSON names",
     )?;
-    let expected_error_kinds = [
-        ("generic", "MERMAN_NATIVE_ERROR_KIND_GENERIC", "generic"),
-        (
-            "unknown_operation",
-            "MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION",
-            "unknown-operation",
-        ),
-        (
-            "missing_capability",
-            "MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY",
-            "missing-capability",
-        ),
-        (
-            "reentrant_call",
-            "MERMAN_NATIVE_ERROR_KIND_REENTRANT_CALL",
-            "reentrant-call",
-        ),
-        ("busy", "MERMAN_NATIVE_ERROR_KIND_BUSY", "busy"),
-    ];
-    let actual_error_kinds = descriptor
-        .error_kinds
-        .iter()
-        .take(expected_error_kinds.len())
-        .map(|kind| {
-            (
-                kind.id.as_str(),
-                kind.c_name.as_str(),
-                kind.json_name.as_str(),
-            )
-        })
-        .collect::<Vec<_>>();
-    if actual_error_kinds != expected_error_kinds {
-        return Err(descriptor_error(format!(
-            "native ABI error kinds must preserve generic, unknown-operation, missing-capability, reentrant-call, and appended busy in order; found {actual_error_kinds:?}"
-        )));
-    }
     for kind in &descriptor.error_kinds {
         validate_identifier(&kind.id, "native ABI error kind")?;
         validate_kebab_identifier(&kind.json_name, "native ABI error kind JSON name")?;
@@ -553,9 +796,24 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
     if descriptor.entry_point.c_name != "merman_get_native_api"
         || descriptor.entry_point.rust_name != "merman_get_native_api"
         || descriptor.entry_point.calling_convention != "C"
+        || descriptor.entry_point.return_c_type != "MermanNativeStatus"
+        || descriptor.entry_point.return_rust_type != "MermanNativeStatus"
+        || descriptor.entry_point.parameters
+            != [
+                ParameterDescriptor {
+                    name: "request".to_string(),
+                    c_type: "const MermanNativeApiRequest *".to_string(),
+                    rust_type: "*const MermanNativeApiRequest".to_string(),
+                },
+                ParameterDescriptor {
+                    name: "out_api".to_string(),
+                    c_type: "MermanNativeApi *".to_string(),
+                    rust_type: "*mut MermanNativeApi".to_string(),
+                },
+            ]
     {
         return Err(descriptor_error(
-            "native ABI must use `merman_get_native_api` with the C calling convention as its only direct entry point",
+            "native ABI must preserve the exact `merman_get_native_api` C entry-point signature",
         ));
     }
     if descriptor.entry_point.description.trim().is_empty() {
@@ -569,10 +827,31 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         "native ABI status codes",
         "MERMAN_NATIVE_STATUS_",
     )?;
-    if descriptor.status_codes.len() < minimum_prefix.status_code_count {
-        return Err(descriptor_error(
-            "native ABI status vocabulary is shorter than the frozen minimum prefix",
-        ));
+    if descriptor.status_codes.len() != minimum_prefix.status_code_count {
+        return Err(descriptor_error(format!(
+            "native ABI status vocabulary is closed by the minimum prefix at {} entries, but the descriptor defines {}",
+            minimum_prefix.status_code_count,
+            descriptor.status_codes.len()
+        )));
+    }
+    let known_error_kinds = descriptor
+        .error_kinds
+        .iter()
+        .map(|kind| kind.id.as_str())
+        .collect::<BTreeSet<_>>();
+    for status in &descriptor.status_codes {
+        validate_unique(
+            status.error_kinds.iter().map(String::as_str),
+            &format!("native ABI status `{}` error kinds", status.id),
+        )?;
+        for error_kind in &status.error_kinds {
+            if !known_error_kinds.contains(error_kind.as_str()) {
+                return Err(descriptor_error(format!(
+                    "native ABI status `{}` references unknown error kind `{error_kind}`",
+                    status.id
+                )));
+            }
+        }
     }
     if descriptor.operation_codes.is_empty() {
         return Err(descriptor_error(
@@ -600,11 +879,13 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .map(|operation| operation.code),
         "native ABI operation codes",
     )?;
-    if descriptor.operation_codes.len() < minimum_prefix.operation_code_count {
-        return Err(descriptor_error(
-            "native ABI operation vocabulary is shorter than the frozen minimum prefix",
-        ));
-    }
+    validate_codes_in_descriptor_order(
+        descriptor
+            .operation_codes
+            .iter()
+            .map(|operation| operation.code),
+        "native ABI operation codes",
+    )?;
     for operation in &descriptor.operation_codes {
         validate_identifier(&operation.id, "native ABI operation code")?;
         if !operation.c_name.starts_with("MERMAN_NATIVE_OPERATION_")
@@ -615,7 +896,41 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
                 operation.id
             )));
         }
+        if let Some(failure) = &operation.non_executable_failure {
+            let status = descriptor
+                .status_codes
+                .iter()
+                .find(|status| status.id == failure.status_id)
+                .ok_or_else(|| {
+                    descriptor_error(format!(
+                        "native ABI operation `{}` references unknown non-executable status `{}`",
+                        operation.id, failure.status_id
+                    ))
+                })?;
+            if !known_error_kinds.contains(failure.error_kind_id.as_str()) {
+                return Err(descriptor_error(format!(
+                    "native ABI operation `{}` references unknown non-executable error kind `{}`",
+                    operation.id, failure.error_kind_id
+                )));
+            }
+            if !status.error_kinds.contains(&failure.error_kind_id) {
+                return Err(descriptor_error(format!(
+                    "native ABI operation `{}` non-executable status `{}` does not permit error kind `{}`",
+                    operation.id, failure.status_id, failure.error_kind_id
+                )));
+            }
+        }
+        if operation.id != "none"
+            && (!operation.executable || operation.non_executable_failure.is_some())
+        {
+            return Err(descriptor_error(format!(
+                "native ABI operation `{}` must remain executable and have no non-executable failure",
+                operation.id
+            )));
+        }
     }
+    validate_operation_global_identifiers(&descriptor.operation_codes)?;
+    validate_flutter_operation_projection(&descriptor.operation_codes)?;
     let none = descriptor
         .operation_codes
         .iter()
@@ -624,6 +939,16 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
     if none.code != 0 {
         return Err(descriptor_error(
             "native ABI `none` operation must use code 0",
+        ));
+    }
+    let Some(_) = &none.non_executable_failure else {
+        return Err(descriptor_error(
+            "native ABI `none` operation must define its non-executable failure",
+        ));
+    };
+    if none.executable {
+        return Err(descriptor_error(
+            "native ABI `none` operation must remain non-executable",
         ));
     }
 
@@ -642,6 +967,10 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         "native ABI callback C names",
     )?;
     validate_contiguous_codes(
+        descriptor.callbacks.iter().map(|callback| callback.code),
+        "native ABI callbacks",
+    )?;
+    validate_codes_in_descriptor_order(
         descriptor.callbacks.iter().map(|callback| callback.code),
         "native ABI callbacks",
     )?;
@@ -667,34 +996,13 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
         descriptor.function_slots.iter().map(|slot| slot.code),
         "native ABI function slots",
     )?;
-    if descriptor.function_slots.len() < minimum_prefix.function_slot_count {
-        return Err(descriptor_error(
-            "native ABI function table is shorter than the frozen minimum prefix",
-        ));
-    }
+    validate_codes_in_descriptor_order(
+        descriptor.function_slots.iter().map(|slot| slot.code),
+        "native ABI function slots",
+    )?;
     for slot in &descriptor.function_slots {
         validate_callable(slot, "native ABI function slot", true)?;
     }
-    let expected_slots = [
-        "runtime_catalog",
-        "engine_new",
-        "engine_try_close",
-        "execute_collect",
-        "result_free",
-    ];
-    let actual_slots = descriptor
-        .function_slots
-        .iter()
-        .take(minimum_prefix.function_slot_count)
-        .map(|slot| slot.id.as_str())
-        .collect::<Vec<_>>();
-    if actual_slots != expected_slots {
-        return Err(descriptor_error(
-            "native ABI 3 minimum function slots must remain in their frozen order",
-        ));
-    }
-    validate_abi3_published_contract(descriptor)?;
-
     if descriptor.records.is_empty() {
         return Err(descriptor_error("native ABI records must not be empty"));
     }
@@ -842,11 +1150,45 @@ fn resolve_operations(
 
     let mut resolved = Vec::with_capacity(descriptor.operation_codes.len());
     for operation_code in sorted_operation_codes(&descriptor.operation_codes) {
+        let non_executable_failure = operation_code
+            .non_executable_failure
+            .as_ref()
+            .map(|failure| -> Result<ResolvedOperationFailure, XtaskError> {
+                let status = descriptor
+                    .status_codes
+                    .iter()
+                    .find(|status| status.id == failure.status_id)
+                    .ok_or_else(|| {
+                        native_abi_error(format!(
+                            "native ABI operation `{}` references unknown status `{}`",
+                            operation_code.id, failure.status_id
+                        ))
+                    })?;
+                let error_kind = descriptor
+                    .error_kinds
+                    .iter()
+                    .find(|kind| kind.id == failure.error_kind_id)
+                    .ok_or_else(|| {
+                        native_abi_error(format!(
+                            "native ABI operation `{}` references unknown error kind `{}`",
+                            operation_code.id, failure.error_kind_id
+                        ))
+                    })?;
+                Ok(ResolvedOperationFailure {
+                    status_id: status.id.clone(),
+                    status_code: status.code,
+                    error_kind_id: error_kind.id.clone(),
+                    error_kind_json_name: error_kind.json_name.clone(),
+                })
+            })
+            .transpose()?;
         if operation_code.id == "none" {
             resolved.push(ResolvedOperation {
                 id: operation_code.id.clone(),
                 c_name: operation_code.c_name.clone(),
                 code: operation_code.code,
+                executable: operation_code.executable,
+                non_executable_failure,
                 binding_operation_id: None,
                 capability_id: None,
                 media_type: None,
@@ -868,6 +1210,8 @@ fn resolve_operations(
             id: operation_code.id.clone(),
             c_name: operation_code.c_name.clone(),
             code: operation_code.code,
+            executable: operation_code.executable,
+            non_executable_failure,
             binding_operation_id: Some(operation.id.clone()),
             capability_id: operation.capability.clone(),
             media_type: Some(operation.media_type.clone()),
@@ -879,6 +1223,12 @@ fn resolve_operations(
 
 fn canonical_descriptor(descriptor: &NativeAbiDescriptor) -> NativeAbiDescriptor {
     let mut canonical = descriptor.clone();
+    canonical
+        .opaque_scalars
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    canonical
+        .caller_memory_rules
+        .sort_by(|left, right| left.id.cmp(&right.id));
     canonical
         .error_kinds
         .sort_by(|left, right| left.id.cmp(&right.id));
@@ -937,8 +1287,18 @@ fn full_descriptor_digest(
 
 fn strip_layout_irrelevant_metadata(descriptor: &mut NativeAbiDescriptor) {
     descriptor.entry_point.description.clear();
+    descriptor.entry_point.return_c_type.clear();
+    descriptor.entry_point.return_rust_type.clear();
+    descriptor.entry_point.parameters.clear();
+    descriptor.opaque_scalars.clear();
+    descriptor.caller_memory_rules.clear();
     for status in &mut descriptor.status_codes {
         status.description.clear();
+        status.error_kinds.clear();
+    }
+    for operation in &mut descriptor.operation_codes {
+        operation.executable = false;
+        operation.non_executable_failure = None;
     }
     for kind in &mut descriptor.error_kinds {
         kind.description.clear();
@@ -996,14 +1356,6 @@ fn minimum_prefix_layout_digest(descriptor: &NativeAbiDescriptor) -> Result<Stri
     )
 }
 
-fn published_prefix_layout_digest(descriptor: &NativeAbiDescriptor) -> Result<String, XtaskError> {
-    prefix_layout_digest(
-        descriptor,
-        ABI3_FROZEN_PUBLISHED_FUNCTION_SLOT_COUNT,
-        "published-prefix layout",
-    )
-}
-
 fn upper_snake(value: &str) -> String {
     value.replace('-', "_").to_ascii_uppercase()
 }
@@ -1020,6 +1372,55 @@ fn upper_camel(value: &str) -> String {
             }
         })
         .collect()
+}
+
+fn lower_camel(value: &str) -> String {
+    let upper = upper_camel(value);
+    let mut characters = upper.chars();
+    match characters.next() {
+        Some(first) => format!("{}{}", first.to_ascii_lowercase(), characters.as_str()),
+        None => String::new(),
+    }
+}
+
+fn validate_dart_lower_camel_members<'a>(
+    values: impl IntoIterator<Item = &'a str>,
+    context: &str,
+    fixed_members: &[&str],
+) -> Result<(), String> {
+    let mut projected = BTreeMap::new();
+    for value in values {
+        let member = lower_camel(value);
+        if !is_ascii_identifier(&member) {
+            return Err(descriptor_error(format!(
+                "{context} `{value}` projects to invalid Dart identifier `{member}`"
+            )));
+        }
+        if fixed_members.contains(&member.as_str()) {
+            return Err(descriptor_error(format!(
+                "{context} `{value}` projects to fixed Dart MermanOperation member `{member}`"
+            )));
+        }
+        if let Some(previous) = projected.insert(member.clone(), value) {
+            return Err(descriptor_error(format!(
+                "{context}s `{previous}` and `{value}` both project to Dart member `{member}`"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_flutter_operation_projection(
+    operations: &[OperationCodeDescriptor],
+) -> Result<(), String> {
+    validate_dart_lower_camel_members(
+        operations
+            .iter()
+            .filter(|operation| operation.executable)
+            .map(|operation| operation.id.as_str()),
+        "native ABI executable operation id",
+        FLUTTER_OPERATION_FIXED_MEMBERS,
+    )
 }
 
 fn sorted_codes(values: &[CodeDescriptor]) -> Vec<&CodeDescriptor> {
@@ -1044,6 +1445,21 @@ fn sorted_slots(values: &[CallableDescriptor]) -> Vec<&CallableDescriptor> {
     let mut values = values.iter().collect::<Vec<_>>();
     values.sort_by_key(|value| value.code);
     values
+}
+
+fn minimum_prefix_terminal_slot(descriptor: &NativeAbiDescriptor) -> &CallableDescriptor {
+    descriptor
+        .function_slots
+        .get(descriptor.minimum_prefix.function_slot_count - 1)
+        .expect("validated minimum prefix selects a function slot")
+}
+
+fn opaque_scalar<'a>(descriptor: &'a NativeAbiDescriptor, id: &str) -> &'a OpaqueScalarDescriptor {
+    descriptor
+        .opaque_scalars
+        .iter()
+        .find(|scalar| scalar.id == id)
+        .unwrap_or_else(|| panic!("validated native ABI descriptor must define `{id}`"))
 }
 
 fn c_parameter_list(parameters: &[ParameterDescriptor]) -> String {
@@ -1156,7 +1572,17 @@ fn render_c_header(
     );
     render_c_operation_type(&mut out, operations);
     render_c_slot_type(&mut out, &sorted_slots(&descriptor.function_slots));
-    out.push_str("typedef uint64_t MermanNativeEngineToken;\n\n");
+    let engine_token = opaque_scalar(descriptor, "engine_token");
+    writeln!(
+        out,
+        "typedef {} {};\n",
+        engine_token.c_type,
+        engine_token
+            .c_name
+            .as_deref()
+            .expect("validated engine token has a C name")
+    )
+    .unwrap();
 
     for record in &descriptor.records {
         writeln!(out, "typedef struct {} {};", record.c_name, record.c_name).unwrap();
@@ -1199,9 +1625,14 @@ fn render_c_header(
         }
         out.push_str("};\n\n");
     }
-    out.push_str(
-        "#define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, result_free) + sizeof(((MermanNativeApi *)0)->result_free)))\n\n",
-    );
+    let minimum_slot = minimum_prefix_terminal_slot(descriptor);
+    writeln!(
+        out,
+        "#define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, {}) + sizeof(((MermanNativeApi *)0)->{})))\n",
+        minimum_slot.id,
+        minimum_slot.id,
+    )
+    .unwrap();
     for slot in sorted_slots(&descriptor.function_slots)
         .into_iter()
         .skip(descriptor.minimum_prefix.function_slot_count)
@@ -1218,7 +1649,7 @@ fn render_c_header(
     out.push('\n');
 
     out.push_str(
-        "/*\n * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability\n * digests report provenance and do not reject a compatible prefix. Except for MermanNativeApi,\n * public records require exact struct_size. The caller supplies MermanNativeApi capacity and\n * receives the largest complete producer prefix it can safely read. MermanNativeResult must be\n * fully zero-initialized with MERMAN_NATIVE_RESULT_INIT before every producing call.\n *\n * Frozen ABI 3 semantics from the descriptor:\n",
+        "/*\n * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability\n * digests report provenance and do not reject a compatible prefix. Except for MermanNativeApi,\n * public records require exact struct_size. The caller supplies MermanNativeApi capacity and\n * receives the largest complete producer prefix it can safely read. MermanNativeResult must be\n * fully zero-initialized with MERMAN_NATIVE_RESULT_INIT before every producing call.\n *\n * ABI 3 semantics from the descriptor:\n",
     );
     for semantic in &descriptor.minimum_semantics {
         render_c_comment_item(&mut out, &semantic.id, &semantic.description);
@@ -1229,11 +1660,21 @@ fn render_c_header(
     for rule in ownership_rules {
         render_c_comment_item(&mut out, &rule.id, &rule.description);
     }
+    out.push_str(" *\n * Opaque scalar rules from the ABI descriptor:\n");
+    for scalar in &descriptor.opaque_scalars {
+        render_c_comment_item(&mut out, &scalar.id, &scalar.description);
+    }
+    out.push_str(" *\n * Unsafe caller-memory preconditions from the ABI descriptor:\n");
+    for rule in &descriptor.caller_memory_rules {
+        render_c_comment_item(&mut out, &rule.id, &rule.description);
+    }
     out.push_str(" */\n");
     writeln!(
         out,
-        "MermanNativeStatus {}(const MermanNativeApiRequest *request, MermanNativeApi *out_api) MERMAN_NATIVE_NOEXCEPT;",
-        descriptor.entry_point.c_name
+        "{} {}({}) MERMAN_NATIVE_NOEXCEPT;",
+        descriptor.entry_point.return_c_type,
+        descriptor.entry_point.c_name,
+        c_parameter_list(&descriptor.entry_point.parameters)
     )
     .unwrap();
     out.push_str("\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n");
@@ -1300,6 +1741,26 @@ fn render_c_operation_type(out: &mut String, values: &[ResolvedOperation]) {
             if value.requires_uri { "1" } else { "0" }
         )
         .unwrap();
+        writeln!(
+            out,
+            "#define MERMAN_NATIVE_OPERATION_EXECUTABLE_{suffix} {}",
+            if value.executable { "1" } else { "0" }
+        )
+        .unwrap();
+        if let Some(failure) = &value.non_executable_failure {
+            writeln!(
+                out,
+                "#define MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_STATUS_{suffix} {}",
+                failure.status_code
+            )
+            .unwrap();
+            writeln!(
+                out,
+                "#define MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_ERROR_KIND_{suffix} \"{}\"",
+                failure.error_kind_json_name
+            )
+            .unwrap();
+        }
         if let Some(media_type) = &value.media_type {
             if let Some(binding_operation_id) = &value.binding_operation_id {
                 writeln!(
@@ -1386,10 +1847,52 @@ fn render_rust(
         "MermanNativeStatus",
         &sorted_codes(&descriptor.status_codes),
     );
+    render_rust_error_contract(&mut out, descriptor);
     render_rust_operation_type(&mut out, operations);
     render_rust_operation_catalog(&mut out, operations);
     render_rust_slot_type(&mut out, &sorted_slots(&descriptor.function_slots));
-    out.push_str("pub type MermanNativeEngineToken = u64;\n\n");
+    let engine_token = opaque_scalar(descriptor, "engine_token");
+    let result_token = opaque_scalar(descriptor, "result_allocation_token");
+    writeln!(
+        out,
+        "pub type {} = {};",
+        engine_token
+            .rust_name
+            .as_deref()
+            .expect("validated engine token has a Rust name"),
+        engine_token.rust_type
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "pub(crate) const MERMAN_NATIVE_TOKEN_DOMAIN_MASK: u64 = {};",
+        engine_token.domain.mask
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "pub(crate) const MERMAN_NATIVE_TOKEN_COUNTER_SHIFT: u32 = {};",
+        engine_token.domain.counter_shift
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "pub(crate) const MERMAN_NATIVE_TOKEN_COUNTER_MAX: u64 = {};",
+        engine_token.domain.maximum_counter
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "pub(crate) const MERMAN_NATIVE_ENGINE_TOKEN_DOMAIN_TAG: u64 = {};",
+        engine_token.domain.tag
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "pub(crate) const MERMAN_NATIVE_RESULT_TOKEN_DOMAIN_TAG: u64 = {};\n",
+        result_token.domain.tag
+    )
+    .unwrap();
 
     for record in &descriptor.records {
         render_rust_doc_comment(&mut out, &record.description);
@@ -1416,11 +1919,14 @@ fn render_rust(
     for slot in sorted_slots(&descriptor.function_slots) {
         render_rust_callable_type(&mut out, slot);
     }
-    out.push_str(
-        "\npub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =\n\
-         \x20   (std::mem::offset_of!(MermanNativeApi, result_free)\n\
-         \x20       + std::mem::size_of::<Option<MermanNativeResultFreeFn>>()) as u32;\n\n",
-    );
+    let minimum_slot = minimum_prefix_terminal_slot(descriptor);
+    writeln!(
+        out,
+        "\npub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =\n    (std::mem::offset_of!(MermanNativeApi, {})\n        + std::mem::size_of::<Option<{}>>()) as u32;\n",
+        minimum_slot.id,
+        minimum_slot.rust_name,
+    )
+    .unwrap();
     let appended_slots = sorted_slots(&descriptor.function_slots)
         .into_iter()
         .skip(descriptor.minimum_prefix.function_slot_count)
@@ -1500,6 +2006,82 @@ fn render_rust_code_type(out: &mut String, type_name: &str, values: &[&CodeDescr
     );
 }
 
+fn render_rust_error_contract(out: &mut String, descriptor: &NativeAbiDescriptor) {
+    out.push_str(
+        "pub(crate) fn merman_native_status_name(status: MermanNativeStatus) -> &'static str {\n    match status {\n",
+    );
+    for status in sorted_codes(&descriptor.status_codes) {
+        writeln!(
+            out,
+            "        {} => {:?},",
+            status.c_name,
+            status.id.replace('_', "-")
+        )
+        .unwrap();
+    }
+    out.push_str("        _ => \"unknown-status\",\n    }\n}\n\n");
+
+    out.push_str(
+        "pub(crate) fn merman_native_error_kind_name(\n    kind: merman_bindings_core::BindingErrorKind,\n) -> &'static str {\n    match kind {\n",
+    );
+    for kind in sorted_error_kinds(&descriptor.error_kinds) {
+        writeln!(
+            out,
+            "        merman_bindings_core::BindingErrorKind::{} => {},",
+            upper_camel(&kind.id),
+            kind.c_name,
+        )
+        .unwrap();
+    }
+    out.push_str("    }\n}\n\n");
+
+    out.push_str(
+        "pub(crate) fn merman_binding_error_kind_from_native_name(\n    kind: &str,\n) -> Option<merman_bindings_core::BindingErrorKind> {\n    match kind {\n",
+    );
+    for kind in sorted_error_kinds(&descriptor.error_kinds) {
+        writeln!(
+            out,
+            "        {} => Some(merman_bindings_core::BindingErrorKind::{}),",
+            kind.c_name,
+            upper_camel(&kind.id),
+        )
+        .unwrap();
+    }
+    out.push_str("        _ => None,\n    }\n}\n\n");
+
+    out.push_str(
+        "pub(crate) fn merman_native_normalize_error_kind(\n    status: MermanNativeStatus,\n    requested: merman_bindings_core::BindingErrorKind,\n) -> merman_bindings_core::BindingErrorKind {\n    match status {\n",
+    );
+    for status in sorted_codes(&descriptor.status_codes) {
+        if status.error_kinds.is_empty() {
+            writeln!(
+                out,
+                "        {} => merman_bindings_core::BindingErrorKind::Generic,",
+                status.c_name,
+            )
+            .unwrap();
+            continue;
+        }
+        writeln!(out, "        {} => match requested {{", status.c_name).unwrap();
+        for error_kind in &status.error_kinds {
+            writeln!(
+                out,
+                "            merman_bindings_core::BindingErrorKind::{} => requested,",
+                upper_camel(error_kind),
+            )
+            .unwrap();
+        }
+        writeln!(
+            out,
+            "            _ => merman_bindings_core::BindingErrorKind::{},",
+            upper_camel(&status.error_kinds[0]),
+        )
+        .unwrap();
+        out.push_str("        },\n");
+    }
+    out.push_str("        _ => merman_bindings_core::BindingErrorKind::Generic,\n    }\n}\n\n");
+}
+
 fn render_rust_operation_type(out: &mut String, values: &[ResolvedOperation]) {
     out.push_str("pub type MermanNativeOperationCode = i32;\n");
     for value in values {
@@ -1516,6 +2098,25 @@ fn render_rust_operation_type(out: &mut String, values: &[ResolvedOperation]) {
             value.requires_uri
         )
         .unwrap();
+        writeln!(
+            out,
+            "pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_{suffix}: bool = {};",
+            value.executable
+        )
+        .unwrap();
+        if let Some(failure) = &value.non_executable_failure {
+            writeln!(
+                out,
+                "pub const MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_STATUS_{suffix}: MermanNativeStatus = {};",
+                failure.status_code
+            )
+            .unwrap();
+            render_rust_string_constant(
+                out,
+                &format!("MERMAN_NATIVE_OPERATION_NON_EXECUTABLE_ERROR_KIND_{suffix}"),
+                &failure.error_kind_json_name,
+            );
+        }
         if let Some(media_type) = &value.media_type {
             if let Some(binding_operation_id) = &value.binding_operation_id {
                 render_rust_string_constant(
@@ -1544,8 +2145,15 @@ fn render_rust_operation_type(out: &mut String, values: &[ResolvedOperation]) {
 fn render_rust_operation_catalog(out: &mut String, values: &[ResolvedOperation]) {
     out.push_str(
         "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n\
+         pub struct MermanNativeOperationFailureDescriptor {\n\
+         \x20   pub status: MermanNativeStatus,\n\
+         \x20   pub error_kind: &'static str,\n\
+         }\n\n\
+         #[derive(Debug, Clone, Copy, PartialEq, Eq)]\n\
          pub struct MermanNativeOperationDescriptor {\n\
          \x20   pub code: MermanNativeOperationCode,\n\
+         \x20   pub executable: bool,\n\
+         \x20   pub non_executable_failure: Option<MermanNativeOperationFailureDescriptor>,\n\
          \x20   pub operation_id: Option<&'static str>,\n\
          \x20   pub capability_id: Option<&'static str>,\n\
          \x20   pub media_type: Option<&'static str>,\n\
@@ -1556,6 +2164,25 @@ fn render_rust_operation_catalog(out: &mut String, values: &[ResolvedOperation])
     for value in values {
         writeln!(out, "    MermanNativeOperationDescriptor {{").unwrap();
         writeln!(out, "        code: {},", value.c_name).unwrap();
+        writeln!(out, "        executable: {},", value.executable).unwrap();
+        match &value.non_executable_failure {
+            Some(failure) => {
+                writeln!(
+                    out,
+                    "        non_executable_failure: Some(MermanNativeOperationFailureDescriptor {{"
+                )
+                .unwrap();
+                writeln!(out, "            status: {},", failure.status_code).unwrap();
+                writeln!(
+                    out,
+                    "            error_kind: {:?},",
+                    failure.error_kind_json_name
+                )
+                .unwrap();
+                writeln!(out, "        }}),").unwrap();
+            }
+            None => writeln!(out, "        non_executable_failure: None,").unwrap(),
+        }
         writeln!(
             out,
             "        operation_id: {:?},",
@@ -1596,19 +2223,98 @@ fn render_rust_operation_catalog(out: &mut String, values: &[ResolvedOperation])
          }\n\n\
          pub const fn merman_native_operation_code(\n\
          \x20   key: merman_bindings_core::OperationKey,\n\
-         ) -> MermanNativeOperationCode {\n\
+         ) -> Option<MermanNativeOperationCode> {\n\
          \x20   match key {\n",
     );
     for value in values.iter().filter(|value| value.id != "none") {
         writeln!(
             out,
-            "        merman_bindings_core::OperationKey::{} => {},",
+            "        merman_bindings_core::OperationKey::{} => Some({}),",
             upper_camel(&value.id),
             value.c_name
         )
         .unwrap();
     }
-    out.push_str("    }\n}\n\n");
+    out.push_str("        _ => None,\n    }\n}\n\n");
+}
+
+fn render_flutter_operations(values: &[ResolvedOperation]) -> String {
+    let executable = values
+        .iter()
+        .filter(|value| value.executable)
+        .collect::<Vec<_>>();
+    let mut out = String::from(
+        "// This file is @generated by `cargo run -p xtask -- gen-native-abi`.\n\
+         // Sources: abi/merman-v3.json and capabilities/feature-surface-v1.json.\n\
+         // Do not edit directly.\n\n\
+         import 'native_abi.dart' as native;\n\n\
+         /// One executable operation in the generated native ABI projection.\n\
+         ///\n\
+         /// Runtime catalogs may contain newer operation IDs. Convert an ID through\n\
+         /// [MermanOperation.fromOperationId] before invocation so an older SDK fails\n\
+         /// explicitly instead of guessing a numeric code.\n\
+         final class MermanOperation {\n\
+         \x20 const MermanOperation._(\n\
+         \x20   this.nativeCode,\n\
+         \x20   this.operationId,\n\
+         \x20   this.requiresUri,\n\
+         \x20 );\n\n",
+    );
+
+    for value in &executable {
+        let suffix = upper_snake(&value.id);
+        let name = lower_camel(&value.id);
+        writeln!(
+            out,
+            "  static const {name} = MermanOperation._(\n    native.{},\n    native.MERMAN_NATIVE_OPERATION_ID_{suffix},\n    {},\n  );",
+            value.c_name, value.requires_uri
+        )
+        .unwrap();
+    }
+
+    out.push_str("\n  static const List<MermanOperation> knownValues = <MermanOperation>[\n");
+    for value in &executable {
+        writeln!(out, "    {},", lower_camel(&value.id)).unwrap();
+    }
+    out.push_str(
+        "  ];\n\n\
+         \x20 factory MermanOperation.fromNativeCode(int nativeCode) {\n\
+         \x20   for (final operation in knownValues) {\n\
+         \x20     if (operation.nativeCode == nativeCode) {\n\
+         \x20       return operation;\n\
+         \x20     }\n\
+         \x20   }\n\
+         \x20   throw ArgumentError.value(\n\
+         \x20     nativeCode,\n\
+         \x20     'nativeCode',\n\
+         \x20     'No executable operation mapping exists in this generated ABI projection',\n\
+         \x20   );\n\
+         \x20 }\n\n\
+         \x20 factory MermanOperation.fromOperationId(String operationId) {\n\
+         \x20   for (final operation in knownValues) {\n\
+         \x20     if (operation.operationId == operationId) {\n\
+         \x20       return operation;\n\
+         \x20     }\n\
+         \x20   }\n\
+         \x20   throw UnsupportedError(\n\
+         \x20     'Operation `$operationId` requires an updated Merman SDK/header before invocation',\n\
+         \x20   );\n\
+         \x20 }\n\n\
+         \x20 final int nativeCode;\n\
+         \x20 final String operationId;\n\
+         \x20 final bool requiresUri;\n\n\
+         \x20 @override\n\
+         \x20 bool operator ==(Object other) =>\n\
+         \x20     other is MermanOperation &&\n\
+         \x20     nativeCode == other.nativeCode &&\n\
+         \x20     operationId == other.operationId;\n\n\
+         \x20 @override\n\
+         \x20 int get hashCode => Object.hash(nativeCode, operationId);\n\n\
+         \x20 @override\n\
+         \x20 String toString() => operationId;\n\
+         }\n",
+    );
+    out
 }
 
 fn render_rust_slot_type(out: &mut String, values: &[&CallableDescriptor]) {
@@ -1625,8 +2331,8 @@ fn render_rust_slot_type(out: &mut String, values: &[&CallableDescriptor]) {
     out.push('\n');
 }
 
-fn generated_artifacts(prepared: &PreparedNativeAbi) -> Vec<(PathBuf, String)> {
-    vec![
+fn generated_artifacts(prepared: &PreparedNativeAbi) -> Result<Vec<(PathBuf, String)>, XtaskError> {
+    Ok(vec![
         (
             PathBuf::from(FFI_RUST_OUTPUT),
             render_rust(
@@ -1645,11 +2351,18 @@ fn generated_artifacts(prepared: &PreparedNativeAbi) -> Vec<(PathBuf, String)> {
                 &prepared.operations,
             ),
         ),
-    ]
+        (
+            PathBuf::from(FLUTTER_OPERATION_OUTPUT),
+            render_flutter_operations(&prepared.operations),
+        ),
+    ])
 }
 
 fn write_artifact(root: &Path, path: &Path, contents: &str) -> Result<(), XtaskError> {
     let full = root.join(path);
+    if fs::read(&full).is_ok_and(|existing| existing == contents.as_bytes()) {
+        return Ok(());
+    }
     if let Some(parent) = full.parent() {
         fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
             path: parent.display().to_string(),
@@ -1666,17 +2379,6 @@ fn load_and_validate(root: &Path) -> Result<PreparedNativeAbi, XtaskError> {
     let descriptor = read_descriptor(&root.join(DESCRIPTOR_PATH))?;
     let operations = resolve_operations(root, &descriptor)?;
     let minimum_prefix_digest = minimum_prefix_layout_digest(&descriptor)?;
-    if minimum_prefix_digest != ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST {
-        return Err(native_abi_error(format!(
-            "native ABI 3 minimum prefix changed: expected {ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST}, found {minimum_prefix_digest}; incompatible changes require a new ABI version"
-        )));
-    }
-    let published_prefix_digest = published_prefix_layout_digest(&descriptor)?;
-    if published_prefix_digest != ABI3_FROZEN_PUBLISHED_PREFIX_LAYOUT_DIGEST {
-        return Err(native_abi_error(format!(
-            "native ABI 3 published prefix changed: expected {ABI3_FROZEN_PUBLISHED_PREFIX_LAYOUT_DIGEST}, found {published_prefix_digest}; published slot changes require a new ABI version"
-        )));
-    }
     let full_descriptor_digest = full_descriptor_digest(&descriptor, &operations)?;
     Ok(PreparedNativeAbi {
         descriptor,
@@ -1692,7 +2394,7 @@ pub(crate) fn gen_native_abi(args: Vec<String>) -> Result<(), XtaskError> {
     }
     let root = crate::cmd::workspace_root();
     let prepared = load_and_validate(&root)?;
-    for (path, contents) in generated_artifacts(&prepared) {
+    for (path, contents) in generated_artifacts(&prepared)? {
         write_artifact(&root, &path, &contents)?;
     }
     Ok(())
@@ -1702,7 +2404,7 @@ pub(crate) fn verify_native_abi_artifacts() -> Result<Option<String>, XtaskError
     let root = crate::cmd::workspace_root();
     let prepared = load_and_validate(&root)?;
     let mut drift = Vec::new();
-    for (path, expected) in generated_artifacts(&prepared) {
+    for (path, expected) in generated_artifacts(&prepared)? {
         let full = root.join(&path);
         let actual = fs::read_to_string(&full).map_err(|source| XtaskError::ReadFile {
             path: full.display().to_string(),
@@ -1742,78 +2444,90 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_has_one_abi3_entry_table_and_all_operation_routes() {
-        let descriptor = committed_descriptor();
-        assert_eq!(descriptor.abi_version, 3);
-        assert_eq!(descriptor.result_schema_version, 1);
-        assert_eq!(
-            descriptor
-                .minimum_semantics
-                .iter()
-                .map(|semantic| semantic.id.as_str())
-                .collect::<Vec<_>>(),
-            ABI3_FROZEN_MINIMUM_SEMANTICS
+    fn descriptor_rejects_unsafe_flutter_operation_member_projections() {
+        let mut reserved_member = committed_descriptor();
+        let operation = reserved_member
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "svg")
+            .expect("committed descriptor has svg operation");
+        operation.id = "from_native_code".to_string();
+        operation.c_name = "MERMAN_NATIVE_OPERATION_FROM_NATIVE_CODE".to_string();
+        let error = validate_descriptor(&reserved_member)
+            .expect_err("fixed Flutter members must not be shadowed");
+        assert!(error.contains("fromNativeCode"), "{error}");
+        assert!(
+            error.contains("fixed Dart MermanOperation member"),
+            "{error}"
         );
-        assert_eq!(
-            descriptor
-                .error_kinds
-                .iter()
-                .map(|kind| kind.json_name.as_str())
-                .collect::<Vec<_>>(),
-            [
-                "generic",
-                "unknown-operation",
-                "missing-capability",
-                "reentrant-call",
-                "busy",
-            ]
-        );
-        assert_eq!(descriptor.entry_point.c_name, "merman_get_native_api");
-        assert_eq!(descriptor.entry_point.calling_convention, "C");
-        assert_eq!(
-            descriptor
-                .function_slots
-                .iter()
-                .map(|slot| slot.id.as_str())
-                .collect::<Vec<_>>(),
-            [
-                "runtime_catalog",
-                "engine_new",
-                "engine_try_close",
-                "execute_collect",
-                "result_free",
-                "metadata_collect",
-            ]
-        );
-        assert_eq!(descriptor.status_codes.last().unwrap().id, "busy");
-        assert_eq!(descriptor.operation_codes.len(), 14);
-        assert_eq!(
-            descriptor
-                .operation_codes
-                .iter()
-                .map(|operation| operation.code)
-                .collect::<BTreeSet<_>>(),
-            (0..14).collect()
-        );
-        let root = crate::cmd::workspace_root();
-        let operations = resolve_operations(&root, &descriptor).unwrap();
-        let uri_operations = operations
-            .iter()
-            .filter(|operation| operation.requires_uri)
-            .map(|operation| operation.binding_operation_id.as_deref())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            uri_operations,
-            vec![
-                Some("document-analysis-json"),
-                Some("document-analysis-facts-json"),
-            ]
+
+        let mut collision = committed_descriptor();
+        let first = collision
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "analysis_json")
+            .expect("committed descriptor has analysis-json operation");
+        first.id = "foo_1".to_string();
+        first.c_name = "MERMAN_NATIVE_OPERATION_FOO_1".to_string();
+        let second = collision
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "analysis_facts_json")
+            .expect("committed descriptor has analysis-facts-json operation");
+        second.id = "foo1".to_string();
+        second.c_name = "MERMAN_NATIVE_OPERATION_FOO1".to_string();
+        let error = validate_descriptor(&collision)
+            .expect_err("normalized Flutter operation members must remain unique");
+        assert!(error.contains("`foo_1` and `foo1`"), "{error}");
+        assert!(error.contains("Dart member `foo1`"), "{error}");
+    }
+
+    #[test]
+    fn descriptor_rejects_colliding_derived_operation_globals() {
+        let mut descriptor = committed_descriptor();
+        let first = descriptor
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "analysis_json")
+            .expect("committed descriptor has analysis-json operation");
+        first.id = "foo".to_string();
+        first.c_name = "MERMAN_NATIVE_OPERATION_FOO".to_string();
+        let second = descriptor
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "analysis_facts_json")
+            .expect("committed descriptor has analysis-facts-json operation");
+        second.id = "id_foo".to_string();
+        second.c_name = "MERMAN_NATIVE_OPERATION_ID_FOO".to_string();
+
+        let error = validate_descriptor(&descriptor)
+            .expect_err("operation codes must not collide with derived metadata globals");
+        assert!(
+            error.contains("global identifier `MERMAN_NATIVE_OPERATION_ID_FOO`"),
+            "{error}"
         );
         assert!(
-            operations
-                .iter()
-                .find(|operation| operation.id == "none")
-                .is_some_and(|operation| !operation.requires_uri)
+            error.contains("operation `foo` binding operation id"),
+            "{error}"
+        );
+        assert!(
+            error.contains("operation `id_foo` operation code"),
+            "{error}"
+        );
+
+        let mut fixed_global = committed_descriptor();
+        let operation = fixed_global
+            .operation_codes
+            .iter_mut()
+            .find(|operation| operation.id == "analysis_json")
+            .expect("committed descriptor has analysis-json operation");
+        operation.id = "descriptors".to_string();
+        operation.c_name = "MERMAN_NATIVE_OPERATION_DESCRIPTORS".to_string();
+        let error = validate_descriptor(&fixed_global)
+            .expect_err("operation codes must not shadow fixed generated globals");
+        assert!(
+            error.contains("generated Rust operation descriptor table"),
+            "{error}"
         );
     }
 
@@ -1832,42 +2546,35 @@ mod tests {
         assert!(validate_descriptor(&descriptor).is_err());
 
         let mut descriptor = committed_descriptor();
-        descriptor.function_slots[5].return_c_type = "void".to_string();
-        assert!(validate_descriptor(&descriptor).is_ok());
-        assert_ne!(
-            published_prefix_layout_digest(&descriptor).unwrap(),
-            ABI3_FROZEN_PUBLISHED_PREFIX_LAYOUT_DIGEST
-        );
+        descriptor.function_slots.swap(5, 6);
+        assert!(validate_descriptor(&descriptor).is_err());
 
         let mut descriptor = committed_descriptor();
-        descriptor.function_slots[5].description = "Reworded metadata collection.".to_string();
-        assert!(validate_descriptor(&descriptor).is_ok());
+        let mut duplicate = descriptor
+            .operation_codes
+            .last()
+            .cloned()
+            .expect("operation vocabulary is non-empty");
+        duplicate.id = "duplicate_terminal_code".to_string();
+        duplicate.c_name = "MERMAN_NATIVE_OPERATION_DUPLICATE_TERMINAL_CODE".to_string();
+        descriptor.operation_codes.push(duplicate);
+        assert!(validate_descriptor(&descriptor).is_err());
+
+        let mut descriptor = committed_descriptor();
+        descriptor.operation_codes.swap(12, 13);
+        assert!(validate_descriptor(&descriptor).is_err());
 
         let mut descriptor = committed_descriptor();
         descriptor.operation_codes[1].id = "missing_operation".to_string();
         let root = crate::cmd::workspace_root();
         assert!(resolve_operations(&root, &descriptor).is_err());
-    }
 
-    #[test]
-    fn descriptor_rejects_error_kind_name_swaps() {
         let mut descriptor = committed_descriptor();
-        descriptor.error_kinds[0].json_name = "unknown-operation".to_string();
-        descriptor.error_kinds[1].json_name = "generic".to_string();
-
+        descriptor.operation_codes[0].executable = true;
         assert!(validate_descriptor(&descriptor).is_err());
 
         let mut descriptor = committed_descriptor();
-        descriptor.error_kinds.push(ErrorKindDescriptor {
-            id: "future_kind".to_string(),
-            c_name: "MERMAN_NATIVE_ERROR_KIND_FUTURE_KIND".to_string(),
-            json_name: "future-kind".to_string(),
-            description: "Future error kind.".to_string(),
-        });
-        assert!(validate_descriptor(&descriptor).is_err());
-
-        let mut descriptor = committed_descriptor();
-        descriptor.minimum_semantics[0].id = "changed-result-ownership".to_string();
+        descriptor.operation_codes[1].executable = false;
         assert!(validate_descriptor(&descriptor).is_err());
     }
 
@@ -1928,20 +2635,7 @@ mod tests {
             original_prefix
         );
 
-        let mut busy_contract = committed_descriptor();
-        busy_contract.error_kinds[4].json_name = "renamed-busy".to_string();
-        assert_ne!(
-            minimum_prefix_layout_digest(&busy_contract).unwrap(),
-            original_prefix
-        );
-
         let mut appended = descriptor;
-        appended.status_codes.push(CodeDescriptor {
-            id: "future_status".to_string(),
-            c_name: "MERMAN_NATIVE_STATUS_FUTURE_STATUS".to_string(),
-            code: 17,
-            description: "Future append-only status.".to_string(),
-        });
         let mut future_slot = appended.function_slots.last().unwrap().clone();
         future_slot.id = "future_slot".to_string();
         future_slot.c_name = "MermanNativeFutureSlotFn".to_string();

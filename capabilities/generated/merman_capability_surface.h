@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:02e572e1010d2a3d440b69eef260cdf3b2d7f5a88f8c28ebe9fa486e184e722e"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -80,6 +80,9 @@ typedef struct MermanBindingOperationDescriptor {
     int requires_uri;
     const char *const *target_ids;
     size_t target_count;
+    const char *output_id;
+    const char *const *compiled_prerequisite_ids;
+    size_t compiled_prerequisite_count;
 } MermanBindingOperationDescriptor;
 
 static const char *const MERMAN_CAPABILITY_ANALYSIS_TARGETS[] = {
@@ -266,6 +269,10 @@ static const char *const MERMAN_BINDING_OPERATION_JPEG_TARGETS[] = {
     "native",
 };
 
+static const char *const MERMAN_BINDING_OPERATION_JPEG_COMPILED_PREREQUISITES[] = {
+    "svg",
+};
+
 static const char *const MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS[] = {
     "native",
     "web",
@@ -275,8 +282,16 @@ static const char *const MERMAN_BINDING_OPERATION_PDF_TARGETS[] = {
     "native",
 };
 
+static const char *const MERMAN_BINDING_OPERATION_PDF_COMPILED_PREREQUISITES[] = {
+    "svg",
+};
+
 static const char *const MERMAN_BINDING_OPERATION_PNG_TARGETS[] = {
     "native",
+};
+
+static const char *const MERMAN_BINDING_OPERATION_PNG_COMPILED_PREREQUISITES[] = {
+    "svg",
 };
 
 static const char *const MERMAN_BINDING_OPERATION_SEMANTIC_JSON_TARGETS[] = {
@@ -301,19 +316,19 @@ static const char *const MERMAN_BINDING_OPERATION_VALIDATION_JSON_TARGETS[] = {
 };
 
 static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {
-    { "analysis-facts-json", "analysis", "Analyze Mermaid input and return semantic facts JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_ANALYSIS_FACTS_JSON_TARGETS, 2 },
-    { "analysis-json", "analysis", "Analyze Mermaid input and return diagnostics JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_ANALYSIS_JSON_TARGETS, 3 },
-    { "ascii", "ascii", "Render Mermaid input as terminal text.", "text/plain; charset=utf-8", 0, MERMAN_BINDING_OPERATION_ASCII_TARGETS, 2 },
-    { "document-analysis-facts-json", "analysis", "Analyze a URI-backed Mermaid document and return semantic facts JSON.", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON_TARGETS, 2 },
-    { "document-analysis-json", "analysis", "Analyze a URI-backed Mermaid document and return diagnostics JSON.", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS, 2 },
-    { "jpeg", "jpeg", "Render Mermaid input as JPEG.", "image/jpeg", 0, MERMAN_BINDING_OPERATION_JPEG_TARGETS, 1 },
-    { "layout-json", "svg", "Render Mermaid input into layout model JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS, 2 },
-    { "pdf", "pdf", "Render Mermaid input as PDF.", "application/pdf", 0, MERMAN_BINDING_OPERATION_PDF_TARGETS, 1 },
-    { "png", "png", "Render Mermaid input as PNG.", "image/png", 0, MERMAN_BINDING_OPERATION_PNG_TARGETS, 1 },
-    { "semantic-json", NULL, "Parse Mermaid input into canonical semantic JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_SEMANTIC_JSON_TARGETS, 2 },
-    { "svg", "svg", "Render Mermaid input as SVG.", "image/svg+xml", 0, MERMAN_BINDING_OPERATION_SVG_TARGETS, 3 },
-    { "svg-plan-json", "svg", "Plan the capabilities required to render Mermaid input as SVG.", "application/json", 0, MERMAN_BINDING_OPERATION_SVG_PLAN_JSON_TARGETS, 2 },
-    { "validation-json", "analysis", "Validate Mermaid input and return validation JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_VALIDATION_JSON_TARGETS, 2 },
+    { "analysis-facts-json", "analysis", "Analyze Mermaid input and return semantic facts JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_ANALYSIS_FACTS_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "analysis-json", "analysis", "Analyze Mermaid input and return diagnostics JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_ANALYSIS_JSON_TARGETS, 3, NULL, NULL, 0 },
+    { "ascii", "ascii", "Render Mermaid input as terminal text.", "text/plain; charset=utf-8", 0, MERMAN_BINDING_OPERATION_ASCII_TARGETS, 2, "ascii", NULL, 0 },
+    { "document-analysis-facts-json", "analysis", "Analyze a URI-backed Mermaid document and return semantic facts JSON.", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "document-analysis-json", "analysis", "Analyze a URI-backed Mermaid document and return diagnostics JSON.", "application/json", 1, MERMAN_BINDING_OPERATION_DOCUMENT_ANALYSIS_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "jpeg", "jpeg", "Render Mermaid input as JPEG.", "image/jpeg", 0, MERMAN_BINDING_OPERATION_JPEG_TARGETS, 1, "jpeg", MERMAN_BINDING_OPERATION_JPEG_COMPILED_PREREQUISITES, 1 },
+    { "layout-json", "svg", "Render Mermaid input into layout model JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_LAYOUT_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "pdf", "pdf", "Render Mermaid input as PDF.", "application/pdf", 0, MERMAN_BINDING_OPERATION_PDF_TARGETS, 1, "pdf", MERMAN_BINDING_OPERATION_PDF_COMPILED_PREREQUISITES, 1 },
+    { "png", "png", "Render Mermaid input as PNG.", "image/png", 0, MERMAN_BINDING_OPERATION_PNG_TARGETS, 1, "png", MERMAN_BINDING_OPERATION_PNG_COMPILED_PREREQUISITES, 1 },
+    { "semantic-json", NULL, "Parse Mermaid input into canonical semantic JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_SEMANTIC_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "svg", "svg", "Render Mermaid input as SVG.", "image/svg+xml", 0, MERMAN_BINDING_OPERATION_SVG_TARGETS, 3, "svg", NULL, 0 },
+    { "svg-plan-json", "svg", "Plan the capabilities required to render Mermaid input as SVG.", "application/json", 0, MERMAN_BINDING_OPERATION_SVG_PLAN_JSON_TARGETS, 2, NULL, NULL, 0 },
+    { "validation-json", "analysis", "Validate Mermaid input and return validation JSON.", "application/json", 0, MERMAN_BINDING_OPERATION_VALIDATION_JSON_TARGETS, 2, NULL, NULL, 0 },
 };
 #define MERMAN_BINDING_OPERATION_COUNT 13u
 

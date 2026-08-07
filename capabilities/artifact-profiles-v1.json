@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988"
+    "digest": "sha256:02e572e1010d2a3d440b69eef260cdf3b2d7f5a88f8c28ebe9fa486e184e722e"
   },
   "profiles": [
     {
@@ -17,8 +17,8 @@
         "profile": "native-sdk",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "pdf", "png", "svg"
         ],
         "target": {
           "name": "merman_android_jni",
@@ -56,8 +56,8 @@
         "profile": "native-sdk",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "pdf", "png", "svg"
         ],
         "target": {
           "name": "merman_uniffi",
@@ -98,8 +98,8 @@
         "profile": "native-sdk",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "pdf", "png", "svg"
         ],
         "target": {
           "name": "merman_ffi",
@@ -206,8 +206,8 @@
         "profile": "native-sdk",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "pdf", "png", "svg"
         ],
         "target": {
           "name": "merman_ffi",
@@ -245,8 +245,8 @@
         "profile": "native-sdk",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "pdf", "png", "svg"
         ],
         "target": {
           "name": "merman_ffi",
@@ -287,8 +287,8 @@
         "profile": "native-sdk",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "pdf", "png", "svg"
         ],
         "target": {
           "name": "merman_ffi",
@@ -389,8 +389,8 @@
         "profile": "native-sdk",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "pdf", "png", "svg"
         ],
         "target": {
           "name": "merman_uniffi",
@@ -512,8 +512,8 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
-          "png", "svg", "system-clock", "system-random", "system-timezone"
+          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "pdf", "png", "svg"
         ],
         "target": {
           "name": "merman_bindings_core",

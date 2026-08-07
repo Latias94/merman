@@ -64,7 +64,7 @@ _OWNER_CONTRACT_V2_FIELDS = _OWNER_CONTRACT_COMMON_FIELDS | frozenset(
     {"probe", "scale", "semantic_response"}
 )
 _GENERATOR_FIELDS = frozenset({"id", "nodes_per_scale", "edges_per_scale"})
-_PROBE_FIELDS = frozenset(
+_PROBE_REQUIRED_FIELDS = frozenset(
     {
         "protocol_schema_version",
         "package",
@@ -72,9 +72,9 @@ _PROBE_FIELDS = frozenset(
         "bench",
         "features",
         "default_features",
-        "inputs",
     }
 )
+_PROBE_OPTIONAL_FIELDS = frozenset({"inputs"})
 _PROBE_INPUT_FIELDS = frozenset({"path", "sha256"})
 _SCALE_FIELDS = frozenset({"dimension", "units_per_scale"})
 _BOUND_FIELDS = frozenset({"slope_cap", "max_scale_cap"})
@@ -334,7 +334,13 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
         _positive_int(generator["edges_per_scale"], field="generator.edges_per_scale")
     else:
         probe = contract["probe"]
-        if not isinstance(probe, dict) or frozenset(probe) != _PROBE_FIELDS:
+        if not isinstance(probe, dict):
+            raise DriverContractError("owner contract probe must be an object")
+        probe_fields = frozenset(probe)
+        if (
+            not _PROBE_REQUIRED_FIELDS.issubset(probe_fields)
+            or probe_fields - _PROBE_REQUIRED_FIELDS - _PROBE_OPTIONAL_FIELDS
+        ):
             raise DriverContractError("owner contract probe fields differ")
         if probe["protocol_schema_version"] not in (2, 3):
             raise DriverContractError(
@@ -357,23 +363,30 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
             raise DriverContractError(
                 "owner contract probe features differ from lane required_features"
             )
-        inputs = probe["inputs"]
-        if not isinstance(inputs, list) or not inputs:
-            raise DriverContractError("owner contract probe inputs must be a non-empty list")
-        seen_paths: set[str] = set()
-        for index, raw_input in enumerate(inputs):
-            if not isinstance(raw_input, dict) or frozenset(raw_input) != _PROBE_INPUT_FIELDS:
-                raise DriverContractError(f"probe.inputs[{index}] fields differ")
-            input_path = _repo_relative_path(
-                raw_input["path"], field=f"probe.inputs[{index}].path"
-            )
-            if input_path in seen_paths:
-                raise DriverContractError("owner contract probe inputs contain duplicate paths")
-            seen_paths.add(input_path)
-            _lowercase_sha256(
-                raw_input["sha256"], field=f"probe.inputs[{index}].sha256"
-            )
-
+        if "inputs" in probe:
+            inputs = probe["inputs"]
+            if not isinstance(inputs, list) or not inputs:
+                raise DriverContractError(
+                    "owner contract probe inputs must be a non-empty list"
+                )
+            seen_paths: set[str] = set()
+            for index, raw_input in enumerate(inputs):
+                if (
+                    not isinstance(raw_input, dict)
+                    or frozenset(raw_input) != _PROBE_INPUT_FIELDS
+                ):
+                    raise DriverContractError(f"probe.inputs[{index}] fields differ")
+                input_path = _repo_relative_path(
+                    raw_input["path"], field=f"probe.inputs[{index}].path"
+                )
+                if input_path in seen_paths:
+                    raise DriverContractError(
+                        "owner contract probe inputs contain duplicate paths"
+                    )
+                seen_paths.add(input_path)
+                _lowercase_sha256(
+                    raw_input["sha256"], field=f"probe.inputs[{index}].sha256"
+                )
         scale = contract["scale"]
         if not isinstance(scale, dict) or frozenset(scale) != _SCALE_FIELDS:
             raise DriverContractError("owner contract scale fields differ")
@@ -896,7 +909,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
                 field="probe.package_manifest",
             )
             probe_inputs: list[dict[str, object]] = []
-            raw_inputs = probe["inputs"]
+            raw_inputs = probe.get("inputs", [])
             assert isinstance(raw_inputs, list)
             for index, raw_input in enumerate(raw_inputs):
                 assert isinstance(raw_input, Mapping)

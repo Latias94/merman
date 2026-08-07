@@ -13,7 +13,7 @@ use merman_render::environment::{
 use merman_render::family;
 use merman_render::model::TreeViewDiagramLayout;
 use merman_render::resources::RenderResourcePolicy;
-use merman_render::svg::{IconRegistry, IconSvg, SvgDebugOptions, SvgRenderOptions};
+use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextStyle};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -287,14 +287,15 @@ file.txt icon(file)
 App.tsx icon(logos:react)
 "##;
 
-    let mut registry = IconRegistry::new();
-    for icon in ["file", "folder"] {
-        registry.insert(
-            format!("mermaid-treeview:{icon}"),
-            IconSvg::new(r#"<path data-icon="registry-override"/>"#, 16.0, 16.0),
-        );
-    }
-    let environment = RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry));
+    let pack = br#"{
+        "prefix":"mermaid-treeview",
+        "icons":{
+            "file":{"body":"<path data-icon=\"registry-override\"/>"},
+            "folder":{"body":"<path data-icon=\"registry-override\"/>"}
+        }
+    }"#;
+    let registry = IconRegistry::from_packs([IconPack::new(pack)]).unwrap();
+    let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
     let loose_engine = Engine::new().with_site_config(MermaidConfig::from_value(
         serde_json::json!({ "securityLevel": "loose" }),
     ));
@@ -373,18 +374,21 @@ App.tsx icon(logos:react)
 
 #[test]
 fn tree_view_registry_icons_preserve_viewbox_and_empty_body_semantics() {
-    let mut registry = IconRegistry::new();
-    registry.insert(
-        "test:rocket",
-        IconSvg::new(
-            r#"<path data-icon="tree-view-registry" d="M2 3H34V21H2z"/>"#,
-            32.0,
-            18.0,
-        )
-        .with_viewbox(2.0, 3.0, 32.0, 18.0),
-    );
-    registry.insert("test:empty", IconSvg::new("", 16.0, 16.0));
-    let environment = RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry));
+    let pack = br#"{
+        "prefix":"test",
+        "icons":{
+            "rocket":{
+                "body":"<path data-icon=\"tree-view-registry\" d=\"M2 3H34V21H2z\"/>",
+                "left":2,
+                "top":3,
+                "width":32,
+                "height":18
+            },
+            "empty":{"body":""}
+        }
+    }"#;
+    let registry = IconRegistry::from_packs([IconPack::new(pack)]).unwrap();
+    let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
     let svg = render_tree_view_svg_with_environment(
         "treeView-beta\nRoot\n    Rocket icon(test:rocket)\n    Rocket Again icon(test:rocket)\n    Missing icon(test:missing)\n    Empty icon(test:empty)\n",
         SvgRenderOptions {

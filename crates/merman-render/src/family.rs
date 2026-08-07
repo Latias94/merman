@@ -970,11 +970,7 @@ fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
 }
 
 fn capability_is_available(capability: RenderCapability, session: &RenderSession) -> bool {
-    match capability {
-        RenderCapability::LayoutCytoscape => crate::layout_cytoscape_available(),
-        RenderCapability::LayoutElk => crate::layout_elk_available(),
-        RenderCapability::Math => session.math_renderer().is_some(),
-    }
+    session.supports_capability(capability)
 }
 
 fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> {

@@ -4,7 +4,12 @@ import { pathToFileURL } from "node:url";
 import {
   MermanInvalidTransportError,
   decodeWireCreationError,
+  validateTransportIdentityExport,
 } from "../errors.mjs";
+import {
+  assertRuntimePackageVersion,
+  nodeLoaderPackageVersion,
+} from "../native-loader.mjs";
 import { wrapCandidateEngine } from "./wrap-engine.mjs";
 
 export async function loadNodeWasmTransport(
@@ -34,12 +39,34 @@ export async function loadNodeWasmTransport(
       "The Node-targeted WASM candidate does not export WasmEngine.",
     );
   }
+  validateTransportIdentityExport(binding?.transportIdentityJson, {
+    expectedPackageVersion: nodeLoaderPackageVersion(),
+    expectedTransport: "wasm",
+    label: "The Node-targeted WASM candidate",
+  });
+  let transport;
   try {
-    return wrapCandidateEngine(
+    transport = wrapCandidateEngine(
       new WasmEngine(optionsJson),
       "The Node-targeted WASM candidate",
     );
   } catch (cause) {
     throw decodeWireCreationError(cause, "The Node-targeted WASM candidate");
+  }
+  try {
+    const runtimeCatalogJson = assertRuntimePackageVersion(
+      transport.runtimeCatalogJson(),
+    );
+    return {
+      ...transport,
+      runtimeCatalogJson: () => runtimeCatalogJson,
+    };
+  } catch (cause) {
+    try {
+      await transport.dispose();
+    } catch {
+      // Preserve the package-version failure that made the transport unusable.
+    }
+    throw cause;
   }
 }
