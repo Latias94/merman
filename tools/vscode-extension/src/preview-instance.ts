@@ -37,7 +37,7 @@ import {
   extractPreviewInputFromDocument,
   previewSourceIdentity,
 } from "./preview-source.js";
-import { assertSafePreviewSvg } from "./preview-svg-safety.js";
+import { assertSelfContainedPreviewSvg } from "./preview-svg-safety.js";
 import { PreviewWebviewClient } from "./preview-webview-client.js";
 import { renderMermanSource } from "./renderer.js";
 import {
@@ -413,7 +413,7 @@ export class PreviewInstance implements vscode.Disposable {
     });
     const content = result.stdout.toString("utf8");
     if (snapshot.displayMode === "svg") {
-      assertSafePreviewSvg(content);
+      assertSelfContainedPreviewSvg(content);
     }
     return content;
   }
@@ -539,7 +539,7 @@ export class PreviewInstance implements vscode.Disposable {
     if (!snapshot) {
       return;
     }
-    assertSafePreviewSvg(svg);
+    assertSelfContainedPreviewSvg(svg);
     await vscode.env.clipboard.writeText(svg);
     void vscode.window.showInformationMessage("Copied Mermaid SVG to clipboard.");
   }

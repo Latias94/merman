@@ -3,6 +3,7 @@ mod common;
 use common::legacy_init_theme_compat_config;
 use merman_core::time::CivilDate;
 use merman_core::{Engine, ParseOptions};
+use merman_fixture_render_context::RenderContextCatalog;
 use merman_render::LayoutOptions;
 use merman_render::family;
 use regex::Regex;
@@ -233,6 +234,8 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
         )
         .with_runtime_policy(runtime_policy.clone());
     let fixtures_root = workspace_root().join("fixtures");
+    let render_contexts = RenderContextCatalog::load(&fixtures_root)
+        .expect("load committed fixture render-context catalog");
     let mmd_files = collect_mmd_files(&fixtures_root);
     assert!(
         !mmd_files.is_empty(),
@@ -261,22 +264,37 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
             }
         };
 
-        let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
-            &text,
-            ParseOptions {
-                suppress_errors: true,
-            },
-        )) {
-            Ok(Some(v)) => v,
-            Ok(None) => {
-                failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
+        let fixture_site_config = render_contexts
+            .context_for_fixture(&mmd_path)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "failed to resolve fixture render context for {}: {error}",
+                    mmd_path.display()
+                )
+            })
+            .map(|context| merman_core::MermaidConfig::from_value(context.site_config_value()));
+        let fixture_engine = match fixture_site_config {
+            Some(site_config) => engine.clone().with_site_config(site_config),
+            None => engine.clone(),
         };
+
+        let parsed =
+            match futures::executor::block_on(fixture_engine.parse_diagram_for_render_model(
+                &text,
+                ParseOptions {
+                    suppress_errors: true,
+                },
+            )) {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                    continue;
+                }
+                Err(err) => {
+                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
 
         let diagram_type = parsed.metadata().diagram_type.clone();
         let session = environment.begin_session().expect("begin render session");

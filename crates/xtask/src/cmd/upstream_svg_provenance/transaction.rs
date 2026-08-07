@@ -227,6 +227,7 @@ where
     write_manifest_batch_with_installer_and_validator(manifests, install, || Ok(()))
 }
 
+#[cfg(test)]
 pub(super) fn write_manifest_batch(
     manifests: &[(&Path, &UpstreamSvgManifest)],
 ) -> Result<(), XtaskError> {
@@ -234,6 +235,20 @@ pub(super) fn write_manifest_batch(
         manifests,
         |from, to| fs::rename(from, to),
         || Ok(()),
+    )
+}
+
+pub(super) fn write_manifest_batch_with_post_install_validator<V>(
+    manifests: &[(&Path, &UpstreamSvgManifest)],
+    validate_after_install: V,
+) -> Result<(), XtaskError>
+where
+    V: FnOnce() -> Result<(), XtaskError>,
+{
+    write_manifest_batch_with_installer_and_validator(
+        manifests,
+        |from, to| fs::rename(from, to),
+        validate_after_install,
     )
 }
 

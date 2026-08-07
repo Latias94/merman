@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { projectSafeInlineSvg } from "./render-artifact.ts";
+import { projectNavigableInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
 import type {
@@ -49,8 +49,8 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
   if (state.status !== "success") return;
   assert.match(state.merman.artifact.svg, /second/);
   assert.ok(state.mermaid);
-  assert.equal(state.mermaid.artifact.kind, "safe-inline-svg");
-  if (state.mermaid.artifact.kind === "safe-inline-svg") {
+  assert.equal(state.mermaid.artifact.kind, "navigable-inline-svg");
+  if (state.mermaid.artifact.kind === "navigable-inline-svg") {
     assert.match(state.mermaid.artifact.svg, /second/);
   }
   assert.equal(state.snapshot.operation.source, "second");
@@ -192,7 +192,7 @@ test("passes one frozen operation to every Merman projection", async () => {
     render(input) {
       const operation = capture(input);
       return {
-        artifact: projectSafeInlineSvg(
+        artifact: projectNavigableInlineSvg(
           `<svg xmlns="http://www.w3.org/2000/svg"><text>${operation.source}</text></svg>`
         ),
         error: null,
@@ -247,7 +247,7 @@ test("freezes browser layout geometry into each render snapshot", async () => {
       const operation = input as FrozenRenderOperation;
       renderOperations.push(operation);
       return {
-        artifact: projectSafeInlineSvg(
+        artifact: projectNavigableInlineSvg(
           `<svg xmlns="http://www.w3.org/2000/svg"><text>${operation.source}</text></svg>`
         ),
         error: null,
@@ -307,7 +307,7 @@ test("keeps a successful render when SVG plan collection fails", async () => {
 });
 
 test("publishes the producer-owned Merman artifact without reprojecting it", async () => {
-  const artifact = projectSafeInlineSvg(
+  const artifact = projectNavigableInlineSvg(
     '<svg xmlns="http://www.w3.org/2000/svg"><text>owned</text></svg>'
   );
   const coordinator = createRenderCoordinator({
@@ -364,7 +364,7 @@ test("preserves producer SVG validation failures", async () => {
 });
 
 test("rejects a facade artifact that was not created by the projector", async () => {
-  const artifact = projectSafeInlineSvg(
+  const artifact = projectNavigableInlineSvg(
     '<svg xmlns="http://www.w3.org/2000/svg"><text>safe</text></svg>'
   );
   const forgedArtifact = {
@@ -420,7 +420,7 @@ test("updating disables old pair and partial replaces the failed pane", async ()
     assert.equal(previousMermaid?.status, "success");
     assert.match(
       previousMermaid?.status === "success" &&
-        previousMermaid.artifact.kind === "safe-inline-svg"
+        previousMermaid.artifact.kind === "navigable-inline-svg"
         ? previousMermaid.artifact.svg
         : "",
       /stable/
@@ -792,7 +792,7 @@ function facade(packageVersion = "test-merman"): MermanDomainFacade {
     }),
     getAsciiSupportedDiagrams: () => ["flowchart"],
     render: (input: ConfiguredMermanOperationInput) => ({
-      artifact: projectSafeInlineSvg(
+      artifact: projectNavigableInlineSvg(
         `<svg xmlns="http://www.w3.org/2000/svg"><text>${input.source}</text></svg>`
       ),
       error: null,
@@ -860,7 +860,7 @@ function mermaidSuccess(
   const svg = `<svg xmlns="http://www.w3.org/2000/svg"><text>${label}</text></svg>`;
   return {
     status: "success",
-    artifact: projectSafeInlineSvg(svg),
+    artifact: projectNavigableInlineSvg(svg),
     prepareTimeMs: 1,
     renderTimeMs: 2,
     presentationTimeMs: 3,

@@ -3,7 +3,6 @@ use rustc_hash::FxHashMap;
 use std::sync::Arc;
 mod context;
 mod edge;
-mod links;
 mod node;
 mod rough_cache;
 pub(in crate::svg::parity) mod roughjs;
@@ -24,7 +23,6 @@ use roughjs::{
 
 use context::*;
 use edge::*;
-use links::*;
 use node::*;
 use rough_cache::*;
 use style::*;

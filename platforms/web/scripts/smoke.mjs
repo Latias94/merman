@@ -1486,7 +1486,10 @@ async function runPureDistSmoke() {
   assert.equal(catalog.isDiagramType("swimlane"), true);
   assert.equal(catalog.normalizeThemeName("neo-dark"), "neo-dark");
   assert.equal("initMerman" in catalog, false);
-  assert.equal(typeof svgSafety.assertSafeSvgForDom, "function");
+  assert.equal(typeof svgSafety.assertNavigableSvgForDom, "function");
+  assert.equal(typeof svgSafety.assertSelfContainedSvgForDom, "function");
+  assert.equal(typeof svgSafety.prepareNavigableSvgForDomMount, "function");
+  assert.equal(typeof svgSafety.prepareSelfContainedSvgForDomMount, "function");
   assert.equal(textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 1);
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ code }) => code),
@@ -1508,10 +1511,10 @@ async function runPureDistSmoke() {
       .map(({ name }) => name),
     ["create-text-bbox-y-offset", "create-text-middle-bbox-y-offset"]
   );
-  svgSafety.assertSafeSvgForDom('<svg xmlns="http://www.w3.org/2000/svg" />');
+  svgSafety.assertSelfContainedSvgForDom('<svg xmlns="http://www.w3.org/2000/svg" />');
   assert.throws(
     () =>
-      svgSafety.assertSafeSvgForDom(
+      svgSafety.assertSelfContainedSvgForDom(
         '<svg xmlns="http://www.w3.org/2000/svg"><script /></svg>'
       ),
     /active embedded content/

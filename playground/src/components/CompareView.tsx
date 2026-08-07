@@ -23,7 +23,7 @@ import {
   useSvgViewportController,
   type SvgViewportController,
 } from "@/src/components/SvgViewport";
-import type { SafeInlineSvg } from "@/src/runtime/render-artifact";
+import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
 import { cn } from "@/lib/utils";
 
@@ -35,7 +35,7 @@ export interface CompareArtifact {
   publicationId: RenderPublicationId | null;
   title: string;
   version: string;
-  svgArtifact: SafeInlineSvg | null;
+  svgArtifact: NavigableInlineSvg | null;
   error: string | null;
   errorDetail: string | null;
   errorStage: string | null;
@@ -355,6 +355,7 @@ function ComparePaneBody({
       artifact={artifact.svgArtifact}
       presentationKey={artifact.publicationId}
       controller={controller}
+      navigationEnabled={!artifact.loading && !artifact.stale}
       onPresentationReady={onPresentationReady}
       empty={
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

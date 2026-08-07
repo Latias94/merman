@@ -35,12 +35,12 @@ impl<'a> KanbanConfigView<'a> {
         }
     }
 
-    pub(crate) fn render_settings(&self) -> KanbanRenderSettings<'a> {
-        KanbanRenderSettings {
-            look: config_diagram_look(self.effective_config),
-            ticket_base_url: config_string(self.kanban_config, &["ticketBaseUrl"])
-                .filter(|url| !url.trim().is_empty()),
-        }
+    pub(crate) fn look(&self) -> DiagramLook<'a> {
+        config_diagram_look(self.effective_config)
+    }
+
+    pub(crate) fn ticket_base_url(&self) -> Option<String> {
+        config_string(self.kanban_config, &["ticketBaseUrl"]).filter(|url| !url.is_empty())
     }
 
     fn section_width(&self) -> f64 {
@@ -86,12 +86,6 @@ pub(crate) struct KanbanLayoutSettings {
     pub(crate) viewbox_padding: f64,
     pub(crate) use_max_width: bool,
     pub(crate) text_style: TextStyle,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct KanbanRenderSettings<'a> {
-    pub(crate) look: DiagramLook<'a>,
-    pub(crate) ticket_base_url: Option<String>,
 }
 
 pub(crate) const fn default_use_max_width() -> bool {
@@ -172,19 +166,31 @@ mod tests {
     }
 
     #[test]
-    fn kanban_render_settings_project_look_and_ticket_base_url() {
+    fn kanban_config_projects_look_and_ticket_base_url() {
         let cfg = json!({
             "look": "neo",
             "kanban": {
                 "ticketBaseUrl": "https://example.invalid/#TICKET#"
             }
         });
-        let settings = KanbanConfigView::new(&cfg).render_settings();
+        let config = KanbanConfigView::new(&cfg);
 
-        assert_eq!(settings.look.as_str(), "neo");
+        assert_eq!(config.look().as_str(), "neo");
         assert_eq!(
-            settings.ticket_base_url.as_deref(),
+            config.ticket_base_url().as_deref(),
             Some("https://example.invalid/#TICKET#")
+        );
+
+        let whitespace_cfg = json!({
+            "kanban": {
+                "ticketBaseUrl": "   "
+            }
+        });
+        assert_eq!(
+            KanbanConfigView::new(&whitespace_cfg)
+                .ticket_base_url()
+                .as_deref(),
+            Some("   ")
         );
     }
 }

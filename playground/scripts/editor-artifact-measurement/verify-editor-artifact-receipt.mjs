@@ -7,7 +7,6 @@ import {
   CHECKED_EDITOR_ARTIFACT_RECEIPT_PATH,
   validateEditorArtifactReceipt,
 } from "./contract.mjs";
-import { editorArtifactSelectionInputs } from "./selection-inputs.mjs";
 import {
   collectSourceClosure,
   createTypeScriptSourceGraph,
@@ -26,12 +25,13 @@ const WORKER_PACKAGE_SELECTIONS = Object.freeze({
   editor: Object.freeze(["@mermanjs/web-editor"]),
   full: Object.freeze(["@mermanjs/web"]),
 });
+const BROWSER_WORKER_ENTRY = "src/editor/worker-browser.ts";
 
-export function verifyEditorArtifactAuthority({
+export function verifyEditorArtifactSelectionTopology({
   packageDependencies,
   packageLock,
   receipt,
-  selectionInputs,
+  workerStartupGraph,
   workerGraph,
 }) {
   const validated = validateEditorArtifactReceipt(receipt);
@@ -40,25 +40,6 @@ export function verifyEditorArtifactAuthority({
     true,
     `Editor artifact receipt is provisional: ${validated.authority.reasons.join("; ")}`,
   );
-  assert.equal(
-    validated.selectionInputs.schemaVersion,
-    selectionInputs.schemaVersion,
-    "Editor artifact selection-input contract changed. Advance the receipt schema and rerun R16 measurement.",
-  );
-  for (const field of [
-    "buildRuntimeClosureSha256",
-    "measurementContractSha256",
-    "workerClosureSha256",
-    "fullPackageProvenanceSha256",
-    "editorPackageProvenanceSha256",
-    "equivalenceEvidenceSha256",
-  ]) {
-    assert.equal(
-      validated.selectionInputs[field],
-      selectionInputs[field],
-      `Editor artifact ${field} changed. Run the on-demand R16 measurement from a clean worktree.`,
-    );
-  }
   const selectedDependencies = Object.fromEntries(
     Object.entries(packageDependencies)
       .filter(([name]) => name.startsWith("@mermanjs/web"))
@@ -84,22 +65,27 @@ export function verifyEditorArtifactAuthority({
       true,
       `Playground package lock must link ${packageName} to its local Web package.`,
     );
+    assert.equal(
+      lockedPackage?.resolved,
+      selectedDependencies[packageName].replace(/^file:/u, ""),
+      `Playground package lock must resolve ${packageName} to the selected local Web package.`,
+    );
   }
+  const workerEntry = resolveLanguageWorkerEntry(workerStartupGraph);
   assert.deepEqual(
-    workerWebPackageImports(workerGraph),
+    workerWebPackageImports(workerGraph, workerEntry),
     WORKER_PACKAGE_SELECTIONS[validated.decision.selected],
     `Language Worker imports do not match the measured ${validated.decision.selected} artifact selection.`,
   );
   return Object.freeze({
-    commit: validated.revision.commit,
+    receiptCommit: validated.revision.commit,
     selected: validated.decision.selected,
-    selectionInputs,
   });
 }
 
 export function workerWebPackageImports(
   graph,
-  root = "src/editor/merman-language.worker.ts",
+  root,
 ) {
   const runtimeClosure = collectSourceClosure(graph, [root], {
     includeDynamic: true,
@@ -119,6 +105,25 @@ export function workerWebPackageImports(
   ].sort((left, right) => left.localeCompare(right, "en"));
 }
 
+export function resolveLanguageWorkerEntry(graph) {
+  const browserClosure = collectSourceClosure(graph, [BROWSER_WORKER_ENTRY], {
+    includeDynamic: true,
+  });
+  const workerEdges = graph.edges.filter(
+    (edge) =>
+      browserClosure.has(edge.from) &&
+      edge.kind !== "type" &&
+      edge.to !== null &&
+      /[?&]worker(?:[&=]|$)/u.test(edge.specifier),
+  );
+  assert.equal(
+    workerEdges.length,
+    1,
+    `Production editor startup must resolve exactly one runtime ?worker import; found ${workerEdges.length}.`,
+  );
+  return workerEdges[0].to;
+}
+
 async function main() {
   const repositoryRoot = path.resolve(import.meta.dirname, "../../..");
   const receiptPath = path.join(
@@ -135,18 +140,22 @@ async function main() {
       JSON.parse(await readFile(file, "utf8")),
     ),
   );
-  const verified = verifyEditorArtifactAuthority({
+  const workerStartupGraph = createTypeScriptSourceGraph({
+    rootDir: path.join(repositoryRoot, "playground"),
+    entries: [BROWSER_WORKER_ENTRY],
+  });
+  const verified = verifyEditorArtifactSelectionTopology({
     packageDependencies: packageJson.dependencies ?? {},
     packageLock,
     receipt,
-    selectionInputs: editorArtifactSelectionInputs(repositoryRoot),
+    workerStartupGraph,
     workerGraph: createTypeScriptSourceGraph({
       rootDir: path.join(repositoryRoot, "playground"),
-      entries: ["src/editor/merman-language.worker.ts"],
+      entries: [resolveLanguageWorkerEntry(workerStartupGraph)],
     }),
   });
   console.log(
-    `[merman-playground] Editor Worker artifact: ${verified.selected}; selection-input schema ${verified.selectionInputs.schemaVersion}.`,
+    `[merman-playground] Editor Worker artifact topology matches the recorded ${verified.selected} selection from ${verified.receiptCommit}.`,
   );
 }
 

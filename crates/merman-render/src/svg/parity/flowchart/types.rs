@@ -18,6 +18,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) math_renderer:
         Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(in crate::svg::parity::flowchart) icon_registry: Option<&'a crate::svg::IconRegistry>,
+    pub(in crate::svg::parity::flowchart) security_level_loose: bool,
     pub(in crate::svg::parity::flowchart) node_html_labels: bool,
     pub(in crate::svg::parity::flowchart) edge_html_labels: bool,
     pub(in crate::svg::parity::flowchart) uses_elk_adapter_dom: bool,
