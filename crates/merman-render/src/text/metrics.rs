@@ -178,6 +178,10 @@ struct InlineHtmlPlanningStats {
     #[cfg(test)]
     measurement_payload_copy_bytes: usize,
     #[cfg(test)]
+    source_range: Option<(usize, usize)>,
+    #[cfg(test)]
+    opaque_style_group_index_bytes: usize,
+    #[cfg(test)]
     backend_requests: usize,
     #[cfg(test)]
     backend_request_bytes: usize,
@@ -205,6 +209,35 @@ impl InlineHtmlPlanningStats {
         }
         #[cfg(not(test))]
         let _ = (bytes, runs);
+    }
+
+    fn record_source_range(&mut self, source: &str) {
+        #[cfg(test)]
+        {
+            let start = source.as_ptr() as usize;
+            self.source_range = Some((start, start.saturating_add(source.len())));
+        }
+        #[cfg(not(test))]
+        let _ = source;
+    }
+
+    fn record_source_slice(&mut self, text: &str) {
+        #[cfg(test)]
+        {
+            if text.is_empty() {
+                return;
+            }
+            let start = text.as_ptr() as usize;
+            let end = start.saturating_add(text.len());
+            let is_borrowed = self.source_range.is_some_and(|(source_start, source_end)| {
+                start >= source_start && end <= source_end
+            });
+            if !is_borrowed {
+                self.measurement_payload_copy_bytes += text.len();
+            }
+        }
+        #[cfg(not(test))]
+        let _ = text;
     }
 
     fn record_indexed_run(&mut self) {
@@ -253,16 +286,6 @@ impl InlineHtmlPlanningStats {
         }
     }
 
-    fn record_merged_scratch(&mut self, bytes: usize) {
-        #[cfg(test)]
-        {
-            self.merged_scratch_bytes = self.merged_scratch_bytes.max(bytes);
-            self.measurement_payload_copy_bytes += bytes;
-        }
-        #[cfg(not(test))]
-        let _ = bytes;
-    }
-
     fn record_fragment_measure_visits(&mut self, visits: usize) {
         #[cfg(test)]
         {
@@ -270,6 +293,15 @@ impl InlineHtmlPlanningStats {
         }
         #[cfg(not(test))]
         let _ = visits;
+    }
+
+    fn record_opaque_style_group_index(&mut self, capacity: usize) {
+        #[cfg(test)]
+        {
+            self.opaque_style_group_index_bytes += capacity * std::mem::size_of::<usize>();
+        }
+        #[cfg(not(test))]
+        let _ = capacity;
     }
 
     fn record_backend_request(&mut self, bytes: usize) {
@@ -330,14 +362,17 @@ impl InlineHtmlPlanningStats {
             + self.break_segments * std::mem::size_of::<InlineBreakSegment>()
             + self.line_plan_bytes
             + self.merged_scratch_bytes
+            + self.opaque_style_group_index_bytes
             + self.builtin_profile_cache_bytes
     }
 }
 
 #[derive(Debug)]
 struct InlineBreakPlan {
+    source: String,
     fragments: Vec<InlineRunFragment>,
     segments: Vec<InlineBreakSegment>,
+    opaque_style_group_ends: Vec<usize>,
 }
 
 fn index_inline_run_breaks(
@@ -348,12 +383,16 @@ fn index_inline_run_breaks(
     stats.record_source(source_bytes, runs.len());
     if source_bytes == 0 {
         stats.record_segment();
+        let source = String::new();
+        stats.record_source_range(&source);
         return InlineBreakPlan {
+            source,
             fragments: Vec::new(),
             segments: vec![InlineBreakSegment {
                 fragment_start: 0,
                 fragment_end: 0,
             }],
+            opaque_style_group_ends: Vec::new(),
         };
     }
 
@@ -364,6 +403,7 @@ fn index_inline_run_breaks(
     for run in runs {
         text.push_str(&run.text);
     }
+    stats.record_source_range(&text);
     let break_segments = html_break_spaces_segments(&text);
 
     let fragment_capacity = runs
@@ -394,8 +434,8 @@ fn index_inline_run_breaks(
             if overlap_start < overlap_end {
                 fragments.push(InlineRunFragment {
                     run_index,
-                    start: overlap_start - run_start,
-                    end: overlap_end - run_start,
+                    start: overlap_start,
+                    end: overlap_end,
                 });
                 stats.record_fragment();
             }
@@ -416,8 +456,32 @@ fn index_inline_run_breaks(
     }
 
     InlineBreakPlan {
+        source: text,
         fragments,
         segments,
+        opaque_style_group_ends: Vec::new(),
+    }
+}
+
+fn index_opaque_inline_style_groups(
+    runs: &[InlineTextRun],
+    breaks: &mut InlineBreakPlan,
+    stats: &mut InlineHtmlPlanningStats,
+) {
+    breaks.opaque_style_group_ends = vec![0; breaks.fragments.len()];
+    stats.record_opaque_style_group_index(breaks.opaque_style_group_ends.capacity());
+    let mut group_end = breaks.fragments.len();
+    for index in (0..breaks.fragments.len()).rev() {
+        if index + 1 == breaks.fragments.len()
+            || !same_inline_style(
+                &runs[breaks.fragments[index].run_index],
+                &runs[breaks.fragments[index + 1].run_index],
+            )
+        {
+            group_end = index + 1;
+        }
+        breaks.opaque_style_group_ends[index] = group_end;
+        stats.record_fragment_measure_visits(1);
     }
 }
 
@@ -453,50 +517,25 @@ fn same_inline_style(left: &InlineTextRun, right: &InlineTextRun) -> bool {
 fn measure_inline_fragments_width_px<M: TextMeasurer + ?Sized>(
     measurer: &M,
     runs: &[InlineTextRun],
-    fragments: &[InlineRunFragment],
+    breaks: &InlineBreakPlan,
+    fragment_start: usize,
+    fragment_end: usize,
     style: &TextStyle,
-    scratch: &mut String,
     stats: &mut InlineHtmlPlanningStats,
 ) -> f64 {
     // Keep every request observable. `TextMeasurer` may route to a stateful or fallible host, so
     // this shared planner cannot reuse widths unless the complete operation owns a private
     // built-in measurement carrier.
     let mut width = 0.0;
-    let mut index = 0usize;
-    while index < fragments.len() {
+    let mut index = fragment_start;
+    while index < fragment_end {
         stats.record_fragment_measure_visits(1);
-        let first = fragments[index];
+        let first = breaks.fragments[index];
         let first_run = &runs[first.run_index];
-        let mut end = index + 1;
-        while end < fragments.len() {
-            stats.record_fragment_measure_visits(1);
-            if !same_inline_style(first_run, &runs[fragments[end].run_index]) {
-                break;
-            }
-            end += 1;
-        }
-
-        let mut contiguous_in_one_run = end > index + 1;
-        for pair in fragments[index..end].windows(2) {
-            stats.record_fragment_measure_visits(2);
-            contiguous_in_one_run &=
-                pair[0].run_index == pair[1].run_index && pair[0].end == pair[1].start;
-        }
-
-        let text = if end == index + 1 {
-            &first_run.text[first.start..first.end]
-        } else if contiguous_in_one_run {
-            let last = fragments[end - 1];
-            &first_run.text[first.start..last.end]
-        } else {
-            scratch.clear();
-            for fragment in &fragments[index..end] {
-                stats.record_fragment_measure_visits(1);
-                scratch.push_str(&runs[fragment.run_index].text[fragment.start..fragment.end]);
-            }
-            stats.record_merged_scratch(scratch.len());
-            scratch.as_str()
-        };
+        let end = breaks.opaque_style_group_ends[index].min(fragment_end);
+        let last = breaks.fragments[end - 1];
+        let text = &breaks.source[first.start..last.end];
+        stats.record_source_slice(text);
         let run_style = inline_text_style(style, first_run.bold, first_run.italic, first_run.code);
         stats.record_backend_request(text.len());
         width += measure_inline_run_width_px(measurer, text, &run_style, WrapMode::HtmlLike, false);
@@ -593,6 +632,7 @@ impl BuiltinInlineLineWidth {
         &mut self,
         profiles: &mut BuiltinInlineWidthProfiles,
         runs: &[InlineTextRun],
+        source: &str,
         fragments: &[InlineRunFragment],
         style: &TextStyle,
         stats: &mut InlineHtmlPlanningStats,
@@ -616,7 +656,7 @@ impl BuiltinInlineLineWidth {
             self.last_group
                 .as_mut()
                 .expect("inline group was initialized")
-                .push_text(&run.text[fragment.start..fragment.end], stats);
+                .push_text(&source[fragment.start..fragment.end], stats);
         }
     }
 }
@@ -637,10 +677,6 @@ impl InlineLinePlan {
 
     fn is_empty(self) -> bool {
         self.fragment_start == self.fragment_end
-    }
-
-    fn fragments(self, fragments: &[InlineRunFragment]) -> &[InlineRunFragment] {
-        &fragments[self.fragment_start..self.fragment_end]
     }
 
     fn append(&mut self, segment: InlineBreakSegment, stats: &mut InlineHtmlPlanningStats) -> Self {
@@ -757,7 +793,8 @@ fn measure_inline_html_line_layout_with_carrier_and_stats<M: TextMeasurer + ?Siz
         );
     }
 
-    let breaks = index_inline_run_breaks(runs, stats);
+    let mut breaks = index_inline_run_breaks(runs, stats);
+    index_opaque_inline_style_groups(runs, &mut breaks, stats);
     measure_opaque_inline_html_line_layout(
         measurer,
         runs,
@@ -778,7 +815,6 @@ fn measure_opaque_inline_html_line_layout<M: TextMeasurer + ?Sized>(
     breaks: &InlineBreakPlan,
     stats: &mut InlineHtmlPlanningStats,
 ) -> InlineHtmlLineLayout {
-    let mut scratch = String::new();
     let min_content_width = breaks
         .segments
         .iter()
@@ -786,9 +822,10 @@ fn measure_opaque_inline_html_line_layout<M: TextMeasurer + ?Sized>(
             measure_inline_fragments_width_px(
                 measurer,
                 runs,
-                &breaks.fragments[segment.fragment_start..segment.fragment_end],
+                breaks,
+                segment.fragment_start,
+                segment.fragment_end,
                 style,
-                &mut scratch,
                 stats,
             )
         })
@@ -822,9 +859,10 @@ fn measure_opaque_inline_html_line_layout<M: TextMeasurer + ?Sized>(
         let candidate_width = measure_inline_fragments_width_px(
             measurer,
             runs,
-            current.fragments(&breaks.fragments),
+            breaks,
+            current.fragment_start,
+            current.fragment_end,
             style,
-            &mut scratch,
             stats,
         );
         if checkpoint.is_empty() || candidate_width <= max_width {
@@ -835,9 +873,10 @@ fn measure_opaque_inline_html_line_layout<M: TextMeasurer + ?Sized>(
         wrapped_width = wrapped_width.max(measure_inline_fragments_width_px(
             measurer,
             runs,
-            current.fragments(&breaks.fragments),
+            breaks,
+            current.fragment_start,
+            current.fragment_end,
             style,
-            &mut scratch,
             stats,
         ));
         line_count += 1;
@@ -849,9 +888,10 @@ fn measure_opaque_inline_html_line_layout<M: TextMeasurer + ?Sized>(
         wrapped_width = wrapped_width.max(measure_inline_fragments_width_px(
             measurer,
             runs,
-            current.fragments(&breaks.fragments),
+            breaks,
+            current.fragment_start,
+            current.fragment_end,
             style,
-            &mut scratch,
             stats,
         ));
         line_count += 1;
@@ -882,6 +922,7 @@ fn measure_builtin_inline_html_line_layout(
         segment_width.push_fragments(
             &mut profiles,
             runs,
+            &breaks.source,
             &breaks.fragments[segment.fragment_start..segment.fragment_end],
             style,
             stats,
@@ -916,6 +957,7 @@ fn measure_builtin_inline_html_line_layout(
         current.push_fragments(
             &mut profiles,
             runs,
+            &breaks.source,
             &breaks.fragments[segment.fragment_start..segment.fragment_end],
             style,
             stats,
@@ -932,6 +974,7 @@ fn measure_builtin_inline_html_line_layout(
         current.push_fragments(
             &mut profiles,
             runs,
+            &breaks.source,
             &breaks.fragments[segment.fragment_start..segment.fragment_end],
             style,
             stats,
@@ -1191,10 +1234,10 @@ mod inline_planning_tests {
         runs
     }
 
-    fn fragment_text(runs: &[InlineTextRun], fragments: &[InlineRunFragment]) -> String {
+    fn fragment_text(source: &str, fragments: &[InlineRunFragment]) -> String {
         let mut text = String::new();
         for fragment in fragments {
-            text.push_str(&runs[fragment.run_index].text[fragment.start..fragment.end]);
+            text.push_str(&source[fragment.start..fragment.end]);
         }
         text
     }
@@ -1216,7 +1259,7 @@ mod inline_planning_tests {
             .iter()
             .map(|segment| {
                 fragment_text(
-                    &runs,
+                    &plan.source,
                     &plan.fragments[segment.fragment_start..segment.fragment_end],
                 )
             })
@@ -1296,6 +1339,42 @@ mod inline_planning_tests {
             stats.backend_request_bytes,
             calls.iter().map(|(text, ..)| text.len()).sum::<usize>()
         );
+    }
+
+    #[test]
+    fn opaque_same_style_fragments_preserve_payload_order_without_recopying() {
+        let measurer = RecordingMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+        let runs = vec![run("aa ", 0), run("bb ", 0), run("cc", 0)];
+        let mut stats = InlineHtmlPlanningStats::default();
+
+        let layout = measure_inline_html_line_layout_with_stats(
+            &measurer,
+            &runs,
+            &style,
+            Some(4.0),
+            &mut stats,
+        );
+
+        assert_eq!(
+            measurer
+                .calls
+                .into_inner()
+                .into_iter()
+                .map(|(text, ..)| text)
+                .collect::<Vec<_>>(),
+            vec![
+                "aa ", "bb ", "cc", "aa ", "bb ", "cc", "aa ", "aa bb ", "aa ", "bb cc", "bb ",
+                "cc",
+            ]
+        );
+        assert_eq!(layout.line_count, 3);
+        assert_eq!(stats.measurement_payload_copy_bytes, 0);
     }
 
     #[test]
@@ -1942,6 +2021,7 @@ mod inline_planning_tests {
                     + segment_count * std::mem::size_of::<&str>()
                     + fragment_bound * std::mem::size_of::<InlineRunFragment>()
                     + segment_count * std::mem::size_of::<InlineBreakSegment>()
+                    + fragment_bound * std::mem::size_of::<usize>()
                     + std::mem::size_of::<InlineLinePlan>();
                 assert!(stats.logical_temporary_bytes() <= temporary_byte_bound);
                 assert_eq!(stats.backend_requests, measurer.calls.borrow().len());
@@ -1956,6 +2036,69 @@ mod inline_planning_tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn opaque_same_style_active_line_work_is_linear_in_fragments_and_requests() {
+        const SOURCE_BYTES: usize = 4096;
+        let style = TextStyle {
+            font_family: Some("sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+
+        for run_count in [32, 128, 256] {
+            for segment_count in [32, 64, 128] {
+                let mut runs = fixed_byte_runs(SOURCE_BYTES, run_count, segment_count - 1);
+                for run in &mut runs {
+                    run.bold = false;
+                    run.italic = false;
+                    run.code = false;
+                }
+                let measurer = RecordingMeasurer::default();
+                let mut stats = InlineHtmlPlanningStats::default();
+                let _ = measure_inline_html_line_layout_with_stats(
+                    &measurer,
+                    &runs,
+                    &style,
+                    Some(32.0),
+                    &mut stats,
+                );
+
+                let fragment_requests = stats.backend_requests - run_count;
+                assert_eq!(
+                    stats.fragment_measure_visits,
+                    stats.fragment_refs + fragment_requests,
+                    "r={run_count}, k={segment_count}, stats={stats:?}"
+                );
+                assert_eq!(stats.measurement_payload_copy_bytes, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn opaque_same_style_utf8_fragments_borrow_source_across_rollback() {
+        let measurer = RecordingMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+        let runs = vec![run("A\u{301} ", 0), run("👩‍💻 ", 0), run("世界", 0)];
+        let mut stats = InlineHtmlPlanningStats::default();
+
+        let layout = measure_inline_html_line_layout_with_stats(
+            &measurer,
+            &runs,
+            &style,
+            Some(8.0),
+            &mut stats,
+        );
+
+        assert!(layout.line_count > 1);
+        assert_eq!(stats.measurement_payload_copy_bytes, 0);
     }
 
     #[test]
