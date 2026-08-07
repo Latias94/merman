@@ -1,8 +1,8 @@
-# Venn Beta Admission Plan (Mermaid@11.16.0)
+# Venn Beta Admission Plan (Mermaid@11.16.1)
 
 Status: Admitted
 Last updated: 2026-07-22
-Pinned Mermaid commit: `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`
+Pinned Mermaid commit: `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`
 
 This document records the source-backed plan and admission evidence for `venn-beta` in `merman`.
 

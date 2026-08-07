@@ -24,7 +24,7 @@
   <a href="https://github.com/Latias94/merman/blob/main/CHANGELOG.md">Changelog</a>
 </p>
 
-Merman is an independent, parity-focused Rust implementation of [Mermaid.js](https://mermaid.js.org/). It targets `mermaid@11.16.0` and parses, analyzes, lays out, and renders Mermaid source without starting Node.js, Puppeteer, Chromium, or another JavaScript runtime in the native render path.
+Merman is an independent, parity-focused Rust implementation of [Mermaid.js](https://mermaid.js.org/). It targets `mermaid@11.16.1` and parses, analyzes, lays out, and renders Mermaid source without starting Node.js, Puppeteer, Chromium, or another JavaScript runtime in the native render path.
 
 Use it as a Rust library, an `mmdc`-style CLI, a browser WASM package, an editor language engine, or a native SDK. The same parser-owned semantics drive every surface.
 

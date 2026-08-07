@@ -11,6 +11,8 @@ use crate::{
 };
 use serde_json::{Map, Value, json};
 
+const MAX_TICKS: i64 = 32;
+
 #[derive(Debug, Clone)]
 struct AxisAst {
     name: SpannedText,
@@ -220,7 +222,11 @@ impl RadarDb {
             self.options.show_legend = *v;
         }
         if let Some(OptionValueAst::Number(v)) = last.get("ticks") {
-            self.options.ticks = v.clone();
+            self.options.ticks = if v.as_f64().is_some_and(|ticks| ticks > MAX_TICKS as f64) {
+                json!(MAX_TICKS)
+            } else {
+                v.clone()
+            };
         }
         if let Some(OptionValueAst::Number(v)) = last.get("max") {
             self.options.max = Some(v.clone());
@@ -1763,6 +1769,14 @@ max 10
             model["options"],
             json!({"showLegend": false, "ticks": 10, "max": 10, "min": 1, "graticule": "polygon"})
         );
+    }
+
+    #[test]
+    fn radar_clamps_ticks_to_the_mermaid_limit() {
+        for (ticks, expected) in [(12, 12), (32, 32), (33, 32)] {
+            let model = parse(&format!("radar-beta\nticks {ticks}\n"));
+            assert_eq!(model["options"]["ticks"], json!(expected));
+        }
     }
 
     #[test]

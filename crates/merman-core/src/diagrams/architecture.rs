@@ -128,9 +128,8 @@ impl ArchitectureDb {
         let acc_title = (!self.acc_title.trim().is_empty()).then(|| self.acc_title.clone());
         let acc_descr = (!self.acc_descr.trim().is_empty()).then(|| self.acc_descr.clone());
 
-        let node_ids = javascript_object_value_keys_controlled(&self.node_order, control)?;
-        let mut nodes = Vec::with_capacity(node_ids.len());
-        for (index, id) in node_ids.into_iter().enumerate() {
+        let mut nodes = Vec::with_capacity(self.node_order.len());
+        for (index, id) in self.node_order.iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
@@ -151,9 +150,8 @@ impl ArchitectureDb {
             });
         }
 
-        let group_ids = javascript_object_value_keys_controlled(&self.group_order, control)?;
-        let mut groups = Vec::with_capacity(group_ids.len());
-        for (index, id) in group_ids.into_iter().enumerate() {
+        let mut groups = Vec::with_capacity(self.group_order.len());
+        for (index, id) in self.group_order.iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
@@ -558,38 +556,6 @@ impl ArchitectureDb {
         control.checkpoint()?;
         Ok(Ok(()))
     }
-}
-
-fn javascript_object_value_keys_controlled<'a>(
-    keys: &'a [String],
-    control: &ParseControl,
-) -> ParseControlResult<Vec<&'a str>> {
-    let mut indices = Vec::new();
-    let mut strings = Vec::new();
-
-    for (index, key) in keys.iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        if let Some(index) = javascript_array_index(key) {
-            indices.push((index, key.as_str()));
-        } else {
-            strings.push(key.as_str());
-        }
-    }
-    control.checkpoint()?;
-    indices.sort_unstable_by_key(|(index, _)| *index);
-    control.checkpoint()?;
-    Ok(indices
-        .into_iter()
-        .map(|(_, key)| key)
-        .chain(strings)
-        .collect())
-}
-
-fn javascript_array_index(key: &str) -> Option<u32> {
-    let index = key.parse::<u32>().ok()?;
-    (index != u32::MAX && index.to_string() == key).then_some(index)
 }
 
 fn is_dir(c: char) -> bool {
@@ -1264,7 +1230,7 @@ mod tests {
     }
 
     #[test]
-    fn architecture_projection_matches_javascript_object_key_order() {
+    fn architecture_projection_preserves_declaration_order() {
         let model = parse(
             "architecture-beta\n\
 group 110\n\
@@ -1285,8 +1251,8 @@ service named\n",
                 .collect::<Vec<_>>()
         };
 
-        assert_eq!(ids("groups"), ["102", "110", "001"]);
-        assert_eq!(ids("nodes"), ["1", "2", "10", "01", "named"]);
+        assert_eq!(ids("groups"), ["110", "102", "001"]);
+        assert_eq!(ids("nodes"), ["10", "2", "01", "1", "named"]);
     }
 
     #[test]

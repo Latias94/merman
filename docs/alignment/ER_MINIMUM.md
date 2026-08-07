@@ -1,4 +1,4 @@
-# ER Diagram Admission Contract (Mermaid 11.16.0)
+# ER Diagram Admission Contract (Mermaid 11.16.1)
 
 This document tracks the admitted `erDiagram` / `er` parser, model, layout, and SVG behavior.
 

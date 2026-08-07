@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.16.0",
+    "mermaid_version": "11.16.1",
     "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.16.0",
-    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
-    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
+    "mermaid_source_tag": "mermaid@11.16.1",
+    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+    "package_json_sha256": "7d7e8fe6b51e2453626138bf8abe22c802522324b2288ee866718bc49b7c2441",
+    "package_lock_sha256": "e9efb5f87a2a39ee1a5184cd7d1bdc69d85bd47ace850adaf76ca99975eac6ac",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v3"
   },
@@ -29,9 +29,9 @@
         "release": "25.5.0"
       },
       "mermaid_runtime": {
-        "esm_version": "11.16.0",
-        "iife_version": "11.16.0",
-        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "esm_version": "11.16.1",
+        "iife_version": "11.16.1",
+        "mermaid_package_sha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
         "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
       },
       "font_probe": {
@@ -44,22 +44,22 @@
   "fixtures": {
     "basic": {
       "input_sha256": "f097b5f4f46cda2da21b954c9ff4097e1e14ae7064ecdee2c2cec2d3c1f08e6b",
-      "svg_sha256": "a94b33a4eeef71b084fda214124954d2af23dc71aaeda640a158f13280d592ea",
+      "svg_sha256": "83abfe2668b21c28fb5a9d3e2597de2dfaa907fb3fab1f6be3520a0132acdcb8",
       "renderer_profile": "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1"
     },
     "upstream_pkgtests_statediagram_spec_024": {
       "input_sha256": "76fd510b6693194ba0339c9d980c81417ec9eb099fb26cbb54e7b03dd7f194ce",
-      "svg_sha256": "e9da7f85cf10351ec832e9d086f48f5f1dee4b318882fc9939bfd4ce824f505d",
+      "svg_sha256": "13161814abddeef06c4ac93c03e6135ad6d99ab020359f292b4278dc67e34a8e",
       "renderer_profile": "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1"
     },
     "upstream_pkgtests_statediagram_spec_030": {
       "input_sha256": "8d3563652b4cf6e549f4e9d9803fe7b6c704579cca49e9a7396a224f1b2f87e0",
-      "svg_sha256": "f1b0801d9f996421be45ada1d1c9e893e3a4cd715d0fcd18ca40881657de28c1",
+      "svg_sha256": "1d49154eb68afbb6505ec0350521710c047c69c4bebd32b8230b90a12cd073c9",
       "renderer_profile": "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1"
     },
     "upstream_pkgtests_statediagram_v2_spec_024": {
       "input_sha256": "3523f6d7544be322caee5c5cb630e79a56791cd292cc42fa140f479a65ab4873",
-      "svg_sha256": "ed3f21bf49ed15084a38886b4fed6cc25238518d85a213d5dbe64be54f03a52b",
+      "svg_sha256": "c5e7aca4861f0e975594af2bec0d62a7a0304694912bca164ea0a3900d04eb56",
       "renderer_profile": "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1"
     }
   },

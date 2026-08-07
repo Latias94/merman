@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.16.0",
+    "mermaid_version": "11.16.1",
     "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.16.0",
-    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
-    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
+    "mermaid_source_tag": "mermaid@11.16.1",
+    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+    "package_json_sha256": "7d7e8fe6b51e2453626138bf8abe22c802522324b2288ee866718bc49b7c2441",
+    "package_lock_sha256": "e9efb5f87a2a39ee1a5184cd7d1bdc69d85bd47ace850adaf76ca99975eac6ac",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v3"
   },
@@ -29,9 +29,9 @@
         "release": "25.5.0"
       },
       "mermaid_runtime": {
-        "esm_version": "11.16.0",
-        "iife_version": "11.16.0",
-        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "esm_version": "11.16.1",
+        "iife_version": "11.16.1",
+        "mermaid_package_sha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
         "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
       },
       "font_probe": {

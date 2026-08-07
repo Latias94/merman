@@ -4,7 +4,7 @@ Status: Superseded on 2026-07-15 by `docs/alignment/STATUS.md`,
 `docs/workstreams/PARITY_BOUNDARY.md`, ADR-0057, and ADR-0062. The phase notes below are retained as
 historical evidence and are not an active override or release workflow.
 
-Current baseline version: Mermaid `@11.16.0`.
+Current baseline version: Mermaid `@11.16.1`.
 
 Historical note: this plan started at Mermaid `@11.12.3`; many inventory snapshots below preserve
 that original baseline label because they describe past measurements.

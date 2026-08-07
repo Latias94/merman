@@ -2,7 +2,7 @@
 // Do not edit it directly; edit tools/upstreams/MERMAID_REFERENCE_BUNDLE.json.
 
 export const MERMAID_REFERENCE_BUNDLE_SCHEMA_VERSION = 4 as const;
-export const MERMAID_JS_VERSION = "11.16.0" as const;
+export const MERMAID_JS_VERSION = "11.16.1" as const;
 export const MERMAID_PARSER_VERSION = "1.2.0" as const;
 export const MERMAID_ZENUML_VERSION = "0.2.3" as const;
 export const ZENUML_CORE_VERSION = "3.50.1" as const;
@@ -10,7 +10,7 @@ export const MERMAID_LAYOUT_ELK_VERSION = "0.2.2" as const;
 export const MERMAID_LAYOUT_TIDY_TREE_VERSION = "0.2.2" as const;
 export const MERMAID_REFERENCE_CLI_VERSION = "11.16.0" as const;
 export const MERMAID_SOURCE_COMMIT =
-  "7c0cafcf42e76bfaf79d0cbbd12edb986612f014" as const;
+  "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf" as const;
 export const MERMAID_EXTERNAL_DIAGRAM_MODULE_IDS = [
   "zenuml"
 ] as const;

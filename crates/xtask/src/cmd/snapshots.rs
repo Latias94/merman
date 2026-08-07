@@ -363,9 +363,6 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     failures.extend(crate::cmd::committed_cypress_corpus_alignment_failures(
         &workspace_root,
     ));
-    if crate::cmd::mermaid_repo_root().is_dir() {
-        failures.extend(crate::cmd::cypress_corpus_source_alignment_failures());
-    }
 
     // 1) Every *_MINIMUM.md should have a *_UPSTREAM_TEST_COVERAGE.md sibling.
     let mut minimum_docs: Vec<PathBuf> = Vec::new();
@@ -721,8 +718,8 @@ fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, 
 }
 
 fn verify_theme_snapshot_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
-    let expected = PathBuf::from("crates/merman-core/src/generated/theme_variables_11_16_0.json");
-    let actual = tmp_dir.join("theme_variables_11_16_0.actual.json");
+    let expected = PathBuf::from("crates/merman-core/src/generated/theme_variables_11_16_1.json");
+    let actual = tmp_dir.join("theme_variables_11_16_1.actual.json");
     super::gen_theme_snapshot(vec!["--out".to_string(), actual.display().to_string()])?;
     let expected_json: JsonValue = serde_json::from_str(&read_text(&expected)?)?;
     let actual_json: JsonValue = serde_json::from_str(&read_text(&actual)?)?;

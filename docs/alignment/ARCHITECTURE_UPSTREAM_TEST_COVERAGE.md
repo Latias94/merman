@@ -1,14 +1,14 @@
 # Architecture Upstream Test Coverage
 
-Architecture parity targets Mermaid `11.16.0` at source commit
-`7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
+Architecture parity targets Mermaid `11.16.1` at source commit
+`7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
 
 ## Evidence Authority
 
 The generated baseline manifest is the authority for fixture admission:
 
 - manifest: `fixtures/upstream-svgs/architecture/_baseline-manifest.json`
-- source tag: `mermaid@11.16.0`
+- source tag: `mermaid@11.16.1`
 - manifest status: `complete: true`
 - excluded fixtures: none
 - admitted inputs: 185

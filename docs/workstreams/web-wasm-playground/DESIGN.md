@@ -171,7 +171,7 @@ adapters.
 
 `playground/examples/manifest.json` selects one or more fixture-backed examples for every full
 profile logical family. The current teaching catalog contains 78 examples across the exact
-35-family set. `xtask` proves source provenance, canonical detection, Mermaid `11.16.0` baseline,
+35-family set. `xtask` proves source provenance, canonical detection, Mermaid `11.16.1` baseline,
 and generated output freshness. The gallery searches generated titles, categories, aliases, syntax
 ids, and family types.
 

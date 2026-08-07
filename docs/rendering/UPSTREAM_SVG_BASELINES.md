@@ -3,7 +3,7 @@
 This document describes how to generate **upstream Mermaid SVG outputs** that act as baselines for
 1:1 parity work.
 
-Baseline version: Mermaid `@11.16.0`.
+Baseline version: Mermaid `@11.16.1`.
 
 Historical fixture notes may still mention the baseline version that introduced a fixture or
 normalization rule. The current authoritative baseline is ADR-0001 plus
@@ -49,7 +49,7 @@ collapsed into a single "supported" claim.
 
 We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.
 The CLI version and Mermaid version do not always match 1:1, so we use `npm overrides`
-to force Mermaid `11.16.0`.
+to force Mermaid `11.16.1`.
 
 Imported fixtures can carry host initialization settings that Mermaid does not allow diagram
 frontmatter or directives to override. `gen-upstream-svgs`, semantic/layout snapshot generation,
@@ -94,7 +94,7 @@ partially written script.
 
 The probe resolves Mermaid from the actual `@mermaid-js/mermaid-cli` package context, so the ESM and
 IIFE attestations describe the same dependency tree that mmdc uses rather than an unrelated root
-`node_modules/mermaid` installation. The package fingerprints must also match the pinned 11.16.0
+`node_modules/mermaid` installation. The package fingerprints must also match the pinned 11.16.1
 artifacts, so a same-version locally modified runtime is rejected before rendering.
 
 The font probe hashes fixed SVG `getBBox`/`getComputedTextLength` and canvas `measureText` samples.
@@ -315,7 +315,8 @@ Policy:
 ## Normalized Fixtures (CLI-Compatible)
 
 Some upstream suites (notably Cypress) include inputs that are accepted by the browser bundle but
-rejected by the pinned Mermaid CLI (currently `@11.16.0`), often due to shorthand syntax.
+rejected by the pinned `@mermaid-js/mermaid-cli@11.16.0` runner executing `mermaid@11.16.1`, often
+due to shorthand syntax.
 
 To preserve the upstream strings *and* still get authoritative CLI SVG baselines + DOM parity
 comparisons, we add `*_normalized` variants that rewrite the input into the pinned Mermaid grammar.

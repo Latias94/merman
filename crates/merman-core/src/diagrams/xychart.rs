@@ -513,21 +513,17 @@ impl XyChartState {
                 .map(|(i, c)| (c.clone(), data.get(i).copied()))
                 .collect(),
             AxisData::Linear { min, max, .. } => {
-                let denom = (data.len() as f64) - 1.0;
-                let step = (*max - *min) / denom;
-                let mut cats = Vec::new();
-                let mut i = *min;
-                while i <= *max {
-                    cats.push(format!("{i}"));
-                    i += step;
-                    if denom == 0.0 {
-                        break;
-                    }
+                if data.len() == 1 {
+                    vec![(format!("{min}"), data.first().copied())]
+                } else {
+                    let step = (*max - *min) / ((data.len() as f64) - 1.0);
+                    data.iter()
+                        .enumerate()
+                        .map(|(index, datum)| {
+                            (format!("{}", *min + (index as f64) * step), Some(*datum))
+                        })
+                        .collect()
                 }
-                cats.into_iter()
-                    .enumerate()
-                    .map(|(idx, c)| (c, data.get(idx).copied()))
-                    .collect()
             }
         };
         (data, plot_data)
@@ -2464,6 +2460,33 @@ bar [2 "ignored", 4, 6]
         assert_eq!(model["plots"][0]["values"], json!([1.0, 5.0, 9.0]));
         assert_eq!(model["plots"][0]["pointLabels"], json!(["low", "", "high"]));
         assert!(model["plots"][1].get("pointLabels").is_none());
+    }
+
+    #[test]
+    fn xychart_equal_linear_axis_bounds_map_every_point_by_data_index() {
+        let model = parse(
+            r#"xychart
+x-axis 5 --> 5
+line [10, 20, 30]
+"#,
+        );
+
+        assert_eq!(
+            model["plots"][0]["data"],
+            json!([["5", 10.0], ["5", 20.0], ["5", 30.0]])
+        );
+    }
+
+    #[test]
+    fn xychart_single_point_on_linear_axis_remains_mapped_to_minimum() {
+        let model = parse(
+            r#"xychart
+x-axis 5 --> 9
+line [10]
+"#,
+        );
+
+        assert_eq!(model["plots"][0]["data"], json!([["5", 10.0]]));
     }
 
     #[test]

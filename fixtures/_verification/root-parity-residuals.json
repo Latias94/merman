@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "contract": {
-    "mermaid_version": "11.16.0",
-    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "mermaid_version": "11.16.1",
+    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
     "comparison_revision": "svgdom-root-v3",
     "root_attributes": [
       "style",
@@ -27,6 +27,11 @@
       "kind": "source-backed-layout-approximation",
       "reference": "docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md",
       "rationale": "C4 ports the pinned screenBounds layout but replaces browser screen and text facts with explicit headless container dimensions and operation-owned deterministic measurement."
+    },
+    "external-resource-layout": {
+      "kind": "browser-measurement",
+      "reference": "docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md",
+      "rationale": "The fixture deliberately retains remote image references, so the pinned browser's observed load outcome affects intrinsic image dimensions and the resulting root viewport."
     },
     "ishikawa-roughjs": {
       "kind": "rough-js-implementation",
@@ -840,7 +845,7 @@
       "fixture": "upstream_composites",
       "descendants": "parity",
       "input_sha256": "23bd1112adeff625409491c02d0d520ace9a4fc1e10988bdca47587aa11497dd",
-      "upstream_svg_sha256": "9eeb2dadc163b30fabe96eaed0b5a2751bc5e92a31b2ab3ef7055a82e03a7589",
+      "upstream_svg_sha256": "8ae76842706ad520242ed011fd6c98c6f22f67d44c897c2e212dd430c5da5a08",
       "upstream": {
         "style": "max-width: 145.594px; background-color: white;",
         "view_box": "-5 -29 145.594 58",
@@ -860,7 +865,7 @@
       "fixture": "upstream_composites_2",
       "descendants": "parity",
       "input_sha256": "ba2944fc213ae7ce76064b995b0298582efab26b3196d9339392b4f62fd816ee",
-      "upstream_svg_sha256": "a444f644ca65b14ca1c2b7666909d8fe36ad8571cf28e9b1cee76f30b9b5a2f7",
+      "upstream_svg_sha256": "b2f96c1794b3f3a3ab13b20a8d6c005afb6db3e019ed2dc3acd422ff077bc3e9",
       "upstream": {
         "style": "max-width: 176.812px; background-color: white;",
         "view_box": "-5 -37 176.813 74",
@@ -900,7 +905,7 @@
       "fixture": "upstream_composites_4",
       "descendants": "parity",
       "input_sha256": "ce8fe59dc70e2515cb9fba2d15a54c1b9b9ba85b5fd63e0305f1f1cfd1001540",
-      "upstream_svg_sha256": "c066575720397f77f823a13bbe83b622a4bcc66c2cf67af6073f77726d224478",
+      "upstream_svg_sha256": "4671a85bec5b8447f7a7bd32a7509d7af73159cbf780df95f191b851ac9f2101",
       "upstream": {
         "style": "max-width: 153.125px; background-color: white;",
         "view_box": "-5 -57 153.125 114",
@@ -1080,7 +1085,7 @@
       "fixture": "upstream_docs_block_nested_blocks_009",
       "descendants": "parity",
       "input_sha256": "bd54fe8aea77a0c8cac4f1c6390ea744f26b3e7eab1142d5c8cb238ead92a7d4",
-      "upstream_svg_sha256": "b750b855682bbf9c4d762f05bc4787e4a6ffb67232c0a09aaa99fe203831fcf6",
+      "upstream_svg_sha256": "67ab1450ee36059148811b9a26ca826af6898b07d60bf557e8a16cccbf8039db",
       "upstream": {
         "style": "max-width: 302.25px; background-color: white;",
         "view_box": "-5 -29 302.25 58",
@@ -1380,7 +1385,7 @@
       "fixture": "upstream_pkgtests_block_spec_013",
       "descendants": "parity",
       "input_sha256": "51f0b471f773d3cce2bbeaca66d40f2bf1a403e3b1455d1ebf3156500f02b1f8",
-      "upstream_svg_sha256": "878578090fc70d45cabda83b98122f02a9588bd3c70a41828df5caed212d393f",
+      "upstream_svg_sha256": "1951c0db7d6a3a80926f61eb2516355191e4958dc76d787e0fb560a3ddcc0103",
       "upstream": {
         "style": "max-width: 145.594px; background-color: white;",
         "view_box": "-5 -29 145.594 58",
@@ -1400,7 +1405,7 @@
       "fixture": "upstream_pkgtests_block_spec_014",
       "descendants": "parity",
       "input_sha256": "60db2c95fdf469943bbd9185d44c9b61fd54adfc88f4fbe4ad5ea0f88715ab29",
-      "upstream_svg_sha256": "6d2eb236e541e6443e4f9d9ec0bb6ae3c70acffa1c58f18375a5c5e6db1b55a2",
+      "upstream_svg_sha256": "9e79a9c2c820bec8f812ef9913cdfa38877a1f5a8f4c08646e33d6ae324ab5b6",
       "upstream": {
         "style": "max-width: 176.812px; background-color: white;",
         "view_box": "-5 -37 176.813 74",
@@ -1440,7 +1445,7 @@
       "fixture": "upstream_pkgtests_block_spec_016",
       "descendants": "parity",
       "input_sha256": "eedbf989d18839cb49ab2e40124263cceba7f1d330189ebd209ce01b5e59ecad",
-      "upstream_svg_sha256": "465fced6ed8bfbd0099b2e7e79a6895611667b4006fe74ecabf31de98d656aa2",
+      "upstream_svg_sha256": "fc6608ec4c304b9a734cf94d9217a1909bd00fb3e846b50b88dc29f30c95406f",
       "upstream": {
         "style": "max-width: 153.125px; background-color: white;",
         "view_box": "-5 -57 153.125 114",
@@ -11380,10 +11385,10 @@
       "fixture": "upstream_cypress_flowchart_v2_spec_4023_should_render_html_labels_with_images_and_or_text_correctly_042",
       "descendants": "parity",
       "input_sha256": "4023a2758e3a3ba0df67ab1f06dba896aa25d28ae11dc7dc9bb16effef819e50",
-      "upstream_svg_sha256": "dc882b10b42e41ba1cb4677c0ea696ad21cac8105bd5e4085fff6835111dc4d3",
+      "upstream_svg_sha256": "e4e5d6efa35595046817fd49b70c0429de3ce3403aec94c640358d6be855ded2",
       "upstream": {
-        "style": "max-width: 671.344px; background-color: white;",
-        "view_box": "0 0 671.344 630",
+        "style": "max-width: 413.734px; background-color: white;",
+        "view_box": "0 0 413.734 198",
         "width": "100%",
         "height": null
       },
@@ -11393,7 +11398,7 @@
         "width": "100%",
         "height": null
       },
-      "evidence_id": "browser-root-bbox"
+      "evidence_id": "external-resource-layout"
     },
     {
       "diagram": "flowchart",
@@ -27300,7 +27305,7 @@
       "fixture": "stress_state_comments_and_weird_spacing_018",
       "descendants": "parity",
       "input_sha256": "b4a217698bab2386ec1028bef33745979b49cb2202f528978b32a22576760ce9",
-      "upstream_svg_sha256": "a9a72b013434c7df98ea66cea7dfdc836bc33194b5bc413a0e8cfb874c63be86",
+      "upstream_svg_sha256": "9192a3757821738f5ca1a546aee9f92fe35efafdaef6864b48db9ba2c9814201",
       "upstream": {
         "style": "max-width: 262.539px; background-color: white;",
         "view_box": "0 0 262.539 1506",
@@ -27740,7 +27745,7 @@
       "fixture": "stress_state_nested_composite_concurrency_001",
       "descendants": "parity",
       "input_sha256": "c1cce900de81950a5ae2843134c921109beeb64ffe8d8263fa4a938f482b4fa6",
-      "upstream_svg_sha256": "b30dbd3ea83e09819260a9578b7da5d4782a9a829df2b4354d95b98591edf6f9",
+      "upstream_svg_sha256": "80cdd1a973cbb7f5d06962800a8fb538ec80e7e6036dc7ba5ec496254602d920",
       "upstream": {
         "style": "max-width: 273.297px; background-color: white;",
         "view_box": "0 0 273.297 1622",
@@ -27960,7 +27965,7 @@
       "fixture": "stress_state_three_way_concurrency_013",
       "descendants": "parity",
       "input_sha256": "3bcf2c6f2ddc8af35c586651138f92add10a1d66dcb9db88b3125b60f1c78758",
-      "upstream_svg_sha256": "e541ffd06566e545b80928095f7868125ff7bfa7de79f42bc898780d530cd19f",
+      "upstream_svg_sha256": "9826de027652a4e407f02e8e7358244012d3f21199a1459dbd70858b99373e91",
       "upstream": {
         "style": "max-width: 573.277px; background-color: white;",
         "view_box": "0 0 573.277 1657",
@@ -28180,7 +28185,7 @@
       "fixture": "upstream_cypress_statediagram_spec_should_render_concurrency_states_019",
       "descendants": "parity",
       "input_sha256": "9f89077abf2d4b9012fc7ea76028ca784b69b9d13d232a5f3bdd234f4a13c547",
-      "upstream_svg_sha256": "d95d35f0a7ebbf2ee3ac1667d596a97a4ee7254849089bd9546d30fec36d7fd5",
+      "upstream_svg_sha256": "86c720ca5f4fa54a273207f966baba245108da7b26b62918f6e1f50b061ff9aa",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -28680,7 +28685,7 @@
       "fixture": "upstream_cypress_statediagram_v2_spec_v2_should_render_concurrency_states_020",
       "descendants": "parity",
       "input_sha256": "0f823c07d492e2e9246b228c40aaa636e2883da17270f7a258de1823193db7e9",
-      "upstream_svg_sha256": "c91c0e96812fbff2dc77b42ffdac3b89b32d377822c9b5ac3b79a23a7e30f19b",
+      "upstream_svg_sha256": "778dac650016c8445b25bccd3c33fd86fb5b4afa7a342713d4221c532db91bf9",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -28880,7 +28885,7 @@
       "fixture": "upstream_docs_statediagram_concurrency_030",
       "descendants": "parity",
       "input_sha256": "17d68bbfe39896a12f203e29a754680b1a71aab56d3644f705e46edffee2fdbb",
-      "upstream_svg_sha256": "b4210428580878bc13eb795330386f451389c60395db3880ab5d4ab7071123a0",
+      "upstream_svg_sha256": "cd6bad130336dae7c1da74c9b67d9ee18cf24eaf1ebae2a1d7df0ff7b30dadb1",
       "upstream": {
         "style": "max-width: 1193.72px; background-color: white;",
         "view_box": "0 0 1193.719 573",
@@ -29560,7 +29565,7 @@
       "fixture": "upstream_pkgtests_statediagram_spec_022",
       "descendants": "parity",
       "input_sha256": "ec222ca4739d2ecd7e6db0fcda2c6231b2f0865507d124df3ef85f677daae601",
-      "upstream_svg_sha256": "80483ee02951714acbf951cca03dc31474ef503263c6ba3a1fbd7ef5a9054e28",
+      "upstream_svg_sha256": "9ef5e692149639cf5a7b83ff8be865aaaed9c4ab95c8a2f933cb80151bc82db9",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -29580,7 +29585,7 @@
       "fixture": "upstream_pkgtests_statediagram_spec_023",
       "descendants": "parity",
       "input_sha256": "e95f0da71e585eea7b36dd21497e267b917002c47017b49bbc263b71c4da2c21",
-      "upstream_svg_sha256": "870a2172ace8e288d872b7826d2c90734856b8c3cd884dd49364200a6480a2a0",
+      "upstream_svg_sha256": "434f92aad69f67be62d1577b81417aedf6e84746d80f846e78f7be79cf0da5ae",
       "upstream": {
         "style": "max-width: 715.344px; background-color: white;",
         "view_box": "0 0 715.344 409",
@@ -29940,7 +29945,7 @@
       "fixture": "upstream_pkgtests_statediagram_v2_spec_022",
       "descendants": "parity",
       "input_sha256": "123c2ba2cac6a749e14b023acc2bd8fab2a051f8c84922734076eebe4e5b09e6",
-      "upstream_svg_sha256": "bc9d251edeade9e389692303d3009c93b76a459325f57341ad8dddf2fb7e33e3",
+      "upstream_svg_sha256": "865c0f233d9befcc5b57a0705583772ae083d932b32747c0db5e6cf79533ec36",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -29960,7 +29965,7 @@
       "fixture": "upstream_pkgtests_statediagram_v2_spec_023",
       "descendants": "parity",
       "input_sha256": "a4b17bc451d573dbad7c7636388ce555071565ce71158831623dbd844d70c468",
-      "upstream_svg_sha256": "fe9828e0cf48848fadc9a20aba78b8df0c8d8cb348c87aa771b12cba951f964f",
+      "upstream_svg_sha256": "69ec03b358d1b761a97e321284750f95e83b9235bff79effde7d2d27d405261e",
       "upstream": {
         "style": "max-width: 715.344px; background-color: white;",
         "view_box": "0 0 715.344 409",
@@ -30100,7 +30105,7 @@
       "fixture": "upstream_stateDiagram_concurrent_state_minimal_spec",
       "descendants": "parity",
       "input_sha256": "4feab66e91540a6eb9060a9168f475afda0b48967c39945ab4f6129e17a8bab4",
-      "upstream_svg_sha256": "27e56e66e7e954147d65d14894f14a69179096ff40a09f6042a24b34d7520bd7",
+      "upstream_svg_sha256": "7e4de58ce4dbdcbab616bbc0a8c39010e1e86db9e13bcc639c369aab7b8d7a6b",
       "upstream": {
         "style": "max-width: 715.344px; background-color: white;",
         "view_box": "0 0 715.344 409",
@@ -30120,7 +30125,7 @@
       "fixture": "upstream_stateDiagram_concurrent_state_spec",
       "descendants": "parity",
       "input_sha256": "e51115f5c87d6fb6ca7defd7656b62e6057a5bb8418b01c6987121c505487e14",
-      "upstream_svg_sha256": "be35a25eecc91e77bdeed865a401081d012af39410265aa1114827fdb6797512",
+      "upstream_svg_sha256": "9de94665f038af322f7b2e44d6d6a29acf9f3930fdef14adb108c0c5ff4f25db",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -30480,7 +30485,7 @@
       "fixture": "upstream_stateDiagram_v2_concurrent_state_spec",
       "descendants": "parity",
       "input_sha256": "ae25c53cc9432b727aaf5730153a8b3d9545da9c235127fd00d9021ca1cdc269",
-      "upstream_svg_sha256": "dcb1c5ddaef0bf644abea1f1aead9aa2b87b12ef7fc14be40ae795739462de1e",
+      "upstream_svg_sha256": "f624660e27fe341b9b00fd5ddef03140cb6fc595d3dbe1f1ba006ba58edcd993",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",

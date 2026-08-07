@@ -1,7 +1,7 @@
 # Mermaid 11.16 Family Admission Record
 
 Status: Completed
-Baseline: pinned Mermaid `11.16.0`
+Baseline: pinned Mermaid `11.16.1`
 Last updated: 2026-07-17
 
 The filename is retained for stable links. The Mermaid 11.16 family-admission work is complete:
