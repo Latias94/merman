@@ -131,10 +131,8 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
     };
 
     for n in nodes {
-        let is_empty_subgraph_node = ctx
-            .subgraphs_by_id
-            .get(n.id.as_str())
-            .is_some_and(|sg| sg.nodes.is_empty());
+        let is_empty_subgraph_node = ctx.subgraphs_by_id.contains_key(n.id.as_str())
+            && !ctx.subgraph_has_children(n.id.as_str());
         let root = if n.is_cluster && ctx.recursive_clusters.contains(n.id.as_str()) {
             Some(n.id.as_str())
         } else {

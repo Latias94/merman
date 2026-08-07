@@ -46,6 +46,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
     pub(in crate::svg::parity::flowchart) subgraphs_by_id:
         FxHashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
+    pub(in crate::svg::parity::flowchart) subgraph_ids_with_children: FxHashSet<&'a str>,
     pub(in crate::svg::parity::flowchart) tooltips: &'a FxHashMap<String, String>,
     pub(in crate::svg::parity::flowchart) recursive_clusters: FxHashSet<&'a str>,
     pub(in crate::svg::parity::flowchart) parent: FxHashMap<&'a str, &'a str>,
@@ -69,6 +70,12 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) edge_wrap_mode: WrapMode,
     pub(in crate::svg::parity::flowchart) text_style: TextStyle,
     pub(in crate::svg::parity::flowchart) html_label_text_style: TextStyle,
+}
+
+impl FlowchartRenderCtx<'_> {
+    pub(in crate::svg::parity::flowchart) fn subgraph_has_children(&self, id: &str) -> bool {
+        self.subgraph_ids_with_children.contains(id)
+    }
 }
 
 #[derive(Debug, Default, Clone)]

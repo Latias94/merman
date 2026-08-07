@@ -2550,3 +2550,48 @@ fn duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
     assert!(!cluster_ids.contains("X"));
     assert!(node_ids.contains("X"));
 }
+
+#[test]
+fn duplicate_subgraph_id_uses_one_first_definition_for_layout_presentation() {
+    let layout = layout_flowchart(
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
+    );
+
+    let clusters = layout
+        .clusters
+        .iter()
+        .filter(|cluster| cluster.id == "X")
+        .collect::<Vec<_>>();
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0].title, "First title");
+}
+
+#[test]
+fn duplicate_subgraph_id_keeps_first_title_when_first_definition_is_empty() {
+    let layout = layout_flowchart(
+        "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
+    );
+
+    let clusters = layout
+        .clusters
+        .iter()
+        .filter(|cluster| cluster.id == "X")
+        .collect::<Vec<_>>();
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0].title, "First title");
+}
+
+#[test]
+fn duplicate_subgraph_id_keeps_first_title_when_later_definition_is_empty() {
+    let layout = layout_flowchart(
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
+    );
+
+    let clusters = layout
+        .clusters
+        .iter()
+        .filter(|cluster| cluster.id == "X")
+        .collect::<Vec<_>>();
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0].title, "First title");
+}

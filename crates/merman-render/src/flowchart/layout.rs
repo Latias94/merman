@@ -1,11 +1,12 @@
 use crate::dagre::self_loop::compact_self_loop_geometry;
+use crate::layout_work::DugongOperationWorkControl as DagreOperationWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
+use crate::resources::OperationWorkMeter;
 #[cfg(test)]
 use crate::resources::RenderResourcePolicy;
-use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions, is_javascript_array_index};
@@ -26,86 +27,12 @@ use super::{
     FlowchartLabelMetricsRequest, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
     FlowchartSvgWidthMode, flowchart_apply_html_node_class_box_metrics,
     flowchart_effective_edge_label_text_style, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
-    flowchart_node_svg_width_mode, measure_flowchart_svg_label_for_layout,
+    flowchart_effective_text_style_for_node_classes, flowchart_node_svg_width_mode,
+    measure_flowchart_svg_label_for_layout,
     measure_flowchart_svg_label_for_layout_with_metrics_style,
 };
 
 type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
-
-struct DagreOperationWorkControl {
-    meter: Arc<OperationWorkMeter>,
-    rejection: std::cell::RefCell<Option<ResourceLimitExceeded>>,
-}
-
-impl DagreOperationWorkControl {
-    // This work budget is a Merman headless resource policy, not Mermaid rendering behavior.
-    // Charge exact visited items where the adapter owns the loop. When a lower API has no work
-    // hook, use a documented checked upper bound before calling it; near-limit early rejection is
-    // preferable to performing unadmitted work and retroactively charging it.
-    fn new(meter: Arc<OperationWorkMeter>) -> Self {
-        Self {
-            meter,
-            rejection: std::cell::RefCell::new(None),
-        }
-    }
-
-    fn charge_adapter(&mut self, units: usize) -> Result<()> {
-        if let Some(error) = self.rejection.borrow().clone() {
-            return Err(error.into());
-        }
-        self.meter.charge(units).map_err(|error| {
-            *self.rejection.borrow_mut() = Some(error.clone());
-            error.into()
-        })
-    }
-
-    fn checked_add(&self, left: usize, right: usize) -> Result<usize> {
-        left.checked_add(right)
-            .ok_or_else(|| self.record_arithmetic_overflow().into())
-    }
-
-    fn checked_mul(&self, left: usize, right: usize) -> Result<usize> {
-        left.checked_mul(right)
-            .ok_or_else(|| self.record_arithmetic_overflow().into())
-    }
-
-    fn record_arithmetic_overflow(&self) -> ResourceLimitExceeded {
-        if let Some(error) = self.rejection.borrow().clone() {
-            return error;
-        }
-        let error = self.meter.arithmetic_overflow();
-        *self.rejection.borrow_mut() = Some(error.clone());
-        error
-    }
-
-    fn map_dugong_error(&mut self, error: impl Into<dugong::LayoutError>) -> Error {
-        match error.into() {
-            dugong::LayoutError::Work(dugong::WorkError::Interrupted) => {
-                let rejection = self.rejection.borrow().clone();
-                rejection
-                    .unwrap_or_else(|| self.record_arithmetic_overflow())
-                    .into()
-            }
-            dugong::LayoutError::Work(dugong::WorkError::ArithmeticOverflow) => {
-                self.record_arithmetic_overflow().into()
-            }
-            error => error.into(),
-        }
-    }
-}
-
-impl dugong::WorkControl for DagreOperationWorkControl {
-    fn charge(&mut self, units: usize) -> std::result::Result<(), dugong::WorkError> {
-        if self.rejection.borrow().is_some() {
-            return Err(dugong::WorkError::Interrupted);
-        }
-        self.meter.charge(units).map_err(|error| {
-            *self.rejection.borrow_mut() = Some(error);
-            dugong::WorkError::Interrupted
-        })
-    }
-}
 
 fn rank_dir_from_flow(direction: &str) -> RankDir {
     match direction.trim().to_uppercase().as_str() {
@@ -1636,11 +1563,29 @@ fn layout_flowchart_with_model(
     let diagram_direction = normalize_dir(model.direction.as_deref().unwrap_or("TB"));
     let has_subgraphs = !model.subgraphs.is_empty();
     work_control.charge_adapter(model.subgraphs.len())?;
-    let subgraphs_by_id: FlowSubgraphIndex<'_> = model
-        .subgraphs
-        .iter()
-        .map(|subgraph| (subgraph.id.as_str(), subgraph))
-        .collect();
+    // Mermaid's FlowDB emits duplicate subgraph ids in reverse order and Graphlib's repeated
+    // `setNode` calls leave the earliest semantic definition's label/style as the winner. Keep a
+    // first-definition index for all presentation lookups while retaining the full source list
+    // for reverse membership assignment below.
+    let mut subgraphs_by_id: FlowSubgraphIndex<'_> = HashMap::with_capacity(model.subgraphs.len());
+    let mut subgraph_index_by_id: HashMap<&str, usize> =
+        HashMap::with_capacity(model.subgraphs.len());
+    let mut canonical_subgraphs_in_order: Vec<(usize, &FlowSubgraph)> = Vec::new();
+    let mut subgraph_members_by_id: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut nonempty_subgraph_ids: HashSet<&str> = HashSet::new();
+    for (index, subgraph) in model.subgraphs.iter().enumerate() {
+        let id = subgraph.id.as_str();
+        if !subgraphs_by_id.contains_key(id) {
+            subgraphs_by_id.insert(id, subgraph);
+            subgraph_index_by_id.insert(id, index);
+            canonical_subgraphs_in_order.push((index, subgraph));
+        }
+        let members = subgraph_members_by_id.entry(id).or_default();
+        members.extend(subgraph.nodes.iter().map(String::as_str));
+        if !subgraph.nodes.is_empty() {
+            nonempty_subgraph_ids.insert(id);
+        }
+    }
     work_control.charge_adapter(model.subgraphs.len())?;
     let subgraph_ids: std::collections::HashSet<&str> =
         model.subgraphs.iter().map(|sg| sg.id.as_str()).collect();
@@ -1664,9 +1609,9 @@ fn layout_flowchart_with_model(
     let mut empty_subgraph_ids: Vec<String> = Vec::new();
     let mut cluster_node_labels: std::collections::HashMap<String, NodeLabel> =
         std::collections::HashMap::new();
-    work_control.charge_adapter(model.subgraphs.len())?;
-    for sg in &model.subgraphs {
-        if sg.nodes.is_empty() {
+    work_control.charge_adapter(canonical_subgraphs_in_order.len())?;
+    for (_, sg) in &canonical_subgraphs_in_order {
+        if !nonempty_subgraph_ids.contains(sg.id.as_str()) {
             // Mermaid renders empty subgraphs as regular nodes. Keep the semantic `subgraph`
             // definition around for styling/title, but size + lay it out as a leaf node.
             empty_subgraph_ids.push(sg.id.clone());
@@ -1756,9 +1701,9 @@ fn layout_flowchart_with_model(
             },
         );
     }
-    work_control.charge_adapter(model.subgraphs.len())?;
-    for (subgraph_index, sg) in model.subgraphs.iter().enumerate() {
-        if !sg.nodes.is_empty() {
+    work_control.charge_adapter(canonical_subgraphs_in_order.len())?;
+    for &(subgraph_index, sg) in &canonical_subgraphs_in_order {
+        if nonempty_subgraph_ids.contains(sg.id.as_str()) {
             continue;
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
@@ -2223,6 +2168,7 @@ fn layout_flowchart_with_model(
     struct ClusterTitleMetricsContext<'a> {
         model: &'a FlowchartRenderModelRef<'a>,
         subgraphs_by_id: &'a FlowSubgraphIndex<'a>,
+        subgraph_index_by_id: &'a HashMap<&'a str, usize>,
         class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
         measurer: &'a dyn TextMeasurer,
         text_style: &'a TextStyle,
@@ -2231,6 +2177,7 @@ fn layout_flowchart_with_model(
         wrap_mode: WrapMode,
         config: &'a MermaidConfig,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+        svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     }
 
     fn cluster_title_metrics_for_layout(
@@ -2252,16 +2199,27 @@ fn layout_flowchart_with_model(
             &sg.classes,
             &sg.styles,
         );
-        let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-            measurer: ctx.measurer,
-            raw_label: title,
-            label_type,
-            style: text_style.as_ref(),
-            max_width_px: title_width_limit,
-            wrap_mode: ctx.wrap_mode,
-            config: ctx.config,
-            math_renderer: ctx.math_renderer,
-        });
+        let owner = ctx
+            .subgraph_index_by_id
+            .get(id)
+            .copied()
+            .map(FlowchartSvgLabelOwner::SubgraphTitle);
+        let metrics = measure_flowchart_svg_label_for_layout(
+            ctx.svg_label_sidecar,
+            owner,
+            Some(id),
+            FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: title,
+                label_type,
+                style: text_style.as_ref(),
+                max_width_px: title_width_limit,
+                wrap_mode: ctx.wrap_mode,
+                config: ctx.config,
+                math_renderer: ctx.math_renderer,
+            },
+            FlowchartSvgWidthMode::Bbox,
+        );
         Some((metrics.width.max(1.0), metrics.height.max(1.0)))
     }
 
@@ -2655,6 +2613,7 @@ fn layout_flowchart_with_model(
         let title_metrics_ctx = ClusterTitleMetricsContext {
             model,
             subgraphs_by_id: &subgraphs_by_id,
+            subgraph_index_by_id: &subgraph_index_by_id,
             class_defs: &model.class_defs,
             measurer,
             text_style: &text_style,
@@ -2663,6 +2622,7 @@ fn layout_flowchart_with_model(
             wrap_mode: cluster_wrap_mode,
             config: effective_config,
             math_renderer,
+            svg_label_sidecar,
         };
         let mut recursive_layout_ctx = RecursiveLayoutContext {
             extracted: &mut extracted_graphs,
@@ -3203,6 +3163,8 @@ fn layout_flowchart_with_model(
     struct ClusterRectContext<'a> {
         model: &'a FlowchartRenderModelRef<'a>,
         subgraphs_by_id: &'a FlowSubgraphIndex<'a>,
+        subgraph_index_by_id: &'a HashMap<&'a str, usize>,
+        subgraph_members_by_id: &'a HashMap<&'a str, Vec<&'a str>>,
         class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
         leaf_rects: &'a std::collections::HashMap<String, Rect>,
         extra_children: &'a std::collections::HashMap<String, Vec<String>>,
@@ -3215,6 +3177,7 @@ fn layout_flowchart_with_model(
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         cluster_padding: f64,
         title_total_margin: f64,
+        svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     }
 
     struct ClusterRectState<'a> {
@@ -3258,22 +3221,27 @@ fn layout_flowchart_with_model(
                     });
                 }
 
-                let Some(sg) = ctx.subgraphs_by_id.get(frame.id.as_str()) else {
+                if !ctx.subgraphs_by_id.contains_key(frame.id.as_str()) {
                     return Err(Error::InvalidModel {
                         message: format!("missing subgraph definition for {}", frame.id),
                     });
-                };
+                }
 
                 stack.push(ClusterRectFrame {
                     id: frame.id.clone(),
                     expanded: true,
                 });
-                for member in sg.nodes.iter().rev() {
-                    if ctx.subgraphs_by_id.contains_key(member.as_str())
-                        && !state.cluster_rects.contains_key(member)
+                let members = ctx
+                    .subgraph_members_by_id
+                    .get(frame.id.as_str())
+                    .map(Vec::as_slice)
+                    .unwrap_or_default();
+                for member in members.iter().rev() {
+                    if ctx.subgraphs_by_id.contains_key(*member)
+                        && !state.cluster_rects.contains_key(*member)
                     {
                         stack.push(ClusterRectFrame {
-                            id: member.clone(),
+                            id: (*member).to_string(),
                             expanded: false,
                         });
                     }
@@ -3288,11 +3256,16 @@ fn layout_flowchart_with_model(
             };
 
             let mut content: Option<Rect> = None;
-            for member in &sg.nodes {
-                let member_rect = if let Some(r) = ctx.leaf_rects.get(member).copied() {
+            let members = ctx
+                .subgraph_members_by_id
+                .get(frame.id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            for member in members {
+                let member_rect = if let Some(r) = ctx.leaf_rects.get(*member).copied() {
                     Some(r)
-                } else if ctx.subgraphs_by_id.contains_key(member.as_str()) {
-                    Some(state.cluster_rects.get(member).copied().ok_or_else(|| {
+                } else if ctx.subgraphs_by_id.contains_key(*member) {
+                    Some(state.cluster_rects.get(*member).copied().ok_or_else(|| {
                         Error::InvalidModel {
                             message: format!("missing computed subgraph rect for {member}"),
                         }
@@ -3336,16 +3309,27 @@ fn layout_flowchart_with_model(
                 &sg.classes,
                 &sg.styles,
             );
-            let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: title,
-                label_type,
-                style: text_style.as_ref(),
-                max_width_px: title_width_limit,
-                wrap_mode: ctx.wrap_mode,
-                config: ctx.config,
-                math_renderer: ctx.math_renderer,
-            });
+            let owner = ctx
+                .subgraph_index_by_id
+                .get(frame.id.as_str())
+                .copied()
+                .map(FlowchartSvgLabelOwner::SubgraphTitle);
+            let title_metrics = measure_flowchart_svg_label_for_layout(
+                ctx.svg_label_sidecar,
+                owner,
+                Some(frame.id.as_str()),
+                FlowchartLabelMetricsRequest {
+                    measurer: ctx.measurer,
+                    raw_label: title,
+                    label_type,
+                    style: text_style.as_ref(),
+                    max_width_px: title_width_limit,
+                    wrap_mode: ctx.wrap_mode,
+                    config: ctx.config,
+                    math_renderer: ctx.math_renderer,
+                },
+                FlowchartSvgWidthMode::Bbox,
+            );
             let mut rect = if let Some(r) = content {
                 r
             } else {
@@ -3408,6 +3392,7 @@ fn layout_flowchart_with_model(
 
     struct ClusterTitleAdjustContext<'a> {
         class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
+        subgraph_index_by_id: &'a HashMap<&'a str, usize>,
         measurer: &'a dyn TextMeasurer,
         text_style: &'a TextStyle,
         html_label_text_style: &'a TextStyle,
@@ -3417,6 +3402,7 @@ fn layout_flowchart_with_model(
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         title_total_margin: f64,
         cluster_padding: f64,
+        svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     }
 
     fn adjust_cluster_rect_for_title(
@@ -3439,16 +3425,27 @@ fn layout_flowchart_with_model(
             &sg.classes,
             &sg.styles,
         );
-        let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-            measurer: ctx.measurer,
-            raw_label: title,
-            label_type,
-            style: text_style.as_ref(),
-            max_width_px: title_width_limit,
-            wrap_mode: ctx.wrap_mode,
-            config: ctx.config,
-            math_renderer: ctx.math_renderer,
-        });
+        let owner = ctx
+            .subgraph_index_by_id
+            .get(sg.id.as_str())
+            .copied()
+            .map(FlowchartSvgLabelOwner::SubgraphTitle);
+        let title_metrics = measure_flowchart_svg_label_for_layout(
+            ctx.svg_label_sidecar,
+            owner,
+            Some(sg.id.as_str()),
+            FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: title,
+                label_type,
+                style: text_style.as_ref(),
+                max_width_px: title_width_limit,
+                wrap_mode: ctx.wrap_mode,
+                config: ctx.config,
+                math_renderer: ctx.math_renderer,
+            },
+            FlowchartSvgWidthMode::Bbox,
+        );
         let title_w = title_metrics.width.max(1.0);
         let title_h = title_metrics.height.max(1.0);
 
@@ -3479,6 +3476,8 @@ fn layout_flowchart_with_model(
     let cluster_rect_ctx = ClusterRectContext {
         model,
         subgraphs_by_id: &subgraphs_by_id,
+        subgraph_index_by_id: &subgraph_index_by_id,
+        subgraph_members_by_id: &subgraph_members_by_id,
         class_defs: &model.class_defs,
         leaf_rects: &leaf_rects,
         extra_children: &extra_children,
@@ -3491,6 +3490,7 @@ fn layout_flowchart_with_model(
         math_renderer,
         cluster_padding,
         title_total_margin,
+        svg_label_sidecar,
     };
     let mut cluster_rect_state = ClusterRectState {
         cluster_rects: &mut cluster_rects,
@@ -3499,6 +3499,7 @@ fn layout_flowchart_with_model(
     };
     let title_adjust_ctx = ClusterTitleAdjustContext {
         class_defs: &model.class_defs,
+        subgraph_index_by_id: &subgraph_index_by_id,
         measurer,
         text_style: &text_style,
         html_label_text_style: &html_label_text_style,
@@ -3508,10 +3509,11 @@ fn layout_flowchart_with_model(
         math_renderer,
         title_total_margin,
         cluster_padding,
+        svg_label_sidecar,
     };
 
-    for (subgraph_index, sg) in model.subgraphs.iter().enumerate() {
-        if sg.nodes.is_empty() {
+    for &(subgraph_index, sg) in &canonical_subgraphs_in_order {
+        if !nonempty_subgraph_ids.contains(sg.id.as_str()) {
             continue;
         }
         let title = model.subgraph_title_for_render(sg);
@@ -3954,6 +3956,47 @@ mod tests {
             .expect("node A");
 
         assert_eq!(node.label_width, Some(NON_LATTICE_COMPUTED_LENGTH_PX));
+    }
+
+    #[test]
+    fn dagre_nonempty_subgraph_title_reuses_its_prepared_layout_measurement() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nsubgraph S[service title]\n  A\nend\n",
+                ParseOptions::default(),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let labels = FlowchartRenderLabelSources::default();
+        let builder = FlowchartSvgLabelSidecarBuilder::default();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("render session");
+        let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Layout);
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let mut work_control = DagreOperationWorkControl::new(meter);
+
+        layout_flowchart_with_model(
+            model,
+            &labels,
+            &parsed.metadata().effective_config,
+            &measurer,
+            None,
+            Some(&builder),
+            &mut work_control,
+        )
+        .expect("layout ok");
+
+        assert!(builder.prepared_count() > 0);
+        assert!(
+            builder.prepared_hit_count() > 0,
+            "the cluster rect/title stages must reuse the same built-in measurement"
+        );
     }
 
     #[test]

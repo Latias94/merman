@@ -154,7 +154,9 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let Some(sg) = ctx.subgraphs_by_id.get(cluster.id.as_str()) else {
         return;
     };
-    if sg.nodes.is_empty() && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx) {
+    if !ctx.subgraph_has_children(cluster.id.as_str())
+        && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx)
+    {
         return;
     }
 

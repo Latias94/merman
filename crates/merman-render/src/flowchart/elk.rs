@@ -1,9 +1,10 @@
 use crate::config::{config_bool, config_string};
+use crate::layout_work::ElkOperationWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
-use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
+use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use merman_core::{MermaidConfig, ParsedDiagramRender, RenderSemanticModel};
@@ -26,13 +27,6 @@ use super::{
     flowchart_node_svg_width_mode, measure_flowchart_svg_label_for_layout,
     measure_flowchart_svg_label_for_layout_with_metrics_style,
 };
-
-struct ElkOperationWorkControl {
-    meter: Arc<OperationWorkMeter>,
-    rejection: Option<ResourceLimitExceeded>,
-    #[cfg(test)]
-    adapter_work: usize,
-}
 
 pub(crate) struct FlowchartElkLayoutExecution<'a> {
     measurer: &'a dyn TextMeasurer,
@@ -57,87 +51,6 @@ impl<'a> FlowchartElkLayoutExecution<'a> {
             svg_label_sidecar,
             work_meter,
         }
-    }
-}
-
-impl ElkOperationWorkControl {
-    fn new(meter: Arc<OperationWorkMeter>) -> Self {
-        Self {
-            meter,
-            rejection: None,
-            #[cfg(test)]
-            adapter_work: 0,
-        }
-    }
-
-    fn charge_adapter(&mut self, units: usize) -> Result<()> {
-        if let Some(error) = &self.rejection {
-            return Err(error.clone().into());
-        }
-        #[cfg(test)]
-        let next_adapter_work = self.checked_add(self.adapter_work, units)?;
-        self.meter.charge(units).map_err(|error| {
-            self.rejection = Some(error.clone());
-            Error::from(error)
-        })?;
-        #[cfg(test)]
-        {
-            self.adapter_work = next_adapter_work;
-        }
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn checked_add(&self, left: usize, right: usize) -> Result<usize> {
-        left.checked_add(right)
-            .ok_or_else(|| self.meter.arithmetic_overflow().into())
-    }
-
-    #[cfg(test)]
-    fn checked_mul(&self, left: usize, right: usize) -> Result<usize> {
-        left.checked_mul(right)
-            .ok_or_else(|| self.meter.arithmetic_overflow().into())
-    }
-
-    fn map_elk_error(&mut self, error: elk::Error) -> Error {
-        match error.work_error() {
-            Some(elk::WorkError::Interrupted) => self
-                .rejection
-                .take()
-                .unwrap_or_else(|| self.meter.arithmetic_overflow())
-                .into(),
-            Some(elk::WorkError::ArithmeticOverflow) => self.meter.arithmetic_overflow().into(),
-            None => Error::InvalidModel {
-                message: format!("ELK layout failed: {error}"),
-            },
-        }
-    }
-
-    #[cfg(test)]
-    fn adapter_work(&self) -> usize {
-        self.adapter_work
-    }
-}
-
-impl elk::WorkControl for ElkOperationWorkControl {
-    fn check(&mut self, units: usize) -> std::result::Result<(), elk::WorkError> {
-        if self.rejection.is_some() {
-            return Err(elk::WorkError::Interrupted);
-        }
-        self.meter.preflight(units).map_err(|error| {
-            self.rejection = Some(error);
-            elk::WorkError::Interrupted
-        })
-    }
-
-    fn charge(&mut self, units: usize) -> std::result::Result<(), elk::WorkError> {
-        if self.rejection.is_some() {
-            return Err(elk::WorkError::Interrupted);
-        }
-        self.meter.charge(units).map_err(|error| {
-            self.rejection = Some(error);
-            elk::WorkError::Interrupted
-        })
     }
 }
 
@@ -668,7 +581,7 @@ fn checked_adapter_add(
     left.checked_add(right).ok_or_else(|| {
         work_control
             .as_deref()
-            .map(|work_control| work_control.meter.arithmetic_overflow())
+            .map(|work_control| work_control.arithmetic_overflow())
             .unwrap_or_else(|| {
                 OperationWorkMeter::new(
                     crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -687,7 +600,7 @@ fn checked_adapter_mul(
     left.checked_mul(right).ok_or_else(|| {
         work_control
             .as_deref()
-            .map(|work_control| work_control.meter.arithmetic_overflow())
+            .map(|work_control| work_control.arithmetic_overflow())
             .unwrap_or_else(|| {
                 OperationWorkMeter::new(
                     crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),

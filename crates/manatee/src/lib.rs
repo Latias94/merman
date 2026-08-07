@@ -8,6 +8,7 @@
 pub mod algo;
 pub mod error;
 pub mod graph;
+mod work;
 
 pub use algo::{
     Algorithm, AlignmentConstraint, FcoseOptions, FcoseRandomPolicy, FcoseRandomSource,
@@ -17,6 +18,7 @@ pub use error::{Error, Result, WorkFailure};
 pub use graph::{
     Anchor, BoundsExtras, Compound, Edge, Graph, LayoutRect, LayoutResult, Node, Point,
 };
+pub use work::{NoopWorkControl, WorkControl};
 /// Headless layout entry point.
 pub fn layout(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {
     match algorithm {

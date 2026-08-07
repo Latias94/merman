@@ -1,6 +1,8 @@
 //! Operation-local preparation for non-Markdown Flowchart SVG labels.
 
 use std::borrow::Cow;
+#[cfg(test)]
+use std::cell::Cell;
 use std::cell::RefCell;
 #[cfg(test)]
 use std::sync::Mutex;
@@ -366,6 +368,8 @@ impl PreparedFlowchartSvgLabel {
 #[derive(Debug, Default)]
 pub(crate) struct FlowchartSvgLabelSidecarBuilder {
     pending: RefCell<PendingFlowchartSvgLabels>,
+    #[cfg(test)]
+    prepared_hits: Cell<usize>,
 }
 
 #[derive(Debug, Default)]
@@ -437,6 +441,9 @@ impl FlowchartSvgLabelSidecarBuilder {
                     .filter(|prepared| prepared.matches(binding))
                     .map(PreparedFlowchartSvgLabel::metrics)
             {
+                #[cfg(test)]
+                self.prepared_hits
+                    .set(self.prepared_hits.get().saturating_add(1));
                 return metrics;
             }
 
@@ -506,6 +513,11 @@ impl FlowchartSvgLabelSidecarBuilder {
     #[cfg(test)]
     pub(crate) fn prepared_count(&self) -> usize {
         self.pending.borrow().prepared.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn prepared_hit_count(&self) -> usize {
+        self.prepared_hits.get()
     }
 }
 
@@ -616,7 +628,11 @@ impl FlowchartSvgLabelSidecar {
                     insert_last_owner(&mut sidecar.edge_owner_by_id, render_id, owner);
                 }
                 FlowchartSvgLabelOwner::SubgraphTitle(_) => {
-                    insert_last_owner(&mut sidecar.subgraph_title_owner_by_id, render_id, owner);
+                    // Mermaid's FlowDB emits duplicate subgraph ids in reverse semantic order;
+                    // Graphlib then updates the existing node, leaving the earliest definition's
+                    // presentation value as the winner. Keep the same canonical owner here so a
+                    // prepared title cannot be bound to the later definition by accident.
+                    insert_first_owner(&mut sidecar.subgraph_title_owner_by_id, render_id, owner);
                 }
                 FlowchartSvgLabelOwner::SwimlaneNode(_) => {
                     insert_last_owner(&mut sidecar.swimlane_node_owner_by_id, render_id, owner);
@@ -743,6 +759,14 @@ fn insert_last_owner(
             index.insert(id, owner);
         }
     }
+}
+
+fn insert_first_owner(
+    index: &mut FxHashMap<String, FlowchartSvgLabelOwner>,
+    id: String,
+    owner: FlowchartSvgLabelOwner,
+) {
+    index.entry(id).or_insert(owner);
 }
 
 pub(crate) enum FlowchartSvgLabelRenderPlan<'a> {
@@ -1308,7 +1332,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_subgraph_ids_resolve_to_the_last_semantic_owner() {
+    fn duplicate_subgraph_ids_resolve_to_the_first_semantic_owner() {
         let environment = RenderEnvironment::deterministic();
         let session = environment.begin_session().expect("deterministic session");
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
@@ -1338,7 +1362,7 @@ mod tests {
         let sidecar = builder.finish();
         assert_eq!(
             sidecar.subgraph_title_owner("dup"),
-            Some(FlowchartSvgLabelOwner::SubgraphTitle(1))
+            Some(FlowchartSvgLabelOwner::SubgraphTitle(0))
         );
     }
 

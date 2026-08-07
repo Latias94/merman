@@ -164,15 +164,23 @@ pub(super) fn render_flowchart_svg_model(
                 Some((label_node_id, edge))
             })
             .collect();
-    let subgraph_order: Vec<&str> = model.subgraphs.iter().map(|s| s.id.as_str()).collect();
+    let mut subgraph_order: Vec<&str> = Vec::with_capacity(model.subgraphs.len());
     let mut subgraphs_by_id: FxHashMap<&str, &crate::flowchart::FlowSubgraph> =
         FxHashMap::with_capacity_and_hasher(model.subgraphs.len(), Default::default());
+    let mut subgraph_ids_with_children: FxHashSet<&str> = FxHashSet::default();
     for sg in &model.subgraphs {
-        subgraphs_by_id.insert(sg.id.as_str(), sg);
+        let id = sg.id.as_str();
+        if let std::collections::hash_map::Entry::Vacant(entry) = subgraphs_by_id.entry(id) {
+            entry.insert(sg);
+            subgraph_order.push(id);
+        }
+        if !sg.nodes.is_empty() {
+            subgraph_ids_with_children.insert(id);
+        }
     }
 
     let mut parent: FxHashMap<&str, &str> = FxHashMap::default();
-    for sg in &model.subgraphs {
+    for sg in model.subgraphs.iter().rev() {
         let sg_id = sg.id.as_str();
         for child in &sg.nodes {
             parent.insert(child.as_str(), sg_id);
@@ -259,6 +267,7 @@ pub(super) fn render_flowchart_svg_model(
         nodes_by_id,
         edges_by_id,
         subgraphs_by_id,
+        subgraph_ids_with_children,
         tooltips: &model.tooltips,
         recursive_clusters,
         parent,

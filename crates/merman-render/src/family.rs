@@ -1209,20 +1209,22 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Mindmap(model) => {
             BuiltinFamilyArtifact::Mindmap(prepare_pair(model, |model| {
-                crate::mindmap::layout_mindmap_diagram_typed(
+                crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
                     model,
                     &meta.effective_config,
                     execution.text_measurer(),
                     execution.math_renderer(),
+                    execution.work_meter(),
                 )
             })?)
         }
         RenderSemanticModel::State(model) => {
             BuiltinFamilyArtifact::State(prepare_pair(model, |model| {
-                crate::state::layout_state_diagram_typed(
+                crate::state::layout_state_diagram_typed_with_work_meter(
                     model,
                     effective_config,
                     execution.text_measurer(),
+                    execution.work_meter(),
                 )
             })?)
         }
@@ -1472,6 +1474,7 @@ fn prepare_non_class_render(
                         effective_config,
                         execution.text_measurer(),
                         execution.elk_operation_seed(),
+                        execution.work_meter(),
                     )
                 })?)
             }
@@ -1481,6 +1484,7 @@ fn prepare_non_class_render(
                     model,
                     effective_config,
                     execution.text_measurer(),
+                    execution.work_meter(),
                 )
             })?)
         }
@@ -1794,6 +1798,37 @@ A traced-edge@-->|edge label words| B["delta epsilon"]
             session.text_measurement_report(),
             svg,
         )
+    }
+
+    #[cfg(feature = "layout-cytoscape")]
+    fn prepare_mindmap_with_host_limit(
+        max_layout_work_units: Option<usize>,
+    ) -> (Result<FamilyRenderArtifact>, Arc<SidecarRecordingHost>) {
+        let source = "mindmap\n  Root\n    First child\n    Second child\n";
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse mindmap")
+            .expect("detect mindmap");
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.mindmap-cose-budget").expect("profile id"),
+            "1",
+        )
+        .expect("profile identity");
+        let host = Arc::new(SidecarRecordingHost::new(SidecarHostOutcome::Success));
+        let mut environment = crate::environment::RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                host.clone(),
+                TextMeasurementPhase::ALL,
+            ));
+        if let Some(limit) = max_layout_work_units {
+            let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, limit)
+                .expect("layout work limit");
+            environment = environment.with_resource_policy(policy);
+        }
+        let session = environment.begin_session().expect("render session");
+        (prepare(parsed, &LayoutOptions::default(), session), host)
     }
 
     #[test]
@@ -2159,6 +2194,20 @@ linkStyle 0 font-size:12px,font-style:italic
         prepare(parsed, &LayoutOptions::default(), session)
     }
 
+    fn prepare_with_unbounded_layout_work(source: &str) -> Result<FamilyRenderArtifact> {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .begin_session()
+            .unwrap();
+        prepare(parsed, &LayoutOptions::default(), session)
+    }
+
     fn assert_model_item_limit(error: Error, actual: usize, max: usize) {
         let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected max_model_items resource limit error")
@@ -2171,10 +2220,22 @@ linkStyle 0 font-size:12px,font-style:italic
 
     #[test]
     fn session_report_accounts_for_every_metered_layout_family() {
-        let cases = [
+        let mut cases = vec![
             (
                 "classDiagram\nclass A\nclass B\nA --> B\n",
                 RenderFamilyKind::Class,
+            ),
+            (
+                "stateDiagram-v2\n[*] --> Idle\nIdle --> Active\n",
+                RenderFamilyKind::State,
+            ),
+            (
+                "erDiagram\nCUSTOMER ||--o{ ORDER : places\n",
+                RenderFamilyKind::Er,
+            ),
+            (
+                "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    First child\n    Second child\n",
+                RenderFamilyKind::Mindmap,
             ),
             (
                 "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: hello\n",
@@ -2199,6 +2260,12 @@ linkStyle 0 font-size:12px,font-style:italic
             ),
         ];
 
+        #[cfg(feature = "layout-cytoscape")]
+        cases.push((
+            "mindmap\n  Root\n    First child\n    Second child\n",
+            RenderFamilyKind::Mindmap,
+        ));
+
         for (source, expected_family) in cases {
             let parsed = Engine::new()
                 .parse_diagram_for_render_model_sync(source, ParseOptions::default())
@@ -2212,6 +2279,88 @@ linkStyle 0 font-size:12px,font-style:italic
                 "{expected_family} must contribute layout work to the session report"
             );
         }
+    }
+
+    #[test]
+    fn dagre_family_work_budgets_are_exact_and_preserve_layout_output() {
+        let cases = [
+            (
+                "classDiagram\nnamespace Outer {\n  class A\n  class B\n}\nA --> B\n",
+                RenderFamilyKind::Class,
+            ),
+            (
+                "stateDiagram-v2\nstate Parent {\n  [*] --> Idle\n  Idle --> Active\n}\nParent --> Outside\n",
+                RenderFamilyKind::State,
+            ),
+            (
+                "erDiagram\nNODE {\n  string id\n}\nNODE ||--o{ NODE : leads\n",
+                RenderFamilyKind::Er,
+            ),
+        ];
+
+        for (source, expected_family) in cases {
+            let unbounded = prepare_with_unbounded_layout_work(source).unwrap();
+            assert_eq!(unbounded.family_kind(), expected_family);
+            let exact = unbounded.session.report().layout_work_units();
+            assert!(exact > 0, "{expected_family} must report layout work");
+            let expected_layout = unbounded.layout_json().unwrap();
+
+            let bounded = prepare_with_layout_work_limit(source, exact).unwrap();
+            assert_eq!(bounded.session.report().layout_work_units(), exact);
+            assert_eq!(bounded.layout_json().unwrap(), expected_layout);
+
+            let error = match prepare_with_layout_work_limit(source, exact - 1) {
+                Ok(_) => panic!("{expected_family} exact minus one unexpectedly succeeded"),
+                Err(error) => error,
+            };
+            let Error::ResourceLimitExceeded(limit) = error else {
+                panic!("expected {expected_family} layout work rejection")
+            };
+            assert_eq!(limit.limit, "max_layout_work_units");
+            assert_eq!(limit.max, exact - 1);
+        }
+    }
+
+    #[cfg(feature = "layout-cytoscape")]
+    #[test]
+    fn default_mindmap_cose_reports_kernel_work_and_has_an_exact_resource_boundary() {
+        let (unbounded_result, unbounded_host) = prepare_mindmap_with_host_limit(None);
+        let unbounded = unbounded_result.expect("unbounded COSE mindmap");
+        let exact = unbounded.session.report().layout_work_units();
+        assert!(
+            exact > 78,
+            "kernel work must exceed the 3-node adapter estimate"
+        );
+        let unbounded_layout = unbounded.layout_json().expect("unbounded layout json");
+        let unbounded_trace = unbounded_host.snapshot();
+        assert!(!unbounded_trace.is_empty());
+
+        let (exact_result, exact_host) = prepare_mindmap_with_host_limit(Some(exact));
+        let exact_artifact = exact_result.expect("exact COSE budget");
+        assert_eq!(exact_artifact.session.report().layout_work_units(), exact);
+        assert_eq!(
+            exact_artifact.layout_json().expect("exact layout json"),
+            unbounded_layout
+        );
+        assert_eq!(exact_host.snapshot(), unbounded_trace);
+
+        let (short_result, _short_host) = prepare_mindmap_with_host_limit(Some(exact - 1));
+        let error = match short_result {
+            Ok(_) => panic!("exact minus one must reject COSE work"),
+            Err(error) => error,
+        };
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected max_layout_work_units rejection")
+        };
+        assert_eq!(limit.limit, "max_layout_work_units");
+        assert_eq!(limit.max, exact - 1);
+
+        let (early_result, early_host) = prepare_mindmap_with_host_limit(Some(1));
+        assert!(matches!(early_result, Err(Error::ResourceLimitExceeded(_))));
+        assert!(
+            early_host.snapshot().is_empty(),
+            "adapter admission must reject before the first host measurement"
+        );
     }
 
     #[test]

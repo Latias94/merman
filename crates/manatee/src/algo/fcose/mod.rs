@@ -3,51 +3,16 @@
 use crate::algo::FcoseOptions;
 use crate::error::{Error, Result, WorkFailure};
 use crate::graph::{Anchor, BoundsExtras, Graph, LayoutRect, LayoutResult, Point};
+use crate::work::admit_dynamic_work;
 use indexmap::{IndexMap, IndexSet};
 use rustc_hash::FxHashMap;
 
 mod spectral;
 
+pub use crate::work::{NoopWorkControl, WorkControl};
+
 const GEOMETRY_EPSILON: f64 = 1e-9;
 const DEFAULT_FCOSE_ITERATIONS: usize = 2500;
-
-/// Caller-owned work control for the FCoSE kernel.
-///
-/// Implementations must either accept a complete tranche or reject it without advancing their
-/// budget. Manatee deliberately keeps the failure neutral so renderers can map it to their own
-/// resource error type without creating a reverse dependency.
-pub trait WorkControl {
-    /// Checks whether a complete predictable tranche can fit without consuming it.
-    ///
-    /// The default keeps compatibility callers unbounded. Budgeted callers should override this
-    /// so the kernel can reject configured CoSE work before materializing its simulation graph.
-    fn check(&mut self, _units: usize) -> std::result::Result<(), WorkFailure> {
-        Ok(())
-    }
-
-    fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure>;
-}
-
-fn admit_dynamic_work<W: WorkControl + ?Sized>(
-    work_control: &mut W,
-    units: usize,
-) -> std::result::Result<(), WorkFailure> {
-    if units == 0 {
-        return Ok(());
-    }
-    work_control.check(units)?;
-    work_control.charge(units)
-}
-
-/// Work control used by compatibility entry points that do not impose a caller budget.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct NoopWorkControl;
-
-impl WorkControl for NoopWorkControl {
-    fn charge(&mut self, _units: usize) -> std::result::Result<(), WorkFailure> {
-        Ok(())
-    }
-}
 
 /// Checked execution schedule for one FCoSE invocation.
 ///

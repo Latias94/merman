@@ -1727,6 +1727,35 @@ end
 }
 
 #[test]
+fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
+    for source in [
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
+        "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
+    ] {
+        let svg = render_flowchart_svg_from_text(source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+        let clusters = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("id").is_some_and(|id| id.ends_with("-X"))
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "cluster")
+                    })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(clusters.len(), 1, "{svg}");
+        let visible_text = clusters[0]
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .collect::<String>();
+        assert!(visible_text.contains("First title"), "{svg}");
+        assert!(!visible_text.contains("Second title"), "{svg}");
+    }
+}
+
+#[test]
 fn flowchart_svg_edge_label_wraps_with_inherited_style_before_link_style_bbox() {
     fn source(extra: &str) -> String {
         format!(

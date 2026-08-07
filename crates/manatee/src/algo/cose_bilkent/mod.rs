@@ -1,5 +1,7 @@
-use crate::error::Result;
+use crate::error::{Error, Result, WorkFailure};
 use crate::graph::{Graph, LayoutResult, Point};
+use crate::work::admit_dynamic_work;
+use crate::{NoopWorkControl, WorkControl};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::VecDeque;
 
@@ -18,26 +20,55 @@ pub struct IndexedEdge {
 }
 
 pub fn layout_indexed(nodes: &[IndexedNode], edges: &[IndexedEdge]) -> Result<Vec<Point>> {
+    let mut work_control = NoopWorkControl;
+    layout_indexed_with_work_control(nodes, edges, &mut work_control)
+}
+
+/// Lay out an indexed flat graph with caller-owned work accounting.
+pub fn layout_indexed_with_work_control<W: WorkControl + ?Sized>(
+    nodes: &[IndexedNode],
+    edges: &[IndexedEdge],
+    work_control: &mut W,
+) -> Result<Vec<Point>> {
     if nodes.is_empty() {
         return Ok(Vec::new());
     }
 
+    let projection_work = nodes
+        .len()
+        .checked_mul(3)
+        .and_then(|units| {
+            edges
+                .len()
+                .checked_mul(2)
+                .and_then(|edge_units| units.checked_add(edge_units))
+        })
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    work_control.check(projection_work)?;
     for (idx, e) in edges.iter().enumerate() {
         if e.a >= nodes.len() || e.b >= nodes.len() {
-            return Err(crate::error::Error::MissingEndpoint {
+            return Err(Error::MissingEndpoint {
                 edge_id: format!("#{idx}"),
             });
         }
     }
+    work_control.charge(projection_work)?;
 
     let mut sim = SimGraph::from_indexed(nodes, edges);
 
-    let forest = sim.get_flat_forest();
+    let forest = sim.get_flat_forest(work_control)?;
     if !forest.is_empty() {
-        sim.position_nodes_radially(&forest);
+        sim.position_nodes_radially(&forest, work_control)?;
     }
 
-    sim.run_spring_embedder();
+    sim.run_spring_embedder(work_control)?;
+    admit_dynamic_work(
+        work_control,
+        sim.nodes
+            .len()
+            .checked_mul(2)
+            .ok_or(WorkFailure::ArithmeticOverflow)?,
+    )?;
     sim.transform_to_origin();
 
     let mut out: Vec<Point> = Vec::with_capacity(sim.nodes.len());
@@ -51,7 +82,31 @@ pub fn layout_indexed(nodes: &[IndexedNode], edges: &[IndexedEdge]) -> Result<Ve
 }
 
 pub fn layout(graph: &Graph) -> Result<LayoutResult> {
+    let mut work_control = NoopWorkControl;
+    layout_with_work_control(graph, &mut work_control)
+}
+
+/// Lay out a flat graph with caller-owned work accounting.
+pub fn layout_with_work_control<W: WorkControl + ?Sized>(
+    graph: &Graph,
+    work_control: &mut W,
+) -> Result<LayoutResult> {
+    let projection_work = graph
+        .nodes
+        .len()
+        .checked_mul(4)
+        .and_then(|units| {
+            graph
+                .edges
+                .len()
+                .checked_mul(2)
+                .and_then(|edge_units| units.checked_add(edge_units))
+        })
+        .and_then(|units| units.checked_add(graph.compounds.len()))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    work_control.check(projection_work)?;
     graph.validate()?;
+    work_control.charge(projection_work)?;
     let mut sim = SimGraph::from_graph(graph);
 
     // COSE-Bilkent port for flat graphs (as used by Mermaid mindmap via Cytoscape).
@@ -60,14 +115,21 @@ pub fn layout(graph: &Graph) -> Result<LayoutResult> {
     // - `reduceTrees()` / `growTree()` scaffolding (currently disabled until parity is verified)
     // - spring embedder ticks
     // - `doPostLayout()` -> `transform(0,0)` to move the graph into positive coordinates
-    let forest = sim.get_flat_forest();
+    let forest = sim.get_flat_forest(work_control)?;
     if !forest.is_empty() {
-        sim.position_nodes_radially(&forest);
+        sim.position_nodes_radially(&forest, work_control)?;
     } else {
         // Fallback: keep all nodes at their provided initial positions (typically (0,0)).
         // The full port will use `scatter()` / `positionNodesRandomly()` for non-forest graphs.
     }
-    sim.run_spring_embedder();
+    sim.run_spring_embedder(work_control)?;
+    admit_dynamic_work(
+        work_control,
+        sim.nodes
+            .len()
+            .checked_mul(2)
+            .ok_or(WorkFailure::ArithmeticOverflow)?,
+    )?;
     sim.transform_to_origin();
 
     let mut positions: std::collections::BTreeMap<String, Point> =
@@ -160,6 +222,15 @@ struct SimEdge {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct RadialBranchFrame {
+    node: usize,
+    parent: Option<usize>,
+    start_angle: f64,
+    end_angle: f64,
+    distance: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
 struct Bounds {
     min_x: f64,
     min_y: f64,
@@ -192,11 +263,117 @@ impl Bounds {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+fn checked_grid_dimension(span: f64, range: f64) -> std::result::Result<usize, WorkFailure> {
+    if !(span.is_finite() && range.is_finite() && range > 0.0) {
+        return Err(WorkFailure::ArithmeticOverflow);
+    }
+    let dimension = (span / range).ceil().max(1.0);
+    if !dimension.is_finite() || dimension > i32::MAX as f64 {
+        return Err(WorkFailure::ArithmeticOverflow);
+    }
+    Ok(dimension as usize)
+}
+
+fn implicit_grid_work_units(node_count: usize) -> std::result::Result<usize, WorkFailure> {
+    if node_count == 0 {
+        return Ok(0);
+    }
+    let comparison_levels = if node_count <= 1 {
+        1
+    } else {
+        usize::BITS as usize - (node_count - 1).leading_zeros() as usize
+    };
+    node_count
+        .checked_mul(node_count)
+        .and_then(|units| units.checked_mul(comparison_levels))
+        .and_then(|units| units.checked_add(node_count))
+        .ok_or(WorkFailure::ArithmeticOverflow)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SimGridStorageKind {
+    Dense,
+    Sparse,
+    Implicit,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SimGridPlan {
+    size_x: usize,
+    size_y: usize,
+    total_cell_count: usize,
+    cell_reference_count: usize,
+    active_node_count: usize,
+    storage_kind: SimGridStorageKind,
+    work_units: usize,
+}
+
+impl SimGridPlan {
+    fn new(
+        size_x: usize,
+        size_y: usize,
+        cell_reference_count: usize,
+        active_node_count: usize,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let total_cell_count = size_x
+            .checked_mul(size_y)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let candidates = [
+            (
+                SimGridStorageKind::Dense,
+                total_cell_count.checked_add(cell_reference_count),
+            ),
+            (
+                SimGridStorageKind::Sparse,
+                cell_reference_count.checked_mul(2),
+            ),
+            (
+                SimGridStorageKind::Implicit,
+                implicit_grid_work_units(active_node_count).ok(),
+            ),
+        ];
+        let (storage_kind, storage_work) = candidates
+            .into_iter()
+            .filter_map(|(kind, work)| work.map(|work| (kind, work)))
+            .min_by_key(|(_, work)| *work)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let work_units = storage_work
+            .checked_add(active_node_count)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        Ok(Self {
+            size_x,
+            size_y,
+            total_cell_count,
+            cell_reference_count,
+            active_node_count,
+            storage_kind,
+            work_units,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+enum SimGridCells {
+    Dense(Vec<Vec<usize>>),
+    Sparse(HashMap<(usize, usize), Vec<usize>>),
+    Implicit(Vec<usize>),
+}
+
+#[derive(Debug, Clone)]
 struct SimGrid {
     size_x: usize,
     size_y: usize,
-    cells: Vec<Vec<usize>>,
+    cells: SimGridCells,
+}
+
+impl Default for SimGrid {
+    fn default() -> Self {
+        Self {
+            size_x: 0,
+            size_y: 0,
+            cells: SimGridCells::Dense(Vec::new()),
+        }
+    }
 }
 
 impl SimGrid {
@@ -212,20 +389,85 @@ impl SimGrid {
         self.size_y
     }
 
-    fn clear_cells(&mut self) {
-        for cell in &mut self.cells {
-            cell.clear();
+    fn is_implicit(&self) -> bool {
+        matches!(self.cells, SimGridCells::Implicit(_))
+    }
+
+    fn clear_work_units(&self) -> usize {
+        match &self.cells {
+            SimGridCells::Dense(cells) => cells.len(),
+            SimGridCells::Sparse(cells) => cells.len(),
+            SimGridCells::Implicit(node_order) => node_order.len(),
         }
     }
 
-    fn reset(&mut self, size_x: usize, size_y: usize, _left: f64, _top: f64, _range: f64) {
-        if self.size_x != size_x || self.size_y != size_y {
-            self.size_x = size_x;
-            self.size_y = size_y;
-            self.cells = vec![Vec::new(); size_x.saturating_mul(size_y)];
-        } else {
-            self.clear_cells();
+    fn clear_cells(&mut self) {
+        match &mut self.cells {
+            SimGridCells::Dense(cells) => {
+                for cell in cells {
+                    cell.clear();
+                }
+            }
+            SimGridCells::Sparse(cells) => cells.clear(),
+            SimGridCells::Implicit(node_order) => node_order.clear(),
         }
+    }
+
+    fn reset(
+        &mut self,
+        plan: SimGridPlan,
+        _left: f64,
+        _top: f64,
+        _range: f64,
+    ) -> std::result::Result<(), WorkFailure> {
+        self.size_x = plan.size_x;
+        self.size_y = plan.size_y;
+        match plan.storage_kind {
+            SimGridStorageKind::Dense => {
+                if !matches!(self.cells, SimGridCells::Dense(_)) {
+                    self.cells = SimGridCells::Dense(Vec::new());
+                }
+                let SimGridCells::Dense(cells) = &mut self.cells else {
+                    unreachable!("dense grid selected above")
+                };
+                if plan.total_cell_count > cells.len() {
+                    cells
+                        .try_reserve_exact(plan.total_cell_count - cells.len())
+                        .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                    cells.resize_with(plan.total_cell_count, Vec::new);
+                } else {
+                    cells.truncate(plan.total_cell_count);
+                }
+                for cell in cells {
+                    cell.clear();
+                }
+            }
+            SimGridStorageKind::Sparse => {
+                if !matches!(self.cells, SimGridCells::Sparse(_)) {
+                    self.cells = SimGridCells::Sparse(HashMap::default());
+                }
+                let SimGridCells::Sparse(cells) = &mut self.cells else {
+                    unreachable!("sparse grid selected above")
+                };
+                cells.clear();
+                cells
+                    .try_reserve(plan.cell_reference_count.min(plan.total_cell_count))
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+            }
+            SimGridStorageKind::Implicit => {
+                if !matches!(self.cells, SimGridCells::Implicit(_)) {
+                    self.cells = SimGridCells::Implicit(Vec::new());
+                }
+                let SimGridCells::Implicit(node_order) = &mut self.cells else {
+                    unreachable!("implicit grid selected above")
+                };
+                node_order.clear();
+                node_order
+                    .try_reserve_exact(plan.active_node_count)
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+            }
+        }
+        Ok(())
     }
 
     #[inline]
@@ -236,13 +478,56 @@ impl SimGrid {
     #[inline]
     fn push(&mut self, x: usize, y: usize, node_idx: usize) {
         let i = self.idx(x, y);
-        self.cells[i].push(node_idx);
+        match &mut self.cells {
+            SimGridCells::Dense(cells) => cells[i].push(node_idx),
+            SimGridCells::Sparse(cells) => cells.entry((x, y)).or_default().push(node_idx),
+            SimGridCells::Implicit(_) => {}
+        }
     }
 
-    #[inline]
-    fn cell(&self, x: usize, y: usize) -> &[usize] {
-        let i = self.idx(x, y);
-        self.cells[i].as_slice()
+    fn register_implicit_node(&mut self, node_idx: usize) {
+        if let SimGridCells::Implicit(node_order) = &mut self.cells {
+            node_order.push(node_idx);
+        }
+    }
+
+    fn cell_scan_work(&self, x: usize, y: usize) -> usize {
+        match &self.cells {
+            SimGridCells::Dense(cells) => cells[self.idx(x, y)].len(),
+            SimGridCells::Sparse(cells) => cells.get(&(x, y)).map(Vec::len).unwrap_or_default(),
+            SimGridCells::Implicit(node_order) => node_order.len(),
+        }
+    }
+
+    fn fill_cell_candidates(
+        &self,
+        nodes: &[SimNode],
+        x: usize,
+        y: usize,
+        candidates: &mut Vec<usize>,
+    ) {
+        candidates.clear();
+        match &self.cells {
+            SimGridCells::Dense(cells) => {
+                candidates.extend_from_slice(&cells[self.idx(x, y)]);
+            }
+            SimGridCells::Sparse(cells) => {
+                if let Some(cell) = cells.get(&(x, y)) {
+                    candidates.extend_from_slice(cell);
+                }
+            }
+            SimGridCells::Implicit(node_order) => {
+                let x = x as i32;
+                let y = y as i32;
+                candidates.extend(node_order.iter().copied().filter(|&node_idx| {
+                    let node = &nodes[node_idx];
+                    node.start_x <= x
+                        && x <= node.finish_x
+                        && node.start_y <= y
+                        && y <= node.finish_y
+                }));
+            }
+        }
     }
 }
 
@@ -456,9 +741,19 @@ impl SimGraph {
     }
 
     /// Port of `layout-base` `Layout.getFlatForest()` for flat graphs.
-    fn get_flat_forest(&self) -> Vec<Vec<usize>> {
+    fn get_flat_forest<W: WorkControl + ?Sized>(
+        &self,
+        work_control: &mut W,
+    ) -> std::result::Result<Vec<Vec<usize>>, WorkFailure> {
         let mut flat_forest: Vec<Vec<usize>> = Vec::new();
         let mut is_forest = true;
+
+        let scratch_work = self
+            .nodes
+            .len()
+            .checked_mul(4)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        admit_dynamic_work(work_control, scratch_work)?;
 
         // Root graph nodes in insertion order.
         let all_nodes: Vec<usize> = (0..self.nodes.len())
@@ -480,6 +775,12 @@ impl SimGraph {
             let mut visited_order: Vec<usize> = Vec::new();
 
             while let Some(current_node) = to_be_visited.pop_front() {
+                let traversal_work = self.nodes[current_node]
+                    .edges
+                    .len()
+                    .checked_add(1)
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+                admit_dynamic_work(work_control, traversal_work)?;
                 if !visited[current_node] {
                     visited[current_node] = true;
                     visited_order.push(current_node);
@@ -518,6 +819,13 @@ impl SimGraph {
             if !is_forest {
                 flat_forest.clear();
             } else {
+                let component_work = visited_order
+                    .len()
+                    .checked_mul(2)
+                    .and_then(|units| units.checked_add(unprocessed_nodes.len()))
+                    .and_then(|units| units.checked_add(parents_touched.len()))
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+                admit_dynamic_work(work_control, component_work)?;
                 // JS Set preserves insertion order; `visited_order` mimics `[...visited]`.
                 flat_forest.push(visited_order.clone());
 
@@ -536,7 +844,7 @@ impl SimGraph {
             }
         }
 
-        flat_forest
+        Ok(flat_forest)
     }
 
     fn active_degree(&self, node_idx: usize) -> usize {
@@ -556,31 +864,43 @@ impl SimGraph {
         d
     }
 
-    fn update_grid(&mut self, repulsion_range: f64) {
-        self.grid.clear_cells();
-        if self.nodes.iter().all(|n| !n.active) {
-            return;
-        }
+    fn update_grid<W: WorkControl + ?Sized>(
+        &mut self,
+        repulsion_range: f64,
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
+        admit_dynamic_work(work_control, self.nodes.len())?;
 
         let mut min_left = f64::INFINITY;
         let mut min_top = f64::INFINITY;
         let mut max_right = f64::NEG_INFINITY;
         let mut max_bottom = f64::NEG_INFINITY;
+        let mut active_node_count = 0usize;
         for n in &self.nodes {
             if !n.active {
                 continue;
             }
+            active_node_count = active_node_count
+                .checked_add(1)
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
             min_left = min_left.min(n.left);
             min_top = min_top.min(n.top);
             max_right = max_right.max(n.right());
             max_bottom = max_bottom.max(n.bottom());
+        }
+        if active_node_count == 0 {
+            admit_dynamic_work(work_control, self.grid.clear_work_units())?;
+            self.grid.clear_cells();
+            return Ok(());
         }
         if !(min_left.is_finite()
             && min_top.is_finite()
             && max_right.is_finite()
             && max_bottom.is_finite())
         {
-            return;
+            admit_dynamic_work(work_control, self.grid.clear_work_units())?;
+            self.grid.clear_cells();
+            return Ok(());
         }
 
         // Match `layout-base` grid semantics:
@@ -591,22 +911,53 @@ impl SimGraph {
         let right_with_margin = max_right + Self::DEFAULT_GRAPH_MARGIN;
         let bottom_with_margin = max_bottom + Self::DEFAULT_GRAPH_MARGIN;
 
-        let size_x = ((right_with_margin - left_with_margin) / repulsion_range)
-            .ceil()
-            .max(1.0) as usize;
-        let size_y = ((bottom_with_margin - top_with_margin) / repulsion_range)
-            .ceil()
-            .max(1.0) as usize;
-        self.grid.reset(
-            size_x,
-            size_y,
-            left_with_margin,
-            top_with_margin,
-            repulsion_range,
-        );
+        let size_x = checked_grid_dimension(right_with_margin - left_with_margin, repulsion_range)?;
+        let size_y = checked_grid_dimension(bottom_with_margin - top_with_margin, repulsion_range)?;
 
         let clamp_x = |v: i32| v.clamp(0, (size_x as i32) - 1);
         let clamp_y = |v: i32| v.clamp(0, (size_y as i32) - 1);
+        let node_grid_bounds = |n: &SimNode| {
+            let start_x = ((n.left - left_with_margin) / repulsion_range).floor() as i32;
+            let finish_x = ((n.right() - left_with_margin) / repulsion_range).floor() as i32;
+            let start_y = ((n.top - top_with_margin) / repulsion_range).floor() as i32;
+            let finish_y = ((n.bottom() - top_with_margin) / repulsion_range).floor() as i32;
+            (
+                clamp_x(start_x),
+                clamp_x(finish_x),
+                clamp_y(start_y),
+                clamp_y(finish_y),
+            )
+        };
+
+        admit_dynamic_work(work_control, self.nodes.len())?;
+        let mut cell_reference_count = 0usize;
+        for n in &self.nodes {
+            if !n.active {
+                continue;
+            }
+            let (start_x, finish_x, start_y, finish_y) = node_grid_bounds(n);
+            let width = usize::try_from(finish_x - start_x)
+                .map_err(|_| WorkFailure::ArithmeticOverflow)?
+                .checked_add(1)
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            let height = usize::try_from(finish_y - start_y)
+                .map_err(|_| WorkFailure::ArithmeticOverflow)?
+                .checked_add(1)
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            cell_reference_count = cell_reference_count
+                .checked_add(
+                    width
+                        .checked_mul(height)
+                        .ok_or(WorkFailure::ArithmeticOverflow)?,
+                )
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+        }
+
+        let plan = SimGridPlan::new(size_x, size_y, cell_reference_count, active_node_count)?;
+        admit_dynamic_work(work_control, plan.work_units)?;
+        self.grid
+            .reset(plan, left_with_margin, top_with_margin, repulsion_range)?;
+        let implicit = self.grid.is_implicit();
 
         for (idx, n) in self.nodes.iter_mut().enumerate() {
             if !n.active {
@@ -614,33 +965,55 @@ impl SimGraph {
             }
             // `FDLayout.addNodeToGrid(v, left, top)` where `(left,top)` are root graph bounds
             // (already including `DEFAULT_GRAPH_MARGIN`).
-            let start_x = ((n.left - left_with_margin) / repulsion_range).floor() as i32;
-            let finish_x = ((n.right() - left_with_margin) / repulsion_range).floor() as i32;
-            let start_y = ((n.top - top_with_margin) / repulsion_range).floor() as i32;
-            let finish_y = ((n.bottom() - top_with_margin) / repulsion_range).floor() as i32;
+            let (start_x, finish_x, start_y, finish_y) = node_grid_bounds(n);
+            n.start_x = start_x;
+            n.finish_x = finish_x;
+            n.start_y = start_y;
+            n.finish_y = finish_y;
 
-            n.start_x = clamp_x(start_x);
-            n.finish_x = clamp_x(finish_x);
-            n.start_y = clamp_y(start_y);
-            n.finish_y = clamp_y(finish_y);
-
-            for gx in (n.start_x as usize)..=(n.finish_x as usize) {
-                for gy in (n.start_y as usize)..=(n.finish_y as usize) {
-                    self.grid.push(gx, gy, idx);
+            if implicit {
+                self.grid.register_implicit_node(idx);
+            } else {
+                for gx in (n.start_x as usize)..=(n.finish_x as usize) {
+                    for gy in (n.start_y as usize)..=(n.finish_y as usize) {
+                        self.grid.push(gx, gy, idx);
+                    }
                 }
             }
         }
+        Ok(())
     }
 
     /// Port of `layout-base` `Layout.findCenterOfTree(nodes)`.
     /// Note: this intentionally preserves the upstream loop's in-place removal behavior.
-    fn find_center_of_tree(&self, nodes: &[usize]) -> usize {
+    fn find_center_of_tree<W: WorkControl + ?Sized>(
+        &self,
+        nodes: &[usize],
+        work_control: &mut W,
+    ) -> std::result::Result<usize, WorkFailure> {
+        let setup_work = nodes
+            .len()
+            .checked_mul(2)
+            .and_then(|units| {
+                self.nodes
+                    .len()
+                    .checked_mul(2)
+                    .and_then(|scratch| units.checked_add(scratch))
+            })
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        admit_dynamic_work(work_control, setup_work)?;
         let mut list: Vec<usize> = nodes.to_vec();
         let mut removed: Vec<bool> = vec![false; self.nodes.len()];
         let mut remaining_degrees: Vec<usize> = vec![0; self.nodes.len()];
         let mut found_center = list.len() == 1 || list.len() == 2;
         let mut center_node = list[0];
 
+        let degree_scan_work = list.iter().try_fold(0usize, |work, &node| {
+            work.checked_add(self.nodes[node].edges.len())
+                .and_then(|work| work.checked_add(1))
+                .ok_or(WorkFailure::ArithmeticOverflow)
+        })?;
+        admit_dynamic_work(work_control, degree_scan_work)?;
         for &node in &list {
             let degree = self.active_degree(node);
             remaining_degrees[node] = degree;
@@ -669,6 +1042,12 @@ impl SimGraph {
             let mut i = 0usize;
             while i < list.len() {
                 let node = list[i];
+                let removal_work = list
+                    .len()
+                    .checked_sub(i)
+                    .and_then(|units| units.checked_add(self.nodes[node].edges.len()))
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+                admit_dynamic_work(work_control, removal_work)?;
                 list.remove(i);
 
                 self.for_each_active_neighbor(node, |neighbour| {
@@ -686,6 +1065,7 @@ impl SimGraph {
                 i += 1;
             }
 
+            admit_dynamic_work(work_control, temp_list.len())?;
             for &v in &temp_list {
                 removed[v] = true;
             }
@@ -696,7 +1076,7 @@ impl SimGraph {
             }
         }
 
-        center_node
+        Ok(center_node)
     }
 
     fn max_diagonal_in_tree(&self, tree: &[usize]) -> f64 {
@@ -707,32 +1087,22 @@ impl SimGraph {
         if !max_diag.is_finite() { 0.0 } else { max_diag }
     }
 
-    fn branch_radial_layout(
+    fn branch_radial_layout<W: WorkControl + ?Sized>(
         &mut self,
-        node: usize,
-        parent: Option<usize>,
-        start_angle: f64,
-        end_angle: f64,
-        distance: f64,
+        root: RadialBranchFrame,
         radial_separation: f64,
-    ) {
-        struct BranchFrame {
-            node: usize,
-            parent: Option<usize>,
-            start_angle: f64,
-            end_angle: f64,
-            distance: f64,
-        }
-
-        let mut stack = vec![BranchFrame {
-            node,
-            parent,
-            start_angle,
-            end_angle,
-            distance,
-        }];
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
+        let mut stack = vec![root];
 
         while let Some(frame) = stack.pop() {
+            let branch_work = self.nodes[frame.node]
+                .edges
+                .len()
+                .checked_mul(2)
+                .and_then(|units| units.checked_add(1))
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            admit_dynamic_work(work_control, branch_work)?;
             // First, position this node by finding its angle.
             let mut half_interval = ((frame.end_angle - frame.start_angle) + 1.0) / 2.0;
             if half_interval < 0.0 {
@@ -791,7 +1161,7 @@ impl SimGraph {
                 let child_start_angle =
                     (frame.start_angle + (branch_count as f64) * step_angle).rem_euclid(360.0);
                 let child_end_angle = (child_start_angle + step_angle).rem_euclid(360.0);
-                child_frames.push(BranchFrame {
+                child_frames.push(RadialBranchFrame {
                     node: current_neighbor,
                     parent: Some(frame.node),
                     start_angle: child_start_angle,
@@ -807,23 +1177,41 @@ impl SimGraph {
                 stack.push(child_frame);
             }
         }
+        Ok(())
     }
 
-    fn radial_layout(
+    fn radial_layout<W: WorkControl + ?Sized>(
         &mut self,
         tree: &[usize],
         center_node: usize,
         starting_x: f64,
         starting_y: f64,
-    ) -> (f64, f64) {
+        work_control: &mut W,
+    ) -> std::result::Result<(f64, f64), WorkFailure> {
+        admit_dynamic_work(
+            work_control,
+            tree.len()
+                .checked_mul(3)
+                .ok_or(WorkFailure::ArithmeticOverflow)?,
+        )?;
         let radial_sep = self
             .max_diagonal_in_tree(tree)
             .max(Self::DEFAULT_RADIAL_SEPARATION);
 
-        self.branch_radial_layout(center_node, None, 0.0, 359.0, 0.0, radial_sep);
+        self.branch_radial_layout(
+            RadialBranchFrame {
+                node: center_node,
+                parent: None,
+                start_angle: 0.0,
+                end_angle: 359.0,
+                distance: 0.0,
+            },
+            radial_sep,
+            work_control,
+        )?;
 
         let Some(bounds) = Bounds::from_nodes(&self.nodes, tree) else {
-            return (starting_x, starting_y);
+            return Ok((starting_x, starting_y));
         };
 
         // `Transform` with extents 1.0 is a pure translation: worldOrg + (x - deviceOrg).
@@ -834,10 +1222,14 @@ impl SimGraph {
             self.nodes[idx].top += dy;
         }
 
-        (bounds.max_x + dx, bounds.max_y + dy)
+        Ok((bounds.max_x + dx, bounds.max_y + dy))
     }
 
-    fn position_nodes_radially(&mut self, forest: &[Vec<usize>]) {
+    fn position_nodes_radially<W: WorkControl + ?Sized>(
+        &mut self,
+        forest: &[Vec<usize>],
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
         // Tile the trees to a grid row by row; first tree starts at (0,0).
         let number_of_columns = (forest.len() as f64).sqrt().ceil().max(1.0) as usize;
         let mut height = 0.0;
@@ -855,8 +1247,8 @@ impl SimGraph {
                 height = 0.0;
             }
 
-            let center_node = self.find_center_of_tree(tree);
-            point = self.radial_layout(tree, center_node, current_x, current_y);
+            let center_node = self.find_center_of_tree(tree, work_control)?;
+            point = self.radial_layout(tree, center_node, current_x, current_y, work_control)?;
 
             if point.1 > height {
                 height = point.1.floor();
@@ -873,6 +1265,13 @@ impl SimGraph {
         let world_org_x = Self::WORLD_CENTER_X - point.0 / 2.0;
         let world_org_y = Self::WORLD_CENTER_Y - point.1 / 2.0;
 
+        admit_dynamic_work(
+            work_control,
+            self.nodes
+                .len()
+                .checked_mul(2)
+                .ok_or(WorkFailure::ArithmeticOverflow)?,
+        )?;
         let mut min_left = f64::INFINITY;
         let mut min_top = f64::INFINITY;
         for n in &self.nodes {
@@ -891,17 +1290,21 @@ impl SimGraph {
                 n.move_by(dx, dy);
             }
         }
+        Ok(())
     }
 
-    fn run_spring_embedder(&mut self) {
+    fn run_spring_embedder<W: WorkControl + ?Sized>(
+        &mut self,
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
         if self.nodes.is_empty() {
-            return;
+            return Ok(());
         }
 
         // Mermaid's Cytoscape COSE-Bilkent applies gravitational forces only when the graph is
         // disconnected (`calculateNodesToApplyGravitationTo()` collects nodes from non-connected
         // graphs). For a connected mindmap tree this list is empty, so gravity is a no-op.
-        let nodes_with_gravity = self.nodes_to_apply_gravitation();
+        let nodes_with_gravity = self.nodes_to_apply_gravitation(work_control)?;
 
         fn nodes2_mut(nodes: &mut [SimNode], a: usize, b: usize) -> (&mut SimNode, &mut SimNode) {
             debug_assert!(a != b);
@@ -922,14 +1325,19 @@ impl SimGraph {
         let gravity_range_factor = Self::DEFAULT_GRAVITY_RANGE_FACTOR;
         let repulsion_range = 2.0 * ideal_edge_length;
 
-        let active_n = self.nodes.iter().filter(|n| n.active).count().max(1) as f64;
+        let active_node_count = self.nodes.iter().filter(|n| n.active).count().max(1);
+        let active_n = active_node_count as f64;
         let displacement_threshold_per_node = (3.0 * Self::DEFAULT_EDGE_LENGTH) / 100.0;
         let total_displacement_threshold = displacement_threshold_per_node * active_n;
 
         // Non-incremental mode: coolingFactor starts at 1.0 for small graphs.
         let initial_cooling_factor = 1.0;
         let mut cooling_factor = initial_cooling_factor;
-        let max_iterations = Self::MAX_ITERATIONS.max(active_n as usize * 5);
+        let max_iterations = Self::MAX_ITERATIONS.max(
+            active_node_count
+                .checked_mul(5)
+                .ok_or(WorkFailure::ArithmeticOverflow)?,
+        );
         let max_cooling_cycle = (max_iterations as f64) / (Self::CONVERGENCE_CHECK_PERIOD as f64);
         let final_temperature = (Self::CONVERGENCE_CHECK_PERIOD as f64) / (max_iterations as f64);
         let mut cooling_cycle = 0.0f64;
@@ -941,7 +1349,18 @@ impl SimGraph {
         let mut old_total_displacement = 0.0f64;
         let mut last_total_displacement = 0.0f64;
 
+        admit_dynamic_work(
+            work_control,
+            self.nodes
+                .len()
+                .checked_mul(2)
+                .ok_or(WorkFailure::ArithmeticOverflow)?,
+        )?;
         let mut processed_repulsion: Vec<bool> = vec![false; self.nodes.len()];
+        let mut cell_candidates = Vec::new();
+        cell_candidates
+            .try_reserve_exact(self.nodes.len())
+            .map_err(|_| WorkFailure::ArithmeticOverflow)?;
 
         loop {
             total_iterations += 1;
@@ -976,6 +1395,14 @@ impl SimGraph {
                 cooling_factor = (initial_cooling_factor - schedule).max(final_temperature);
             }
 
+            let iteration_work = self
+                .nodes
+                .len()
+                .checked_mul(if nodes_with_gravity.is_empty() { 2 } else { 3 })
+                .and_then(|units| units.checked_add(self.edges.len()))
+                .and_then(|units| units.checked_add(nodes_with_gravity.len()))
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            admit_dynamic_work(work_control, iteration_work)?;
             let mut total_displacement = 0.0f64;
 
             // Spring forces
@@ -1029,7 +1456,7 @@ impl SimGraph {
             let rebuild_surrounding = total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD == 1;
 
             if rebuild_surrounding {
-                self.update_grid(repulsion_range);
+                self.update_grid(repulsion_range, work_control)?;
             }
 
             processed_repulsion.fill(false);
@@ -1038,42 +1465,71 @@ impl SimGraph {
                 let size_x_i32 = self.grid.size_x().min(i32::MAX as usize) as i32;
                 let size_y_i32 = self.grid.size_y().min(i32::MAX as usize) as i32;
 
-                for a in 0..self.nodes.len() {
-                    if !self.nodes[a].active {
-                        continue;
+                if rebuild_surrounding {
+                    let mut refresh_work = 0usize;
+                    for node in self.nodes.iter().filter(|node| node.active) {
+                        let gx0 = (node.start_x - 1).max(0) as usize;
+                        let gy0 = (node.start_y - 1).max(0) as usize;
+                        let gx1 = (node.finish_x + 1).min(size_x_i32.saturating_sub(1)) as usize;
+                        let gy1 = (node.finish_y + 1).min(size_y_i32.saturating_sub(1)) as usize;
+                        let scan_cell_count = gx1
+                            .checked_sub(gx0)
+                            .and_then(|width| width.checked_add(1))
+                            .and_then(|width| {
+                                gy1.checked_sub(gy0)
+                                    .and_then(|height| height.checked_add(1))
+                                    .and_then(|height| width.checked_mul(height))
+                            })
+                            .ok_or(WorkFailure::ArithmeticOverflow)?;
+                        refresh_work = refresh_work
+                            .checked_add(scan_cell_count)
+                            .ok_or(WorkFailure::ArithmeticOverflow)?;
+                        for gx in gx0..=gx1 {
+                            for gy in gy0..=gy1 {
+                                refresh_work = refresh_work
+                                    .checked_add(self.grid.cell_scan_work(gx, gy))
+                                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+                            }
+                        }
                     }
+                    admit_dynamic_work(work_control, refresh_work)?;
 
-                    if rebuild_surrounding {
+                    // Build all cached surrounding lists before applying forces. The source
+                    // filters candidates with `processedNodeSet`, but forces do not move nodes
+                    // until the later move phase, so this preserves both candidate order and
+                    // floating-point accumulation order while reducing control callbacks.
+                    for a in 0..self.nodes.len() {
+                        if !self.nodes[a].active {
+                            continue;
+                        }
                         self.nodes[a].surrounding.clear();
-
                         self.repulsion_seen_gen = self.repulsion_seen_gen.wrapping_add(1);
                         if self.repulsion_seen_gen == 0 {
                             self.repulsion_seen.fill(0);
                             self.repulsion_seen_gen = 1;
                         }
                         let seen_gen = self.repulsion_seen_gen;
-
                         let ni = &self.nodes[a];
                         let gx0 = (ni.start_x - 1).max(0) as usize;
                         let gy0 = (ni.start_y - 1).max(0) as usize;
                         let gx1 = (ni.finish_x + 1).min(size_x_i32.saturating_sub(1)) as usize;
                         let gy1 = (ni.finish_y + 1).min(size_y_i32.saturating_sub(1)) as usize;
-
                         for gx in gx0..=gx1 {
                             for gy in gy0..=gy1 {
-                                for &b in self.grid.cell(gx, gy) {
-                                    // `processedNodeSet` semantics: compute each pair once.
-                                    if processed_repulsion[b] {
+                                self.grid.fill_cell_candidates(
+                                    &self.nodes,
+                                    gx,
+                                    gy,
+                                    &mut cell_candidates,
+                                );
+                                for &b in &cell_candidates {
+                                    if processed_repulsion[b]
+                                        || b == a
+                                        || !self.nodes[b].active
+                                        || self.repulsion_seen[b] == seen_gen
+                                    {
                                         continue;
                                     }
-                                    if b == a || !self.nodes[b].active {
-                                        continue;
-                                    }
-                                    // `surrounding.has(nodeB)` semantics: preserve first-hit insertion order.
-                                    if self.repulsion_seen[b] == seen_gen {
-                                        continue;
-                                    }
-
                                     let na = &self.nodes[a];
                                     let nb = &self.nodes[b];
                                     let dist_x = (na.center_x() - nb.center_x()).abs()
@@ -1087,10 +1543,21 @@ impl SimGraph {
                                 }
                             }
                         }
+                        processed_repulsion[a] = true;
                     }
+                }
 
-                    let surrounding = self.nodes[a].surrounding.clone();
-                    for b in surrounding {
+                let surrounding_work = self.nodes.iter().try_fold(0usize, |work, node| {
+                    work.checked_add(node.surrounding.len())
+                        .ok_or(WorkFailure::ArithmeticOverflow)
+                })?;
+                admit_dynamic_work(work_control, surrounding_work)?;
+                for a in 0..self.nodes.len() {
+                    if !self.nodes[a].active {
+                        continue;
+                    }
+                    let surrounding = std::mem::take(&mut self.nodes[a].surrounding);
+                    for &b in &surrounding {
                         let (rfx, rfy) = self.calc_repulsion_force(a, b, repulsion_constant);
                         let (na, nb) = nodes2_mut(&mut self.nodes, a, b);
                         na.repulsion_fx += rfx;
@@ -1098,8 +1565,7 @@ impl SimGraph {
                         nb.repulsion_fx -= rfx;
                         nb.repulsion_fy -= rfy;
                     }
-
-                    processed_repulsion[a] = true;
+                    self.nodes[a].surrounding = surrounding;
                 }
             }
 
@@ -1154,6 +1620,7 @@ impl SimGraph {
             }
             last_total_displacement = total_displacement;
         }
+        Ok(())
     }
 
     #[cfg(test)]
@@ -1179,7 +1646,9 @@ impl SimGraph {
         let repulsion_range = 2.0 * ideal_edge_length;
 
         // Tick #1 in upstream always triggers a grid rebuild (`totalIterations % 10 == 1`).
-        self.update_grid(repulsion_range);
+        let mut work_control = NoopWorkControl;
+        self.update_grid(repulsion_range, &mut work_control)
+            .expect("unbounded test grid update");
 
         // Spring forces.
         let mut spring_debug: Vec<(usize, usize, f64, f64, f64, f64)> = Vec::new(); // (a,b,lx,ly,len,sfy)
@@ -1222,6 +1691,7 @@ impl SimGraph {
         // Repulsion forces (FR-grid, tick #1: rebuild surrounding).
         let mut processed_repulsion: Vec<bool> = vec![false; self.nodes.len()];
         processed_repulsion.fill(false);
+        let mut cell_candidates = Vec::with_capacity(self.nodes.len());
         if !self.grid.is_empty() {
             let size_x_i32 = self.grid.size_x().min(i32::MAX as usize) as i32;
             let size_y_i32 = self.grid.size_y().min(i32::MAX as usize) as i32;
@@ -1248,7 +1718,9 @@ impl SimGraph {
 
                 for gx in gx0..=gx1 {
                     for gy in gy0..=gy1 {
-                        for &b in self.grid.cell(gx, gy) {
+                        self.grid
+                            .fill_cell_candidates(&self.nodes, gx, gy, &mut cell_candidates);
+                        for &b in &cell_candidates {
                             if processed_repulsion[b] {
                                 continue;
                             }
@@ -1398,7 +1870,22 @@ impl SimGraph {
         }
     }
 
-    fn nodes_to_apply_gravitation(&self) -> Vec<usize> {
+    fn nodes_to_apply_gravitation<W: WorkControl + ?Sized>(
+        &self,
+        work_control: &mut W,
+    ) -> std::result::Result<Vec<usize>, WorkFailure> {
+        let traversal_work = self
+            .nodes
+            .len()
+            .checked_mul(3)
+            .and_then(|units| {
+                self.edges
+                    .len()
+                    .checked_mul(2)
+                    .and_then(|edge_units| units.checked_add(edge_units))
+            })
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        admit_dynamic_work(work_control, traversal_work)?;
         // Port of COSE `calculateNodesToApplyGravitationTo()` for a flat graph: apply gravity to
         // all nodes only if the graph is disconnected.
         let mut first_active: Option<usize> = None;
@@ -1409,7 +1896,7 @@ impl SimGraph {
             }
         }
         let Some(start) = first_active else {
-            return Vec::new();
+            return Ok(Vec::new());
         };
 
         let mut stack: Vec<usize> = vec![start];
@@ -1436,11 +1923,11 @@ impl SimGraph {
 
         let active_count = self.nodes.iter().filter(|n| n.active).count();
         if seen_count == active_count {
-            Vec::new()
+            Ok(Vec::new())
         } else {
-            (0..self.nodes.len())
+            Ok((0..self.nodes.len())
                 .filter(|&i| self.nodes[i].active)
-                .collect()
+                .collect())
         }
     }
 
@@ -1941,26 +2428,58 @@ fn decide_directions_for_overlapping_nodes(a: &SimNode, b: &SimNode) -> (i32, i3
 
 #[cfg(test)]
 mod tests {
-    use super::{IndexedEdge, IndexedNode, SimGraph, layout_indexed};
+    use super::{
+        IndexedEdge, IndexedNode, NoopWorkControl, SimGraph, SimGrid, SimGridCells, SimGridPlan,
+        SimGridStorageKind, layout_indexed, layout_indexed_with_work_control,
+    };
+    use crate::{Error, WorkControl, WorkFailure};
 
-    fn assert_close(a: f64, b: f64) {
-        let eps = 1e-3;
-        assert!((a - b).abs() <= eps, "expected {a} ~= {b} (eps={eps})");
+    #[derive(Debug, Default)]
+    struct RecordingWorkControl {
+        limit: Option<usize>,
+        used: usize,
+        checks: usize,
+        charges: usize,
     }
 
-    #[test]
-    fn radial_trig_matches_v8_reference_values() {
-        let radial_angle = (9.475_f64 * std::f64::consts::TAU) / 360.0;
-        assert_eq!(libm::sin(radial_angle).to_bits(), 0x3fc5_122d_8320_944e);
-        assert_eq!(libm::cos(radial_angle).to_bits(), 0x3fef_903d_a710_dece);
+    impl RecordingWorkControl {
+        fn unbounded() -> Self {
+            Self::default()
+        }
+
+        fn limited(limit: usize) -> Self {
+            Self {
+                limit: Some(limit),
+                ..Self::default()
+            }
+        }
+
+        fn admit(&self, units: usize) -> std::result::Result<usize, WorkFailure> {
+            let next = self
+                .used
+                .checked_add(units)
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            if self.limit.is_some_and(|limit| next > limit) {
+                return Err(WorkFailure::Interrupted);
+            }
+            Ok(next)
+        }
     }
 
-    #[test]
-    fn basic_three_node_tree_matches_upstream_positions() {
-        // Oracle: cytoscape-cose-bilkent@4.1.0 + cytoscape@3.34.0 (Mermaid 11.16.0 compatible),
-        // with the same node dimensions.
-        //
-        // This corresponds to `fixtures/upstream-svgs/mindmap/basic.svg`.
+    impl WorkControl for RecordingWorkControl {
+        fn check(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            self.checks += 1;
+            self.admit(units).map(|_| ())
+        }
+
+        fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            self.charges += 1;
+            self.used = self.admit(units)?;
+            Ok(())
+        }
+    }
+
+    fn basic_nodes_and_edges() -> (Vec<IndexedNode>, Vec<IndexedEdge>) {
         let nodes = vec![
             IndexedNode {
                 width: 69.734375,
@@ -1982,6 +2501,39 @@ mod tests {
             },
         ];
         let edges = vec![IndexedEdge { a: 0, b: 1 }, IndexedEdge { a: 0, b: 2 }];
+        (nodes, edges)
+    }
+
+    fn assert_points_identical(actual: &[crate::Point], expected: &[crate::Point]) {
+        assert_eq!(actual.len(), expected.len());
+        for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(
+                (actual.x.to_bits(), actual.y.to_bits()),
+                (expected.x.to_bits(), expected.y.to_bits()),
+                "point {index} changed"
+            );
+        }
+    }
+
+    fn assert_close(a: f64, b: f64) {
+        let eps = 1e-3;
+        assert!((a - b).abs() <= eps, "expected {a} ~= {b} (eps={eps})");
+    }
+
+    #[test]
+    fn radial_trig_matches_v8_reference_values() {
+        let radial_angle = (9.475_f64 * std::f64::consts::TAU) / 360.0;
+        assert_eq!(libm::sin(radial_angle).to_bits(), 0x3fc5_122d_8320_944e);
+        assert_eq!(libm::cos(radial_angle).to_bits(), 0x3fef_903d_a710_dece);
+    }
+
+    #[test]
+    fn basic_three_node_tree_matches_upstream_positions() {
+        // Oracle: cytoscape-cose-bilkent@4.1.0 + cytoscape@3.33.3 (Mermaid 11.16.0),
+        // with the same node dimensions.
+        //
+        // This corresponds to `fixtures/upstream-svgs/mindmap/basic.svg`.
+        let (nodes, edges) = basic_nodes_and_edges();
 
         let out = layout_indexed(&nodes, &edges).expect("layout");
 
@@ -1992,6 +2544,226 @@ mod tests {
         assert_close(out[1].y, 32.0);
         assert_close(out[2].x, 39.460938);
         assert_close(out[2].y, 32.0);
+    }
+
+    #[test]
+    fn controlled_layout_preserves_output_and_has_an_exact_budget_boundary() {
+        let (nodes, edges) = basic_nodes_and_edges();
+        let compatibility = layout_indexed(&nodes, &edges).expect("compatibility layout");
+
+        let mut recording = RecordingWorkControl::unbounded();
+        let controlled = layout_indexed_with_work_control(&nodes, &edges, &mut recording)
+            .expect("recorded layout");
+        assert_points_identical(&controlled, &compatibility);
+        assert!(recording.used > 0);
+        assert!(recording.checks > 0);
+        assert!(recording.charges > 0);
+
+        let exact = recording.used;
+        let mut exact_control = RecordingWorkControl::limited(exact);
+        let exact_output = layout_indexed_with_work_control(&nodes, &edges, &mut exact_control)
+            .expect("exact budget should admit the complete layout");
+        assert_eq!(exact_control.used, exact);
+        assert_points_identical(&exact_output, &compatibility);
+
+        let mut short_control = RecordingWorkControl::limited(exact - 1);
+        let error = layout_indexed_with_work_control(&nodes, &edges, &mut short_control)
+            .expect_err("exact minus one must reject a complete work tranche");
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert!(short_control.used < exact);
+    }
+
+    #[test]
+    fn controlled_layout_has_explicit_resource_first_endpoint_semantics() {
+        let invalid_edges = [IndexedEdge { a: 0, b: 1 }];
+
+        let mut empty_control = RecordingWorkControl::limited(0);
+        assert!(
+            layout_indexed_with_work_control(&[], &invalid_edges, &mut empty_control)
+                .expect("empty compatibility case")
+                .is_empty()
+        );
+        assert_eq!(empty_control.used, 0);
+
+        let nodes = [IndexedNode {
+            width: 10.0,
+            height: 10.0,
+            x: 0.0,
+            y: 0.0,
+        }];
+        assert!(matches!(
+            layout_indexed(&nodes, &invalid_edges),
+            Err(Error::MissingEndpoint { ref edge_id }) if edge_id == "#0"
+        ));
+
+        let mut rejecting_control = RecordingWorkControl::limited(0);
+        assert!(matches!(
+            layout_indexed_with_work_control(&nodes, &invalid_edges, &mut rejecting_control),
+            Err(Error::WorkFailure(WorkFailure::Interrupted))
+        ));
+        assert_eq!(rejecting_control.used, 0);
+        assert_eq!(rejecting_control.charges, 0);
+    }
+
+    #[test]
+    fn grid_planner_selects_the_smallest_bounded_representation() {
+        assert_eq!(
+            SimGridPlan::new(1, 1, 16, 16)
+                .expect("dense plan")
+                .storage_kind,
+            SimGridStorageKind::Dense
+        );
+        assert_eq!(
+            SimGridPlan::new(1_000, 1_000, 10, 100)
+                .expect("sparse plan")
+                .storage_kind,
+            SimGridStorageKind::Sparse
+        );
+        assert_eq!(
+            SimGridPlan::new(1_000, 1_000, 1_000_000, 2)
+                .expect("implicit plan")
+                .storage_kind,
+            SimGridStorageKind::Implicit
+        );
+        assert!(matches!(
+            SimGridPlan::new(usize::MAX, 2, 0, 0),
+            Err(WorkFailure::ArithmeticOverflow)
+        ));
+    }
+
+    #[test]
+    fn dense_sparse_and_implicit_grids_preserve_candidate_order() {
+        let nodes = vec![
+            IndexedNode {
+                width: 10.0,
+                height: 10.0,
+                x: 0.0,
+                y: 0.0,
+            };
+            3
+        ];
+        let mut sim = SimGraph::from_indexed(&nodes, &[]);
+        let bounds = [(0, 1), (1, 2), (0, 2)];
+        for (node, (start_x, finish_x)) in sim.nodes.iter_mut().zip(bounds) {
+            node.start_x = start_x;
+            node.finish_x = finish_x;
+            node.start_y = 0;
+            node.finish_y = 0;
+        }
+
+        let mut outputs = Vec::new();
+        for storage_kind in [
+            SimGridStorageKind::Dense,
+            SimGridStorageKind::Sparse,
+            SimGridStorageKind::Implicit,
+        ] {
+            let mut grid = SimGrid::default();
+            grid.reset(
+                SimGridPlan {
+                    size_x: 3,
+                    size_y: 1,
+                    total_cell_count: 3,
+                    cell_reference_count: 7,
+                    active_node_count: 3,
+                    storage_kind,
+                    work_units: 0,
+                },
+                0.0,
+                0.0,
+                1.0,
+            )
+            .expect("grid reset");
+            if storage_kind == SimGridStorageKind::Implicit {
+                for node_idx in 0..sim.nodes.len() {
+                    grid.register_implicit_node(node_idx);
+                }
+            } else {
+                for (node_idx, node) in sim.nodes.iter().enumerate() {
+                    for x in node.start_x as usize..=node.finish_x as usize {
+                        grid.push(x, 0, node_idx);
+                    }
+                }
+            }
+
+            let mut by_cell = Vec::new();
+            let mut candidates = Vec::new();
+            for x in 0..3 {
+                grid.fill_cell_candidates(&sim.nodes, x, 0, &mut candidates);
+                by_cell.push(candidates.clone());
+            }
+            outputs.push(by_cell);
+        }
+
+        assert_eq!(outputs[0], vec![vec![0, 2], vec![0, 1, 2], vec![1, 2]]);
+        assert_eq!(outputs[1], outputs[0]);
+        assert_eq!(outputs[2], outputs[0]);
+    }
+
+    #[test]
+    fn grid_admission_rejection_preserves_previous_grid_and_node_bounds() {
+        let nodes = vec![
+            IndexedNode {
+                width: 10.0,
+                height: 10.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 10.0,
+                height: 10.0,
+                x: 150.0,
+                y: 0.0,
+            },
+        ];
+        let mut sim = SimGraph::from_indexed(&nodes, &[]);
+        sim.update_grid(100.0, &mut NoopWorkControl)
+            .expect("initial grid");
+        let previous_grid = format!("{:?}", sim.grid);
+        let previous_bounds = sim
+            .nodes
+            .iter()
+            .map(|node| (node.start_x, node.finish_x, node.start_y, node.finish_y))
+            .collect::<Vec<_>>();
+
+        sim.nodes[1].left = 1_000_000_000.0;
+        let mut rejecting_control = RecordingWorkControl::limited(sim.nodes.len() * 2);
+        assert!(matches!(
+            sim.update_grid(100.0, &mut rejecting_control),
+            Err(WorkFailure::Interrupted)
+        ));
+        assert_eq!(format!("{:?}", sim.grid), previous_grid);
+        assert_eq!(
+            sim.nodes
+                .iter()
+                .map(|node| (node.start_x, node.finish_x, node.start_y, node.finish_y))
+                .collect::<Vec<_>>(),
+            previous_bounds
+        );
+    }
+
+    #[test]
+    fn large_finite_coordinate_span_uses_sparse_grid_storage() {
+        let nodes = vec![
+            IndexedNode {
+                width: 10.0,
+                height: 10.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 10.0,
+                height: 10.0,
+                x: 1_000_000_000.0,
+                y: 0.0,
+            },
+        ];
+        let mut sim = SimGraph::from_indexed(&nodes, &[]);
+        sim.update_grid(100.0, &mut NoopWorkControl)
+            .expect("large finite span should avoid dense allocation");
+        assert!(matches!(&sim.grid.cells, SimGridCells::Sparse(_)));
     }
 
     #[test]
@@ -2054,9 +2826,13 @@ mod tests {
         let edges = vec![IndexedEdge { a: 0, b: 1 }, IndexedEdge { a: 0, b: 2 }];
 
         let mut sim = SimGraph::from_indexed(&nodes, &edges);
-        let forest = sim.get_flat_forest();
+        let mut work_control = NoopWorkControl;
+        let forest = sim
+            .get_flat_forest(&mut work_control)
+            .expect("unbounded forest");
         assert_eq!(forest.len(), 1);
-        sim.position_nodes_radially(&forest);
+        sim.position_nodes_radially(&forest, &mut work_control)
+            .expect("unbounded radial layout");
 
         let y0 = sim.nodes[0].center_y();
         for (i, n) in sim.nodes.iter().enumerate() {
@@ -2099,15 +2875,23 @@ mod tests {
         assert_eq!(sim.edges[0].b, 1);
         assert_eq!(sim.edges[1].a, 0);
         assert_eq!(sim.edges[1].b, 2);
-        let forest = sim.get_flat_forest();
-        sim.position_nodes_radially(&forest);
+        let mut work_control = NoopWorkControl;
+        let forest = sim
+            .get_flat_forest(&mut work_control)
+            .expect("unbounded forest");
+        sim.position_nodes_radially(&forest, &mut work_control)
+            .expect("unbounded radial layout");
 
         let y0 = sim.nodes[0].center_y();
         for n in &sim.nodes {
             assert_eq!(n.center_y(), y0);
         }
         // Mirror the spring embedder's tick#1 grid rebuild (should not affect geometry).
-        sim.update_grid(2.0 * super::SimGraph::DEFAULT_EDGE_LENGTH);
+        sim.update_grid(
+            2.0 * super::SimGraph::DEFAULT_EDGE_LENGTH,
+            &mut work_control,
+        )
+        .expect("unbounded grid update");
         // Sanity: for a horizontal arrangement, clipping points should preserve equal y.
         {
             let (t1x, t1y, s1x, s1y, ov1) =
@@ -2155,7 +2939,12 @@ mod tests {
 
         let sim = SimGraph::from_indexed(&nodes, &edges);
         let list: Vec<usize> = (0..n).collect();
+        let mut work_control = NoopWorkControl;
 
-        assert_eq!(sim.find_center_of_tree(&list), 7);
+        assert_eq!(
+            sim.find_center_of_tree(&list, &mut work_control)
+                .expect("unbounded center search"),
+            7
+        );
     }
 }
