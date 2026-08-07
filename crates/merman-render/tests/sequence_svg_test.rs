@@ -7,7 +7,8 @@ use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
     TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy,
-    TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementSource,
+    TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementRoute,
+    TextMeasurementSource,
 };
 use merman_render::family;
 use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
@@ -16,16 +17,34 @@ use merman_render::text::{TextMetrics, WrapMode};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Barrier, Mutex};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 
-type RecordedSequenceMeasurement = (
-    String,
-    TextMeasurementOperation,
-    TextMeasurementPhase,
-    Option<String>,
-    Option<f64>,
-    WrapMode,
-);
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RecordedSequenceMeasurement {
+    text: String,
+    operation: TextMeasurementOperation,
+    phase: TextMeasurementPhase,
+    font_family: Option<String>,
+    font_size_bits: u64,
+    font_weight: Option<String>,
+    font_style: Option<String>,
+    max_width_bits: Option<u64>,
+    wrap_mode: WrapMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecordedSequenceOutcome {
+    Host,
+    Missing,
+    Error,
+}
+
+#[derive(Debug, Clone)]
+struct RecordedSequenceExchange {
+    request: RecordedSequenceMeasurement,
+    outcome: RecordedSequenceOutcome,
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 enum SequenceHostResponse {
@@ -37,7 +56,7 @@ enum SequenceHostResponse {
 
 #[derive(Default)]
 struct RecordingSequenceHost {
-    requests: Mutex<Vec<RecordedSequenceMeasurement>>,
+    exchanges: Mutex<Vec<RecordedSequenceExchange>>,
     response: SequenceHostResponse,
     response_index: AtomicUsize,
 }
@@ -50,28 +69,28 @@ impl RecordingSequenceHost {
         }
     }
 
-    fn snapshot(&self) -> Vec<RecordedSequenceMeasurement> {
-        self.requests
+    fn snapshot(&self) -> Vec<RecordedSequenceExchange> {
+        self.exchanges
             .lock()
-            .expect("Sequence host requests lock")
+            .expect("Sequence host exchanges lock")
             .clone()
     }
 }
 
 impl HostTextMeasurer for RecordingSequenceHost {
     fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
-        self.requests
-            .lock()
-            .expect("Sequence host requests lock")
-            .push((
-                request.text.to_string(),
-                request.operation,
-                request.phase,
-                request.style.font_family.clone(),
-                request.max_width,
-                request.wrap_mode,
-            ));
-        match self.response {
+        let recorded = RecordedSequenceMeasurement {
+            text: request.text.to_string(),
+            operation: request.operation,
+            phase: request.phase,
+            font_family: request.style.font_family.clone(),
+            font_size_bits: request.style.font_size.to_bits(),
+            font_weight: request.style.font_weight.clone(),
+            font_style: request.style.font_style.clone(),
+            max_width_bits: request.max_width.map(f64::to_bits),
+            wrap_mode: request.wrap_mode,
+        };
+        let result = match self.response {
             SequenceHostResponse::StatefulMetrics
                 if request.operation
                     == TextMeasurementOperation::MermaidCalculateTextDimensions
@@ -88,7 +107,20 @@ impl HostTextMeasurer for RecordingSequenceHost {
                 "recorded Sequence host failure",
             )),
             _ => Ok(None),
-        }
+        };
+        let outcome = match &result {
+            Ok(Some(_)) => RecordedSequenceOutcome::Host,
+            Ok(None) => RecordedSequenceOutcome::Missing,
+            Err(_) => RecordedSequenceOutcome::Error,
+        };
+        self.exchanges
+            .lock()
+            .expect("Sequence host exchanges lock")
+            .push(RecordedSequenceExchange {
+                request: recorded,
+                outcome,
+            });
+        result
     }
 }
 
@@ -100,8 +132,18 @@ struct SequenceRenderObservation {
 struct SequenceHostObservation {
     render: SequenceRenderObservation,
     requests: Vec<RecordedSequenceMeasurement>,
+    outcomes: Vec<RecordedSequenceOutcome>,
+    routes: [TextMeasurementRoute; 4],
     stateful_response_count: usize,
 }
+
+type SequenceMeasurementReportKey = (
+    TextMeasurementPhase,
+    TextMeasurementOperation,
+    TextMeasurementSource,
+    TextMeasurementProfileIdentity,
+    Option<HostFallbackReason>,
+);
 
 fn render_sequence_with_environment(
     source: &str,
@@ -133,15 +175,90 @@ fn render_sequence_with_host_environment(
         "1",
     )
     .expect("valid profile identity");
-    let environment = environment.with_text_measurement_policy(
-        TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
-    );
+    let policy =
+        TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL);
+    let routes = TextMeasurementPhase::ALL.map(|phase| policy.route(phase));
+    let environment = environment.with_text_measurement_policy(policy);
     let render = render_sequence_with_environment(source, &environment);
-    SequenceHostObservation {
-        render,
-        requests: host.snapshot(),
-        stateful_response_count: host.response_index.load(Ordering::Relaxed),
+    let exchanges = host.snapshot();
+    let mut requests = Vec::with_capacity(exchanges.len());
+    let mut outcomes = Vec::with_capacity(exchanges.len());
+    for exchange in exchanges {
+        requests.push(exchange.request);
+        outcomes.push(exchange.outcome);
     }
+    let observation = SequenceHostObservation {
+        render,
+        requests,
+        outcomes,
+        routes,
+        stateful_response_count: host.response_index.load(Ordering::Relaxed),
+    };
+    assert_sequence_host_report_matches_trace(&observation);
+    observation
+}
+
+fn assert_sequence_host_report_matches_trace(observation: &SequenceHostObservation) {
+    assert_eq!(observation.requests.len(), observation.outcomes.len());
+
+    let mut expected: HashMap<SequenceMeasurementReportKey, u64> = HashMap::new();
+    for (request, outcome) in observation.requests.iter().zip(&observation.outcomes) {
+        let route = observation
+            .routes
+            .iter()
+            .find(|route| route.phase == request.phase)
+            .expect("measurement route for recorded Sequence phase");
+        assert_eq!(route.primary_source, TextMeasurementSource::Host);
+        let (source, identity, fallback_reason) = match outcome {
+            RecordedSequenceOutcome::Host => {
+                (TextMeasurementSource::Host, route.primary.clone(), None)
+            }
+            RecordedSequenceOutcome::Missing => (
+                TextMeasurementSource::Profile,
+                route
+                    .fallback
+                    .clone()
+                    .expect("host measurement route fallback identity"),
+                Some(HostFallbackReason::Missing),
+            ),
+            RecordedSequenceOutcome::Error => (
+                TextMeasurementSource::Profile,
+                route
+                    .fallback
+                    .clone()
+                    .expect("host measurement route fallback identity"),
+                Some(HostFallbackReason::Error),
+            ),
+        };
+        *expected
+            .entry((
+                request.phase,
+                request.operation,
+                source,
+                identity,
+                fallback_reason,
+            ))
+            .or_insert(0) += 1;
+    }
+
+    let mut actual: HashMap<SequenceMeasurementReportKey, u64> = HashMap::new();
+    for entry in observation.render.report.entries() {
+        let provenance = entry.provenance();
+        *actual
+            .entry((
+                provenance.phase,
+                provenance.operation,
+                provenance.source,
+                provenance.identity.clone(),
+                provenance.fallback_reason,
+            ))
+            .or_insert(0) += entry.count();
+    }
+
+    assert_eq!(
+        actual, expected,
+        "the Sequence measurement report must reconcile every traced phase, operation, source, identity, fallback reason, and count"
+    );
 }
 
 fn normalized_measurement_counts(
@@ -172,9 +289,9 @@ fn measurement_operation_count(
 fn assert_sequence_probe_message_trace(requests: &[RecordedSequenceMeasurement]) {
     let message_requests = requests
         .iter()
-        .filter(|(text, operation, _, _, _, _)| {
-            text.starts_with("probe-")
-                && *operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+        .filter(|request| {
+            request.text.starts_with("probe-")
+                && request.operation == TextMeasurementOperation::MermaidCalculateTextDimensions
         })
         .collect::<Vec<_>>();
     let expected_probe_pairs = [
@@ -206,31 +323,34 @@ fn assert_sequence_probe_message_trace(requests: &[RecordedSequenceMeasurement])
         expected_probe_pairs.len() * 2,
         "host routes must retain every actor-spacing, block-bound, geometry, and SVG reconstruction callback"
     );
-    let configured_family = message_requests[1].3.as_deref();
+    let configured_family = message_requests[1].font_family.as_deref();
     assert_ne!(configured_family, Some("sans-serif"));
     for (pair, expected_text) in message_requests.chunks_exact(2).zip(expected_probe_pairs) {
-        assert_eq!(pair[0].0, expected_text);
-        assert_eq!(pair[1].0, expected_text);
+        assert_eq!(pair[0].text, expected_text);
+        assert_eq!(pair[1].text, expected_text);
         assert_eq!(
-            pair[0].1,
+            pair[0].operation,
             TextMeasurementOperation::MermaidCalculateTextDimensions
         );
         assert_eq!(
-            pair[1].1,
+            pair[1].operation,
             TextMeasurementOperation::MermaidCalculateTextDimensions
         );
-        assert_eq!(pair[0].2, TextMeasurementPhase::SvgBBox);
-        assert_eq!(pair[1].2, TextMeasurementPhase::SvgBBox);
-        assert_eq!(pair[0].3.as_deref(), Some("sans-serif"));
-        assert_eq!(pair[1].3.as_deref(), configured_family);
-        assert_eq!(pair[0].4, None);
-        assert_eq!(pair[1].4, None);
-        assert_eq!(pair[0].5, WrapMode::SvgLike);
-        assert_eq!(pair[1].5, WrapMode::SvgLike);
+        assert_eq!(pair[0].phase, TextMeasurementPhase::SvgBBox);
+        assert_eq!(pair[1].phase, TextMeasurementPhase::SvgBBox);
+        assert_eq!(pair[0].font_family.as_deref(), Some("sans-serif"));
+        assert_eq!(pair[1].font_family.as_deref(), configured_family);
+        assert_eq!(pair[0].font_size_bits, pair[1].font_size_bits);
+        assert_eq!(pair[0].font_weight, pair[1].font_weight);
+        assert_eq!(pair[0].font_style, pair[1].font_style);
+        assert_eq!(pair[0].max_width_bits, None);
+        assert_eq!(pair[1].max_width_bits, None);
+        assert_eq!(pair[0].wrap_mode, WrapMode::SvgLike);
+        assert_eq!(pair[1].wrap_mode, WrapMode::SvgLike);
     }
 }
 
-fn assert_sequence_ineligible_shape_preserves_measurements(
+fn assert_sequence_shape_does_not_reuse_ordinary_message_metrics(
     case_name: &str,
     source: &str,
     expected_request_fragment: &str,
@@ -241,7 +361,7 @@ fn assert_sequence_ineligible_shape_preserves_measurements(
     let host = render_sequence_with_host_environment(
         source,
         SequenceHostResponse::Missing,
-        &format!("test.sequence-sidecar-ineligible-{case_name}"),
+        &format!("test.sequence-sidecar-non-reused-{case_name}"),
         host_environment,
     );
 
@@ -257,7 +377,7 @@ fn assert_sequence_ineligible_shape_preserves_measurements(
     assert!(
         host.requests
             .iter()
-            .any(|(text, _, _, _, _, _)| text.contains(expected_request_fragment)),
+            .any(|request| request.text.contains(expected_request_fragment)),
         "the {case_name} fixture must exercise the intended label through the host trace"
     );
     assert_eq!(
@@ -272,18 +392,21 @@ fn assert_sequence_ineligible_shape_preserves_measurements(
     );
 }
 
-fn render_prepared_sequence_after_barrier(
+fn render_prepared_sequence_after_release(
     source: &'static str,
     environment: RenderEnvironment,
-    barrier: Arc<Barrier>,
+    prepared: Sender<()>,
+    release: Receiver<()>,
 ) -> SequenceRenderObservation {
     let session = environment.begin_session().expect("begin Sequence session");
     let parsed = parse_sequence_for_render(&Engine::new(), source);
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
         .expect("prepare Sequence artifact");
 
-    // Keep both private sidecars alive before either artifact enters SVG emission.
-    barrier.wait();
+    prepared
+        .send(())
+        .expect("report prepared Sequence artifact");
+    release.recv().expect("release prepared Sequence artifact");
 
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -679,30 +802,19 @@ fn sequence_builtin_route_reuses_control_block_message_metrics_through_svg_emiss
 #[test]
 fn sequence_host_route_preserves_message_measurement_callback_sequence() {
     const LABEL: &str = "operation-scoped-message-bound-metrics";
-    let host = Arc::new(RecordingSequenceHost::default());
-    let identity = TextMeasurementProfileIdentity::new(
-        MeasurementProfileId::new("test.sequence-host-observability").expect("valid profile id"),
-        "1",
-    )
-    .expect("valid profile identity");
-    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
-        TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
-    );
     let source = format!("sequenceDiagram\nparticipant A\nparticipant B\nA->>B: {LABEL}\n");
-    let session = environment.begin_session().unwrap();
-    let parsed = parse_sequence_for_render(&Engine::new(), &source);
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
-        .expect("prepare Sequence artifact");
-    let rendered = artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render Sequence artifact");
-    let host_svg = rendered.svg().to_string();
-
-    let requests = host.requests.lock().expect("Sequence host requests lock");
-    let message_requests = requests
+    let host = render_sequence_with_host_environment(
+        &source,
+        SequenceHostResponse::Missing,
+        "test.sequence-host-observability",
+        RenderEnvironment::deterministic(),
+    );
+    let message_requests = host
+        .requests
         .iter()
-        .filter(|(text, operation, _, _, _, _)| {
-            text == LABEL && *operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+        .filter(|request| {
+            request.text == LABEL
+                && request.operation == TextMeasurementOperation::MermaidCalculateTextDimensions
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -710,33 +822,23 @@ fn sequence_host_route_preserves_message_measurement_callback_sequence() {
         6,
         "host/fallback routes must retain actor-spacing, horizontal, and vertical configured/sans-serif probes"
     );
-    assert!(
-        message_requests
-            .iter()
-            .all(|(_, _, phase, _, max_width, wrap_mode)| {
-                *phase == TextMeasurementPhase::SvgBBox
-                    && max_width.is_none()
-                    && *wrap_mode == WrapMode::SvgLike
-            })
-    );
-    let configured_family = message_requests[1].3.as_deref();
+    assert!(message_requests.iter().all(|request| {
+        request.phase == TextMeasurementPhase::SvgBBox
+            && request.max_width_bits.is_none()
+            && request.wrap_mode == WrapMode::SvgLike
+    }));
+    let configured_family = message_requests[1].font_family.as_deref();
     assert_ne!(configured_family, Some("sans-serif"));
     for pair in message_requests.chunks_exact(2) {
-        assert_eq!(pair[0].3.as_deref(), Some("sans-serif"));
-        assert_eq!(pair[1].3.as_deref(), configured_family);
+        assert_eq!(pair[0].font_family.as_deref(), Some("sans-serif"));
+        assert_eq!(pair[1].font_family.as_deref(), configured_family);
+        assert_eq!(pair[0].font_size_bits, pair[1].font_size_bits);
+        assert_eq!(pair[0].font_weight, pair[1].font_weight);
+        assert_eq!(pair[0].font_style, pair[1].font_style);
     }
-    drop(requests);
 
-    let parity_session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let parity_parsed = parse_sequence_for_render(&Engine::new(), &source);
-    let parity_artifact = family::prepare(parity_parsed, &LayoutOptions::default(), parity_session)
-        .expect("prepare parity Sequence artifact");
-    let parity_svg = parity_artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render parity Sequence artifact")
-        .svg()
-        .to_string();
-    assert_eq!(host_svg, parity_svg);
+    let parity = render_sequence_with_environment(&source, &RenderEnvironment::deterministic());
+    assert_eq!(host.render.svg, parity.svg);
 }
 
 #[test]
@@ -761,6 +863,7 @@ fn sequence_stateful_host_results_affect_geometry_without_changing_the_callback_
     );
 
     assert_sequence_probe_message_trace(&first.requests);
+    assert_eq!(first.requests, missing.requests);
     assert_eq!(second.requests, first.requests);
     assert_eq!(second.render.svg, first.render.svg);
     assert_ne!(
@@ -858,7 +961,7 @@ fn sequence_host_error_preserves_control_block_trace_svg_and_fallback_provenance
 }
 
 #[test]
-fn sequence_wrapped_messages_and_notes_do_not_enter_the_message_metric_sidecar() {
+fn sequence_wrapped_messages_and_notes_do_not_reuse_ordinary_message_metrics() {
     const ELIGIBLE_SOURCE: &str = r#"sequenceDiagram
 participant A
 participant B
@@ -889,7 +992,7 @@ participant A
 participant B
 A->>B: wrap: wrapped-sidecar-sentinel alpha beta gamma delta epsilon zeta
 "#;
-    assert_sequence_ineligible_shape_preserves_measurements(
+    assert_sequence_shape_does_not_reuse_ordinary_message_metrics(
         "wrapped-message",
         WRAPPED_SOURCE,
         "wrapped-sidecar-sentinel",
@@ -902,7 +1005,7 @@ participant A
 participant B
 Note over A,B: note-sidecar-sentinel
 "#;
-    assert_sequence_ineligible_shape_preserves_measurements(
+    assert_sequence_shape_does_not_reuse_ordinary_message_metrics(
         "note",
         NOTE_SOURCE,
         "note-sidecar-sentinel",
@@ -913,13 +1016,13 @@ Note over A,B: note-sidecar-sentinel
 
 #[cfg(feature = "math")]
 #[test]
-fn sequence_math_messages_do_not_enter_the_message_metric_sidecar() {
+fn sequence_math_messages_do_not_reuse_ordinary_message_metrics() {
     const SOURCE: &str = r#"sequenceDiagram
 participant A
 participant B
 A->>B: math-sidecar-sentinel $$x^2 + y^2$$ tail
 "#;
-    assert_sequence_ineligible_shape_preserves_measurements(
+    assert_sequence_shape_does_not_reuse_ordinary_message_metrics(
         "math-message",
         SOURCE,
         "math-sidecar-sentinel",
@@ -931,7 +1034,7 @@ A->>B: math-sidecar-sentinel $$x^2 + y^2$$ tail
 }
 
 #[test]
-fn sequence_message_metric_sidecars_are_isolated_across_concurrent_sessions() {
+fn sequence_message_metric_sidecars_are_isolated_while_prepared_artifact_lifetimes_overlap() {
     const FIRST_SOURCE: &str = r#"sequenceDiagram
 participant A
 participant B
@@ -951,24 +1054,46 @@ end
     let first_sequential = render_sequence_with_environment(FIRST_SOURCE, &environment);
     let second_sequential = render_sequence_with_environment(SECOND_SOURCE, &environment);
 
-    let barrier = Arc::new(Barrier::new(2));
+    let (first_prepared_tx, first_prepared_rx) = mpsc::channel();
+    let (first_release_tx, first_release_rx) = mpsc::channel();
+    let (second_prepared_tx, second_prepared_rx) = mpsc::channel();
+    let (second_release_tx, second_release_rx) = mpsc::channel();
     let first_handle = {
         let environment = environment.clone();
-        let barrier = barrier.clone();
         std::thread::spawn(move || {
-            render_prepared_sequence_after_barrier(FIRST_SOURCE, environment, barrier)
+            render_prepared_sequence_after_release(
+                FIRST_SOURCE,
+                environment,
+                first_prepared_tx,
+                first_release_rx,
+            )
         })
     };
     let second_handle = {
         let environment = environment.clone();
-        let barrier = barrier.clone();
         std::thread::spawn(move || {
-            render_prepared_sequence_after_barrier(SECOND_SOURCE, environment, barrier)
+            render_prepared_sequence_after_release(
+                SECOND_SOURCE,
+                environment,
+                second_prepared_tx,
+                second_release_rx,
+            )
         })
     };
 
-    let first_concurrent = first_handle.join().expect("first Sequence render thread");
-    let second_concurrent = second_handle.join().expect("second Sequence render thread");
+    let first_prepared = first_prepared_rx.recv();
+    let second_prepared = second_prepared_rx.recv();
+
+    // Release both waiters even when either prepare path unwound and disconnected its channel.
+    let _ = first_release_tx.send(());
+    let _ = second_release_tx.send(());
+
+    let first_joined = first_handle.join();
+    let second_joined = second_handle.join();
+    first_prepared.expect("first Sequence artifact reached the prepared state");
+    second_prepared.expect("second Sequence artifact reached the prepared state");
+    let first_concurrent = first_joined.expect("first Sequence render thread");
+    let second_concurrent = second_joined.expect("second Sequence render thread");
 
     assert_eq!(first_concurrent.svg, first_sequential.svg);
     assert_eq!(second_concurrent.svg, second_sequential.svg);
