@@ -16,6 +16,7 @@ import {
   createRenderCoordinator,
   type RenderCoordinatorInput,
 } from "./render-coordinator.ts";
+import { selectCurrentDiagramType } from "./use-render-coordinator.ts";
 import type {
   MermaidRealmController,
   MermaidRealmRenderResult,
@@ -363,6 +364,125 @@ test("preserves producer SVG validation failures", async () => {
   assert.equal(state.merman.message, "Unsafe SVG.");
 });
 
+test("publishes ASCII independently when SVG validation fails", async () => {
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setInput(
+    input("unsafe", {
+      ...facade(),
+      render: () => ({
+        artifact: null,
+        error: { summary: "Unsafe SVG.", detail: null },
+        renderTime: 0,
+        stage: "svg-validation",
+        status: "failure",
+      }),
+      renderAscii: () => ({
+        ascii: "ascii-unsafe",
+        error: null,
+        status: "success",
+      }),
+    })
+  );
+  await waitFor(() => coordinator.store.getState().status === "failed");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "failed");
+  if (state.status !== "failed") return;
+  assert.deepEqual(state.ascii, {
+    artifact: "ascii-unsafe",
+    status: "success",
+  });
+});
+
+test("publishes an explicit unsupported ASCII result without invoking the renderer", async () => {
+  let asciiRenderCalls = 0;
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setInput(
+    input("pie", {
+      ...facade(),
+      detectDiagram: () => ({
+        status: "available",
+        validity: "valid",
+        diagramType: "pie",
+        syntaxId: "pie",
+        effectiveLayoutId: "builtin",
+      }),
+      renderAscii: (operation) => {
+        asciiRenderCalls += 1;
+        return facade().renderAscii(operation);
+      },
+    })
+  );
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  if (state.status !== "success") return;
+  assert.equal(asciiRenderCalls, 0);
+  assert.deepEqual(state.ascii, {
+    diagramType: "pie",
+    status: "unsupported",
+  });
+});
+
+test("contains ASCII capability failures without failing the SVG publication", async () => {
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setInput(
+    input("flowchart", {
+      ...facade(),
+      getAsciiSupportedDiagrams: () => {
+        throw new Error("ASCII capability lookup failed.");
+      },
+    })
+  );
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  if (state.status !== "success") return;
+  assert.equal(state.merman.status, "success");
+  assert.equal(state.ascii.status, "failure");
+  if (state.ascii.status !== "failure") return;
+  assert.equal(state.ascii.error.summary, "ASCII capability lookup failed.");
+});
+
+test("keeps the visible diagram type while a replacement render is updating", async () => {
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("visible"))]);
+  const coordinator = createRenderCoordinator({
+    compare,
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setInput(input("visible"));
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const previous = coordinator.store.getState();
+  assert.equal(previous.status, "success");
+  if (previous.status !== "success") return;
+  const updating = Object.freeze({
+    status: "updating" as const,
+    previous,
+    snapshot: Object.freeze({
+      ...previous.snapshot,
+      publicationId: (previous.snapshot.publicationId + 1) as typeof previous.snapshot.publicationId,
+    }),
+  });
+
+  assert.equal(selectCurrentDiagramType(updating), "flowchart");
+});
+
 test("rejects a facade artifact that was not created by the projector", async () => {
   const artifact = projectNavigableInlineSvg(
     '<svg xmlns="http://www.w3.org/2000/svg"><text>safe</text></svg>'
@@ -500,6 +620,7 @@ test("marks each presented engine by rebuilding an immutable completed publicati
   assert.equal(afterMerman.status, "success");
   if (afterMerman.status !== "success" || !afterMerman.mermaid) return;
   assert.equal(afterMerman.merman.presentedAt, 10);
+  assert.equal(afterMerman.ascii, initial.ascii);
   assert.equal(Object.isFrozen(afterMerman), true);
   assert.equal(Object.isFrozen(afterMerman.merman), true);
 
@@ -510,6 +631,7 @@ test("marks each presented engine by rebuilding an immutable completed publicati
   assert.equal(afterMermaid.status, "success");
   if (afterMermaid.status !== "success" || !afterMermaid.mermaid) return;
   assert.equal(afterMermaid.mermaid.presentedAt, 20);
+  assert.equal(afterMermaid.ascii, initial.ascii);
   assert.equal(Object.isFrozen(afterMermaid.mermaid), true);
 });
 
@@ -629,6 +751,62 @@ test("request exceptions become typed failures and later work still runs", async
   await waitFor(() => coordinator.store.getState().status === "success");
 });
 
+test("synchronous compare exceptions become protocol failures and later work still runs", async () => {
+  let renderCalls = 0;
+  const compare: MermaidRealmController = {
+    dispose() {},
+    reset() {},
+    render(operation) {
+      renderCalls += 1;
+      if (renderCalls === 1) {
+        throw new Error("synchronous compare failure");
+      }
+      return Promise.resolve(mermaidSuccess(operation.source));
+    },
+  };
+  const coordinator = createRenderCoordinator({
+    compare,
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+
+  coordinator.setInput(input("throws"));
+  await waitFor(() => coordinator.store.getState().status === "partial");
+  const failed = coordinator.store.getState();
+  assert.equal(failed.status, "partial");
+  if (failed.status === "partial") {
+    assert.equal(failed.mermaid.status, "failure");
+    assert.equal(failed.mermaid.stage, "protocol");
+    assert.equal(failed.mermaid.message, "synchronous compare failure");
+  }
+
+  coordinator.setInput(input("recovered"));
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.equal(renderCalls, 2);
+});
+
+test("superseding Compare work is cancelled before publishing the latest SVG batch", async () => {
+  const pending = deferred<MermaidRealmRenderResult>();
+  const compare = fakeCompare([pending.promise]);
+  const coordinator = createRenderCoordinator({
+    compare,
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setFeatures({ compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setInput(input("compare"));
+  await waitFor(() => compare.calls.length === 1);
+
+  coordinator.setFeatures({ compareEnabled: false, diagnosticsEnabled: false });
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  assert.equal(compare.resetCalls, 1);
+  assert.equal(state.snapshot.operation.compareEnabled, false);
+});
+
 test("render failures retain binding details in the completed batch", async () => {
   const coordinator = createRenderCoordinator({
     compare: fakeCompare([]),
@@ -709,13 +887,53 @@ test("normalizes an unprojected ASCII failure without failing the SVG result", a
   const state = coordinator.store.getState();
   assert.equal(state.status, "success");
   if (state.status !== "success") return;
-  assert.equal(state.merman.ascii, null);
+  assert.equal(state.ascii.status, "failure");
+  if (state.ascii.status !== "failure") return;
   assert.equal(
-    state.merman.asciiError?.summary,
+    state.ascii.error.summary,
     "Structured Merman ASCII failure."
   );
-  assert.match(state.merman.asciiError?.detail ?? "", /MERMAN_ASCII_ERROR/);
-  assert.doesNotMatch(state.merman.asciiError?.detail ?? "", /\[object Object\]/);
+  assert.match(state.ascii.error.detail ?? "", /MERMAN_ASCII_ERROR/);
+  assert.doesNotMatch(state.ascii.error.detail ?? "", /\[object Object\]/);
+});
+
+test("publishes invalid configuration as an ASCII failure before detection", async () => {
+  let asciiCalls = 0;
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setInput(
+    input(
+      "flowchart TD\nA --> B",
+      {
+        ...facade(),
+        detectDiagram: () => ({
+          status: "unavailable",
+          validity: "unknown",
+          diagramType: null,
+          syntaxId: null,
+          effectiveLayoutId: null,
+        }),
+        renderAscii(operation) {
+          asciiCalls += 1;
+          return facade().renderAscii(operation);
+        },
+      },
+      { mermaidConfig: "{" }
+    )
+  );
+  await waitFor(() => !/pending|updating/.test(coordinator.store.getState().status));
+
+  const state = coordinator.store.getState();
+  if (state.status === "empty" || state.status === "pending" || state.status === "updating") {
+    assert.fail(`Expected a completed render, received ${state.status}.`);
+  }
+  assert.equal(state.ascii.status, "failure");
+  if (state.ascii.status !== "failure") return;
+  assert.match(state.ascii.error.summary, /JSON|configuration/i);
+  assert.equal(asciiCalls, 0);
 });
 
 function input(
@@ -838,20 +1056,38 @@ function fakeCompare(
   calls: Parameters<MermaidRealmController["render"]>[0][];
   resetCalls: number;
 } {
-  return {
+  let activeCancel:
+    | ((result: MermaidRealmRenderResult) => void)
+    | null = null;
+  const controller: MermaidRealmController & {
+    calls: Parameters<MermaidRealmController["render"]>[0][];
+    resetCalls: number;
+  } = {
     calls: [],
     resetCalls: 0,
     dispose() {},
     reset() {
       this.resetCalls += 1;
+      activeCancel?.({
+        status: "failure",
+        stage: "disposed",
+        message: "Mermaid realm operation was reset.",
+        detail: null,
+      });
+      activeCancel = null;
     },
     render(input) {
       this.calls.push(input);
       const result = results.shift();
       if (!result) throw new Error("Unexpected Compare render.");
-      return result;
+      const cancellation = Promise.withResolvers<MermaidRealmRenderResult>();
+      activeCancel = cancellation.resolve;
+      return Promise.race([result, cancellation.promise]).finally(() => {
+        if (activeCancel === cancellation.resolve) activeCancel = null;
+      });
     },
   };
+  return controller;
 }
 
 function mermaidSuccess(

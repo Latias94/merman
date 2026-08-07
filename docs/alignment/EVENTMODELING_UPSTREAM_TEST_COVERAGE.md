@@ -1,4 +1,4 @@
-# EventModeling Upstream Test Coverage (Mermaid@11.16.0)
+# EventModeling Upstream Test Coverage (Mermaid@11.16.1)
 
 This page records the current eventmodeling fixture coverage imported into merman.
 

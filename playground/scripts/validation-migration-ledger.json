@@ -118,8 +118,8 @@
       "disposition": "retained",
       "legacyGate": "Package capability, dependency audit, and license gates",
       "stableInvariant": "Published dependencies and Web capability surface are explicit, audited, and licensed.",
-      "replacementEvidence": "Structured package manifests/locks, Web capability verifier, the cross-platform complete/production npm audit runner, and license digest.",
-      "provingTests": ["scripts/package-entrypoints.test.mjs", "scripts/verify-npm-audits.test.mjs"]
+      "replacementEvidence": "Structured package manifests/locks, direct production and tooling npm audit commands, the Web capability verifier, and the license digest.",
+      "provingTests": ["scripts/package-entrypoints.test.mjs"]
     }
   ]
 }

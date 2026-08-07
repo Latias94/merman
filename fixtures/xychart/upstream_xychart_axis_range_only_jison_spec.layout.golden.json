@@ -13,6 +13,21 @@
         {
           "type": "path",
           "groupTexts": [
+            "plot",
+            "line-plot-0"
+          ],
+          "data": [
+            {
+              "path": "M40.52000000000001,-1149.932Z",
+              "fill": null,
+              "strokeFill": "#ECECFF",
+              "strokeWidth": 2.0
+            }
+          ]
+        },
+        {
+          "type": "path",
+          "groupTexts": [
             "bottom-axis",
             "axis-line"
           ],

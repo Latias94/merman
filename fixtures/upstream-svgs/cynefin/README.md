@@ -1,7 +1,6 @@
 # Cynefin Upstream SVG Baselines
 
-This directory is reserved for Mermaid `@11.16.0` Cynefin SVG baselines.
+This directory contains the Mermaid `@11.16.1` Cynefin SVG baselines.
 
-The Cynefin renderer is currently compatibility-only: local semantic/layout/SVG smoke coverage
-exists, while upstream SVG baseline generation and `compare-cynefin-svgs` are deferred to the U7
-baseline refresh.
+The corpus is complete and participates in `compare-cynefin-svgs`; its source and CLI versions are
+recorded in `_baseline-manifest.json`.

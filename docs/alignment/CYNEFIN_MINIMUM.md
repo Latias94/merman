@@ -1,8 +1,8 @@
-# Cynefin Minimum (Mermaid@11.16.0)
+# Cynefin Minimum (Mermaid@11.16.1)
 
 This document tracks the first local support slice for Mermaid `cynefin-beta`.
 
-Upstream references at pinned Mermaid 11.16.0:
+Upstream references at pinned Mermaid 11.16.1:
 
 - Detector: `packages/mermaid/src/diagrams/cynefin/cynefinDetector.ts`
 - Parser adapter: `packages/mermaid/src/diagrams/cynefin/cynefinParser.ts`

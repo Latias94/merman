@@ -50,6 +50,42 @@ test("selects SVG and ASCII only from the named current publication", async () =
   ]);
 });
 
+test("publishes ASCII actions independently from a failed Merman SVG", async () => {
+  const successful = completedPublication("ascii-only");
+  const publication: CompletedRenderBatch = Object.freeze({
+    ...successful,
+    status: "failed",
+    merman: Object.freeze({
+      detail: null,
+      engine: "merman",
+      message: "Unsafe SVG.",
+      stage: "svg-validation",
+      status: "failure",
+    }),
+    mermaid: null,
+  });
+  const calls: string[] = [];
+  const owner = createArtifactActionOwner({
+    getRenderState: () => publication,
+    getRuntimeState: () => readyRuntime(),
+    io: recordingIo(calls),
+  });
+
+  await owner({
+    action: "copy-ascii",
+    publicationId: publication.snapshot.publicationId,
+  });
+  await owner({
+    action: "download-ascii",
+    publicationId: publication.snapshot.publicationId,
+  });
+
+  assert.deepEqual(calls, [
+    "copy-ascii:ascii-ascii-only",
+    "download-ascii:ascii-ascii-only:merman-diagram",
+  ]);
+});
+
 test("rejects stale, missing, and updating publications before I/O", async () => {
   const publication = completedPublication("current");
   const currentId = publication.snapshot.publicationId;
@@ -186,14 +222,16 @@ function completedPublication(
       effectiveLayoutId: "dagre",
     }),
     diagnostics: null,
+    ascii: Object.freeze({
+      artifact: `ascii-${key}`,
+      status: "success",
+    }),
     publishedAt: 1,
     snapshot: Object.freeze({ operation, publicationId: id }),
     svgPlan: null,
     status: "success",
     merman: Object.freeze({
       artifact: projectNavigableInlineSvg(svg("merman")),
-      ascii: `ascii-${key}`,
-      asciiError: null,
       engine: "merman",
       presentedAt: null,
       renderTimeMs: 1,

@@ -1,8 +1,8 @@
-# Wardley Minimum (Mermaid@11.16.0)
+# Wardley Minimum (Mermaid@11.16.1)
 
 This document records the admitted headless implementation of Mermaid `wardley-beta`.
 
-Upstream references at pinned Mermaid 11.16.0:
+Upstream references at pinned Mermaid 11.16.1:
 
 - Detector: `packages/mermaid/src/diagrams/wardley/wardleyDetector.ts`
 - Parser adapter: `packages/mermaid/src/diagrams/wardley/wardleyParser.ts`

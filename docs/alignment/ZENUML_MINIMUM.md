@@ -5,7 +5,7 @@ ZenUML into Mermaid Sequence actions or Sequence JSON.
 
 ## Authority
 
-- Mermaid baseline: `mermaid@11.16.0`.
+- Mermaid baseline: `mermaid@11.16.1`.
 - Mermaid workspace oracle: `@zenuml/core@3.47.8`, commit
   `c81406671c0833baebb9fac08a0cbcdc99b3907d`.
 - Selected compatible behavior source: `@zenuml/core@3.50.1`, commit

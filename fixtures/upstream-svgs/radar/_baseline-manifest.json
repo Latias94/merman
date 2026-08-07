@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.16.0",
+    "mermaid_version": "11.16.1",
     "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.16.0",
-    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
-    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
+    "mermaid_source_tag": "mermaid@11.16.1",
+    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+    "package_json_sha256": "7d7e8fe6b51e2453626138bf8abe22c802522324b2288ee866718bc49b7c2441",
+    "package_lock_sha256": "e9efb5f87a2a39ee1a5184cd7d1bdc69d85bd47ace850adaf76ca99975eac6ac",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v3"
   },
@@ -29,9 +29,9 @@
         "release": "25.5.0"
       },
       "mermaid_runtime": {
-        "esm_version": "11.16.0",
-        "iife_version": "11.16.0",
-        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "esm_version": "11.16.1",
+        "iife_version": "11.16.1",
+        "mermaid_package_sha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
         "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
       },
       "font_probe": {
@@ -79,12 +79,12 @@
     },
     "upstream_docs_radar_axis_007": {
       "input_sha256": "b71dd3545f380022b09e46278fb5f627fd6a5202e31e3d5a7443cc51625467f6",
-      "svg_sha256": "57dff555ab9ebf6285bb1bd06b1ab2756d29c461f1411851fcce53d31224f92d",
+      "svg_sha256": "09cd4f9af6dcda4a91a4f8785f29338e8c27b55996dde5e12b065d1504ad6a94",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_radar_curve_008": {
       "input_sha256": "4c5bc55b704ea6e368e48d24f1d9562cdcbf4048c2be560c7fabbae1e8b539cc",
-      "svg_sha256": "7bc4231caaf70b5fb883d933b8a297bddfd8b6be181e95e04e04fec4fe1ea3dd",
+      "svg_sha256": "936bacdc1fbd3e63ea49971270690f4eb57b639fb4f81d72d702ed6ead04226d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_radar_example_on_config_and_theme_011": {
@@ -104,17 +104,17 @@
     },
     "upstream_docs_radar_examples_005": {
       "input_sha256": "5b830cbd36a04ebf82dd4d744c8a7cd8517568270edd8b70b2422aa405e29c9b",
-      "svg_sha256": "7ba59903cf0a6e71eef66a9aae7b553139033b522e93258bdb99d74715024e03",
+      "svg_sha256": "439523fca26157e71fc17f1ffed32223b74b59ad872e13b15795cc2fad63cb8d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_radar_options_009": {
       "input_sha256": "6f8062be2324be9a28b316282613d02234f026b43af96178d66cd36aa1fdc023",
-      "svg_sha256": "db73a9882a9ad4c6ddcfbc41452339317a0496ce7eaa9a5218195a83306561ec",
+      "svg_sha256": "e9614f63f900e396f19d006b8ddeae6803db06083ebf568725979c726f8b87c0",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_radar_title_006": {
       "input_sha256": "39d1fe2243dc4239c226e14824844b88d8453180932956a95aff12cc72846d7e",
-      "svg_sha256": "31a2a9c3d86490807b9b6e4b77d477dbf41e573ace3cf4a4cdf1d5546ae9e2f5",
+      "svg_sha256": "18238d613e0a728f9814c36d60a0e95205d7004fc02ab58db773a7c0b75bc8dc",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_radar_radar_diagram_demo_001": {

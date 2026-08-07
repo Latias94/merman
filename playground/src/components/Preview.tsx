@@ -39,6 +39,7 @@ import {
 import type {
   DiagnosticArtifact,
   EngineRenderFailure,
+  MermanAsciiBatchResult,
   MermanRenderSuccess,
   MermaidRenderSuccess,
   RenderPublicationId,
@@ -115,25 +116,29 @@ export function Preview({ className }: PreviewProps) {
     useState<SvgDisplayMode>("visual");
   const [copiedAsciiPublicationId, setCopiedAsciiPublicationId] =
     useState<RenderPublicationId | null>(null);
-  const [copiedDiagnostic, setCopiedDiagnostic] = useState<DiagnosticKey | null>(null);
+  const [copiedDiagnostic, setCopiedDiagnostic] =
+    useState<DiagnosticKey | null>(null);
   const [copiedSvgTarget, setCopiedSvgTarget] =
     useState<CopiedSvgTarget | null>(null);
-  const [exportingPngEngines, setExportingPngEngines] = useState<Set<EngineKey>>(
-    () => new Set()
-  );
+  const [exportingPngEngines, setExportingPngEngines] = useState<
+    Set<EngineKey>
+  >(() => new Set());
   const exportingPngEnginesRef = useRef<Set<EngineKey>>(new Set());
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticKey>("parse");
-  const asciiCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const asciiCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const diagnosticCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const diagnosticCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const currentPublicationId = currentBatch?.snapshot.publicationId ?? null;
   const detectedDiagramType = selectCurrentDiagramType(renderState);
   const currentMerman = successfulMerman(currentBatch?.merman ?? null);
   const svgArtifact = currentMerman?.artifact ?? null;
   const svg = svgArtifact?.svg ?? null;
-  const ascii = currentMerman?.ascii ?? null;
-  const asciiError = currentMerman?.asciiError ?? null;
+  const asciiResult = currentBatch?.ascii ?? null;
   const error = failedMessage(currentBatch?.merman ?? null);
   const errorDetail = failedDetail(currentBatch?.merman ?? null);
   const errorStage = failedStage(currentBatch?.merman ?? null);
@@ -144,7 +149,7 @@ export function Preview({ className }: PreviewProps) {
   const mermaidErrorDetail = failedDetail(visibleBatch?.mermaid ?? null);
   const mermaidRenderTime = visibleMermaid?.renderTimeMs ?? null;
   const renderPending = selectRenderPending(renderState);
-  const mermanRendering = Boolean(code.trim() && ready && renderPending);
+  const renderingCurrent = Boolean(code.trim() && ready && renderPending);
   const actionsEnabled = currentBatch !== null;
   const compareStale = renderState.status === "updating";
   const diagnostics = currentBatch?.diagnostics ?? EMPTY_DIAGNOSTICS;
@@ -154,11 +159,6 @@ export function Preview({ className }: PreviewProps) {
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
   const svgViewport = useSvgViewportController();
-  useEffect(() => {
-    if (previewMode === "ascii" && !isAsciiSupported) {
-      setPreviewMode("svg");
-    }
-  }, [isAsciiSupported, previewMode, setPreviewMode]);
 
   useEffect(() => {
     setRenderFeatures({
@@ -198,7 +198,7 @@ export function Preview({ className }: PreviewProps) {
       }
       asciiCopyTimeoutRef.current = setTimeout(
         () => setCopiedAsciiPublicationId(null),
-        2000
+        2000,
       );
       toast.success(t("share.copied"));
     } catch {
@@ -218,13 +218,16 @@ export function Preview({ className }: PreviewProps) {
         if (copyTimeoutRef.current) {
           clearTimeout(copyTimeoutRef.current);
         }
-        copyTimeoutRef.current = setTimeout(() => setCopiedSvgTarget(null), 2000);
+        copyTimeoutRef.current = setTimeout(
+          () => setCopiedSvgTarget(null),
+          2000,
+        );
         toast.success(t("share.copied"));
       } catch {
         toast.error(t("share.copyFailed"));
       }
     },
-    [t]
+    [t],
   );
 
   const handleCopyDiagnosticJson = useCallback(async () => {
@@ -239,7 +242,7 @@ export function Preview({ className }: PreviewProps) {
       }
       diagnosticCopyTimeoutRef.current = setTimeout(
         () => setCopiedDiagnostic(null),
-        2000
+        2000,
       );
     } catch (err) {
       console.error("Failed to copy diagnostics JSON:", err);
@@ -259,38 +262,38 @@ export function Preview({ className }: PreviewProps) {
         toast.error(t("export.failed"));
       }
     },
-    [t]
+    [t],
   );
 
-  const handleExportPng = useCallback(async (
-    engine: EngineKey,
-    publicationId: RenderPublicationId
-  ) => {
-    if (exportingPngEnginesRef.current.has(engine)) {
-      return;
-    }
-    exportingPngEnginesRef.current.add(engine);
-    setExportingPngEngines(new Set(exportingPngEnginesRef.current));
-    try {
-      const plan = await executeArtifactAction({
-        action: "download-png",
-        engine,
-        publicationId,
-        scale: 2,
-      });
-      toast.success(
-        t("export.pngSuccess", {
-          width: plan.outputWidth,
-          height: plan.outputHeight,
-        })
-      );
-    } catch (error) {
-      toast.error(pngExportErrorMessage(error, t));
-    } finally {
-      exportingPngEnginesRef.current.delete(engine);
+  const handleExportPng = useCallback(
+    async (engine: EngineKey, publicationId: RenderPublicationId) => {
+      if (exportingPngEnginesRef.current.has(engine)) {
+        return;
+      }
+      exportingPngEnginesRef.current.add(engine);
       setExportingPngEngines(new Set(exportingPngEnginesRef.current));
-    }
-  }, [t]);
+      try {
+        const plan = await executeArtifactAction({
+          action: "download-png",
+          engine,
+          publicationId,
+          scale: 2,
+        });
+        toast.success(
+          t("export.pngSuccess", {
+            width: plan.outputWidth,
+            height: plan.outputHeight,
+          }),
+        );
+      } catch (error) {
+        toast.error(pngExportErrorMessage(error, t));
+      } finally {
+        exportingPngEnginesRef.current.delete(engine);
+        setExportingPngEngines(new Set(exportingPngEnginesRef.current));
+      }
+    },
+    [t],
+  );
 
   const handleRefreshCompare = useCallback(() => {
     refreshRenderCoordinator();
@@ -302,13 +305,11 @@ export function Preview({ className }: PreviewProps) {
   const mermanSvgUnavailableLabel = artifactUnavailableLabel({
     available: Boolean(svg),
     error,
-    loading: mermanRendering,
+    loading: renderingCurrent,
     t,
   });
   const mermaidRendering = Boolean(
-    previewMode === "compare" &&
-      code.trim() &&
-      renderPending
+    previewMode === "compare" && code.trim() && renderPending,
   );
   const mermaidLoadingLabel = mermaidRendering
     ? t("preview.renderingCurrent")
@@ -388,7 +389,7 @@ export function Preview({ className }: PreviewProps) {
     );
   }
 
-  if (error && previewMode !== "compare" && previewMode !== "diagnostics") {
+  if (error && previewMode === "svg") {
     return (
       <div className={cn("flex flex-col h-full", className)}>
         {renderTabBar()}
@@ -420,8 +421,8 @@ export function Preview({ className }: PreviewProps) {
     errorDetail: failedDetail(visibleBatch?.merman ?? null),
     errorStage: failedStage(visibleBatch?.merman ?? null),
     renderTime: visibleMerman?.renderTimeMs ?? null,
-    loading: mermanRendering,
-    loadingLabel: mermanRendering ? t("preview.renderingCurrent") : null,
+    loading: renderingCurrent,
+    loadingLabel: renderingCurrent ? t("preview.renderingCurrent") : null,
     unavailableLabel: mermanSvgUnavailableLabel,
     stale: compareStale,
   };
@@ -478,7 +479,7 @@ export function Preview({ className }: PreviewProps) {
                 }
                 onClick={() =>
                   setSvgDisplayMode((value) =>
-                    value === "visual" ? "source" : "visual"
+                    value === "visual" ? "source" : "visual",
                   )
                 }
                 disabled={!svg}
@@ -491,10 +492,11 @@ export function Preview({ className }: PreviewProps) {
               </IconButton>
             </>
           )}
-          {previewMode === "ascii" && ascii && (
+          {previewMode === "ascii" && asciiResult?.status === "success" && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
+                  data-testid="copy-ascii-button"
                   variant="ghost"
                   size="icon-sm"
                   onClick={handleCopyAscii}
@@ -541,7 +543,7 @@ export function Preview({ className }: PreviewProps) {
               <RefreshCw className="size-4" />
             </IconButton>
           )}
-        </>
+        </>,
       )}
 
       <div
@@ -550,8 +552,8 @@ export function Preview({ className }: PreviewProps) {
         aria-labelledby={`preview-${previewMode}-tab`}
         className="relative min-h-0 flex-1 overflow-hidden"
       >
-        {previewMode === "svg" && (
-          svgDisplayMode === "source" ? (
+        {previewMode === "svg" &&
+          (svgDisplayMode === "source" ? (
             <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
           ) : (
             <SvgViewport
@@ -563,13 +565,12 @@ export function Preview({ className }: PreviewProps) {
                   markRenderCoordinatorPresented(
                     currentBatch.snapshot.publicationId,
                     "merman",
-                    at
+                    at,
                   );
                 }
               }}
             />
-          )
-        )}
+          ))}
 
         {previewMode === "compare" && (
           <CompareView
@@ -591,7 +592,7 @@ export function Preview({ className }: PreviewProps) {
                   markRenderCoordinatorPresented(
                     visibleBatch.snapshot.publicationId,
                     engine,
-                    at
+                    at,
                   );
                 }
               },
@@ -613,59 +614,15 @@ export function Preview({ className }: PreviewProps) {
         )}
 
         {previewMode === "ascii" && (
-          <div className="h-full w-full">
-            {ascii ? (
-              <div className="flex h-full flex-col">
-                <AsciiSupportBanner
-                  capability={asciiCapability}
-                  label={asciiSupportLabel}
-                  limit={asciiSupportLimit}
-                  t={t}
-                />
-                <div className="min-h-0 flex-1">
-                  <Editor
-                    height="100%"
-                    language="plaintext"
-                    value={ascii}
-                    theme={isDarkMode ? "vs-dark" : "light"}
-                    options={{
-                      readOnly: true,
-                      minimap: { enabled: false },
-                      fontSize: 13,
-                      fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-                      lineNumbers: "off",
-                      scrollBeyondLastLine: false,
-                      wordWrap: "off",
-                      renderLineHighlight: "none",
-                      selectionHighlight: false,
-                      occurrencesHighlight: "off",
-                      folding: false,
-                      padding: { top: 16, bottom: 16 },
-                      domReadOnly: true,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : asciiError ? (
-              <RenderError
-                engine={t("preview.mermanEngine")}
-                stage="ascii-render"
-                message={asciiError.summary}
-                detail={asciiError.detail}
-                t={t}
-                compact
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                <div className="max-w-sm text-center">
-                  <p>{t("preview.asciiNotAvailable")}</p>
-                  <p className="mt-1 text-xs">
-                    {asciiSupportLimit || t("preview.asciiNotSupported")}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+          <AsciiArtifactView
+            result={asciiResult}
+            rendering={renderingCurrent}
+            capability={asciiCapability}
+            supportLabel={asciiSupportLabel}
+            supportLimit={asciiSupportLimit}
+            isDarkMode={isDarkMode}
+            t={t}
+          />
         )}
       </div>
     </div>
@@ -720,37 +677,24 @@ function TabBar({
         >
           SVG
         </TabButton>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              id="preview-ascii-tab"
-              type="button"
-              role="tab"
-              tabIndex={mode === "ascii" ? 0 : -1}
-              aria-selected={mode === "ascii"}
-              aria-controls="preview-mode-panel"
-              onClick={() =>
-                runtimeReady && isAsciiSupported && onModeChange("ascii")
-              }
-              disabled={!runtimeReady || !isAsciiSupported}
-              className={cn(
-                "shrink-0 px-3 py-1.5 text-sm rounded-md transition-colors",
-                mode === "ascii"
-                  ? "bg-background text-foreground shadow-sm font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/50",
-                (!runtimeReady || !isAsciiSupported) &&
-                  "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-muted-foreground"
-              )}
-            >
-              ASCII
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {isAsciiSupported
-              ? asciiSupportTooltip(asciiCapability, asciiSupportLabel, asciiSupportLimit)
-              : t("preview.asciiNotSupported")}
-          </TooltipContent>
-        </Tooltip>
+        <TabButton
+          value="ascii"
+          active={mode === "ascii"}
+          onClick={() => onModeChange("ascii")}
+          tooltip={
+            !runtimeReady
+              ? t("preview.loading")
+              : isAsciiSupported
+                ? asciiSupportTooltip(
+                    asciiCapability,
+                    asciiSupportLabel,
+                    asciiSupportLimit,
+                  )
+                : t("preview.asciiNotSupported")
+          }
+        >
+          ASCII
+        </TabButton>
         {isAsciiSupported && (
           <span className="hidden shrink-0 rounded bg-muted px-2 py-1 text-xs text-muted-foreground sm:inline">
             {asciiSupportLabel}
@@ -779,6 +723,106 @@ function TabBar({
           {rightContent}
         </div>
       )}
+    </div>
+  );
+}
+
+function AsciiArtifactView({
+  result,
+  rendering,
+  capability,
+  supportLabel,
+  supportLimit,
+  isDarkMode,
+  t,
+}: {
+  result: MermanAsciiBatchResult | null;
+  rendering: boolean;
+  capability: AsciiCapability | null;
+  supportLabel: string;
+  supportLimit: string;
+  isDarkMode: boolean;
+  t: (key: string) => string;
+}) {
+  if (rendering) {
+    return (
+      <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
+        {t("preview.renderingCurrent")}
+      </CenteredMessage>
+    );
+  }
+  if (!result) {
+    return (
+      <CenteredMessage icon={<AlertCircle className="size-8" />}>
+        {t("preview.asciiNotAvailable")}
+      </CenteredMessage>
+    );
+  }
+  if (result.status === "failure") {
+    return (
+      <RenderError
+        engine={t("preview.mermanEngine")}
+        stage="ascii-render"
+        message={result.error.summary}
+        detail={result.error.detail}
+        t={t}
+        compact
+      />
+    );
+  }
+  if (result.status === "unsupported") {
+    return (
+      <div className="flex h-full items-center justify-center px-4 text-muted-foreground">
+        <div className="max-w-sm text-center">
+          <AlertCircle className="mx-auto mb-3 size-8" />
+          <p>{t("preview.asciiNotSupported")}</p>
+          <p className="mt-1 font-mono text-xs">{result.diagramType}</p>
+          {supportLimit && <p className="mt-2 text-xs">{supportLimit}</p>}
+        </div>
+      </div>
+    );
+  }
+  if (result.status === "unavailable") {
+    return (
+      <CenteredMessage icon={<AlertCircle className="size-8" />}>
+        {t("preview.asciiDetectionUnavailable")}
+      </CenteredMessage>
+    );
+  }
+  return (
+    <div className="flex h-full flex-col">
+      <AsciiSupportBanner
+        capability={capability}
+        label={supportLabel}
+        limit={supportLimit}
+        t={t}
+      />
+      <div
+        data-testid="ascii-artifact-editor"
+        className="min-h-0 flex-1"
+      >
+        <Editor
+          height="100%"
+          language="plaintext"
+          value={result.artifact}
+          theme={isDarkMode ? "vs-dark" : "light"}
+          options={{
+            readOnly: true,
+            minimap: { enabled: false },
+            fontSize: 13,
+            fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+            lineNumbers: "off",
+            scrollBeyondLastLine: false,
+            wordWrap: "off",
+            renderLineHighlight: "none",
+            selectionHighlight: false,
+            occurrencesHighlight: "off",
+            folding: false,
+            padding: { top: 16, bottom: 16 },
+            domReadOnly: true,
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -814,7 +858,7 @@ function AsciiSupportBanner({
 function asciiSupportTooltip(
   capability: AsciiCapability | null,
   label: string,
-  limit: string
+  limit: string,
 ): string {
   if (!capability) {
     return label;
@@ -828,6 +872,7 @@ interface TabButtonProps {
   active: boolean;
   onClick(): void;
   disabled?: boolean;
+  tooltip?: ReactNode;
   children: ReactNode;
 }
 
@@ -836,9 +881,10 @@ function TabButton({
   active,
   onClick,
   disabled = false,
+  tooltip,
   children,
 }: TabButtonProps) {
-  return (
+  const button = (
     <button
       id={`preview-${value}-tab`}
       type="button"
@@ -853,11 +899,22 @@ function TabButton({
         active
           ? "bg-background text-foreground shadow-sm font-medium"
           : "text-muted-foreground hover:text-foreground hover:bg-background/50",
-        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent"
+        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
       )}
     >
       {children}
     </button>
+  );
+
+  if (tooltip === undefined) {
+    return button;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -865,8 +922,8 @@ function handleTabListKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
   if (!(event.target instanceof HTMLButtonElement)) return;
   const tabs = Array.from(
     event.currentTarget.querySelectorAll<HTMLButtonElement>(
-      '[role="tab"]:not(:disabled)'
-    )
+      '[role="tab"]:not(:disabled)',
+    ),
   );
   const currentIndex = tabs.indexOf(event.target);
   if (currentIndex < 0) return;
@@ -1036,7 +1093,7 @@ function artifactUnavailableLabel({
 }
 
 function requirePublicationId(
-  publicationId: RenderPublicationId | null
+  publicationId: RenderPublicationId | null,
 ): RenderPublicationId {
   if (publicationId === null) {
     throw new Error("Current render publication is unavailable.");
@@ -1121,7 +1178,9 @@ function RenderError({
           {engine ? `${engine} · ${t("preview.error")}` : t("preview.error")}
         </h3>
         {stage && (
-          <p className="mb-2 font-mono text-xs text-muted-foreground">{stage}</p>
+          <p className="mb-2 font-mono text-xs text-muted-foreground">
+            {stage}
+          </p>
         )}
         <p className="rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
           {message}
@@ -1190,45 +1249,35 @@ function RuntimeFailureView({
   );
 }
 
-
 function successfulMerman(
-  artifact: MermanRenderSuccess | EngineRenderFailure | null
+  artifact: MermanRenderSuccess | EngineRenderFailure | null,
 ): MermanRenderSuccess | null {
   return artifact?.status === "success" ? artifact : null;
 }
 
 function successfulMermaid(
-  artifact: MermaidRenderSuccess | EngineRenderFailure | null
+  artifact: MermaidRenderSuccess | EngineRenderFailure | null,
 ): MermaidRenderSuccess | null {
   return artifact?.status === "success" ? artifact : null;
 }
 
 function failedMessage(
   artifact:
-    | MermanRenderSuccess
-    | MermaidRenderSuccess
-    | EngineRenderFailure
-    | null
+    MermanRenderSuccess | MermaidRenderSuccess | EngineRenderFailure | null,
 ): string | null {
   return artifact?.status === "failure" ? artifact.message : null;
 }
 
 function failedDetail(
   artifact:
-    | MermanRenderSuccess
-    | MermaidRenderSuccess
-    | EngineRenderFailure
-    | null
+    MermanRenderSuccess | MermaidRenderSuccess | EngineRenderFailure | null,
 ): string | null {
   return artifact?.status === "failure" ? artifact.detail : null;
 }
 
 function failedStage(
   artifact:
-    | MermanRenderSuccess
-    | MermaidRenderSuccess
-    | EngineRenderFailure
-    | null
+    MermanRenderSuccess | MermaidRenderSuccess | EngineRenderFailure | null,
 ): string | null {
   return artifact?.status === "failure" ? artifact.stage : null;
 }

@@ -6135,10 +6135,10 @@
   ],
   "provenance": {
     "generator": "cargo run -p xtask -- gen-theme-snapshot",
-    "mermaidPackageSha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
-    "mermaidSourceCommit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "mermaidSourceTag": "mermaid@11.16.0",
-    "mermaidVersion": "11.16.0"
+    "mermaidPackageSha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
+    "mermaidSourceCommit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+    "mermaidSourceTag": "mermaid@11.16.1",
+    "mermaidVersion": "11.16.1"
   },
   "schemaVersion": 1,
   "themes": {

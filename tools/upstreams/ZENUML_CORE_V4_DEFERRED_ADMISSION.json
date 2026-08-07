@@ -23,7 +23,7 @@
     ]
   },
   "hostGraph": {
-    "mermaidRelease": "11.16.0",
+    "mermaidRelease": "11.16.1",
     "plugin": "@mermaid-js/mermaid-zenuml@0.2.3",
     "pluginDeclaredRange": "^3.47.0",
     "mermaidWorkspaceRange": "^3.47.8",

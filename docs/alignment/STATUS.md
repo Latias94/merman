@@ -9,7 +9,7 @@ planning, or coverage documents.
 | Item | Current state |
 | --- | --- |
 | Dashboard | Active |
-| Upstream baseline | Mermaid `@11.16.0` |
+| Upstream baseline | Mermaid `@11.16.1` |
 | Reference graph | Generated bundle verifies Mermaid and companion source, package, lock, and provenance evidence |
 | Evidence audit | Inventory and corpus counts checked against the worktree on 2026-07-19 |
 | Admission | 35 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |

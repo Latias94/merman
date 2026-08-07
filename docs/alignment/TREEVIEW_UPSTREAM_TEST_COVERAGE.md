@@ -1,6 +1,6 @@
-# TreeView Upstream Test Coverage (Mermaid@11.16.0)
+# TreeView Upstream Test Coverage (Mermaid@11.16.1)
 
-Scope: Mermaid tag `@11.16.0`.
+Scope: Mermaid tag `@11.16.1`.
 
 Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 

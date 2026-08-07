@@ -151,14 +151,14 @@ fn write_wardley_svg(dir: &Path, stem: &str, include_flow_markers: bool) -> Path
 }
 
 #[test]
-fn pinned_source_metadata_is_mermaid_11_16() {
+fn pinned_source_metadata_is_mermaid_11_16_1() {
     let source = current_source().expect("read pinned Mermaid source metadata");
-    assert_eq!(source.mermaid_version, "11.16.0");
+    assert_eq!(source.mermaid_version, "11.16.1");
     assert_eq!(source.mermaid_cli_version, "11.16.0");
-    assert_eq!(source.mermaid_source_tag, "mermaid@11.16.0");
+    assert_eq!(source.mermaid_source_tag, "mermaid@11.16.1");
     assert_eq!(
         source.mermaid_source_commit,
-        "7c0cafcf42e76bfaf79d0cbbd12edb986612f014"
+        "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf"
     );
     assert_eq!(
         source.package_json_sha256,

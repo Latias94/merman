@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.16.0",
+    "mermaid_version": "11.16.1",
     "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.16.0",
-    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
-    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
+    "mermaid_source_tag": "mermaid@11.16.1",
+    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+    "package_json_sha256": "7d7e8fe6b51e2453626138bf8abe22c802522324b2288ee866718bc49b7c2441",
+    "package_lock_sha256": "e9efb5f87a2a39ee1a5184cd7d1bdc69d85bd47ace850adaf76ca99975eac6ac",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v3"
   },
@@ -29,9 +29,9 @@
         "release": "25.5.0"
       },
       "mermaid_runtime": {
-        "esm_version": "11.16.0",
-        "iife_version": "11.16.0",
-        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "esm_version": "11.16.1",
+        "iife_version": "11.16.1",
+        "mermaid_package_sha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
         "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
       },
       "font_probe": {
@@ -1639,7 +1639,7 @@
     },
     "upstream_cypress_flowchart_v2_spec_4023_should_render_html_labels_with_images_and_or_text_correctly_042": {
       "input_sha256": "4023a2758e3a3ba0df67ab1f06dba896aa25d28ae11dc7dc9bb16effef819e50",
-      "svg_sha256": "dc882b10b42e41ba1cb4677c0ea696ad21cac8105bd5e4085fff6835111dc4d3",
+      "svg_sha256": "e4e5d6efa35595046817fd49b70c0429de3ce3403aec94c640358d6be855ded2",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_flowchart_v2_spec_4439_should_render_the_graph_even_if_some_images_are_missing_043": {

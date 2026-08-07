@@ -7,7 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::cmd::{MERMAID_SOURCE_COMMIT, MERMAID_SOURCE_TAG, PINNED_MERMAID_VERSION};
 use crate::util::{is_canonical_sha256, sha256_hex};
 
-pub(crate) const MANIFEST_RELATIVE_PATH: &str = "fixtures/_upstream/cypress-11.16.0/_manifest.json";
+pub(crate) const MANIFEST_RELATIVE_PATH: &str = "fixtures/_upstream/cypress-11.16.1/_manifest.json";
 const SCHEMA_VERSION: u32 = 1;
 const SCOPE_DESCRIPTION: &str = "Mermaid 11.16 new-family Cypress render calls";
 const PINNED_SOURCE_SPECS: &[(&str, usize)] = &[

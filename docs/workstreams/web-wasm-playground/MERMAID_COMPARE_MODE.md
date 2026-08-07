@@ -6,7 +6,7 @@ Last updated: 2026-07-18
 ## Purpose
 
 Compare renders one frozen Mermaid source through Merman WASM and pinned Mermaid JS
-`11.16.0@7c0cafcf` for interactive side-by-side inspection. It is a compatibility aid, not a
+`11.16.1@7ecca0cd` for interactive side-by-side inspection. It is a compatibility aid, not a
 pixel-diff oracle and not the formal benchmark.
 
 ## User Contract

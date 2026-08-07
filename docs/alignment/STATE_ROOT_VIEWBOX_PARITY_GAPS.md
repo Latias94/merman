@@ -1,10 +1,10 @@
 # State Root ViewBox Parity Gaps
 
 This document tracks known causes and debugging workflows for `stateDiagram-v2` root viewport
-(`viewBox` + `style="max-width: ...px"`) mismatches against the upstream Mermaid `@11.16.0` SVG
+(`viewBox` + `style="max-width: ...px"`) mismatches against the upstream Mermaid `@11.16.1` SVG
 baselines.
 
-In Mermaid `@11.16.0`, the final root viewport is derived from DOM `svg.getBBox()` plus a fixed
+In Mermaid `@11.16.1`, the final root viewport is derived from DOM `svg.getBBox()` plus a fixed
 padding (typically `8px`). Any geometry that survives into the final SVG tree can affect the root
 viewport, including placeholder elements.
 

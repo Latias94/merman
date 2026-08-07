@@ -418,7 +418,7 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
 fn generated_theme_artifact() -> &'static GeneratedThemeArtifact {
     GENERATED_THEME_ARTIFACT.get_or_init(|| {
         let artifact: GeneratedThemeArtifact =
-            serde_json::from_str(include_str!("generated/theme_variables_11_16_0.json"))
+            serde_json::from_str(include_str!("generated/theme_variables_11_16_1.json"))
                 .expect("generated Mermaid theme artifact JSON is valid");
         assert_eq!(artifact.schema_version, THEME_ARTIFACT_SCHEMA_VERSION);
         assert_eq!(
@@ -1415,7 +1415,7 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
     let mut tv = theme_variables_map(config);
     let explicit_theme_variables = tv.clone();
 
-    // Mermaid 11.16.0: `theme-default` constructor defaults and `updateColors()`.
+    // Mermaid 11.16.1: `theme-default` constructor defaults and `updateColors()`.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js`.
     let default_primary = "#ECECFF";
     let default_secondary = "#ffffde";
@@ -1991,7 +1991,7 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
 fn apply_dark_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
     let mut tv = theme_variables_map(config);
 
-    // Mermaid 11.16.0: `theme-dark` color scale seeds.
+    // Mermaid 11.16.1: `theme-dark` color scale seeds.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-dark.js`.
     //
     // Note: `theme-dark` keeps `cScale*` as the provided hex strings, while derived
@@ -2334,7 +2334,7 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorEr
     let mut tv = theme_variables_map(config);
     let explicit_theme_variables = tv.clone();
 
-    // Mermaid 11.16.0: `theme-forest` base colors.
+    // Mermaid 11.16.1: `theme-forest` base colors.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-forest.js`.
     //
     // NOTE: `theme-forest` is not a thin palette override. It sets several diagram-facing
@@ -2569,7 +2569,7 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
         );
     }
 
-    // Mermaid 11.16.0: `theme-neutral` color scale seeds.
+    // Mermaid 11.16.1: `theme-neutral` color scale seeds.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
     let c_scales_hex: [&str; 12] = [
         "#555", "#F4F4F4", "#555", "#BBB", "#777", "#999", "#DDD", "#FFF", "#DDD", "#BBB", "#999",
@@ -3298,7 +3298,7 @@ mod tests {
 
     #[test]
     fn explicit_scale_override_recomputes_peer_and_inverse_from_override_stage() {
-        // Oracle values from Mermaid 11.16.0 `getThemeVariables()` with the same overrides.
+        // Oracle values from Mermaid 11.16.1 `getThemeVariables()` with the same overrides.
         let cases = [
             (
                 "default",
@@ -3354,7 +3354,7 @@ mod tests {
 
     #[test]
     fn extended_theme_scale_override_replays_after_source_ordered_derivations() {
-        // Oracle: Mermaid 11.16.0 getThemeVariables({ cScale0: '#abcdef' }). Theme names do not
+        // Oracle: Mermaid 11.16.1 getThemeVariables({ cScale0: '#abcdef' }). Theme names do not
         // imply darkMode; only an explicit darkMode value changes the scale transform branch.
         let cases = [
             (
@@ -3424,7 +3424,7 @@ mod tests {
 
     #[test]
     fn primary_color_override_follows_each_upstream_theme_scale_contract() {
-        // Oracle values from Mermaid 11.16.0 `getThemeVariables()` with the same overrides.
+        // Oracle values from Mermaid 11.16.1 `getThemeVariables()` with the same overrides.
         let cases = [
             (
                 "default",
@@ -3483,7 +3483,7 @@ mod tests {
 
     #[test]
     fn quadrant_primary_override_matches_mermaid_11_16_theme_lifecycles() {
-        // Oracle: Mermaid 11.16.0 `mermaid.initialize()` + `mermaidAPI.getConfig()`.
+        // Oracle: Mermaid 11.16.1 `mermaid.initialize()` + `mermaidAPI.getConfig()`.
         let cases = [
             ("default", "#ECECFF", "#f1f1ff", "hsl(240, 100%, NaN%)"),
             (
@@ -3600,7 +3600,7 @@ mod tests {
 
     #[test]
     fn quadrant_accepts_khroma_named_rgb_and_alpha_colors() {
-        // Oracle: Mermaid 11.16.0 `mermaid.initialize()` + `mermaidAPI.getConfig()`.
+        // Oracle: Mermaid 11.16.1 `mermaid.initialize()` + `mermaidAPI.getConfig()`.
         let cases = [
             (
                 "rebeccapurple",
@@ -3650,7 +3650,7 @@ mod tests {
 
     #[test]
     fn invalid_color_timing_matches_mermaid_11_16_initialize_matrix() {
-        // Oracle: Mermaid 11.16.0 `mermaid.initialize()` + `mermaidAPI.getConfig()` using
+        // Oracle: Mermaid 11.16.1 `mermaid.initialize()` + `mermaidAPI.getConfig()` using
         // `not-a-color` for each field independently. Fields absent from `errors` are deliberate
         // pass-through values at theme-calculation time and must not be validated early.
         let keys = [
